@@ -228,9 +228,11 @@ marmeon make:notification <Name> --module=<module> [--no-register]
 --module (string, short m)
 --no-register (boolean)
 // make:policy
-marmeon make:policy <Name> --module=<module>
+marmeon make:policy <Name> --module=<module> [--by=role [--tenant=<name>]]
+--by (string)
 --force (boolean)
 --module (string, short m)
+--tenant (string)
 // make:repository
 marmeon make:repository <Name> --module=<module> [--table=<table>]
 --force (boolean)

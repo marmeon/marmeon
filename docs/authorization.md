@@ -106,6 +106,31 @@ authorize: can(NotePolicy, 'update', 'note')
 An existing file is kept unless you pass `--force`. [`marmeon make:resource`](starter-kit.md#adding-a-resource) writes this policy with the
 table's `Row<'…'>`, together with the routes and requests that use it.
 
+#### Deciding by role
+
+A record that belongs to a workspace, not to a user, is decided by the role the user holds there:
+`marmeon make:policy Document --module=docs --by=role --tenant=workspace` (the tenant defaults to `workspace`) writes two files:
+
+- `policies/DocumentPolicy.ts` with `type Role = 'admin' | 'member' | 'viewer'` and a table `ABILITIES` that lists, for `view`, `update` and `delete`, the roles that pass. Each ability asks
+  `roleOf(user, record.workspace_id)` and answers `denyAsNotFound()` when there is no role or the role is not in the list.
+- `WorkspaceAccess.ts` next to the module's entry, the service that looks the role up.
+
+A policy is built for each check, so a cache in the policy would be empty every time. `WorkspaceAccess` is registered *scoped*,
+so one instance lives as long as the request and asks for the user's memberships once, however many abilities the request checks:
+
+```ts title="modules/docs/DocsServiceProvider.ts"
+container.scoped(WorkspaceAccess);
+```
+
+Never `container.singleton(WorkspaceAccess)`: it would keep every user's memberships for the life of the process, so a removed
+member keeps their role until a restart. Left unregistered, it is built per check: correct, but one query per ability.
+
+The generated lookup, `load()`, returns no memberships, so every ability answers 404 until you read your table of members in it. It
+fails closed: a user without a membership, a record without a `workspace_id`, a stored value that is not one of the three roles and a missing user are all refused. The role is
+read for the signed-in user that the request carries, never from a header, a parameter or a body. Change the roles and the lists in `ABILITIES` to your own; the policy and the service share the
+`Role` type. The ids are typed `number`: change them if your workspaces use another type. An existing `WorkspaceAccess.ts` is never overwritten, not even with `--force`, so a second policy of the same
+tenant reuses the lookup you wrote.
+
 ### Deciding before the ability
 
 A method named `before(user, ability)` runs ahead of every ability of its policy. It returns `true` to allow, `false` to refuse,

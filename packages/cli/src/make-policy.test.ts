@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
-import { CommandArgumentsError, type CommandInput } from './command.ts';
+import { CommandArgumentsError, parseCommandArgs, type CommandInput } from './command.ts';
 import { MakePolicyCommand } from './commands/make.ts';
 
 function app(manifest: string | null = JSON.stringify({ dependencies: { '@marmeon/auth': 'workspace:*' } })): string {
@@ -103,5 +103,86 @@ describe('make:policy', () => {
 
   it('accepts @marmeon/auth in devDependencies', () => {
     expect(run(app(JSON.stringify({ devDependencies: { '@marmeon/auth': '*' } })), ['Note']).code).toBe(0);
+  });
+});
+
+describe('make:policy --by=role', () => {
+  const byRole = { module: 'notes', by: 'role' };
+
+  it('writes the policy and the scoped access service that look a role up once per request', () => {
+    const root = app();
+    const { code, lines } = run(root, ['Note'], byRole);
+    expect(code).toBe(0);
+    const policy = readFileSync(join(root, 'modules/notes/policies/NotePolicy.ts'), 'utf8');
+    const access = readFileSync(join(root, 'modules/notes/WorkspaceAccess.ts'), 'utf8');
+    expect(policy).toContain("import { WorkspaceAccess, type Role } from '../WorkspaceAccess.ts';");
+    expect(policy).toContain('const ABILITIES = {');
+    expect(policy).toContain('as const satisfies Record<string, readonly Role[]>');
+    expect(policy).toContain('type Scoped = { readonly workspace_id: number };');
+    expect(policy).toContain('this.#access.roleOf(user, record.workspace_id)');
+    expect(policy).toContain('denyAsNotFound()');
+    expect(policy).not.toMatch(/return true|=> true|allow\(\)/);
+    expect(access).toContain("export type Role = 'admin' | 'member' | 'viewer';");
+    expect(access).toContain('return new Map();');
+    const text = lines.join('\n');
+    expect(text).toContain('container.scoped(WorkspaceAccess);');
+    expect(text).toContain("authorize: can(NotePolicy, 'update', '<param>')");
+    expect(text).toContain('docs/authorization.md#generating-a-policy');
+  });
+
+  it('names the access service and the record column after --tenant', () => {
+    const root = app();
+    expect(run(root, ['Event'], { ...byRole, tenant: 'team_space' }).code).toBe(0);
+    expect(readFileSync(join(root, 'modules/notes/policies/EventPolicy.ts'), 'utf8')).toContain('record.team_space_id');
+    expect(existsSync(join(root, 'modules/notes/TeamSpaceAccess.ts'))).toBe(true);
+  });
+
+  it('keeps the access service the app filled in, also with --force', () => {
+    const root = app();
+    expect(run(root, ['Note'], byRole).code).toBe(0);
+    const file = join(root, 'modules/notes/WorkspaceAccess.ts');
+    writeFileSync(file, 'mine');
+    expect(run(root, ['Event'], byRole).code).toBe(0);
+    expect(run(root, ['Note'], { ...byRole, force: true }).code).toBe(0);
+    expect(readFileSync(file, 'utf8')).toBe('mine');
+  });
+
+  it('refuses an existing policy without --force and writes no access service', () => {
+    const root = app();
+    mkdirSync(join(root, 'modules/notes/policies'));
+    writeFileSync(join(root, 'modules/notes/policies/NotePolicy.ts'), 'mine');
+    const { code, lines } = run(root, ['Note'], byRole);
+    expect([code, lines.join('\n')]).toEqual([1, expect.stringContaining('already exists')]);
+    expect(existsSync(join(root, 'modules/notes/WorkspaceAccess.ts'))).toBe(false);
+  });
+
+  it.each([
+    ['--by without a value', { module: 'notes', by: true }],
+    ['--by with another way', { module: 'notes', by: 'owner' }],
+    ['--tenant without --by', { module: 'notes', tenant: 'workspace' }],
+    ['--tenant without a value', { module: 'notes', by: 'role', tenant: true }],
+    ['--tenant that is no snake_case name', { module: 'notes', by: 'role', tenant: "x'; evil(); ('" }],
+  ])('refuses %s and writes nothing', (_, options) => {
+    const root = app();
+    expect(run(root, ['Note'], options).code).toBe(2);
+    expect(existsSync(join(root, 'modules/notes/policies'))).toBe(false);
+  });
+
+  it('refuses --by on the command line without a value', () => {
+    expect(() => parseCommandArgs(MakePolicyCommand, ['Note', '--module=notes', '--by'])).toThrow(CommandArgumentsError);
+  });
+
+  it('says to fill in the lookup only when it wrote it', () => {
+    const root = app();
+    expect(run(root, ['Note'], byRole).lines.join('\n')).toContain('Fill in load()');
+    const again = run(root, ['Event'], byRole).lines.join('\n');
+    expect(again).not.toContain('Fill in load()');
+    expect(again).toContain('never a singleton');
+  });
+
+  it('still needs @marmeon/auth', () => {
+    const root = app(JSON.stringify({}));
+    expect(run(root, ['Note'], byRole).code).toBe(1);
+    expect(existsSync(join(root, 'modules/notes/policies'))).toBe(false);
   });
 });

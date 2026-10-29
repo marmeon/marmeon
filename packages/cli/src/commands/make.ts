@@ -532,12 +532,17 @@ export class MakeMiddlewareCommand {
 
 export class MakePolicyCommand {
   static command = 'make:policy';
-  static description = 'Create a policy that allows the owner of a record only';
-  static usage = '<Name> --module=<module>';
-  static options = moduleOption;
+  static description = 'Create a policy that allows the owner of a record, or with --by=role the members of its tenant by role';
+  static usage = '<Name> --module=<module> [--by=role [--tenant=<name>]]';
+  static options = { ...moduleOption, by: { type: 'string' }, tenant: { type: 'string' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
+    const { by, tenant } = input.options;
+    if (by !== undefined && by !== 'role') throw new CommandArgumentsError('Pass --by=role, the only way a policy can decide besides the owner.');
+    if (tenant !== undefined && (by === undefined || typeof tenant !== 'string' || !SNAKE.test(tenant))) {
+      throw new CommandArgumentsError('Pass --tenant=<snake_case_name> together with --by=role, e.g. --by=role --tenant=workspace');
+    }
     const dir = moduleDir(input);
     const name = className(input, 'Policy');
     if (!dir || !name) return 1;
@@ -545,9 +550,30 @@ export class MakePolicyCommand {
       input.output.error('A policy answers with `deny…` of @marmeon/auth: pnpm add -E @marmeon/auth@<version of your app>');
       return 1;
     }
+    if (by === 'role') return this.#byRole(input, dir, name, tenant ?? 'workspace');
     if (!write(input, join(dir, 'policies', `${name}.ts`), POLICY(name, 'Owned', OWNED))) return 1;
     input.output.line(style('dim', `Use it in a request: authorize: can(${name}, 'update', '<param>')`));
     input.output.line(style('dim', 'See docs/authorization.md#writing-policies'));
+    return 0;
+  }
+
+  #byRole(input: CommandInput, dir: string, name: string, tenant: string): number {
+    const access = `${tenant.split('_').map((word) => word[0]!.toUpperCase() + word.slice(1)).join('')}Access`;
+    const policyFile = join(dir, 'policies', `${name}.ts`);
+    const accessFile = join(dir, `${access}.ts`);
+    if (leavesProject(input, [policyFile, accessFile])) return 1;
+    if (!write(input, policyFile, ROLE_POLICY(name, access, tenant))) return 1;
+    // The lookup is the part an app fills in; a second policy of the same tenant, or --force, must not wipe it.
+    const kept = existsSync(accessFile);
+    if (kept) {
+      input.output.line(style('dim', `${relative(input.root, accessFile)} is kept: the lookup of the roles is yours.`));
+    } else if (!write(input, accessFile, ROLE_ACCESS(access, tenant))) {
+      return 1;
+    }
+    input.output.line(style('dim', `Register ${access} once, scoped, in the module's provider: container.scoped(${access}); never a singleton, which would keep removed members' roles until a restart.`));
+    if (!kept) input.output.line(style('dim', `Fill in load() in ${access}.ts: until it returns the user's memberships, every ability answers 404.`));
+    input.output.line(style('dim', `Use it in a request: authorize: can(${name}, 'update', '<param>')`));
+    input.output.line(style('dim', 'See docs/authorization.md#generating-a-policy'));
     return 0;
   }
 }
@@ -943,6 +969,93 @@ export class ${name} {
 
   delete(user: AuthUser, record: ${recordType}) {
     return record.user_id === user.id || denyAsNotFound();
+  }
+}
+`;
+
+/**
+ * Decides by the role the user holds in the record's tenant. Fail-closed: no membership, a role the policy does not know, or a
+ * record without a tenant all answer 404. The role comes from the access service's lookup, never from the request.
+ */
+const ROLE_POLICY = (name: string, access: string, tenant: string) => `import { denyAsNotFound, type AuthUser } from '@marmeon/auth';
+import { ${access}, type Role } from '../${access}.ts';
+
+/** Who may do what: the roles that pass each ability. An ability missing here does not exist, a role missing here is refused. */
+const ABILITIES = {
+  view: ['admin', 'member', 'viewer'],
+  update: ['admin', 'member'],
+  delete: ['admin'],
+} as const satisfies Record<string, readonly Role[]>;
+
+// With a table, use its \`Row<'…'>\` instead.
+type Scoped = { readonly ${tenant}_id: number };
+
+/**
+ * Members of a ${tenant.replaceAll('_', ' ')} act on its records by their role; everyone else gets a 404, so nobody can probe which ids exist.
+ * A policy is built for each check, so the lookup lives in the scoped ${access}, which asks the database once per request.
+ * Use it in a request: \`authorize: can(${name}, 'update', '<param>')\`. See docs/authorization.md#generating-a-policy.
+ */
+export class ${name} {
+  readonly #access: ${access};
+
+  constructor(access: ${access}) {
+    this.#access = access;
+  }
+
+  view(user: AuthUser, record: Scoped) {
+    return this.#allows('view', user, record);
+  }
+
+  update(user: AuthUser, record: Scoped) {
+    return this.#allows('update', user, record);
+  }
+
+  delete(user: AuthUser, record: Scoped) {
+    return this.#allows('delete', user, record);
+  }
+
+  async #allows(ability: keyof typeof ABILITIES, user: AuthUser, record: Scoped) {
+    const role = await this.#access.roleOf(user, record.${tenant}_id);
+    const roles: readonly Role[] = ABILITIES[ability];
+    return (role !== undefined && roles.includes(role)) || denyAsNotFound();
+  }
+}
+`;
+
+/** The scoped lookup of a user's roles: one query per request and user, and a stored value that is no known role is no role. */
+const ROLE_ACCESS = (access: string, tenant: string) => `import type { AuthUser } from '@marmeon/auth';
+
+export type Role = 'admin' | 'member' | 'viewer';
+const ROLES: readonly Role[] = ['admin', 'member', 'viewer'];
+
+/**
+ * The role a user holds in a ${tenant.replaceAll('_', ' ')}. Register it scoped, \`container.scoped(${access})\`: a policy is built for each check, so
+ * a cache in the policy would be empty every time; one in a scoped service lives as long as the request. Never
+ * \`container.singleton(…)\`: it would keep every user's memberships for the life of the process, so a removed member keeps their role
+ * until a restart. Left unregistered it is built per check: correct, but one query per ability.
+ */
+export class ${access} {
+  readonly #memberships = new Map<AuthUser['id'], Promise<ReadonlyMap<number, string>>>();
+
+  /** The user's role in the ${tenant.replaceAll('_', ' ')}, or undefined: not a member, no user, or a stored role that is not one of \`Role\`. */
+  async roleOf(user: AuthUser | null | undefined, tenantId: number): Promise<Role | undefined> {
+    if (!user) return undefined;
+    let memberships = this.#memberships.get(user.id);
+    if (!memberships) {
+      memberships = this.load(user.id);
+      this.#memberships.set(user.id, memberships);
+    }
+    const stored = (await memberships).get(tenantId);
+    return ROLES.find((role) => role === stored);
+  }
+
+  /**
+   * The user's memberships: ${tenant} id → role as stored. Read them from your table of members, with the user's id the
+   * signed-in user carries — never from the request. Inject a repository through the constructor to query it.
+   * Returns none until you fill it in, so everything is refused.
+   */
+  protected async load(_userId: AuthUser['id']): Promise<ReadonlyMap<number, string>> {
+    return new Map();
   }
 }
 `;

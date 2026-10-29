@@ -239,6 +239,60 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     }
   });
 
+  it('generates a role policy that compiles and decides by the role of the membership only', async () => {
+    expect(marmeon(app, ['make:policy', 'Document', '--module=billing', '--by=role', '--tenant=workspace']).code).toBe(0);
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+
+    // The lookup is the app's: this one reads a fixed table of members, as a repository would.
+    const accessFile = join(app, 'modules/billing/WorkspaceAccess.ts');
+    writeFileSync(
+      join(app, 'modules/billing/TestAccess.ts'),
+      "import { WorkspaceAccess } from './WorkspaceAccess.ts';\nlet queries = 0;\nexport const queriesMade = () => queries;\nexport class TestAccess extends WorkspaceAccess {\n  protected override async load(userId: number) {\n    queries++;\n    const members: Record<number, [number, string][]> = { 1: [[10, 'admin']], 2: [[10, 'member']], 3: [[10, 'viewer']], 4: [[10, 'owner']] };\n    return new Map(members[userId] ?? []);\n  }\n}\n",
+    );
+    writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
+    const { Gate } = (await import(join(app, 'modules/billing/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: never) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
+    const { DocumentPolicy } = (await import(join(app, 'modules/billing/policies/DocumentPolicy.ts'))) as { DocumentPolicy: new (access: never) => object };
+    const { TestAccess, queriesMade } = (await import(join(app, 'modules/billing/TestAccess.ts'))) as { TestAccess: new () => object; queriesMade(): number };
+    const ask = (user: object | null | undefined, ability: string, record: object, access: object = new TestAccess()) =>
+      new Gate({ user: async () => user } as never, (policy: new (access: never) => object) => new policy(access as never)).inspect(DocumentPolicy as never, ability as never, record as never);
+    const outcome = async (user: object | null | undefined, ability: string, record: object = { workspace_id: 10 }) => {
+      const answer = await ask(user, ability, record);
+      return answer.allowed ? 'allowed' : answer.status;
+    };
+    expect(await outcome({ id: 1 }, 'delete')).toBe('allowed');
+    expect(await outcome({ id: 2 }, 'update')).toBe('allowed');
+    expect(await outcome({ id: 2 }, 'delete')).toBe(404);
+    expect(await outcome({ id: 3 }, 'view')).toBe('allowed');
+    expect(await outcome({ id: 3 }, 'update')).toBe(404);
+    // A role the policy does not know, a user without membership, another workspace's record, a record without one.
+    expect(await outcome({ id: 4 }, 'view')).toBe(404);
+    expect(await outcome({ id: 5 }, 'view')).toBe(404);
+    expect(await outcome({ id: 1 }, 'view', { workspace_id: 11 })).toBe(404);
+    expect(await outcome({ id: 1 }, 'view', {})).toBe(404);
+    // The real Auth.user() gives undefined for a guest: the Gate refuses before the policy. The lookup guards on its own too.
+    expect(await outcome(undefined, 'view')).toBe(403);
+    const { WorkspaceAccess } = (await import(accessFile)) as { WorkspaceAccess: new () => { roleOf(user: unknown, id: number): Promise<string | undefined> } };
+    expect(await new WorkspaceAccess().roleOf(undefined, 10)).toBeUndefined();
+    expect(await new WorkspaceAccess().roleOf(null, 10)).toBeUndefined();
+    // As generated, the lookup knows no memberships: everything is refused until the app fills it in.
+    expect(await new WorkspaceAccess().roleOf({ id: 1 }, 10)).toBeUndefined();
+    // One lookup per request: the scoped service answers three checks of one user with one query.
+    const before = queriesMade();
+    const access = new TestAccess();
+    for (const ability of ['view', 'update', 'delete']) await ask({ id: 1 }, ability, { workspace_id: 10 }, access);
+    expect(queriesMade() - before).toBe(1);
+    // A second policy of the same workspace keeps the lookup the app filled in.
+    writeFileSync(accessFile, 'mine');
+    expect(marmeon(app, ['make:policy', 'Report', '--module=billing', '--by=role', '--tenant=workspace']).code).toBe(0);
+    expect(readFileSync(accessFile, 'utf8')).toBe('mine');
+    rmSync(join(app, 'modules/billing/policies/DocumentPolicy.ts'));
+    rmSync(join(app, 'modules/billing/policies/ReportPolicy.ts'));
+    rmSync(join(app, 'modules/billing/TestAccess.ts'));
+    rmSync(accessFile);
+  });
+
   it('generates a test that compiles against the app and passes the lint preset', () => {
     mkdirSync(join(app, 'bootstrap'));
     writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\nexport default defineApplication({ root: import.meta.dirname + '/..' });\n");
