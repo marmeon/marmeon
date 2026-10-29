@@ -153,6 +153,7 @@ declare module '@marmeon/router' {
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
+    'members.directory': { method: 'get'; path: '/members/directory'; controller: typeof ListMembersController };
     'members.import': { method: 'post'; path: '/members/import'; controller: typeof ImportMembersController };
     'members.import.confirm': { method: 'post'; path: '/members/import/:import'; controller: typeof ConfirmMemberImportController };
     'members.index': { method: 'get'; path: '/members'; controller: typeof ListMembersController };

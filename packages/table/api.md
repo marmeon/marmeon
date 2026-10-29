@@ -348,6 +348,7 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
 }
 // TableServiceProvider
 export declare class TableServiceProvider implements ServiceProvider {
+    boot(app: Application): void;
     register(container: Container): void;
 }
 // TableVisibilityCheck

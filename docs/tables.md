@@ -253,6 +253,25 @@ for the posts. A guest or an unconfirmed account never reaches them. A registrar
 `ctx.user` without `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs. Throttle
 them: an export reads the whole filtered table. The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
 
+### One table on several pages
+
+A table can be registered next to more than one page. Call `tableRoutes()` once for each page, on that page's registrar:
+
+```ts title="modules/members/routes.ts"
+const readers = members.authorize(everyone);
+readers.get('/', ListMembersController).name('index');
+readers.get('/directory', ListMembersController).name('directory');
+tableRoutes(readers.middleware(throttle('members-table')), MembersTable);
+tableRoutes(readers.prefix('/directory').middleware(throttle('members-table')), MembersTable);
+```
+
+Each page links the endpoints of the registration whose path is the longest whole-segment prefix of its own: `/members` gets
+`/members/_tables/members/…`, `/members/directory` gets `/members/directory/_tables/members/…`. Every registration keeps its own
+middleware, `authorize` checks, route bindings and parameters, so one page can be stricter than another. Two registrations under the
+same URLs (even with other parameter names) stop the start with an error that names both paths. A table with a single registration is
+linked from any page; once it has several, a page has to be under one of them, or its render fails. Use the same parameter names on
+the page and its registration: the page's own parameters fill the links.
+
 ## What the browser gets
 
 `tables.resolve(MembersTable, ctx)` resolves to `TableProps<typeof MembersTable>`:

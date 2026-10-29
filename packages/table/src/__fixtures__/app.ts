@@ -549,6 +549,10 @@ const routes = openRoutes((Route) => {
   const team = Route.prefix('/teams/:team').middleware(acting);
   team.get('/members', MembersPage);
   tableRoutes(team, MembersTable);
+  // The same table on a second page, whose endpoints decide for themselves: only an admin of the team uses them.
+  const inRole = team.prefix('/in/:role');
+  inRole.get('/members', MembersPage);
+  tableRoutes(inRole.authorize((ctx) => (ctx as unknown as { user: TestUser }).user.admin === true), MembersTable);
   team.get('/feed', FeedPage);
   team.get('/feed-copy', FeedCopyPage);
   team.get('/leaky', LeakyPage);
