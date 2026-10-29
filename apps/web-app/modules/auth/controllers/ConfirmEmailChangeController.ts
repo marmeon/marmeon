@@ -2,6 +2,7 @@ import { type Authenticated, EmailChange } from '@marmeon/auth';
 import { abort, Controller, type HttpContext } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { UserRepository } from '../UserRepository.ts';
+import { HOME } from '../home.ts';
 
 /**
  * The link from ConfirmNewEmailMail (private registration) — behind authenticate() and signed(): made by the app and unexpired.
@@ -30,6 +31,6 @@ export class ConfirmEmailChangeController extends Controller {
       // Registered (or changed to) by another account since: the unique index decided, the link is used up.
       abort(409, this.#translator.get('auth.email_change.taken'));
     }
-    return this.redirect().route('user-profile.me').flash('toast', { kind: 'success', message: this.#translator.get('auth.email_change.done', { email: changed.value.email }) });
+    return this.redirect().route(HOME).flash('toast', { kind: 'success', message: this.#translator.get('auth.email_change.done', { email: changed.value.email }) });
   }
 }

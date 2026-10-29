@@ -3,6 +3,7 @@ import type { AuthenticationResponseJSON } from '@marmeon/auth/passkeys';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const PasskeyStepUpRequest = defineRequest({
   schema: r.object({
@@ -29,7 +30,7 @@ export class PasskeyStepUpController extends Controller {
 
   async handle(ctx: ContextOf<typeof PasskeyStepUpRequest>) {
     const done = await this.#twoFactor.stepUp({ passkey: ctx.body.response });
-    if (done.ok) return this.redirect().intended().route('dashboard');
+    if (done.ok) return this.redirect().intended().route(HOME);
     switch (done.error.kind) {
       case 'no-challenge':
       case 'expired':

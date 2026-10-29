@@ -523,7 +523,7 @@ load the notes' texts in `modules/auth/layouts/AppLayout.tsx`, below the line th
 Then add the link below the dashboard link in the navigation:
 
 ```tsx title="modules/auth/layouts/AppLayout.tsx"
-            <Link route="dashboard">{t('layout.dashboard')}</Link>
+            <Link href={home ?? '/'}>{t('layout.dashboard')}</Link>
             <Link route="notes.index" activeMatch="notes.*">
               {notes('nav')}
             </Link>

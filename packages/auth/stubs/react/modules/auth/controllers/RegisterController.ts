@@ -7,6 +7,7 @@ import { Queue } from '@marmeon/queue';
 import { rules as r } from '@marmeon/validation';
 import { SendAccountExistsMailJob } from '../jobs/SendAccountExistsMailJob.ts';
 import { UserRepository } from '../UserRepository.ts';
+import { HOME } from '../home.ts';
 
 const name = r.string().trim().required().min(2).max(255);
 // Normalized once, here: stored lower case, so the login (which normalizes the same way) finds it.
@@ -93,6 +94,6 @@ export class RegisterController extends Controller {
     if (!created.ok) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
     // A new account has no second factor, so this signs in.
     await this.#auth.signIn(created.value);
-    return this.redirect().route('dashboard');
+    return this.redirect().route(HOME);
   }
 }

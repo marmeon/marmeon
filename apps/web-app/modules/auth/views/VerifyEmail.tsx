@@ -4,7 +4,7 @@ import type { ShowVerifyEmailNoticeController } from '../controllers/ShowVerifyE
 
 type Props = PageProps<ShowVerifyEmailNoticeController>;
 
-export default function VerifyEmail({ email }: Props) {
+export default function VerifyEmail({ email, home }: Props) {
   const t = useTranslation('auth');
   return (
     <main>
@@ -13,7 +13,7 @@ export default function VerifyEmail({ email }: Props) {
       <p>{t('verify.intro', { email })}</p>
       {/* A <div>, not a <p>: the first link sends (a POST), so it renders a form — which a <p> cannot hold. */}
       <div className="paragraph">
-        <Link route="auth.verification.send">{t('verify.resend')}</Link> · <Link route="user-profile.me">{t('verify.back')}</Link>
+        <Link route="auth.verification.send">{t('verify.resend')}</Link> · <Link href={home}>{t('verify.back')}</Link>
       </div>
     </main>
   );

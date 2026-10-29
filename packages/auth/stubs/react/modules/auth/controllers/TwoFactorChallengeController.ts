@@ -3,6 +3,7 @@ import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const TwoFactorChallengeRequest = defineRequest({
   // A code from the authenticator app, or a recovery code — whichever the form sent. Never trimmed of anything but the edges.
@@ -37,7 +38,7 @@ export class TwoFactorChallengeController extends Controller {
         const device = await this.#auth.deviceCookie();
         if (device) ctx.cookies.set(device.name, device.value, device.options);
       }
-      return this.redirect().intended().route('dashboard');
+      return this.redirect().intended().route(HOME);
     }
 
     switch (done.error.kind) {

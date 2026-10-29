@@ -106,6 +106,7 @@ The controller asks `matches()` before it marks the address confirmed:
 import { EmailVerification, type Authenticated } from '@marmeon/auth';
 import { Clock } from '@marmeon/core';
 import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { HOME } from '../home.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 export class VerifyEmailController extends Controller {
@@ -123,7 +124,7 @@ export class VerifyEmailController extends Controller {
   async handle(ctx: HttpContext<Authenticated, { id: string; hash: string }>) {
     if (!this.#verification.matches(ctx.user, ctx.params)) abort(403, 'This link is for another account.');
     if (ctx.user.email_verified_at === null) await this.#users.markEmailVerified(ctx.user.id, new Date(this.#clock.now()));
-    return this.redirect().route('dashboard');
+    return this.redirect().route(HOME);
   }
 }
 ```

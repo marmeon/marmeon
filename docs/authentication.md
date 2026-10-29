@@ -175,7 +175,7 @@ The package brings four middleware for the routes of the `web` group:
 | Middleware | Lets through | Everyone else |
 | --- | --- | --- |
 | `authenticate()` | A signed-in user, as `ctx.user`. | A browser goes to the login page, a JSON client gets 401. |
-| `guest(home)` | Guests. For the login and registration pages. | A redirect to `home`, `/` by default. |
+| `guest(home)` or `guest({ homeRoute })` | Guests. For the login and registration pages. | A redirect to the path `home`, `/` by default, or to the named route `homeRoute` (no path parameters). |
 | `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
 | `confirmedPassword()` | A user who typed the password or proved a passkey within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
 | `confirmedSecondFactor({ verify })` | A user whose account has no second factor, or whose session proved one within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `confirmedPassword()`, on routes that change factors, the e-mail address or API tokens. | A browser goes to `verify`, a JSON client gets 403. See [changing the factors](two-factor-authentication.md#changing-the-factors). |
@@ -219,8 +219,8 @@ export class JoinInvitationController extends Controller {
 ```
 
 The "Sign in" link on the invitation page points at `/invitations/<token>/join`. After the sign-in, `LoginController` ends with
-`this.redirect().intended().route('dashboard')` and the guest lands on the join route, which sends the now signed-in user back to
-the invitation. Accept it there with a form that posts: the join route is a `GET`, which a browser may prefetch, so it changes
+`this.redirect().intended().route(HOME)` and the guest lands on the join route, which sends the now signed-in user back to
+the invitation (`HOME` is the route name in the starter kit's `modules/auth/home.ts`). Accept it there with a form that posts: the join route is a `GET`, which a browser may prefetch, so it changes
 nothing.
 
 Do not carry the target in a `?next=` parameter. Anyone can send a link with a `next` that leads to another site, and the sign-in
@@ -255,6 +255,7 @@ import { Auth } from '@marmeon/auth';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const LoginRequest = defineRequest({
   schema: r.object({
@@ -279,7 +280,7 @@ export class LoginController extends Controller {
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password, remember } = ctx.body;
     const signedIn = await this.#auth.attempt(email, password, { remember });
-    if (signedIn.ok) return this.redirect().intended().route('dashboard');
+    if (signedIn.ok) return this.redirect().intended().route(HOME);
     switch (signedIn.error.kind) {
       // The password was right, but the account has a second factor: nobody is signed in yet, the code comes next.
       case 'two-factor-required':

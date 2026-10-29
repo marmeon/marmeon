@@ -94,7 +94,7 @@ describe('make:auth', () => {
       expect(readFileSync(file, 'utf8'), file).not.toMatch(/\) => true\b/);
     }
     const routes = readFileSync(join(root, 'modules/auth/routes.ts'), 'utf8');
-    expect(routes).toMatch(/const guests = Route\.middleware\(guest\([^)]*\)\)\.authorize\(everyone\);/);
+    expect(routes).toContain('const guests = Route.middleware(guest({ homeRoute: HOME })).authorize(everyone);');
     expect(routes).toContain('const account = Route.middleware(authenticate()).authorize(everyone);');
     expect(readFileSync(join(root, 'modules/auth/controllers/RenamePasskeyController.ts'), 'utf8')).toContain('ContextOf<typeof RenamePasskeyRequest> & Authenticated');
     // Every route of the generated module, the API one included, says who may call it.

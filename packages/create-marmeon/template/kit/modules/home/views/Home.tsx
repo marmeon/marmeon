@@ -8,7 +8,8 @@ type Props = PageProps<ShowHomeController>;
 
 export default function Home({ appName }: Props) {
   const t = useTranslation('home');
-  const user = usePage().props.auth?.user ?? null;
+  const { auth, home } = usePage().props;
+  const user = auth?.user ?? null;
   return (
     <main className="app-main">
       <Head title={t('title')} />
@@ -19,7 +20,7 @@ export default function Home({ appName }: Props) {
           <>
             <p>{t('signed_in', { name: user.name })}</p>
             <div className="cluster">
-              <Link route="dashboard" className="button">
+              <Link href={home ?? '/'} className="button">
                 {t('dashboard')}
               </Link>
             </div>

@@ -52,13 +52,14 @@ import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
 import { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import { VerifyEmailController } from './controllers/VerifyEmailController.ts';
 import { ConfirmedAddress } from './middleware/ConfirmedAddress.ts';
+import { HOME } from './home.ts';
 
 // Loaded into the `web` middleware group: encrypted cookies and the session come with it.
 export default defineRoutes((Route) => {
-  // Guests only: signed-in people go to their profile.
+  // Guests only: signed-in people go to HOME (home.ts).
   // Decided for this module's own routes only: signing in and signing up are for people who are not signed in yet, and `guest()` turns
   // signed-in people away. A route you add needs its own decision.
-  const guests = Route.middleware(guest('/users/me')).authorize(everyone);
+  const guests = Route.middleware(guest({ homeRoute: HOME })).authorize(everyone);
   guests.get('/', ShowLoginController);
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.middleware(throttle('auth.login')).post('/login', LoginController).name('auth.login.store');

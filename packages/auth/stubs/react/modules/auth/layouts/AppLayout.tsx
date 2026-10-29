@@ -8,7 +8,7 @@ import { useState } from 'react';
  */
 export function AppLayout({ children }: LayoutProps) {
   // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.
-  const { auth, appName } = usePage().props;
+  const { auth, appName, home } = usePage().props;
   const user = auth?.user ?? null;
   const t = useTranslation('auth');
 
@@ -24,7 +24,7 @@ export function AppLayout({ children }: LayoutProps) {
             {appName}
           </Link>
         ) : user ? (
-          <Link route="dashboard" className="auth-brand">
+          <Link href={home ?? '/'} className="auth-brand">
             {t('layout.dashboard')}
           </Link>
         ) : (
@@ -34,7 +34,7 @@ export function AppLayout({ children }: LayoutProps) {
         )}
         {user ? (
           <nav aria-label={t('layout.account')} className="auth-nav">
-            <Link route="dashboard">{t('layout.dashboard')}</Link>
+            <Link href={home ?? '/'}>{t('layout.dashboard')}</Link>
             <Link route="auth.security" activeMatch={['auth.security', 'auth.two-factor', 'auth.two-factor.*', 'auth.tokens']}>
               {t('layout.settings')}
             </Link>

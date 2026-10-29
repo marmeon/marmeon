@@ -4,6 +4,7 @@ import type { AuthenticationResponseJSON } from '@marmeon/auth/passkeys';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const PasskeyChallengeRequest = defineRequest({
   schema: r.object({
@@ -37,7 +38,7 @@ export class PasskeyChallengeController extends Controller {
         const device = await this.#auth.deviceCookie();
         if (device) ctx.cookies.set(device.name, device.value, device.options);
       }
-      return this.redirect().intended().route('dashboard');
+      return this.redirect().intended().route(HOME);
     }
     switch (done.error.kind) {
       case 'no-challenge':

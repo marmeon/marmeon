@@ -2,6 +2,7 @@ import { Auth } from '@marmeon/auth';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const LoginRequest = defineRequest({
   schema: r.object({
@@ -37,7 +38,7 @@ export class LoginController extends Controller {
       // This browser proved the password: its device cookie keeps it signing in when strangers have used up the account's daily ceiling.
       const device = await this.#auth.deviceCookie();
       if (device) ctx.cookies.set(device.name, device.value, device.options);
-      return this.redirect().intended().route('user-profile.me');
+      return this.redirect().intended().route(HOME);
     }
     switch (signedIn.error.kind) {
       // The password was right, but the account has a second factor and nobody is signed in yet: on to the code.
