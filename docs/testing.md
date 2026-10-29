@@ -262,6 +262,56 @@ request that fails with a 5xx, and the exception and a solution in JSON errors. 
 500 you did not expect. The [error handling](errors.md#the-development-error-page) page shows what the development error page
 contains.
 
+## Testing in a browser
+
+The tests above never run a browser. A few things only show in one: whether a page hydrates and its islands answer a click, whether
+the [Content Security Policy](csp.md) lets the page's scripts and styles run, a [live stream](realtime.md) that delivers into an
+open page, and images that load. Write those as a few browser tests next to the fast ones, not instead of them. A controller test
+is quicker and sees the same props.
+
+A browser test talks to the built app, as production runs it. Build it, point it at a database of its own and start it:
+
+```sh
+pnpm build
+DB_DATABASE=notes_browser_test APP_URL=http://localhost:3100 PORT=3100 pnpm start
+```
+
+Migrate and seed that database first with the app's own commands, and never aim the run at the development or the production
+database. `marmeon start` runs in production, so it reads `.env` and the process environment, not `.env.test`.
+
+### Waiting for the page
+
+A page the server rendered is visible long before its scripts have run, so a test that clicks at once can hit a button nothing
+listens to yet. Do not sleep. The browser app sets a [performance mark](https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark)
+named `marmeon:hydrated` when the first page is interactive: after it hydrated, or after it rendered, when the server sent no
+markup. The mark is not an attribute or an element. It is in the browser's performance timeline, and it is there in the production
+build too. It is set once per document load. A client-side visit to another page does not set it again, so wait for the next
+page's content instead.
+
+Make the browser driver wait until this holds in the page:
+
+```ts
+performance.getEntriesByName('marmeon:hydrated').length > 0;
+```
+
+Every driver can wait on a function that runs in the page. In Playwright it is `page.waitForFunction()`:
+
+```ts title="browser/notes.test.ts"
+import { expect, test } from '@playwright/test';
+
+test('a note is created from the form', async ({ page }) => {
+  await page.goto('http://localhost:3100/notes/create');
+  await page.waitForFunction(() => performance.getEntriesByName('marmeon:hydrated').length > 0);
+
+  await page.getByLabel('Title').fill('Groceries');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Groceries' })).toBeVisible();
+});
+```
+
+Marmeon does not depend on a browser driver; your app adds the one it uses. Put a helper around the wait, so that every test
+calls it right after `goto()`.
+
 ## Next steps
 
 - [HTTP tests](http-tests.md): requests, sessions, signing in and every assertion.
