@@ -157,6 +157,11 @@ export declare class DatabaseServiceProvider implements ServiceProvider {
 }
 // Decimal
 export type Decimal = ColumnType<string, string | number, string | number>;
+// DuplicateError
+export interface DuplicateError {
+    readonly kind: 'duplicate';
+    readonly columns: readonly string[];
+}
 // Exact
 export type Exact<V, Shape> = V & {
     [K in Exclude<keyof V, keyof Shape>]: never;
@@ -457,12 +462,8 @@ export declare abstract class Repository<T extends keyof DB & string, DB = Table
     exists(id: PrimaryKeyOf<T, DB>): Promise<boolean>;
     count(): Promise<number>;
     insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>>;
-    tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
-        kind: 'duplicate';
-    }>>;
-    tryUpdate<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
-        kind: 'duplicate';
-    } | {
+    tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError>>;
+    tryUpdate<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError | {
         kind: 'missing';
     }>>;
     relation<N extends WritableRelationName<DB, T>>(id: PrimaryKeyOf<T, DB>, name: N): RelationWriter<DB, T, N>;

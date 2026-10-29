@@ -182,7 +182,7 @@ describe.each(drivers)('a statement that fails inside a transaction and is caugh
     const notes = new NoteRepository(connections);
     await notes.insert({ id: 60, label: 'taken' });
     await connections.transaction(async () => {
-      expect(await notes.tryInsert({ id: 60, label: 'again' })).toEqual({ ok: false, error: { kind: 'duplicate' } });
+      expect(await notes.tryInsert({ id: 60, label: 'again' })).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['id'] } });
       expect((await notes.tryInsert({ id: 61, label: 'fresh' })).ok).toBe(true);
       return ok('done');
     });
@@ -195,7 +195,7 @@ describe.each(drivers)('a statement that fails inside a transaction and is caugh
     await notes.insert({ id: 70, label: 'taken' });
     await connections.get().transaction().execute(async (trx) => {
       const bound = notes.using(trx);
-      expect(await bound.tryInsert({ id: 70, label: 'again' })).toEqual({ ok: false, error: { kind: 'duplicate' } });
+      expect(await bound.tryInsert({ id: 70, label: 'again' })).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['id'] } });
       await bound.insert({ id: 71, label: 'fresh' });
     });
     expect(await labels()).toEqual(['taken', 'fresh']);

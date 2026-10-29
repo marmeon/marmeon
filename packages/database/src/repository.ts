@@ -4,7 +4,7 @@ import { HttpError, type RouteBinder, type RouteBindingContext, type RouteBindin
 import { sql } from 'kysely';
 import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 import { Connections } from './connections.ts';
-import { isUniqueViolation } from './errors.ts';
+import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
 import { TOUCH_COLUMN } from './placeholders.ts';
@@ -65,6 +65,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * only covers object literals.
  */
 export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never };
+
+/** The `err` of `tryInsert()` and `tryUpdate()` on a taken value: `columns` are the columns of the unique index that was hit, empty when unknown. See `docs/queries.md#writing`. */
+export interface DuplicateError {
+  readonly kind: 'duplicate';
+  readonly columns: readonly string[];
+}
 
 /**
  * Optional base for a table's repository — rows in, rows out: no identity map, no lazy loading, no dirty tracking. Declare
@@ -268,31 +274,32 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
 
   /**
    * Inserts a row unless a unique index already holds its values — then an `err` of kind `duplicate` (an e-mail that is taken,
-   * say). Race-free, unlike checking first. Runs in a savepoint: on Postgres a failed statement aborts the whole surrounding
+   * say) whose `columns` name the index that was hit (empty when the columns are not known), so a table with several unique indexes
+   * tells "code taken" from "address taken". Race-free, unlike checking first. Runs in a savepoint: on Postgres a failed statement aborts the whole surrounding
    * transaction. Returned from a transaction's callback, the `err` rolls that transaction back. See `docs/queries.md#writing`.
    */
-  async tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, { kind: 'duplicate' }>> {
+  async tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError>> {
     try {
       return ok(await this.transaction((repository) => repository.insert(values)));
     } catch (error) {
-      if (isUniqueViolation(error)) return err({ kind: 'duplicate' });
+      if (isUniqueViolation(error)) return err({ kind: 'duplicate', columns: await this.#duplicateColumns(error) });
       throw error;
     }
   }
 
   /**
    * Updates a row unless a unique index already holds the new values — then an `err` of kind `duplicate`; of kind `missing` when
-   * there is no such row (or it is soft-deleted). In a savepoint, like `tryInsert`. See `docs/queries.md#writing`.
+   * there is no such row (or it is soft-deleted). In a savepoint, like `tryInsert`, and with the same `columns`. See `docs/queries.md#writing`.
    */
   async tryUpdate<V extends RowUpdateOf<DB[T]>>(
     id: PrimaryKeyOf<T, DB>,
     values: Exact<V, RowUpdateOf<DB[T]>>,
-  ): Promise<Result<RowOf<DB[T]>, { kind: 'duplicate' } | { kind: 'missing' }>> {
+  ): Promise<Result<RowOf<DB[T]>, DuplicateError | { kind: 'missing' }>> {
     try {
       const row = await this.transaction((repository) => repository.update(id, values));
       return row ? ok(row) : err({ kind: 'missing' });
     } catch (error) {
-      if (isUniqueViolation(error)) return err({ kind: 'duplicate' });
+      if (isUniqueViolation(error)) return err({ kind: 'duplicate', columns: await this.#duplicateColumns(error) });
       throw error;
     }
   }
@@ -419,6 +426,26 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
+   * The table's columns a unique violation hit. An index the migrations describe is looked up by its name (Postgres's constraint,
+   * SQLite's `index '…'`): exact, also when the driver gives no detail. Any other index is read from what the driver reports: the
+   * name where that is all there is (the longest known columns first, so `tenant_id` wins over `id`), otherwise the words of its
+   * message that are columns of the table. `[]` on a connection without Marmeon's plugins, where no column is known.
+   */
+  async #duplicateColumns(error: unknown): Promise<readonly string[]> {
+    const metadata = metadataOf(this.#db);
+    if (!metadata) return [];
+    if (!metadata.fresh) await sql`select 1`.execute(this.#db);
+    const named = (error as { constraint?: unknown }).constraint;
+    const name = typeof named === 'string' ? named : /UNIQUE constraint failed: index '(.+)'/.exec(String((error as Error).message))?.[1];
+    const indexed = name === undefined ? undefined : metadata.projection?.tables.get(this.#name)?.indexes.find((index) => index.unique && index.name === name);
+    if (indexed) return indexed.columns;
+    const kinds = metadata.kinds.get(this.#name);
+    const detailed = typeof (error as { detail?: unknown }).detail === 'string';
+    if (name !== undefined && !detailed) return columnsInName(name, this.#name, [...(kinds?.keys() ?? [])]);
+    return [...new Set(uniqueViolationColumns(error))].filter((word) => kinds?.has(word));
+  }
+
+  /**
    * The table's primary key column, from the schema metadata. Never a guess: a table without a primary key or with a composite one
    * cannot be looked up by one value, and a reader that guessed `id` would find another row or none.
    */
@@ -502,3 +529,16 @@ export interface RepositoryBindingWith<DB, T extends keyof DB> extends RouteBind
   readonly value: WithRelations<DB, T, this['with'][number]>;
 }
 
+/** The columns an index name mentions: `<table>_` and `_unique` taken off, then the longest known column at each place. */
+function columnsInName(name: string, table: string, known: readonly string[]): string[] {
+  const rest = name.replace(new RegExp(`^${table}_`), '').replace(/_unique$/, '');
+  const longestFirst = [...known].sort((a, b) => b.length - a.length);
+  const found: string[] = [];
+  for (let at = 0; at < rest.length; ) {
+    const column = longestFirst.find((candidate) => rest.startsWith(candidate, at) && (rest[at + candidate.length] ?? '_') === '_');
+    if (column && !found.includes(column)) found.push(column);
+    const next = rest.indexOf('_', at + (column?.length ?? 0));
+    at = next === -1 ? rest.length : next + 1;
+  }
+  return found;
+}
