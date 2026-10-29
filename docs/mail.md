@@ -263,6 +263,35 @@ export class NoteReminderMail implements Mailable {
   `await diskAttachment(this.#storage.disk('local'), 'agendas/7.pdf')`. The [file storage](storage.md#using-a-disk) page covers
   disks.
 
+## Lists and stored templates
+
+A list in `` html`…` `` or `` mjml`…` `` is joined without a separator, and each element is escaped on its own, so a loop over
+`` html`…` `` or `` mjml`…` `` pieces gives one block per item:
+
+```ts
+mjml`<mj-text>
+  ${paragraphs.map((text) => mjml`<p>${text}</p>`)}
+</mj-text>`;
+```
+
+A plain string in the list is escaped like any other value, a nested `` html`…` `` or `` mjml`…` `` is kept, and `null`,
+`undefined` and `false` leave nothing behind, so `${isNew && mjml`<p>Welcome</p>`}` works. A list of strings runs together
+without a space or a line break: put the separator into the element.
+
+To show a template an app stores, for example in a database table an editor writes to, compile it with `fromMjml()` on a page
+of the app. `raw()` keeps the stored markup as it is, so it must come from people you trust, never from a guest:
+
+```ts
+import { fromMjml, html, mjml, raw } from '@marmeon/mail';
+
+const { html: body } = await fromMjml(mjml`${raw(template.source)}`);
+const frame = html`<iframe sandbox title="Preview" srcdoc="${body}"></iframe>`;
+```
+
+An `html` template escapes the mail's HTML for the `srcdoc` attribute, and `sandbox` without values keeps scripts, forms and
+the page's origin away from it. A template with a mistake in it fails with an `MjmlError`. The preview under `/_marmeon/mail`
+shows only mail classes with a `static preview()`, not a stored template.
+
 ## Previews
 
 In development, `/_marmeon/mail` lists every mail that has a `static preview()`, and `/_marmeon/mail/<module>/<Class>` shows one:
