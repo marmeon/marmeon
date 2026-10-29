@@ -76,10 +76,18 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     const writing = marmeon(app, ['make:controller', 'ArchiveInvoice', '--module=billing', '--request', '--view']);
     expect([writing.code, writing.stderr]).toEqual([
       2,
-      '✗ --view renders a page, and ArchiveInvoiceController answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…) for a page, or leave out --view.\n',
+      '✗ --view renders a page, and ArchiveInvoiceController answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…, Create…, New…) for a page (Create… is the page of a form, Store… sends it), or leave out --view.\n',
     ]);
     expect(existsSync(join(app, 'modules/billing/controllers/ArchiveInvoiceController.ts'))).toBe(false);
     expect(existsSync(join(app, 'modules/billing/views/ArchiveInvoice.tsx'))).toBe(false);
+    // Create… and New… name the page of a form: a query request and a page. Store… sends the form and stays refused.
+    for (const page of ['CreateInvoice', 'NewInvoice']) {
+      const made = marmeon(app, ['make:controller', page, '--module=billing', '--request', '--view']);
+      expect([made.code, made.stdout]).toEqual([0, expect.stringContaining(`Route.get('/…', ${page}Controller)`)]);
+      expect(readFileSync(join(app, `modules/billing/controllers/${page}Controller.ts`), 'utf8')).toContain('  query: r.query({');
+      expect(existsSync(join(app, `modules/billing/views/${page}.tsx`))).toBe(true);
+    }
+    expect(marmeon(app, ['make:controller', 'StoreInvoice', '--module=billing', '--request', '--view']).code).toBe(2);
     expect(marmeon(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
       '✓ Registered the migrations folder in modules/billing/index.ts',
     );
