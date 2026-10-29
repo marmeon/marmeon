@@ -288,6 +288,52 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
+   * Inserts many rows in chunks the driver accepts (a statement takes at most 65 535 parameters on Postgres and 32 766 on SQLite), in
+   * one transaction — a savepoint inside an open one: all rows or none. Resolves with the number of rows inserted, `0` for none without
+   * a statement; no rows come back, as they would be one result the size of the whole import. Every row must have the same columns, and at least one,
+   * else a `TypeError`. Throws on a unique violation like {@link insert}, with every chunk rolled back; {@link tryInsertMany} returns
+   * it instead. See `docs/queries.md#writing`.
+   */
+  async insertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<number> {
+    return this.#insertChunks('insertMany', rows as readonly Record<string, unknown>[]);
+  }
+
+  /**
+   * {@link insertMany}, except that a unique index which already holds a value of any chunk is an `err` of kind `duplicate`, with
+   * `columns` like {@link tryInsert} — every chunk rolled back, a transaction around it still usable. See `docs/queries.md#writing`.
+   */
+  async tryInsertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<Result<number, DuplicateError>> {
+    try {
+      return ok(await this.#insertChunks('tryInsertMany', rows as readonly Record<string, unknown>[]));
+    } catch (error) {
+      if (isUniqueViolation(error)) return err({ kind: 'duplicate', columns: await this.#duplicateColumns(error) });
+      throw error;
+    }
+  }
+
+  async #insertChunks(method: string, rows: readonly Record<string, unknown>[]): Promise<number> {
+    if (rows.length === 0) return 0;
+    const columnsOf = (row: object) => Object.entries(row).filter(([, value]) => value !== undefined).map(([column]) => column).sort();
+    const columns = columnsOf(rows[0]!);
+    if (columns.length === 0) throw new TypeError(`${method}() needs at least one column to write — the first row has none.`);
+    rows.forEach((row, index) => {
+      const own = columnsOf(row);
+      if (own.length !== columns.length || own.some((column, at) => column !== columns[at])) {
+        throw new TypeError(`${method}() writes the columns of the first row (${columns.join(', ')}) in every row — row ${index} has ${own.join(', ') || 'none'}.`);
+      }
+    });
+    // Without Marmeon's plugins the driver is unknown: the smaller limit is right for both.
+    const limit = metadataOf(this.#db)?.driver === 'pgsql' ? 65_535 : 32_766;
+    const size = Math.floor(limit / columns.length);
+    return this.transaction(async (repository) => {
+      for (let at = 0; at < rows.length; at += size) {
+        await repository.#untyped.insertInto(repository.#name).values(rows.slice(at, at + size)).execute();
+      }
+      return rows.length;
+    });
+  }
+
+  /**
    * Updates a row unless a unique index already holds the new values — then an `err` of kind `duplicate`; of kind `missing` when
    * there is no such row (or it is soft-deleted). In a savepoint, like `tryInsert`, and with the same `columns`. See `docs/queries.md#writing`.
    */

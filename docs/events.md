@@ -161,8 +161,7 @@ export class MemberImport {
 ```
 
 The dispatch cost grows with the number of dispatches, not with the number of rows, so a batch of any size costs one
-dispatch. What the listener itself writes still grows with the size of the batch, unless it writes the rows in one statement,
-with the query builder's `insertInto(…).values([…])`. Keep a batch
+dispatch. What the listener itself writes still grows with the size of the batch, unless it writes them with the repository's [`insertMany()`](queries.md#writing), one statement per few thousand rows. Keep a batch
 bounded all the same: an event that holds a million rows holds them in memory until every listener is done. Cut a large import
 into chunks and dispatch once per chunk. An event that a queued listener will take must stay small: its fields are written
 into the job, see [queued listeners](#queued-listeners).

@@ -3,6 +3,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+import { SurveyRepository } from './SurveyRepository.ts';
 import type { StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
@@ -12,15 +13,12 @@ beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 let app: TestApp;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh', env: { LAB_PAGES: 'true' } });
-  await app
-    .make(Database)
-    .insertInto('lab_survey_questions')
-    .values([
-      { survey: 'dinner', name: 'diet', label: 'Diet', required: true, position: 1 },
-      { survey: 'dinner', name: 'allergies', label: 'Allergies', required: false, position: 2 },
-      { survey: 'lunch', name: 'seat', label: 'Seat', required: true, position: 1 },
-    ])
-    .execute();
+  const inserted = await app.make(SurveyRepository).insertMany([
+    { survey: 'dinner', name: 'diet', label: 'Diet', required: true, position: 1 },
+    { survey: 'dinner', name: 'allergies', label: 'Allergies', required: false, position: 2 },
+    { survey: 'lunch', name: 'seat', label: 'Seat', required: true, position: 1 },
+  ]);
+  expect(inserted).toBe(3);
 });
 afterEach(async () => {
   await app.close();

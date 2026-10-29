@@ -471,6 +471,8 @@ export declare abstract class Repository<T extends keyof DB & string, DB = Table
     count(): Promise<number>;
     insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>>;
     tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError>>;
+    insertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<number>;
+    tryInsertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<Result<number, DuplicateError>>;
     tryUpdate<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError | {
         kind: 'missing';
     }>>;
