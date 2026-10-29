@@ -187,6 +187,13 @@ export class MarmeonDriver implements Driver {
    * turns instead. (On SQLite the connection lock already makes them.)
    */
   async exclusive<R>(transaction: () => Promise<R>): Promise<R> {
+    if (!transactionOf(this) && leftTransactionOf(this) && (this.#single || this.#pinned)) {
+      throw new TransactionError(
+        `A transaction on "${this.#context.name}" cannot start inside outsideTransaction() while the transaction it stepped out of is open: ` +
+          `the connection has a single physical connection (${this.#pinned ? "a test's isolated connection" : 'SQLite'}), which that transaction holds — ` +
+          'this one would wait for it forever. Do it after the transaction instead (afterCommit() runs outside of it).',
+      );
+    }
     if (!this.#pinned || this.#single || transactionOf(this)) return transaction();
     if (this.#turns.busy && !this.#warnedOfTurns) {
       this.#warnedOfTurns = true;

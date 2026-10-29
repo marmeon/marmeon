@@ -242,7 +242,8 @@ export class NoteSharing {
 Outside a transaction, `afterCommit()` runs `fn` at once and resolves when it is done. Inside one, it resolves at once. Inside a
 savepoint, `fn` is handed on to the transaction around it when the savepoint commits, and dropped when the savepoint rolls back.
 When `fn` fails, the `transaction()` call that committed throws its error, or an `AggregateError` when several failed: the data is
-committed by then. A mail that can wait for a worker is simpler still: `mailer.queue()` inside the transaction is held for the
+committed by then. `fn` runs after the transaction has given up its connection, so it may open a transaction of its own, in a test with
+`database: 'refresh'` too. A mail that can wait for a worker is simpler still: `mailer.queue()` inside the transaction is held for the
 commit by itself.
 
 ## Outside the transaction

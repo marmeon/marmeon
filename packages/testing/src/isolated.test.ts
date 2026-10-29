@@ -1,5 +1,5 @@
 import { setTimeout } from 'node:timers/promises';
-import { defineModule, Logger, type ApplicationDefinition } from '@marmeon/core';
+import { afterCommit, defineModule, Logger, outsideTransaction, TransactionError, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
@@ -202,6 +202,87 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
       await race('/book/locked');
       await setTimeout(10);
       expect(turns).toHaveLength(0);
+    });
+  });
+
+  describe.each(['refresh', 'isolated'] as const)('after-commit work under %s', (database) => {
+    const titles = async () => (await app!.make(Connections).get<NotesTables>().selectFrom('notes').select('title').orderBy('id').execute()).map((row) => row.title);
+    const add = async (title: string) => void (await app!.make(Connections).get<NotesTables>().insertInto('notes').values({ title }).execute());
+
+    it('may open a transaction of its own: the transaction has given up its turn', { timeout: 5000 }, async () => {
+      await open(database);
+      const connections = app!.make(Connections);
+      const seen: string[] = [];
+      await connections.transaction(async () => {
+        await add('outer');
+        await afterCommit(async () => {
+          await connections.transaction(async () => {
+            await add('from the hook');
+            // A savepoint of the hook's transaction, with after-commit work of its own.
+            await connections.transaction(() => afterCommit(() => void seen.push('nested hook')));
+          });
+          seen.push('hook done');
+        });
+        seen.push('callback done');
+      });
+      expect(seen).toEqual(['callback done', 'nested hook', 'hook done']);
+      expect(await titles()).toEqual(['outer', 'from the hook']);
+    });
+
+    it('runs the hooks in order, drops them on a rollback, and warns of no turns', { timeout: 5000 }, async () => {
+      turns.length = 0;
+      await open(database);
+      const connections = app!.make(Connections);
+      const seen: string[] = [];
+      const insert = (title: string) =>
+        connections.transaction(async () => {
+          await add(title);
+          seen.push(title);
+        });
+      await connections.transaction(async () => {
+        await afterCommit(() => insert('first'));
+        await afterCommit(() => insert('second'));
+      });
+      await connections
+        .transaction(async () => {
+          await afterCommit(() => insert('never'));
+          throw new Error('rolled back');
+        })
+        .catch(() => undefined);
+      expect(seen).toEqual(['first', 'second']);
+      expect(await titles()).toEqual(['first', 'second']);
+      await setTimeout(10);
+      expect(turns).toHaveLength(0);
+    });
+
+    it('throws the error of a hook after the commit, and the next transaction still runs', { timeout: 5000 }, async () => {
+      await open(database);
+      const connections = app!.make(Connections);
+      await expect(
+        connections.transaction(async () => {
+          await add('kept');
+          await afterCommit(() => connections.transaction(() => Promise.reject(new Error('hook failed'))));
+        }),
+      ).rejects.toThrow('hook failed');
+      await connections.transaction(async () => {
+        await add('next');
+      });
+      expect(await titles()).toEqual(['kept', 'next']);
+    });
+
+    // SQLite and a test's pinned Postgres connection are one connection the transaction holds; an isolated Postgres test has a pool, where outsideTransaction() gets a connection of its own.
+    it.runIf(driver === 'sqlite' || database === 'refresh')('fails at once instead of waiting for a transaction that outsideTransaction stepped out of', { timeout: 5000 }, async () => {
+      await open(database);
+      const connections = app!.make(Connections);
+      await expect(
+        connections.transaction(() =>
+          outsideTransaction(() =>
+            connections.transaction(async () => {
+              await add('x');
+            }),
+          ),
+        ),
+      ).rejects.toThrow(TransactionError);
     });
   });
 
