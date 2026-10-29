@@ -321,8 +321,8 @@ The listener is registered with `listen(NoteShared, RecordNoteShared)` like any 
 
 - **The actor and the client.** The event carries the actor. `ClientInfo` of `@marmeon/http` is bound in every scope and holds
   the request's `ip` and `userAgent`. Outside a request, in a command or a job, there is no user and both are undefined:
-  store them as `null`, and let the entry's `action` say that a command did it. A test has no client address
-  either, see [the client's address](requests.md#the-clients-address).
+  store them as `null`, and let the entry's `action` say that a command did it. A test request has none
+  either, unless it comes from `app.withIp(address)`, see [the client's address](requests.md#the-clients-address).
 - **Client input never fails the change.** A value the client chose, such as the `User-Agent`, goes into the entry cut to its
   column (or into a `text` column). An insert that fails on a too long value rolls back the audited change with it, and
   any client could then block it.

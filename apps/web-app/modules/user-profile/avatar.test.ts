@@ -51,7 +51,8 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     expect(profile.profile.avatar).toBe(`/storage/${path}`);
     const people = (await as.navigating().get('/people').assertOk()).page()!.props as { people: { data: { publicId: string; avatar: string | null }[] } };
     expect(people.people.data.find((person) => person.publicId === ada.public_id)?.avatar).toBe(`/storage/${path}`);
-    (await app.get(`/storage/${path}`).assertOk()).assertHeader('content-type', 'image/png').assertHeader('x-content-type-options', 'nosniff');
+    const served = (await app.get(`/storage/${path}`).assertOk()).assertHeader('content-type', 'image/png').assertHeader('x-content-type-options', 'nosniff');
+    expect(Array.from(served.bytes())).toEqual(Array.from(PNG));
 
     // A new picture replaces the old file.
     const next = await as.upload(ROUTE, 'avatar', png('again.png'), { user: ada.public_id });

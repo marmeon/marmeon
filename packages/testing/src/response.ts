@@ -85,7 +85,9 @@ async function sessionSent(name: string, header: string | undefined, crypto?: Co
 export class TestResponse {
   readonly status: number;
   readonly headers: Headers;
+  /** The body as text — UTF-8 decoded from {@link TestResponse.bytes}. */
   readonly body: string;
+  readonly #bytes: Uint8Array<ArrayBuffer>;
   readonly #label: string;
   /** Cookie values as the app meant them — decrypted. */
   readonly #cookies: ReadonlyMap<string, string>;
@@ -100,6 +102,7 @@ export class TestResponse {
   constructor(
     response: Response,
     body: string,
+    bytes: Uint8Array<ArrayBuffer>,
     label: string,
     cookies: ReadonlyMap<string, string> = new Map(),
     session?: Record<string, unknown>,
@@ -109,6 +112,7 @@ export class TestResponse {
     this.status = response.status;
     this.headers = response.headers;
     this.body = body;
+    this.#bytes = bytes;
     this.#label = label;
     this.#cookies = cookies;
     this.#session = session;
@@ -134,9 +138,10 @@ export class TestResponse {
     const sentId = sessions && !cookies.has(sessions.cookie) ? await sessionSent(sessions.cookie, sent, crypto) : undefined;
     const id = sessions ? (cookies.get(sessions.cookie) ?? sentId) : undefined;
     const session = id ? await sessions!.read(id) : undefined;
-    const body = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const body = new TextDecoder().decode(bytes);
     const page = response.headers.get('content-type')?.includes('text/html') ? pageIn(body) : undefined;
-    return new TestResponse(response, body, label, cookies, session, await ssr?.(page), new Map(sentId && sessions ? [[sessions.cookie, sentId]] : []));
+    return new TestResponse(response, body, bytes, label, cookies, session, await ssr?.(page), new Map(sentId && sessions ? [[sessions.cookie, sentId]] : []));
   }
 
   /** The session data after the request (from the store, via the session cookie). */
@@ -146,6 +151,11 @@ export class TestResponse {
   }
 
   // --- Accessors ----------------------------------------------------------------
+
+  /** The body as bytes — a binary answer such as an image or a PDF. A copy: changing it leaves the response as it is. */
+  bytes(): Uint8Array<ArrayBuffer> {
+    return this.#bytes.slice();
+  }
 
   json<T = unknown>(): T {
     try {

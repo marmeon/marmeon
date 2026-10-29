@@ -63,6 +63,7 @@ The awaited response holds:
 | Member | What it is |
 | --- | --- |
 | `status`, `headers`, `body` | The status, the `Headers`, and the body as text. |
+| `bytes()` | The body as a `Uint8Array`, for a binary answer such as an image or a PDF (`body` decodes the same bytes as UTF-8). Each call returns a copy. |
 | `json()` | The body parsed as JSON. |
 | `page()` | The page object of a page answer, from a client visit's JSON or the document's page script. |
 | `cookie(name)` | A cookie the response set, decrypted as the app reads it. For the session cookie, which the app sends only when the session is new or its id changed, it is what the browser holds after the response: the request's cookie when the response sends none. |
