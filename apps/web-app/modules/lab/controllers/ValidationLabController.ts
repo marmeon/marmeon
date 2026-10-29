@@ -1,6 +1,6 @@
 import { failOnDuplicate } from '@marmeon/database';
 import { abort, defineRequest, type ContextOf } from '@marmeon/http';
-import { rules as r } from '@marmeon/validation';
+import { rules as r, toLocalDateTime } from '@marmeon/validation';
 import { UserRepository } from '#modules/auth';
 import { LabConfig } from '../config.ts';
 import { LabController } from './ShowLabPageController.ts';
@@ -48,6 +48,10 @@ const fields = {
   starts: r.date().optional(),
   ends: r.date().optional(),
   port: r.port().optional(),
+  // A `datetime-local` field read in the zone another field names: it becomes an instant, 02:30 of the night the clocks go forward
+  // is 03:30. `toLocalDateTime()` is the way back, what an edit form would show.
+  time_zone: r.timeZone().optional(),
+  at: r.localDateTime({ field: 'time_zone' }).optional(),
   // Asked asynchronously (a table, a service): on submit only — an async check never runs live unless it says .live(). An empty
   // field reaches the check as '' (a string's empty value is a value) — no code, nothing to ask.
   invite: r.string().trim().custom(async (code, { request }) => code === '' || (await request!.resolve(LabInvites).valid(code)) || 'This invitation code is unknown.').optional(),
@@ -84,6 +88,12 @@ export const RaceValidationLabRequest = defineRequest({
   authorize: (_ctx, resolve) => resolve(LabGate).open(),
 });
 
+/** What a valid form says: the account, and the time as an instant and as the field shows it again in its zone. */
+function validMessage(body: { name: string; email: string; at?: string | undefined; time_zone?: string | undefined }): string {
+  const time = body.at !== undefined && body.time_zone !== undefined ? ` At ${body.at} (${toLocalDateTime(body.at, body.time_zone)} in ${body.time_zone}).` : '';
+  return `Valid: ${body.name} <${body.email}> — nothing was saved.${time}`;
+}
+
 /** A sentinel: the insert of the lab only shows the index at work — it is rolled back every time. */
 class RolledBack extends Error {}
 
@@ -115,7 +125,7 @@ export class StoreValidationLabController extends StoresInLab {
   async handle(ctx: ContextOf<typeof ValidationLabRequest>) {
     this.enabled();
     await this.tryInsert(ctx.body);
-    return this.redirect('/lab/validation').flash('toast', { kind: 'success', message: `Valid: ${ctx.body.name} <${ctx.body.email}> — nothing was saved.` });
+    return this.redirect('/lab/validation').flash('toast', { kind: 'success', message: validMessage(ctx.body) });
   }
 }
 
@@ -125,6 +135,6 @@ export class RaceValidationLabController extends StoresInLab {
   async handle(ctx: ContextOf<typeof RaceValidationLabRequest>) {
     this.enabled();
     await this.tryInsert(ctx.body);
-    return this.redirect('/lab/validation').flash('toast', { kind: 'success', message: `Valid: ${ctx.body.name} <${ctx.body.email}> — nothing was saved.` });
+    return this.redirect('/lab/validation').flash('toast', { kind: 'success', message: validMessage(ctx.body) });
   }
 }

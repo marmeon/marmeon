@@ -1,7 +1,8 @@
 import type { InferInput, InferOutput } from '@marmeon/core';
 import * as engine from './engine.ts';
 import type { RuleMessage } from './engine.ts';
-import { ArrayRule, definition, holding, NumberRule, objectRule, Rule, StringRule, type ObjectRule, type Shape } from './rule.ts';
+import type { ValidationContext } from '@marmeon/router';
+import { ArrayRule, definition, holding, NumberRule, objectRule, Rule, StringRule, ZONE_FIELD, type ObjectRule, type Shape } from './rule.ts';
 
 /** A number option of `r.in()` as a form or a URL sends it: `25` → `'25'`. */
 type Spelled<T> = T extends number ? `${T}` : never;
@@ -26,6 +27,37 @@ export type CheckQueryFields<S extends Shape> = {
       : S[K]
     : `Query field '${K & string}' needs .default(…) — a query is parsed field by field and never answers 422; .optional() leaves it undefined`;
 };
+
+/**
+ * The zone of `r.localDateTime()`: a name (`'Europe/Berlin'`, checked when the rule is defined), `{ field }` — the zone another
+ * field of the object holds (the object reads it once that field is valid) — or a function of the request's context, for a zone
+ * the request knows (the signed-in user's).
+ */
+export type LocalDateTimeZone = string | { readonly field: string } | ((request: ValidationContext | undefined) => string | undefined);
+
+function localDateTime(zone: LocalDateTimeZone): Rule<string, string> {
+  if (typeof zone === 'string') {
+    if (!engine.isTimeZone(zone)) throw new RangeError(`r.localDateTime() needs a time zone like 'Europe/Berlin', got ${JSON.stringify(zone)}.`);
+    return new Rule(definition(() => engine.localDateTimeEngine(zone)));
+  }
+  if (typeof zone === 'function') {
+    return new Rule(definition((context) => engine.localDateTimeEngine(zone(context.request)), { contextual: true }));
+  }
+  const { field } = zone;
+  if (typeof field !== 'string' || field === '') throw new TypeError('r.localDateTime({ field }) needs the name of the field that holds the zone.');
+  return new Rule(
+    definition(
+      (context) => {
+        if (context.zoneSibling !== true) {
+          throw new TypeError(`r.localDateTime({ field: '${field}' }) reads the zone of another field — put it directly in an r.object({ … }) next to that field.`);
+        }
+        return engine.pendingLocalDateTimeEngine();
+      },
+      // Built per object (it asks for the flag), never once for all.
+      { contextual: true, meta: { [ZONE_FIELD]: { zone: field } } },
+    ),
+  );
+}
 
 const numberEngine = () => engine.typed('number', (value) => engine.toNumber(value) !== undefined, engine.toNumber);
 
@@ -143,6 +175,21 @@ export const rules = {
   isoTimestamp: (): StringRule => stringRule().isoTimestamp(),
 
   /**
+   * What `<input type="datetime-local">` sends (`2026-10-07T14:30`, seconds optional) read in `zone`: becomes the instant, as
+   * `2026-10-07T12:30:00.000Z`. A time the clock skips on the way to summer time (02:30) is read with the offset from before the
+   * change (it becomes 03:30); a time it shows twice on the way back is the first of the two. `toLocalDateTime()` goes back for an
+   * edit form. See `docs/time.md#a-time-typed-in-a-zone`.
+   *
+   * ```ts
+   * r.object({ time_zone: r.timeZone(), starts_at: r.localDateTime({ field: 'time_zone' }) })
+   * ```
+   */
+  localDateTime,
+
+  /** A time zone — an IANA name (`Europe/Berlin`, `UTC`) or an offset (`+02:00`) — `r.string().timeZone()`. */
+  timeZone: (): StringRule => stringRule().timeZone(),
+
+  /**
    * A query: an object of fields read from the URL — strings, so `r.integer()`, `r.boolean()` and `r.in([10, 25])` take
    * their spelling — where **every field has a default** (or is optional): `parseQuery` lets an invalid field fall back to it, so
    * a URL never answers 422. The compiler names a field without one.
@@ -172,3 +219,11 @@ export const rules = {
       ),
     ),
 };
+
+/**
+ * A point in time as a `datetime-local` field shows it in `zone` — `2026-10-07T14:30` (with seconds when it has any): what an edit
+ * form needs to fill the field `r.localDateTime()` reads. Throws a `RangeError` for a time zone or a point in time it does not know.
+ */
+export function toLocalDateTime(instant: string | Date, zone: string): string {
+  return engine.localOf(instant, zone);
+}

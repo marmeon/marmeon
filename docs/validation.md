@@ -88,13 +88,15 @@ import { rules as r } from '@marmeon/validation';
 | `r.object({...})` | An object. Fields the shape does not name are left out. | The fields' outputs |
 | `r.array(rule)` | A list, each item checked by `rule`. | A list |
 | `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` | `r.string()` with that check. | `string` |
+| `r.localDateTime(zone)` | What `<input type="datetime-local">` sends, `2026-10-07T14:30`, read in `zone`. | An instant, as `string` |
+| `r.timeZone()` | A time zone: `Europe/Berlin`, `UTC`, `+02:00`. | `string` |
 | `r.query({...})`, `r.port()`, `r.list(rule)` | A URL's fields, a port from 1 to 65535, a comma-separated list. | |
 | `r.value<Output, Input>(check)` | What `check` passes: a type of your own. | The value |
 
 Each type then has its checks, which run **in the order you write them**: `trim()` before `required()` makes `' '` missing.
 
 - **Strings:** `trim()`, `lowercase()`, `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, `email()`,
-  `url({ protocols })`, `uuid()`, `regex(pattern, message?)`, `date()` (a day that exists, `2026-10-07`), `isoTimestamp()`. Lengths
+  `url({ protocols })`, `uuid()`, `regex(pattern, message?)`, `date()` (a day that exists, `2026-10-07`), `isoTimestamp()`, `timeZone()`. Lengths
   count characters as code points, the way Postgres counts them.
 - **Numbers:** `integer()` (a safe integer), `min(n)`, `max(n)`, `between(min, max)`.
 - **Lists:** `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, counting items.
@@ -140,8 +142,8 @@ be a value of the rule, it is one. Where it never can, it is a form's empty fiel
 | `r.in([…])`, `r.literal(v)` with `''` among the values | `''` | `''` |
 | `r.in([…])`, `r.literal(v)` without `''`, such as a select's placeholder | Missing: `undefined`, `null` or `v` | "required" |
 | `r.union([…])` | `''` when one of its rules keeps it, else missing | What its rules say |
-| `r.number()`, `r.integer()`, `r.port()`, `r.boolean()`, `r.accepted()` | Missing | "required", or "must be accepted" |
-| `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` | Missing | The format's message |
+| `r.number()`, `r.integer()`, `r.port()`, `r.boolean()`, `r.accepted()`, `r.localDateTime()` | Missing | "required", or "must be accepted" |
+| `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()`, `r.timeZone()` | Missing | The format's message |
 | `r.array()`, `r.list()`, `r.object()`, `r.value()`, an upload | Missing | `r.array()` and `r.object()`: "required". `r.list()`: an empty list. `r.value()`: its check. |
 
 ```ts
@@ -212,6 +214,20 @@ r.object({ kind: r.in(['person', 'company']), name: r.string().required() })
   and the first failing check of the object answers.
 - **`entries`** are the fields, a rule each, without those of `when()`. Spread them into another object:
   `r.query({ ...MembersTable.query.entries, tab: r.in(['all', 'mine']).default('all') })`.
+
+## A date and time in a zone
+
+`r.localDateTime(zone)` reads what a `datetime-local` field sends, a date and a time without a zone, in the zone of the event, the
+user or the venue, and gives the instant as `2026-10-07T12:30:00.000Z`, the way `Date#toISOString()` writes it. The text must have the shape `2026-10-07T14:30`, seconds
+optional, and name a day that exists; anything else is "The … field must be a date and time like 2026-10-07T14:30." The `zone` is one of:
+
+- **A name**, `'Europe/Berlin'`. It is checked when the rule is defined, and a wrong one throws a `RangeError`.
+- **`{ field }`**, the zone that another field of the same object holds: `r.localDateTime({ field: 'time_zone' })`. The object reads that
+  field once it is valid, so put `r.timeZone()` or an `r.in([…])` on it. An unknown zone is reported at the zone field, "The time zone field must be a valid time zone." The rule belongs
+  directly in an `r.object()` next to the zone field; anywhere else it refuses to run. The field's own `custom()` and `transform()` see the text as typed, so check the instants in the object's `custom()`.
+- **A function** of the request's context, for a zone the request knows: `r.localDateTime((request) => zoneOf(request))`. A function that returns no known zone fails the field with "must be a valid time zone."
+
+The two nights the clock changes have a fixed reading, described on the [time](time.md#a-time-typed-in-a-zone) page. `toLocalDateTime(instant, zone)` goes the other way for an edit form.
 
 ## Messages
 

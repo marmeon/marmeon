@@ -207,3 +207,12 @@ r.string().custom(never, { message: 'x' });
 // @ts-expect-error — a field of when() is not there before .when()
 ends.custom(never, { field: 'vat' });
 r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(never, { field: 'vat' }); // fine
+
+// ——— A local date and time ———
+const zoned = r.object({ time_zone: r.timeZone(), starts_at: r.localDateTime({ field: 'time_zone' }), ends_at: r.localDateTime('Europe/Berlin').optional() });
+same<NonNullable<(typeof zoned)['~standard']['types']>['output'], { time_zone: string; starts_at: string; ends_at?: string | undefined }>(true);
+r.localDateTime((request) => (request ? 'UTC' : undefined)); // fine
+// @ts-expect-error — a zone is a name, { field } or a function
+r.localDateTime(2);
+// @ts-expect-error — { field } names a field
+r.localDateTime({ zone: 'time_zone' });

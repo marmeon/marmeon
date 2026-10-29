@@ -19,6 +19,8 @@ export interface BuildContext {
   readonly live: boolean;
   /** `.live()` on this rule or one around it: its rules run in a live validation too. */
   readonly liveOptIn: boolean;
+  /** The rule is a direct field of an object that converts it once the field named by its zone is valid (`r.localDateTime({ field })`). */
+  readonly zoneSibling?: boolean;
 }
 
 /** A message for the engine: called with the issue it describes (`translatable()` leaves its key there). */
@@ -255,6 +257,12 @@ export interface ConditionalFields {
   readonly entries: Readonly<Record<string, Engine>>;
 }
 
+/** A field holding a local date and time, and the field that names its zone: converted once both are valid. */
+export interface ZonedField {
+  readonly field: string;
+  readonly zone: string;
+}
+
 export interface Confirmation {
   readonly field: string;
   readonly confirmation: string;
@@ -270,21 +278,30 @@ export function objectEngine(
   whens: readonly ConditionalFields[],
   confirmations: readonly Confirmation[],
   async: boolean,
+  zoned: readonly ZonedField[] = [],
 ): Engine {
   const base: Schema = async ? v.objectAsync(entries as Record<string, Schema>, typeMessage('object')) : v.object(entries as Record<string, Schema>, typeMessage('object'));
-  if (whens.length === 0 && confirmations.length === 0) return base as unknown as Engine;
+  if (whens.length === 0 && confirmations.length === 0 && zoned.length === 0) return base as unknown as Engine;
   return {
     ...base,
     '~run'(dataset: Dataset, config: unknown) {
       const input = dataset.value;
       const result = base['~run'](dataset, config);
-      if (!async) return afterObject(result, input, whens, confirmations, config, false);
-      return (async () => afterObject(await result, input, whens, confirmations, config, true))();
+      if (!async) return afterObject(result, input, whens, confirmations, zoned, config, false);
+      return (async () => afterObject(await result, input, whens, confirmations, zoned, config, true))();
     },
   } as unknown as Engine;
 }
 
-function afterObject(dataset: Dataset, input: unknown, whens: readonly ConditionalFields[], confirmations: readonly Confirmation[], config: unknown, async: boolean): Dataset | Promise<Dataset> {
+function afterObject(
+  dataset: Dataset,
+  input: unknown,
+  whens: readonly ConditionalFields[],
+  confirmations: readonly Confirmation[],
+  zoned: readonly ZonedField[],
+  config: unknown,
+  async: boolean,
+): Dataset | Promise<Dataset> {
   if (typeof input !== 'object' || input === null) return dataset; // the type's issue is there already
   const fields = input as Record<string, unknown>;
   const output = dataset.value as Record<string, unknown>;
@@ -313,6 +330,19 @@ function afterObject(dataset: Dataset, input: unknown, whens: readonly Condition
         output[key] = result.value;
       }
     }
+    for (const { field, zone } of zoned) {
+      const failed = (key: string) => dataset.issues?.some((issue) => issue.path?.[0]?.key === key) === true;
+      if (failed(field) || failed(zone) || typeof output[field] !== 'string') continue; // not valid yet, or left out
+      const zoneValue = output[zone];
+      if (zoneValue === undefined || zoneValue === null) {
+        addIssue(dataset, input, zone, message('required'), 'required'); // an optional zone left empty while the time is filled
+        continue;
+      }
+      const instant = zonedInstant(output[field], zoneValue);
+      if (instant !== undefined) output[field] = instant;
+      else if (!isTimeZone(zoneValue)) addIssue(dataset, input, zone, message('time_zone'), 'time_zone');
+      else addIssue(dataset, input, field, message('local_date_time'), 'local_date_time'); // a time beyond years 1–9999 in that zone
+    }
     for (const { field, confirmation } of confirmations) {
       if (dataset.issues?.some((issue) => issue.path?.[0]?.key === field)) continue; // the field itself is not valid yet
       if (fields[confirmation] !== fields[field]) addIssue(dataset, input, confirmation, message('confirmed'));
@@ -324,11 +354,11 @@ function afterObject(dataset: Dataset, input: unknown, whens: readonly Condition
 }
 
 /** An issue of the object at `key` — what the engine's own issues look like. */
-function addIssue(dataset: Dataset, input: unknown, key: string, describe: Message): void {
+function addIssue(dataset: Dataset, input: unknown, key: string, describe: Message, type = 'confirmed'): void {
   const value = (input as Record<string, unknown>)[key];
   const issue: Record<string, unknown> = {
     kind: 'validation',
-    type: 'confirmed',
+    type,
     input: value,
     expected: null,
     received: typeof value,
@@ -447,4 +477,83 @@ export function customCheck(test: (value: any) => CheckAnswer | Promise<CheckAns
     }
     report(answer as CheckAnswer, dataset.value, addIssue as never);
   }) as unknown as Engine;
+}
+
+// ——— Local date and time ———
+
+const LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+const ZONE_NAME = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
+const ZONE_OFFSET = /^[+-]\d{2}:\d{2}$/;
+
+/** A time zone `Temporal` knows — an IANA name (`Europe/Berlin`, `UTC`) or an offset (`+02:00`); never a date and time that carries one. */
+export function isTimeZone(zone: unknown): zone is string {
+  if (typeof zone !== 'string' || !(ZONE_NAME.test(zone) || ZONE_OFFSET.test(zone))) return false;
+  try {
+    Temporal.Now.zonedDateTimeISO(zone);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The shape `<input type="datetime-local">` sends: `2026-10-07T14:30`, with seconds when the field has them. */
+export const isLocalDateTime = (value: unknown): value is string => typeof value === 'string' && LOCAL_DATE_TIME.test(value);
+
+/** `value` as a date and time when it has the shape of {@link isLocalDateTime} and exists on the calendar. */
+function plainDateTime(value: string): Temporal.PlainDateTime | undefined {
+  if (!LOCAL_DATE_TIME.test(value)) return undefined;
+  try {
+    const plain = Temporal.PlainDateTime.from(value, { overflow: 'reject' });
+    return plain.year >= 1 ? plain : undefined; // year 0000 would be written as an extended year
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The instant of a local date and time in `zone`, as `2026-10-07T12:30:00.000Z` (what `Date#toISOString` writes); undefined for a
+ * value that is no date and time or a zone `Temporal` does not know. A time the clock skips (spring forward) is read with the
+ * offset from before the change — 02:30 becomes 03:30 — and one it shows twice (fall back) as the first of the two.
+ */
+export function zonedInstant(value: unknown, zone: unknown): string | undefined {
+  if (typeof value !== 'string' || !isTimeZone(zone)) return undefined;
+  const plain = plainDateTime(value);
+  if (plain === undefined) return undefined;
+  const instant = plain.toZonedDateTime(zone, { disambiguation: 'compatible' }).toInstant().toString({ fractionalSecondDigits: 3 });
+  return /^\d{4}-/.test(instant) && !instant.startsWith('0000-') ? instant : undefined; // the zone's offset can carry the instant out of years 1–9999
+}
+
+/** A date and time of a form, read in `zone`: invalid text says "date and time", an unknown zone "time zone". */
+export function localDateTimeEngine(zone: string | undefined): Engine {
+  return v.pipe(
+    v.custom(isLocalDateTime, typeMessage('local_date_time')),
+    v.rawTransform(({ dataset, addIssue, NEVER }) => {
+      const instant = zonedInstant(dataset.value, zone);
+      if (instant !== undefined) return instant;
+      addIssue({ message: isTimeZone(zone) ? message('local_date_time') : message('time_zone') } as never);
+      return NEVER;
+    }),
+  ) as unknown as Engine;
+}
+
+/** A date and time of a form whose zone is another field's: checked here, converted by the object once that field is valid. */
+export function pendingLocalDateTimeEngine(): Engine {
+  return v.pipe(
+    v.custom(isLocalDateTime, typeMessage('local_date_time')),
+    v.check((value) => plainDateTime(value as string) !== undefined, message('local_date_time')),
+  ) as unknown as Engine;
+}
+
+/** `instant` as the `datetime-local` field shows it in `zone`: `2026-10-07T14:30` (seconds when it has any). */
+export function localOf(instant: string | Date, zone: string): string {
+  if (!isTimeZone(zone)) throw new RangeError(`toLocalDateTime() needs a time zone like 'Europe/Berlin', got ${JSON.stringify(zone)}.`);
+  let epoch: Temporal.Instant;
+  try {
+    epoch = instant instanceof Date ? Temporal.Instant.fromEpochMilliseconds(instant.getTime()) : Temporal.Instant.from(instant);
+  } catch {
+    throw new RangeError(`toLocalDateTime() needs a point in time (a Date or a string like '2026-10-07T12:30:00Z'), got ${String(instant)}.`);
+  }
+  const plain = epoch.toZonedDateTimeISO(zone).toPlainDateTime();
+  const whole = plain.second === 0 && plain.millisecond === 0 && plain.microsecond === 0 && plain.nanosecond === 0;
+  return plain.toString({ smallestUnit: whole ? 'minute' : 'second' });
 }

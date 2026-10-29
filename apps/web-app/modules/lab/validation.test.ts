@@ -81,6 +81,18 @@ describe('the validation lab', () => {
     await app.post('/lab/validation', { json: { ...valid, starts: '2026-10-01', ends: '2026-10-08' }, headers: json }).assertValid();
   });
 
+  it('a time typed in a zone: the night the clocks go forward reads as 03:30, an unknown zone is told at the zone — and the message reads the instant back', async () => {
+    const wrong = await app.post('/lab/validation', { json: { ...valid, time_zone: 'Europe/Berln', at: '2026-03-29T02:30' }, headers: json }).assertUnprocessable();
+    wrong.assertInvalid<StoreValidationLabController>({ time_zone: 'The time zone field must be a valid time zone.' });
+    const sent = await app.post('/lab/validation', { form: { ...valid, time_zone: 'Europe/Berlin', at: '2026-03-29T02:30' }, headers: { referer: 'http://localhost/lab/validation' } }).assertValid().assertRedirect('/lab/validation');
+    await app
+      .withCookie('marmeon_session', sent.cookie('marmeon_session')!)
+      .navigating()
+      .get('/lab/validation')
+      .assertOk()
+      .assertFlash('toast', { message: 'Valid: Ada Lovelace <ada@example.com> — nothing was saved. At 2026-03-29T01:30:00.000Z (2026-03-29T03:30 in Europe/Berlin).' });
+  });
+
   it('an async custom (an invitation code) and exists (the inviting account): on submit — never live', async () => {
     await app.factory(UserFactory).create({ email: 'grace@example.com' });
     const wrong = await app.post('/lab/validation', { json: { ...valid, invite: 'NOPE', inviter: 'nobody@example.com' }, headers: json }).assertUnprocessable();
