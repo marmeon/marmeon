@@ -18,7 +18,7 @@ import type {
 import { useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { RoutesContext } from './routes.ts';
-import type { RouteFormFields } from './use-form.ts';
+import type { BooleanFields, RouteFormFields } from './use-form.ts';
 
 export type { ActionError } from '@marmeon/http/client';
 
@@ -46,8 +46,8 @@ export type ActionReload = Reloading | readonly Reloading[];
 type DataOption<N extends string> = [ActionBodyOf<N>] extends [never]
   ? { data?: `'${N}' takes no body — its controller has no request schema (or it is a GET: pass \`query\`)` }
   : {} extends ActionBodyOf<N>
-    ? { data?: ActionBodyOf<N> }
-    : { data: ActionBodyOf<N> };
+    ? { data?: BooleanFields<ActionBodyOf<N>> }
+    : { data: BooleanFields<ActionBodyOf<N>> };
 
 type ParamsOption<N extends string, RequiresParams extends boolean> = RequiresParams extends true ? { params: BrowserParamsOf<N> } : { params?: BrowserParamsOf<N> };
 

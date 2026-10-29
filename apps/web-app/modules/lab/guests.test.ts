@@ -44,6 +44,17 @@ describe('a create and an edit form with shared fields', () => {
     });
   });
 
+  it('a boolean field takes what a form without JavaScript sends: a ticked box, a hidden 0 or 1', async () => {
+    const referer = { referer: 'http://localhost/lab/guests/edit' };
+    const send = (fields: Record<string, string>) => app.put('/lab/guests', { form: { name: 'Ada', email: 'ada@example.test', ...fields }, headers: referer });
+    for (const coming of ['on', '1', '0']) {
+      (await send({ coming })).assertValid().assertRedirect('/lab/guests/edit');
+    }
+    // An unticked box without a hidden 0 sends nothing, and a word that is no yes or no is no boolean.
+    (await send({})).assertInvalid<UpdateGuestLabController>({ coming: 'The coming field is required.' });
+    (await send({ coming: 'maybe' })).assertInvalid<UpdateGuestLabController>({ coming: 'The coming field must be true or false.' });
+  });
+
   it('answers 404 unless the lab is on', async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh' });
