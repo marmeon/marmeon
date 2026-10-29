@@ -89,6 +89,7 @@ says `created_at`.
 | `.sortable()` | The table may sort by it. |
 | `.searchable()` | The search looks into it while the user can see it: case-insensitive, with `LIKE`'s wildcards taken literally. |
 | `.label(text)` | Its heading in the props and in the CSV. Without it, the props carry `label: null`, the page labels the column through `useTable()`'s `labels`, and the CSV heading is the alias. |
+| `.label((t) => t('members.column.name'))` | The heading in the request's language: the function runs once per request with `t(key, params?)` of the request's translator (`@marmeon/i18n`), and `t` gives the key itself where none is bound. The props and the CSV carry the same text. |
 | `.visible(Policy, 'ability')` | Only users the policy allows see it. Asked once per request, without a row. |
 | `.visible((ctx, resolve) => …)` | The same with a function of your own. |
 
@@ -448,6 +449,16 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
   first query fails or the stream breaks, the entry stays though the file was not delivered in full. It runs in the handler: a row
   it writes joins a transaction around the handler, if there is one, and commits before the later batches. The recorder is built
   per request like an action. Writing a row in the database is an [audit trail](events.md#an-audit-trail); a log line is not.
+- **A delimiter.** `exportCsv().delimiter(';')` separates the cells by a semicolon, `'\t'` by a tab (a comma by default), for a spreadsheet
+  that opens a comma-separated file in one column. A function chooses per request: `.delimiter((ctx, resolve, translator) => (translator?.locale === 'de' ? ';' : ','))`
+  gets the request's `ctx`, the resolver and the request's translator (`undefined` without `@marmeon/i18n`). Nothing else is a
+  delimiter: a quote, a line break, a formula sign or a text of more than one character would break the quoting or the escape, so
+  they are a `TypeError`, when the table is defined or, for an answer of a function, on the request before the count, the record and
+  any byte: no file, no record. Every cell stays
+  quoted and escaped. `readCsv()` finds all three by itself.
+- **Headings.** The heading of a column is its `label(…)`, else its alias. A label function (see [Columns](#columns)) translates it
+  for the request, and the CSV passes the translated text through the escape below like a cell: a translation that starts with `=`
+  gets a `'` in front.
 - **A limit.** `exportCsv().max(rows)`, 10000 by default. One count runs first, and an export over the limit is a 422 before a byte
   is sent, never a file cut short.
 - **Batches.** Rows stream in batches of 500. The first batch runs in the handler, and the later ones after it has answered: in the

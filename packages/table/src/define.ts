@@ -2,7 +2,10 @@ import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@m
 import type { ColumnReference, Database, ReferencedType, RelationName, Relations, SecretReference, SelectQuery } from '@marmeon/database';
 import type { ClassResolver, HttpContext, InferInput, InferOutput, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { Rule } from '@marmeon/validation';
+import type { Translator } from '@marmeon/core';
 import type { TableData } from './client/index.ts';
+import { isCsvDelimiter } from './csv.ts';
+import type { CsvDelimiter } from './csv-read.ts';
 import { querySchema } from './state.ts';
 
 /**
@@ -16,6 +19,9 @@ export type TableVisibility =
 
 /** A visibility check of the request. */
 export type TableVisibilityCheck = (ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>;
+
+/** What a column's `label(…)` function translates with: the request's translator, else the key itself. */
+export type TableText = (key: string, params?: Readonly<Record<string, unknown>>) => string;
 
 /** A policy ability for a row (or for the request, when its method takes no resource). */
 export interface RowAuthorization {
@@ -66,12 +72,12 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
   /** @internal */
   readonly isSearchable: boolean;
   /** @internal */
-  readonly text: string | null;
+  readonly text: string | ((t: TableText) => string) | null;
   /** @internal */
   readonly visibility: TableVisibility | undefined;
 
   /** @internal */
-  constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | null; visibility?: TableVisibility | undefined } = {}) {
+  constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | ((t: TableText) => string) | null; visibility?: TableVisibility | undefined } = {}) {
     if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) {
       throw new TypeError(`column(${JSON.stringify(ref)}): a column of the query, as "name" or "table.name".`);
     }
@@ -92,8 +98,13 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
     return new ColumnDefinition(this.ref, { ...this.#options(), searchable: true });
   }
 
-  /** A label for the props — otherwise the app labels the column by its name (its own translations). */
-  label(text: string): ColumnDefinition<R, S, Q, V> {
+  /**
+   * A label for the props and the export's heading — otherwise the app labels the column by its name (its own translations). A
+   * function gets `t(key, params?)` of the request's translator once per request (`(t) => t('members.column.name')`), the key itself
+   * without one. See [columns](docs/tables.md#columns).
+   */
+  label(text: string | ((t: TableText) => string)): ColumnDefinition<R, S, Q, V> {
+    if (typeof text !== 'string' && typeof text !== 'function') throw new TypeError(`column('${this.ref}').label(…): a text, or a function of the translator.`);
     return new ColumnDefinition(this.ref, { ...this.#options(), label: text });
   }
 
@@ -436,6 +447,12 @@ export type ExportRecorderClass<C = any> = new (...args: any[]) => { handle(info
 /** The most rows an export takes by default — more is refused (422), never cut short. */
 export const DEFAULT_EXPORT_MAX = 10_000;
 
+/**
+ * What an export's `delimiter(…)` function decides from: the request's `ctx`, the resolver, and the request's translator (`undefined`
+ * without `@marmeon/i18n`) — `(ctx, resolve, translator) => (translator?.locale === 'de' ? ';' : ',')`.
+ */
+export type TableDelimiterChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => CsvDelimiter | Promise<CsvDelimiter>;
+
 /** An export — built by {@link exportCsv}. */
 export class TableExport {
   readonly format = 'csv' as const;
@@ -445,13 +462,16 @@ export class TableExport {
   readonly limit: number;
   /** @internal */
   readonly recorder: ExportRecorderClass | undefined;
+  /** @internal */
+  readonly separator: CsvDelimiter | TableDelimiterChoice;
 
   /** @internal */
-  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass) {
+  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass, separator: CsvDelimiter | TableDelimiterChoice = ',') {
     if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;
     this.limit = max;
     this.recorder = recorder;
+    this.separator = separator;
   }
 
   /**
@@ -459,7 +479,7 @@ export class TableExport {
    * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @marmeon/cache).
    */
   max(rows: number): TableExport {
-    return new TableExport(this.visibility, rows, this.recorder);
+    return new TableExport(this.visibility, rows, this.recorder, this.separator);
   }
 
   /**
@@ -469,7 +489,7 @@ export class TableExport {
   authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
   authorize(check: TableVisibilityCheck): TableExport;
   authorize(...args: unknown[]): TableExport {
-    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder);
+    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder, this.separator);
   }
 
   /**
@@ -480,7 +500,18 @@ export class TableExport {
    */
   onExport(Recorder: ExportRecorderClass): TableExport {
     if (typeof Recorder !== 'function' || typeof Recorder.prototype?.handle !== 'function') throw new TypeError('exportCsv().onExport(Recorder): a class with handle(info, ctx).');
-    return new TableExport(this.visibility, this.limit, Recorder);
+    return new TableExport(this.visibility, this.limit, Recorder, this.separator);
+  }
+
+  /**
+   * The separator of the file: `','` (default), `';'` (what a spreadsheet in a locale with a decimal comma opens as columns) or a
+   * tab — or a function `(ctx, resolve, translator)` that answers per request, from the user or the request's language. Nothing
+   * else is a delimiter (a `TypeError` when the table is defined, or on the request when a function answers it): not a quote, a line
+   * break, a formula sign or more than one character. Every cell stays quoted and escaped. See [exports](docs/tables.md#exports).
+   */
+  delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport {
+    if (typeof choice !== 'function' && !isCsvDelimiter(choice)) throw new TypeError(`exportCsv().delimiter(${JSON.stringify(choice)}): "," ";" or a tab, or a function of the request.`);
+    return new TableExport(this.visibility, this.limit, this.recorder, choice);
   }
 }
 

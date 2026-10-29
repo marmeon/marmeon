@@ -1,5 +1,5 @@
 import { can, Gate, type Auth, type Authenticated } from '@marmeon/auth';
-import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
+import { createApplication, defineModule, Logger, Translator, type Application } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Repository, sql, type QueryEvent } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -238,8 +238,49 @@ export const LedgerTable = defineTable({
     formula: column('ledger.formula'),
   },
   defaultSort: 'note',
-  export: { csv: exportCsv().authorize(() => true) },
+  export: {
+    csv: exportCsv().authorize(() => true),
+    semicolon: exportCsv().authorize(() => true).delimiter(';'),
+    tab: exportCsv().authorize(() => true).delimiter('\t'),
+  },
 });
+
+/** Headings in the request's language (`x-test-locale`), and the separator that follows it: a semicolon for German. */
+export const LocalizedTable = defineTable({
+  name: 'localized',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: {
+    name: column('members.name').label((t) => t('columns.name')).sortable(),
+    // A translation that is a formula: the heading goes through the same escape as a cell.
+    role: column('members.role').label((t) => t('columns.role')),
+    plain: column('members.email').label('E-mail'),
+    bare: column('members.created_at'),
+  },
+  defaultSort: 'name',
+  export: {
+    csv: exportCsv().authorize(() => true).delimiter((_ctx, _resolve, translator) => (translator?.locale === 'de' ? ';' : ',')),
+    // From the request's own context: administrators get a semicolon.
+    byUser: exportCsv().authorize(() => true).delimiter((ctx) => (ctx.user.admin ? ';' : ',')),
+    wrong: exportCsv().authorize(() => true).delimiter(() => '|' as never).onExport(RecordExport),
+  },
+});
+
+export const LocalizedRequest = defineRequest({ query: LocalizedTable.query });
+
+export class LocalizedPage extends Controller {
+  static request = LocalizedRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof LocalizedRequest> & Authenticated & { team: number }) {
+    return this.json({ localized: await this.#tables.resolve(LocalizedTable, ctx) });
+  }
+}
 
 /** Exports of at most three rows — the limit refuses, it never cuts. */
 export const SmallExportTable = defineTable({
@@ -600,6 +641,8 @@ const routes = openRoutes((Route) => {
   tableRoutes(team, SmallExportTable);
   tableRoutes(team, AuditedTable);
   tableRoutes(team, ByEmailTable);
+  team.get('/localized', LocalizedPage);
+  tableRoutes(team, LocalizedTable);
   team.get('/guarded', GuardedPage);
   tableRoutes(team, GuardedTable);
   tableRoutes(team, ActiveTable);
@@ -643,7 +686,8 @@ export const MEMBERS = [
   { id: 9, team_id: 2, name: 'Mallory', email: 'mallory@example.com', role: 'admin', created_at: '2026-01-01 09:00:00', last_seen_at: '2026-10-02 10:00:00' },
 ];
 
-export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
+/** `translator: false` leaves the app without a `Translator`, as one without @marmeon/i18n. */
+export async function tableApp(driver: TestDriver, options: { readonly translator?: boolean } = {}): Promise<TableTestApp> {
   const database = await freshDatabase(driver);
   const recorder = new Recorder();
   const application = await createApplication({
@@ -656,6 +700,15 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
     override: (container) => {
       container.instance(Logger, silent);
       container.instance(Recorder, recorder);
+      // A translator speaking the request's `x-test-locale` (English without it).
+      if (options.translator !== false) container.scoped(Translator, (scope) => {
+        const locale = scope.make(IncomingRequest).headers.get('x-test-locale') ?? 'en';
+        const messages: Record<string, Record<string, string>> = {
+          en: { 'columns.name': 'Name', 'columns.role': 'Role' },
+          de: { 'columns.name': 'Name', 'columns.role': '=Rolle' },
+        };
+        return { locale, has: (key) => key in messages[locale]!, text: (key) => messages[locale]![key] ?? key };
+      });
       // The request's user for the policies: from the same header the `acting` middleware reads.
       container.scoped(Gate, (scope) => {
         const auth = { user: async () => USERS[Number(scope.make(IncomingRequest).headers.get('x-test-user'))] } as unknown as Auth;
