@@ -136,13 +136,20 @@ function describe(table: ProjectedTable, exposedBy: string | undefined): string[
 function render(table: string, column: ProjectedColumn, driver: Driver, warnings: string[]): string {
   const dataType = column.type[driver];
   let type = columnType(dataType, driver);
-  if (!type) {
+  // A column held to a list is that list's union, whatever string type it has.
+  if (column.values && type === 'string') type = column.values.map(literalType).join(' | ');
+  else if (!type) {
     warnings.push(`Column "${table}.${column.name}" has type "${dataType}", which has no TypeScript mapping yet — typed as unknown.`);
     type = 'unknown';
   }
   if (column.nullable) type = `${type} | null`;
   if (column.secret) type = `Secret<${type}>`;
   return column.default !== null || column.identity ? `Generated<${type}>` : type;
+}
+
+/** A string as a TypeScript literal type: single quotes for plain text, the JSON form for anything a line break or a control character could break. */
+function literalType(value: string): string {
+  return /^[\x20-\x7e]*$/.test(value) ? `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'` : JSON.stringify(value);
 }
 
 function renderRelation(relation: Relation): string {

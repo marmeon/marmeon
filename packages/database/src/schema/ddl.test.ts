@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
@@ -13,7 +13,7 @@ import { Migrator } from '../index.ts';
 // file: a v1 file that changes is a change of what old migrations build, and a release note has to call it breaking.
 
 // A group may have a sibling directory `<group>-pgsql` for what SQLite cannot do, loaded on Postgres only.
-const GROUPS = ['columns', 'indexes', 'alter', 'rename', 'drop'];
+const GROUPS = ['columns', 'indexes', 'alter', 'rename', 'drop', 'checks'];
 const POSTGRES_MAJOR = 18;
 
 const directory = (driver: string) => new URL(`../__fixtures__/formats/ddl/${driver}/`, import.meta.url);
@@ -39,7 +39,8 @@ async function record(driver: 'sqlite' | 'pgsql'): Promise<Map<string, string>> 
     for (const group of GROUPS) {
       // The groups before it are included: they ran already, and the migrator needs them to know the tables this one changes.
       const included = GROUPS.slice(0, GROUPS.indexOf(group) + 1);
-      const directories = included.flatMap((name) => [name, ...(driver === 'pgsql' && name === 'alter' ? ['alter-pgsql'] : [])]);
+      const sibling = (name: string) => driver === 'pgsql' && existsSync(new URL(`../__fixtures__/migrations/ddl/${name}-pgsql/`, import.meta.url));
+      const directories = included.flatMap((name) => [name, ...(sibling(name) ? [`${name}-pgsql`] : [])]);
       const modules: ModuleDefinition[] = directories.map((directory) => ({ name: 'ddl', migrations: new URL(`../__fixtures__/migrations/ddl/${directory}/`, import.meta.url) }));
       statements = [];
       await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();

@@ -398,7 +398,7 @@ const GROUPS: Record<string, string[]> = {
   // The DDL groups build on each other: the later ones alter, rename and drop what the first made.
   'ddl-columns': ['ddl/columns'],
   'ddl-indexes': ['ddl/columns', 'ddl/indexes'],
-  ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop'],
+  ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop', 'ddl/checks'],
   // Retiring leaves the column in the database, dropping it later takes it out.
   retired: ['retired-old', 'retired'],
   'retired-drop': ['retired-old', 'retired', 'retired-drop'],
@@ -410,7 +410,7 @@ const GROUPS: Record<string, string[]> = {
   'state-pause': ['state-pause'],
 };
 /** Directories loaded on Postgres only, next to their group (SQLite cannot do what they do). */
-const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql'] };
+const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql', 'ddl/checks-pgsql'] };
 /** Directories no parity is asked of: they fail on purpose, write what the projection does not know, or are for the order a test runs them in. */
 const EXCLUDED = ['bad-down', 'broken', 'order', 'order-independent', 'order-late', 'raw-add', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'writes-record'];
 

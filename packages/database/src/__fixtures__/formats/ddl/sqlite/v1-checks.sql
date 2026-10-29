@@ -1,0 +1,2 @@
+create table "ddl_checked" ("id" integer primary key autoincrement, "role" varchar(255) default 'admin' not null constraint "ddl_checked_role_check" check ("role" in ('admin', 'o''brien')), "state" varchar(20) constraint "ddl_checked_state_check" check ("state" in ('open', 'closed')), "seats" integer default 1 not null, constraint "ddl_checked_seats_check" check (seats > 0));
+alter table "ddl_checked" add column "kind" text default 'a' not null constraint "ddl_checked_kind_check" check ("kind" in ('a', 'b'));

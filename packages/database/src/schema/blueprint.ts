@@ -1,4 +1,4 @@
-import { sql, type ColumnDefinitionBuilder, type CreateTableBuilder, type Expression } from 'kysely';
+import { sql, type ColumnDefinitionBuilder, type CreateTableBuilder, type Expression, type RawBuilder } from 'kysely';
 
 /** What Kysely accepts as a column type (the type itself is not exported). */
 type DataTypeExpression = Parameters<CreateTableBuilder<string, never>['addColumn']>[1];
@@ -10,6 +10,8 @@ type OnDelete = 'cascade' | 'set null' | 'restrict' | 'no action';
 /** What a column is, independent of the dialect — compiled by {@link Blueprint} for the connection's driver. */
 interface ColumnSpec {
   readonly name: string;
+  /** The table the column is added to (the name of its check constraint). */
+  readonly table: string;
   readonly type: Record<Driver, DataTypeExpression>;
   nullable: boolean;
   primary: boolean;
@@ -17,6 +19,8 @@ interface ColumnSpec {
   unique: boolean;
   secret: boolean;
   default?: { value: unknown } | { now: true } | { uuidv7: true };
+  /** The list `oneOf()` holds the column to. */
+  oneOf?: readonly string[];
   references?: { table: string; column: string; onDelete?: OnDelete; inverse?: string };
 }
 
@@ -56,6 +60,27 @@ export class Column<T> {
   nullable(): Column<T | null> {
     this.spec.nullable = true;
     return this as Column<T | null>;
+  }
+
+  /**
+   * Holds the column to a list: a check constraint named `{table}_{column}_check` in the database, and the union of the values as the
+   * column's type in `Row<…>`. Only for a `string()` or `text()` column. Every value is a string of 1 to 255 characters without a backslash, none twice. A NULL passes (the column is
+   * `nullable()` or it is not). Changing the list later is `dropCheck()` and `check()` on Postgres; SQLite needs raw SQL.
+   * See `docs/migrations.md#check-constraints`.
+   */
+  oneOf<const V extends T & string>(...values: V[]): Column<V | Extract<T, null>> {
+    const name = this.#spec.name;
+    if (!/^(varchar|text)\b/.test(String(this.#spec.type.sqlite))) throw new Error(`oneOf() on "${name}" works on a string() or text() column only.`);
+    if (!values.length) throw new Error(`oneOf() on "${name}" needs at least one value.`);
+    if (this.#spec.oneOf) throw new Error(`oneOf() on "${name}" is called twice.`);
+    for (const value of values) {
+      if (typeof value !== 'string' || value === '' || value.length > 255 || value.includes('\0') || value.includes('\\')) {
+        throw new Error(`oneOf() on "${name}" takes strings of 1 to 255 characters without a NUL character or a backslash; got ${JSON.stringify(value)}.`);
+      }
+    }
+    if (new Set(values).size !== values.length) throw new Error(`oneOf() on "${name}" lists a value twice.`);
+    this.spec.oneOf = Object.freeze([...values]);
+    return this as unknown as Column<V | Extract<T, null>>;
   }
 
   /** A unique index on this column, named `{table}_{column}_unique` (droppable with `dropUnique`). */
@@ -177,6 +202,10 @@ interface BlueprintParts {
   readonly nullability: { column: string; nullable: boolean }[];
   /** Columns taken out of use (`retire()`): the projection forgets them, the database keeps them. */
   readonly retirements: string[];
+  /** Named check constraints to add (`check()`). */
+  readonly checks: { name: string; sql: string }[];
+  /** Check constraints to drop by name (`dropCheck()`). */
+  readonly dropChecks: string[];
   /** `timestamps()` and `softDeletes()` were called. */
   readonly markers: Set<TableMarker>;
   /** `notPivot()` was called. */
@@ -206,6 +235,8 @@ export class Blueprint {
     renames: [],
     nullability: [],
     retirements: [],
+    checks: [],
+    dropChecks: [],
     markers: new Set(),
     notPivot: false,
   };
@@ -351,6 +382,23 @@ export class Blueprint {
     this.#parts.dropIndexes.push(name);
   }
 
+  /**
+   * A named check constraint on the table: `table.check('events_dates_check', 'ends_at >= starts_at')`. `sql` is the condition, written
+   * in SQL that both drivers accept; it is not looked into. Giving it to an existing table works on Postgres only (SQLite cannot add a
+   * constraint to a table: use raw SQL). See `docs/migrations.md#check-constraints`.
+   */
+  check(name: string, sql: string): void {
+    this.#open();
+    if (!name || !sql.trim()) throw new Error(`check() on table "${this.table}" needs a name and a condition.`);
+    this.#parts.checks.push({ name, sql });
+  }
+
+  /** Changing a table only, on Postgres only: drops a check constraint by name (`{table}_{column}_check` for `oneOf()`). */
+  dropCheck(name: string): void {
+    this.#open();
+    this.#parts.dropChecks.push(name);
+  }
+
   /** Changing a table only: renames a column. */
   renameColumn(from: string, to: string): void {
     this.#open();
@@ -388,8 +436,8 @@ export class Blueprint {
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements } = this.#parts;
-    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements]) Object.freeze(list);
+    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements, checks, dropChecks } = this.#parts;
+    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements, checks, dropChecks]) Object.freeze(list);
   }
 
   /** @internal — every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
@@ -421,7 +469,7 @@ export class Blueprint {
   #spec(name: string, type: Record<Driver, DataTypeExpression>, extra: Partial<ColumnSpec> = {}): ColumnSpec {
     this.#open();
     if (this.#parts.columns.some((column) => column.name === name)) throw new Error(`Column "${name}" is defined twice on table "${this.table}".`);
-    const spec: ColumnSpec = { name, type, nullable: false, primary: false, identity: false, unique: false, secret: false, ...extra };
+    const spec: ColumnSpec = { name, table: this.table, type, nullable: false, primary: false, identity: false, unique: false, secret: false, ...extra };
     this.#parts.columns.push(spec);
     return spec;
   }
@@ -437,6 +485,7 @@ export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpres
       if (spec.identity) c = driver === 'sqlite' ? c.autoIncrement() : c.generatedByDefaultAsIdentity();
       if (!spec.nullable && !spec.primary) c = c.notNull();
       if (spec.default) c = c.defaultTo(defaultOf(spec.default, driver));
+      if (spec.oneOf) c = c.modifyEnd(oneOfCheck(spec));
       if (spec.references) {
         c = c.references(`${spec.references.table}.${spec.references.column}`);
         if (spec.references.onDelete) c = c.onDelete(spec.references.onDelete);
@@ -444,6 +493,14 @@ export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpres
       return c;
     },
   ];
+}
+
+/** The name of the constraint `oneOf()` makes. */
+export const oneOfName = (table: string, column: string): string => `${table}_${column}_check`;
+
+/** `constraint "t_c_check" check ("c" in ('a', 'b'))`; the values are written as literals with their quotes doubled. */
+function oneOfCheck(spec: ColumnSpec): RawBuilder<unknown> {
+  return sql`constraint ${sql.id(oneOfName(spec.table, spec.name))} check (${sql.id(spec.name)} in (${sql.join(spec.oneOf!.map((value) => sql.lit(value)))}))`;
 }
 
 function defaultOf(value: NonNullable<ColumnSpec['default']>, driver: Driver): unknown {

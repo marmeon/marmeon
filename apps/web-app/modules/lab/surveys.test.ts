@@ -1,4 +1,4 @@
-import { Database } from '@marmeon/database';
+import { Database, type Row } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -60,5 +60,18 @@ describe('a form built from rows', () => {
     app = await createTestApp(application, { database: 'refresh', env: { LAB_PAGES: 'false' } });
     await app.make(Database).insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'diet', label: 'Diet' }).execute();
     await app.post('/lab/surveys/dinner', { json: { answers: {} }, headers: json }).assertNotFound();
+  });
+});
+
+describe('the kind of a question', () => {
+  it('is held to its list by the database, and its type is the union', async () => {
+    const db = app.make(Database);
+    const kind: Row<'lab_survey_questions'>['kind'] = 'choice';
+    await db.insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'drink', label: 'Drink', kind }).execute();
+    const rows = await db.selectFrom('lab_survey_questions').select('kind').where('name', '=', 'drink').execute();
+    expect(rows.map((row) => row.kind)).toEqual(['choice']);
+    // @ts-expect-error — 'essay' is not one of the kinds
+    const refused = db.insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'story', label: 'Story', kind: 'essay' }).execute();
+    await expect(refused).rejects.toThrow(/lab_survey_questions_kind_check|CHECK constraint/i);
   });
 });

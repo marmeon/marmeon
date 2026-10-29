@@ -75,6 +75,9 @@ function isTable(value: unknown, name: string): value is ProjectedTable {
         typeof c.identity === 'boolean' &&
         typeof c.secret === 'boolean' &&
         (c.retired === undefined || typeof c.retired === 'boolean') &&
+        (c.values === undefined) === (c.valuesCheck === undefined) &&
+        (c.values === undefined || (isStrings(c.values) && c.values.length > 0 && c.values.every((value) => value !== ''))) &&
+        (c.valuesCheck === undefined || typeof c.valuesCheck === 'string') &&
         (c.default === null || DEFAULTS.has(c.default as string)),
     ) &&
     Array.isArray(table.uniques) &&
@@ -89,6 +92,7 @@ function isTable(value: unknown, name: string): value is ProjectedTable {
         (k.onDelete === undefined || ON_DELETE.has(k.onDelete as string)) &&
         (k.inverse === undefined || typeof k.inverse === 'string'),
     ) &&
+    (table.checks === undefined || each(table.checks, (check) => text(check, 'name') && text(check, 'sql'))) &&
     Array.isArray(table.markers) &&
     table.markers.every((m) => m === 'timestamps' || m === 'soft_deletes') &&
     (table.pivot === undefined || table.pivot === false)
