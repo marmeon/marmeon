@@ -37,7 +37,7 @@ The name gets `Controller` appended when it does not end with it. The options ch
 | Option | What it adds |
 | --- | --- |
 | `--view` | A page in the module's `views/` folder, and a controller that renders it. |
-| `--request` | A request definition next to the controller. A name that starts with `Show`, `List`, `Index`, `Search`, `Get`, `Find` or `Browse` gets a query schema, any other name a body schema and a redirect back, so `--view` with it is refused. |
+| `--request` | A request definition next to the controller. A name that starts with `Show`, `List`, `Index`, `Search`, `Get`, `Find`, `Browse`, `Create` or `New` gets a query schema (`Create…` is the page of a form, `Store…` sends it), any other name a body schema and a redirect back, so `--view` with it is refused. |
 | `--force` | Overwrites a file that exists. |
 
 The module must exist, and `make:module` creates it.

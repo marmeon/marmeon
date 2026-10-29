@@ -164,12 +164,12 @@ export class MakeControllerCommand {
     const module = input.options.module as string;
     const page = name.replace(/Controller$/, '');
     const withView = input.options.view === true;
-    // A GET has no body: a reading endpoint (Show…, List…) gets a `query` schema, any other a body `schema`.
+    // A GET has no body: a reading endpoint (Show…, List…, Create… as the page of a form) gets a `query` schema, any other a body `schema`.
     const reads = READING.test(name);
     // A writing endpoint answers its form with a redirect: a page beside it would never render.
     if (withView && input.options.request === true && !reads) {
       throw new CommandArgumentsError(
-        `--view renders a page, and ${name} answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…) for a page, or leave out --view.`,
+        `--view renders a page, and ${name} answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…, Create…, New…) for a page (Create… is the page of a form, Store… sends it), or leave out --view.`,
       );
     }
     const template =
@@ -628,7 +628,7 @@ ${page ? `    return this.view('${page}', {});` : `    return this.json({ path: 
 `;
 
 /** Controllers that read (GET routes) — their request validates the query, never a body. */
-const READING = /^(Show|List|Index|Search|Get|Find|Browse)[A-Z]/;
+const READING = /^(Show|List|Index|Search|Get|Find|Browse|Create|New)[A-Z]/;
 
 /** REPR for a GET: the query schema (every field optional or with a default — an invalid one falls back to it). */
 const QUERY_REQUEST_CONTROLLER = (name: string, subject: string, page: string | undefined) => `import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
