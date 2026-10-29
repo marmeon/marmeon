@@ -519,7 +519,8 @@ export function MarmeonApp({
     for (const done of committed.current.splice(0)) done();
   }, [current, layers]);
   useEffect(() => {
-    // When the first page became interactive (hydrated, or rendered when the server sent no markup) — for measuring.
+    // When the first page became interactive (hydrated, or rendered when the server sent no markup). A public mark, which browser
+    // tests wait for — see docs/testing.md#testing-in-a-browser.
     if (typeof performance !== 'undefined') performance.mark('marmeon:hydrated');
     return navigator.current?.start();
   }, []);
