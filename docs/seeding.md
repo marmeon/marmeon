@@ -13,13 +13,16 @@ export const FACTORY_PASSWORD_HASH = '$argon2id$v=19$m=1024,t=1,p=1$4Xhubcoo37TN
 
 export const UserFactory = defineFactory(
   'users',
-  ({ sequence }) => ({
-    name: `User ${sequence}`,
-    email: `user${sequence}@example.com`,
-    password: FACTORY_PASSWORD_HASH,
-    email_verified_at: new Date().toISOString(),
-    first_verified_at: new Date().toISOString(),
-  }),
+  ({ sequence, now }) => {
+    const verified = now().toISOString();
+    return {
+      name: `User ${sequence}`,
+      email: `user${sequence}@example.com`,
+      password: FACTORY_PASSWORD_HASH,
+      email_verified_at: verified,
+      first_verified_at: verified,
+    };
+  },
   { states: { unverified: { email_verified_at: null, first_verified_at: null } } },
 );
 ```
@@ -37,6 +40,8 @@ The definition gets a context:
 
 - **`sequence`** counts the rows this factory has made in this app: 1, 2, 3 and on. Use it for values that must be unique, such
   as an address. Each app counts on its own, so two test apps never share a counter.
+- **`now()`** is the app's time, a new `Date` on each call. It is the time `app.travel()` moves, and the one that stamps `created_at`
+  of a row the factory creates, so a date a definition sets (`now().toISOString()`) follows the same clock. See [time](time.md#what-follows-the-clock).
 - **`factory(Other)`** stands for a row of another table. Put it where a foreign key goes, and the related row is created first:
 
 ```ts title="modules/notes/factories/NoteFactory.ts"
@@ -51,12 +56,12 @@ export const NoteFactory = defineFactory(
     slug: `note-${sequence}`,
     body: 'A note to read later.',
   }),
-  { states: { shared: { shared: true }, published: () => ({ published_at: new Date().toISOString() }) } },
+  { states: { shared: { shared: true }, published: ({ now }) => ({ published_at: now().toISOString() }) } },
 );
 ```
 
 A state is a set of values that replaces the definition's, or a function of the context that returns them. A state as a function
-gets a fresh value each time, such as the current time.
+gets a fresh value each time, such as the current time from `now()`.
 
 ### Password hashes
 

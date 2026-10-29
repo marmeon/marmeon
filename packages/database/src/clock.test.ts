@@ -2,7 +2,7 @@ import { TestClock } from '@marmeon/core/testing';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { UserFactory } from './__fixtures__/factories.ts';
+import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Factories, Migrator, Repository, type Connections } from './index.ts';
 
@@ -19,6 +19,12 @@ const modules: ModuleDefinition[] = [
   { name: 'blog', migrations: new URL('./__fixtures__/migrations/relations/', import.meta.url) },
   { name: 'flags', migrations: new URL('./__fixtures__/migrations/relations-stamped/', import.meta.url) },
 ];
+
+const ClockedPostFactory = define(
+  'posts',
+  ({ sequence, factory, now }) => ({ title: `Post ${sequence}`, author_id: factory(UserFactory), published_at: now().toISOString() }),
+  { states: { later: ({ now }) => ({ published_at: new Date(now().getTime() + 1000).toISOString() }) } },
+);
 
 const START = Date.parse('2031-03-04T05:06:07.089Z');
 const DAY = 86_400_000;
@@ -40,6 +46,7 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
   afterAll(() => close());
   beforeEach(async () => {
     clock.freeze(START);
+    await connections.get<FixtureTables>().deleteFrom('posts').execute();
     await connections.get<FixtureTables>().deleteFrom('users').execute();
   });
 
@@ -145,6 +152,24 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
     expect(at(gone.deleted_at)).toBe(START + 9 * DAY);
   });
 
+  it('now() of a factory definition is the app clock: make(), create(), using(trx) and a state as a function', async () => {
+    const factories = new Factories(connections);
+    clock.travel({ days: 5 });
+    expect(new Date(factories.for(ClockedPostFactory).make().published_at as string).getTime()).toBe(START + 5 * DAY);
+    const made = await factories.for(ClockedPostFactory).create();
+    expect([at(made.published_at), at(made.created_at)]).toEqual([START + 5 * DAY, START + 5 * DAY]);
+    await connections.transaction(async (trx) => {
+      clock.travel({ days: 1 });
+      const inside = await factories.for(ClockedPostFactory).using(trx as never).create();
+      expect([at(inside.published_at), at(inside.created_at)]).toEqual([START + 6 * DAY, START + 6 * DAY]);
+      const later = await factories.for(ClockedPostFactory).state('later').using(trx as never).create();
+      expect(at(later.published_at)).toBe(START + 6 * DAY + 1000);
+    });
+    // Read on each call, so a row made after the clock moved gets the new time.
+    clock.travel({ days: 1 });
+    expect(at((await factories.for(ClockedPostFactory).create()).published_at)).toBe(START + 7 * DAY);
+  });
+
   it('a factory stamps its rows with the clock, and keeps what an override names', async () => {
     const factories = new Factories(connections);
     clock.travel({ days: 5 });
@@ -173,5 +198,22 @@ describe.each(drivers)('stamping without an app clock on %s', (driver) => {
     expect(at(row.created_at)).toBeGreaterThanOrEqual(before);
     expect(at(row.created_at)).toBeLessThanOrEqual(after);
     expect(at(row.updated_at)).toBe(at(row.created_at));
+  });
+});
+
+describe.each(drivers)('a factory definition reading now() without an app clock on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections(driver));
+    await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
+  });
+  afterAll(() => close());
+
+  it('gives the wall clock', async () => {
+    const factories = new Factories(connections);
+    const row = await factories.for(ClockedPostFactory).create();
+    expect(Math.abs(at(row.published_at) - Date.now())).toBeLessThan(5000);
   });
 });

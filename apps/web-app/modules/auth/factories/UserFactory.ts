@@ -10,16 +10,20 @@ export const FACTORY_PASSWORD_HASH = '$argon2id$v=19$m=1024,t=1,p=1$4Xhubcoo37TN
 
 export const UserFactory = defineFactory(
   'users',
-  ({ sequence }) => ({
-    name: `User ${sequence}`,
-    email: `user${sequence}@example.com`,
-    password: FACTORY_PASSWORD_HASH,
-    // A key from the start, as a registration gives one: a test that writes `password` writes a new `session_key` with it.
-    session_key: randomBytes(32).toString('base64url'),
-    bio: '',
-    email_verified_at: new Date().toISOString(),
-    // Confirmed once: never deleted by auth:prune-unverified.
-    first_verified_at: new Date().toISOString(),
-  }),
+  ({ sequence, now }) => {
+    // One value for both columns: two calls could differ by a millisecond.
+    const verified = now().toISOString();
+    return {
+      name: `User ${sequence}`,
+      email: `user${sequence}@example.com`,
+      password: FACTORY_PASSWORD_HASH,
+      // A key from the start, as a registration gives one: a test that writes `password` writes a new `session_key` with it.
+      session_key: randomBytes(32).toString('base64url'),
+      bio: '',
+      email_verified_at: verified,
+      // Confirmed once: never deleted by auth:prune-unverified.
+      first_verified_at: verified,
+    };
+  },
   { states: { unverified: { email_verified_at: null, first_verified_at: null } } },
 );

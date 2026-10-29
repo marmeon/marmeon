@@ -139,7 +139,8 @@ Everything that reads the time through the app's `Clock` follows the test clock:
 - the scheduler, through `app.schedule`;
 - the cached answer of the readiness check;
 - `created_at` and `updated_at` of a table with `timestamps()`, which a repository's `insert()`, `insertMany()`, `update()`, `relation().create()` and `attach()`, a
-  factory and `credentialWriter()` stamp, and `deleted_at` of a soft delete (a raw query does not: see below).
+  factory and `credentialWriter()` stamp, and `deleted_at` of a soft delete (a raw query does not: see below);
+- the `now()` a factory definition reads.
 
 Your own services follow it when they take a `Clock` through the constructor instead of calling `Date.now()`. The
 [context](context.md#the-clock) page shows how.

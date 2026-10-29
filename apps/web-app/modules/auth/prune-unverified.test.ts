@@ -208,6 +208,16 @@ describe('pruning accounts whose address was never confirmed', () => {
     await app.assertDatabaseCount('users', 100);
   });
 
+  it('a factory user is confirmed at the app time: both columns carry the clock after app.travel()', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    app.travel({ days: 7 });
+    const user = (await app.factory(UserFactory).create()) as User;
+    const expected = new Date(app.clock.now()).getTime();
+    expect([user.email_verified_at, user.first_verified_at].map((value) => new Date(value as string).getTime())).toEqual([expected, expected]);
+    expect(user.first_verified_at).toBe(user.email_verified_at);
+  });
+
   it('a listener of AccountDeleting that fails deletes nothing', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
