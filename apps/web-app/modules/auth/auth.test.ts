@@ -810,6 +810,17 @@ describe('e-mail verification', () => {
     await session.post(`/users/${kj.public_id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect(`/users/${kj.public_id}`);
   });
 
+  it('the link stamps the confirmation with the app\'s clock — app.travel() moves it', async () => {
+    await register();
+    const kj = await userBy('kj@example.com');
+    const login = await app.post('/login', { form: { email: 'kj@example.com', password: 'orbital mechanics' } }).assertRedirect('/users/me');
+    app.freeze(); // one instant, so the stamps can be compared exactly
+    app.travel({ minutes: 30 });
+    await app.withCookie(SESSION, login.cookie(SESSION)!).get(verificationLink()).assertRedirect('/users/me');
+    const stamp = new Date(app.clock.now()).toISOString();
+    await app.assertDatabaseHas('users', { id: kj.id, email_verified_at: stamp, first_verified_at: stamp, updated_at: stamp });
+  });
+
   it('a changed parameter, a changed expiry, another user’s link, an expired link — 403', async () => {
     await register('kj@example.com');
     await register('dv@example.com');

@@ -70,7 +70,7 @@ describe('the devtools', () => {
     expect(registered.headers.getSetCookie()).toEqual([]); // private registration: no session
     // The app opens for a confirmed address only — confirmed here directly; the link's own path is tested in the auth module.
     const users = app.make(UserRepository);
-    await users.markEmailVerified((await users.findByEmail(email))!.id);
+    await users.markEmailVerified((await users.findByEmail(email))!.id, new Date(app.clock.now()));
     const first = await app.post('/login', { form: { email, password } }).assertRedirect('/users/me');
     const sessions = [first.cookie('marmeon_session')!];
     const csrf = decodeURIComponent(first.cookie('XSRF-TOKEN')!);

@@ -112,7 +112,7 @@ describe('pruning accounts whose address was never confirmed — the default', {
     // Confirmed a moment ago, after the look-up: the delete decides again.
     const ids = await app.make(UserRepository).unconfirmedSince(new Date(app.clock.now() - 7 * DAY), 200);
     expect(ids).toHaveLength(150);
-    await app.make(UserRepository).markEmailVerified(many[0]!.id);
+    await app.make(UserRepository).markEmailVerified(many[0]!.id, new Date(app.clock.now()));
     expect(await app.make(AccountDeletion).delete([many[0]!.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual([]);
     expect(await exists(many[0]!)).toBe(true);
 
@@ -160,6 +160,19 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
     await pruneIn(2);
     expect(await exists(ada)).toBe(false);
     await session.get('/dashboard').assertRedirect('/login');
+  });
+
+  it('the link stamps the confirmation with the app\'s clock — app.travel() moves it', async () => {
+    const registered = await app
+      .post('/register', { form: { name: 'Katherine', email: 'kj@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } })
+      .assertRedirect('/dashboard');
+    const session = app.withCookie(SESSION, registered.cookie(SESSION)!);
+    await app.queue.work();
+    const link = new URL(/https?:\/\/\S+\/email\/verify\/\S+(?=\))/.exec(app.mail.queued(VerifyEmailMail).at(-1)!.message.text)![0]);
+    app.travel({ minutes: 30 });
+    await session.get(link.pathname + link.search).assertRedirect('/dashboard');
+    const stamp = new Date(app.clock.now()).toISOString();
+    await app.assertDatabaseHas('users', { email: 'kj@example.com', email_verified_at: stamp, first_verified_at: stamp, updated_at: stamp });
   });
 
   it('an account confirmed by its link keeps that for good — an unconfirmed change of address never makes it prunable', async () => {

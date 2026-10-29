@@ -39,12 +39,12 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     await this.update(id, { locale });
   }
 
-  async markEmailVerified(id: number): Promise<void> {
-    const now = new Date();
+  /** Confirms the address at `at` — pass `new Date(clock.now())` from the app's `Clock`, so `app.travel()` moves it. */
+  async markEmailVerified(id: number, at: Date): Promise<void> {
     // The first confirmation is kept for good: a later unconfirmed change of address never makes the account prunable.
     await this.db
       .updateTable('users')
-      .set({ email_verified_at: now, first_verified_at: sql<Date>`coalesce(first_verified_at, ${now.toISOString()})`, updated_at: now })
+      .set({ email_verified_at: at, first_verified_at: sql<Date>`coalesce(first_verified_at, ${at.toISOString()})`, updated_at: at })
       .where('id', '=', id)
       .execute();
   }

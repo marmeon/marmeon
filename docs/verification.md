@@ -104,22 +104,25 @@ The controller asks `matches()` before it marks the address confirmed:
 
 ```ts title="modules/auth/controllers/VerifyEmailController.ts"
 import { EmailVerification, type Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
 import { abort, Controller, type HttpContext } from '@marmeon/http';
 import { UserRepository } from '../UserRepository.ts';
 
 export class VerifyEmailController extends Controller {
   readonly #verification: EmailVerification;
   readonly #users: UserRepository;
+  readonly #clock: Clock;
 
-  constructor(verification: EmailVerification, users: UserRepository) {
+  constructor(verification: EmailVerification, users: UserRepository, clock: Clock) {
     super();
     this.#verification = verification;
     this.#users = users;
+    this.#clock = clock;
   }
 
   async handle(ctx: HttpContext<Authenticated, { id: string; hash: string }>) {
     if (!this.#verification.matches(ctx.user, ctx.params)) abort(403, 'This link is for another account.');
-    if (ctx.user.email_verified_at === null) await this.#users.markEmailVerified(ctx.user.id);
+    if (ctx.user.email_verified_at === null) await this.#users.markEmailVerified(ctx.user.id, new Date(this.#clock.now()));
     return this.redirect().route('dashboard');
   }
 }
@@ -134,8 +137,8 @@ Each check closes a gap:
 - **`authenticate()`** makes the owner sign in first. A guest who opens the link goes to the login and comes back to the link
   afterwards.
 
-`markEmailVerified()` sets `email_verified_at` and, the first time, `first_verified_at`, which the clean-up of unconfirmed accounts
-reads.
+`markEmailVerified(id, at)` sets `email_verified_at` and, the first time, `first_verified_at`, which the clean-up of unconfirmed accounts
+reads. The controller passes the app's `Clock`, so `app.travel()` moves the confirmation too.
 
 ## Sending the mail
 
