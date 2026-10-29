@@ -233,8 +233,40 @@ The delete checks all three again in the same statement, so an account confirmed
 deletes none. The command works in batches of 100 accounts and logs how many it deleted.
 
 Each deletion goes through the module's `AccountDeletion`: the row, with its remember-me and API tokens, its reset token, and what
-other modules keep for it, all in one transaction; then its sessions. Another module clears its own data by listening to
-`AccountDeleted`:
+other modules keep for it, all in one transaction; then its sessions. Before anything is removed, `AccountDeleting` asks the
+other modules once per account. A module that must not lose the account, such as the last administrator of a workspace, refuses
+from its listener:
+
+```ts title="modules/workspaces/listeners/KeepLastAdministrator.ts"
+import type { AccountDeleting } from '#modules/auth';
+
+export class KeepLastAdministrator {
+  readonly #workspaces: WorkspaceRepository;
+
+  constructor(workspaces: WorkspaceRepository) {
+    this.#workspaces = workspaces;
+  }
+
+  async handle(event: AccountDeleting): Promise<void> {
+    // Read with a lock: two administrators deleting themselves at once must not both pass.
+    if (await this.#workspaces.isLastAdministrator(event.user.id, { lock: true })) {
+      event.refuse('This account is the last administrator of a workspace.');
+    }
+  }
+}
+```
+
+The listener runs inside the deletion's transaction, so it should read what it decides on with a lock (`forUpdate()` on
+Postgres). Without it, two administrators deleting themselves at once could both pass "not the last administrator". A reason is
+shown to the person whose deletion failed, so it must not name other tenants or a module's internals.
+
+A refused account stays, and the others of the same run go on. `AccountDeletion.delete()` returns `{ deleted, refused }`, and each
+entry of `refused` has the `user` and the `reasons`. The reasons are sentences for a person, not keys: translate or show them
+yourself. The command logs the refused accounts with their reasons, prints how many it kept and still exits with `0`. It does not
+ask for them again in the same run. A listener that throws stops the call and rolls everything back, so nothing is deleted.
+
+Another module clears its own data by listening to `AccountDeleted`, which is dispatched for the deleted accounts only, after the
+cascades ran:
 
 ```ts title="modules/user-profile/listeners/DeleteAvatar.ts"
 import { afterCommit } from '@marmeon/core';

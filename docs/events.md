@@ -104,8 +104,9 @@ classes it extends, each in the order they were registered, the app's own before
 stops there and the error reaches the caller, in a request the exception handler. The listeners after it do not run.
 
 For all or nothing, dispatch inside a transaction. The listeners that run during the dispatch join it, and a rollback takes back
-what they wrote. The starter kit deletes an account this way: its `AccountDeletion` dispatches `AccountDeleted` inside the
-deletion's transaction, once per account, and other modules listen to clear what belongs to the account. The
+what they wrote. The starter kit deletes an account this way: its `AccountDeletion` dispatches `AccountDeleting` and then
+`AccountDeleted` inside the deletion's transaction, once per account: a module can refuse at the first and clears what belongs to
+the account at the second. The
 [transactions](transactions.md#what-joins-a-transaction) page explains what joins a transaction.
 
 The dispatcher belongs to the container that asked for it. In a request, the listeners are built in the request's scope and may

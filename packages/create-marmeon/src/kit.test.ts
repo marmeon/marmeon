@@ -154,7 +154,7 @@ it(
     expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(3);
     // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS by the command, in both behaviours — the module schedules no
     // deletion (the app turns it on).
-    expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed — the default')).toBe(6);
+    expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed — the default')).toBe(10);
     // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became.
     expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false')).toBe(4);
     // The passkey tests ran with the app's database (the software authenticator stands in for the browser), the mails' and the browser code's too.
