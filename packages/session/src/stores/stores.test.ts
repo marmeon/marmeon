@@ -1,3 +1,5 @@
+import { readdir, utimes, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { AesGcmEncrypter } from '@marmeon/encryption';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EncryptedSessionCodec, plainSessionCodec, type SessionCodec } from '../codec.ts';
@@ -150,6 +152,24 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(await store.gc(1)).toBe(kind === 'redis' ? 0 : 1);
     expect(await store.read(fresh)).toEqual({ data: '{"user":2}', version: 1 });
     expect(await store.gc(1)).toBe(0);
+  });
+
+  it.runIf(kind === 'file')("collects only its own files (gc) — a shared folder and the kit's ignore file stay", async () => {
+    const { store, target, pass } = await open();
+    if (target.kind !== 'file') return;
+    const old = key();
+    await store.write(old, '{"user":1}', { expectedVersion: undefined, lifetimeSeconds: 1 });
+    await pass(expiry);
+    const fresh = key();
+    await store.write(fresh, '{"user":2}', NEW);
+    const leftover = `${key()}.${crypto.randomUUID()}.tmp`;
+    const foreign = ['.gitignore', 'notes.txt', `${key()}.tmp`, `${key()}.${crypto.randomUUID()}.bak`, `${key()}.guard`, `${key()}.guard.break`];
+    for (const name of [leftover, ...foreign]) {
+      await writeFile(join(target.directory, name), 'x');
+      await utimes(join(target.directory, name), 0, 0);
+    }
+    expect(await store.gc(1)).toBe(2);
+    expect((await readdir(target.directory)).sort()).toEqual([fresh, ...foreign].sort());
   });
 
   it('never leaves a session behind that a destroy raced — 50 write-backs and destroys at once', async () => {

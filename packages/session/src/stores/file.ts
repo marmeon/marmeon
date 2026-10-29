@@ -16,6 +16,10 @@ interface Stored {
 
 /** A guard older than this was left by a process that died inside its few-millisecond critical section. */
 const STALE_GUARD_MS = 2_000;
+
+/** What `#create` leaves behind when the process dies between its write and its cleanup: `<key>.<uuid>.tmp`. */
+const OWN_TEMPORARY = new RegExp(`${SESSION_KEY.source.slice(0, -1)}\\.[0-9a-f-]{36}\\.tmp$`);
+
 /** Longer than this waiting for one session's guard is a bug (or a dead disk), not contention. */
 const GUARD_TIMEOUT_MS = 10_000;
 
@@ -93,7 +97,8 @@ export class FileSessionStore extends SessionStore {
   async gc(lifetimeSeconds: number): Promise<number> {
     let removed = 0;
     for (const name of await readdir(this.#directory)) {
-      if (name.endsWith('.guard') || name.endsWith('.guard.break')) continue; // held right now — or left by a crash, cleared by the next writer
+      // Only what this store writes: a session file or a `#create` leftover. The folder may be shared, and the kit tracks a .gitignore in it.
+      if (!SESSION_KEY.test(name) && !OWN_TEMPORARY.test(name)) continue;
       const file = join(this.#directory, name);
       try {
         if ((await stat(file)).mtimeMs + lifetimeSeconds * 1000 < this.#clock.now()) {
