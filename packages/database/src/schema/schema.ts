@@ -98,8 +98,8 @@ export class Schema {
     const blueprint = Schema.#describe(table, build);
     const parts = blueprintParts(blueprint);
     if (parts.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
-    if (parts.drops.length || parts.renames.length || parts.dropIndexes.length || parts.nullability.length || parts.retirements.length) {
-      throw new Error('dropColumn(), renameColumn(), dropIndex(), notNull(), nullable() and retire() only work when changing a table (schema.alter).');
+    if (parts.drops.length || parts.renames.length || parts.dropIndexes.length || parts.nullability.length || parts.retirements.length || parts.dropChecks.length) {
+      throw new Error('dropColumn(), renameColumn(), dropIndex(), dropCheck(), notNull(), nullable() and retire() only work when changing a table (schema.alter).');
     }
     this.#add({ kind: 'create', table, blueprint });
   }

@@ -104,6 +104,7 @@ declare module '@marmeon/database' {
       position: Generated<number>;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
+      kind: Generated<'text' | 'choice'>;
     };
     /**
      * Owned by `user-profile`.

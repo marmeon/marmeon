@@ -37,6 +37,8 @@ export declare class Blueprint {
     dropColumn(name: string): void;
     dropIndex(name: string): void;
     dropUnique(name: string): void;
+    check(name: string, sql: string): void;
+    dropCheck(name: string): void;
     renameColumn(from: string, to: string): void;
     notNull(column: string): void;
     nullable(column: string): void;
@@ -56,6 +58,7 @@ export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never] 
 export declare class Column<T> {
     #private;
     nullable(): Column<T | null>;
+    oneOf<const V extends T & string>(...values: V[]): Column<V | Extract<T, null>>;
     unique(): this;
     primary(): this;
     default(value: T): this;
@@ -360,6 +363,8 @@ export interface ProjectedColumn {
     readonly default: 'value' | 'now' | 'uuidv7' | null;
     readonly secret: boolean;
     readonly retired?: boolean;
+    readonly values?: readonly string[];
+    readonly valuesCheck?: string;
 }
 // ProjectedForeignKey
 export interface ProjectedForeignKey {
@@ -384,6 +389,7 @@ export interface ProjectedTable {
     readonly indexes: readonly ProjectedIndex[];
     readonly foreignKeys: readonly ProjectedForeignKey[];
     readonly markers: readonly TableMarker[];
+    readonly checks?: readonly ProjectedCheck[];
     readonly pivot?: false;
 }
 // ProviderMigrations
@@ -691,6 +697,11 @@ export type OwnedTables<All, Owners, M extends string> = {
 };
 // PageSizes
 type PageSizes<P extends number> = P | readonly [P, ...P[]];
+// ProjectedCheck
+export interface ProjectedCheck {
+    readonly name: string;
+    readonly sql: string;
+}
 // READ_METHODS
 export declare const READ_METHODS: readonly ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynamic', 'isTransaction'];
 // RawStatements

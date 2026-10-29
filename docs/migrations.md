@@ -205,9 +205,9 @@ Every migration runs in a transaction, so `create index concurrently` of Postgre
 
 `Migrator.projection()` computes the schema the migrations describe from their plans alone, without a database and without running
 anything: every table with its columns in order, their types, nullability, defaults and secret marks, its unique column sets, indexes
-and foreign keys (with `onDelete` and `inverse`), its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. It
-replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then renamed columns, new columns, `notNull()`
-and `nullable()` changes (by the column's name after the renames), new indexes, retired columns and last the dropped columns. A retired column stays in it, marked, and is left out of everything Marmeon derives from it except the secret marks. `schema.raw()` and
+and foreign keys (with `onDelete` and `inverse`), the lists of `oneOf()` and the checks of `check()`, its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. It
+replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then dropped checks, renamed columns, new columns, `notNull()`
+and `nullable()` changes (by the column's name after the renames), new checks, new indexes, retired columns and last the dropped columns. A retired column stays in it, marked, and is left out of everything Marmeon derives from it except the secret marks. `schema.raw()` and
 `schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run
 at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
 no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it); dropping such a table is allowed.
@@ -567,6 +567,8 @@ message with its code is on stderr, the exit code is 1.
 | `uuidId(name = 'id')` | `uuid`, primary key, [UUIDv7](#uuid-keys) default | `uuid`, primary key, UUIDv7 default | `string` |
 | `foreignUuid(name)` | `uuid` | `uuid` | `string` |
 
+A `string()` or `text()` column that calls [`oneOf()`](#check-constraints) is read as the union of its values, not as `string`.
+
 Two shortcuts add common columns and mark the table. `timestamps()` adds `created_at` and `updated_at`, both set to the current
 time on insert. `softDeletes()` adds a nullable `deleted_at`. What the marks change is under
 [timestamps and soft deletes](#timestamps-and-soft-deletes). Defining the same column twice throws.
@@ -581,6 +583,7 @@ A column is `NOT NULL` unless you say otherwise:
 | `.default(value)` | A default for inserts. The value must fit the column's type, and a JSON default is a value: `.default({})`. |
 | `.useCurrent()` | On a timestamp: the time of the insert is the default. |
 | `.useUuidv7()` | On a `uuid` column: the database generates a [UUIDv7](#uuid-keys) when an insert gives none. |
+| `.oneOf(...values)` | Holds a string column to a list: a [check constraint](#check-constraints), and the column's type is the union of the values. |
 | `.unique()` | A unique index on this column, named `{table}_{column}_unique`. |
 | `.primary()` | The primary key. |
 | `.secret()` | A column that is never read by accident. See [secret columns](#secret-columns). |
@@ -631,6 +634,56 @@ needs the name the database holds.
 
 The unique index is what keeps a value unique when two requests insert at the same moment. A validation rule only gives the
 friendly message before the insert. The [validation](validation.md#the-unique-index-is-the-truth) page shows both together.
+
+### Check constraints
+
+`oneOf()` holds a string column to a list of values. The database refuses any other value, and `Row<'memberships'>['role']` is the union
+instead of `string`:
+
+```ts title="modules/teams/migrations/2026_10_07_090000_create_memberships_table.ts"
+schema.create('memberships', (table) => {
+  table.id();
+  table.string('role').oneOf('admin', 'member').default('member'); // 'admin' | 'member'
+  table.string('state').nullable().oneOf('invited', 'active');      // 'invited' | 'active' | null
+});
+```
+
+`oneOf()` works on `string()` and `text()` columns, and such a column is read as the union of its values. Each value is a string of 1 to 255 characters, none twice, and none with a NUL character or a backslash; anything else throws when the plan is built. The values are
+written into the statement as quoted literals, so a quote or a semicolon in one is plain text. The constraint is named
+`{table}_{column}_check` (on Postgres at most 63 bytes, like an index name). A `NULL` passes it, so a column that is not
+`nullable()` stays protected by `NOT NULL`. A `oneOf()` column can be added with `schema.alter()` on both drivers; an existing
+row that does not fit stops the migration, which is rolled back.
+
+`table.check(name, sql)` adds a named check constraint of your own, in `create()` and, on Postgres, in `alter()`. `sql` is the condition, in SQL both
+drivers accept; Marmeon does not look into it:
+
+```ts
+schema.create('events', (table) => {
+  table.id();
+  table.timestamp('starts_at');
+  table.timestamp('ends_at');
+  table.check('events_dates_check', 'ends_at >= starts_at');
+});
+```
+
+`table.dropCheck(name)` drops a constraint by its name, in `alter()` and on Postgres. To change a list, drop the check of the column and
+add one with the new condition in the same `alter()`; dropped checks run first:
+
+```ts
+schema.alter('memberships', (table) => {
+  table.dropCheck('memberships_role_check');
+  table.check('memberships_role_check', "role in ('admin', 'member', 'owner')");
+});
+```
+
+A check name is used once per table: `check()` with the name of another check, or of the constraint a `oneOf()` column makes, is error D19. A `check()` that mentions a column
+stops that column from being dropped on SQLite, and on Postgres `dropColumn()` drops the constraint without a word while Marmeon still describes it: drop the check first with `dropCheck()` on Postgres, and rebuild the table with raw SQL on SQLite.
+
+After `dropCheck()` the column is a plain `string` in `Row<…>` again, whatever condition `check()` puts in its place.
+
+SQLite cannot add or drop a constraint of a table in place. `check()` and `dropCheck()` in `alter()` are refused with error D18 before
+the first step of the migration runs. Create the table with the constraint, or rebuild the table with [raw SQL](#raw-sql) in a
+`schema.raw({ sqlite: … })` step, keeping the foreign keys that point at it in mind.
 
 ### UUID keys
 
@@ -733,13 +786,15 @@ export default defineMigration({
 | `table.renameColumn(from, to)` | Renames a column. |
 | `table.dropIndex(name)` | Drops an index by its name. |
 | `table.dropUnique(name)` | Drops a unique index by its name. |
+| `table.check(name, sql)` | Adds a named [check constraint](#check-constraints); in `alter()` on Postgres only, error D18 on SQLite. Works in `create()` too. |
+| `table.dropCheck(name)` | Drops a check constraint by its name. Postgres only, error D18 on SQLite. |
 | `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite. |
 | `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite. |
 | `table.retire(column)` | Takes a column out of use, one release before it is dropped. Changes no statement; see [retiring a column](#retiring-a-column). |
 
-These seven work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
-SQLite changes a table one step at a time. The order is fixed, whatever order you write them in: dropped indexes first, then
-renamed columns, new columns, NOT NULL and nullable changes, new indexes, retired columns, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
+All but `check()` work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
+SQLite changes a table one step at a time. The order is fixed, whatever order you write them in: dropped indexes first, then dropped
+checks, renamed columns, new columns, NOT NULL and nullable changes, new checks, new indexes, retired columns, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
 
@@ -754,6 +809,8 @@ schema.rename('invoices', 'bills', { indexes: true });
 Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
 sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
 yourself first, to a name of your choice. Without the option, `rename` changes the table's name only.
+The names of check constraints (`{table}_{column}_check` of `oneOf()`, and those of `check()`) follow on Postgres. SQLite keeps them as they were, so a later `dropCheck()` there is
+not possible in either case; Marmeon's description follows Postgres.
 
 ## Secret columns
 

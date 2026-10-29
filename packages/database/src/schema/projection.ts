@@ -1,7 +1,7 @@
 import { withCode } from '@marmeon/core/internal';
 import { byCodePoint, type ForeignKey, type Introspected, type SchemaMarker } from '../introspection.ts';
 import { loadMigration, type MigrationSource } from '../migrations/load.ts';
-import { blueprintParts, type Blueprint, type ColumnSpec, type Driver, type TableMarker } from './blueprint.ts';
+import { blueprintParts, oneOfName, type Blueprint, type ColumnSpec, type Driver, type TableMarker } from './blueprint.ts';
 import { planOf, type PlanStep } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -24,6 +24,16 @@ export interface ProjectedColumn {
    * secret. Present only when set, so a projection that retires nothing reads the same as before.
    */
   readonly retired?: boolean;
+  /** The values `oneOf()` holds the column to. Present only when set. */
+  readonly values?: readonly string[];
+  /** The name of the constraint behind {@link values}: the column's name when it was added, so it stays after a rename. Present with `values`. */
+  readonly valuesCheck?: string;
+}
+
+/** A named check constraint a migration added with `check()`. */
+export interface ProjectedCheck {
+  readonly name: string;
+  readonly sql: string;
 }
 
 /** One index as a migration describes it. */
@@ -56,6 +66,8 @@ export interface ProjectedTable {
   readonly foreignKeys: readonly ProjectedForeignKey[];
   /** `timestamps()` and `softDeletes()`. */
   readonly markers: readonly TableMarker[];
+  /** The constraints `check()` added and `dropCheck()` did not drop; the ones of `oneOf()` are on the columns. Present only when there are some. */
+  readonly checks?: readonly ProjectedCheck[];
   /** `false` after `notPivot()`: a table with two unique foreign keys that is a record of its own. Absent otherwise. */
   readonly pivot?: false;
 }
@@ -140,6 +152,7 @@ function signature(table: ProjectedTable): string {
     indexes: sorted(table.indexes, (index) => index.name),
     foreignKeys: sorted(table.foreignKeys, (key) => key.column),
     markers: [...table.markers].toSorted(byCodePoint),
+    checks: table.checks && sorted(table.checks, (check) => check.name),
     pivot: table.pivot,
   });
 }
@@ -256,6 +269,7 @@ function columnOf(spec: ColumnSpec): ProjectedColumn {
     identity: spec.identity,
     default: spec.default ? ('now' in spec.default ? 'now' : 'uuidv7' in spec.default ? 'uuidv7' : 'value') : null,
     secret: spec.secret,
+    ...(spec.oneOf ? { values: [...spec.oneOf], valuesCheck: oneOfName(spec.table, spec.name) } : {}),
   };
 }
 
@@ -263,6 +277,7 @@ function columnOf(spec: ColumnSpec): ProjectedColumn {
 function change(table: ProjectedTable, blueprint: Blueprint, where: string): ProjectedTable {
   const parts = blueprintParts(blueprint);
   let { columns, indexes, foreignKeys, markers } = table;
+  let checks = table.checks ?? [];
   const name = table.name;
   const has = (column: string) => columns.some((c) => c.name === column);
   // A retired column can only be dropped: anything else would change what Marmeon has stopped knowing.
@@ -272,6 +287,18 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
   };
 
   for (const index of parts.dropIndexes) indexes = indexes.filter((other) => other.name !== index);
+
+  for (const dropped of parts.dropChecks) {
+    const column = columns.find((c) => c.valuesCheck === dropped);
+    if (column) {
+      const { values: _values, valuesCheck: _check, ...rest } = column;
+      columns = columns.map((c) => (c === column ? rest : c));
+    } else if (checks.some((check) => check.name === dropped)) {
+      checks = checks.filter((check) => check.name !== dropped);
+    } else {
+      throw unknown(where, `check constraint "${dropped}" of table "${name}"`);
+    }
+  }
 
   for (const { from, to } of parts.renames) {
     live(from, '');
@@ -285,11 +312,21 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
 
   for (const spec of parts.columns) {
     if (has(spec.name)) throw conflict(`${where} adds column "${spec.name}" to "${name}", which has it already.`);
+    if (spec.oneOf && (checks.some((check) => check.name === oneOfName(name, spec.name)) || columns.some((c) => c.valuesCheck === oneOfName(name, spec.name)))) {
+      throw conflict(`${where} makes the check constraint "${oneOfName(name, spec.name)}" of "${name}.${spec.name}" with oneOf(), but the table has one of that name. Drop it with dropCheck() or name the other one differently.`);
+    }
     columns = [...columns, columnOf(spec)];
     if (spec.references) {
       const { table: references, column: referenced, onDelete, inverse } = spec.references;
       foreignKeys = [...foreignKeys, { column: spec.name, references, referenced, ...(onDelete ? { onDelete } : {}),...(inverse ? { inverse } : {}) }];
     }
+  }
+
+  for (const { name: added, sql } of parts.checks) {
+    if (checks.some((check) => check.name === added) || columns.some((c) => c.valuesCheck === added)) {
+      throw conflict(`${where} adds the check constraint "${added}" to "${name}", which has one of that name. Drop it with dropCheck() first.`);
+    }
+    checks = [...checks, { name: added, sql }];
   }
 
   for (const { column } of parts.nullability) live(column, '');
@@ -337,7 +374,8 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     if (MARKER_COLUMNS[column]) markers = markers.filter((m) => m !== MARKER_COLUMNS[column]);
   }
 
-  return { ...table, columns, indexes, foreignKeys, markers: markers.toSorted(byCodePoint), uniques: uniqueSets(columns, indexes), ...(parts.notPivot ? { pivot: false as const } : {}) };
+  const { checks: _before, ...rest } = table;
+  return { ...rest, columns, indexes, foreignKeys, markers: markers.toSorted(byCodePoint), uniques: uniqueSets(columns, indexes), ...(checks.length ? { checks } : {}), ...(parts.notPivot ? { pivot: false as const } : {}) };
 }
 
 /** The primary key, and every unique index, as column sets without a repeated one. */
@@ -359,9 +397,13 @@ function rename(tables: Map<string, ProjectedTable>, from: string, to: string, i
   if (!table) throw unknown(where, `table "${from}"`);
   if (tables.has(to)) throw conflict(`${where} renames "${from}" to "${to}", which is the name of another table.`);
   const prefix = `${from}_`;
-  const renamed = indexes ? table.indexes.map((i) => (i.name.startsWith(prefix) ? { ...i, name: `${to}_${i.name.slice(prefix.length)}` } : i)) : table.indexes;
+  const again = (name: string) => (name.startsWith(prefix) ? `${to}_${name.slice(prefix.length)}` : name);
+  const renamed = indexes ? table.indexes.map((i) => ({ ...i, name: again(i.name) })) : table.indexes;
+  // Postgres renames its constraints with the indexes; SQLite has the names it had.
+  const columns = indexes ? table.columns.map((c) => (c.valuesCheck ? { ...c, valuesCheck: again(c.valuesCheck) } : c)) : table.columns;
+  const checks = indexes && table.checks ? table.checks.map((check) => ({ ...check, name: again(check.name) })) : table.checks;
   tables.delete(from);
-  tables.set(to, { ...table, name: to, indexes: renamed });
+  tables.set(to, { ...table, name: to, indexes: renamed, columns, ...(checks ? { checks } : {}) });
   for (const [name, other] of tables) {
     if (!other.foreignKeys.some((k) => k.references === from)) continue;
     tables.set(name, { ...other, foreignKeys: other.foreignKeys.map((k) => (k.references === from ? { ...k, references: to } : k)) });

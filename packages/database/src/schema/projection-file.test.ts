@@ -163,6 +163,27 @@ describe('the schema projection file', () => {
     expect(parseProjectionFile(JSON.stringify(file))?.tables.users?.pivot).toBe(false);
   });
 
+  it('reads a list and a check, refuses a malformed one, and reads the file of an app without any as before', () => {
+    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
+    expect(parseProjectionFile(JSON.stringify(file))).toBeDefined();
+    const column = { ...file.tables.users.columns[0], values: ['a', 'b'], valuesCheck: 'users_id_check' };
+    const withList = { ...file, tables: { users: { ...file.tables.users, columns: [column], checks: [{ name: 'c', sql: 'true' }] } } };
+    expect(parseProjectionFile(JSON.stringify(withList))?.tables.users?.checks).toEqual([{ name: 'c', sql: 'true' }]);
+    const bad = (change: (users: Record<string, any>) => void) => {
+      const copy = structuredClone(withList);
+      change(copy.tables.users);
+      return parseProjectionFile(JSON.stringify(copy));
+    };
+    expect(bad((users) => (users.columns[0].values = [1]))).toBeUndefined();
+    expect(bad((users) => (users.columns[0].values = []))).toBeUndefined();
+    expect(bad((users) => (users.columns[0].values = ['']))).toBeUndefined();
+    expect(bad((users) => delete users.columns[0].valuesCheck)).toBeUndefined();
+    expect(bad((users) => delete users.columns[0].values)).toBeUndefined();
+    expect(bad((users) => (users.columns[0].valuesCheck = 1))).toBeUndefined();
+    expect(bad((users) => (users.checks = [{ name: 'c' }]))).toBeUndefined();
+    expect(bad((users) => (users.checks = 'c'))).toBeUndefined();
+  });
+
   it('keeps the projection in memory whatever stops the write, a file where the directory should be included', async () => {
     forgetProjections();
     const { root, files } = app(create('users'));

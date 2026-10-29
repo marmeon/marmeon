@@ -2,7 +2,7 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
-import { Blueprint, blueprintParts, compileColumn, type Driver } from './blueprint.ts';
+import { Blueprint, blueprintParts, compileColumn, oneOfName, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -77,7 +77,7 @@ export async function executePlan(
 function fits(driver: Driver, name: string, what: string): void {
   if (driver !== 'pgsql' || Buffer.byteLength(name) <= 63) return;
   throw new SchemaError(
-    withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. Give it a name of its own that fits (for an index: table.index(columns, 'name')).`),
+    withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead).`),
   );
 }
 
@@ -86,6 +86,18 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
     for (const index of step.blueprint.allIndexes()) fits(driver, index.name, 'index name');
     const parts = blueprintParts(step.blueprint);
+    for (const spec of parts.columns) if (spec.oneOf) fits(driver, oneOfName(step.table, spec.name), 'check constraint name');
+    for (const { name } of parts.checks) fits(driver, name, 'check constraint name');
+    if (step.kind === 'alter' && driver === 'sqlite' && (parts.checks.length || parts.dropChecks.length)) {
+      const call = parts.checks.length ? `check('${parts.checks[0]!.name}', …)` : `dropCheck('${parts.dropChecks[0]}')`;
+      throw new SchemaError(
+        withCode(
+          'D18',
+          `schema.alter('${step.table}') cannot use ${call} on SQLite: SQLite cannot add or drop a constraint of a table in place. ` +
+            'Create the table with the constraint, or rebuild it in raw SQL (schema.raw()). See docs/migrations.md#check-constraints.',
+        ),
+      );
+    }
     if (step.kind === 'alter' && driver === 'sqlite' && parts.nullability.length) {
       const { column, nullable } = parts.nullability[0]!;
       throw new SchemaError(
@@ -141,6 +153,7 @@ async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pr
   const parts = blueprintParts(blueprint);
   let builder = db.schema.createTable(blueprint.table);
   for (const spec of parts.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver));
+  for (const { name, sql: condition } of parts.checks) builder = builder.addCheckConstraint(name, sql.raw(condition));
   await builder.execute();
   await createIndexes(db, blueprint);
 }
@@ -150,6 +163,7 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pro
   const parts = blueprintParts(blueprint);
   const table = blueprint.table;
   for (const name of parts.dropIndexes) await db.schema.dropIndex(name).execute();
+  for (const name of parts.dropChecks) await db.schema.alterTable(table).dropConstraint(name).execute();
   for (const { from, to } of parts.renames) {
     await db.schema.alterTable(table).renameColumn(from, to).execute();
   }
@@ -157,6 +171,7 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pro
   for (const { column, nullable } of parts.nullability) {
     await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
   }
+  for (const { name, sql: condition } of parts.checks) await db.schema.alterTable(table).addCheckConstraint(name, sql.raw(condition)).execute();
   await createIndexes(db, blueprint);
   for (const column of parts.drops) await db.schema.alterTable(table).dropColumn(column).execute();
 }
