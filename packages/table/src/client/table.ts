@@ -204,7 +204,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
     const data = this.#data;
     const found = data.filters.find((entry) => entry.name === name);
     if (!found) refuse('[marmeon:C10]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" has no filter "${String(name)}" — it has ${list(data.filters.map((entry) => entry.name))}.`);
-    if (value !== null && value !== '' && found.type === 'select' && !found.options.includes(value)) {
+    if (value !== null && value !== '' && (found.type === 'select' || found.type === 'has') && !found.options.includes(value)) {
       refuse('[marmeon:C10]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The filter "${found.name}" of the table "${data.name}" takes ${list(found.options)} — not "${value}".`);
     }
     return found;

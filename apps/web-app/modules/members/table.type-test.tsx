@@ -61,7 +61,7 @@ describe('useTable — typed by the props', () => {
   it('names the columns, the sortable ones and the row', () => {
     type Table = ReturnType<typeof useTable<Members>>;
     expectTypeOf<Parameters<Table['sort']>[0]>().toEqualTypeOf<'name' | 'email' | 'joined' | 'links'>();
-    expectTypeOf<Parameters<Table['filter']>[0]>().toEqualTypeOf<'joined' | 'locale'>();
+    expectTypeOf<Parameters<Table['filter']>[0]>().toEqualTypeOf<'joined' | 'locale' | 'link'>();
     expectTypeOf<Parameters<Table['exportUrl']>[0]>().toEqualTypeOf<'csv'>();
   });
 });

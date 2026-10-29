@@ -91,8 +91,10 @@ function parseKey(definition: TableDefinition, key: string, raw: unknown): strin
     const name = key.slice(keys.filterPrefix.length, -1);
     const found = Object.hasOwn(definition.filters, name) ? definition.filters[name] : undefined;
     if (!found) throw new TableQueryError(`${key}: the table "${definition.name}" has no such filter.`);
-    if (found.type === 'select') {
-      if (!found.options.includes(value)) throw new TableQueryError(`${key}: one of its options.`);
+    if (found.type === 'select' || found.type === 'has') {
+      // Options computed for each request are checked against that request's list (`checkState`); here only their shape.
+      const allowed = found.source ? undefined : found.options;
+      if (allowed ? !allowed.includes(value) : value.length === 0 || value.length > 100) throw new TableQueryError(`${key}: one of its options.`);
       return value;
     }
     const [from = '', to = '', ...rest] = value.split('..');

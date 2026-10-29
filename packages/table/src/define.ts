@@ -1,5 +1,5 @@
 import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@marmeon/auth';
-import type { ColumnReference, Database, ReferencedType, SecretReference, SelectQuery } from '@marmeon/database';
+import type { ColumnReference, Database, ReferencedType, RelationName, Relations, SecretReference, SelectQuery } from '@marmeon/database';
 import type { ClassResolver, HttpContext, InferInput, InferOutput, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { Rule } from '@marmeon/validation';
 import type { TableData } from './client/index.ts';
@@ -119,40 +119,123 @@ export function column<const R extends string>(ref: R): ColumnDefinition<R, fals
 
 // --- Filters ---------------------------------------------------------------------------------------------------------------
 
+/** One value a filter allows, with the text shown for it. */
+export interface FilterOption<V extends string = string> {
+  readonly value: V;
+  readonly label: string;
+}
+
+/** The options a filter lists: plain values, or values with their labels. */
+export type FilterOptions<O extends string = string> = readonly (O | FilterOption<O>)[];
+
+/**
+ * Options computed for each request — `(resolve, ctx) => …`, with the request's own `ctx`. The URL then takes any value this list
+ * holds for **this request** and nothing else (a 400), so the function has to scope by the tenant the way the table's query does.
+ */
+export type FilterOptionsSource = (resolve: ClassResolver, ctx: any) => FilterOptions | Promise<FilterOptions>;
+
+/**
+ * @internal — the values and labels of a list, rebuilt from the named fields only (an extra field of an option, such as a spread
+ * row, never reaches the props). A label is the value when none is given.
+ */
+export function normalizeOptions(label: string, options: unknown): { readonly values: string[]; readonly labels: string[] } {
+  const values: string[] = [];
+  const labels: string[] = [];
+  const fail = () => new TypeError(`${label}: strings, or { value, label } objects, of 1 to 100 characters.`);
+  if (!Array.isArray(options)) throw fail();
+  for (const option of options as unknown[]) {
+    const value = typeof option === 'string' ? option : typeof option === 'object' && option !== null ? (option as FilterOption).value : undefined;
+    const text = typeof option === 'string' ? option : (option as FilterOption).label;
+    if (typeof value !== 'string' || value.length === 0 || value.length > 100 || typeof text !== 'string') throw fail();
+    values.push(value);
+    labels.push(text);
+  }
+  return { values, labels };
+}
+
 /** A filter of the table — its key in `filters` is its name in the URL (`?filter[role]=admin`). */
-export class Filter<R extends string = string, T extends 'select' | 'dateRange' = 'select' | 'dateRange', O extends string = string> {
+export class Filter<R extends string = string, T extends 'select' | 'dateRange' | 'has' = 'select' | 'dateRange' | 'has', O extends string = string, C extends string = string> {
   readonly ref: R;
   readonly type: T;
+  /** The values it allows — none for a date range, and none here when the options are computed for each request. */
   readonly options: readonly O[];
+  /** @internal — the text shown for each of `options`. */
+  readonly labels: readonly string[];
+  /** @internal — computes the options for each request. */
+  readonly source: FilterOptionsSource | undefined;
   /** @internal */
   readonly visibility: TableVisibility | undefined;
+  /** @internal — `has`: the column of the related table the value is compared with. */
+  readonly column: C | undefined;
 
   /** @internal */
-  constructor(ref: R, type: T, options: readonly O[], visibility?: TableVisibility) {
-    if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) throw new TypeError(`filter.${type}(${JSON.stringify(ref)}): a column of the query.`);
-    if (type === 'select' && (options.length === 0 || !options.every((option) => typeof option === 'string' && option.length > 0 && option.length <= 100))) {
-      throw new TypeError(`filter.select('${ref}', options): one or more non-empty strings.`);
+  constructor(ref: R, type: T, options: FilterOptions<O> | FilterOptionsSource, visibility?: TableVisibility, column?: C) {
+    const pattern = type === 'has' ? /^[A-Za-z_]\w*$/ : /^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/;
+    if (typeof ref !== 'string' || !pattern.test(ref)) {
+      throw new TypeError(`filter.${type}(${JSON.stringify(ref)}): ${type === 'has' ? 'a relation of the query\'s table' : 'a column of the query'}.`);
+    }
+    if (column !== undefined && (type !== 'has' || typeof column !== 'string' || !/^[A-Za-z_]\w*$/.test(column))) {
+      throw new TypeError(`filter.${type}('${ref}'): "column" is a column of the related table, for filter.has() only.`);
     }
     this.ref = ref;
     this.type = type;
-    this.options = options;
     this.visibility = visibility;
+    this.column = column;
+    if (typeof options === 'function') {
+      this.options = [];
+      this.labels = [];
+      this.source = options;
+    } else if (type === 'dateRange') {
+      this.options = [];
+      this.labels = [];
+      this.source = undefined;
+    } else {
+      const given = normalizeOptions(`filter.${type}('${ref}', options)`, options);
+      if (given.values.length === 0) throw new TypeError(`filter.${type}('${ref}', options): one or more options.`);
+      this.options = given.values as O[];
+      this.labels = given.labels;
+      this.source = undefined;
+    }
   }
 
   /** Offers the filter only when the policy (or the check) says so — otherwise using it is refused (400). */
-  visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O>;
-  visible(check: TableVisibilityCheck): Filter<R, T, O>;
-  visible(...args: unknown[]): Filter<R, T, O> {
-    return new Filter(this.ref, this.type, this.options, visibility(args, `filter.${this.type}('${this.ref}')`));
+  visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O, C>;
+  visible(check: TableVisibilityCheck): Filter<R, T, O, C>;
+  visible(...args: unknown[]): Filter<R, T, O, C> {
+    const copy = new Filter<R, T, O, C>(this.ref, this.type, this.source ?? this.#given(), visibility(args, `filter.${this.type}('${this.ref}')`), this.column);
+    return copy;
+  }
+
+  #given(): FilterOptions<O> {
+    return this.options.map((value, index) => ({ value, label: this.labels[index]! }));
   }
 }
 
-/** The filters a table offers: `filter.select()` and `filter.dateRange()`. See docs/tables.md#filters. */
+/** One of `options`: `?filter[role]=admin` → `role = 'admin'`. Anything else is a 400. */
+function selectFilter<const R extends string, const O extends string>(ref: R, options: readonly [O | FilterOption<O>, ...(O | FilterOption<O>)[]]): Filter<R, 'select', O>;
+/** One of the options `options` computes for the request (`(resolve, ctx) => […]`): any other value is a 400. */
+function selectFilter<const R extends string>(ref: R, options: FilterOptionsSource): Filter<R, 'select', string>;
+function selectFilter(ref: string, options: FilterOptions | FilterOptionsSource): Filter<string, 'select', string> {
+  return new Filter(ref, 'select', options);
+}
+
+/**
+ * The rows that have a related row whose `column` (default `id`) is the value: `?filter[team]=3` → `whereHas('members', …)`. `relation`
+ * is a relation of the query's table and `column` one of the related table's (both checked against the schema); the value must be one
+ * of `options` (a list, or a function computing it for the request), so the URL never reaches a related row the request may not choose.
+ */
+function hasFilter<const R extends string, const O extends string>(relation: R, options: readonly [O | FilterOption<O>, ...(O | FilterOption<O>)[]]): Filter<R, 'has', O, 'id'>;
+function hasFilter<const R extends string, const O extends string, const C extends string>(relation: R, options: readonly [O | FilterOption<O>, ...(O | FilterOption<O>)[]], settings: { readonly column: C }): Filter<R, 'has', O, C>;
+function hasFilter<const R extends string>(relation: R, options: FilterOptionsSource): Filter<R, 'has', string, 'id'>;
+function hasFilter<const R extends string, const C extends string>(relation: R, options: FilterOptionsSource, settings: { readonly column: C }): Filter<R, 'has', string, C>;
+function hasFilter(relation: string, options: FilterOptions | FilterOptionsSource, settings: { readonly column?: string } = {}): Filter<string, 'has', string, string> {
+  return new Filter(relation, 'has', options, undefined, settings.column);
+}
+
+/** The filters a table offers: `filter.select()`, `filter.dateRange()` and `filter.has()`. See docs/tables.md#filters. */
 export const filter = {
-  /** One of `options`: `?filter[role]=admin` → `role = 'admin'`. Anything else is a 400. */
-  select<const R extends string, const O extends string>(ref: R, options: readonly [O, ...O[]]): Filter<R, 'select', O> {
-    return new Filter(ref, 'select', options);
-  },
+  select: selectFilter,
+  has: hasFilter,
   /** A range of days, both ends included: `?filter[joined]=2026-01-01..2026-03-31` (either end may be empty: `2026-01-01..`). */
   dateRange<const R extends string>(ref: R): Filter<R, 'dateRange', never> {
     return new Filter(ref, 'dateRange', []);
@@ -376,7 +459,7 @@ export function exportCsv(): TableExport {
 /** Any column definition. */
 export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
 /** Any filter. */
-export type AnyFilter = Filter<string, 'select' | 'dateRange', string>;
+export type AnyFilter = Filter<string, 'select' | 'dateRange' | 'has', string, string>;
 /** Any row action. */
 export type AnyRowAction = RowAction<RowActionClass, any, string, any>;
 /** Any bulk action. */
@@ -462,7 +545,7 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
 type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
 type SizesOf<Pg> = Pg extends { readonly perPage: infer S } ? (S extends readonly (infer N)[] ? N : S) : 25 | 50 | 100;
 type SearchableNames<Cols> = { [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, boolean, true> ? A : never }[keyof Cols];
-type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
+type FilterValue<F> = F extends Filter<string, 'select' | 'has', infer O> ? O : string;
 
 /** The parsed query of a table — what `ctx.query` and `useQueryState` hold for its keys. */
 export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<
@@ -526,9 +609,25 @@ export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
       : unknown;
 };
 
+/** The table a relation of the query's tables leads to. */
+type RelatedTable<DB, TB extends keyof DB, R extends string> = {
+  [T in TB]: T extends keyof Relations ? (R extends keyof Relations[T] ? (Relations[T][R] extends { readonly table: infer X extends keyof DB } ? X : never) : never) : never;
+}[TB];
+
+/** `filter.has()` names a relation of the query's tables and a column of the related table (a secret one is refused, in the types and when the table is loaded). */
+type HasProblem<DB, TB extends keyof DB, R extends string, C extends string> = R extends RelationName<DB, TB>
+  ? C extends keyof DB[RelatedTable<DB, TB, R>] & string
+    ? C extends SecretReference<DB, RelatedTable<DB, TB, R>>
+      ? Problem<`'${C}' is a secret column of '${RelatedTable<DB, TB, R> & string}' — a table never reads it (its migration marked it .secret())`>
+      : unknown
+    : Problem<`'${C}' is no column of the table '${RelatedTable<DB, TB, R> & string}' that '${R}' leads to — name one: filter.has('${R}', options, { column: … })`>
+  : Problem<`'${R}' is no relation of the query's tables — it has ${RelationName<DB, TB>}`>;
+
 /** Every filter must read a column of the query's tables — not a value the query selects, which its `WHERE` cannot see. */
 export type CheckFilters<DB, TB extends keyof DB, Filters, O = {}> = {
-  [N in keyof Filters]: Filters[N] extends Filter<infer R extends string>
+  [N in keyof Filters]: Filters[N] extends Filter<infer R extends string, 'has', string, infer C extends string>
+    ? HasProblem<DB, TB, R, C>
+    : Filters[N] extends Filter<infer R extends string>
     ? R extends Selected<DB, TB, O>
       ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE)`>
       : [ColumnProblem<DB, TB, R>] extends [never]

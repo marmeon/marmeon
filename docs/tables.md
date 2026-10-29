@@ -116,10 +116,56 @@ Filters are an allowlist too:
 | Filter | URL |
 | --- | --- |
 | `filter.select(column, options)` | `?filter[locale]=de`. Anything but one of `options` is a 400. |
+| `filter.has(relation, options)` | `?filter[team]=3`. The rows that have a related row with that value, see [below](#filtering-by-a-relation). |
 | `filter.dateRange(column)` | `?filter[joined]=2026-01-01..2026-03-31`, both days included. Either end may be empty. |
 
 A filter takes `.visible(…)` like a column. A filter on the column of a hidden column is hidden with it, because the number of rows
 it leaves would tell that column's values.
+
+An option is a text, or `{ value, label }` when the browser should show another text than the value. `filter.select()` and
+`filter.has()` send the values in the props (`filters[].options`) and the texts beside them (`filters[].labels`, the same length;
+the value itself where no label was given). Only the value and the label are sent: whatever else an option object carries, such
+as a spread row, stays on the server.
+
+#### Filtering by a relation
+
+`filter.has(relation, options)` keeps the rows of the base query that have a related row whose column is the value, like
+[`whereHas()`](queries.md#filtering-by-relations): guests of a category, members of a team.
+
+```ts
+filters: {
+  category: filter.has('category', [{ value: '1', label: 'Speakers' }, { value: '2', label: 'Press' }]),
+  label: filter.has('profile_links', ['website', 'blog'], { column: 'label' }),
+},
+```
+
+`relation` is a relation of the query's table, and `column` (default `id`) a column of the related table. Both are checked
+against the schema: in the types (a relation the query's tables do not have, or a column the related table lacks, is a compile
+error), and again when the table is first used (an error on its first request, whatever the URL carries). The column is
+compared with its table's name, so it can never be a column of the outer row. A secret column of the related table is refused, as in a column of the table itself. Both come from the definition, never from the URL,
+so the URL can only choose one of the `options`. The value is a bound parameter, and the filter is
+one more `AND` on the base query, so it narrows what the query returns and never widens it. It reads no column of the table, so
+the rule above does not apply to it, but `.visible(…)` does.
+
+#### Options for each request
+
+Options that differ per request, such as the categories of this event, are a function of the request's `resolve` and `ctx`:
+
+```ts
+filters: {
+  category: filter.has('category', async (resolve, ctx: TableContext<Authenticated, { event: Row<'events'> }>) => {
+    const categories = await resolve(CategoryRepository).query().where('event_id', '=', ctx.params.event.id).execute();
+    return categories.map((category) => ({ value: String(category.id), label: category.name }));
+  }),
+},
+```
+
+The function runs once for a request, after the table's `authorize` and after the URL is parsed, and the URL then takes only a value
+from its list: any other value is a **400** (`TableQueryError`) before the table is read, in a page, an export and "all matching"
+alike. It does not say whether the value exists elsewhere. The function has to scope by the tenant like the base query does,
+because a list of another tenant's values would make them valid choices. In the types, the URL value of such a filter is a
+`string`, where a list in the definition makes it a union. Only the table checks a value against the options: a controller that
+reads `ctx.query['filter[x]']` itself gets a value that was only checked for its shape, so it must not trust it.
 
 ### Sorting and pages
 
@@ -218,7 +264,7 @@ them: an export reads the whole filtered table. The [rate limiting](rate-limitin
   rows: [{ id: 7, name: 'Ada', joined: '2026-01-10T09:00:00.000Z', can: { removeLinks: true } }, …],
   sort: { column: 'name', direction: 'asc' },
   search: { value: '' },
-  filters: [{ name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], value: null }, …],
+  filters: [{ name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], labels: ['en', 'de'], value: null }, …],
   page: { type: 'offset', page: 1, perPage: 10, perPageOptions: [10, 25, 50], total: 42, lastPage: 5, from: 1, to: 10 },
   query: { sort: 'sort', page: 'page', perPage: 'per_page', cursor: 'cursor', search: 'search' },
   state: { sort: '-joined', 'filter[locale]': 'de' },
@@ -235,7 +281,7 @@ them: an export reads the whole filtered table. The [rate limiting](rate-limitin
 - `state` is the table's state in the URL, without defaults.
 - Actions, bulk actions and exports the user may not use are not in the props at all.
 
-**The kinds are open.** `filters[].type` (now `select` and `dateRange`), `page.type` (`offset` and `cursor`) and `exports[].format`
+**The kinds are open.** `filters[].type` (now `select`, `has` and `dateRange`), `page.type` (`offset` and `cursor`) and `exports[].format`
 (`csv`) grow: a new kind is a minor release, never a breaking change. Code that branches on one of them needs a `default` branch
 for a kind it does not know. `useTable` and `toTanStack` render a kind they do not know without throwing; `goTo()` and `next()` refuse a page kind they do not
 page, as they refuse a page that does not exist.
@@ -251,7 +297,7 @@ Other query schemas [fall back per field](requests.md#how-a-query-is-parsed): a 
 does not. Each of these is a **400**:
 
 - a sort that is not offered, or a raw column name: `?sort=password`, `?sort=created_at` instead of `joined`,
-- a filter that does not exist, `?filter[password]=x`, or a value its filter does not offer,
+- a filter that does not exist, `?filter[password]=x`, or a value its filter does not offer (for options computed per request: not in this request's list),
 - a page size that is not in `perPage`, `?per_page=10000`, or a page that is no whole number,
 - a repeated key, or a search longer than 100 characters,
 - sorting by a column the user cannot see, or a filter the user cannot see,
@@ -447,6 +493,7 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | A hidden column read anyway, in the props, the devtools' query log, a cursor or the CSV | Two measures: the **projection** selects only the visible columns and the key, so the column is not in the SQL, and the **props** pick only the visible columns by name, even when the base query selects more. |
 | Sorting by a column you may not see: the order alone tells its values | The **allowlist**: a sort, a filter, a search or a page size the definition does not offer is a 400, never a fallback. Sorting or filtering by a hidden column is a 400 too, and the search never looks into one. |
 | Another tenant's rows | The **base query**: a row action looks its row up there, a bulk action intersects with it, an export reads from it. |
+| A related row of another tenant chosen through a filter, its existence told by the count | `filter.has()` takes only the table's declared relation and column, binds the value, and accepts a value of the **options of this request** only (a 400 otherwise). The options function scopes like the base query. |
 | An endpoint without the page's protection | `tableRoutes()` runs on the **page's registrar**, with its middleware. A registrar without what the base query needs does not compile. |
 | An action or export open to anyone who sees the table | On a registrar whose checks are all `everyone`, nothing decides who may act on a row key sent in a body: `tableRoutes()` refuses to load a row action, bulk action or export without `.authorize()`. |
 | A value the action does not expect: a status that is none, a category of another event | `.input()`: the schema validates the body's `input` **before any row is read**, with the request's `resolve` and `ctx`, so an `exists` can be limited to the request. An `input` for an action without a schema is a 422. |

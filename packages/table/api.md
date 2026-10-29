@@ -14,7 +14,7 @@ export type AnyBulkAction = BulkAction<BulkActionClass, any, string, any>;
 // AnyColumn
 export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
 // AnyFilter
-export type AnyFilter = Filter<string, 'select' | 'dateRange', string>;
+export type AnyFilter = Filter<string, 'select' | 'dateRange' | 'has', string, string>;
 // AnyRowAction
 export type AnyRowAction = RowAction<RowActionClass, any, string, any>;
 // BulkAction
@@ -51,7 +51,7 @@ export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
 };
 // CheckFilters
 export type CheckFilters<DB, TB extends keyof DB, Filters, O = {}> = {
-    [N in keyof Filters]: Filters[N] extends Filter<infer R extends string> ? R extends Selected<DB, TB, O> ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE)`> : [ColumnProblem<DB, TB, R>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R>> : unknown;
+    [N in keyof Filters]: Filters[N] extends Filter<infer R extends string, 'has', string, infer C extends string> ? HasProblem<DB, TB, R, C> : Filters[N] extends Filter<infer R extends string> ? R extends Selected<DB, TB, O> ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE)`> : [ColumnProblem<DB, TB, R>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R>> : unknown;
 };
 // CheckRequestAbility
 export type CheckRequestAbility<P, K extends string> = string extends K ? ResourcelessAbility<P> : K extends ResourcelessAbility<P> ? K : K extends AbilityOf<P> ? `'${K}' takes a resource — this is asked once per request: name an ability without one (rows are asked by .authorize())` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
@@ -150,13 +150,23 @@ export declare class DataTables {
     resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
 }
 // Filter
-export declare class Filter<R extends string = string, T extends 'select' | 'dateRange' = 'select' | 'dateRange', O extends string = string> {
+export declare class Filter<R extends string = string, T extends 'select' | 'dateRange' | 'has' = 'select' | 'dateRange' | 'has', O extends string = string, C extends string = string> {
+    #private;
     readonly ref: R;
     readonly type: T;
     readonly options: readonly O[];
-    visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O>;
-    visible(check: TableVisibilityCheck): Filter<R, T, O>;
+    visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O, C>;
+    visible(check: TableVisibilityCheck): Filter<R, T, O, C>;
 }
+// FilterOption
+export interface FilterOption<V extends string = string> {
+    readonly value: V;
+    readonly label: string;
+}
+// FilterOptions
+export type FilterOptions<O extends string = string> = readonly (O | FilterOption<O>)[];
+// FilterOptionsSource
+export type FilterOptionsSource = (resolve: ClassResolver, ctx: any) => FilterOptions | Promise<FilterOptions>;
 // OffsetPage
 export interface OffsetPage {
     readonly type: 'offset';
@@ -269,6 +279,14 @@ export type TableFilter<F extends string = string> = {
     readonly type: 'select';
     readonly key: string;
     readonly options: readonly string[];
+    readonly labels: readonly string[];
+    readonly value: string | null;
+} | {
+    readonly name: F;
+    readonly type: 'has';
+    readonly key: string;
+    readonly options: readonly string[];
+    readonly labels: readonly string[];
     readonly value: string | null;
 } | {
     readonly name: F;
@@ -348,7 +366,8 @@ export declare function defineTable<const Cols extends Record<string, AnyColumn>
 export declare function exportCsv(): TableExport;
 // filter
 export declare const filter: {
-    select<const R extends string, const O extends string>(ref: R, options: readonly [O, ...O[]]): Filter<R, 'select', O>;
+    select: typeof selectFilter;
+    has: typeof hasFilter;
     dateRange<const R extends string>(ref: R): Filter<R, 'dateRange', never>;
 };
 // readCsv
@@ -377,11 +396,13 @@ type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends 
 // DbOf
 type DbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, any, any> ? DB : never;
 // FilterValue
-type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
+type FilterValue<F> = F extends Filter<string, 'select' | 'has', infer O> ? O : string;
 // HandlerProblem
 type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
     handle(first: infer First, ...rest: any[]): unknown;
 } ? (Bulk extends true ? readonly Row[] : Row) extends First ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}` : never;
+// HasProblem
+type HasProblem<DB, TB extends keyof DB, R extends string, C extends string> = R extends RelationName<DB, TB> ? C extends keyof DB[RelatedTable<DB, TB, R>] & string ? C extends SecretReference<DB, RelatedTable<DB, TB, R>> ? Problem<`'${C}' is a secret column of '${RelatedTable<DB, TB, R> & string}' — a table never reads it (its migration marked it .secret())`> : unknown : Problem<`'${C}' is no column of the table '${RelatedTable<DB, TB, R> & string}' that '${R}' leads to — name one: filter.has('${R}', options, { column: … })`> : Problem<`'${R}' is no relation of the query's tables — it has ${RelationName<DB, TB>}`>;
 // InputProblem
 type InputProblem<H, S, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
     handle: (...args: infer Args) => unknown;
@@ -430,6 +451,12 @@ export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<([Sort
 }>;
 // RegistrarContext
 type RegistrarContext<R> = R extends Route<infer TState, infer TParams, infer TBindings> ? Omit<HttpContext<TState, Omit<TParams, keyof TBindings> & TBindings>, 'query'> : never;
+// RelatedTable
+type RelatedTable<DB, TB extends keyof DB, R extends string> = {
+    [T in TB]: T extends keyof Relations ? (R extends keyof Relations[T] ? (Relations[T][R] extends {
+        readonly table: infer X extends keyof DB;
+    } ? X : never) : never) : never;
+}[TB];
 // RowOf
 type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<{
     readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]>;
@@ -478,6 +505,18 @@ export type TableQueryValues = {
 type TbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
 // ValueOf
 type ValueOf<DB, TB extends keyof DB, O, C> = C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ReferencedType<DB, TB, R>) : never;
+// hasFilter
+declare function hasFilter<const R extends string, const O extends string>(relation: R, options: readonly [O | FilterOption<O>, ...(O | FilterOption<O>)[]]): Filter<R, 'has', O, 'id'>;
+declare function hasFilter<const R extends string, const O extends string, const C extends string>(relation: R, options: readonly [O | FilterOption<O>, ...(O | FilterOption<O>)[]], settings: {
+    readonly column: C;
+}): Filter<R, 'has', O, C>;
+declare function hasFilter<const R extends string>(relation: R, options: FilterOptionsSource): Filter<R, 'has', string, 'id'>;
+declare function hasFilter<const R extends string, const C extends string>(relation: R, options: FilterOptionsSource, settings: {
+    readonly column: C;
+}): Filter<R, 'has', string, C>;
+// selectFilter
+declare function selectFilter<const R extends string, const O extends string>(ref: R, options: readonly [O | FilterOption<O>, ...(O | FilterOption<O>)[]]): Filter<R, 'select', O>;
+declare function selectFilter<const R extends string>(ref: R, options: FilterOptionsSource): Filter<R, 'select', string>;
 ```
 
 ## `@marmeon/table/client`
@@ -645,6 +684,14 @@ export type TableFilter<F extends string = string> = {
     readonly type: 'select';
     readonly key: string;
     readonly options: readonly string[];
+    readonly labels: readonly string[];
+    readonly value: string | null;
+} | {
+    readonly name: F;
+    readonly type: 'has';
+    readonly key: string;
+    readonly options: readonly string[];
+    readonly labels: readonly string[];
     readonly value: string | null;
 } | {
     readonly name: F;

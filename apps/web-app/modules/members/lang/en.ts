@@ -6,6 +6,8 @@ const en = {
   search: 'Search members',
   locale: 'Language',
   locale_option: '{locale, select, en {English} de {German} other {Any}}',
+  link: 'Links to what I link to',
+  link_any: 'Anyone',
   joined_from: 'Joined from',
   joined_to: 'Joined until',
   per_page: 'Per page',

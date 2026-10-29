@@ -51,6 +51,7 @@ export default function Index({ members }: Props) {
   const setLocale = table.bulk.find((entry) => entry.name === 'setLocale');
   const csv = table.exports.find((entry) => entry.name === 'csv');
   const filters = Object.fromEntries(table.filters.map((entry) => [entry.name, entry]));
+  const link = filters.link;
   const [joinedFrom = '', joinedTo = ''] = (filters.joined?.value ?? '').split('..');
   // The form's fields are the page's state: after "Reset" or Back (the page stays mounted) they show it again. The others are new
   // fields per state (their `key`); the search field follows unless it is being typed into — its own visits bring what was typed.
@@ -69,7 +70,7 @@ export default function Index({ members }: Props) {
     if (size !== table.page.perPage) table.perPage(size);
     const from = String(form.get('joined_from') ?? '');
     const to = String(form.get('joined_to') ?? '');
-    table.filterBy({ locale: String(form.get(filters.locale?.key ?? '') ?? '') || null, joined: from || to ? `${from}..${to}` : null });
+    table.filterBy({ locale: String(form.get(filters.locale?.key ?? '') ?? '') || null, link: String(form.get(filters.link?.key ?? '') ?? '') || null, joined: from || to ? `${from}..${to}` : null });
   };
 
   const report = (outcome: TableRunOutcome) => {
@@ -108,6 +109,19 @@ export default function Index({ members }: Props) {
               {filters.locale.options.map((option) => (
                 <option key={option} value={option}>
                   {t('locale_option', { locale: option })}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {link?.type === 'has' && link.options.length > 0 && (
+          <label>
+            {t('link')}{' '}
+            <select key={link.value ?? ''} name={link.key} defaultValue={link.value ?? ''}>
+              <option value="">{t('link_any')}</option>
+              {link.options.map((option, index) => (
+                <option key={option} value={option}>
+                  {link.labels[index]}
                 </option>
               ))}
             </select>

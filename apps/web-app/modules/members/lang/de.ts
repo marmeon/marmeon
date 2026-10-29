@@ -8,6 +8,8 @@ export default {
   search: 'Mitglieder suchen',
   locale: 'Sprache',
   locale_option: '{locale, select, en {Englisch} de {Deutsch} other {Alle}}',
+  link: 'Verlinkt, was ich verlinke',
+  link_any: 'Alle',
   joined_from: 'Beigetreten ab',
   joined_to: 'Beigetreten bis',
   per_page: 'Pro Seite',

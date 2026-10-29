@@ -1,4 +1,5 @@
 import type { Authenticated } from '@marmeon/auth';
+import { Connections } from '@marmeon/database';
 import { rules as r } from '@marmeon/validation';
 import { action, bulk, column, defineTable, exportCsv, filter, type DataTableRow, type TableContext } from '@marmeon/table';
 import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
@@ -25,6 +26,16 @@ export const MembersTable = defineTable({
   filters: {
     joined: filter.dateRange('users.created_at'),
     locale: filter.select('users.locale', ['en', 'de']),
+    // Members who link to the same place as the signed-in one: the options are the labels of the viewer's own links, computed for
+    // each request — a label of anyone else's is a 400, so the URL cannot probe other members' links.
+    link: filter.has(
+      'profile_links',
+      async (resolve, ctx: TableContext<Authenticated>) => {
+        const mine = await resolve(Connections).get().selectFrom('profile_links').select('label').distinct().where('user_id', '=', ctx.user.id).orderBy('label').execute();
+        return mine.map((row) => ({ value: row.label, label: row.label }));
+      },
+      { column: 'label' },
+    ),
   },
   defaultSort: 'name',
   pagination: { perPage: [10, 25, 50] },
