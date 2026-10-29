@@ -654,6 +654,9 @@ written into the statement as quoted literals, so a quote or a semicolon in one 
 `nullable()` stays protected by `NOT NULL`. A `oneOf()` column can be added with `schema.alter()` on both drivers; an existing
 row that does not fit stops the migration, which is rolled back.
 
+Moving a value from one `oneOf()` column into another whose list is shorter needs Kysely's `$castTo<'admin' | 'member'>()` (the target column's
+union) at that expression: the compiler cannot see the `where` that makes it true, and the check constraint still refuses a wrong value.
+
 `table.check(name, sql)` adds a named check constraint of your own, in `create()` and, on Postgres, in `alter()`. `sql` is the condition, in SQL both
 drivers accept; Marmeon does not look into it:
 

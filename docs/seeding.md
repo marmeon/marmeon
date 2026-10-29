@@ -65,6 +65,12 @@ export const NoteFactory = defineFactory(
 A state is a set of values that replaces the definition's, or a function of the context that returns them. A state as a function
 gets a fresh value each time, such as the current time from `now()`.
 
+A column that [`oneOf()`](migrations.md#check-constraints) holds to a list is typed as the union of its values, and a value from the list in a
+definition, a state or an override needs no `as const`: `{ role: 'admin' }` stays `'admin'`. A value outside the list is a compile error.
+A value built elsewhere (a `const`, `Array.from(…)`, a `string` parameter) is a `string`; type it as `Row<'memberships'>['role']`.
+Moving a value from one `oneOf()` column into another whose list is shorter needs Kysely's `$castTo<'admin' | 'member'>()` (the target column's
+union) at that expression: the compiler cannot see the `where` that makes it true, and the check constraint still refuses a wrong value.
+
 ### Password hashes
 
 Hashing a password is slow on purpose, and `count(50)` would hash fifty times. So the starter kit's factory stores one hash,

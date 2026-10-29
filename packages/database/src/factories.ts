@@ -50,8 +50,9 @@ export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S e
  */
 export function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(
   table: T,
-  definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>,
-  options: { states?: Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)> } = {},
+  // `NoInfer`: with `DB` in the return type, TS would widen a `oneOf()` literal to `string` before `DB` is fixed.
+  definition: NoInfer<(context: FactoryContext) => Attributes<NewRowOf<DB[T]>>>,
+  options: { states?: Record<S, Partial<NewRowOf<DB[T]>> | NoInfer<(context: FactoryContext) => Partial<NewRowOf<DB[T]>>>> } = {},
 ): FactoryDefinition<T, DB, S> {
   return Object.freeze({ table, definition, states: options.states ?? ({} as Record<S, never>) });
 }
