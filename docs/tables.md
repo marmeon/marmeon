@@ -440,6 +440,14 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 `exportCsv()` downloads the visible columns, filtered and sorted as the URL says:
 
 - **Its own `authorize`.** Without one, whoever sees the table may download what they see.
+- **A record.** `exportCsv().onExport(Recorder)` runs `handle(info, ctx)` of the class once the export is authorized, its URL checked
+  and its rows counted within the limit, and before the first byte. `info` holds the `table`, the `export`, the number of `rows`
+  that matched when the export started, its `columns` and the `state` (`sort`, `search`, `filters`); `ctx` is the request's, with
+  the user and the route parameters. A refused export (401, 403, 404, 400 or 422) never reaches it, and the client cannot skip it.
+  If `handle` throws, no file is sent and the download fails with that error. The entry records an export that started: if its
+  first query fails or the stream breaks, the entry stays though the file was not delivered in full. It runs in the handler: a row
+  it writes joins a transaction around the handler, if there is one, and commits before the later batches. The recorder is built
+  per request like an action. Writing a row in the database is an [audit trail](events.md#an-audit-trail); a log line is not.
 - **A limit.** `exportCsv().max(rows)`, 10000 by default. One count runs first, and an export over the limit is a 422 before a byte
   is sent, never a file cut short.
 - **Batches.** Rows stream in batches of 500. The first batch runs in the handler, and the later ones after it has answered: in the

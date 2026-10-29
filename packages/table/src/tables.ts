@@ -9,7 +9,7 @@ import { fillPath, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
-import { isSchema, normalizeOptions, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableProps, type TableVisibility } from './define.ts';
+import { isSchema, normalizeOptions, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableExportInfo, type TableProps, type TableVisibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
@@ -291,6 +291,11 @@ export class DataTables {
       throw new HttpError(422, `More than ${entry.limit} rows match — narrow the filter (an export takes at most ${entry.limit}).`);
     }
     const names = view.columns.map(([alias]) => alias);
+    // The record before the first batch, from the count of the query the file is read from: a throw is an error page, no file.
+    if (entry.recorder) {
+      const info: TableExportInfo = { table: definition.name, export: name, rows: Number(count), columns: names, state: { sort: state.sort && { ...state.sort }, search: state.search, filters: { ...state.filters } } };
+      await (this.#resolve(entry.recorder) as { handle(info: TableExportInfo, ctx: unknown): unknown }).handle(info, ctx);
+    }
     const header = csvLine(view.columns.map(([alias, col]) => col.text ?? alias));
     // Batch after batch by the key (keyset), never by OFFSET: each goes on after the last row written — in the table's order, then
     // the key — so a row deleted or added meanwhile shifts no later row out of the file or into it twice.

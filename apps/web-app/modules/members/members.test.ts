@@ -1,4 +1,5 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
+import { Logger, type LogContext } from '@marmeon/core';
 import { Connections, type QueryEvent } from '@marmeon/database';
 import type { TableData } from '@marmeon/table';
 import { createTestApp, type TestApp } from '@marmeon/testing';
@@ -236,6 +237,31 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(await linksOf(member)).toBeGreaterThan(0);
     await app.actingAs(admin).withHeaders({ 'sec-fetch-site': 'same-origin' }).acting().post('/members/_tables/members/actions/removeLinks', { json: { key: member.id } }).assertOk();
     expect(await linksOf(member)).toBe(0);
+  });
+
+  it('records an export before its first byte — who, how many rows, which filter — and records none that is refused', async () => {
+    const entries: { message: string; context: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info: (message, context = {}) => void entries.push({ message, context }), warn() {}, error() {}, child: () => logger };
+    await app.close(); // this test needs the logger from the start
+    app = await createTestApp(application, { database: 'refresh', seed: true, override: (container) => container.instance(Logger, logger) });
+    [ada, alan, grace] = await people();
+    await app.actingAs(alan).get('/members/_tables/members/export/csv').assertForbidden();
+    await app.actingAs(ada).get('/members/_tables/members/export/csv?sort=-sort').assertStatus(400);
+    expect(entries.filter((entry) => entry.message === 'members exported'), 'a refused export was recorded').toEqual([]);
+    await app.actingAs(ada).get('/members/_tables/members/export/csv?sort=-joined&search=grace').assertOk();
+    await app.actingAs(ada).get('/members/directory/_tables/members/export/csv').assertOk();
+    expect(entries.filter((entry) => entry.message === 'members exported').map((entry) => entry.context)).toEqual([
+      {
+        userId: ada.id,
+        table: 'members',
+        export: 'csv',
+        rows: 1,
+        columns: ['name', 'email', 'joined', 'links'],
+        state: { sort: { column: 'joined', direction: 'desc' }, search: 'grace', filters: {} },
+      },
+      // The second page's registration records too.
+      expect.objectContaining({ userId: ada.id, rows: 3, state: { sort: { column: 'name', direction: 'asc' }, search: '', filters: {} } }),
+    ]);
   });
 
   it('throttles the table\'s endpoints (60 a minute per user) — an export reads the whole filtered table', async () => {

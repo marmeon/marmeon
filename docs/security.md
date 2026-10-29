@@ -281,7 +281,9 @@ and what stops each:
   table that needs one declares it.
 - **No CSV injection.** Exported text cells that start with `=`, `+`, `-`, `@`, a tab or a line break get a `'` in front, and every
   field is quoted. An export has its own `authorize` and a row limit, 10 000 by default, beyond which it answers 422 before the
-  first byte. Rate-limit it as well: it reads the whole filtered table.
+  first byte. Rate-limit it as well: it reads the whole filtered table. A download is not recorded by itself: add
+  `exportCsv().onExport(Recorder)` and its `handle()` runs before the first byte of every export that was allowed, and a recorder that
+  throws stops the download ([exports](tables.md#exports)).
 - **Keys are parsed by their declared type** before any query, so text never reaches an integer column.
 
 The cursors of `cursorPaginate()` and of cursor tables are encrypted with the app key: a hidden sort column's value never shows in

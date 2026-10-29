@@ -8,7 +8,7 @@ import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { rules as r } from '@marmeon/validation';
-import { action, bulk, column, defineTable, exportCsv, filter, DataTables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
+import { action, bulk, column, defineTable, exportCsv, filter, DataTables, tableRoutes, TableServiceProvider, type TableContext, type TableExportInfo } from '../index.ts';
 import { EmailPolicy, MemberPolicy } from './policies.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import './schema.ts';
@@ -53,6 +53,10 @@ export class Recorder {
   readonly batches: unknown[][] = [];
   /** What the actions with input got: `[the keys, the validated input]`. */
   readonly inputs: [unknown[], unknown][] = [];
+  /** What the export recorder got: `[the info, the request's route parameters]`. */
+  readonly exports: [TableExportInfo, unknown][] = [];
+  /** Makes the export recorder throw. */
+  failExport = false;
 }
 
 /** A row action: records the row's key. */
@@ -65,6 +69,21 @@ export class Deactivate {
 
   handle(row: { readonly id: number }) {
     this.#recorder.deactivated.push(row.id);
+  }
+}
+
+/** An export recorder: writes down what it was told, and fails when the test says so. */
+export class RecordExport {
+  readonly #recorder: Recorder;
+
+  constructor(recorder: Recorder) {
+    this.#recorder = recorder;
+  }
+
+  async handle(info: TableExportInfo, ctx: { params: unknown }) {
+    await Promise.resolve(); // an audit log is written asynchronously
+    if (this.#recorder.failExport) throw new Error('the audit log is down');
+    this.#recorder.exports.push([info, ctx.params]);
   }
 }
 
@@ -229,6 +248,19 @@ export const SmallExportTable = defineTable({
   key: 'members.id',
   columns: { name: column('members.name').sortable() },
   export: { csv: exportCsv().max(3).authorize(() => true) },
+});
+
+/** Exports that record themselves: one of any size, one limited to three rows. */
+export const AuditedTable = defineTable({
+  name: 'audited',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable().searchable(), email: column('members.email').visible(MemberPolicy, 'viewEmails') },
+  filters: { role: filter.select('members.role', ['admin', 'member']) },
+  export: {
+    csv: exportCsv().authorize(MemberPolicy, 'export').onExport(RecordExport),
+    small: exportCsv().max(3).authorize(() => true).onExport(RecordExport),
+  },
 });
 
 /** Sorted by a boolean column (with NULLs) — exported in batches by its keyset. */
@@ -566,6 +598,7 @@ const routes = openRoutes((Route) => {
   team.get('/export-in-transaction', ExportInTransaction);
   tableRoutes(team, LedgerTable);
   tableRoutes(team, SmallExportTable);
+  tableRoutes(team, AuditedTable);
   tableRoutes(team, ByEmailTable);
   team.get('/guarded', GuardedPage);
   tableRoutes(team, GuardedTable);

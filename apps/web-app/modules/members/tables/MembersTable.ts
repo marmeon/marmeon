@@ -2,6 +2,7 @@ import type { Authenticated } from '@marmeon/auth';
 import { Connections } from '@marmeon/database';
 import { rules as r } from '@marmeon/validation';
 import { action, bulk, column, defineTable, exportCsv, filter, type DataTableRow, type TableContext } from '@marmeon/table';
+import { RecordMembersExport } from '../actions/RecordMembersExport.ts';
 import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
 import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
 import { SetMembersLocale } from '../actions/SetMembersLocale.ts';
@@ -45,7 +46,7 @@ export const MembersTable = defineTable({
     // One action for every value: the language comes with the request and is checked before any member is read.
     setLocale: bulk(SetMembersLocale).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'setLocale').input(r.object({ locale: r.in(['en', 'de']) })).max(100),
   },
-  export: { csv: exportCsv().authorize(MemberPolicy, 'export') },
+  export: { csv: exportCsv().authorize(MemberPolicy, 'export').onExport(RecordMembersExport) },
 });
 
 /** A row of the table as actions and policies get it: the key and the visible columns. */
