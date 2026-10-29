@@ -264,6 +264,256 @@ export default defineRoutes((Route) => {
 rooms in your app, and leave it closed until you do. `public` excuses reads only ([a binding everyone may use](routing.md#a-binding-everyone-may-use)), so a route that changes a shared
 record always names a check. `marmeon route:list` shows `rooms.show` as `everyone (public: room)` and the list as `everyone`.
 
+### A tenant in the path
+
+Marmeon knows no roles, tenants or memberships: they are your app's tables and your app's words. This section shows one way to
+write them, for an app with workspaces whose members have a role in each workspace. The names (`workspaces`, `memberships`,
+`owner`, `editor`, `viewer`) are the example's; take the shape, not the names.
+
+The workspace is in the path, and the records below it are looked up within it:
+
+```ts title="modules/workspaces/routes.ts"
+import { authenticate, can } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { ShowProjectController } from './controllers/ShowProjectController.ts';
+import { UpdateProjectController } from './controllers/UpdateProjectController.ts';
+import { ProjectPolicy } from './policies/ProjectPolicy.ts';
+import { ProjectRepository } from './ProjectRepository.ts';
+import { WorkspacePolicy } from './policies/WorkspacePolicy.ts';
+import { WorkspaceRepository } from './WorkspaceRepository.ts';
+
+export default defineRoutes((Route) => {
+  // The workspace is bound and checked first; every route below inherits both.
+  const workspace = Route.prefix('/workspaces/:workspace')
+    .middleware(authenticate())
+    .bind('workspace', WorkspaceRepository)
+    .authorize(can(WorkspacePolicy, 'view', 'workspace'));
+
+  // `scopedBy` looks a project up within the workspace of the path: a project of another workspace answers 404.
+  const project = workspace.bind('project', ProjectRepository, { scopedBy: 'workspace' });
+
+  project.authorize(can(ProjectPolicy, 'view', 'project')).get('/projects/:project', ShowProjectController).name('projects.show');
+  project.authorize(can(ProjectPolicy, 'update', 'project')).put('/projects/:project', UpdateProjectController).name('projects.update');
+});
+```
+
+The binding and the check do different jobs. `bind()` finds the record, and `scopedBy` makes sure it belongs to the workspace in
+the URL. The policy then decides by the signed-in user's role in the record's own workspace, not in the URL's: the policy stays
+right on a route that has no workspace in its path, and on a call from the [gate](#the-gate). A route that binds a
+record anyone can reach, and has no check beside `everyone`, does not start ([open routes and bindings](#open-routes-and-bindings)).
+
+A controller under this registrar names what it binds, as [above](#authorizing-requests):
+
+```ts
+handle(ctx: ContextOf<typeof ShowProjectRequest, { workspace: Row<'workspaces'>; project: Row<'projects'> }>) {
+  return this.view('projects/Show', { title: ctx.params.project.title, workspace: ctx.params.workspace.name });
+}
+```
+
+To share what a layout shows about the workspace, use an [`afterAuthorize` hook](routing.md#after-the-checks) on the same
+registrar: it runs only for a request the checks let through, so a stranger's 404 carries nothing about the workspace.
+
+#### A policy that decides by role
+
+The policy answers by the user's role in the workspace of the record. The roles and what each may do are a table in the
+policy's file, which is where a reviewer looks for them:
+
+```ts title="modules/workspaces/policies/ProjectPolicy.ts"
+import { denyAsNotFound, type AuthUser } from '@marmeon/auth';
+import { WorkspaceAccess } from '../WorkspaceAccess.ts';
+
+const abilities = {
+  owner: ['view', 'update', 'delete'],
+  editor: ['view', 'update'],
+  viewer: ['view'],
+} as const satisfies Record<string, readonly string[]>;
+
+type Ability = (typeof abilities)[keyof typeof abilities][number];
+
+/** The record's tenant is the only workspace that counts; `workspace_id` is the column that holds it. */
+interface InWorkspace {
+  readonly workspace_id?: number | null;
+}
+
+export class ProjectPolicy {
+  readonly #access: WorkspaceAccess;
+
+  constructor(access: WorkspaceAccess) {
+    this.#access = access;
+  }
+
+  view(user: AuthUser, project: InWorkspace) {
+    return this.#decide(user, project, 'view');
+  }
+
+  update(user: AuthUser, project: InWorkspace) {
+    return this.#decide(user, project, 'update');
+  }
+
+  delete(user: AuthUser, project: InWorkspace) {
+    return this.#decide(user, project, 'delete');
+  }
+
+  async #decide(user: AuthUser, project: InWorkspace, ability: Ability) {
+    // A record without a workspace has no one who may act on it, and one that nobody can see looks like a missing record.
+    if (typeof project.workspace_id !== 'number') return denyAsNotFound();
+
+    const role = await this.#access.roleIn(user.id, project.workspace_id);
+    // No membership, or a role this table does not know (one a migration or an old release stored): closed, and a 404.
+    if (role === undefined || !Object.hasOwn(abilities, role)) return denyAsNotFound();
+
+    const allowed: readonly string[] = abilities[role as keyof typeof abilities];
+    // A role without `view` cannot know the record exists, even if someone edited the table: 404. A role that may view but not
+    // do this knows the record exists: a plain 403.
+    if (!allowed.includes('view')) return denyAsNotFound();
+    return allowed.includes(ability);
+  }
+}
+```
+
+It fails closed. Each of these answers 404, the same as for a record that does not exist, so a foreign id tells nothing:
+
+- the user has no membership in the record's workspace, which includes a record of another workspace;
+- the stored role is not in the table;
+- the record has no `workspace_id`.
+
+A member whose role lacks `view` gets a 404 as well, so a role edited out of the table cannot reveal records. A member who may view but lacks the ability gets a 403. A guest never reaches the policy: the gate refuses them first. The role comes
+only from the signed-in user's memberships, looked up for the workspace of the record: never from the request, not from a
+header, a query string or a hidden field.
+
+#### A lookup once per request
+
+The policy asks `WorkspaceAccess` for the role. It loads the user's memberships in one query and answers every later question of
+the request from them, keyed by the user's id so one user's memberships can never answer for another:
+
+```ts title="modules/workspaces/WorkspaceAccess.ts"
+import type { AuthUser } from '@marmeon/auth';
+import { MembershipRepository } from './MembershipRepository.ts';
+
+export class WorkspaceAccess {
+  readonly #memberships: MembershipRepository;
+  readonly #roles = new Map<AuthUser['id'], Promise<ReadonlyMap<number, string>>>();
+
+  constructor(memberships: MembershipRepository) {
+    this.#memberships = memberships;
+  }
+
+  /** The user's role in a workspace, or `undefined` for someone who is no member. */
+  async roleIn(userId: AuthUser['id'], workspaceId: number): Promise<string | undefined> {
+    let roles = this.#roles.get(userId);
+    if (roles === undefined) {
+      roles = this.#load(userId);
+      this.#roles.set(userId, roles);
+    }
+    return (await roles).get(workspaceId);
+  }
+
+  async #load(userId: AuthUser['id']): Promise<ReadonlyMap<number, string>> {
+    const rows = await this.#memberships.query().select(['workspace_id', 'role']).where('user_id', '=', userId).execute();
+    return new Map(rows.map((row) => [row.workspace_id, row.role] as const));
+  }
+}
+```
+
+Register it as scoped, in a [service provider](providers.md#register-and-boot):
+
+```ts title="modules/workspaces/WorkspacesServiceProvider.ts"
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { WorkspaceAccess } from './WorkspaceAccess.ts';
+
+export class WorkspacesServiceProvider implements ServiceProvider {
+  register(container: Container): void {
+    container.scoped(WorkspaceAccess);
+  }
+}
+```
+
+> [!WARNING]
+> Never `container.singleton(WorkspaceAccess)`. A singleton lives as long as the process, and so would every user's memberships:
+> a member who was removed keeps their role until the app restarts. `scoped()` gives each request its own instance, and a job
+> or a command its own for each attempt or run.
+
+A policy is built for each check, so state that should last the whole request lives in a scoped service, as `WorkspaceAccess`
+does here. Left unregistered, the class is built for each check as well. That is correct, and costs one query per ability: leave
+it so until a page that asks many abilities shows the cost. The [container](container.md#binding-services) page lists the
+lifetimes.
+
+#### A binder that knows the user
+
+A binder can keep a workspace from a stranger even before the policy runs. A binder that reads the signed-in user says so with
+[`RouteBindingContext<Authenticated>`](routing.md#your-own-binder), and `bind()` then accepts it only behind `authenticate()`.
+The container builds it for each request, so it shares the scoped `WorkspaceAccess`:
+
+```ts title="modules/workspaces/MemberWorkspaces.ts"
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import type { RouteBinder, RouteBindingContext } from '@marmeon/http';
+import { WorkspaceAccess } from './WorkspaceAccess.ts';
+import { WorkspaceRepository } from './WorkspaceRepository.ts';
+
+/** `/workspaces/:workspace` — a workspace the signed-in user is a member of, or a 404. */
+export class MemberWorkspaces implements RouteBinder<Row<'workspaces'>> {
+  readonly #access: WorkspaceAccess;
+  readonly #workspaces: WorkspaceRepository;
+
+  constructor(access: WorkspaceAccess, workspaces: WorkspaceRepository) {
+    this.#access = access;
+    this.#workspaces = workspaces;
+  }
+
+  async resolveRouteBinding(key: string, { ctx }: RouteBindingContext<Authenticated>) {
+    const workspace = await this.#workspaces.findByRouteKey(key);
+    return workspace !== undefined && (await this.#access.roleIn(ctx.user.id, workspace.id)) !== undefined ? workspace : undefined;
+  }
+}
+```
+
+Bind it in place of the repository, `.bind('workspace', MemberWorkspaces)`. The binder is a convenience, not the decision: the
+policy still checks the role of each record, and `can(WorkspacePolicy, …)` stays on the registrar. `WorkspacePolicy` has the
+shape of `ProjectPolicy`, asking `roleIn()` for the workspace's own id.
+
+### A token in the path is the credential
+
+An invitation or a ticket link has a token in its path, and the token is the whole credential: whoever holds it may use it, signed
+in as anyone or not. No policy can say more about it than the row does. The route says so, and the lookup by the token's hash
+decides:
+
+```ts title="modules/invitations/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
+import { AcceptInvitationController } from './controllers/AcceptInvitationController.ts';
+import { ShowInvitationController } from './controllers/ShowInvitationController.ts';
+import { InvitationRepository } from './InvitationRepository.ts';
+
+export default defineRoutes((Route) => {
+  const invitations = Route.prefix('/invitations').middleware(credentialPage()).middleware(throttle('invitations'));
+
+  // Anyone with the link may look at it. InvitationRepository finds the row by the token's hash (see below) and answers 404 for any other value.
+  invitations.authorize(everyone).bind('invitation', InvitationRepository, { public: true }).get('/:invitation', ShowInvitationController);
+
+  // Accepting changes data, so it names its credential, and only a signed-in user may accept.
+  const accept = describeAccess((ctx) => ctx.params.invitation !== undefined, 'invitation link');
+  invitations.middleware(authenticate()).authorize(accept).bind('invitation', InvitationRepository).post('/:invitation', AcceptInvitationController);
+});
+```
+
+- **The binder is the check, so it must look the row up by the token.** `InvitationRepository` overrides `resolveRouteBinding()`
+  with `hashLinkToken()`, `secretEquals()` and `used_at is null`, as `TicketRepository` does in
+  [a link that is used once](urls.md#a-link-that-is-used-once). The default binding by id on a public GET would open every
+  invitation. `{ public: true }` is allowed only on a route that reads. The route that changes data needs a
+  check of its own, and `describeAccess(check, 'invitation link')` is that check: it tells `marmeon route:list` that the
+  credential is the link (the `ACCESS` column shows `invitation link`), and the start does not refuse the route
+  ([open routes and bindings](#open-routes-and-bindings)). It decides nothing more than "the binder found a row", so look
+  the row up with the token's hash, and answer a missing, used and revoked token with the same 404.
+- **Put `credentialPage()` on every route that carries the token.** It keeps the page out of shared caches, search indexes and
+  a `Referer` ([a link that is a credential](security.md#a-link-that-is-a-credential)). The `throttle('invitations')` after it
+  limits how fast tokens can be tried; the app defines that limiter in a provider's `boot()`
+  ([defining limiters](rate-limiting.md#defining-limiters)), or the start stops.
+- **Who may then do what is a different question.** The invitation lets a user in; the role the new member gets comes from the
+  invitation's row, written when an owner issued it, never from the request that accepts it. Accepting redeems the row and inserts the membership in one
+  transaction; a lost redeem answers 404. From then on the policy above decides. See [a link that is used once](urls.md#a-link-that-is-used-once) for the token and its hash.
+
 ### The report
 
 The report names every route with where it was registered, so a long list is easy to work through:
@@ -414,6 +664,9 @@ export default function Show({ abilities, profile }: PageProps<ShowUserProfileCo
 - **Counted.** `withAbilities()` calls the policy once per row and ability: 50 rows and one ability are 50 calls. That is cheap
   for a comparison, and a query per row for a policy that queries. Load what the policy needs with the rows. `before()` runs once
   per ability for the whole list.
+
+A projection is awaitable, so code outside a page prop can read it: `const { update } = await this.#gate.abilities(note, NotePolicy, ['update'])`.
+It runs the policy once, however often it is awaited.
 
 Abilities are a hint for the interface. The server checks again on every request that acts, with `can()` or the gate.
 
