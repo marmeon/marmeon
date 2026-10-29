@@ -454,10 +454,17 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
 
   /**
    * The row whose route key (`static routeKey`, default the primary key) is `value`, as a route binding finds it, for lookups outside of
-   * routes — `undefined` when there is none, or when `value` cannot be a key. See `docs/queries.md#reading`.
+   * routes — `undefined` when there is none, or when `value` cannot be a key. There is no request context: a repository whose
+   * `resolveRouteBinding` reads `binding.ctx` throws a `TypeError`. See `docs/queries.md#reading`.
    */
   findByRouteKey(value: string): Promise<RowOf<DB[T]> | undefined> {
-    return this.resolveRouteBinding(value, {} as RouteBindingContext);
+    const name = this.constructor.name;
+    const ctx = new Proxy({}, {
+      get() {
+        throw new TypeError(`${name}.findByRouteKey() has no request — ${name}.resolveRouteBinding reads binding.ctx; look the row up with find…, or bind it on a route`);
+      },
+    }) as RouteBindingContext['ctx'];
+    return this.resolveRouteBinding(value, { ctx });
   }
 
   /**

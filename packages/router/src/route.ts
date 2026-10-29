@@ -10,6 +10,7 @@ import type {
   AnyMiddleware,
   BindingWith,
   BoundValue,
+  CheckBinderState,
   ClassResolver,
   ConsistentBinder,
   EmptyObject,
@@ -198,7 +199,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    */
   bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(
     param: TName,
-    binder: B & ConsistentBinder<B>,
+    binder: B & ConsistentBinder<B> & CheckBinderState<B, TState>,
     options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[], [B] extends [{ readonly routeBindingScoped: true }] ? true : false>,
   ): Route<TState, TParams, Merge<TBindings, { [K in TName]: BoundValue<B, W> }>> {
     // Untyped code gets past the options type: a column without its parent would bind the record unscoped.

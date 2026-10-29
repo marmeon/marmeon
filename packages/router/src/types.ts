@@ -165,13 +165,34 @@ export interface RouteBindingWith {
   readonly value: unknown;
 }
 
-export interface RouteBindingContext {
-  readonly ctx: HttpContext<any, any>;
+/**
+ * What a binder gets besides the value. `TState` is the state of its route the binder reads (`RouteBindingContext<Authenticated>` for
+ * `ctx.user`); `Route.bind()` accepts it only on a route that has it. See docs/routing.md#your-own-binder.
+ */
+export interface RouteBindingContext<TState extends object = {}> {
+  readonly ctx: HttpContext<TState, Readonly<Record<string, string>>>;
   /** Scoped bindings (`{ scopedBy: 'team' }`): the parent it must belong to, and the column that points at it. */
   readonly scope?: { readonly param: string; readonly parent: unknown; readonly column: string };
   /** What the route asks to load with the record (`{ with: ['author'] }`) — names from the code, never from the request. */
   readonly with?: readonly string[];
 }
+
+/** The state keys the binder class (or any member of a union) reads that the registrar's routes lack — `never` when there are none. */
+type MissingState<B, TState extends object> = B extends new (...args: any[]) => { resolveRouteBinding(value: any, binding: infer C): any }
+  ? C extends { readonly ctx: infer Needed }
+    ? HttpContext<TState, Readonly<Record<string, string>>> extends Needed
+      ? never
+      : Exclude<keyof Needed, keyof HttpContext<TState, Readonly<Record<string, string>>>> | 'state'
+    : never
+  : never;
+
+/**
+ * `unknown` when the routes of a registrar with state `TState` give binder class `B` the context it reads; otherwise an object whose
+ * property names the problem. Used by `Route.bind()`; any member of a union that reads more makes it fail.
+ */
+export type CheckBinderState<B, TState extends object> = [MissingState<B, TState>] extends [never]
+  ? unknown
+  : { readonly 'the binder reads more of the request than this route has — bind it behind the middleware that adds it (authenticate(), …), or drop it from its RouteBindingContext<…>': MissingState<B, TState> };
 
 /** A class that binds route parameters — built per request from the container. */
 export type RouteBinderClass<T = unknown> = (new (...args: any[]) => RouteBinder<T>) & {

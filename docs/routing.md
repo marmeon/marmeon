@@ -785,6 +785,35 @@ export class NoteAttachments implements RouteBinder<Row<'attachments'>> {
 Route.authorize(can(NotePolicy, 'view', 'note')).bind('note', NoteRepository).bind('attachment', NoteAttachments, { scopedBy: 'note' });
 ```
 
+A binder's `ctx` is typed by the state its route has. Without an annotation `binding.ctx` has none, so reading `ctx.user` is a compile
+error. A binder that looks a record up by the signed-in person says so with `RouteBindingContext<Authenticated>`, and `bind()` then
+accepts it only on a route behind `authenticate()`; on any other route it is a compile error, so a binder by person never runs for a guest.
+
+```ts title="modules/notes/OwnNotes.ts"
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import type { RouteBinder, RouteBindingContext } from '@marmeon/http';
+import { NoteRepository } from './NoteRepository.ts';
+
+/** `/my-notes/:note` — a note of the signed-in person, or a 404. */
+export class OwnNotes implements RouteBinder<Row<'notes'>> {
+  readonly #notes: NoteRepository;
+
+  constructor(notes: NoteRepository) {
+    this.#notes = notes;
+  }
+
+  async resolveRouteBinding(id: string, { ctx }: RouteBindingContext<Authenticated>) {
+    const note = await this.#notes.findByRouteKey(id);
+    return note?.user_id === ctx.user.id ? note : undefined;
+  }
+}
+```
+
+```ts
+Route.middleware(authenticate()).authorize(can(NotePolicy, 'view', 'note')).bind('note', OwnNotes).get('/my-notes/:note', ShowOwnNoteController);
+```
+
 ## API routes
 
 A module's `apiRoutes` file is loaded into the `api` group, under `/api`. The group starts no session and sets no cookie, so
