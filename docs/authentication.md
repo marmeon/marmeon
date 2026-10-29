@@ -982,8 +982,10 @@ export class AccountDeletion {
 }
 ```
 
-The starter kit's own version also dispatches `AccountDeleted` for other modules inside the transaction. Use it for every deletion
-of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
+The starter kit's own version also asks the other modules before it deletes (`AccountDeleting`: a listener calls `refuse(reason)`
+to keep the account) and dispatches `AccountDeleted` for them inside the transaction. Use it for every deletion of an account, such
+as a "delete my account" page: `const { deleted, refused } = await accounts.delete([user.id])`. When `refused` has the account, show
+its `reasons` to the user and tell them nothing was deleted. See [verification](verification.md#unconfirmed-accounts).
 
 `UserSessions.canEnd()` tells whether the store is one of these. `UserSessions.end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
 table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account

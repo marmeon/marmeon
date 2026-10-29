@@ -4,7 +4,8 @@ import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { AccountDeletion } from './AccountDeletion.ts';
+import { EventRegistry } from '@marmeon/core';
+import { AccountDeleted, AccountDeleting, AccountDeletion } from './AccountDeletion.ts';
 import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
@@ -44,7 +45,7 @@ const signIn = async (user: User) => {
 };
 const prune = async () => {
   const lines: string[] = [];
-  const code = await app.make(PruneUnverifiedCommand).handle({ options: {}, args: [], output: { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) } } as never);
+  const code = await app.make(PruneUnverifiedCommand).handle({ options: {}, args: [], output: { success: (line: string) => lines.push(line), warn: (line: string) => lines.push(line), error: (line: string) => lines.push(line) } } as never);
   return { code, lines };
 };
 /** `marmeon auth:prune-unverified` run in the night `days` from now — as a schedule of the app would run it. */
@@ -113,13 +114,72 @@ describe('pruning accounts whose address was never confirmed — the default', {
     const ids = await app.make(UserRepository).unconfirmedSince(new Date(app.clock.now() - 7 * DAY), 200);
     expect(ids).toHaveLength(150);
     await app.make(UserRepository).markEmailVerified(many[0]!.id, new Date(app.clock.now()));
-    expect(await app.make(AccountDeletion).delete([many[0]!.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual([]);
+    expect(await app.make(AccountDeletion).delete([many[0]!.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual({ deleted: [], refused: [] });
     expect(await exists(many[0]!)).toBe(true);
 
     expect(PruneUnverifiedCommand.batch).toBe(100);
     expect(await prune()).toEqual({ code: 0, lines: ['Deleted 149 accounts whose address was not confirmed within 7 days.'] });
     await app.assertDatabaseCount('users', 1);
     expect(await prune()).toEqual({ code: 0, lines: ['Deleted 0 accounts whose address was not confirmed within 7 days.'] });
+  });
+
+  it('a listener of AccountDeleting refuses an account: it stays with the reason, the others go, AccountDeleted names only the deleted', async () => {
+    const last = await made(8, false, { email: 'last@example.com' });
+    const gone = await made(9, false, { email: 'gone@example.com' });
+    const events: string[] = [];
+    const registry = app.make(EventRegistry);
+    registry.listen(AccountDeleting, (event: AccountDeleting) => {
+      events.push(`deleting:${event.user.email}`);
+      if (event.user.id === last.id) event.refuse('The last administrator of a workspace cannot be deleted.');
+    });
+    registry.listen(AccountDeleted, (event: AccountDeleted) => {
+      events.push(`deleted:${event.user.email}`);
+    });
+    const outcome = await app.make(AccountDeletion).delete([last.id, gone.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) });
+    expect(outcome.deleted.map((user) => user.email)).toEqual(['gone@example.com']);
+    expect(outcome.refused).toMatchObject([{ user: { id: last.id }, reasons: ['The last administrator of a workspace cannot be deleted.'] }]);
+    expect(await exists(last)).toBe(true);
+    expect(await exists(gone)).toBe(false);
+    // Every account is asked before anything is deleted; the deleted one is announced after.
+    expect(events).toEqual(['deleting:last@example.com', 'deleting:gone@example.com', 'deleted:gone@example.com']);
+  });
+
+  it('the prune counts what a module refused, goes on past it and ends with 0', async () => {
+    const last = await made(8, false, { email: 'last@example.com' });
+    const gone = await made(9, false, { email: 'gone@example.com' });
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (event.user.id === last.id) event.refuse('Still the last administrator.');
+    });
+    expect(await prune()).toEqual({
+      code: 0,
+      lines: ['Deleted 1 account whose address was not confirmed within 7 days.', 'Kept 1 account: a module refused to lose it (see the log for the reasons).'],
+    });
+    expect(await exists(last)).toBe(true);
+    expect(await exists(gone)).toBe(false);
+  });
+
+  it('the prune skips refused accounts across batches — 100 refused, 50 deleted, and it ends', async () => {
+    const many = await Promise.all(Array.from({ length: 150 }, (_, index) => made(10, false, { email: `old${index}@example.com` })));
+    const kept = new Set(many.map((user) => user.id).sort((a, b) => a - b).slice(0, 100));
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (kept.has(event.user.id)) event.refuse('Kept.');
+    });
+    expect(await prune()).toEqual({
+      code: 0,
+      lines: ['Deleted 50 accounts whose address was not confirmed within 7 days.', 'Kept 100 accounts: a module refused to lose them (see the log for the reasons).'],
+    });
+    await app.assertDatabaseCount('users', 100);
+  });
+
+  it('a listener of AccountDeleting that fails deletes nothing', async () => {
+    const first = await made(8, false, { email: 'first@example.com' });
+    const second = await made(9, false, { email: 'second@example.com' });
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (event.user.id === second.id) throw new Error('a listener failed');
+    });
+    await expect(app.make(AccountDeletion).delete([first.id, second.id])).rejects.toThrow('a listener failed');
+    expect(await exists(first)).toBe(true);
+    expect(await exists(second)).toBe(true);
   });
 
   it('AUTH_UNVERIFIED_DAYS sets the days — 0 keeps every account', async () => {

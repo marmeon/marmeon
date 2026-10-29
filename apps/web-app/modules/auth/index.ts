@@ -21,7 +21,7 @@ import routes from './routes.ts';
 import { schedule } from './schedule.ts';
 
 // Public API of the auth module. Other modules import from here, never from internals.
-export { AccountDeleted, AccountDeletion } from './AccountDeletion.ts';
+export { AccountDeleted, AccountDeleting, AccountDeletion, type DeletionOutcome, type RefusedDeletion } from './AccountDeletion.ts';
 export { UserFactory } from './factories/UserFactory.ts';
 export { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 export { UserRepository } from './UserRepository.ts';

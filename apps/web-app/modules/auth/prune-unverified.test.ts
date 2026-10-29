@@ -5,7 +5,8 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileLinkFactory } from '../user-profile/factories/ProfileLinkFactory.ts';
-import { AccountDeletion } from './AccountDeletion.ts';
+import { EventRegistry } from '@marmeon/core';
+import { AccountDeleted, AccountDeleting, AccountDeletion } from './AccountDeletion.ts';
 import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { NewSignInNotification } from './index.ts';
@@ -94,7 +95,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     const local = app.storage.disk('local');
     // "Download my data" left its export on the private disk — its address, name and links.
     for (const user of [old, kept]) await local.put(`exports/user-${user.id}.json`, JSON.stringify({ account: { email: user.email } }));
-    expect(await app.make(AccountDeletion).delete([old.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toHaveLength(1);
+    expect(await app.make(AccountDeletion).delete([old.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toMatchObject({ deleted: [{ id: old.id }] });
     local.assertMissing(`exports/user-${old.id}.json`).assertExists(`exports/user-${kept.id}.json`);
   });
 
@@ -105,7 +106,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     const since = new Date(app.clock.now() - 7 * DAY);
     expect(await app.make(UserRepository).unconfirmedSince(since, 100)).toEqual([old.id]);
     await sql`update users set email_verified_at = ${new Date(app.clock.now()).toISOString()} where id = ${old.id}`.execute(app.make(Connections).get());
-    expect(await app.make(AccountDeletion).delete([old.id], { unconfirmedSince: since }), 'an account confirmed meanwhile was deleted').toEqual([]);
+    expect(await app.make(AccountDeletion).delete([old.id], { unconfirmedSince: since }), 'an account confirmed meanwhile was deleted').toEqual({ deleted: [], refused: [] });
     expect(await app.make(UserRepository).find(old.id)).toBeDefined();
   });
 
@@ -124,7 +125,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     await app.make(UserRepository).applyEmailChange(kj.id, 'kj@nasa.example', null);
     app.travel({ days: 30 });
     expect(await app.make(UserRepository).unconfirmedSince(new Date(app.clock.now() - 7 * DAY), 100)).toEqual([]);
-    expect(await app.make(AccountDeletion).delete([kj.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual([]);
+    expect(await app.make(AccountDeletion).delete([kj.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual({ deleted: [], refused: [] });
     expect(await app.make(UserRepository).find(kj.id), 'an account confirmed once was deleted').toBeDefined();
   });
 
@@ -150,6 +151,74 @@ describe('pruning accounts whose address was never confirmed', () => {
     app.travel({ days: 30 });
     await app.schedule.run(nightAfter(app.clock.now()));
     expect(await app.make(UserRepository).find(legacy.id), 'a confirmed account was deleted after its address changed').toBeDefined();
+  });
+
+  it('a listener of AccountDeleting refuses an account: it stays with the reason, the others of the run go, AccountDeleted names only the deleted', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    const last = await made(8, false, 'last@example.com');
+    const gone = await made(9, false, 'gone@example.com');
+    const events: string[] = [];
+    const registry = app.make(EventRegistry);
+    registry.listen(AccountDeleting, (event: AccountDeleting) => {
+      events.push(`deleting:${event.user.email}`);
+      if (event.user.id === last.id) event.refuse('The last administrator of a workspace cannot be deleted.');
+    });
+    registry.listen(AccountDeleted, (event: AccountDeleted) => {
+      events.push(`deleted:${event.user.email}`);
+    });
+    const outcome = await app.make(AccountDeletion).delete([last.id, gone.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) });
+    expect(outcome.deleted.map((user) => user.email)).toEqual(['gone@example.com']);
+    expect(outcome.refused).toMatchObject([{ user: { id: last.id }, reasons: ['The last administrator of a workspace cannot be deleted.'] }]);
+    expect(await app.make(UserRepository).find(last.id)).toBeDefined();
+    expect(await app.make(UserRepository).find(gone.id)).toBeUndefined();
+    // Every account is asked before anything is deleted; the deleted one is announced after.
+    expect(events).toEqual(['deleting:last@example.com', 'deleting:gone@example.com', 'deleted:gone@example.com']);
+  });
+
+  it('the prune counts what a module refused, goes on past it and ends with 0', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    const last = await made(8, false, 'last@example.com');
+    const gone = await made(9, false, 'gone@example.com');
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (event.user.id === last.id) event.refuse('Still the last administrator.');
+    });
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(line), warn: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
+    const code = await app.make(PruneUnverifiedCommand).handle({ options: {}, args: [], output } as never);
+    expect(code).toBe(0);
+    expect(lines).toEqual(['Deleted 1 account whose address was not confirmed within 7 days.', 'Kept 1 account: a module refused to lose it (see the log for the reasons).']);
+    expect(await app.make(UserRepository).find(last.id)).toBeDefined();
+    expect(await app.make(UserRepository).find(gone.id)).toBeUndefined();
+  });
+
+  it('the prune skips refused accounts across batches — 100 refused, 50 deleted, and it ends', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    const many = await Promise.all(Array.from({ length: 150 }, (_, index) => made(10, false, `old${index}@example.com`)));
+    const kept = new Set(many.map((user) => user.id).sort((a, b) => a - b).slice(0, 100));
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (kept.has(event.user.id)) event.refuse('Kept.');
+    });
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(line), warn: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
+    expect(await app.make(PruneUnverifiedCommand).handle({ options: {}, args: [], output } as never)).toBe(0);
+    expect(lines).toEqual(['Deleted 50 accounts whose address was not confirmed within 7 days.', 'Kept 100 accounts: a module refused to lose them (see the log for the reasons).']);
+    await app.assertDatabaseCount('users', 100);
+  });
+
+  it('a listener of AccountDeleting that fails deletes nothing', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    const first = await made(8, false, 'first@example.com');
+    const second = await made(9, false, 'second@example.com');
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (event.user.id === second.id) throw new Error('a listener failed');
+    });
+    await expect(app.make(AccountDeletion).delete([first.id, second.id])).rejects.toThrow('a listener failed');
+    expect(await app.make(UserRepository).find(first.id)).toBeDefined();
+    expect(await app.make(UserRepository).find(second.id)).toBeDefined();
   });
 
   it('a deletion that fails keeps everything — the avatar too (it goes after the commit only)', async () => {

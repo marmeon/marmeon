@@ -68,15 +68,14 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   /**
    * Up to `limit` accounts (oldest first) that never confirmed an address and were made before `since` — what
    * `auth:prune-unverified` deletes. Never one that was confirmed once (`first_verified_at`): with
-   * `AUTH_PRIVATE_REGISTRATION=false` a change of address leaves it unconfirmed, and it stays all the same.
+   * `AUTH_PRIVATE_REGISTRATION=false` a change of address leaves it unconfirmed, and it stays all the same. `except`: ids to skip
+   * (the ones a module refused to lose).
    */
-  async unconfirmedSince(since: Date, limit: number): Promise<number[]> {
+  async unconfirmedSince(since: Date, limit: number, except: readonly number[] = []): Promise<number[]> {
     const at = since.toISOString();
-    const rows = await this.query()
-      .select('id')
-      .where('email_verified_at', 'is', null)
-      .where('first_verified_at', 'is', null)
-      .where('created_at', '<=', at)
+    let query = this.query().select('id').where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where('created_at', '<=', at);
+    if (except.length > 0) query = query.where('id', 'not in', [...except]);
+    const rows = await query
       .orderBy('id')
       .limit(limit)
       .execute();
@@ -84,12 +83,28 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * Deletes the accounts `ids` — through `AccountDeletion`, which clears what belongs to them. With `unconfirmedSince`, only
-   * those never confirmed and made before then — decided by this statement, so one confirmed meanwhile stays. Their
-   * remember-me and API tokens go with them (the foreign keys cascade). The deleted accounts come back.
+   * Reads the accounts `ids` that `deleteAccounts` would delete (same `only`), locking their rows with `lock` (Postgres; SQLite
+   * has one writer at a time) so nothing changes them between the question `AccountDeleting` asks and the delete.
    */
-  async deleteAccounts(ids: readonly number[], only?: { unconfirmedSince: Date }): Promise<User[]> {
+  async lockAccounts(ids: readonly number[], only?: { unconfirmedSince: Date }, lock = false): Promise<User[]> {
+    let query = this.db.selectFrom('users').selectAll().where('id', 'in', [...ids]).orderBy('id');
+    if (only) {
+      const at = only.unconfirmedSince.toISOString();
+      query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where('created_at', '<=', at);
+    }
+    if (lock) query = query.forUpdate();
+    return (await query.execute()) as User[];
+  }
+
+  /**
+   * Deletes the accounts `ids` — through `AccountDeletion`, which clears what belongs to them. With `unconfirmedSince`, only
+   * those never confirmed and made before then — decided by this statement, so one confirmed meanwhile stays. `except` are ids
+   * the statement leaves alone (the ones a module refused). Their remember-me and API tokens go with them (the foreign keys
+   * cascade). The deleted accounts come back.
+   */
+  async deleteAccounts(ids: readonly number[], only?: { unconfirmedSince: Date }, except: readonly number[] = []): Promise<User[]> {
     let query = this.db.deleteFrom('users').where('id', 'in', [...ids]);
+    if (except.length > 0) query = query.where('id', 'not in', [...except]);
     if (only) {
       const at = only.unconfirmedSince.toISOString();
       query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where('created_at', '<=', at);
