@@ -94,9 +94,13 @@ input a `422` with the errors instead of a redirect back.
 `actingAs(user)` writes a session as a sign-in leaves it and sends its cookie. `withSession(data)` writes a session that holds
 `data`. Both use the session driver `.env.test` sets with `SESSION_DRIVER=memory`.
 
-A view made by `actingAs()` or `withSession()` keeps one session id across its requests, like one browser. The session is stored
-as the app stores its own: under the hash of its id, and encrypted when the app encrypts its sessions. To go on with the session
-a response started, such as a real sign-in, send its cookie back:
+A view made by `actingAs()` or `withSession()` keeps one session id across its requests, so what binds to a session, such as an
+upload, carries over. It does not keep the session's data: before each request the view writes the session afresh with the data
+it was made with (and a new CSRF token). What the first request put into the session is gone for the second, and a login the
+first request made does not reach it. The session is stored as the app stores its own: under the hash of its id, and encrypted
+when the app encrypts its sessions. To go on with the session a response started, such as a real sign-in, send its cookie back
+from a view that has no session of its own (a view from `actingAs()` or `withSession()` would send its own session cookie as
+well):
 
 ```ts title="modules/notes/sign-in.test.ts"
 import { SessionConfig, sessionCookieName } from '@marmeon/session';
