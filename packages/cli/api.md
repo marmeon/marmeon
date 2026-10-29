@@ -200,6 +200,10 @@ marmeon make:listener <Name> --event=<Event> --module=<module> [--queued] [--no-
 --module (string, short m)
 --no-register (boolean)
 --queued (boolean)
+// make:mail
+marmeon make:mail <Name> --module=<module>
+--force (boolean)
+--module (string, short m)
 // make:middleware
 marmeon make:middleware <Name> --module=<module>
 --force (boolean)

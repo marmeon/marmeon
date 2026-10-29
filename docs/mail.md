@@ -98,6 +98,14 @@ do not control. Prefer port 465 with `MAIL_SECURE=true` where your provider offe
 
 ## Writing mails
 
+`make:mail` writes a mail class with a preview, and a frame for it when the module has none:
+
+```sh
+pnpm marmeon make:mail NoteShared --module=notes
+```
+
+It creates `modules/notes/mail/NoteSharedMail.ts` (`Mail` is added to the name) and `modules/notes/mail/layout.ts`, and never overwrites either: the mail needs `--force`, and a layout that is there stays. The class has the `envelope()`, a `content()` that nests its body into the layout and a `static preview()`; it takes the recipient and a translator for the recipient's language. A mail is found by its folder, so the module's `index.ts` stays as it is. The command needs `@marmeon/mail` and `@marmeon/i18n` in the app's dependencies; `/_marmeon/mail/notes/NoteSharedMail` previews the result in development.
+
 `envelope()` returns `to` and `subject`, and optionally `from`, `cc`, `bcc`, `replyTo` and `headers`. An address is a string,
 `'ada@example.com'`, or `{ address, name }`, and `to`, `cc` and `bcc` also take a list. Without `from`, the mail comes from
 `MAIL_FROM_ADDRESS`. A mail without a recipient, an invalid address, or a line break in the subject, a name or a header fails
