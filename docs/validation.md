@@ -393,6 +393,43 @@ query: r.query({
 The [requests](requests.md#query-schemas) page explains how a query is parsed, and the [pagination](pagination.md) page builds a
 list on it. A [data table's](tables.md#the-url-is-strict) query is stricter on purpose: it answers 400.
 
+## A schema built per request
+
+A form's fields sometimes come from rows: the questions of an event, the options of a workspace. `schema` then takes a function
+instead of a schema, and the router calls it for each request with `resolve` and the request's context:
+
+```ts
+export const AnswersRequest = defineRequest({
+  schema: async (resolve, ctx: HttpContext<{}, { event: Event }>) => {
+    const questions = await resolve(QuestionRepository).of(ctx.params.event.id);
+    return r.object({
+      answers: r.object(Object.fromEntries(questions.map((q) => [q.key, q.required ? r.string().trim().required() : r.string().trim().optional()]))),
+    });
+  },
+  authorize: (ctx) => ctx.params.event.open,
+});
+```
+
+- **`ctx` is the context of a request that was let on**: the middleware ran, the route's bindings found their records, every
+  check and `authorize` said yes, and so did the route's `afterAuthorize` hooks. The function may read a bound record, such as
+  `ctx.params.event`. Declare the context it needs as the type of the parameter, as for `authorize`.
+- **It runs only then.** A request that a check or `authorize` refuses, or whose binding finds nothing, gets its 403 or 404
+  without the function running, so it cannot be used to tell what exists or to load rows for anybody. A live validation builds
+  the schema after the same decisions.
+- **It may be `async`.** The router awaits it before the first field is validated. A function that throws or rejects ends the
+  request with that error: an `HttpError` answers with its status, any other error is a 500. The controller does not run and
+  no field is checked.
+- **Errors sit at the fields you built**, such as `answers.diet`. `attributes` and `messages` are static, so they name fields
+  you know in advance.
+- **The types follow the built schema.** `ContextOf` and `FormOf` read the schema the function returns, not its promise. A
+  schema with keys that only the rows know is typed as a record (`Record<string, string>`), and `useForm()` gets that record.
+- **Uploads in it are checked per request.** The start cannot read a schema that is built later, so a form shape it would refuse (a list of files, a file in an optional object; see [storage](storage.md#uploads)) is found when the request builds it, and answers 500.
+- **It runs for every request.** Build as little as the schema needs, and keep rows in a repository that can cache them.
+- **Live validation** of a schema built by `rules` works as for a static one. A schema of [another library](#other-libraries) is
+  still left out unless the request says `live: true`.
+
+The web app's lab shows it: `/lab/surveys/:survey` is a form whose fields are the rows of a table.
+
 ## Other libraries
 
 A schema of any Standard Schema library works wherever a rule does: `defineRequest()`, `parseQuery()` and a job's

@@ -234,6 +234,7 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
   itself may be `upload(…).nullable()`. A list of files, a file inside an optional or nullable object, in a union or in
   `.when()` fields stops the start when the routes load (error S2), and the message names the field. (A form without JavaScript is not
   supported either.)
+  A schema built [per request](validation.md#a-schema-built-per-request) is read with the request instead: its unsupported shape answers 500 then.
 
 On S3, the browser sends the file straight to the bucket with a presigned POST that limits its size. The bucket then needs CORS
 for your app's origin, and the app one more package: `pnpm add @aws-sdk/s3-presigned-post@^3`.

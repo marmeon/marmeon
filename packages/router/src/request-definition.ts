@@ -7,13 +7,13 @@ import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from '@marmeon/core';
 
 /**
- * A body schema built per request with the request's `resolve` — for another library's schema whose rules need the app (say
- * the database), or one the app's config picks: `schema: (resolve) => (resolve(RegistrationMode).private ? privately : publicly)`.
- * **A live validation never runs a schema of another library** unless the request says {@link RequestDefinition.live}.
- * `rules` of @marmeon/validation need no factory: they get `resolve` through {@link ValidationContext}.
- * See docs/validation.md#other-libraries.
+ * A body schema built per request — from `resolve`, and from `ctx`: the request's context after its bindings, checks and
+ * `authorize`, so it may read a bound record and may be `async` (a form whose fields are rows). It never runs for a request
+ * that is refused. **A live validation never runs a schema of another library** unless the request says
+ * {@link RequestDefinition.live}. `rules` of @marmeon/validation need no factory for the app: they get `resolve` through
+ * {@link ValidationContext}. See docs/validation.md#a-schema-built-per-request.
  */
-export type SchemaFactory<TSchema extends StandardSchemaV1> = (resolve: ClassResolver) => TSchema;
+export type SchemaFactory<TSchema extends StandardSchemaV1, TCtx = HttpContext> = (resolve: ClassResolver, ctx: TCtx) => TSchema | Promise<TSchema>;
 
 /** What an invalid query field does — never a 422: links outlive their pages, and people type URLs. */
 export interface QueryOptions {
@@ -32,7 +32,7 @@ export interface QueryOptions {
  */
 export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx = any, TQuery extends StandardSchemaV1 = any> {
   /** The body's schema — or a function that builds it per request, for rules that need the app (see {@link SchemaFactory}). */
-  readonly schema?: TSchema | SchemaFactory<TSchema> | undefined;
+  readonly schema?: TSchema | SchemaFactory<TSchema, TCtx> | undefined;
   /** The query string, parsed (`ctx.query`): every field optional or with a default — an invalid one falls back to it. */
   readonly query?: TQuery | undefined;
   readonly queryOptions?: QueryOptions | undefined;
@@ -124,7 +124,7 @@ export type CheckQuery<TQuery extends StandardSchemaV1> =
  * back to its default). See docs/requests.md#validated-input and docs/requests.md#query-schemas.
  */
 export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TCtx = HttpContext>(definition: {
-  schema?: TSchema | SchemaFactory<TSchema>;
+  schema?: TSchema | SchemaFactory<TSchema, TCtx>;
   query?: CheckQuery<TQuery>;
   queryOptions?: QueryOptions;
   authorize?: (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
@@ -145,9 +145,9 @@ declare const REQUEST: unique symbol;
 export type SchemaOf<R> = R extends { readonly schema?: infer S }
   ? S extends StandardSchemaV1
     ? S
-    : S extends (resolve: never) => infer Built
-      ? Built extends StandardSchemaV1
-        ? Built
+    : S extends (...args: never[]) => infer Built
+      ? Awaited<Built> extends infer Schema extends StandardSchemaV1
+        ? Schema
         : never
       : never
   : never;
@@ -405,6 +405,15 @@ export async function authorizeRequest(definition: RequestDefinition, ctx: HttpC
 }
 
 /**
+ * The body schema of a request — built by its factory (awaited) when it has one. Call it only for a request that was let on:
+ * the factory may read what the checks and `authorize` protect.
+ */
+export async function buildSchema(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver): Promise<StandardSchemaV1 | undefined> {
+  const schema = definition.schema;
+  return typeof schema === 'function' ? await schema(resolve, ctx) : schema;
+}
+
+/**
  * Runs a request definition: authorize (403), then parse the query (never fails — invalid fields fall back), then
  * validate the body (422). Body and query never mix: `schema` sees `ctx.input()`, which is the body alone.
  */
@@ -420,7 +429,7 @@ export async function validateRequest(
     if (only) throw nothingToValidate();
     return query ? { query } : {};
   }
-  const schema: StandardSchemaV1 = typeof definition.schema === 'function' ? definition.schema(resolve) : definition.schema;
+  const schema = (await buildSchema(definition, ctx, resolve))!;
   // A live validation runs `rules` (which keep their database checks out), another library's schema only when the request
   // opts in. Fail-closed: the router cannot see which of its checks ask the database, so it answers as for a valid field.
   if (only && !definition.live && !runsLive(schema)) return query ? { query } : {};

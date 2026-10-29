@@ -1,6 +1,6 @@
 import type { Container, Resolver } from '@marmeon/core';
 import { HttpError, type ClassResolver, type HttpContext, type RequestDefinition, type StandardSchemaV1 } from '@marmeon/router';
-import { FRAMEWORK_ROUTES, isControllerClass } from '@marmeon/router/internal';
+import { buildSchema, FRAMEWORK_ROUTES, isControllerClass } from '@marmeon/router/internal';
 import { RejectedUpload } from './temporary-upload.ts';
 import { uploadFields } from './rule.ts';
 import type { TemporaryUploads } from './service.ts';
@@ -24,9 +24,8 @@ function sessionScope(internal: Internal, resolve: (key: unknown) => unknown): s
 }
 
 /** The body schema of a request definition — built by its factory, when it has one. */
-function bodySchema(request: RequestDefinition | undefined, resolve: ClassResolver): StandardSchemaV1 | undefined {
-  if (!request?.schema) return undefined;
-  return typeof request.schema === 'function' ? request.schema(resolve) : request.schema;
+function bodySchema(request: RequestDefinition | undefined, ctx: HttpContext, resolve: ClassResolver): Promise<StandardSchemaV1 | undefined> {
+  return request ? buildSchema(request, ctx, resolve) : Promise.resolve(undefined);
 }
 
 /** The value at `path` in `input`, with the object holding it. */
@@ -66,7 +65,7 @@ export function registerUploads(http: Http, internal: Internal, uploadHeader: st
       const field = ctx.request.headers.get(uploadHeader)!;
       const method = ctx.request.method;
       const route = ctx.route.routeName;
-      const rule = FIELD.test(field) && method !== 'GET' && method !== 'HEAD' && route ? uploadFields(bodySchema(request, resolve)).get(field) : undefined;
+      const rule = FIELD.test(field) && method !== 'GET' && method !== 'HEAD' && route ? uploadFields(await bodySchema(request, ctx, resolve)).get(field) : undefined;
       if (!rule || !route) throw new HttpError(404);
       const session = sessionScope(internal, resolve as (key: unknown) => unknown);
       // A guest's page that lets them upload keeps its session (`session.persist()` in its controller): an upload belongs to one.
