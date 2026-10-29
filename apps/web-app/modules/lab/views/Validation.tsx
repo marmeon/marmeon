@@ -9,6 +9,7 @@ interface Fields {
   website: string;
   age: string;
   starts: string;
+  ends: string;
   port: string;
   invite: string;
   inviter: string;
@@ -26,8 +27,8 @@ type TextField = Exclude<keyof Fields, 'kind' | 'terms'>;
  * route without `unique`: the unique index answers through `failOnDuplicate()`, with the same message.
  */
 export default function Validation(_props: PageProps<ShowValidationLabController>) {
-  const form = useForm<Fields>({ name: '', email: '', website: '', age: '', starts: '', port: '', invite: '', inviter: '', kind: 'person', vat: '', terms: false });
-  const error = (name: keyof Fields) =>
+  const form = useForm<Fields>({ name: '', email: '', website: '', age: '', starts: '', ends: '', port: '', invite: '', inviter: '', kind: 'person', vat: '', terms: false });
+  const error = (name: keyof Fields | '_') =>
     form.errors[name] && (
       <small role="alert" data-error={name}>
         {' '}
@@ -56,11 +57,13 @@ export default function Validation(_props: PageProps<ShowValidationLabController
           send('/lab/validation');
         }}
       >
+        {error('_')}
         {field('name', 'Name')}
         {field('email', 'E-mail', 'email')}
         {field('website', 'Website', 'url')}
         {field('age', 'Age', 'number')}
         {field('starts', 'Starts on', 'date')}
+        {field('ends', 'Ends on', 'date')}
         {field('port', 'Port', 'number')}
         {field('invite', 'Invitation code')}
         {field('inviter', 'Invited by (an account\'s e-mail)', 'email')}

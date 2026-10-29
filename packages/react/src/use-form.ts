@@ -12,6 +12,9 @@ type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
 
 type Field<F> = keyof F & string;
 
+/** What `errors` is keyed by: the top-level fields (also of a generic `F`), every path into the data, and `_`. */
+type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
+
 type Primitive = string | number | boolean | bigint | symbol | null | undefined | Date | Blob;
 
 /**
@@ -109,10 +112,13 @@ export interface FormState<F> {
   readonly data: F;
   set<K extends keyof F & string>(field: K, value: F[K]): void;
   setData(data: F): void;
-  /** The first message per field, from the server's validation. */
-  readonly errors: Partial<Record<Field<F>, string>>;
+  /**
+   * The first message per field, from the server's validation, keyed by every path of the data (`address.city`, `items.0.name`,
+   * `answers.${string}` for a record) — and `_` for a message that belongs to the form, not a field. See `docs/forms.md#errors-at-nested-and-dynamic-fields`.
+   */
+  readonly errors: Partial<Record<ErrorKey<F>, string>>;
   readonly hasErrors: boolean;
-  clearErrors(...fields: Field<F>[]): void;
+  clearErrors(...fields: ErrorKey<F>[]): void;
   /** A request is in flight. */
   readonly processing: boolean;
   /** How far the upload is, while a form with a file (`FormData`) is sent — else null. */

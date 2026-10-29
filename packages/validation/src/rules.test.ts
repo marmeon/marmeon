@@ -286,6 +286,27 @@ describe('objects', () => {
     expect(Object.keys(r.object({ a: r.string() }).confirmed('a').custom(() => true).entries)).toEqual(['a']);
   });
 
+  it('an object\'s custom(): a message under _, or at the field of its choice — only once every field is valid', async () => {
+    const event = r.object({ starts_at: r.string(), ends_at: r.string() });
+    const ordered = (data: { starts_at: string; ends_at: string }) => data.ends_at >= data.starts_at;
+    const form = event.custom(ordered, 'The end comes before the start.');
+    const at = event.custom(ordered, { message: 'The end comes before the start.', field: 'ends_at' });
+    const reversed = { starts_at: '2026-02-01', ends_at: '2026-01-01' };
+    expect(await errors(form, reversed)).toEqual({ _: ['The end comes before the start.'] });
+    expect(await errors(at, reversed)).toEqual({ ends_at: ['The end comes before the start.'] });
+    expect(await errors(event.custom(ordered, { field: 'ends_at' }), reversed)).toEqual({ ends_at: ['The ends at field is invalid.'] });
+    expect(await errors(at, { starts_at: '2026-01-01', ends_at: '2026-02-01' })).toEqual({});
+    // A field that is not valid: the check does not run.
+    expect(await errors(at, { ends_at: '2026-01-01' })).toEqual({ starts_at: ['The starts at field is required.'] });
+    // Nested: the path of the object comes first; an async check and a field of when() work the same.
+    const nested = r.object({ event: at.custom(async () => 'Never.', { field: 'starts_at' }) });
+    // The first failing check answers, as in a pipeline.
+    expect(await errors(nested, { event: reversed })).toEqual({ 'event.ends_at': ['The end comes before the start.'] });
+    expect(await errors(nested, { event: { starts_at: '2026-01-01', ends_at: '2026-01-02' } })).toEqual({ 'event.starts_at': ['Never.'] });
+    const conditional = r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(() => 'No.', { field: 'vat' });
+    expect(await errors(conditional, { kind: 'a' })).toEqual({ vat: ['No.'] });
+  });
+
   it('r.object() takes rules only', () => {
     expect(() => r.object({ name: { '~standard': {} } as never })).toThrow("Field 'name' is no rule of @marmeon/validation");
   });

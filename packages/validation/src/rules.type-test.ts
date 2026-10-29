@@ -191,3 +191,19 @@ export const cleared: FormOf<BlockController> = { title: 'Pricing', subtitle: ''
 // r.in() without '' among its options never gives '' (an empty <select> is missing there).
 const align = r.in(['left', 'center']).optional();
 same<NonNullable<(typeof align)['~standard']['types']>['output'], 'left' | 'center' | undefined>(true);
+
+// ——— An object's custom() ———
+const ends = r.object({ starts_at: r.string(), ends_at: r.string() });
+const never = () => true;
+ends.custom(never, { field: 'ends_at' }); // fine
+ends.custom(never, { message: 'The end comes before the start.', field: 'starts_at' }); // fine
+ends.custom(never, 'The end comes before the start.'); // fine
+// @ts-expect-error — a typo in the field
+ends.custom(never, { field: 'end_at' });
+// @ts-expect-error — only an object's check reports at a field
+r.string().custom(never, { field: 'x' });
+// @ts-expect-error — the other rules take a message, not options
+r.string().custom(never, { message: 'x' });
+// @ts-expect-error — a field of when() is not there before .when()
+ends.custom(never, { field: 'vat' });
+r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(never, { field: 'vat' }); // fine
