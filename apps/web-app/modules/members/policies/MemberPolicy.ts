@@ -29,6 +29,11 @@ export class MemberPolicy {
     return this.#isAdmin(user);
   }
 
+  /** Import the list from a file: administrators only. */
+  import(user: AuthUser) {
+    return this.#isAdmin(user);
+  }
+
   #isAdmin(user: AuthUser): boolean {
     return this.#config.admins.includes(user.email.toLowerCase());
   }

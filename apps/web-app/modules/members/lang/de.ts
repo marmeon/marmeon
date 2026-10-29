@@ -35,4 +35,9 @@ export default {
   bulk_all: 'Links aller {total} Treffer entfernen',
   confirm_bulk: '{count, plural, one {Die Profil-Links von # Mitglied entfernen?} other {Die Profil-Links von # Mitgliedern entfernen?}}',
   export: 'Als CSV herunterladen',
+  import_file: 'Mitglieder aus einer CSV-Datei importieren',
+  import_uploading: 'Datei wird gesendet: {percent} %',
+  import_ready: 'Die Datei ist bereit.',
+  import_save: 'Importieren',
+  imported: 'Datei empfangen ({size, number} Bytes).',
 } satisfies Messages<typeof en>;

@@ -53,16 +53,19 @@ export class TemporaryUpload {
   readonly mime: string;
   /** @internal The extension of that type (`png`) — what `store()` names the file with. */
   readonly extension: string;
+  /** @internal Whether its first bytes pass as text (no signature, no markup, no NUL) — what `upload({ text: true })` accepts. */
+  readonly plainText: boolean;
   readonly #source: UploadSource;
 
   /** @internal The uploads service makes them. */
-  constructor(details: { id: string; field: string; name: string; size: number; mime: string; extension: string }, source: UploadSource) {
+  constructor(details: { id: string; field: string; name: string; size: number; mime: string; extension: string; plainText?: boolean }, source: UploadSource) {
     this.id = details.id;
     this.field = details.field;
     this.name = details.name;
     this.size = details.size;
     this.mime = details.mime;
     this.extension = details.extension;
+    this.plainText = details.plainText ?? false;
     this.#source = source;
   }
 

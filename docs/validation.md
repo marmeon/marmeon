@@ -371,7 +371,8 @@ schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'im
 ```
 
 `ctx.body.avatar` is then a `TemporaryUpload`, and an optional file is `upload(…).nullable()`. The type is read from the file's
-first bytes, never from its name: HTML sent as `.png` is refused. Nothing chosen is "Choose a file.". A file needs a field of its own: an `upload()` in a list, a
+first bytes, never from its name: HTML sent as `.png` is refused. `upload({ maxBytes, text: true })` takes a text file of any format, a CSV for one: no known binary
+format, no markup at the start, no NUL byte (see [storage](storage.md#uploads) for what that does not promise). Nothing chosen is "Choose a file.". A file needs a field of its own: an `upload()` in a list, a
 union or an optional object stops the start. The [requests](requests.md#files) page shows a whole controller.
 
 ## Queries

@@ -38,6 +38,7 @@ const en = {
       used: 'This file was saved already — choose it again.',
       max: 'The file may be at most {max}.',
       type: 'This type of file is not accepted (allowed: {types}).',
+      text: 'Only a text file is accepted, such as a CSV.',
     },
     more: '(and {count, plural, one {# more error} other {# more errors}})',
     // The rules of @marmeon/validation — the same English as its VALIDATION_TEXTS (a test keeps them equal).

@@ -220,6 +220,16 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
 - **The types a rule can name** are those known by their first bytes: PNG, JPEG, GIF, WebP and AVIF images, PDF, ZIP, MP4 and MP3.
   Any other type in `mime` throws when the rule is built. A file of another format, such as CSV, counts as
   `application/octet-stream`, which only a rule without `mime` accepts.
+- **A text file of any format.** `upload({ maxBytes, text: true })` takes a file such as a CSV that passes as text, by its first
+  1 024 bytes: no signature known here (image, PDF, ZIP, MP4, MP3), no markup at the start (HTML, SVG, XML, in UTF-8 and UTF-16
+  alike), and no `0x00` byte, which is how binary files and executables show. Behind a UTF-16 byte order mark text has NUL bytes, so
+  there no 16-bit unit may be zero, and no known format may follow the mark. UTF-8 (with or without a BOM), Windows-1252 and UTF-16
+  with a BOM pass; UTF-16 without a BOM does not. A long file that starts with nothing but blanks is refused, and an empty file
+  counts as text. A script (shell, JavaScript, PostScript) is text too: the content is data, and it is as safe as the way it leaves
+  the app. Serve it through `serveFile()` or `temporaryUrl()` (`nosniff`, `sandbox`, a download; see
+  [public and private files](#public-and-private-files)); an app that shows or converts it another way escapes it, or decodes it
+  strictly, itself. `text` and `mime` together are a type error: they are two statements about one file. The upload's `mime`
+  stays `application/octet-stream` and `store()` names the file `….bin`.
 - **One file per field.** A file belongs in a field of its own, in the body or in an object that is always there; the field
   itself may be `upload(…).nullable()`. A list of files, a file inside an optional or nullable object, in a union or in
   `.when()` fields stops the start when the routes load (error S2), and the message names the field. (A form without JavaScript is not

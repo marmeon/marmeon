@@ -34,6 +34,11 @@ const en = {
   bulk_all: 'Remove the links of all {total} matching',
   confirm_bulk: '{count, plural, one {Remove the profile links of # member?} other {Remove the profile links of # members?}}',
   export: 'Download as CSV',
+  import_file: 'Import members from a CSV file',
+  import_uploading: 'Sending the file: {percent}%',
+  import_ready: 'The file is ready.',
+  import_save: 'Import',
+  imported: 'File received ({size, number} bytes).',
 } as const;
 
 export default en;

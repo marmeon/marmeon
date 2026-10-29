@@ -6,7 +6,7 @@ import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
 import { ObjectChangedError, S3Disk } from '../drivers/s3.ts';
 import { formatBytes, type UploadRule } from './rule.ts';
-import { SNIFF_BYTES, sniff } from './sniff.ts';
+import { isPlainText, SNIFF_BYTES, sniff } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -245,7 +245,7 @@ export class TemporaryUploads {
       throw error;
     }
     const { mime, extension } = sniff(head);
-    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension }, { disk, key: row.key, etag, consume: () => this.consume(id) });
+    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) }, { disk, key: row.key, etag, consume: () => this.consume(id) });
   }
 
   /** Uses upload `id` up — `false` when it was used already or has expired. One statement: of two at once, one wins. */

@@ -1,5 +1,5 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useTranslation } from '@marmeon/react';
+import { FileInput, Head, Link, useForm, useTranslation } from '@marmeon/react';
 import { useTable, type TableRunOutcome } from '@marmeon/react/table';
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
@@ -9,7 +9,8 @@ type Props = PageProps<ListMembersController>;
 
 /**
  * The page's path — links by URL, not by route name (`<Link route="members.index">`): a name client code writes goes into the route
- * manifest of the app's first download, and this page must not make that any larger.
+ * manifest of the app's first download, and the page's links must not make that any larger. (The import form is the exception: a
+ * form with an upload field needs its route name, because `form.field()` and `<FileInput>` exist only on a route's form.)
  */
 const PAGE = '/members';
 
@@ -23,6 +24,10 @@ const PAGE = '/members';
  */
 export default function Index({ members }: Props) {
   const t = useTranslation('members');
+  // The import: a text file uploaded ahead (`upload({ text: true })` — a CSV in any common encoding; HTML, SVG and binary files are
+  // refused by their bytes); the form sends the token. Administrators only: the export link below marks them.
+  const importForm = useForm('members.import', { file: null });
+  const file = importForm.data.file;
   const label = (column: string) => t(`column.${column as 'name'}`);
   const table = useTable(members, {
     labels: {
@@ -237,6 +242,28 @@ export default function Index({ members }: Props) {
       </p>
 
       {table.page.type === 'offset' && <Pagination meta={table.page} />}
+      {csv && (
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void importForm.submit();
+          }}
+        >
+          <p>
+            <label htmlFor="members-import">{t('import_file')}</label>{' '}
+            <FileInput id="members-import" field={importForm.field('file')} accept=".csv,.txt,text/csv,text/plain" aria-invalid={!!(importForm.errors.file ?? file?.error)} aria-describedby="members-import-status" />{' '}
+            <button type="submit" disabled={file?.status !== 'uploaded' || importForm.processing}>
+              {t('import_save')}
+            </button>
+          </p>
+          <p id="members-import-status" aria-live="polite">
+            {file?.uploading && <small>{t('import_uploading', { percent: Math.round(file.progress * 100) })}</small>}
+            {file?.status === 'uploaded' && <small>{t('import_ready')}</small>}
+            {(importForm.errors.file ?? file?.error) && <small role="alert">{importForm.errors.file ?? file?.error}</small>}
+          </p>
+        </form>
+      )}
       {csv && (
         <p>
           {/* A download, not a visit: the server answers a file (no-store), with the table's sort and filters. */}

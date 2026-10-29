@@ -19,6 +19,7 @@ import type { EditBookmarkController } from '../modules/bookmarks/controllers/Ed
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
 import type { EndSignInController } from '../modules/auth/controllers/EndSignInController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
+import type { ImportMembersController } from '../modules/members/controllers/ImportMembersController.ts';
 import type { ListBookmarksController } from '../modules/bookmarks/controllers/ListBookmarksController.ts';
 import type { ListMembersController } from '../modules/members/controllers/ListMembersController.ts';
 import type { ListPeopleController } from '../modules/user-profile/controllers/ListPeopleController.ts';
@@ -149,6 +150,7 @@ declare module '@marmeon/router' {
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
+    'members.import': { method: 'post'; path: '/members/import'; controller: typeof ImportMembersController };
     'members.index': { method: 'get'; path: '/members'; controller: typeof ListMembersController };
     'notifications.destroy': { method: 'delete'; path: '/notifications/:notification'; controller: typeof DeleteNotificationController };
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };

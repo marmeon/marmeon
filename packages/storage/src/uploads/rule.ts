@@ -16,6 +16,8 @@ export interface UploadRule {
   readonly maxBytes: number;
   /** The types accepted, by the file's bytes — undefined: any type but markup a browser would run (HTML, SVG, XML). */
   readonly mime: readonly UploadMime[] | undefined;
+  /** Set: a text file of any format (a CSV), by its first bytes — no known signature, no markup, no NUL. Then `mime` is undefined. */
+  readonly text?: true;
 }
 
 /** What a form holds in an upload field: the upload (sent as its token), or nothing yet. (A test sends the token: `app.upload(…)`.) */
@@ -36,13 +38,14 @@ export type CheckUploadMime<M extends string> = M extends UploadMime
       : `'${M}' is not a type an upload is recognised as by its bytes — did you mean ${JoinNames<Near<M>>}?`;
 
 /** Message keys of the rule (namespace `marmeon`), with the English text for apps without @marmeon/i18n. */
-const MESSAGES: Record<UploadProblem | 'required' | 'max' | 'type', [key: string, fallback: string]> = {
+const MESSAGES: Record<UploadProblem | 'required' | 'max' | 'type' | 'text', [key: string, fallback: string]> = {
   required: ['marmeon.validation.upload.required', 'Choose a file.'],
   invalid: ['marmeon.validation.upload.invalid', 'The file did not arrive — choose it again.'],
   expired: ['marmeon.validation.upload.expired', 'The upload expired — choose the file again.'],
   used: ['marmeon.validation.upload.used', 'This file was saved already — choose it again.'],
   max: ['marmeon.validation.upload.max', 'The file may be at most {max}.'],
   type: ['marmeon.validation.upload.type', 'This type of file is not accepted (allowed: {types}).'],
+  text: ['marmeon.validation.upload.text', 'Only a text file is accepted, such as a CSV.'],
 };
 
 function message(kind: keyof typeof MESSAGES, params: Record<string, unknown> = {}): (issue: object) => string {
@@ -69,17 +72,24 @@ const label = (mime: string) => UPLOAD_TYPES[mime as UploadMime]?.toUpperCase() 
  * A file uploaded ahead, as the rule of a form field: `upload({ maxBytes: 2_000_000, mime: ['image/png'] })`. The form sends
  * the upload's token; on submit the token and the file are checked (its size, and its type **by its bytes**, never the name
  * or the `Content-Type` the browser sent), and the controller gets a {@link TemporaryUpload}. HTML, SVG and XML are never
- * accepted, whatever `mime` says; `upload(…).nullable()` makes the file optional. See `docs/storage.md#uploads`.
+ * accepted, whatever `mime` says; `text: true` instead of `mime` takes a text file of any format, a CSV for one: one with no
+ * known signature, no markup at its start and no NUL (a script is text too, so the content is data to parse, never to run); `upload(…).nullable()` makes the file optional. See `docs/storage.md#uploads`.
  */
-export function upload<const M extends string = UploadMime>(options: { readonly maxBytes: number; readonly mime?: readonly CheckUploadMime<M>[] }): UploadSchema {
+export function upload<const M extends string = UploadMime>(
+  options:
+    | { readonly maxBytes: number; readonly mime?: readonly CheckUploadMime<M>[]; readonly text?: never }
+    | { readonly maxBytes: number; readonly text: true; readonly mime?: never },
+): UploadSchema {
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) throw new RangeError(`upload() needs maxBytes > 0, not ${String(options.maxBytes)}.`);
-  const rule: UploadRule = { maxBytes: options.maxBytes, mime: options.mime as readonly UploadMime[] | undefined };
+  if (options.text !== undefined && options.text !== true) throw new TypeError('upload() takes text: true or no text at all.');
+  if (options.text && options.mime !== undefined) throw new TypeError('upload() takes text or mime, not both: text accepts any text file, mime names the types of files recognised by their bytes.');
+  const rule: UploadRule = { maxBytes: options.maxBytes, mime: options.mime as readonly UploadMime[] | undefined, ...(options.text ? { text: true } : {}) };
   for (const mime of rule.mime ?? []) {
     if (!(mime in UPLOAD_TYPES) || (mime as string) === 'application/octet-stream') throw new TypeError(`upload() cannot recognise "${mime}" by its bytes — see docs/storage.md#uploads for the types it can.`);
   }
   const types = (rule.mime ?? []).map(label).join(', ');
   const tooLarge = message('max', { max: formatBytes(rule.maxBytes) });
-  const wrongType = message('type', { types: types || 'any but HTML, SVG and XML' });
+  const wrongType = rule.text ? message('text') : message('type', { types: types || 'any but HTML, SVG and XML' });
   return r.value<TemporaryUpload, UploadInput>(
     (value) => {
       if (value === null || value === undefined || value === '') return message('required');
@@ -87,6 +97,7 @@ export function upload<const M extends string = UploadMime>(options: { readonly 
       if (value instanceof RejectedUpload) return message(value.problem);
       if (!(value instanceof TemporaryUpload)) return message('invalid');
       if (value.size > rule.maxBytes) return tooLarge;
+      if (rule.text && !(value.mime === 'application/octet-stream' && value.plainText)) return wrongType;
       if (isActiveType(value.mime) || (rule.mime !== undefined && !rule.mime.includes(value.mime as UploadMime))) return wrongType;
       return undefined;
     },
