@@ -39,6 +39,11 @@ export interface ExistsOptions<Ctx = any, Q = any> {
     readonly where?: (query: Q, ctx: Ctx) => Q;
     readonly message?: RuleMessage;
 }
+// InvalidValue
+export interface InvalidValue {
+    readonly kind: 'invalid';
+    readonly errors: ValidationErrors;
+}
 // NumberRule
 export declare class NumberRule extends Rule<number, number | `${number}`> {
     integer(): this;
@@ -116,6 +121,11 @@ export interface UniqueOptions<Ctx = any, Q = any> extends ExistsOptions<Ctx, Q>
     readonly ignore?: (ctx: Ctx) => unknown;
     readonly ignoreColumn?: string;
 }
+// ValidateOptions
+export interface ValidateOptions extends ValidationLabels {
+    readonly resolve?: ValidationContext['resolve'] | undefined;
+    readonly translator?: MessageTranslator | undefined;
+}
 // metaOf
 export declare function metaOf(rule: unknown, key: symbol): unknown;
 // rules
@@ -144,6 +154,8 @@ export declare const rules: {
     port: () => Rule<number, number | `${number}`>;
     list: <Item extends Rule<any, any>>(item: Item) => ArrayRule<InferOutput<Item>, InferInput<Item>, string | InferInput<Item>[]>;
 };
+// validate
+export declare function validate<TSchema extends StandardSchemaV1>(schema: TSchema, value: unknown, options?: ValidateOptions): Promise<Result<InferOutput<TSchema>, InvalidValue>>;
 ```
 
 ### Referenced, not exported

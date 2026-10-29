@@ -256,7 +256,7 @@ function databaseStep(kind: 'unique' | 'exists', Repository: new (...args: any[]
       return engine.checkAsync(async (value) => {
         const request = context.request;
         if (!request) {
-          throw new Error(`r.…${kind}() asks the database — it validates in a request (defineRequest), where it gets the app's resolve; this validation has none.`);
+          throw new Error(`r.…${kind}() asks the database — it validates in a request (defineRequest), where it gets the app's resolve, or with validate(schema, value, { resolve }); this validation has none.`);
         }
         const repository = request.resolve(Repository) as RepositoryLike;
         let query = repository.query() as any;
