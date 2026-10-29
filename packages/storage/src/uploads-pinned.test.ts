@@ -210,7 +210,10 @@ describe('an uploaded S3 object is pinned by its ETag from the check to the stor
     const { uploads, token, id } = await target(fake, 1024);
     fake.post('uploads', id, pngOf(1024));
     const checked = upload(await uploads.resolve(token, SCOPE));
-    fake.post('uploads', id, HTML);
+    // Another picture, so that an unpinned read would answer with its size; HTML would be undefined anyway.
+    const other = pngOf(1024);
+    other.set([0, 0, 0, 0x64, 0, 0, 0, 0x32], 16);
+    fake.post('uploads', id, other);
     expect(await checked.dimensions()).toBeUndefined();
   });
 

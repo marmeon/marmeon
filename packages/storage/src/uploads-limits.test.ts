@@ -14,6 +14,7 @@ import { MemoryDisk } from './drivers/memory.ts';
 import { NO_TEMPORARY_URLS } from './temporary.ts';
 import { PruneUploadsCommand } from './uploads/commands.ts';
 import { UPLOADS_TABLE } from './index.ts';
+import { DIMENSION_BYTES } from './uploads/dimensions.ts';
 import { TemporaryUploads, type TargetRequest } from './uploads/service.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -153,6 +154,31 @@ describe('temporary uploads: what may wait unsent', () => {
       expect(found).toMatchObject({ field: 'avatar' });
       expect(await (found as { dimensions(): Promise<unknown> }).dimensions()).toEqual(expected);
     }
+  });
+
+  it('dimensions() of a large local upload reads no further than the first bytes of the file', async () => {
+    const service = uploads();
+    const size = 4 * MB;
+    const png = new Uint8Array(size);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x2c, 0, 0, 0, 0xc8]);
+    const token = (await service.target(request('a', size))).token;
+    await service.receive(token.slice(3, 39), 'a', new ReadableStream<Uint8Array>({ start: (controller) => (controller.enqueue(png), controller.close()) }), undefined);
+    const found = (await service.resolve(token, { session: 'a', route: 'avatar.update', field: 'avatar' })) as { dimensions(): Promise<unknown> };
+    // The file comes in chunks of 64 KiB, as a disk on a file system would send it; the count is what was pulled from it.
+    const chunk = 64 * 1024;
+    let pulled = 0;
+    vi.spyOn(disk, 'stream').mockImplementation(async () => {
+      let at = 0;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (at >= size) return controller.close();
+          pulled += chunk;
+          controller.enqueue(png.subarray(at, (at += chunk)));
+        },
+      }, { highWaterMark: 0 });
+    });
+    expect(await found.dimensions()).toEqual({ width: 300, height: 200 });
+    expect(pulled).toBeLessThanOrEqual(DIMENSION_BYTES + chunk);
   });
 
   describe('bytes() and text() read an upload without using it up', () => {
