@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 import { SurveyRepository } from './SurveyRepository.ts';
+import { SurveyQuestionFactory } from './factories/SurveyQuestionFactory.ts';
 import type { StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
@@ -68,6 +69,8 @@ describe('the kind of a question', () => {
     await db.insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'drink', label: 'Drink', kind }).execute();
     const rows = await db.selectFrom('lab_survey_questions').select('kind').where('name', '=', 'drink').execute();
     expect(rows.map((row) => row.kind)).toEqual(['choice']);
+    const made = await app.factory(SurveyQuestionFactory).state('choice').create();
+    expect(made.kind).toBe('choice');
     // @ts-expect-error — 'essay' is not one of the kinds
     const refused = db.insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'story', label: 'Story', kind: 'essay' }).execute();
     await expect(refused).rejects.toThrow(/lab_survey_questions_kind_check|CHECK constraint/i);

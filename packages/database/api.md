@@ -607,8 +607,8 @@ export declare function defineConnection<const Schema extends StandardSchemaV1>(
     resolve: (env: InferOutput<Schema>) => ConnectionDefinitionOptions;
 }): ConnectionDefinition;
 // defineFactory
-export declare function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(table: T, definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>, options?: {
-    states?: Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)>;
+export declare function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(table: T, definition: NoInfer<(context: FactoryContext) => Attributes<NewRowOf<DB[T]>>>, options?: {
+    states?: Record<S, Partial<NewRowOf<DB[T]>> | NoInfer<(context: FactoryContext) => Partial<NewRowOf<DB[T]>>>>;
 }): FactoryDefinition<T, DB, S>;
 // defineMigration
 export declare function defineMigration<Up extends Migration['up'], Down extends Migration['down']>(migration: {
