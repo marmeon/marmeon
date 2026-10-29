@@ -3,7 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { Connections } from '../connections.ts';
-import { deriveRelations } from '../introspection.ts';
+import { deriveRelations, relationProblemsMessage } from '../introspection.ts';
 import { Migrator } from '../migrations/migrator.ts';
 import { factsOf } from '../schema/projection.ts';
 import { renderTypes, TYPES_FORMAT, TYPES_FORMAT_MARK, type Rendered, type SchemaSnapshot } from './render.ts';
@@ -79,13 +79,23 @@ export class TypeGenerator {
     return existsSync(this.path) && readFileSync(this.path, 'utf8') === (await this.render(signal)).source;
   }
 
+  /**
+   * @internal For the commands: the D26 message when the foreign keys of the migrations give relations that clash, `undefined` when
+   * they do not. Read from the migration files, so it holds before a migration ran.
+   */
+  async relationsRefusal(): Promise<string | undefined> {
+    const projection = await this.#migrator.projection();
+    return relationProblemsMessage(deriveRelations(factsOf(projection, this.#connections.options().driver)).problems);
+  }
+
   async #snapshot(signal?: AbortSignal): Promise<SchemaSnapshot> {
     if (signal?.aborted) throw signal.reason;
     const projection = await this.#migrator.projection();
     const driver = this.#connections.options().driver;
     // The same derivation the connection uses at runtime, so the generated names are the names that work.
     const derived = deriveRelations(factsOf(projection, driver));
-    if (derived.problems.length) throw new Error(derived.problems.join('\n'));
+    const problems = relationProblemsMessage(derived.problems);
+    if (problems) throw new Error(problems);
     return {
       driver,
       projection,

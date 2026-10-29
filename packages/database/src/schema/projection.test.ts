@@ -364,6 +364,8 @@ const GROUPS: Record<string, string[]> = {
   markers: ['auth', 'markers'],
   relations: ['auth', 'relations'],
   'relations-ambiguous': ['auth', 'relations-ambiguous'],
+  'relations-shadowed': ['auth', 'relations-shadowed'],
+  'relations-named': ['auth', 'relations-named'],
   'relations-secrets': ['auth', 'relations-secrets'],
   'relations-readers': ['auth', 'relations', 'relations-readers'],
   'relations-archived': ['auth', 'relations', 'relations-archived'],

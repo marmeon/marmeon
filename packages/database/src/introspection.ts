@@ -1,3 +1,4 @@
+import { withCode } from '@marmeon/core/internal';
 import type { Driver } from './schema/blueprint.ts';
 
 // What the schema says about relations — read from the database's catalog or taken from the projection of the migrations, and turned
@@ -228,6 +229,15 @@ async function primaryKeyColumns(run: CatalogQuery, driver: Driver): Promise<Map
 /** `regclass::text` quotes a name that needs it (`"Users"`). */
 function unquote(name: string): string {
   return name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1).replaceAll('""', '"') : name;
+}
+
+/**
+ * The message of the error D26 for the problems `deriveRelations()` found, or `undefined` without any. Raised by `migrate` and `migrate:fresh`
+ * in development before they run, and by `db:types`; the problems say how to fix each one. See docs/errors.md#server-error-codes.
+ */
+export function relationProblemsMessage(problems: readonly string[]): string | undefined {
+  if (problems.length === 0) return undefined;
+  return withCode('D26', `The foreign keys of the migrations give relations that clash:\n${problems.map((problem) => `- ${problem}`).join('\n')}\nSee docs/migrations.md#relations-from-foreign-keys.`);
 }
 
 const COUNT = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];

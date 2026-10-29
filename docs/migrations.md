@@ -602,7 +602,7 @@ export default defineMigration({
     schema.create('attachments', (table) => {
       table.id();
       table.foreignId('note_id').constrained().cascadeOnDelete();
-      table.foreignId('uploaded_by').constrained('users').nullOnDelete().nullable();
+      table.foreignId('uploaded_by_id').constrained('users').nullOnDelete().nullable();
       table.string('name');
       table.timestamps();
     }),
@@ -615,7 +615,7 @@ export default defineMigration({
 (`person_id` → `constrained('people')`), and the column when it is not `id`: `constrained('accounts', 'uuid')`. Then `cascadeOnDelete()` deletes the row along with the referenced one, `nullOnDelete()`
 sets the column to `NULL`, and `restrictOnDelete()` refuses to delete the referenced row while this one points at it. Without any
 of them, the database's default applies and refuses the delete as well. The compiler only offers the three after
-`constrained()`, and `.nullable()` goes last, as in `uploaded_by` above. Both SQLite and Postgres enforce the reference.
+`constrained()`, and `.nullable()` goes last, as in `uploaded_by_id` above. Both SQLite and Postgres enforce the reference.
 
 Every foreign key also describes two relations, one for each table. The
 [relations from foreign keys](#relations-from-foreign-keys) section shows how they are named.
@@ -842,7 +842,8 @@ nothing softly. The mark follows the table when it is renamed. It goes away when
 Each foreign key describes how two tables relate, so the relations are derived from the migrations, like the table types:
 
 - **belongsTo**: the table with the foreign key gets a relation named after the column without `_id`. `comments.post_id` gives
-  `comments.post`.
+  `comments.post`. So the column's name ends in `_id`: `uploaded_by_id` gives the relation `uploaded_by`, while a column
+  `uploaded_by` would give a relation of its own name, and a relation never takes the name of a column.
 - **hasMany**: the referenced table gets one named after the table with the foreign key, `posts.comments`.
 - **hasOne**: instead of hasMany, when the foreign key column alone is unique or the primary key. A table that holds one row per
   user, `table.foreignId('user_id').primary()`, gives `users.login_activity`.
@@ -892,12 +893,19 @@ Now `posts` has `author` and `editor`, and `users` has `authored_posts` and `edi
 stops and says what to do, and the running app gives `users` neither relation:
 
 ```text
-posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')
+[marmeon:D26] The foreign keys of the migrations give relations that clash:
+- posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')
+See docs/migrations.md#relations-from-foreign-keys.
 ```
+
+`marmeon migrate` and `migrate:fresh` check this in development before they apply or drop anything, and stop with
+[D26](errors.md#server-error-codes) when a relation clashes, whatever the kind: a foreign key column without `_id`, two foreign
+keys to one table without `.inverse()` names, or a relation taking a name twice. Nothing is migrated: change the migration the message
+names (roll it back first if it ran). `--no-types` skips the check, and production and tests do not make it.
 
 A foreign key to its own table follows the same rules: `categories.parent_id` gives `categories.parent` and the children as
 `categories.categories`. `.inverse('children')` gives them a better name. A relation never hides a column either: a foreign key
-named `owner` would give a relation `owner`, so `db:types` asks for `owner_id` instead.
+named `owner` would give a relation `owner`, so the message asks for `owner_id` instead.
 
 `db:types` writes the relations into `bootstrap/database.d.ts` next to the tables, as `Relations`, with the keys each one
 joins on. The connection derives the same relations at runtime, from the same migrations.
