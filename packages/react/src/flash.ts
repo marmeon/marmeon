@@ -13,10 +13,9 @@ export type FlashHandler<K extends FlashKey> = (data: FlashMessage<K>['data'], m
  */
 export function useFlash<const K extends string>(key: CheckFlashKey<K>, handler: FlashHandler<K & FlashKey>): void {
   const navigator = useRouterContext().navigator();
-  const latest = useRef(handler);
-  latest.current = handler;
-  useEffect(
-    () => navigator?.onFlash(key as FlashKey, (message) => latest.current(message.data as FlashMessage<K & FlashKey>['data'], message as FlashMessage<K & FlashKey>)),
-    [navigator, key],
-  );
+  // The handler is typed per key; the router hands over any key's message, and only `key`'s ever arrives. Stored untyped:
+  // with several `FlashData` keys a call through `FlashHandler<K & FlashKey>` would need the intersection of their data.
+  const latest = useRef<(data: unknown, message: FlashMessage) => void>(handler as (data: unknown, message: FlashMessage) => void);
+  latest.current = handler as (data: unknown, message: FlashMessage) => void;
+  useEffect(() => navigator?.onFlash(key as FlashKey, (message) => latest.current(message.data, message)), [navigator, key]);
 }
