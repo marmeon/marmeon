@@ -1,5 +1,5 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandArgumentsError, editDefinitionFile, importedBindings } from '@marmeon/core';
 import { escapesRoot, readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
@@ -109,8 +109,7 @@ export class MakeAuthCommand {
       input.output.error('The rest of modules/auth was written again; marmeon-stubs.json was not updated. Run marmeon make:auth --force again.');
       return 1;
     }
-    const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));
-    input.output.success(`Created modules/auth (${files.length} files)`);
+    input.output.success(`Created modules/auth (${countFiles(target)} files)`);
     for (const file of kept.odd) input.output.warn(`modules/auth/migrations/${file} is no regular file; it counts as the migration and was kept.`);
     for (const file of kept.differs) input.output.info(`modules/auth/migrations/${file} differs from the template and was kept.`);
     if (kept.kept > 0) input.output.line(`Kept ${kept.kept} migrations in modules/auth/migrations: a migration that ran never changes; a change of a kit table comes as a new migration.`);
@@ -122,6 +121,7 @@ export class MakeAuthCommand {
       .map((entry) => relative(source, join(entry.parentPath, entry.name)).split(sep).join('/'))
       .filter((file) => !file.startsWith('migrations/'))
       .sort();
+    removeLeftovers(input.root, manifest.value?.sets[`@marmeon/auth:${adapter}/modules/auth`], copied.map((file) => `modules/auth/${file}`), input.output);
     const recorded = recordStubSet(input.root, `@marmeon/auth:${adapter}/modules/auth`, {
       package: '@marmeon/auth',
       version,
@@ -176,6 +176,66 @@ export class MakeAuthCommand {
       input.output.line("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page).");
     }
     return 0;
+  }
+}
+
+/** The regular files below `directory`, counted without following a link: one to `../..` would walk the whole app. */
+function countFiles(directory: string): number {
+  let count = 0;
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) count += countFiles(join(directory, entry.name));
+    else if (entry.isFile() && /\.\w+$/.test(entry.name)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Deletes the files an earlier kit wrote that this one no longer ships, when the app left them unchanged (the hash in
+ * `marmeon-stubs.json` still matches); a changed one stays and is named. The manifest is a file of the repository, so a cloned
+ * one can name any path: only regular files under `modules/auth/` (never `migrations/`), checked with `escapesRoot` and
+ * `lstat` (which never follows a link), and only for the same hash, are removed. The real directory of the file must lie under
+ * the module's real directory and outside its migrations, so a link to a directory inside the project reaches nothing else,
+ * and a file the kit still ships (by real path, also in another case) is never removed.
+ */
+function removeLeftovers(root: string, previous: { readonly version: string; readonly files: Readonly<Record<string, { readonly sha256: string }>> } | undefined, copied: readonly string[], output: CommandInput['output']): void {
+  if (previous === undefined) return;
+  // By real path, so a leftover that only differs in case from a shipped file (a case-insensitive file system) is that file.
+  const real = (path: string) => realpathSync.native(path);
+  const moduleReal = real(join(root, 'modules', 'auth'));
+  const migrationsAt = join(moduleReal, 'migrations');
+  const migrationsReal = lstatSync(migrationsAt, { throwIfNoEntry: false }) === undefined ? migrationsAt : real(migrationsAt);
+  const shipped = new Set(copied.map((file) => real(join(root, ...file.split('/')))));
+  const inside = (base: string, path: string) => path === base || path.startsWith(base + sep);
+  for (const [path, entry] of Object.entries(previous.files)) {
+    if (!path.startsWith('modules/auth/') || path.startsWith('modules/auth/migrations/')) continue;
+    const abs = join(root, ...path.split('/'));
+    if (escapesRoot(root, abs) !== undefined) {
+      output.warn(`Kept ${path}: it leads out of the project.`);
+      continue;
+    }
+    try {
+      const stat = lstatSync(abs, { throwIfNoEntry: false });
+      if (stat === undefined) continue;
+      if (!stat.isFile()) {
+        output.warn(`Kept ${path}: it is no regular file.`);
+        continue;
+      }
+      // A link on the way (to a directory inside the project) would reach files that are not the module's.
+      const parent = real(dirname(abs));
+      if (!inside(moduleReal, parent) || inside(migrationsReal, parent)) {
+        output.warn(`Kept ${path}: it does not lie in the module's own directories.`);
+        continue;
+      }
+      if (shipped.has(real(abs))) continue;
+      if (stubHash(readFileSync(abs)) === entry.sha256) {
+        rmSync(abs);
+        output.success(`Removed ${path}: the kit of ${previous.version} wrote it, this one no longer ships it, and it was unchanged.`);
+      } else {
+        output.warn(`Kept ${path}: the kit of ${previous.version} wrote it and this one no longer ships it, but it was changed. Delete it once nothing of yours imports it.`);
+      }
+    } catch (error) {
+      output.warn(`Kept ${path}: ${(error as NodeJS.ErrnoException).code ?? 'it could not be read'}.`);
+    }
   }
 }
 

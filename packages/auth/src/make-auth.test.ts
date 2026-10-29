@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readStubManifest, recordStubSet, stubHash } from '@marmeon/core/internal';
@@ -323,6 +323,212 @@ describe('make:auth', () => {
       symlinkSync(join(root, 'shared'), join(root, 'modules'), 'dir');
       expect(await new MakeAuthCommand().handle(fakeInput(root).input)).toBe(0);
       expect(existsSync(join(root, 'shared/auth/routes.ts'))).toBe(true);
+    });
+  });
+
+  describe('--force and the files of an earlier kit', () => {
+    const key = '@marmeon/auth:react/modules/auth';
+    const old = 'modules/auth/controllers/CreateAccessTokenController.ts';
+    const removed = `✓ Removed ${old}: the kit of 0.4.0 wrote it, this one no longer ships it, and it was unchanged.`;
+
+    /** An app with the module whose recorded set also lists `extra` (written with `contents`) as an earlier kit's file. */
+    async function appWithLeftovers(extra: Record<string, string>) {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const manifest = readStubManifest(root);
+      if (!manifest.ok) throw new Error(manifest.error.message);
+      const files = Object.entries(manifest.value!.sets[key]!.files).map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 }));
+      for (const [path, contents] of Object.entries(extra)) {
+        mkdirSync(join(root, path, '..'), { recursive: true });
+        writeFileSync(join(root, path), contents);
+        files.push({ path, stub: `stubs/react/${path}`, sha256: stubHash(contents) });
+      }
+      recordStubSet(root, key, { package: '@marmeon/auth', version: '0.4.0', files });
+      return root;
+    }
+
+    it('deletes a file the earlier kit wrote that the app left unchanged, and records the new set without it', async () => {
+      const root = await appWithLeftovers({ [old]: 'export {};\n' });
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines).toContain(removed);
+      expect(existsSync(join(root, old))).toBe(false);
+      const after = readStubManifest(root);
+      if (!after.ok) throw new Error('unreadable');
+      expect(after.value!.sets[key]!.files[old]).toBeUndefined();
+      // The second run has nothing to say about it.
+      const second = fakeInput(root, { force: true });
+      await new MakeAuthCommand().handle(second.input);
+      expect(second.lines.filter((line) => line.includes(old))).toEqual([]);
+    });
+
+    it('keeps a file the app changed and names it', async () => {
+      const root = await appWithLeftovers({ [old]: 'export {};\n' });
+      writeFileSync(join(root, old), 'export const mine = 1;\n');
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines).toContain(`! Kept ${old}: the kit of 0.4.0 wrote it and this one no longer ships it, but it was changed. Delete it once nothing of yours imports it.`);
+      expect(readFileSync(join(root, old), 'utf8')).toBe('export const mine = 1;\n');
+      const second = fakeInput(root, { force: true });
+      await new MakeAuthCommand().handle(second.input);
+      expect(second.lines.filter((line) => line.includes(old))).toEqual([]);
+    });
+
+    it('says nothing about a file that is gone, and leaves one the app made itself', async () => {
+      const root = await appWithLeftovers({ [old]: 'export {};\n' });
+      rmSync(join(root, old));
+      writeFileSync(join(root, 'modules/auth/controllers/MineController.ts'), 'export {};\n');
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines.filter((line) => line.includes(old))).toEqual([]);
+      expect(existsSync(join(root, 'modules/auth/controllers/MineController.ts'))).toBe(true);
+    });
+
+    it('touches nothing outside modules/auth, or under its migrations, however the manifest lists it', async () => {
+      const outside = { 'bootstrap/keep.ts': 'a\n', 'modules/auth/migrations/0001_01_01_999999_old.ts': 'b\n', 'modules/authx/keep.ts': 'c\n' };
+      const root = await appWithLeftovers(outside);
+      const { input } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      for (const path of Object.keys(outside)) expect(existsSync(join(root, path)), path).toBe(true);
+    });
+
+    it('refuses a link, whatever the file it leads to holds, and leaves the target as it is', async () => {
+      const root = await appWithLeftovers({});
+      const outside = tempDir('marmeon-make-auth-outside-');
+      writeFileSync(join(outside, 'target.ts'), 'outside\n');
+      writeFileSync(join(root, 'inside.ts'), 'inside\n');
+      const links = { 'modules/auth/outer.ts': join(outside, 'target.ts'), 'modules/auth/inner.ts': join(root, 'inside.ts') };
+      for (const [path, aim] of Object.entries(links)) symlinkSync(aim, join(root, path));
+      const manifest = readStubManifest(root);
+      if (!manifest.ok) throw new Error(manifest.error.message);
+      const files = [
+        ...Object.entries(manifest.value!.sets[key]!.files).map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })),
+        { path: 'modules/auth/outer.ts', stub: 'x', sha256: stubHash('outside\n') },
+        { path: 'modules/auth/inner.ts', stub: 'x', sha256: stubHash('inside\n') },
+      ];
+      recordStubSet(root, key, { package: '@marmeon/auth', version: '0.4.0', files });
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines.filter((line) => line.startsWith('! Kept modules/auth/outer.ts') || line.startsWith('! Kept modules/auth/inner.ts'))).toHaveLength(2);
+      expect(lines.filter((line) => line.startsWith('✓ Removed'))).toEqual([]);
+      expect(readFileSync(join(outside, 'target.ts'), 'utf8')).toBe('outside\n');
+      expect(readFileSync(join(root, 'inside.ts'), 'utf8')).toBe('inside\n');
+      for (const path of Object.keys(links)) expect(lstatSync(join(root, path)).isSymbolicLink(), path).toBe(true);
+    });
+
+    it('does not delete through a directory that is a link out of the project', async () => {
+      const root = await appWithLeftovers({});
+      const outside = tempDir('marmeon-make-auth-outside-');
+      writeFileSync(join(outside, 'target.ts'), 'outside\n');
+      symlinkSync(outside, join(root, 'modules/auth/linked'), 'dir');
+      const manifest = readStubManifest(root);
+      if (!manifest.ok) throw new Error(manifest.error.message);
+      const files = [
+        ...Object.entries(manifest.value!.sets[key]!.files).map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })),
+        { path: 'modules/auth/linked/target.ts', stub: 'x', sha256: stubHash('outside\n') },
+      ];
+      recordStubSet(root, key, { package: '@marmeon/auth', version: '0.4.0', files });
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines.filter((line) => line.startsWith('✓ Removed'))).toEqual([]);
+      expect(readFileSync(join(outside, 'target.ts'), 'utf8')).toBe('outside\n');
+    });
+
+    it('does not delete through a directory link that stays inside the project', async () => {
+      const root = await appWithLeftovers({});
+      mkdirSync(join(root, 'vendor/pkg'), { recursive: true });
+      writeFileSync(join(root, 'vendor/pkg/index.js'), 'vendored\n');
+      symlinkSync(join(root, 'vendor'), join(root, 'modules/auth/nm'), 'dir');
+      symlinkSync(join(root, 'modules/auth/migrations'), join(root, 'modules/auth/mig'), 'dir');
+      const migration = 'modules/auth/migrations/0001_01_01_999999_mine.ts';
+      writeFileSync(join(root, migration), 'mine\n');
+      const manifest = readStubManifest(root);
+      if (!manifest.ok) throw new Error(manifest.error.message);
+      const files = [
+        ...Object.entries(manifest.value!.sets[key]!.files).map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })),
+        { path: 'modules/auth/nm/pkg/index.js', stub: 'x', sha256: stubHash('vendored\n') },
+        { path: 'modules/auth/mig/0001_01_01_999999_mine.ts', stub: 'x', sha256: stubHash('mine\n') },
+      ];
+      recordStubSet(root, key, { package: '@marmeon/auth', version: '0.4.0', files });
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines.filter((line) => line.startsWith('✓ Removed'))).toEqual([]);
+      expect(existsSync(join(root, 'vendor/pkg/index.js'))).toBe(true);
+      expect(existsSync(join(root, migration))).toBe(true);
+    });
+
+    it('keeps a file the kit still ships when a leftover reaches it through a link to its own directory', async () => {
+      const root = await appWithLeftovers({});
+      symlinkSync('.', join(root, 'modules/auth/alias'), 'dir');
+      const manifest = readStubManifest(root);
+      if (!manifest.ok) throw new Error(manifest.error.message);
+      const files = [
+        ...Object.entries(manifest.value!.sets[key]!.files).map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })),
+        { path: 'modules/auth/alias/abilities.ts', stub: 'x', sha256: stubHash(readFileSync(join(root, 'modules/auth/abilities.ts'))) },
+      ];
+      recordStubSet(root, key, { package: '@marmeon/auth', version: '0.4.0', files });
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines.filter((line) => line.startsWith('✓ Removed'))).toEqual([]);
+      expect(existsSync(join(root, 'modules/auth/abilities.ts'))).toBe(true);
+    });
+
+    it('counts the files of the module without following a link out of it', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const plain = fakeInput(root, { force: true });
+      await new MakeAuthCommand().handle(plain.input);
+      symlinkSync('../..', join(root, 'modules/auth/up'), 'dir');
+      const linked = fakeInput(root, { force: true });
+      await new MakeAuthCommand().handle(linked.input);
+      expect(linked.lines[0]).toBe(plain.lines[0]);
+    });
+
+    // Only where the file system ignores case (macOS, Windows); elsewhere there is no such file to name.
+    const caseBlind = (() => {
+      const dir = tempDir('marmeon-make-auth-case-');
+      writeFileSync(join(dir, 'a.txt'), '');
+      return existsSync(join(dir, 'A.TXT'));
+    })();
+
+    it.skipIf(!caseBlind)('keeps a file the kit still ships, or a migration, that a leftover names in another case', async () => {
+      const root = await appWithLeftovers({});
+      const manifest = readStubManifest(root);
+      if (!manifest.ok) throw new Error(manifest.error.message);
+      const users = 'modules/auth/migrations/0001_01_01_000000_create_users_table.ts';
+      const abilities = readFileSync(join(root, 'modules/auth/abilities.ts'), 'utf8');
+      const files = [
+        ...Object.entries(manifest.value!.sets[key]!.files).map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })),
+        { path: 'modules/auth/ABILITIES.ts', stub: 'x', sha256: stubHash(abilities) },
+        { path: 'modules/auth/MIGRATIONS/0001_01_01_000000_create_users_table.ts', stub: 'x', sha256: stubHash(readFileSync(join(root, users))) },
+      ];
+      recordStubSet(root, key, { package: '@marmeon/auth', version: '0.4.0', files });
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines.filter((line) => line.startsWith('✓ Removed'))).toEqual([]);
+      expect(existsSync(join(root, 'modules/auth/abilities.ts'))).toBe(true);
+      expect(existsSync(join(root, users))).toBe(true);
+    });
+
+    it('deletes nothing without --force, with no manifest, with a malformed one, or with no earlier set', async () => {
+      const root = await appWithLeftovers({ [old]: 'export {};\n' });
+      const refused = fakeInput(root);
+      expect(await new MakeAuthCommand().handle(refused.input)).toBe(1);
+      expect(existsSync(join(root, old))).toBe(true);
+
+      writeFileSync(join(root, 'marmeon-stubs.json'), '{ not json');
+      const broken = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(broken.input)).toBe(1);
+      expect(existsSync(join(root, old))).toBe(true);
+
+      rmSync(join(root, 'marmeon-stubs.json'));
+      expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
+      expect(existsSync(join(root, old))).toBe(true);
+
+      // A set of another key lists it: not the set of this module.
+      recordStubSet(root, 'other:stubs', { package: 'other', version: '1.0.0', files: [{ path: old, stub: 'x' }] });
+      expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
+      expect(existsSync(join(root, old))).toBe(true);
     });
   });
 
