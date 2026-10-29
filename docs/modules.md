@@ -168,6 +168,12 @@ framework's own code, not API, and can change in any release. Use the package's 
 subpath has, open an issue. To add the rule to an existing preset, run `marmeon make:lint-config --force` (with `--boundaries` if you use it; it rewrites
 the file, so carry your own changes over) or add the pattern by hand.
 
+Two modules must not import each other's classes. If they do, one class is not defined yet when the other is, and the
+container reports a constructor parameter that is `undefined` (K16, naming the class and the parameter). Under Node
+(`marmeon dev`, `start`, commands) the import itself fails with "Cannot access 'X' before initialization"; in tests (Vite's
+module runner) the container reports K16 instead. Break the cycle by letting one module read what the other
+[exposes](queries.md#module-boundaries) (its table), or by depending on an abstract class that lives in a third place.
+
 ## Discovery
 
 The framework's packages register themselves. A package that opts in with a `"marmeon"` field in its `package.json` has its

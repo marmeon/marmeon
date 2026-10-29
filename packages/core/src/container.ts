@@ -23,7 +23,7 @@ const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const WARNINGS = Symbol.for('marmeon.injection.warnings');
 
 /** Why the container could not resolve something — for messages and the solutions of the error page. */
-export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular';
+export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular' | 'undefined-dependency';
 
 export interface ContainerErrorDetails {
   readonly reason: ContainerErrorReason;
@@ -33,6 +33,8 @@ export interface ContainerErrorDetails {
   readonly path: readonly string[];
   /** For `no-injection-list`: why the injection transform could not derive the list, if it said. */
   readonly injection?: string;
+  /** For `undefined-dependency`: `make()` itself was given `undefined`, rather than a class's injection list holding it. */
+  readonly madeUndefined?: boolean;
 }
 
 export class ContainerError extends Error {
@@ -45,6 +47,8 @@ export class ContainerError extends Error {
   readonly path: readonly string[];
   /** For `no-injection-list`: the injection transform's reason. */
   readonly injection: string | undefined;
+  /** For `undefined-dependency`: `make()` was given `undefined` directly. */
+  readonly madeUndefined: boolean;
 
   constructor(message: string, details?: ContainerErrorDetails) {
     super(message);
@@ -52,6 +56,7 @@ export class ContainerError extends Error {
     this.key = details?.key;
     this.path = details?.path ?? [];
     this.injection = details?.injection;
+    this.madeUndefined = details?.madeUndefined ?? false;
   }
 
   /** `ShowUserController → UserService`, or undefined when it was asked for directly. */
@@ -178,6 +183,7 @@ export class Container implements Resolver {
    * `Key<T>` values from generic code; the list check applies whenever K is a class.
    */
   make<K extends Key<any>>(key: K & (K extends Constructor ? InjectCheck<K> : unknown)): Resolve<K> {
+    if (key === undefined) throw undefinedKey([]);
     return this.#resolve(key, []) as Resolve<K>;
   }
 
@@ -255,6 +261,19 @@ export class Container implements Resolver {
     // Inherited with the constructor — unless the class has a list of its own (its own constructor, analyzed by itself).
     const warnings = Object.hasOwn(concrete, WARNINGS) || !Object.hasOwn(concrete, 'inject') ? (concrete as unknown as Record<symbol, readonly string[] | undefined>)[WARNINGS] : undefined;
     if (warnings) this.#warn(concrete, warnings);
+    // An import cycle between modules leaves an entry of the list undefined while the class is defined. Found here, at build time,
+    // so the hot path of resolving a built service pays nothing.
+    const missing = inject?.indexOf(undefined as never) ?? -1;
+    if (missing !== -1) {
+      throw new ContainerError(
+        withCode(
+          'K16',
+          `[${describeKey(concrete)}] parameter ${missing + 1} of its constructor is undefined${neededBy(chain.slice(0, -1))}: the class it needs was not ` +
+            `defined yet when ${describeKey(concrete)} was. Usually two modules import each other; let one read what the other exposes instead.`,
+        ),
+        { reason: 'undefined-dependency', key: describeKey(concrete), path: chain.slice(0, -1).map(describeKey) },
+      );
+    }
     return new concrete(...(inject ?? []).map((dependency) => this.#resolve(dependency, chain)));
   }
 
@@ -271,7 +290,12 @@ export class Container implements Resolver {
     const create = isClass(target)
       ? (container: Container, chain: readonly Key[]) => container.#build(target, chain)
       : (container: Container, chain: readonly Key[]) =>
-          (target as Factory<unknown>)({ make: (dependency) => container.#resolve(dependency, chain) as never });
+          (target as Factory<unknown>)({
+            make: (dependency) => {
+              if (dependency === undefined) throw undefinedKey(chain);
+              return container.#resolve(dependency, chain) as never;
+            },
+          });
 
     const id = idOf(key);
     this.#instances.delete(id); // re-binding replaces a cached singleton
@@ -287,6 +311,14 @@ export class Container implements Resolver {
 
 function idOf(key: Key): unknown {
   return typeof key === 'function' ? key : key.key;
+}
+
+/** `make(undefined)`: the class passed in was not defined yet when it was imported — an import cycle. */
+function undefinedKey(path: readonly Key[]): ContainerError {
+  return new ContainerError(
+    withCode('K16', `make() was given undefined${neededBy(path)}: the class was not defined yet when it was imported. Usually two modules import each other; let one read what the other exposes instead.`),
+    { reason: 'undefined-dependency', key: 'undefined', path: path.map(describeKey), madeUndefined: true },
+  );
 }
 
 function neededBy(path: readonly Key[]): string {

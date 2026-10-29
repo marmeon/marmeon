@@ -175,7 +175,7 @@ global state that a later request could read.
 
 ## The container's errors
 
-A `ContainerError` names what failed, why, and who asked for it. Its `reason` is one of four:
+A `ContainerError` names what failed, why, and who asked for it. Its `reason` is one of five:
 
 | `reason` | Means | The fix |
 | --- | --- | --- |
@@ -183,8 +183,9 @@ A `ContainerError` names what failed, why, and who asked for it. Its `reason` is
 | `scoped` | A scoped service was resolved outside a scope, or by a singleton. | Inject it into a controller, middleware, listener or job instead. A singleton that needs it becomes scoped. |
 | `no-injection-list` | A class has constructor parameters but no list. The error says what the loader could not inject. | Inject classes and tokens only. Values come from a config definition. |
 | `circular` | `A` needs `B`, and `B` needs `A`. | Move what both need into a third class. |
+| `undefined-dependency` | An entry of a class's list is `undefined` (or `make()` is given `undefined`): the class it names was not defined yet when this one was. The error names the class and the parameter. Usually two modules import each other. | Let one module read what the other [exposes](queries.md#module-boundaries) instead of importing its class. |
 
-Each message starts with its [code](errors.md#server-error-codes): `unbound` is K1, `scoped` K2, `no-injection-list` K3 and `circular` K4.
+Each message starts with its [code](errors.md#server-error-codes): `unbound` is K1, `scoped` K2, `no-injection-list` K3, `circular` K4 and `undefined-dependency` K16.
 
 The path in the message shows the chain, outermost first: `(needed by ShowNoteController → NoteSearch)`. On the development
 error page each reason comes with its solution.

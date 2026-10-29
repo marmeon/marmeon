@@ -89,6 +89,7 @@ export declare class ContainerError extends Error {
     readonly key: string | undefined;
     readonly path: readonly string[];
     readonly injection: string | undefined;
+    readonly madeUndefined: boolean;
     constructor(message: string, details?: ContainerErrorDetails);
     get neededBy(): string | undefined;
 }
@@ -98,9 +99,10 @@ export interface ContainerErrorDetails {
     readonly key: string;
     readonly path: readonly string[];
     readonly injection?: string;
+    readonly madeUndefined?: boolean;
 }
 // ContainerErrorReason
-export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular';
+export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular' | 'undefined-dependency';
 // CreateApplicationOptions
 export interface CreateApplicationOptions {
     env?: Readonly<Record<string, string | undefined>>;

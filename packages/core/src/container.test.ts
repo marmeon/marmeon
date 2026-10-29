@@ -159,6 +159,45 @@ describe('Container — errors', () => {
     expect(() => new Container().make(A)).toThrow('Circular dependency: A → B → A.');
   });
 
+  it('names the class and the parameter of a dependency that is undefined', () => {
+    class Mailer {}
+    class Notifier {}
+    class Welcome {
+      static inject = [Mailer, undefined, Notifier] as unknown as readonly [typeof Mailer, typeof Mailer, typeof Notifier];
+      constructor(_mailer: Mailer, _second: Mailer, _notifier: Notifier) {}
+    }
+    class Page {
+      static inject = [Welcome] as const;
+      constructor(_welcome: Welcome) {}
+    }
+    const error = catching(() => new Container().make(Page));
+    expect(error).toBeInstanceOf(ContainerError);
+    expect(error).toMatchObject({ reason: 'undefined-dependency', key: 'Welcome', path: ['Page'] });
+    expect((error as Error).message).toMatch(
+      /^\[marmeon:K16\] \[Welcome\] parameter 2 of its constructor is undefined \(needed by Page\).*Usually two modules import each other/,
+    );
+    expect((error as Error).message).not.toContain("reading 'key'");
+  });
+
+  it('reports make(undefined), directly and from a factory', () => {
+    const direct = catching(() => new Container().make(undefined as never));
+    expect(direct).toMatchObject({ reason: 'undefined-dependency', path: [] });
+    expect((direct as Error).message).toMatch(/^\[marmeon:K16\] make\(\) was given undefined:/);
+
+    class Report {}
+    const viaFactory = catching(() => new Container().bind(Report, ({ make }) => make(undefined as never) as Report).make(Report));
+    expect(viaFactory).toMatchObject({ reason: 'undefined-dependency', path: ['Report'] });
+    expect((viaFactory as Error).message).toContain('(needed by Report)');
+  });
+
+  it('names the dependency an import cycle between two modules left undefined', async () => {
+    const { ShowUser } = await import('./__fixtures__/import-cycle/users.ts');
+    const error = catching(() => new Container().make(ShowUser));
+    expect(error).toMatchObject({ reason: 'undefined-dependency', key: 'Billing', path: ['ShowUser'] });
+    expect((error as Error).message).toContain('[Billing] parameter 1');
+    expect((error as Error).message).toContain('(needed by ShowUser)');
+  });
+
   it('reports why the injection transform could not derive a list', () => {
     expect(() => new Container().make(Money)).toThrow(
       /\[Money\] needs 1 constructor argument\(s\) but has no injection list\. Cannot inject .*container\.test\.ts:\d+ — Money, parameter "_amount: number": only classes and tokens can be injected, not "number"/,
