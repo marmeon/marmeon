@@ -430,18 +430,21 @@ export type CheckAnswer = boolean | string | void | undefined;
  * `.custom()`: a check of the value that may name its own message; an async one awaits. `offline`: its issues say the rule is not
  * live (an async check without `.live()`).
  */
-export function customCheck(test: (value: any) => CheckAnswer | Promise<CheckAnswer>, describe: Message, async: boolean, offline: boolean): Engine {
-  const report = (answer: CheckAnswer, addIssue: (info: { message: Message }) => void) => {
-    if (answer === false) addIssue({ message: offline ? notLive(describe) : describe });
-    else if (typeof answer === 'string') addIssue({ message: offline ? notLive(ownMessage(answer)) : ownMessage(answer) });
+export function customCheck(test: (value: any) => CheckAnswer | Promise<CheckAnswer>, describe: Message, async: boolean, offline: boolean, field?: string): Engine {
+  type Info = { message: Message; path?: unknown[] };
+  // `field`: an object's check reports at one of its fields, as the engine's own issues for a field do.
+  const report = (answer: CheckAnswer, value: unknown, addIssue: (info: Info) => void) => {
+    const path = field === undefined ? {} : { path: [{ type: 'object', origin: 'value', input: value, key: field, value: (value as Record<string, unknown>)[field] }] };
+    if (answer === false) addIssue({ message: offline ? notLive(describe) : describe, ...path });
+    else if (typeof answer === 'string') addIssue({ message: offline ? notLive(ownMessage(answer)) : ownMessage(answer), ...path });
   };
-  if (async) return v.rawCheckAsync(async ({ dataset, addIssue }) => report(await test(dataset.value), addIssue as never)) as unknown as Engine;
+  if (async) return v.rawCheckAsync(async ({ dataset, addIssue }) => report(await test(dataset.value), dataset.value, addIssue as never)) as unknown as Engine;
   return v.rawCheck(({ dataset, addIssue }) => {
     const answer = test(dataset.value);
     if (typeof (answer as { then?: unknown } | undefined)?.then === 'function') {
       // Never skipped in silence (a Promise is no answer): an async check has to say so.
       throw new TypeError('A .custom() check returned a Promise — write it as an async function (async (value) => …), then the rule validates asynchronously.');
     }
-    report(answer as CheckAnswer, addIssue as never);
+    report(answer as CheckAnswer, dataset.value, addIssue as never);
   }) as unknown as Engine;
 }

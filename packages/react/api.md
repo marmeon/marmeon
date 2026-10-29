@@ -212,7 +212,7 @@ export interface FormRenderState<F> {
         name: string;
         'aria-invalid'?: true;
     };
-    error(name: FieldName<F>): string | undefined;
+    error(name: FieldName<F> | '_'): string | undefined;
     validating(name?: FieldName<F>): boolean;
     submit(): void;
     reset(): void;
@@ -223,9 +223,9 @@ export interface FormState<F> {
     readonly data: F;
     set<K extends keyof F & string>(field: K, value: F[K]): void;
     setData(data: F): void;
-    readonly errors: Partial<Record<Field<F>, string>>;
+    readonly errors: Partial<Record<ErrorKey<F>, string>>;
     readonly hasErrors: boolean;
-    clearErrors(...fields: Field<F>[]): void;
+    clearErrors(...fields: ErrorKey<F>[]): void;
     readonly processing: boolean;
     readonly progress: VisitProgress | null;
     readonly wasSuccessful: boolean;
@@ -664,6 +664,8 @@ type DataOption<N extends string> = [ActionBodyOf<N>] extends [never] ? {
 } : {
     data: ActionBodyOf<N>;
 };
+// ErrorKey
+type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 // Field
 type Field<F> = keyof F & string;
 // FormFields

@@ -90,6 +90,17 @@ A route whose controller has no request schema cannot type a form, and `useForm(
 | `submit(options)` | Sends the form with the route's method to its URL. |
 | `method`, `url` | Where it goes. |
 
+### Errors at nested and dynamic fields
+
+`errors` is keyed by every path into the form's data, with dots: `errors.title`, `errors['address.city']`,
+`errors['items.0.name']` for a list, and `` errors[`answers.${key}`] `` for a field of a record whose keys are not known beforehand.
+A path the data cannot have, `errors['adress.city']`, is a compile error. `clearErrors(...)` takes the same paths.
+
+The key `_` holds a message that belongs to the form and to no field, such as a check over several fields that names none. Show
+it above the form: `form.errors._`. A check that can say where the fault lies reports at that field instead, see
+[`custom()` of an object](validation.md#objects). In `<Form>`, `error(name)` takes the names of the inputs (`items[0][name]`)
+and `'_'`.
+
 ### Sending
 
 `submit()` sends the fields as JSON, or as `multipart/form-data` when they hold a file, and keeps the scroll position. When the

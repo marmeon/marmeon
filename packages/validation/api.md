@@ -49,6 +49,12 @@ export declare class NumberRule extends Rule<number, number | `${number}`> {
 // ObjectRule
 export declare class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>, Simplify<ShapeInput<S> & Partial<ShapeInput<When>>>> {
     get entries(): S;
+    custom(check: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>> | {
+        readonly validate: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>>;
+    }, options?: RuleMessage | {
+        readonly message?: RuleMessage;
+        readonly field?: (keyof S | keyof When) & string;
+    }): this;
     live(this: typeof LIVE_ON_CONTAINER): never;
     when<const W extends Shape>(condition: (data: ShapeOutput<S>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>>;
     confirmed(field: keyof S & string, confirmation?: string): this;

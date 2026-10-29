@@ -203,6 +203,13 @@ r.object({ kind: r.in(['person', 'company']), name: r.string().required() })
   wrong shows the password's problem first. `password()` of `@marmeon/auth` is the rule for a new password.
 - **`when(condition, fields)`** checks the fields while the condition holds for the object's other fields, and leaves them out
   otherwise. They are checked alongside the other fields, not after them.
+- **`custom(check, options?)`** checks the object once every field is valid. The check gets the object, so it can compare fields.
+  A failed check reports under the key `_`, the errors that belong to the form and no field, and a form shows it with
+  `form.errors._`. To report it at one of the fields, where the user can fix it, name the field:
+  `r.object({ starts_at, ends_at }).custom((event) => event.ends_at >= event.starts_at, { message: 'The end comes before the start.', field: 'ends_at' })`.
+  `message` is a translation key, a text or a message function, as for any `custom()`; `field` is one of the object's fields, also one of
+  `when()`. The `custom()` of a single field takes no `field`: it reports at that field. While a field is invalid the check does not run,
+  and the first failing check of the object answers.
 - **`entries`** are the fields, a rule each, without those of `when()`. Spread them into another object:
   `r.query({ ...MembersTable.query.entries, tab: r.in(['all', 'mine']).default('all') })`.
 

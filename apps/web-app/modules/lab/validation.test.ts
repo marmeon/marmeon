@@ -73,6 +73,14 @@ describe('the validation lab', () => {
     await app.post('/lab/validation', { json: { ...valid, vat: 'not looked at' }, headers: json }).assertValid();
   });
 
+  it('a check over several fields: the end before the start is told at `ends`, an end without a start under `_`', async () => {
+    const reversed = await app.post('/lab/validation', { json: { ...valid, starts: '2026-10-08', ends: '2026-10-01' }, headers: json }).assertUnprocessable();
+    reversed.assertInvalid<StoreValidationLabController>({ ends: 'The end comes before the start.' });
+    const lonely = await app.post('/lab/validation', { json: { ...valid, ends: '2026-10-01' }, headers: json }).assertUnprocessable();
+    expect(JSON.parse(lonely.body)).toMatchObject({ errors: { _: ['Give a start date with the end date.'] } });
+    await app.post('/lab/validation', { json: { ...valid, starts: '2026-10-01', ends: '2026-10-08' }, headers: json }).assertValid();
+  });
+
   it('an async custom (an invitation code) and exists (the inviting account): on submit — never live', async () => {
     await app.factory(UserFactory).create({ email: 'grace@example.com' });
     const wrong = await app.post('/lab/validation', { json: { ...valid, invite: 'NOPE', inviter: 'nobody@example.com' }, headers: json }).assertUnprocessable();

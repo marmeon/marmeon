@@ -46,6 +46,7 @@ const fields = {
   terms: r.accepted(),
   // A date as `<input type="date">` sends it, a port as a form spells it.
   starts: r.date().optional(),
+  ends: r.date().optional(),
   port: r.port().optional(),
   // Asked asynchronously (a table, a service): on submit only — an async check never runs live unless it says .live(). An empty
   // field reaches the check as '' (a string's empty value is a value) — no code, nothing to ask.
@@ -58,11 +59,16 @@ const fields = {
 /** A company needs its VAT number — checked only for one (`when`). */
 const company = (data: { kind: 'person' | 'company' }) => data.kind === 'company';
 const vat = { vat: r.string().trim().required().regex(/^[A-Z]{2}[0-9A-Z]{8,12}$/, 'A VAT number: two letters, then 8 to 12 letters or digits.') };
+
+/** Checks over several fields, run once each is valid: the first reports at `ends`, the second belongs to the form (`_`). */
+const endsAfterStart = (data: { starts?: string; ends?: string }) => !data.starts || !data.ends || data.ends >= data.starts;
+const startsWithEnd = (data: { starts?: string; ends?: string }) => !data.ends || !!data.starts || 'Give a start date with the end date.';
+const endsAt = { message: 'The end comes before the start.', field: 'ends' } as const;
 // The fields' names in messages, by key — the registration's labels (`Das Feld E-Mail …`).
 const attributes = { name: 'auth.register.name', email: 'auth.register.email' };
 
 export const ValidationLabRequest = defineRequest({
-  schema: r.object({ ...fields, email: fields.email.unique(UserRepository, 'email') }).when(company, vat),
+  schema: r.object({ ...fields, email: fields.email.unique(UserRepository, 'email') }).custom(endsAfterStart, endsAt).custom(startsWithEnd).when(company, vat),
   attributes,
   authorize: (_ctx, resolve) => resolve(LabGate).open(),
 });
@@ -73,7 +79,7 @@ export const ValidationLabRequest = defineRequest({
  * them).
  */
 export const RaceValidationLabRequest = defineRequest({
-  schema: r.object(fields).when(company, vat),
+  schema: r.object(fields).custom(endsAfterStart, endsAt).custom(startsWithEnd).when(company, vat),
   attributes,
   authorize: (_ctx, resolve) => resolve(LabGate).open(),
 });

@@ -129,18 +129,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
    * ```
    */
   custom(check: CustomCheck<Output> | { readonly validate: CustomCheck<Output> }, message?: RuleMessage): this {
-    const test = typeof check === 'function' ? check : check.validate.bind(check);
-    const async = isAsyncFunction(test);
-    const describe = message === undefined ? engine.message('custom') : engine.ownMessage(message);
-    return this.with({
-      async,
-      contextual: true,
-      build: (context) => {
-        if (async && context.live && !context.liveOptIn) return undefined;
-        const answer = (value: Output) => test(value, { request: context.request });
-        return engine.customCheck(answer, describe, async, async && !context.liveOptIn);
-      },
-    });
+    return this.with(customStep(check, message));
   }
 
   /**
@@ -243,6 +232,22 @@ export interface UniqueOptions<Ctx = any, Q = any> extends ExistsOptions<Ctx, Q>
   readonly ignore?: (ctx: Ctx) => unknown;
   /** The column `ignore` names (default `id`). */
   readonly ignoreColumn?: string;
+}
+
+/** The step of `custom()`; `field` reports an object's check at one of its fields (undefined: at the rule itself). */
+function customStep(check: CustomCheck<any> | { readonly validate: CustomCheck<any> }, message: RuleMessage | undefined, field?: string): RuleStep {
+  const test = typeof check === 'function' ? check : check.validate.bind(check);
+  const async = isAsyncFunction(test);
+  const describe = message === undefined ? engine.message('custom') : engine.ownMessage(message);
+  return {
+    async,
+    contextual: true,
+    build: (context) => {
+      if (async && context.live && !context.liveOptIn) return undefined;
+      const answer = (value: unknown) => test(value, { request: context.request });
+      return engine.customCheck(answer, describe, async, async && !context.liveOptIn, field);
+    },
+  };
 }
 
 function databaseStep(kind: 'unique' | 'exists', Repository: new (...args: any[]) => RepositoryLike, column: string, options: UniqueOptions): RuleStep {
@@ -477,6 +482,22 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
    */
   get entries(): S {
     return objectParts(this).shape as S;
+  }
+
+  /**
+   * `custom()` of an object: the check gets the object once all its fields are valid. Its message goes under the key `_` of the
+   * errors; `{ field }` reports it at one of the fields instead, where a form shows it. See `docs/validation.md#objects`.
+   *
+   * ```ts
+   * r.object({ starts_at: r.string(), ends_at: r.string() }).custom((event) => event.ends_at > event.starts_at, { message: 'The end is before the start.', field: 'ends_at' })
+   * ```
+   */
+  override custom(
+    check: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>> | { readonly validate: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>> },
+    options?: RuleMessage | { readonly message?: RuleMessage; readonly field?: (keyof S | keyof When) & string },
+  ): this {
+    const { message, field } = typeof options === 'object' ? options : { message: options, field: undefined };
+    return this.with(customStep(check, message, field));
   }
 
   /** Not on an object: put `.live()` on the field whose being taken is no secret — it throws here. */

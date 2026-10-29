@@ -83,8 +83,8 @@ export interface FormRenderState<F> {
    * `name` written out by hand is not checked: the DOM's names are strings.)
    */
   field(name: FieldName<F>): { name: string; 'aria-invalid'?: true };
-  /** The first message of a field — `form.error('links[0][url]')`. */
-  error(name: FieldName<F>): string | undefined;
+  /** The first message of a field — `form.error('links[0][url]')` — or `'_'`, the one that belongs to the form. */
+  error(name: FieldName<F> | '_'): string | undefined;
   /** Whether a live check of the field (or any) is under way (`validate`). */
   validating(name?: FieldName<F>): boolean;
   /** Sends it — what pressing its submit button does. */
