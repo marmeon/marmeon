@@ -1,12 +1,17 @@
 import { Gate } from '@marmeon/auth';
-import type { Container, ServiceProvider } from '@marmeon/core';
+import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { Connections, Database } from '@marmeon/database';
 import { Encrypter } from '@marmeon/encryption';
 import { Router } from '@marmeon/router';
-import { DataTables } from './tables.ts';
+import { DataTables, distinctRegistrations } from './tables.ts';
 
 /** Binds `DataTables` per request — its policies are the request user's (the request's `Gate`). */
 export class TableServiceProvider implements ServiceProvider {
+  /** The start fails when one table is registered twice under the same URLs. */
+  boot(app: Application): void {
+    app.container.make(Router).checkRoutes(distinctRegistrations());
+  }
+
   register(container: Container): void {
     container.scoped(
       DataTables,

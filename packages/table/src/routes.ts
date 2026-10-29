@@ -55,7 +55,7 @@ type CheckRegistrar<R, T> = T extends DataTable<any, infer Ctx> ? (RegistrarCont
 /**
  * Registers a table's endpoints **on the registrar of its page**, so they run the same middleware, route bindings and group as the
  * page — but not the page controller's `authorize`: a table that needs one says so itself (`defineTable({ authorize })`). A
- * registrar whose routes lack what the table's query needs is a compile error. See `docs/tables.md#the-controller-and-the-routes`.
+ * registrar whose routes lack what the table's query needs is a compile error. A table on several pages is registered once for each, on that page's registrar: `docs/tables.md#one-table-on-several-pages`.
  */
 export function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>): void {
   const { definition } = table;

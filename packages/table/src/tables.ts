@@ -527,7 +527,7 @@ export class DataTables {
   /** The URLs of the table's endpoints for this page — from the routes `tableRoutes` registered, with the page's own parameters. */
   #endpoints(definition: TableDefinition, ctx: HttpContext, view: View) {
     const needed = view.actions.length + view.bulk.length + view.exports.length > 0;
-    const routes = needed ? this.#routesOf(definition) : undefined;
+    const routes = needed ? this.#routesOf(definition, ctx.route?.path ?? '/') : undefined;
     const raw = needed ? rawParams(ctx.route?.path ?? '/', new URL(ctx.request.url).pathname) : {};
     const url = (kind: TableEndpointKind, param: string, name: string) => fillPath(definition.name, routes![kind]!.path, { ...raw, [param]: name }).path;
     return {
@@ -540,19 +540,77 @@ export class DataTables {
     };
   }
 
-  #routesOf(definition: TableDefinition): Partial<Record<TableEndpointKind, RouteDefinition>> {
-    const found: Partial<Record<TableEndpointKind, RouteDefinition>> = {};
+  /**
+   * The endpoints of the registration next to this page: of those `tableRoutes` made for the table, the one whose prefix is the longest
+   * whole-segment prefix of the page's route path — each page links its own, with its own checks and parameters. A table with a single
+   * registration is linked from any page; with several, the page must sit under one of them.
+   */
+  #routesOf(definition: TableDefinition, pagePath: string): Partial<Record<TableEndpointKind, RouteDefinition>> {
+    const registrations = new Map<string, { readonly prefix: string; readonly routes: Partial<Record<TableEndpointKind, RouteDefinition>> }>();
     for (const route of this.#router.routes) {
       const entry = ENDPOINTS.get(route);
       if (entry?.definition !== definition) continue;
-      if (found[entry.kind]) throw new Error(`Table "${definition.name}": tableRoutes() registered its endpoints twice (${found[entry.kind]!.path}, ${route.path}) — once, next to its page.`);
-      found[entry.kind] = route;
+      const prefix = prefixOf(definition, route, entry.kind);
+      const found = registrations.get(prefix) ?? { prefix, routes: {} };
+      if (found.routes[entry.kind]) throw twice(definition, found.routes[entry.kind]!.path, route.path);
+      found.routes[entry.kind] = route;
+      registrations.set(prefix, found);
     }
-    if (Object.keys(found).length === 0) {
-      throw new Error(`Table "${definition.name}" has actions or exports but no routes — add tableRoutes(Route, Table) to its module's routes, on the registrar of its page (with the page's middleware).`);
+    if (registrations.size === 1) return [...registrations.values()][0]!.routes;
+    const page = pagePath.split('/').filter((segment) => segment !== '');
+    let best: { length: number; routes: Partial<Record<TableEndpointKind, RouteDefinition>> } | undefined;
+    for (const [key, { routes }] of registrations) {
+      const own = key.split('/').filter((segment) => segment !== '');
+      if (own.length > page.length || own.some((segment, index) => segment !== page[index])) continue;
+      if (!best || own.length > best.length) best = { length: own.length, routes };
     }
-    return found;
+    if (!best) {
+      throw new Error(
+        registrations.size === 0
+          ? `Table "${definition.name}" has actions or exports but no routes — add tableRoutes(Route, Table) to its module's routes, on the registrar of its page (with the page's middleware).`
+          : `Table "${definition.name}" is shown on ${pagePath}, which is under none of the pages it has routes for (${[...registrations.values()].map(({ prefix }) => prefix || '/').join(', ')}) — register next to its page: tableRoutes(Route, Table) on that page's registrar.`,
+      );
+    }
+    return best.routes;
   }
+}
+
+function twice(definition: TableDefinition, first: string, second: string): Error {
+  return new Error(`Table "${definition.name}": tableRoutes() registered its endpoints twice (${first}, ${second}) — once for each page.`);
+}
+
+/** The path of a registration: an endpoint's path without its `/_tables/<name>/…` tail. */
+function prefixOf(definition: TableDefinition, route: RouteDefinition, kind: TableEndpointKind): string {
+  return route.path.slice(0, route.path.length - endpointSuffix(definition, kind).length);
+}
+
+/** A path with its parameter names erased, their patterns kept — `/teams/:team` and `/teams/:id` are the same URLs, `/:id{[0-9]+}` and `/:slug{[a-z]+}` are not. */
+function shapeOf(path: string): string {
+  return path.replace(/:[A-Za-z_][A-Za-z0-9_]*/g, ':');
+}
+
+/**
+ * @internal — a route check for the router: two registrations of one table under the same URLs stop the start. The router would serve
+ * the first route of a path and never run the second's middleware, `authorize` or bindings.
+ */
+export function distinctRegistrations(): (route: RouteDefinition) => void {
+  const seen = new Map<TableDefinition, Map<string, string>>();
+  return (route) => {
+    const entry = ENDPOINTS.get(route);
+    if (!entry) return;
+    const known = seen.get(entry.definition) ?? new Map<string, string>();
+    seen.set(entry.definition, known);
+    const key = `${entry.kind} ${shapeOf(prefixOf(entry.definition, route, entry.kind))}`;
+    const first = known.get(key);
+    if (first !== undefined) throw twice(entry.definition, first, route.path);
+    known.set(key, route.path);
+  };
+}
+
+/** The path every endpoint of `kind` ends with, after the registration's prefix. */
+function endpointSuffix(definition: TableDefinition, kind: TableEndpointKind): string {
+  const base = `/_tables/${definition.name}`;
+  return kind === 'action' ? `${base}/actions/:tableAction` : kind === 'bulk' ? `${base}/bulk/:tableBulk` : `${base}/export/:tableExport`;
 }
 
 // --- helpers --------------------------------------------------------------------------------------------------------------

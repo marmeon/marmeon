@@ -244,6 +244,18 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(over.status, 'the 61st request of a minute was served').toBe(429);
   });
 
+  it('shows the table on a second page (/members/directory) whose props link that page\'s own endpoints, behind the same checks', async () => {
+    const first = await members(ada);
+    expect(first.exports[0]!.url).toBe('/members/_tables/members/export/csv');
+    const second = (await app.actingAs(ada).navigating().get('/members/directory').assertOk()).page()!.props.members as Members;
+    expect(second.exports[0]!.url).toBe('/members/directory/_tables/members/export/csv');
+    expect(second.actions[0]!.url).toBe('/members/directory/_tables/members/actions/removeLinks');
+    const csv = await app.actingAs(ada).get(second.exports[0]!.url).assertOk();
+    expect(csv.body).toContain('ada@example.com');
+    await app.actingAs(alan).get(second.exports[0]!.url).assertForbidden();
+    await app.get(second.exports[0]!.url).assertRedirect();
+  });
+
   it('pages: ten to a page, the sizes the table offers', async () => {
     await app.factory(UserFactory).count(12).create();
     const first = await members(ada);
