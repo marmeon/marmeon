@@ -584,8 +584,12 @@ export type CheckBulk<Row, Bulk> = {
  */
 export type TableContext<TState extends object = {}, TParams extends object = {}> = Omit<HttpContext<TState, TParams>, 'query'>;
 
-/** A table's base query — `ctx` annotated as the table needs it (`TableContext<Authenticated>`); checked bivariantly on purpose. */
-export type TableQuery = { bivariance(db: Database, ctx: TableContext): SelectQuery<any, any, any> }['bivariance'];
+/**
+ * The type a table's `query` has to fit, not one to annotate with: it types an unannotated `db` as `never`. Annotate the query's own
+ * parameters instead — `ctx` as `TableContext<Authenticated>`, `db` as `Database<'module'>` to keep it inside its module; unannotated,
+ * `db` sees every table. See `docs/tables.md#the-base-query`.
+ */
+export type TableQuery = { bivariance(db: never, ctx: any): SelectQuery<any, any, any> }['bivariance'];
 
 /** The tables of a base query's result, its tables in scope, and the context it needs. */
 type DbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, any, any> ? DB : never;
@@ -645,7 +649,6 @@ type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P exten
  * action whose policy takes another row are compile errors. See `docs/tables.md#defining-a-table`.
  */
 export function defineTable<
-  Q extends TableQuery,
   const Cols extends Record<string, AnyColumn>,
   const K extends string,
   const Filters extends Record<string, AnyFilter> = {},
@@ -655,9 +658,12 @@ export function defineTable<
   Exports extends Record<string, TableExport> = {},
   const P extends string = '',
   const Pg extends TablePagination = {},
->(input: TableInput<Q, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<Q, Cols, K, Filters, Actions, Bulk, Exports, P, Pg> {
+  D extends { readonly selectFrom: (...args: never) => unknown } = Database,
+  C extends TableContext = TableContext,
+  R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>,
+>(input: TableInput<(db: D, ctx: C) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg> {
   const definition = normalize(input as unknown as RawInput);
-  return { definition, query: querySchema(definition) } as unknown as TableOf<Q, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
+  return { definition, query: querySchema(definition) } as unknown as TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 }
 
 interface RawInput {

@@ -1,4 +1,5 @@
 import { can, type Authenticated } from '@marmeon/auth';
+import type { Database, Row } from '@marmeon/database';
 import type { Serialize } from '@marmeon/http';
 import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
@@ -11,7 +12,7 @@ import type { TableDefinition } from './index.ts';
 // @ts-expect-error — `TableVisibility` is not exported
 import type { TableVisibility } from './index.ts';
 import type { AnyTableData } from './client/index.ts';
-import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type TableContext, type TableProps } from './index.ts';
+import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type DataTableRow, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
   handle(_row: { readonly id: number }, _ctx: TableContext<Authenticated>) {}
@@ -261,3 +262,88 @@ describe('the query schema and the routes', () => {
 });
 
 export type Hidden = [RowAuthorization, TableDefinition, TableVisibility];
+
+describe('defineTable — a query on its module\'s Database', () => {
+  it('takes Database<\'directory\'> and still types the columns from the query', () => {
+    const Table = defineTable({
+      name: 'members',
+      query: (db: Database<'directory'>, ctx: TableContext<Authenticated>) => db.selectFrom('members').where('team_id', '=', Number(ctx.user.id)),
+      key: 'id',
+      columns: { name: column('name').sortable() },
+    });
+    expectTypeOf<DataTableRow<typeof Table>>().toEqualTypeOf<{ readonly id: number; readonly name: string }>();
+    defineTable({
+      name: 'members',
+      query: (db: Database<'directory'>) => db.selectFrom('members'),
+      key: 'id',
+      // @ts-expect-error — the table has no column `nope`
+      columns: { nope: column('nope') },
+    });
+  });
+
+  it('reads the tables another module exposes, and no others', () => {
+    defineTable({
+      name: 'teams',
+      query: (db: Database<'billing'>) => db.selectFrom('teams'),
+      key: 'id',
+      columns: { name: column('name') },
+    });
+    defineTable({
+      name: 'members',
+      // @ts-expect-error — `members` is no table of the billing module, and the directory module does not expose it
+      query: (db: Database<'billing'>) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+    });
+    defineTable({
+      name: 'members',
+      // @ts-expect-error — the same for a join
+      query: (db: Database<'billing'>) => db.selectFrom('ledger').innerJoin('members', 'members.id', 'ledger.id'),
+      key: 'id',
+      columns: { note: column('note') },
+    });
+  });
+
+  it('leaves a query without an annotation seeing every table', () => {
+    defineTable({
+      name: 'members',
+      query: (db) => db.selectFrom('members').innerJoin('ledger', 'ledger.id', 'members.id'),
+      key: 'members.id',
+      columns: { note: column('ledger.note') },
+    });
+  });
+
+  it('refuses a context that is none and a db that reads nothing', () => {
+    defineTable({
+      name: 'members',
+      // @ts-expect-error — `ctx` is a TableContext
+      query: (db, ctx: { tenant: number }) => db.selectFrom('members').where('team_id', '=', ctx.tenant),
+      key: 'id',
+      columns: { name: column('name') },
+    });
+    defineTable({
+      name: 'members',
+      // @ts-expect-error — `db` is a database
+      query: (db: { tenant: number }) => (db as never as Database).selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+    });
+  });
+
+  it('types the route parameters a query reads', () => {
+    defineTable({
+      name: 'members',
+      query: (db: Database<'directory'>, ctx: TableContext<Authenticated, { team: Row<'teams'> }>) => db.selectFrom('members').where('team_id', '=', ctx.params.team.id),
+      key: 'id',
+      columns: { name: column('name') },
+    });
+    defineTable({
+      name: 'members',
+      // @ts-expect-error — the parameter `team` has no column `nope`
+      query: (db: Database<'directory'>, ctx: TableContext<Authenticated, { team: Row<'teams'> }>) => db.selectFrom('members').where('team_id', '=', ctx.params.team.nope),
+      key: 'id',
+      columns: { name: column('name') },
+    });
+  });
+});
+

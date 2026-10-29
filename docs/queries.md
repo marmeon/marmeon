@@ -573,6 +573,8 @@ same connection. Names with a schema (`reporting.orders`) or an alias cannot be 
 Marmeon knows no secret column of these tables, so their columns pass the guard unchecked; they have no soft deletes or
 timestamps, and `selectAll()` stays `*`.
 
+A [table's base query](tables.md#the-base-query) takes `Database<'module'>` the same way.
+
 A repository sees every table: `Repository<'profile_links'>` is typed with all of `Tables`. To give it the module's view, pass
 `ModuleTables` as its second type argument. Its queries then see only the module's own tables and the exposed ones, `with()`
 offers only relations to those, and `relation()` writes only into the module's own:

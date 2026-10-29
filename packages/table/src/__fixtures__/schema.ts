@@ -29,6 +29,19 @@ declare module '@marmeon/database' {
       formula: string;
     };
   }
+  // The modules `db:types` derives from the migrations' folders: `directory` owns the members and exposes its teams, `billing` the ledger.
+  interface Modules {
+    directory: true;
+    billing: true;
+  }
+  interface TableOwners {
+    teams: 'directory';
+    members: 'directory';
+    ledger: 'billing';
+  }
+  interface ExposedTables {
+    teams: true;
+  }
   // What `db:types` derives from `members.team_id` (a foreign key to `teams`).
   interface Relations {
     members: {
