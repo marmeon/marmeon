@@ -354,14 +354,16 @@ describe.skipIf(!PGSQL_URL)('a configured database that does not exist on Postgr
 
 describe.skipIf(!PGSQL_URL)('a database name with non-ASCII characters on Postgres', () => {
   it('creates the worker database under the decoded name the driver connects to', async () => {
-    const configured = `caf\u00e9_${process.pid}_${Date.now().toString(36)}`;
+    // Short enough for the worker name to keep it whole next to the checkout tag, the root hash and two 10-digit ids (the name is cut to 63 bytes).
+    const configured = `caf\u00e9_${Math.random().toString(36).slice(2, 10)}`;
+    expect(Buffer.byteLength(configured)).toBeLessThanOrEqual(14);
     const admin = new Connections({ connections: { default: { driver: 'pgsql', url: new URL(PGSQL_URL!).href, poolMax: 1 } }, root: '/', logger: { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } });
     const url = new URL(PGSQL_URL!);
     url.pathname = `/${encodeURIComponent(configured)}`;
     const env = { APP_KEY: generateKey(), DB_DRIVER: 'pgsql', DB_URL: url.href };
     const root = workspaceTempDir('marmeon-testing-db-');
     const worker = decodeURIComponent(new URL((await workerDatabase(root, env)).key).pathname.slice(1));
-    expect(worker.startsWith(`${configured}_test_`)).toBe(true);
+    expect(worker, 'the configured name was cut').toMatch(new RegExp(`^${configured}_test_`));
     try {
       await sql`create database ${sql.id(configured)}`.execute(admin.get());
       const app = await createTestApp({ root, discover: false, providers: [EncryptionServiceProvider, DatabaseServiceProvider] }, { env, database: 'refresh' });
