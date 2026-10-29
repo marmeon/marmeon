@@ -70,6 +70,15 @@ describe('DatabaseConfig: the Postgres database has no default name', () => {
     expect(await message({ DB_DATABASE: '' })).toContain('K6');
   });
 
+  it("refuses DB_DATABASE=:memory:, which is SQLite's, unless DB_URL names the database", async () => {
+    const text = await message({ DB_DATABASE: ':memory:' });
+    expect(text).toContain("DB_DATABASE=:memory: is SQLite's");
+    expect(text).toContain('.env.test');
+    expect(text).toContain('K6');
+    expect((await resolve({ DB_DATABASE: ':memory:', DB_URL: 'postgres://app@db/shop' })).get(DatabaseConfig)).toMatchObject({ default: { url: 'postgres://app@db/shop' } });
+    expect((await resolveConfig([DatabaseConfig], { DB_DATABASE: ':memory:' })).get(DatabaseConfig)).toMatchObject({ default: { driver: 'sqlite', database: ':memory:' } });
+  });
+
   it('refuses a DB_URL without the database in its path, which pg would fill from PGDATABASE or the user name', async () => {
     for (const DB_URL of ['postgres://app:pw@db:5432', 'postgres://app:pw@db/', 'postgres://app:pw@db:5432/?sslmode=require']) {
       const text = await message({ DB_URL, DB_DATABASE: 'shop' });

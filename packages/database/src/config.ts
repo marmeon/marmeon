@@ -114,6 +114,11 @@ export const DatabaseConfig = defineConfig('database', {
       'DB_DATABASE',
     )
     .check(
+      (e) => e.DB_DRIVER !== 'pgsql' || e.DB_URL !== undefined || e.DB_DATABASE !== ':memory:',
+      "DB_DATABASE=:memory: is SQLite's — set DB_DATABASE (or DB_URL) to the Postgres database's name; a starter's .env.test sets it (docs/installation.md#the-database)",
+      'DB_DATABASE',
+    )
+    .check(
       (e) => e.DB_DRIVER !== 'pgsql' || e.DB_URL === undefined || hasValidConnectTimeout(e.DB_URL),
       'connect_timeout in DB_URL is whole seconds from 0 (no limit) to 2147483 (docs/database.md#configuration)',
       'DB_URL',
