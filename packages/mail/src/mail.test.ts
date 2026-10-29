@@ -356,7 +356,7 @@ describe('MailFake', () => {
   it('records mailables, composes them (a broken template fails), and asserts', async () => {
     const mail = new MailFake();
     mail.assertNothingSent();
-    expect((await mail.send(new WelcomeMail('Ada'))).messageId).toBeUndefined();
+    expect((await mail.send(new WelcomeMail('Ada'))).messageId).toMatch(/^<fake-\d+@marmeon\.test>$/);
     mail.assertSent(WelcomeMail).assertSent(WelcomeMail, (_mail, message) => message.to[0]!.address === 'ada@example.com').assertSentCount(WelcomeMail, 1);
     expect(() => mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'nope')).toThrow('Expected a WelcomeMail matching the filter to be sent. Sent: WelcomeMail to ada@example.com.');
     expect(() => mail.assertNothingSent()).toThrow('Expected no mail, sent WelcomeMail.');

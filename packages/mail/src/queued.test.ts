@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Clock, createApplication, Logger, type Application, type LogContext } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
 import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Queue, QueueServiceProvider } from '@marmeon/queue';
@@ -162,6 +163,48 @@ describe('MailFake: queued apart from sent', () => {
     const fresh = new MailFake();
     await fresh.send(new ResetMail('https://app.test/s'));
     expect(() => fresh.assertQueued(ResetMail)).toThrow('Expected a ResetMail to be queued (ResetMail was sent now, not queued — assertSent). Queued: nothing.');
+  });
+});
+
+describe('MailFake: message ids and failNext()', () => {
+  it('gives every sent mail its own message id', async () => {
+    const mail = new MailFake();
+    const first = await mail.send(new ResetMail('https://app.test/a'));
+    const second = await mail.send(new ResetMail('https://app.test/b'));
+    expect(first.messageId).toMatch(/^<fake-\d+@marmeon\.test>$/);
+    expect(second.messageId).toMatch(/^<fake-\d+@marmeon\.test>$/);
+    expect(second.messageId).not.toBe(first.messageId);
+  });
+
+  it('fails the next send() with the given error, records nothing, and succeeds again afterwards', async () => {
+    const mail = new MailFake();
+    mail.failNext(new Error('smtp down'));
+    await expect(mail.send(new ResetMail('https://app.test/a'))).rejects.toThrow('smtp down');
+    mail.assertNothingSent();
+    await expect(mail.send(new ResetMail('https://app.test/a'))).resolves.toMatchObject({ messageId: expect.any(String) });
+    mail.assertSentCount(ResetMail, 1);
+  });
+
+  it('fails the next n sends, with a default error', async () => {
+    const mail = new MailFake();
+    mail.failNext(undefined, 2);
+    await expect(mail.send(new ResetMail('https://app.test/a'))).rejects.toThrow('The fake mailer failed this send.');
+    await expect(mail.send(new ResetMail('https://app.test/a'))).rejects.toThrow('The fake mailer failed this send.');
+    await expect(mail.send(new ResetMail('https://app.test/a'))).resolves.toBeDefined();
+  });
+
+  it('reports a failed send on the mail.send channel as a failure', async () => {
+    const application = await app();
+    const fake = new MailFake('team@app.test', application);
+    const errors: unknown[] = [];
+    const off = channels.subscribe(application, 'mail.send', { error: (message) => errors.push(message.error) });
+    try {
+      fake.failNext(new Error('smtp down'));
+      await expect(fake.send(new ResetMail('https://app.test/a'))).rejects.toThrow('smtp down');
+    } finally {
+      off();
+    }
+    expect(errors).toEqual([new Error('smtp down')]);
   });
 });
 

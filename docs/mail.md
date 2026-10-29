@@ -322,5 +322,5 @@ it('mails the person a note is shared with', async () => {
 ```
 
 `assertSent` on a queued mail fails and says the mail was queued. `assertQueuedCount`, `assertNotQueued`, `assertSentCount` and
-`assertNotSent` check the rest. The fake does not put queued mails on the queue. The [fakes](fakes.md#mail) page covers every
-assertion.
+`assertNotSent` check the rest. The fake does not put queued mails on the queue. `app.mail.failNext()` makes the next `send()` fail, to test a provider that is
+down; a queued mail that fails in its job is tested with a real queue and a transport of your own. The [fakes](fakes.md#mail) page covers every assertion and the message id.
