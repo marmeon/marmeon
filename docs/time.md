@@ -82,6 +82,49 @@ show at the call.
 An expiry is rounded down to a whole second, so a link or a token never lives longer than you asked: `{ seconds: 1, milliseconds: 900 }`
 expires after one second. A `Limit` takes only whole seconds, because its window is part of the key its count is stored under.
 
+## A time typed in a zone
+
+A `datetime-local` field sends `2026-10-07T14:30`: a date and a time with no zone. The zone is the event's, so the form sends it too, and
+`r.localDateTime()` turns the pair into an instant:
+
+```ts title="modules/events/StoreEventController.ts"
+import { defineRequest } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+
+export const StoreEventRequest = defineRequest({
+  schema: r
+    .object({
+      title: r.string().trim().required().max(120),
+      time_zone: r.timeZone(),
+      starts_at: r.localDateTime({ field: 'time_zone' }),
+      ends_at: r.localDateTime({ field: 'time_zone' }),
+    })
+    .custom((event) => event.ends_at > event.starts_at, { message: 'The end comes before the start.', field: 'ends_at' }),
+});
+```
+
+`starts_at` in the handler is `'2026-10-07T12:30:00.000Z'` for `2026-10-07T14:30` in `Europe/Berlin`: store it as a timestamp column. The
+check in `custom()` runs after the conversion, so it compares instants, and it is a plain string comparison because every instant has the same shape. A zone that is a fixed name for the whole form
+can be written in the rule: `r.localDateTime('Europe/Berlin')`.
+
+Two nights a year the wall clock has no single answer, and the rule picks one, the same way every time:
+
+- **When the clocks go forward**, a time inside the skipped hour does not exist. `02:30` on the night of 2026-03-29 in `Europe/Berlin` is read with the
+  offset from before the change and becomes `03:30` (summer time), `2026-03-29T01:30:00.000Z`.
+- **When the clocks go back**, a time in the repeated hour happens twice. `02:30` on 2026-10-25 in `Europe/Berlin` is the first one, in summer
+  time: `2026-10-25T00:30:00.000Z`. The second `02:30` cannot be typed into a field that shows no offset.
+
+To edit the event, fill the field with `toLocalDateTime(instant, zone)` from `@marmeon/validation`. It gives `2026-10-07T14:30`, with seconds
+when the instant has some, and it throws a `RangeError` for a zone or a point in time it does not know:
+
+```ts
+import { toLocalDateTime } from '@marmeon/validation';
+
+const form = { time_zone: event.time_zone, starts_at: toLocalDateTime(event.starts_at, event.time_zone) };
+```
+
+A time in the skipped hour comes back as the `03:30` it was read as, so a saved event shows the time it really starts.
+
 ## What follows the clock
 
 Everything that reads the time through the app's `Clock` follows the test clock:

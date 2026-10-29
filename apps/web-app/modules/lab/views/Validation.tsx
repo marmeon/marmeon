@@ -11,6 +11,8 @@ interface Fields {
   starts: string;
   ends: string;
   port: string;
+  time_zone: string;
+  at: string;
   invite: string;
   inviter: string;
   kind: 'person' | 'company';
@@ -23,11 +25,11 @@ type TextField = Exclude<keyof Fields, 'kind' | 'terms'>;
 /**
  * The rules of @marmeon/validation: a form whose schema is `rules` — messages in the request's language, the
  * field's name from `attributes`, a taken address told on submit only; `when` (a company's VAT number), an async `custom`
- * (an invitation code), `exists` (an account that invites), `r.date()` and `r.port()`. "As after a race" sends the same form to a
+ * (an invitation code), `r.localDateTime()` (a time typed in a zone), `exists` (an account that invites), `r.date()` and `r.port()`. "As after a race" sends the same form to a
  * route without `unique`: the unique index answers through `failOnDuplicate()`, with the same message.
  */
 export default function Validation(_props: PageProps<ShowValidationLabController>) {
-  const form = useForm<Fields>({ name: '', email: '', website: '', age: '', starts: '', ends: '', port: '', invite: '', inviter: '', kind: 'person', vat: '', terms: false });
+  const form = useForm<Fields>({ name: '', email: '', website: '', age: '', starts: '', ends: '', port: '', time_zone: '', at: '', invite: '', inviter: '', kind: 'person', vat: '', terms: false });
   const error = (name: keyof Fields | '_') =>
     form.errors[name] && (
       <small role="alert" data-error={name}>
@@ -65,6 +67,8 @@ export default function Validation(_props: PageProps<ShowValidationLabController
         {field('starts', 'Starts on', 'date')}
         {field('ends', 'Ends on', 'date')}
         {field('port', 'Port', 'number')}
+        {field('time_zone', 'Time zone (Europe/Berlin)')}
+        {field('at', 'At', 'datetime-local')}
         {field('invite', 'Invitation code')}
         {field('inviter', 'Invited by (an account\'s e-mail)', 'email')}
         <p>

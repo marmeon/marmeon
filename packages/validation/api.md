@@ -44,6 +44,10 @@ export interface InvalidValue {
     readonly kind: 'invalid';
     readonly errors: ValidationErrors;
 }
+// LocalDateTimeZone
+export type LocalDateTimeZone = string | {
+    readonly field: string;
+} | ((request: ValidationContext | undefined) => string | undefined);
 // NumberRule
 export declare class NumberRule extends Rule<number, number | `${number}`> {
     integer(): this;
@@ -120,6 +124,7 @@ export declare class StringRule extends Rule<string, string> {
     uuid(): this;
     regex(pattern: RegExp, message?: RuleMessage): this;
     date(): this;
+    timeZone(): this;
     isoTimestamp(): this;
 }
 // UniqueOptions
@@ -156,10 +161,14 @@ export declare const rules: {
     uuid: () => StringRule;
     date: () => StringRule;
     isoTimestamp: () => StringRule;
+    localDateTime: typeof localDateTime;
+    timeZone: () => StringRule;
     query: <const S extends Shape>(fields: S & CheckQueryFields<S>) => ObjectRule<S>;
     port: () => Rule<number, number | `${number}`>;
     list: <Item extends Rule<any, any>>(item: Item) => ArrayRule<InferOutput<Item>, InferInput<Item>, string | InferInput<Item>[]>;
 };
+// toLocalDateTime
+export declare function toLocalDateTime(instant: string | Date, zone: string): string;
 // validate
 export declare function validate<TSchema extends StandardSchemaV1>(schema: TSchema, value: unknown, options?: ValidateOptions): Promise<Result<InferOutput<TSchema>, InvalidValue>>;
 ```
@@ -193,6 +202,8 @@ type Simplify<T> = {
 } & {};
 // Spelled
 type Spelled<T> = T extends number ? `${T}` : never;
+// localDateTime
+declare function localDateTime(zone: LocalDateTimeZone): Rule<string, string>;
 // numberRule
 declare function numberRule(): NumberRule;
 // stringRule

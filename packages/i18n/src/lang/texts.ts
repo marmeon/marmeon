@@ -74,6 +74,8 @@ const en = {
     regex: 'The {attribute} field format is invalid.',
     date: 'The {attribute} field must be a valid date.',
     iso_timestamp: 'The {attribute} field must be a valid date and time.',
+    local_date_time: 'The {attribute} field must be a date and time like 2026-10-07T14:30.',
+    time_zone: 'The {attribute} field must be a valid time zone.',
     confirmed: 'The {attribute} does not match.',
     unique: 'The {attribute} has already been taken.',
     exists: 'The selected {attribute} is invalid.',

@@ -394,6 +394,8 @@ declare const en: {
         readonly regex: 'The {attribute} field format is invalid.';
         readonly date: 'The {attribute} field must be a valid date.';
         readonly iso_timestamp: 'The {attribute} field must be a valid date and time.';
+        readonly local_date_time: 'The {attribute} field must be a date and time like 2026-10-07T14:30.';
+        readonly time_zone: 'The {attribute} field must be a valid time zone.';
         readonly confirmed: 'The {attribute} does not match.';
         readonly unique: 'The {attribute} has already been taken.';
         readonly exists: 'The selected {attribute} is invalid.';

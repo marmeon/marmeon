@@ -369,6 +369,11 @@ export class StringRule extends Rule<string, string> {
     return this.with(step(() => engine.check(isDate, engine.message('date'))), FORMAT);
   }
 
+  /** A time zone: an IANA name (`Europe/Berlin`, `UTC`) or an offset (`+02:00`). Stays a string. */
+  timeZone(): this {
+    return this.with(step(() => engine.check(engine.isTimeZone, engine.message('time_zone'))), FORMAT);
+  }
+
   /** A date and time in ISO 8601 (`2026-10-07T14:30:00Z`, with an offset or `Z`). Stays a string. */
   isoTimestamp(): this {
     return this.with(step(engine.isoTimestamp), FORMAT);
@@ -527,6 +532,9 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
   }
 }
 
+/** Marks `r.localDateTime({ field })`: the object converts the field once the zone field is valid — `meta` is `{ zone }`. */
+export const ZONE_FIELD = Symbol('marmeon.validation.zoneField');
+
 const PARTS = new WeakMap<RuleDefinition, ObjectParts>();
 
 /**
@@ -575,10 +583,22 @@ function objectParts(rule: Rule<any, any>): ObjectParts {
 export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition): RuleDefinition {
   const rules = [...Object.values(parts.shape), ...parts.whens.flatMap((when) => Object.values(when.shape))];
   const async = rules.some((rule) => rule['~rule'].async);
+  for (const when of parts.whens) {
+    for (const rule of Object.values(when.shape)) {
+      if (metaOf(rule, ZONE_FIELD) !== undefined) throw new TypeError("r.localDateTime({ field }) reads the zone of another field — put it directly in an r.object({ … }) next to that field, not in .when(…).");
+    }
+  }
+  const zoned: engine.ZonedField[] = Object.entries(parts.shape).flatMap(([field, rule]) => {
+    const zone = (metaOf(rule, ZONE_FIELD) as { readonly zone: string } | undefined)?.zone;
+    if (zone === undefined) return [];
+    if (!Object.hasOwn(parts.shape, zone)) throw new TypeError(`r.localDateTime({ field: '${zone}' }) at '${field}': the object has no field '${zone}' — the zone is read from a field of the same object.`);
+    return [{ field, zone }];
+  });
   const base = (context: BuildContext): Engine => {
-    const entries = (shape: Shape) => Object.fromEntries(Object.entries(shape).map(([key, rule]) => [key, rule['~engine'](context)]));
+    const entries = (shape: Shape, direct = false) =>
+      Object.fromEntries(Object.entries(shape).map(([key, rule]) => [key, rule['~engine'](direct && zoned.some((item) => item.field === key) ? { ...context, zoneSibling: true } : context)]));
     const whens: ConditionalFields[] = parts.whens.map((when) => ({ condition: when.condition, entries: entries(when.shape) }));
-    return engine.objectEngine(entries(parts.shape), whens, parts.confirmations, async);
+    return engine.objectEngine(entries(parts.shape, true), whens, parts.confirmations, async, zoned);
   };
   PARTS.set(base as never, parts);
   CONTENTS.set(base, { kind: 'object', fields: parts.shape, conditional: parts.whens.map((when) => when.shape) });
