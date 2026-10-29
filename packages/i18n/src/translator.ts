@@ -24,9 +24,11 @@ export interface Translator extends TranslatorContract {
 }
 export const Translator = TranslatorContract as Token<Translator>;
 
-/** The locale of the current request — set once by `SetLocale`, read by the request's {@link Translator}. Scoped. */
+/** The locale of the current request — set by `SetLocale`, and again by `RequestLocale.use()`, read by the request's {@link Translator}. Scoped. */
 export class CurrentLocale {
   #locale: string;
+  /** Whether the route is localized, so its URL names the locale — set by `SetLocale`. */
+  localized = false;
 
   constructor(locale: string) {
     this.#locale = locale;

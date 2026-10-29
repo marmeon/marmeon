@@ -105,6 +105,11 @@ export type MessageTree = {
 export type MessagesOf<N extends string> = N extends keyof Translations ? Translations[N] : MessageTree;
 // Namespace
 export type Namespace = [keyof Translations] extends [never] ? string : keyof Translations & string;
+// RequestLocale
+export declare class RequestLocale {
+    #private;
+    use(locale: string | null | undefined): boolean;
+}
 // SetLocale
 export declare class SetLocale {
     #private;

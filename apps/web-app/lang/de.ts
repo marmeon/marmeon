@@ -42,4 +42,8 @@ export default {
     changed: 'Sprache geändert.',
     unsupported: 'Diese Sprache gibt es nicht.',
   },
+  talk: {
+    welcome: 'Willkommen bei „{title}“.',
+    question_required: 'Schreib zuerst deine Frage.',
+  },
 } satisfies Messages<typeof en>;

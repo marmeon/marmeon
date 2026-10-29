@@ -235,17 +235,50 @@ export class SetLocale {
       locale = fromUrl ?? preferred;
     }
     this.#current.set(locale);
+    this.#current.localized = localized;
     const alternates = fromUrl === undefined ? undefined : alternatesOf(ctx, locales.supported);
     if (alternates) this.#alternates(alternates);
 
     const response = editableResponse(await next());
-    response.headers.set('content-language', locale);
+    // Read again: `RequestLocale` may have changed it since.
+    response.headers.set('content-language', this.#current.value);
     // The URL decides on a localized route, and with one locale nothing is negotiated.
     if (localized || locales.supported.length <= 1) return response;
     // The answer depends on the browser's languages (for visitors without a choice): caches must keep them apart.
     const vary = response.headers.get('vary');
     if (!vary?.toLowerCase().split(/\s*,\s*/).includes('accept-language')) response.headers.set('vary', vary ? `${vary}, accept-language` : 'accept-language');
     return response;
+  }
+}
+
+/**
+ * Sets the request's locale from a record, such as the language of an event the page shows: in a route's `afterAuthorize` hook,
+ * `resolve(RequestLocale).use(ctx.params.event.locale)`. `SetLocale` has chosen by then, before the bindings; `use()` replaces
+ * its choice for this request — messages, `<html lang>`, `Content-Language`, the page's `locale` and dates follow — and leaves
+ * the visitor's own choice (session, account) alone. Call it only once every decision is made — never in a binder or a check; on a
+ * route that decides in `handle` (a `Gate`, a table's `authorize`), in the controller after that check, not in `afterAuthorize`.
+ * Scoped. See `docs/localization.md#a-page-in-the-language-of-a-record`.
+ */
+export class RequestLocale {
+  readonly #current: CurrentLocale;
+  readonly #locales: Locales;
+
+  /** Built by the container; an app resolves it. @internal */
+  constructor(current: CurrentLocale, locales: Locales) {
+    this.#current = current;
+    this.#locales = locales;
+  }
+
+  /**
+   * Speaks `locale` for the rest of the request when it is a supported one and returns `true`; otherwise returns `false` and
+   * changes nothing. Throws on a localized route, where the URL names the locale — which `SetLocale` in the route's chain tells it.
+   */
+  use(locale: string | null | undefined): boolean {
+    if (this.#current.localized) throw new Error('RequestLocale.use(): this route is localized — its URL names the locale.');
+    const supported = this.#locales.find(locale);
+    if (supported === undefined) return false;
+    this.#current.set(supported);
+    return true;
   }
 }
 
@@ -454,6 +487,7 @@ export class I18nServiceProvider implements ServiceProvider {
       const current = c.make(CurrentLocale);
       return createTranslator(catalog, () => current.value, { locales: () => locales.supported });
     });
+    container.scoped(RequestLocale, (c) => new RequestLocale(c.make(CurrentLocale), locales));
     container.scoped(LocalePreference, () => ({ preferredLocale: () => undefined }));
     container.scoped(PreferredLocale, (c) => ({
       get value() {

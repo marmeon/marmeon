@@ -239,6 +239,39 @@ is gone when the browser closes), so a shared cache must not store such pages pe
 `Locales` is a service of the whole app: `default`, `fallback`, `supported` with the default first, `explicit` for whether
 `APP_LOCALES` names them, and `find(value)`, which returns the supported locale a value names, or `undefined`.
 
+### A page in the language of a record
+
+Some pages have a language of their own: the event a visitor reads is held in German, whatever the visitor's browser says. A
+route sets it once the record is bound, in an [`afterAuthorize`](routing.md#after-the-checks) hook:
+
+```ts title="modules/events/routes.ts"
+import { RequestLocale } from '@marmeon/i18n';
+
+Route.authorize(everyone)
+  .bind('event', EventRepository, { public: true })
+  .afterAuthorize((ctx, resolve) => {
+    resolve(RequestLocale).use(ctx.params.event.locale);
+  })
+  .get('/events/:event', ShowEventController);
+```
+
+From then on the request speaks that language: the `Translator` of the controller, the messages of a failed form, `<html lang>`,
+the page's `locale`, dates and numbers, mails written with the request's translator, and the `Content-Language` header. The
+visitor's own choice (the session, the account) is not touched, and the next request starts from it again.
+
+`use()` returns `true` when it set the language. A locale that is not supported, `null` or `undefined` (an event without a
+language) changes nothing and returns `false`, so the visitor's language stays. The spelling is the app's own, like everywhere
+else. `afterAuthorize` runs after the bindings and the checks, so the answer to a request they refuse (a 404, a 403) is in the language
+that held before, and tells a stranger nothing about the record.
+
+Call `use()` only once every decision is made: never in a binder or a check, since a 404 or 403 they cause would speak the
+record's language. On a route that decides in `handle` (a `Gate` call, the `authorize` of a table), call it in the controller after
+that check, not in `afterAuthorize`.
+
+The route keeps `Vary: accept-language`: a visitor without a record still reads by the browser's languages.
+
+A [localized route](#the-locale-in-the-url) cannot use it. Its URL names the locale, so `use()` throws there.
+
 ### The locale in the URL
 
 A route under [`Route.localized()`](routing.md#routes-under-a-locale) speaks the locale of its URL: `/de/about` is in German

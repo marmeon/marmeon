@@ -447,6 +447,9 @@ nothing the hook shares. The redirect of a [localized](#routes-under-a-locale) r
 A check inside the handler runs after the hooks: the `authorize` of a table's routes, or a `Gate` call in `handle`. A hook
 therefore shares nothing that the registrar's checks and the request's `authorize` do not already allow.
 
+The language of a request can be set the same way, from a record: `resolve(RequestLocale).use(ctx.params.event.locale)`. See
+[a page in the language of a record](localization.md#a-page-in-the-language-of-a-record).
+
 A hook decides nothing. What it returns is ignored, it does not extend the context, and a route with a hook and no `authorize`
 is still a route that does not say who may call it. It may throw an `HttpError`, which answers as it does from a check. A
 registrar that never registers a route fails at `load()` for its hooks as it does for its checks.
@@ -512,7 +515,9 @@ The start stops, and names both routes, when:
 
 `marmeon route:types` needs no locales: it writes `localized: true` and the path with `/:locale` in front. The
 [localization](localization.md#the-locale-in-the-url) page covers the languages themselves: which locale a request speaks, and
-the `alternates` of a page.
+the `alternates` of a page. `SetLocale` chooses before the bindings run, so a page whose language is its record's sets it
+afterwards with [`RequestLocale`](localization.md#a-page-in-the-language-of-a-record), on a route that is not localized: the URL
+of a localized route names the locale.
 
 ## Route model binding
 
