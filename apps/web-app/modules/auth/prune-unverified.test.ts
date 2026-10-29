@@ -113,13 +113,13 @@ describe('pruning accounts whose address was never confirmed', () => {
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
     const kj = await made(30, false, 'kj@example.com');
-    await app.make(UserRepository).markEmailVerified(kj.id);
+    await app.make(UserRepository).markEmailVerified(kj.id, new Date(app.clock.now()));
     // AUTH_PRIVATE_REGISTRATION=false: a new address at once, unconfirmed.
     expect(await app.make(UserRepository).applyEmailChange(kj.id, 'katherine@nasa.example', null)).toMatchObject({ ok: true, value: { email_verified_at: null } });
     const first = (await app.make(UserRepository).find(kj.id))?.first_verified_at;
     expect(first, 'the first confirmation was not kept').not.toBeNull();
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    await app.make(UserRepository).markEmailVerified(kj.id); // a second confirmation keeps the first's time
+    app.travel({ minutes: 1 });
+    await app.make(UserRepository).markEmailVerified(kj.id, new Date(app.clock.now())); // a second confirmation keeps the first's time
     expect((await app.make(UserRepository).find(kj.id))?.first_verified_at).toEqual(first);
     await app.make(UserRepository).applyEmailChange(kj.id, 'kj@nasa.example', null);
     app.travel({ days: 30 });
@@ -134,7 +134,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
     const kj = await made(30, false, 'kj@example.com');
-    await app.make(UserRepository).markEmailVerified(kj.id);
+    await app.make(UserRepository).markEmailVerified(kj.id, new Date(app.clock.now()));
     const confirmed = await app.make(UserRepository).find(kj.id);
     expect(confirmed?.first_verified_at, 'the link did not record the first confirmation').not.toBeNull();
     expect(confirmed?.first_verified_at).toEqual(confirmed?.email_verified_at);
