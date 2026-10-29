@@ -11,7 +11,8 @@ import type { RowAuthorization } from './index.ts';
 import type { TableDefinition } from './index.ts';
 // @ts-expect-error — `TableVisibility` is not exported
 import type { TableVisibility } from './index.ts';
-import type { AnyTableData } from './client/index.ts';
+import { rules as r } from '@marmeon/validation';
+import type { AnyTableData, TableController } from './client/index.ts';
 import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type DataTableRow, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
@@ -347,3 +348,103 @@ describe('defineTable — a query on its module\'s Database', () => {
   });
 });
 
+
+class SetRole {
+  handle(_row: { readonly id: number }, _ctx: unknown, _input: { readonly role: 'admin' | 'member' }) {}
+}
+class SetRoles {
+  handle(_rows: readonly { readonly id: number }[], _ctx: unknown, _input: { readonly role: 'admin' | 'member' }) {}
+}
+class WantsInput {
+  handle(_row: { readonly id: number }, _ctx: unknown, _input: { readonly role: string }) {}
+}
+class WantsOtherInput {
+  handle(_row: { readonly id: number }, _ctx: unknown, _input: { readonly team: number }) {}
+}
+
+const roleInput = r.object({ role: r.in(['admin', 'member']) });
+
+const WithInput = defineTable({
+  name: 'with-input',
+  query: (db, ctx: TableContext<Authenticated>) => db.selectFrom('members').where('team_id', '=', Number(ctx.user.id)),
+  key: 'id',
+  columns: { name: column('name') },
+  actions: { setRole: action(SetRole).input(roleInput), plain: action(Deactivate), built: action(SetRole).input(async () => roleInput) },
+  bulk: { setRole: bulk(SetRoles).input(roleInput), plain: bulk(DeactivateMany) },
+});
+
+describe('actions with input', () => {
+  type Props = TableProps<typeof WithInput>;
+  type Inputs = NonNullable<Props['~inputs']>;
+
+  it('carries the schema\'s input type per action that takes one — a function building the schema too', () => {
+    expectTypeOf<Inputs['actions']>().toEqualTypeOf<{ setRole: { role: 'admin' | 'member' }; built: { role: 'admin' | 'member' } }>();
+    expectTypeOf<keyof Inputs['bulk']>().toEqualTypeOf<'setRole'>();
+  });
+
+  it('leaves input optional on an untyped controller — run(name, row) and runBulk(name) still compile', () => {
+    const untyped = undefined as unknown as TableController;
+    const row = undefined as unknown as AnyTableData['rows'][number];
+    void untyped.run('anything', row);
+    void untyped.runBulk('anything');
+    void untyped.run('anything', row, { input: { any: 1 } });
+    void untyped.runBulk('anything', { input: 1 });
+  });
+
+  it('serializes to props the client takes', () => {
+    const takes = (_data: AnyTableData) => {};
+    takes(undefined as unknown as Serialize<Props>);
+  });
+
+  it('requires the input of an action that has one, and refuses it for one that has none (client)', () => {
+    const table = undefined as unknown as TableController<Props>;
+    const row = undefined as unknown as Props['rows'][number];
+    void table.run('setRole', row, { input: { role: 'admin' } });
+    void table.run('plain', row);
+    void table.runBulk('setRole', { input: { role: 'member' } });
+    void table.runBulk('plain', { confirm: 'sure?' });
+    // @ts-expect-error — the action takes an input
+    void table.run('setRole', row);
+    // @ts-expect-error — a role that is none
+    void table.run('setRole', row, { input: { role: 'owner' } });
+    // @ts-expect-error — the action takes no input
+    void table.run('plain', row, { input: { role: 'admin' } });
+    // @ts-expect-error — the bulk action takes an input
+    void table.runBulk('setRole');
+    // @ts-expect-error — the bulk action takes no input
+    void table.runBulk('plain', { input: {} });
+  });
+
+  it('checks the handler\'s input against the schema\'s output, and refuses a handler that wants one the action has not', () => {
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — the handler takes a team, the schema gives a role
+      actions: { setRole: action(WantsOtherInput).input(roleInput) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — the handler takes an input, the action has no .input()
+      actions: { setRole: action(WantsInput) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — the handler takes an input, the bulk action has no .input()
+      bulk: { setRole: bulk(SetRoles) },
+    });
+    defineTable({ name: 'x', query: (db) => db.selectFrom('members'), key: 'id', columns: { name: column('name') }, actions: { ok: action(WantsInput).input(r.object({ role: r.string() })) } });
+  });
+
+  it('takes a schema or a function building one, and nothing else', () => {
+    // @ts-expect-error — a number is no schema
+    action(Deactivate).input(42);
+  });
+});

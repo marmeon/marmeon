@@ -1,12 +1,13 @@
 import { can, Gate, type Auth, type Authenticated } from '@marmeon/auth';
 import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, sql, type QueryEvent } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, Repository, sql, type QueryEvent } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
 import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
+import { rules as r } from '@marmeon/validation';
 import { action, bulk, column, defineTable, exportCsv, filter, DataTables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
 import { EmailPolicy, MemberPolicy } from './policies.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
@@ -50,6 +51,8 @@ export const acting = defineMiddleware<Authenticated & { team: number }>('acting
 export class Recorder {
   readonly deactivated: unknown[] = [];
   readonly batches: unknown[][] = [];
+  /** What the actions with input got: `[the keys, the validated input]`. */
+  readonly inputs: [unknown[], unknown][] = [];
 }
 
 /** A row action: records the row's key. */
@@ -80,6 +83,61 @@ export class DeactivateMany {
 }
 
 type TeamContext = TableContext<Authenticated & { team: number }>;
+
+/** The teams — what `exists` asks for an action's input. */
+export class TeamRepository extends Repository<'teams'> {
+  static table = 'teams' as const;
+}
+
+/** A row action with input: writes the role it was given. */
+export class SetRole {
+  readonly #recorder: Recorder;
+  readonly #connections: Connections;
+
+  constructor(recorder: Recorder, connections: Connections) {
+    this.#recorder = recorder;
+    this.#connections = connections;
+  }
+
+  async handle(row: { readonly id: number }, _ctx: unknown, input: { readonly role: 'admin' | 'member' }) {
+    this.#recorder.inputs.push([[row.id], input]);
+    await this.#connections.get().updateTable('members').set({ role: input.role }).where('id', '=', row.id).execute();
+  }
+}
+
+/** A bulk action with input: writes the role it was given to every row. */
+export class SetRoles {
+  readonly #recorder: Recorder;
+  readonly #connections: Connections;
+
+  constructor(recorder: Recorder, connections: Connections) {
+    this.#recorder = recorder;
+    this.#connections = connections;
+  }
+
+  async handle(rows: readonly { readonly id: number }[], _ctx: unknown, input: { readonly role: 'admin' | 'member' }) {
+    const ids = rows.map((row) => row.id);
+    this.#recorder.inputs.push([ids, input]);
+    await this.#connections.get().updateTable('members').set({ role: input.role }).where('id', 'in', ids).execute();
+  }
+}
+
+/** A bulk action whose input names a team: writes it as the rows' team. */
+export class MoveToTeam {
+  readonly #recorder: Recorder;
+  readonly #connections: Connections;
+
+  constructor(recorder: Recorder, connections: Connections) {
+    this.#recorder = recorder;
+    this.#connections = connections;
+  }
+
+  async handle(rows: readonly { readonly id: number }[], _ctx: unknown, input: { readonly team: number }) {
+    const ids = rows.map((row) => row.id);
+    this.#recorder.inputs.push([ids, input]);
+    await this.#connections.get().updateTable('members').set({ team_id: input.team }).where('id', 'in', ids).execute();
+  }
+}
 
 /** A row action of the text-keyed table: records the key. */
 export class DeactivateByEmail {
@@ -209,6 +267,52 @@ export class GuardedPage extends Controller {
     return this.json({ guarded: await this.#tables.resolve(GuardedTable, ctx) });
   }
 }
+
+/** How often an input schema was built — a factory that runs for a request that was not let on has told it something. */
+export const inputFactories = { calls: 0 };
+
+/** Actions that take input: a role from a list, and a team the request's own team has to be (`exists` with a `where` on the request). */
+export const InputTable = defineTable({
+  name: 'input',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable(), role: column('members.role') },
+  defaultSort: 'name',
+  // Edsger is refused by the table itself.
+  authorize: (ctx) => (ctx as unknown as { user: { id: number } }).user.id !== 4,
+  actions: {
+    // Visible to administrators only; its schema is built per request and counted.
+    hiddenRole: action(SetRole)
+      .authorize(MemberPolicy, 'act')
+      .visible((ctx: { user: { admin?: boolean } }) => ctx.user.admin === true)
+      .input(() => {
+        inputFactories.calls++;
+        return r.object({ role: r.in(['admin', 'member']) });
+      }),
+    setRole: action(SetRole).authorize(MemberPolicy, 'act').input(r.object({ role: r.in(['admin', 'member']) })),
+    deactivate: action(Deactivate).authorize(MemberPolicy, 'act'),
+  },
+  bulk: {
+    setRole: bulk(SetRoles).authorize(MemberPolicy, 'act').input(r.object({ role: r.in(['admin', 'member']) })).max(5),
+    moveToTeam: bulk(MoveToTeam)
+      .authorize(MemberPolicy, 'act')
+      .input(() => {
+        inputFactories.calls++;
+        return r.object({
+          team: r.integer().exists(TeamRepository, 'id', { where: (query, ctx: HttpContext<Authenticated & { team: number }>) => query.where('id', '=', ctx.team) }),
+        });
+      })
+      .max(5),
+    hiddenMove: bulk(MoveToTeam)
+      .authorize(MemberPolicy, 'act')
+      .visible((ctx: { user: { admin?: boolean } }) => ctx.user.admin === true)
+      .input(() => {
+        inputFactories.calls++;
+        return r.object({ team: r.integer().exists(TeamRepository, 'id') });
+      }),
+    deactivate: bulk(DeactivateMany).authorize(MemberPolicy, 'act'),
+  },
+});
 
 /** Keyed by text (the e-mail): keys are parsed as text, never as numbers. */
 export const ByEmailTable = defineTable({
@@ -385,6 +489,7 @@ const routes = openRoutes((Route) => {
   team.get('/guarded', GuardedPage);
   tableRoutes(team, GuardedTable);
   tableRoutes(team, ActiveTable);
+  tableRoutes(team, InputTable);
 });
 
 export interface TableTestApp {

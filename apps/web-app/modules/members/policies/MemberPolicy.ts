@@ -24,6 +24,11 @@ export class MemberPolicy {
     return this.#isAdmin(user) && member.id !== user.id;
   }
 
+  /** Set a member's language: an administrator, and not their own (that is their profile's). */
+  setLocale(user: AuthUser, member: { readonly id: number }) {
+    return this.#isAdmin(user) && member.id !== user.id;
+  }
+
   /** Export the list as CSV: administrators only. */
   export(user: AuthUser) {
     return this.#isAdmin(user);

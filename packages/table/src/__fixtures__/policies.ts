@@ -25,6 +25,11 @@ export class MemberPolicy {
   deactivate(user: AuthUser, member: { readonly id: number }) {
     return member.id !== user.id && member.id !== 3;
   }
+
+  /** Any member of the table — for the actions whose test is about their input, not the policy. */
+  act(_user: AuthUser, _member: { readonly id: number }) {
+    return true;
+  }
 }
 
 /** For the table keyed by e-mail: whoever is not the signed-in user's own address. */

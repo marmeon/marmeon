@@ -1,6 +1,6 @@
 import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@marmeon/auth';
 import type { ColumnReference, Database, ReferencedType, SecretReference, SelectQuery } from '@marmeon/database';
-import type { ClassResolver, HttpContext, JoinNames, StandardSchemaV1 } from '@marmeon/router';
+import type { ClassResolver, HttpContext, InferInput, InferOutput, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { Rule } from '@marmeon/validation';
 import type { TableData } from './client/index.ts';
 import { querySchema } from './state.ts';
@@ -162,22 +162,39 @@ export const filter = {
 // --- Actions, bulk actions, exports ---------------------------------------------------------------------------------------
 
 /** A row action's class (REPR, built per request with constructor injection): `handle(row, ctx)`. */
-export type RowActionClass<R = any, C = any> = new (...args: any[]) => { handle(row: R, ctx: C): unknown };
+export type RowActionClass<R = any, C = any> = new (...args: any[]) => { handle(row: R, ctx: C, input: any): unknown };
 
 /** A bulk action's class: `handle(rows, ctx)` — the rows the user may act on, never more than the action's `max`. */
-export type BulkActionClass<R = any, C = any> = new (...args: any[]) => { handle(rows: readonly R[], ctx: C): unknown };
+export type BulkActionClass<R = any, C = any> = new (...args: any[]) => { handle(rows: readonly R[], ctx: C, input: any): unknown };
+
+/** The schema of an action's input — or a function that builds it per request (its `resolve` and the request's `ctx`), for rules like `exists`. */
+export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S | ((resolve: ClassResolver, ctx: any) => S | Promise<S>);
+
+/** What an action's input schema is, whether given as a schema or as a function building one. */
+export type InputSchemaOf<I> = (I extends StandardSchemaV1 ? I : I extends (...args: any[]) => infer R ? Awaited<R> : never) extends infer S extends StandardSchemaV1 ? S : never;
 
 interface ActionOptions {
   readonly authorization?: RowAuthorization | undefined;
   readonly visibility?: TableVisibility | undefined;
   readonly confirm?: boolean;
   readonly max?: number;
+  readonly input?: ActionInputSource | undefined;
+}
+
+/** @internal — whether `value` is a Standard Schema (ArkType's are callable, so a function alone does not say "factory"). */
+export function isSchema(value: unknown): value is StandardSchemaV1 {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null && '~standard' in value;
+}
+
+function checkInput(source: unknown, where: string): void {
+  if (!isSchema(source) && typeof source !== 'function') throw new TypeError(`${where}.input(…): a Standard Schema (rules of @marmeon/validation, Valibot, Zod …) or a function that builds one.`);
 }
 
 /** A row action — built by {@link action}. */
-export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K extends string = string> {
+export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K extends string = string, S extends StandardSchemaV1 = never> {
   declare readonly '~policy': P;
   declare readonly '~ability': K;
+  declare readonly '~input': S;
   readonly handler: H;
   /** @internal */
   readonly authorization: RowAuthorization | undefined;
@@ -185,6 +202,8 @@ export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K
   readonly visibility: TableVisibility | undefined;
   /** @internal */
   readonly confirms: boolean;
+  /** @internal */
+  readonly inputSource: ActionInputSource | undefined;
 
   /** @internal */
   constructor(handler: H, options: ActionOptions = {}) {
@@ -193,35 +212,46 @@ export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K
     this.authorization = options.authorization;
     this.visibility = options.visibility;
     this.confirms = options.confirm ?? false;
+    this.inputSource = options.input;
   }
 
   /**
    * The policy decides per row: `authorize(MemberPolicy, 'deactivate')` asks `deactivate(user, row)` for each row — on the page (the
    * row's `can.deactivate`, all rows of the page at once) and again when the action runs (a 403 when it says no).
    */
-  authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): RowAction<H, P2, K2> {
+  authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): RowAction<H, P2, K2, S> {
     return new RowAction(this.handler, { ...this.#options(), authorization: { policy, ability } });
   }
 
   /** Offers the action only when the policy (or the check) says so, for the whole request — hidden, it is not in the props and its endpoint answers 403. */
-  visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K>;
-  visible(check: TableVisibilityCheck): RowAction<H, P, K>;
-  visible(...args: unknown[]): RowAction<H, P, K> {
+  visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K, S>;
+  visible(check: TableVisibilityCheck): RowAction<H, P, K, S>;
+  visible(...args: unknown[]): RowAction<H, P, K, S> {
     return new RowAction(this.handler, { ...this.#options(), visibility: visibility(args, 'action(…)') });
   }
 
   /** The browser asks before it runs the action (`confirm` in the props). */
-  confirm(): RowAction<H, P, K> {
+  confirm(): RowAction<H, P, K, S> {
     return new RowAction(this.handler, { ...this.#options(), confirm: true });
   }
 
+  /**
+   * The values the browser sends along (`table.run(name, row, { input })`): a Standard Schema, or a function building one per request
+   * (`(resolve, ctx) => …`, for rules like `exists` that ask the database). The server validates them before the row is read — a 422 under
+   * `input.<field>` — and hands the handler the schema's output as `handle(row, ctx, input)`. See docs/tables.md#an-action-with-input.
+   */
+  input<I extends ActionInputSource>(schema: I): RowAction<H, P, K, InputSchemaOf<I>> {
+    checkInput(schema, 'action(…)');
+    return new RowAction(this.handler, { ...this.#options(), input: schema });
+  }
+
   #options(): ActionOptions {
-    return { authorization: this.authorization, visibility: this.visibility, confirm: this.confirms };
+    return { authorization: this.authorization, visibility: this.visibility, confirm: this.confirms, input: this.inputSource };
   }
 }
 
 /** A row action: `action(DeactivateMember).authorize(MemberPolicy, 'deactivate').confirm()`. */
-export function action<H extends RowActionClass>(handler: H): RowAction<H, unknown, never> {
+export function action<H extends RowActionClass>(handler: H): RowAction<H, unknown, never, never> {
   return new RowAction(handler);
 }
 
@@ -229,9 +259,10 @@ export function action<H extends RowActionClass>(handler: H): RowAction<H, unkno
 export const DEFAULT_BULK_MAX = 1000;
 
 /** A bulk action — built by {@link bulk}. */
-export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown, K extends string = string> {
+export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown, K extends string = string, S extends StandardSchemaV1 = never> {
   declare readonly '~policy': P;
   declare readonly '~ability': K;
+  declare readonly '~input': S;
   readonly handler: H;
   /** @internal */
   readonly authorization: RowAuthorization | undefined;
@@ -239,6 +270,8 @@ export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown
   readonly visibility: TableVisibility | undefined;
   /** @internal */
   readonly confirms: boolean;
+  /** @internal */
+  readonly inputSource: ActionInputSource | undefined;
   /** @internal */
   readonly limit: number;
 
@@ -251,37 +284,48 @@ export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown
     this.authorization = options.authorization;
     this.visibility = options.visibility;
     this.confirms = options.confirm ?? false;
+    this.inputSource = options.input;
     this.limit = max;
   }
 
   /** The policy decides per row: rows it refuses are left out — and counted (`skipped` in the answer). */
-  authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): BulkAction<H, P2, K2> {
+  authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): BulkAction<H, P2, K2, S> {
     return new BulkAction(this.handler, { ...this.#options(), authorization: { policy, ability } });
   }
 
   /** Offers the bulk action only when the policy (or the check) says so — hidden, its endpoint answers 403. */
-  visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K>;
-  visible(check: TableVisibilityCheck): BulkAction<H, P, K>;
-  visible(...args: unknown[]): BulkAction<H, P, K> {
+  visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K, S>;
+  visible(check: TableVisibilityCheck): BulkAction<H, P, K, S>;
+  visible(...args: unknown[]): BulkAction<H, P, K, S> {
     return new BulkAction(this.handler, { ...this.#options(), visibility: visibility(args, 'bulk(…)') });
   }
 
-  confirm(): BulkAction<H, P, K> {
+  confirm(): BulkAction<H, P, K, S> {
     return new BulkAction(this.handler, { ...this.#options(), confirm: true });
   }
 
   /** At most `rows` rows at once — chosen ones or "all matching" (default 1000); more is refused (422), never cut short. */
-  max(rows: number): BulkAction<H, P, K> {
+  max(rows: number): BulkAction<H, P, K, S> {
     return new BulkAction(this.handler, { ...this.#options(), max: rows });
   }
 
+  /**
+   * The values the browser sends along (`table.runBulk(name, { input })`), also for "all matching": a Standard Schema, or a function
+   * building one per request (`(resolve, ctx) => …`, for rules like `exists`). The server validates them before any row is read — a 422 under
+   * `input.<field>` — and hands the handler the schema's output as `handle(rows, ctx, input)`. See docs/tables.md#an-action-with-input.
+   */
+  input<I extends ActionInputSource>(schema: I): BulkAction<H, P, K, InputSchemaOf<I>> {
+    checkInput(schema, 'bulk(…)');
+    return new BulkAction(this.handler, { ...this.#options(), input: schema });
+  }
+
   #options(): ActionOptions {
-    return { authorization: this.authorization, visibility: this.visibility, confirm: this.confirms, max: this.limit };
+    return { authorization: this.authorization, visibility: this.visibility, confirm: this.confirms, max: this.limit, input: this.inputSource };
   }
 }
 
 /** A bulk action: `bulk(DeactivateMembers).authorize(MemberPolicy, 'deactivate').max(500)`. */
-export function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unknown, never> {
+export function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unknown, never, never> {
   return new BulkAction(handler);
 }
 
@@ -334,9 +378,9 @@ export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
 /** Any filter. */
 export type AnyFilter = Filter<string, 'select' | 'dateRange', string>;
 /** Any row action. */
-export type AnyRowAction = RowAction<RowActionClass, any, string>;
+export type AnyRowAction = RowAction<RowActionClass, any, string, any>;
 /** Any bulk action. */
-export type AnyBulkAction = BulkAction<BulkActionClass, any, string>;
+export type AnyBulkAction = BulkAction<BulkActionClass, any, string, any>;
 
 /** How a table pages: by number (default, with a total) or by an encrypted cursor (`cursor: true`, "load more"). */
 export interface TablePagination {
@@ -381,8 +425,21 @@ export interface DataTable<
   E extends string = string,
   QV extends object = TableQueryValues,
   S extends string = C,
+  AI extends object = {},
+  BI extends object = {},
 > {
-  readonly [TABLE_TYPES]?: { readonly row: Row; readonly ctx: Ctx; readonly columns: C; readonly sortable: S; readonly filters: F; readonly actions: A; readonly bulk: B; readonly exports: E };
+  readonly [TABLE_TYPES]?: {
+    readonly row: Row;
+    readonly ctx: Ctx;
+    readonly columns: C;
+    readonly sortable: S;
+    readonly filters: F;
+    readonly actions: A;
+    readonly bulk: B;
+    readonly exports: E;
+    readonly actionInputs: AI;
+    readonly bulkInputs: BI;
+  };
   /** @internal */
   readonly definition: TableDefinition;
   /**
@@ -418,7 +475,7 @@ export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<
 >;
 
 /** What the browser gets for table `T`: the page prop `tables.resolve(T, ctx)` resolves to. */
-export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
+export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI> ? TableData<Row, C, F, A, B, E, S, AI, BI> : never;
 
 /** A row of table `T` as the server hands it to actions and policies: the key and the visible columns (by name). */
 export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
@@ -560,21 +617,36 @@ type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H exten
     : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}`
   : never;
 
+/** `handle(row, ctx, input)`: the third parameter is what `.input()` validates — without a schema there is none to take. */
+type InputProblem<H, S, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => { handle: (...args: infer Args) => unknown }
+  ? [S] extends [never]
+    ? Args extends [any, any, ...infer Rest]
+      ? [Rest] extends [[]]
+        ? never
+        : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx, input) takes an input, but the action has no .input(schema)`
+      : never
+    : Args extends [any, any, infer Taken, ...any[]]
+      ? InferOutput<Extract<S, StandardSchemaV1>> extends Taken
+        ? never
+        : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx, input) takes another input than the schema gives`
+      : never
+  : never;
+
 /** Row actions: their handler takes the table's row; their ability is one of the policy's and takes that row. */
 export type CheckActions<Row, Actions> = {
-  [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K>
-    ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string>] extends [never]
+  [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K, infer S>
+    ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>] extends [never]
       ? unknown
-      : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string>>
+      : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>>
     : unknown;
 };
 
 /** Bulk actions: like row actions, with `handle(rows, ctx)`. */
 export type CheckBulk<Row, Bulk> = {
-  [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K>
-    ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string>] extends [never]
+  [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K, infer S>
+    ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>] extends [never]
       ? unknown
-      : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string>>
+      : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>>
     : unknown;
 };
 
@@ -630,6 +702,13 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
   readonly export?: Exports;
 }
 
+/** What the browser sends along per action that takes input — the schema's input type; actions without one are left out. */
+type InputsOf<Actions> = {
+  [N in keyof Actions as Actions[N] extends { readonly '~input': infer S } ? ([S] extends [never] ? never : N) : never]: Actions[N] extends { readonly '~input': infer S extends StandardSchemaV1 }
+    ? InferInput<S>
+    : never;
+};
+
 /** The table `defineTable` makes of its input. */
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<
   RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>,
@@ -641,7 +720,9 @@ type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P exten
   keyof Exports & string,
   QueryValuesOf<P, Cols, Filters, Pg>,
   // The names spelled out (a key-remapped type, no alias): a wrong sort in the browser reads "… not assignable to '"name" | "joined"'".
-  keyof { [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0 } & string
+  keyof { [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0 } & string,
+  InputsOf<Actions>,
+  InputsOf<Bulk>
 >;
 
 /**

@@ -10,36 +10,38 @@ Types from other packages: none
 
 ```ts
 // AnyBulkAction
-export type AnyBulkAction = BulkAction<BulkActionClass, any, string>;
+export type AnyBulkAction = BulkAction<BulkActionClass, any, string, any>;
 // AnyColumn
 export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
 // AnyFilter
 export type AnyFilter = Filter<string, 'select' | 'dateRange', string>;
 // AnyRowAction
-export type AnyRowAction = RowAction<RowActionClass, any, string>;
+export type AnyRowAction = RowAction<RowActionClass, any, string, any>;
 // BulkAction
-export declare class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown, K extends string = string> {
+export declare class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown, K extends string = string, S extends StandardSchemaV1 = never> {
     #private;
     readonly '~policy': P;
     readonly '~ability': K;
+    readonly '~input': S;
     readonly handler: H;
-    authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): BulkAction<H, P2, K2>;
-    visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K>;
-    visible(check: TableVisibilityCheck): BulkAction<H, P, K>;
-    confirm(): BulkAction<H, P, K>;
-    max(rows: number): BulkAction<H, P, K>;
+    authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): BulkAction<H, P2, K2, S>;
+    visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K, S>;
+    visible(check: TableVisibilityCheck): BulkAction<H, P, K, S>;
+    confirm(): BulkAction<H, P, K, S>;
+    max(rows: number): BulkAction<H, P, K, S>;
+    input<I extends ActionInputSource>(schema: I): BulkAction<H, P, K, InputSchemaOf<I>>;
 }
 // BulkActionClass
 export type BulkActionClass<R = any, C = any> = new (...args: any[]) => {
-    handle(rows: readonly R[], ctx: C): unknown;
+    handle(rows: readonly R[], ctx: C, input: any): unknown;
 };
 // CheckActions
 export type CheckActions<Row, Actions> = {
-    [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K> ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string>> : unknown;
+    [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>> : unknown;
 };
 // CheckBulk
 export type CheckBulk<Row, Bulk> = {
-    [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K> ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string>> : unknown;
+    [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>> : unknown;
 };
 // CheckColumnKey
 export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends number ? K : ReferencedType<DB, TB, K> extends ScalarKey ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')` : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
@@ -80,7 +82,7 @@ export interface CursorPage {
     readonly nextCursor: string | null;
 }
 // DataTable
-export interface DataTable<Row extends object = any, Ctx = any, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, QV extends object = TableQueryValues, S extends string = C> {
+export interface DataTable<Row extends object = any, Ctx = any, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, QV extends object = TableQueryValues, S extends string = C, AI extends object = {}, BI extends object = {}> {
     readonly [TABLE_TYPES]?: {
         readonly row: Row;
         readonly ctx: Ctx;
@@ -90,6 +92,8 @@ export interface DataTable<Row extends object = any, Ctx = any, C extends string
         readonly actions: A;
         readonly bulk: B;
         readonly exports: E;
+        readonly actionInputs: AI;
+        readonly bulkInputs: BI;
     };
     readonly query: TableQuerySchema<QV>;
 }
@@ -120,19 +124,21 @@ export interface OffsetPage {
     readonly to: number | null;
 }
 // RowAction
-export declare class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K extends string = string> {
+export declare class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K extends string = string, S extends StandardSchemaV1 = never> {
     #private;
     readonly '~policy': P;
     readonly '~ability': K;
+    readonly '~input': S;
     readonly handler: H;
-    authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): RowAction<H, P2, K2>;
-    visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K>;
-    visible(check: TableVisibilityCheck): RowAction<H, P, K>;
-    confirm(): RowAction<H, P, K>;
+    authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): RowAction<H, P2, K2, S>;
+    visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K, S>;
+    visible(check: TableVisibilityCheck): RowAction<H, P, K, S>;
+    confirm(): RowAction<H, P, K, S>;
+    input<I extends ActionInputSource>(schema: I): RowAction<H, P, K, InputSchemaOf<I>>;
 }
 // RowActionClass
 export type RowActionClass<R = any, C = any> = new (...args: any[]) => {
-    handle(row: R, ctx: C): unknown;
+    handle(row: R, ctx: C, input: any): unknown;
 };
 // SortDirection
 export type SortDirection = 'asc' | 'desc';
@@ -160,7 +166,11 @@ export interface TableColumn<C extends string = string> {
 // TableContext
 export type TableContext<TState extends object = {}, TParams extends object = {}> = Omit<HttpContext<TState, TParams>, 'query'>;
 // TableData
-export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C> {
+export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C, AI extends object = {}, BI extends object = {}> {
+    readonly '~inputs'?: {
+        readonly actions: AI;
+        readonly bulk: BI;
+    };
     readonly name: string;
     readonly key: string;
     readonly columns: readonly TableColumn<C>[];
@@ -237,7 +247,7 @@ export interface TablePagination {
     readonly cursor?: boolean;
 }
 // TableProps
-export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
+export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI> ? TableData<Row, C, F, A, B, E, S, AI, BI> : never;
 // TableQuery
 export type TableQuery = {
     bivariance(db: never, ctx: any): SelectQuery<any, any, any>;
@@ -270,9 +280,9 @@ export declare class TableServiceProvider implements ServiceProvider {
 // TableVisibilityCheck
 export type TableVisibilityCheck = (ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>;
 // action
-export declare function action<H extends RowActionClass>(handler: H): RowAction<H, unknown, never>;
+export declare function action<H extends RowActionClass>(handler: H): RowAction<H, unknown, never, never>;
 // bulk
-export declare function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unknown, never>;
+export declare function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unknown, never, never>;
 // column
 export declare function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false>;
 // defineTable
@@ -295,6 +305,8 @@ export declare function unescapeCsvCell(text: string): string;
 ### Referenced, not exported
 
 ```ts
+// ActionInputSource
+export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S | ((resolve: ClassResolver, ctx: any) => S | Promise<S>);
 // CheckKeyColumn
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
 // CheckRegistrar
@@ -313,6 +325,20 @@ type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
 type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
     handle(first: infer First, ...rest: any[]): unknown;
 } ? (Bulk extends true ? readonly Row[] : Row) extends First ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}` : never;
+// InputProblem
+type InputProblem<H, S, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
+    handle: (...args: infer Args) => unknown;
+} ? [S] extends [never] ? Args extends [any, any, ...infer Rest] ? [Rest] extends [[]] ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx, input) takes an input, but the action has no .input(schema)` : never : Args extends [any, any, infer Taken, ...any[]] ? InferOutput<Extract<S, StandardSchemaV1>> extends Taken ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx, input) takes another input than the schema gives` : never : never;
+// InputSchemaOf
+export type InputSchemaOf<I> = (I extends StandardSchemaV1 ? I : I extends (...args: any[]) => infer R ? Awaited<R> : never) extends infer S extends StandardSchemaV1 ? S : never;
+// InputsOf
+type InputsOf<Actions> = {
+    [N in keyof Actions as Actions[N] extends {
+        readonly '~input': infer S;
+    } ? ([S] extends [never] ? never : N) : never]: Actions[N] extends {
+        readonly '~input': infer S extends StandardSchemaV1;
+    } ? InferInput<S> : never;
+};
 // KeyName
 type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
 // KeyPrefix
@@ -386,7 +412,7 @@ declare const TABLE_TYPES: unique symbol;
 // TableOf
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof Cols & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
     [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0;
-} & string>;
+} & string, InputsOf<Actions>, InputsOf<Bulk>>;
 // TableQueryValues
 export type TableQueryValues = {
     readonly [key: string]: string | number | undefined;
@@ -406,10 +432,26 @@ Types from other packages: none
 ```ts
 // ActionOf
 export type ActionOf<T extends AnyTableData> = T['actions'][number]['name'];
+// ActionRunArgs
+export type ActionRunArgs<T extends AnyTableData, N> = 0 extends 1 & ActionInputs<T> ? [options?: TableRunOptions & {
+    input?: unknown;
+}] : N extends keyof ActionInputs<T> ? [options: TableRunOptions & {
+    input: ActionInputs<T>[N];
+}] : [options?: TableRunOptions & {
+    input?: never;
+}];
 // AnyTableData
-export type AnyTableData = TableData<any, string, string, string, string, string, string>;
+export type AnyTableData = TableData<any, string, string, string, string, string, string, any, any>;
 // BulkOf
 export type BulkOf<T extends AnyTableData> = T['bulk'][number]['name'];
+// BulkRunArgs
+export type BulkRunArgs<T extends AnyTableData, N> = 0 extends 1 & BulkInputs<T> ? [options?: TableRunOptions & {
+    input?: unknown;
+}] : N extends keyof BulkInputs<T> ? [options: TableRunOptions & {
+    input: BulkInputs<T>[N];
+}] : [options?: TableRunOptions & {
+    input?: never;
+}];
 // ColumnOf
 export type ColumnOf<T extends AnyTableData> = T['columns'][number]['name'];
 // CursorPage
@@ -493,8 +535,8 @@ export declare class TableController<T extends AnyTableData = AnyTableData> {
     get allSelected(): boolean;
     get selectedCount(): number;
     confirmText: (action: string, rows: number) => string;
-    run(name: ActionOf<T>, row: TableRowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
-    runBulk(name: BulkOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
+    run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableRunOutcome>;
+    runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableRunOutcome>;
     exportUrl(name: ExportOf<T>): string;
     dispose(): void;
 }
@@ -505,7 +547,11 @@ export interface TableControllerOptions {
     searchDebounceMs?: number;
 }
 // TableData
-export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C> {
+export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C, AI extends object = {}, BI extends object = {}> {
+    readonly '~inputs'?: {
+        readonly actions: AI;
+        readonly bulk: BI;
+    };
     readonly name: string;
     readonly key: string;
     readonly columns: readonly TableColumn<C>[];
@@ -596,4 +642,13 @@ export declare function keyOf(data: Pick<AnyTableData, 'key'>, row: object): Sel
 export declare function sortUrl<T extends AnyTableData>(data: T, column: SortableOf<T>, page: Pick<PageObject, 'url' | 'query' | 'queryDefaults'>): string;
 // tableStatus
 export declare function tableStatus(info: TableStatusInfo): string;
+```
+
+### Referenced, not exported
+
+```ts
+// ActionInputs
+type ActionInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['actions'];
+// BulkInputs
+type BulkInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['bulk'];
 ```
