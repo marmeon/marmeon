@@ -393,6 +393,37 @@ export class MakeNotificationCommand {
   }
 }
 
+export class MakeMailCommand {
+  static command = 'make:mail';
+  static description = 'Create a mail (envelope(), content() in the app\'s layout and a static preview()); the layout too, once';
+  static usage = '<Name> --module=<module>';
+  static options = moduleOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const dir = moduleDir(input);
+    const name = className(input, 'Mail');
+    if (!dir || !name) return 1;
+    for (const [name, why] of [['@marmeon/mail', 'A mail is sent by the Mailer of'], ['@marmeon/i18n', 'A mail speaks the language of its recipient with the Translators of']] as const) {
+      if (!dependsOn(input.root, name)) {
+        input.output.error(`${why} ${name}: pnpm add -E ${name}@<version of your app>`);
+        return 1;
+      }
+    }
+    const module = input.options.module as string;
+    // The mail goes first: when it exists and is not overwritten, nothing else is written either.
+    if (!write(input, join(dir, 'mail', `${name}.ts`), MAIL(name))) return 1;
+    // The layout belongs to the app, not to the mail: a layout that is there stays, even with --force.
+    const layout = join(dir, 'mail', 'layout.ts');
+    if (existsSync(layout)) input.output.line(style('dim', `Using ${relative(input.root, layout)}`));
+    else if (!write(input, layout, MAIL_LAYOUT)) return 1;
+    input.output.line(style('dim', `Preview it in development: /_marmeon/mail/${module}/${name}`));
+    input.output.line(style('dim', `Send it: await mailer.send(new ${name}({ address: user.email, name: user.name }, translators.for(user.locale)));   (Mailer from @marmeon/mail, Translators from @marmeon/i18n)`));
+    input.output.line(style('dim', 'See docs/mail.md#writing-mails'));
+    return 0;
+  }
+}
+
 export class MakeCommandCommand {
   static command = 'make:command';
   static description = 'Create a console command (listed by marmeon list)';
@@ -786,6 +817,73 @@ export class ${name} {
   toDatabase(data: NotificationData<typeof ${name}>): DatabaseInput<typeof ${name}> {
     return { id: data.id };
   }
+}
+`;
+
+const MAIL = (name: string) => `import { Translators, type Translator } from '@marmeon/i18n';
+import { mjml, type Address, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import { layout } from './layout.ts';
+
+/**
+ * A mail: \`envelope()\` says to whom and about what, \`content()\` is the body inside the app's layout. \`t\` speaks the
+ * recipient's language — \`translators.for(user.locale)\`, not the request's.
+ * Send it with \`mailer.send(new ${name}(…))\`, or \`mailer.queue(…)\` from a request.
+ */
+export class ${name} implements Mailable {
+  readonly #to: Address;
+  readonly #t: Translator;
+
+  constructor(to: Address, t: Translator) {
+    this.#to = to;
+    this.#t = t;
+  }
+
+  /** The preview (\`/_marmeon/mail/<module>/${name}\`, development only), with sample data: nothing is stored. */
+  static preview({ make, locale }: MailPreviewContext): ${name} {
+    return new ${name}({ address: 'ada@example.com', name: 'Ada Lovelace' }, make(Translators).for(locale));
+  }
+
+  envelope() {
+    // Texts that differ by language: \`this.#t.get('<module>.mail.<name>.subject')\`, with the keys in lang/.
+    return { to: this.#to, subject: 'A message for you' };
+  }
+
+  content() {
+    const t = this.#t;
+    return layout(t, {
+      preview: 'A message for you',
+      body: mjml\`
+        <mj-text>Hello,</mj-text>
+        <mj-text>This is the text of ${name}.</mj-text>\`,
+    });
+  }
+}
+`;
+
+const MAIL_LAYOUT = `import type { Translator } from '@marmeon/i18n';
+import { mjml, type Html } from '@marmeon/mail';
+
+/**
+ * The frame of the app's mails — a function returning \`mjml\`, so each mail nests its body into it. \`t\` speaks the
+ * recipient's language, which also goes into \`<mjml lang>\`. The mail loads no
+ * font and no image of someone else's host: serve what you add yourself. See docs/mail.md#writing-mails.
+ */
+export function layout(t: Translator, { preview, body }: { preview: string; body: Html }) {
+  return mjml\`<mjml lang="\${t.locale}">
+  <mj-head>
+    <mj-preview>\${preview}</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="1.5" color="#1f2933" />
+      <mj-button background-color="#1f2933" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f5f7" width="560px">
+    <mj-section background-color="#ffffff" padding="24px">
+      <mj-column>\${body}</mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>\`;
 }
 `;
 

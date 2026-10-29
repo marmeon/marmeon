@@ -5,18 +5,25 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { marmeon, repo, tsc, webApp } from './__fixtures__/cli.js';
 
+/** The part of a generated mail this test reads. */
+interface Mailable {
+  envelope(): unknown;
+  content(): unknown;
+}
+
 describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => {
   let app: string;
 
   beforeAll(() => {
     app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-make-')));
-    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@marmeon/auth': 'workspace:*' } }));
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@marmeon/auth': 'workspace:*', '@marmeon/mail': 'workspace:*', '@marmeon/i18n': 'workspace:*' } }));
     // Resolve the framework and React like an installed app would.
     const link = (name: string, target: string) => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing', 'react']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing', 'react', 'mail', 'i18n']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    link('mjml', realpathSync(join(repo, 'packages/mail/node_modules/mjml'))); // the mail's layout is compiled by it
     link('vitest', realpathSync(join(repo, 'node_modules/vitest'))); // the generated test imports it
     link('marmeon', join(repo, 'packages', 'cli')); // the generated command imports its input type from it
     for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
@@ -159,6 +166,62 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
   }, 30_000); // fifteen CLI processes — seconds under a full parallel run
+
+  it('generates a mail that compiles, previews and renders in its layout, and never overwrites', async () => {
+    const made = marmeon(app, ['make:mail', 'InvoiceOverdue', '--module=billing']);
+    expect([made.code, made.stderr]).toEqual([0, '']);
+    expect(made.stdout).toContain('Created modules/billing/mail/InvoiceOverdueMail.ts');
+    expect(made.stdout).toContain('Created modules/billing/mail/layout.ts');
+    expect(made.stdout).toContain('/_marmeon/mail/billing/InvoiceOverdueMail');
+    // The layout stays for the next mail, and neither file is overwritten.
+    const layoutBefore = readFileSync(join(app, 'modules/billing/mail/layout.ts'), 'utf8');
+    writeFileSync(join(app, 'modules/billing/mail/layout.ts'), `${layoutBefore}// mine\n`);
+    const second = marmeon(app, ['make:mail', 'PaymentFailed', '--module=billing']);
+    expect([second.code, second.stdout]).toEqual([0, expect.not.stringContaining('Created modules/billing/mail/layout.ts')]);
+    expect(readFileSync(join(app, 'modules/billing/mail/layout.ts'), 'utf8')).toContain('// mine');
+    const again = marmeon(app, ['make:mail', 'InvoiceOverdue', '--module=billing']);
+    expect([again.code, again.stderr]).toEqual([1, expect.stringContaining('already exists (use --force to overwrite)')]);
+    const forced = marmeon(app, ['make:mail', 'PaymentFailed', '--module=billing', '--force']);
+    expect(forced.code).toBe(0);
+    expect(readFileSync(join(app, 'modules/billing/mail/layout.ts'), 'utf8')).toContain('// mine');
+    writeFileSync(join(app, 'modules/billing/mail/layout.ts'), layoutBefore);
+
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+
+    // The preview builds the mail from the container; the mail composes into the layout with the app's name, and MJML accepts it.
+    const { InvoiceOverdueMail } = (await import(join(app, 'modules/billing/mail/InvoiceOverdueMail.ts'))) as { InvoiceOverdueMail: { preview(context: object): Promise<Mailable> | Mailable } };
+    // The app's own copies of the packages, so the keys are the ones the generated files import.
+    writeFileSync(join(app, 'modules/billing/packages.ts'), "export { Translators } from '@marmeon/i18n';\nexport { fromMjml } from '@marmeon/mail';\n");
+    const { Translators, fromMjml } = (await import(join(app, 'modules/billing/packages.ts'))) as { Translators: unknown; fromMjml: (content: unknown) => Promise<{ html: string; text: string }> };
+    const make = (key: unknown) => (key === Translators ? { for: (locale: string | undefined) => ({ locale: locale ?? 'en' }) } : undefined);
+    const mail = await InvoiceOverdueMail.preview({ make, locale: 'de' });
+    const envelope = await mail.envelope();
+    expect(envelope).toEqual({ to: { address: 'ada@example.com', name: 'Ada Lovelace' }, subject: 'A message for you' });
+    const { html, text } = await fromMjml(await mail.content());
+    expect(html).toContain('<html lang="de"');
+    expect(html).toContain('This is the text of InvoiceOverdueMail.');
+    expect(text).toContain('This is the text of InvoiceOverdueMail.');
+    rmSync(join(app, 'modules/billing/packages.ts'));
+  }, 30_000);
+
+  it('generates a mail that compiles against the starter kit\'s layout', () => {
+    mkdirSync(join(app, 'modules/kitmail/mail'), { recursive: true });
+    writeFileSync(join(app, 'modules/kitmail/index.ts'), "import { defineModule } from '@marmeon/core';\nexport default defineModule({ name: 'kitmail' });\n");
+    // The kit's frame takes the translator, a preview and a body, and finds the app's name itself.
+    // Its footer reads a message of the kit's own lang files, which this app does not have: a literal stands in.
+    const kitLayout = readFileSync(join(repo, 'packages/auth/stubs/react/modules/auth/mail/layout.ts'), 'utf8').replace("t.get('auth.mail.app')", "'Shop'");
+    writeFileSync(join(app, 'modules/kitmail/mail/layout.ts'), kitLayout);
+    const made = marmeon(app, ['make:mail', 'Welcome', '--module=kitmail']);
+    expect([made.code, made.stderr]).toEqual([0, '']);
+    expect(made.stdout).not.toContain('Created modules/kitmail/mail/layout.ts');
+    expect(readFileSync(join(app, 'modules/kitmail/mail/layout.ts'), 'utf8')).toBe(kitLayout);
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+    rmSync(join(app, 'modules/kitmail'), { recursive: true });
+  }, 30_000);
 
   it('generates a policy that lets the owner in and answers everyone else with a 404', async () => {
     // The Gate comes through the app's own resolution, so it is the module instance the policy's answers belong to.
