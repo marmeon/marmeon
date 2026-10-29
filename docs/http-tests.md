@@ -78,6 +78,7 @@ its database and its fakes, so you can keep one per user:
 | --- | --- |
 | `withHeaders(headers)` | Headers on every request. |
 | `expectingJson()` | `Accept: application/json`, as an API client sends it. |
+| `withIp(address)` | The client address the request comes from, as a socket's peer: `ctx.ip` holds it, and `SERVER_TRUSTED_PROXIES` applies. Without it `ctx.ip` is undefined. |
 | `withCookie(name, value)` | A cookie, encrypted as the app encrypts its own. |
 | `withUnencryptedCookie(name, value)` | A cookie exactly as given, to prove that a forged value is ignored. |
 | `withSession(data)` | A session that holds `data` before the request. |

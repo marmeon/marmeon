@@ -1,5 +1,4 @@
 import { Router } from '@marmeon/router';
-import { createHttpKernel } from '@marmeon/server';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -31,14 +30,21 @@ describe('the limits of the auth routes', { timeout: 30_000 }, () => {
     expect(unthrottled).toEqual([]);
   });
 
-  it('answers the eleventh code of a minute from one client with 429', async () => {
-    const kernel = createHttpKernel(app.application);
-    const post = (remote: string) => kernel.request('/two-factor-challenge', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ code: '000000' }) }, { remoteAddress: remote });
+  const challenge = (client: TestApp) => client.expectingJson().post('/two-factor-challenge', { json: { code: '000000' } });
+
+  it('answers the eleventh code of a minute from one client with 429, and counts another client apart', async () => {
+    const first = app.withIp('203.0.113.50');
     const statuses = [];
-    for (let i = 0; i < 11; i++) statuses.push((await post('203.0.113.50')).status);
+    for (let i = 0; i < 11; i++) statuses.push((await challenge(first)).status);
     expect(statuses.slice(0, 10)).not.toContain(429);
     expect(statuses[10]).toBe(429);
-    expect((await post('203.0.113.51')).status).not.toBe(429);
+    expect((await challenge(app.withIp('203.0.113.51'))).status).not.toBe(429);
+  });
+
+  it('counts the addresses of one IPv6 /64 as one client', async () => {
+    for (let i = 0; i < 10; i++) await challenge(app.withIp(`2001:db8:1:2::${i + 1}`));
+    expect((await challenge(app.withIp('2001:db8:1:2:ffff::9'))).status).toBe(429);
+    expect((await challenge(app.withIp('2001:db8:1:3::1'))).status).not.toBe(429);
   });
 
   it('sends ten links a day at most, and five an hour to one address', async () => {

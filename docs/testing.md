@@ -165,6 +165,8 @@ const kernel = createHttpKernel(app.application);
 const response = await kernel.request('/whoami');
 ```
 
+For the usual case, a request from a given client address, use [`app.withIp()`](http-tests.md#request-defaults) instead.
+
 `HttpKernel` is given to your code, not meant to be implemented: a later release may add a member.
 
 `createHttpKernel(application, options)` takes `KernelOptions`, among them `maxBodyBytes` for a request body under 1 MB

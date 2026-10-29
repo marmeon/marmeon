@@ -133,6 +133,7 @@ export declare class TestApp {
     make<K extends Key<any>>(key: K): Resolve<K>;
     command(name: string, { args, options, root }?: CommandRunOptions): Promise<CommandRun>;
     withHeaders(headers: Record<string, string>): TestApp;
+    withIp(address: string): TestApp;
     withCookie(name: string, value: string): TestApp;
     withSession(data: Record<string, unknown>): TestApp;
     actingAs(user: AuthUser, options?: {
