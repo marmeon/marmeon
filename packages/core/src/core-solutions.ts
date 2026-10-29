@@ -55,6 +55,27 @@ export const coreSolutions = defineSolutions([
     }),
   },
   {
+    for: ContainerError,
+    code: 'K16',
+    when: (e) => e.reason === 'undefined-dependency',
+    solve: (e) =>
+      e.madeUndefined
+        ? {
+            title: 'Find the import cycle behind the undefined class',
+            text:
+              `make() was given undefined${e.path.length ? ` (needed by ${e.path.at(-1)})` : ''}: the class was not defined yet when it was imported, ` +
+              'usually because two modules import each other. Let one of them read what the other exposes (a table, an abstract class) instead of importing its class.',
+            docs: CONTAINER_DOCS,
+          }
+        : {
+            title: `Find the import cycle behind ${e.key}`,
+            text:
+              `${e.key} lists a dependency that is undefined: the class was not defined yet when ${e.key} was, usually because two ` +
+              'modules import each other. Let one of them read what the other exposes (a table, an abstract class) instead of importing its class.',
+            docs: CONTAINER_DOCS,
+          },
+  },
+  {
     for: InjectionError,
     code: 'K5',
     solve: (e) => injectionSolution('The class', withoutCode(e.message)),

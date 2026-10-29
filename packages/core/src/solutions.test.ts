@@ -59,6 +59,27 @@ describe('the core solutions', () => {
     expect(solution?.text).toMatch(/only classes and tokens can be injected, not "number".*inject the config object/);
   });
 
+  it('a dependency that is undefined: find the import cycle', async () => {
+    class Welcome {
+      static inject = [undefined] as unknown as readonly [typeof Money];
+      constructor(_money: Money) {}
+    }
+    const [solution] = await solutions.find(thrown(() => new Container().make(Welcome)));
+    expect(solution).toMatchObject({ code: 'K16', title: 'Find the import cycle behind Welcome', docs: 'docs/container.md#the-containers-errors' });
+  });
+
+  it('make(undefined), directly and from a factory: names make(), not a class', async () => {
+    const [direct] = await solutions.find(thrown(() => new Container().make(undefined as never)));
+    expect(direct).toMatchObject({ code: 'K16', title: 'Find the import cycle behind the undefined class' });
+    expect(direct?.text).toMatch(/^make\(\) was given undefined: /);
+    expect(direct?.text).not.toContain('lists a dependency');
+
+    class Report {}
+    const container = new Container().bind(Report, ({ make }) => make(undefined as never) as Report);
+    const [viaFactory] = await solutions.find(thrown(() => container.make(Report)));
+    expect(viaFactory?.text).toMatch(/^make\(\) was given undefined \(needed by Report\): /);
+  });
+
   it('a circular dependency', async () => {
     class A {
       static inject: unknown[] = [];
