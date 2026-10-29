@@ -234,9 +234,10 @@ The delete checks all three again in the same statement, so an account confirmed
 deletes none. The command works in batches of 100 accounts and logs how many it deleted.
 
 Each deletion goes through the module's `AccountDeletion`: the row, with its remember-me and API tokens, its reset token, and what
-other modules keep for it, all in one transaction; then its sessions. Before anything is removed, `AccountDeleting` asks the
-other modules once per account. A module that must not lose the account, such as the last administrator of a workspace, refuses
-from its listener:
+other modules keep for it, all in one transaction; then its sessions. `AccountDeletion` asks about one account at a time, in the
+order of their ids, and only after the accounts before it in the same call are gone, so a listener counts what is really left.
+`AccountDeleting` asks the other modules once per account. A module that must not lose the account, such as the last administrator
+of a workspace, refuses from its listener:
 
 ```ts title="modules/workspaces/listeners/KeepLastAdministrator.ts"
 import type { AccountDeleting } from '#modules/auth';
@@ -249,17 +250,47 @@ export class KeepLastAdministrator {
   }
 
   async handle(event: AccountDeleting): Promise<void> {
-    // Read with a lock: two administrators deleting themselves at once must not both pass.
-    if (await this.#workspaces.isLastAdministrator(event.user.id, { lock: true })) {
+    const rows = await this.#workspaces.lockAdministrators(event.user.id);
+    const counts = new Map<number, number>();
+    for (const row of rows) counts.set(row.workspace_id, (counts.get(row.workspace_id) ?? 0) + 1);
+    if ([...counts.values()].some((count) => count === 1)) {
       event.refuse('This account is the last administrator of a workspace.');
     }
   }
 }
 ```
 
-The listener runs inside the deletion's transaction, so it should read what it decides on with a lock (`forUpdate()` on
-Postgres). Without it, two administrators deleting themselves at once could both pass "not the last administrator". A reason is
-shown to the person whose deletion failed, so it must not name other tenants or a module's internals.
+`lockAdministrators` selects the membership rows themselves, all of one query, sorted by `(workspace_id, user_id)`, and counts per
+workspace in code. `FOR UPDATE` refuses `GROUP BY`, so a `count(*)` cannot carry the lock, and a count without the lock reopens the
+hole. Postgres locks the rows in the sorted order, so two administrators sharing several workspaces wait for each other instead
+of deadlocking:
+
+```ts title="modules/workspaces/WorkspaceRepository.ts"
+export class WorkspaceRepository extends Repository<'memberships'> {
+  /** The administrator rows of every workspace the account administers, locked in the order of (workspace_id, user_id). */
+  lockAdministrators(userId: number) {
+    return this.query()
+      .select(['workspace_id', 'user_id'])
+      .where('workspace_id', 'in', (eb) => eb.selectFrom('memberships').select('workspace_id').where('user_id', '=', userId).where('role', '=', 'admin'))
+      .where('role', '=', 'admin')
+      .orderBy('workspace_id')
+      .orderBy('user_id')
+      .forUpdate() // Postgres; SQLite has one writer at a time and leaves it out
+      .execute();
+  }
+}
+```
+
+The listener runs inside the deletion's transaction. Within one call, the order above does the work: `delete([a, b])` for the
+only two administrators of a workspace deletes `a` and refuses `b`. Two deletions at once need a lock: the listener reads the
+administrator memberships of the workspace with `forUpdate()` (on Postgres), in the order of `(workspace_id, user_id)`, not only
+the account's own membership. Locking only its own row separates nothing: both transactions would count two administrators and
+both would pass. With the whole set locked, the second waits, finds the first one's row gone, counts one and refuses. For that the
+membership must go with the account: its foreign key cascades, or your module's `AccountDeleted` listener deletes it.
+
+Lock rows of your own module's table, the memberships, and never the `users` rows. `AccountDeletion` already holds the row of the
+account it deletes, so a listener that locks other accounts' `users` rows deadlocks two deletions at once. SQLite has one writer
+at a time and needs no lock. A reason is shown to the person whose deletion failed, so it must not name other tenants or a module's internals.
 
 A refused account stays, and the others of the same run go on. `AccountDeletion.delete()` returns `{ deleted, refused }`, and each
 entry of `refused` has the `user` and the `reasons`. The reasons are sentences for a person, not keys: translate or show them

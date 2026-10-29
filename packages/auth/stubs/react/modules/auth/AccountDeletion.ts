@@ -6,9 +6,12 @@ import type { User } from './users.ts';
 import { UserRepository } from './UserRepository.ts';
 
 /**
- * An account is about to be deleted — dispatched inside the deletion's transaction, once per account, before anything is
- * removed. A module that must not lose the account (the last administrator of a workspace) calls {@link AccountDeleting.refuse}
- * from its listener (`listen(AccountDeleting, …)`): that account stays, the others of the same call go on.
+ * An account is about to be deleted — dispatched inside the deletion's transaction, once per account, one account at a time:
+ * the accounts before it in the same call (in the order of their ids) are already deleted, so a listener counts what is
+ * left. A module that must not lose the account (the last administrator of a workspace) calls {@link AccountDeleting.refuse}
+ * from its listener (`listen(AccountDeleting, …)`): that account stays, the others of the same call go on. Two deletions at
+ * once see each other only through a lock — the listener locks the whole set it counts: its own table's membership rows, in a
+ * fixed order, never `users` rows; see `docs/verification.md#unconfirmed-accounts`.
  */
 export class AccountDeleting {
   readonly #event = true;
@@ -85,8 +88,9 @@ export class AccountDeletion {
   }
 
   /**
-   * Deletes the accounts `ids`. Each account is read with a lock and offered to the listeners of {@link AccountDeleting}; one that
-   * a listener refuses stays, with its reasons in `refused`, and the others go. `unconfirmedSince`: only those that never confirmed
+   * Deletes the accounts `ids`. Each account is read with a lock; then, in id order and after the accounts before it are deleted,
+   * the listeners of {@link AccountDeleting} are asked about it. One that a listener refuses stays, with its reasons in `refused`,
+   * and the others go. `unconfirmedSince`: only those that never confirmed
    * an address and were made before then, decided in the statement that deletes (one confirmed a moment ago stays). A listener that
    * throws stops the call and rolls everything back: nothing is deleted.
    */
@@ -97,21 +101,23 @@ export class AccountDeletion {
       const lock = this.#connections.options().driver === 'pgsql';
       const candidates = await this.#users.lockAccounts(ids, only, lock);
       const refused: RefusedDeletion[] = [];
+      const deleted: User[] = [];
+      // One account at a time, in id order: the question about an account comes after the accounts before it are gone, with
+      // their cascades and their AccountDeleted listeners, so a listener that counts what is left counts what really is.
       for (const user of candidates) {
         const asking = new AccountDeleting(user);
         await this.#events.dispatch(asking);
-        if (asking.reasons.length > 0) refused.push({ user, reasons: [...asking.reasons] });
+        if (asking.reasons.length > 0) {
+          refused.push({ user, reasons: [...asking.reasons] });
+          continue;
+        }
+        for (const gone of await this.#users.deleteAccounts([user.id], only)) {
+          await this.#resets.forget(gone.email);
+          await this.#events.dispatch(new AccountDeleted(gone, now));
+          deleted.push(gone);
+        }
       }
-      const users = await this.#users.deleteAccounts(
-        ids,
-        only,
-        refused.map((one) => one.user.id),
-      );
-      for (const user of users) {
-        await this.#resets.forget(user.email);
-        await this.#events.dispatch(new AccountDeleted(user, now));
-      }
-      return { deleted: users, refused };
+      return { deleted, refused };
     });
     for (const user of deleted) await this.#sessions.end(user.id);
     return { deleted, refused };
