@@ -360,6 +360,7 @@ declare const en: {
             readonly max: 'The file may be at most {max}.';
             readonly type: 'This type of file is not accepted (allowed: {types}).';
             readonly text: 'Only a text file is accepted, such as a CSV.';
+            readonly encoding: 'The file is not UTF-8 text — save it as UTF-8.';
         };
         readonly more: '(and {count, plural, one {# more error} other {# more errors}})';
         readonly required: 'The {attribute} field is required.';

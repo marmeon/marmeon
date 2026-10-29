@@ -245,7 +245,7 @@ export class TemporaryUploads {
       throw error;
     }
     const { mime, extension } = sniff(head);
-    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) }, { disk, key: row.key, etag, readStart: (count) => readStart(disk, row.key, etag, count), consume: () => this.consume(id) });
+    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) }, { disk, key: row.key, etag, readStart: (count) => readStart(disk, row.key, etag, count), read: (limit) => readWhole(disk, row.key, etag, limit), consume: () => this.consume(id) });
   }
 
   /** Uses upload `id` up — `false` when it was used already or has expired. One statement: of two at once, one wins. */
@@ -363,6 +363,38 @@ async function readStart(disk: Disk, key: string, etag: string | undefined, coun
     if (error instanceof FileNotFoundError || error instanceof ObjectChangedError) return new Uint8Array(0);
     throw error;
   }
+}
+
+/**
+ * The whole file as the check saw it, or `undefined` when it is gone, changed (on S3: another ETag), shorter or longer than `limit` —
+ * the read stops one byte past the limit, so a file that grew never fills memory.
+ */
+async function readWhole(disk: Disk, key: string, etag: string | undefined, limit: number): Promise<Uint8Array | undefined> {
+  let stream: ReadableStream<Uint8Array>;
+  try {
+    stream = disk instanceof S3Disk && etag !== undefined ? await disk.streamIfMatch(key, etag) : await disk.stream(key);
+  } catch (error) {
+    if (error instanceof FileNotFoundError || error instanceof ObjectChangedError) return undefined;
+    throw error;
+  }
+  const reader = stream.getReader();
+  const bytes = new Uint8Array(limit);
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (size + value.byteLength > limit) return undefined;
+      bytes.set(value, size);
+      size += value.byteLength;
+    }
+  } catch (error) {
+    if (error instanceof FileNotFoundError || error instanceof ObjectChangedError) return undefined;
+    throw error;
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return size === limit ? bytes : undefined;
 }
 
 /** The first `count` bytes of a file (fewer when it is shorter). */

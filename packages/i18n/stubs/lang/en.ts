@@ -38,6 +38,7 @@ export default {
       max: 'The file may be at most {max}.',
       type: 'This type of file is not accepted (allowed: {types}).',
       text: 'Only a text file is accepted, such as a CSV.',
+      encoding: 'The file is not UTF-8 text — save it as UTF-8.',
     },
     more: '(and {count, plural, one {# more error} other {# more errors}})',
     // The rules of @marmeon/validation — the same English as its VALIDATION_TEXTS (a test keeps them equal).

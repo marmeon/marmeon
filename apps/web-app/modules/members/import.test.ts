@@ -8,7 +8,6 @@ beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 const ROUTE = 'members.import';
 const REFUSED = 'Only a text file is accepted, such as a CSV.';
-const CSV = 'name;email\nÄnne;anne@example.com\n';
 
 /** A text as bytes in Windows-1252: every character below U+0100 is one byte. */
 const windows1252 = (text: string) => Uint8Array.from([...text].map((char) => char.charCodeAt(0)));
@@ -29,14 +28,23 @@ afterEach(async () => app?.close());
 const send = (as: TestApp, file: unknown) => as.expectingJson().post('/members/import', { json: { file } });
 
 describe('the member import (/members/import) — upload({ text: true }) in the app', () => {
-  it('takes a CSV in Windows-1252 and in UTF-16LE with a byte order mark, keeps it on the private uploads disk and flashes its size', async () => {
+  it('reads a CSV in Windows-1252 and in UTF-16LE with a byte order mark, checks each row like a form and flashes the count — the file is not stored', async () => {
     const as = app.actingAs(ada);
-    for (const bytes of [windows1252(CSV), utf16le(CSV)]) {
+    const file = 'name;email\nÄnne;anne@example.com\nBen;not-an-address\n;empty@example.com\n';
+    for (const bytes of [windows1252(file), utf16le(file)]) {
       const token = await as.upload(ROUTE, 'file', new File([bytes], 'members.csv', { type: 'text/csv' }));
-      await send(as, token).assertRedirect('/members').assertFlashed('toast', { kind: 'success', message: `File received (${bytes.byteLength} bytes).` });
+      await send(as, token).assertRedirect('/members').assertFlashed('toast', { kind: 'info', message: '3 rows read, 2 to correct.' });
     }
-    expect(app.storage.disk('uploads').files()).toHaveLength(2);
-    expect(app.storage.disk('uploads').files().every((key) => /^imports\/[a-z2-7]{26}\.bin$/.test(key))).toBe(true);
+    expect(app.storage.disk('uploads').files().filter((key) => key.startsWith('imports/'))).toEqual([]);
+  });
+
+  it('answers a file without the columns, or one that breaks a limit of readCsv, with the error at its field — and the token stays usable', async () => {
+    const as = app.actingAs(ada);
+    const token = await as.upload(ROUTE, 'file', new File([windows1252('title;mail\nx;y\n')], 'members.csv'));
+    (await send(as, token)).assertInvalid({ file: 'The first row needs the columns name and email.' });
+    (await send(as, token)).assertInvalid({ file: 'The first row needs the columns name and email.' }); // not used up: sent again, the same answer
+    const open = await as.upload(ROUTE, 'file', new File([windows1252('name;email\n"Ada;ada@example.com\n')], 'members.csv'));
+    (await send(as, open)).assertInvalid({ file: /quote/i });
   });
 
   it('refuses UTF-16LE HTML with a byte order mark, an SVG and a PNG — 422, nothing stored', async () => {
@@ -53,7 +61,7 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
 
   it('is for administrators: another member gets no upload target and no import', async () => {
     const as = app.actingAs(alan);
-    await expect(as.upload(ROUTE, 'file', new File([windows1252(CSV)], 'members.csv'))).rejects.toThrow('answered 403');
+    await expect(as.upload(ROUTE, 'file', new File([windows1252('name;email\n')], 'members.csv'))).rejects.toThrow('answered 403');
     await send(as, 'tu_forged.token').assertForbidden();
   });
 

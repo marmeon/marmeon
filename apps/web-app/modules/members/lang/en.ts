@@ -41,7 +41,8 @@ const en = {
   import_uploading: 'Sending the file: {percent}%',
   import_ready: 'The file is ready.',
   import_save: 'Import',
-  imported: 'File received ({size, number} bytes).',
+  import_columns: 'The first row needs the columns name and email.',
+  imported: '{rows, plural, one {# row} other {# rows}} read, {invalid, number} to correct.',
 } as const;
 
 export default en;

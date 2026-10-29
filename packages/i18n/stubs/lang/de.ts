@@ -38,6 +38,7 @@ export default {
       max: 'Die Datei darf höchstens {max} groß sein.',
       type: 'Dieser Dateityp ist nicht erlaubt (erlaubt: {types}).',
       text: 'Es ist nur eine Textdatei erlaubt, zum Beispiel eine CSV-Datei.',
+      encoding: 'Die Datei ist kein UTF-8-Text — speichere sie als UTF-8.',
     },
     more: '(und {count, plural, one {# weiterer Fehler} other {# weitere Fehler}})',
     // Die Regeln von @marmeon/validation.
