@@ -64,8 +64,8 @@ describe('r.localDateTime() with a zone', () => {
     const rule = r.object({ at: r.localDateTime((request) => (seen.push(request), 'Asia/Tokyo')) });
     expect(await at(rule, '2026-01-15T14:30')).toBe('2026-01-15T05:30:00.000Z');
     expect(seen).toEqual([undefined]);
-    expect(await errors(r.object({ at: r.localDateTime(() => undefined) }), { at: '2026-01-15T14:30' })).toEqual({ at: ['The at field must be a valid time zone.'] });
-    expect(await errors(r.object({ at: r.localDateTime(() => 'Mars/Base') }), { at: '2026-01-15T14:30' })).toEqual({ at: ['The at field must be a valid time zone.'] });
+    expect(await errors(r.object({ at: r.localDateTime(() => undefined) }), { at: '2026-01-15T14:30' })).toEqual({ at: ['The at field must be a time zone such as Europe/Berlin.'] });
+    expect(await errors(r.object({ at: r.localDateTime(() => 'Mars/Base') }), { at: '2026-01-15T14:30' })).toEqual({ at: ['The at field must be a time zone such as Europe/Berlin.'] });
   });
 });
 
@@ -80,14 +80,14 @@ describe('r.localDateTime({ field })', () => {
   });
 
   it('a zone that is no zone is the zone field\'s problem; a missing one too', async () => {
-    expect(await errors(event, { time_zone: 'Europe/Berln', starts_at: '2026-07-01T14:30' })).toEqual({ time_zone: ['The time zone field must be a valid time zone.'] });
+    expect(await errors(event, { time_zone: 'Europe/Berln', starts_at: '2026-07-01T14:30' })).toEqual({ time_zone: ['The time zone field must be a time zone such as Europe/Berlin.'] });
     expect(await errors(event, { starts_at: '2026-07-01T14:30' })).toEqual({ time_zone: ['The time zone field is required.'] });
   });
 
   it('a wrong date and time stays the field\'s own problem and is reported with the others', async () => {
     expect(await errors(event, { time_zone: 'Europe/Berlin', starts_at: 'soon' })).toEqual({ starts_at: ['The starts at field must be a date and time like 2026-10-07T14:30.'] });
     expect(await errors(event, { time_zone: 'nope', starts_at: 'soon' })).toEqual({
-      time_zone: ['The time zone field must be a valid time zone.'],
+      time_zone: ['The time zone field must be a time zone such as Europe/Berlin.'],
       starts_at: ['The starts at field must be a date and time like 2026-10-07T14:30.'],
     });
   });
@@ -125,7 +125,7 @@ describe('the edges of r.localDateTime()', () => {
     expect(await at(r.object({ at: r.localDateTime('UTC') }), '0001-01-01T00:00')).toBe('0001-01-01T00:00:00.000Z');
     expect(await at(r.object({ at: r.localDateTime('UTC') }), '9999-12-31T23:59:59')).toBe('9999-12-31T23:59:59.000Z');
     expect(await errors(r.object({ at: r.localDateTime('+02:00') }), { at: '0001-01-01T00:30' })).toEqual(message);
-    const event = r.object({ time_zone: r.timeZone(), at: r.localDateTime({ field: 'time_zone' }) });
+    const event = r.object({ time_zone: r.string(), at: r.localDateTime({ field: 'time_zone' }) });
     expect(await errors(event, { time_zone: '+02:00', at: '0001-01-01T00:30' })).toEqual(message);
     expect(await errors(event, { time_zone: 'America/New_York', at: '9999-12-31T23:30' })).toEqual(message);
   });
@@ -143,13 +143,34 @@ describe('the edges of r.localDateTime()', () => {
 });
 
 describe('r.timeZone()', () => {
-  it('takes names and offsets, refuses the rest', async () => {
+  it('takes named zones, refuses offsets and the rest', async () => {
     const form = r.object({ zone: r.timeZone() });
-    for (const zone of ['Europe/Berlin', 'America/Argentina/Buenos_Aires', 'UTC', '+05:30', '-08:00']) expect(await check(form, { zone }), zone).toEqual({ value: { zone } });
-    for (const zone of ['Europe/Berln', 'berlin time', '2026-01-01T00:00Z', '2026-01-01T00:00[Europe/Berlin]', '+25:00', 5]) {
-      expect(await errors(form, { zone }), String(zone)).toEqual({ zone: [zone === 5 ? 'The zone field must be a string.' : 'The zone field must be a valid time zone.'] });
+    for (const zone of ['Europe/Berlin', 'America/Argentina/Buenos_Aires', 'UTC', 'Etc/UTC', 'Asia/Kolkata', 'Asia/Calcutta', 'Europe/Kyiv', 'Etc/GMT+0', 'GMT']) expect(await check(form, { zone }), zone).toEqual({ value: { zone } });
+    const refused = ['+02:00', '+00:00', 'Z', 'Mars/Olympus', '-0500', '-08:00', 'Etc/GMT+2', 'etc/gmt-3', 'GMT+1', 'Europe/Berln', 'berlin time', '2026-01-01T00:00Z', '2026-01-01T00:00[Europe/Berlin]', '+25:00', 'a/'.repeat(5000), 'Europe/Berlin ', 'Europe/Berlin\n', 'Ünï/Zöne'];
+    for (const zone of [...refused, 5]) {
+      expect(await errors(form, { zone }), String(zone).slice(0, 20)).toEqual({ zone: [zone === 5 ? 'The zone field must be a string.' : 'The zone field must be a time zone such as Europe/Berlin.'] });
     }
-    expect(await errors(form, { zone: '' }), 'a format, like r.email()').toEqual({ zone: ['The zone field must be a valid time zone.'] });
+    expect(await errors(form, { zone: '' }), 'a format, like r.email()').toEqual({ zone: ['The zone field must be a time zone such as Europe/Berlin.'] });
+  });
+
+  it('spells a name as IANA does, and leaves link names (Asia/Calcutta and Asia/Kolkata) as typed', async () => {
+    const form = r.object({ zone: r.timeZone() });
+    expect(await check(form, { zone: 'europe/berlin' })).toEqual({ value: { zone: 'Europe/Berlin' } });
+    expect(await check(form, { zone: 'EUROPE/BERLIN' })).toEqual({ value: { zone: 'Europe/Berlin' } });
+    expect(await check(form, { zone: 'utc' })).toEqual({ value: { zone: 'UTC' } });
+    expect(await check(form, { zone: 'asia/kolkata' })).toEqual({ value: { zone: 'Asia/Kolkata' } });
+  });
+
+  it('an offset in the zone field errors only at the zone; r.in() may still list one', async () => {
+    const event = r.object({ time_zone: r.timeZone(), at: r.localDateTime({ field: 'time_zone' }) });
+    expect(await errors(event, { time_zone: '+01:00', at: '2026-07-01T14:30' })).toEqual({ time_zone: ['The time zone field must be a time zone such as Europe/Berlin.'] });
+    const listed = r.object({ time_zone: r.in(['+02:00']), at: r.localDateTime({ field: 'time_zone' }) });
+    expect(await check(listed, { time_zone: '+02:00', at: '2026-07-01T14:30' })).toEqual({ value: { time_zone: '+02:00', at: '2026-07-01T12:30:00.000Z' } });
+  });
+
+  it('gives a zone field of r.localDateTime() the canonical case', async () => {
+    const event = r.object({ time_zone: r.timeZone(), at: r.localDateTime({ field: 'time_zone' }) });
+    expect(await check(event, { time_zone: 'europe/berlin', at: '2026-07-01T14:30' })).toEqual({ value: { time_zone: 'Europe/Berlin', at: '2026-07-01T12:30:00.000Z' } });
   });
 });
 

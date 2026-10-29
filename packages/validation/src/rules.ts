@@ -186,7 +186,7 @@ export const rules = {
    */
   localDateTime,
 
-  /** A time zone — an IANA name (`Europe/Berlin`, `UTC`) or an offset (`+02:00`) — `r.string().timeZone()`. */
+  /** A named time zone (`Europe/Berlin`, `UTC`; no offset), spelled as IANA does — `r.string().timeZone()`. */
   timeZone: (): StringRule => stringRule().timeZone(),
 
   /**

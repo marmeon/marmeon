@@ -89,7 +89,7 @@ import { rules as r } from '@marmeon/validation';
 | `r.array(rule)` | A list, each item checked by `rule`. | A list |
 | `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` | `r.string()` with that check. | `string` |
 | `r.localDateTime(zone)` | What `<input type="datetime-local">` sends, `2026-10-07T14:30`, read in `zone`. | An instant, as `string` |
-| `r.timeZone()` | A time zone: `Europe/Berlin`, `UTC`, `+02:00`. | `string` |
+| `r.timeZone()` | A named time zone: `Europe/Berlin`, `UTC`. An offset (`+02:00`) or `Etc/GMT+2` is refused; the letter case becomes IANA's (`europe/berlin` → `Europe/Berlin`), link names stay as typed (`Asia/Calcutta` and `Asia/Kolkata` both). | `string` |
 | `r.query({...})`, `r.port()`, `r.list(rule)` | A URL's fields, a port from 1 to 65535, a comma-separated list. | |
 | `r.value<Output, Input>(check)` | What `check` passes: a type of your own. | The value |
 
@@ -225,9 +225,9 @@ optional, and name a day that exists; anything else is "The … field must be a 
 
 - **A name**, `'Europe/Berlin'`. It is checked when the rule is defined, and a wrong one throws a `RangeError`.
 - **`{ field }`**, the zone that another field of the same object holds: `r.localDateTime({ field: 'time_zone' })`. The object reads that
-  field once it is valid, so put `r.timeZone()` or an `r.in([…])` on it. An unknown zone is reported at the zone field, "The time zone field must be a valid time zone." The rule belongs
+  field once it is valid, so put `r.timeZone()` or an `r.in([…])` on it (an offset zone such as `+02:00` needs the `r.in([…])`). An unknown zone is reported at the zone field, "The time zone field must be a time zone such as Europe/Berlin." The rule belongs
   directly in an `r.object()` next to the zone field; anywhere else it refuses to run. The field's own `custom()` and `transform()` see the text as typed, so check the instants in the object's `custom()`.
-- **A function** of the request's context, for a zone the request knows: `r.localDateTime((request) => zoneOf(request))`. A function that returns no known zone fails the field with "must be a valid time zone."
+- **A function** of the request's context, for a zone the request knows: `r.localDateTime((request) => zoneOf(request))`. A function that returns no known zone fails the field with "must be a time zone such as Europe/Berlin."
 
 The two nights the clock changes have a fixed reading, described on the [time](time.md#a-time-typed-in-a-zone) page. `toLocalDateTime(instant, zone)` goes the other way for an edit form.
 

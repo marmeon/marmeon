@@ -83,7 +83,7 @@ describe('the validation lab', () => {
 
   it('a time typed in a zone: the night the clocks go forward reads as 03:30, an unknown zone is told at the zone — and the message reads the instant back', async () => {
     const wrong = await app.post('/lab/validation', { json: { ...valid, time_zone: 'Europe/Berln', at: '2026-03-29T02:30' }, headers: json }).assertUnprocessable();
-    wrong.assertInvalid<StoreValidationLabController>({ time_zone: 'The time zone field must be a valid time zone.' });
+    wrong.assertInvalid<StoreValidationLabController>({ time_zone: 'The time zone field must be a time zone such as Europe/Berlin.' });
     const sent = await app.post('/lab/validation', { form: { ...valid, time_zone: 'Europe/Berlin', at: '2026-03-29T02:30' }, headers: { referer: 'http://localhost/lab/validation' } }).assertValid().assertRedirect('/lab/validation');
     await app
       .withCookie('marmeon_session', sent.cookie('marmeon_session')!)
