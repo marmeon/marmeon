@@ -288,6 +288,8 @@ export declare const filter: {
 };
 // tableRoutes
 export declare function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>): void;
+// unescapeCsvCell
+export declare function unescapeCsvCell(text: string): string;
 ```
 
 ### Referenced, not exported

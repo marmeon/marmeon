@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { csvCell, csvLine } from './csv.ts';
+import { csvCell, csvLine, unescapeCsvCell } from './csv.ts';
 
 describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
   it.each([
@@ -45,6 +45,64 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
   it('escapes JSON values too (a JSON column that is a string starting with =)', () => {
     expect(csvCell({ a: 1 })).toBe('"{""a"":1}"');
     expect(csvCell(['=1'])).toBe('"[""=1""]"');
+  });
+
+  describe('undoing the escape', () => {
+    const starts = ['=', '+', '-', '@', '\t', '\r', '\n'];
+    const unquote = (cell: string): string => cell.slice(1, -1).replaceAll('""', '"');
+
+    it('escapes a leading quote before a formula character once more, so no two texts give the same cell', () => {
+      expect(csvCell("'=x")).toBe(`"''=x"`);
+      expect(csvCell("''=x")).toBe(`"'''=x"`);
+      expect(csvCell("'-5")).toBe(`"''-5"`);
+      expect(csvCell('=x')).not.toBe(csvCell("'=x"));
+      expect(csvCell("'x")).toBe(`"'x"`);
+      expect(csvCell("'")).toBe(`"'"`);
+      expect(csvCell('')).toBe('""');
+    });
+
+    it.each([
+      ['=x', "'=x"],
+      ["'=x", "''=x"],
+      ["''=x", "'''=x"],
+      ['-5', '-5'],
+      ["'-5", "''-5"],
+      ['-2+3', "'-2+3"],
+      ["'", "'"],
+      ['', ''],
+      ["'x", "'x"],
+      ['a=b', 'a=b'],
+    ])('writes %j as %j and reads it back', (value, written) => {
+      expect(unquote(csvCell(value))).toBe(written);
+      expect(unescapeCsvCell(written)).toBe(value);
+    });
+
+    it('gives back every text with or without leading quotes before any formula character', () => {
+      for (const start of starts) {
+        for (const quotes of ['', "'", "''", "'''"]) {
+          for (const rest of ['', 'x', '1', '5.5', "'=", '"q"']) {
+            const value = `${quotes}${start}${rest}`;
+            expect(unescapeCsvCell(unquote(csvCell(value))), JSON.stringify(value)).toBe(value);
+          }
+        }
+      }
+    });
+
+    it('never leaves an exported cell that starts like a formula, so undoing is the only way to one', () => {
+      for (const start of starts) {
+        for (const quotes of ['', "'", "''"]) {
+          const written = unquote(csvCell(`${quotes}${start}1+1`));
+          expect(written.startsWith("'"), JSON.stringify(written)).toBe(true);
+        }
+      }
+    });
+
+    it('does not turn a text that was no formula into one', () => {
+      for (const value of ["'x", "''", "'1", "a'=", ' =1', "x'=1"]) {
+        expect(unescapeCsvCell(value), value).toBe(value);
+        expect(unescapeCsvCell(unquote(csvCell(value))), value).toBe(value);
+      }
+    });
   });
 
   it('ends a line with CRLF', () => {

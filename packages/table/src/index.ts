@@ -25,6 +25,7 @@ export type {
   TableQuerySchema,
   TableVisibilityCheck,
 } from './define.ts';
+export { unescapeCsvCell } from './csv.ts';
 export { TableQueryError } from './state.ts';
 export { DataTables } from './tables.ts';
 export type { ContextOfTable } from './tables.ts';

@@ -330,6 +330,10 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 - **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed gets a
   `'` in front. Every field is quoted, with quotes doubled. Numbers stay numbers, and so does a decimal: `-5` and `-12.50` are no
   formula. Anything more than digits after the minus (`-2+3`, `-2E3`) is escaped.
+- **Reading an export back.** A text that already starts with `'` before such a character gets one more `'`, so no two texts give the
+  same cell. `unescapeCsvCell(cell)` from `@marmeon/table` removes exactly that one `'` and gives the text back as it was. It takes a cell as a CSV reader returns it:
+  without the outer quotes, and with `""` already turned into `"`. `=x`, `'=x` and `''=x` are written as `'=x`, `''=x` and `'''=x`,
+  and each one reads back as it was; every other text stays as it is. The result is plain text; never run it as a formula.
 
 ## The security model
 
