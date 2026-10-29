@@ -32,3 +32,5 @@ export type { ContextOfTable } from './tables.ts';
 export { tableRoutes } from './routes.ts';
 export { TableServiceProvider } from './provider.ts';
 export type { CursorPage, OffsetPage, SortDirection, TableActionEntry, TableBulkEntry, TableColumn, TableData, TableExportEntry, TableFilter, TableQueryKeys } from './client/index.ts';
+export { readCsv } from './csv-read.ts';
+export type { CsvDelimiter, CsvEncoding, CsvReadError, CsvTable, ReadCsvOptions } from './csv-read.ts';

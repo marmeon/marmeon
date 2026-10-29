@@ -335,6 +335,41 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
   without the outer quotes, and with `""` already turned into `"`. `=x`, `'=x` and `''=x` are written as `'=x`, `''=x` and `'''=x`,
   and each one reads back as it was; every other text stays as it is. The result is plain text; never run it as a formula.
 
+## Importing a CSV file
+
+`readCsv(bytes, options?)` turns the bytes of a CSV file into text rows. It returns a `Result`: a file that breaks a limit, has a
+row of another width than its header, or is no text is an `err` for the app to answer, never a throw.
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { readCsv } from '@marmeon/table';
+
+const csv = readCsv(await readFile(path), { unescape: true });
+if (!csv.ok) return this.redirect().back().withErrors({ file: [csv.error.message] });
+const { headers, rows, delimiter, encoding } = csv.value;
+```
+
+- **Encoding.** A byte order mark decides (UTF-8, UTF-16LE, UTF-16BE) and is removed; one that contradicts a named `encoding` is
+  `not-text`. Without one, bytes that are valid UTF-8 are UTF-8, and anything else is read as `windows-1252`, the encoding of a
+  German spreadsheet's "CSV" export.
+- **Delimiter.** The one of `,` `;` and a tab with the most separators in the header, outside quotes (a quote opens only at the
+  start of a cell). On a tie, the ones under which the first rows keep the header's width; if several do, the first of tab, `;` and `,`.
+- **A format you know is better than a guess.** Detection is a convenience for files from anywhere. When you know where the file
+  comes from, set `delimiter` and `encoding`, and check `headers` against the names you expect before you use a row.
+- **Format.** RFC 4180 quotes, with `""` for a quote and line breaks inside a quoted cell. CRLF, LF and CR end a row. A row whose
+  cells are all empty (a blank line, or the `;` rows a spreadsheet leaves at the end) is skipped. Every other row must be as
+  wide as the header.
+- **Limits.** `maxBytes` (5 MB), `maxRows` below the header (10000), `maxColumns` (100) and `maxCellLength` (10000 characters),
+  each checked before the data grows. The file is decoded in memory, so keep `maxBytes` as low as the use needs.
+- **Errors.** The `kind` is one of `too-large` (the file; `limit` in bytes), `cell-too-long` (`limit` in characters),
+  `too-many-rows`, `too-many-columns`, `row-length` (`expected` and `actual`), `unclosed-quote` or `not-text` (a NUL byte, or
+  bytes the encoding cannot decode). Each but `too-large` and `not-text` has the `line` it starts in: the physical line of the
+  file, from 1, blank lines and line breaks inside quotes counted. Each has a `message` fit to show.
+- **`unescape: true`** runs `unescapeCsvCell()` over the headers and every cell (see "Reading an export back" under
+  [Exports](#exports)), so an exported file reads back exactly as it was written.
+- **Values are only read.** Nothing in a cell is run or evaluated; `=HYPERLINK(…)` arrives as that text. The danger of a formula
+  is in a file you write, which the export escapes. Validate each row like any other input before it reaches the database.
+
 ## The security model
 
 Every endpoint starts again at the beginning. Nothing the browser sends is trusted, whatever the page showed:
