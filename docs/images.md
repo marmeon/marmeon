@@ -131,3 +131,20 @@ return this.view('articles/Show', { article, cover: { src: article.coverUrl, wid
 
 The form stays the same when you generate it differently, so a page does not change when the sizes come from somewhere else. The
 framework does not resize images: `<Image>` writes the files you name.
+
+### Reading the size of an upload
+
+A browser knows an image's size only after it has loaded, and the page has to reserve the space before. Read the size when the
+file is stored, and keep it with the record:
+
+```ts
+const size = await ctx.body.avatar.dimensions(); // { width: 640, height: 480 } | undefined
+const path = await ctx.body.avatar.store(disk, 'avatars');
+await this.#users.update(user.id, { avatar_path: path, avatar_width: size?.width ?? null, avatar_height: size?.height ?? null });
+```
+
+`dimensions()` of a [`TemporaryUpload`](storage.md#uploads) reads the header of a PNG, JPEG, GIF, WebP or AVIF, without a decoder, and
+turns the size the way a browser shows it (an EXIF orientation of a JPEG, a rotation of an AVIF). It returns `undefined` for a file
+that is no image or whose header is cut off or damaged. Call it before `store()`, which moves the file; after it, `dimensions()` throws. A page with a stored size
+passes it on as an `ImageSource`; without one, give `<Image>` a frame of fixed size and `object-fit` so the picture does not move
+the text around it.

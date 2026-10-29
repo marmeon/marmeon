@@ -165,11 +165,11 @@ export class S3Disk implements Disk {
     return { etag: head.ETag, size: head.ContentLength ?? 0 };
   }
 
-  /** The object's bytes, only if it still has `etag` — otherwise {@link ObjectChangedError}. */
-  async streamIfMatch(key: string, etag: string): Promise<ReadableStream<Uint8Array>> {
+  /** The object's bytes (only the first `bytes` of them, if given — a ranged read), only if it still has `etag` — otherwise {@link ObjectChangedError}. */
+  async streamIfMatch(key: string, etag: string, bytes?: number): Promise<ReadableStream<Uint8Array>> {
     const { modules, client } = await this.#client();
     try {
-      const object = await client.send(new modules.client.GetObjectCommand({ Bucket: this.#bucket, Key: this.#key(key), IfMatch: etag }));
+      const object = await client.send(new modules.client.GetObjectCommand({ Bucket: this.#bucket, Key: this.#key(key), IfMatch: etag, ...(bytes === undefined ? {} : { Range: `bytes=0-${bytes - 1}` }) }));
       return object.Body!.transformToWebStream() as ReadableStream<Uint8Array>;
     } catch (error) {
       throw this.#conditional(error, key);

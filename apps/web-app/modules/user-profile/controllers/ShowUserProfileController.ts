@@ -33,9 +33,11 @@ export class ShowUserProfileController extends Controller {
     // list, never the row. The rest (a pending e-mail, locale, verification times) stays here, and so do the e-mail
     // (owner only) and the last sign-in (shown as lastLoginAt).
     // The avatar as its public URL (the public disk serves it: raster images only, `nosniff`) — never the storage key.
-    const { email, activity: login, links, avatar_path, ...user } = ctx.params.user;
+    const { email, activity: login, links, avatar_path, avatar_width, avatar_height, ...user } = ctx.params.user;
     const { public_id, name, bio, created_at } = user;
     const avatar = avatar_path ? this.#storage.disk('public').url(avatar_path) : null;
+    // Its size as stored at upload (`dimensions()`): <Image> reserves the space with it. Null for a picture saved without one.
+    const avatarSize = avatar_width !== null && avatar_height !== null ? { width: avatar_width, height: avatar_height } : null;
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
@@ -49,6 +51,7 @@ export class ShowUserProfileController extends Controller {
         bio,
         created_at,
         avatar,
+        avatarSize,
         links: (await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete'])).map(({ user_id: _owner, ...link }) => link),
       }),
       // Only the owner may see their e-mail (ProfilePolicy) — the controller decides what leaves the server.

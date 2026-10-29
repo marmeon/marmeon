@@ -61,6 +61,23 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     app.storage.disk('public').assertMissing(path).assertExists(replaced).assertCount(1);
   });
 
+  it('the picture’s width and height are read from its bytes at store() and kept with the user — the profile hands them to <Image>', async () => {
+    const { ada, as } = await setUp();
+    const sized = new Uint8Array([...PNG.subarray(0, 16), 0, 0, 1, 0x2c, 0, 0, 0, 0xc8, 8, 6, 0, 0, 0]); // 300 × 200
+    await send(as, ada, await as.upload(ROUTE, 'avatar', new File([sized], 'me.png', { type: 'image/png' }), { user: ada.public_id })).assertRedirect();
+    const stored = (await app.make(UserRepository).find(ada.id))!;
+    expect([stored.avatar_width, stored.avatar_height]).toEqual([300, 200]);
+    const profile = (await as.navigating().get(`/users/${ada.public_id}`).assertOk()).page()!.props as { profile: { avatarSize: unknown } };
+    expect(profile.profile.avatarSize).toEqual({ width: 300, height: 200 });
+
+    // A picture whose header says nothing keeps no size; the profile then shows the fixed frame.
+    await send(as, ada, await as.upload(ROUTE, 'avatar', png(), { user: ada.public_id })).assertRedirect();
+    const unsized = (await app.make(UserRepository).find(ada.id))!;
+    expect([unsized.avatar_width, unsized.avatar_height]).toEqual([null, null]);
+    const again = (await as.navigating().get(`/users/${ada.public_id}`).assertOk()).page()!.props as { profile: { avatarSize: unknown } };
+    expect(again.profile.avatarSize).toBeNull();
+  });
+
   it('path traversal in the file name: stored under a random name in avatars/ — the name never becomes a path', async () => {
     const { ada, as } = await setUp();
     for (const name of ['../../.env', '..\\x', '/etc/passwd', 'avatars/../../secret.png']) {

@@ -185,6 +185,53 @@ describe('an uploaded S3 object is pinned by its ETag from the check to the stor
     expect(fake.calledWith('DeleteObject')).toHaveLength(1);
   });
 
+  /** A PNG header for a picture of 300 × 200, followed by `length` bytes. */
+  function pngOf(length: number): Uint8Array {
+    const bytes = new Uint8Array(length);
+    bytes.set(PNG);
+    bytes.set([0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x2c, 0, 0, 0, 0xc8], 8);
+    return bytes;
+  }
+
+  it('dimensions() reads only the first bytes of the object — a ranged read pinned by the ETag', async () => {
+    const size = 8 * 1024 * 1024;
+    const fake = new FakeS3();
+    const { uploads, token, id } = await target(fake, size);
+    fake.post('uploads', id, pngOf(size));
+    const checked = upload(await uploads.resolve(token, SCOPE));
+    expect(await checked.dimensions()).toEqual({ width: 300, height: 200 });
+    const ranged = fake.calledWith('GetObject').filter((input) => input.Range !== undefined);
+    expect(ranged).toHaveLength(1);
+    expect(ranged[0]).toMatchObject({ Range: 'bytes=0-262143', IfMatch: expect.any(String) });
+  });
+
+  it('dimensions() of an object that was posted again after the check is undefined, not the new file’s size', async () => {
+    const fake = new FakeS3();
+    const { uploads, token, id } = await target(fake, 1024);
+    fake.post('uploads', id, pngOf(1024));
+    const checked = upload(await uploads.resolve(token, SCOPE));
+    fake.post('uploads', id, HTML);
+    expect(await checked.dimensions()).toBeUndefined();
+  });
+
+  it.skipIf(!S3_ENDPOINT)('against a real store: dimensions() reads the size of a large object from a range', async () => {
+    await ensureBucket();
+    const s3 = new S3Disk({ name: 'uploads', options: s3Options(`p-${randomUUID()}`, 'private'), visibility: 'private', clock });
+    try {
+      const uploads = service(s3);
+      const contents = pngOf(2 * 1024 * 1024);
+      const { upload: policy, token } = await uploads.target(request(contents.byteLength));
+      const form = new FormData();
+      for (const [name, value] of Object.entries(policy.fields!)) form.append(name, value);
+      form.append('file', new Blob([new Uint8Array(contents)]));
+      expect((await fetch(policy.url, { method: 'POST', body: form })).status).toBeLessThan(300);
+      const checked = upload(await uploads.resolve(token, SCOPE));
+      expect(await checked.dimensions()).toEqual({ width: 300, height: 200 });
+    } finally {
+      await s3.close();
+    }
+  });
+
   it.skipIf(!S3_ENDPOINT)('against a real store: two POSTs to one policy — the second is refused at store(), on the same store and on another disk', async () => {
     await ensureBucket();
     const s3 = new S3Disk({ name: 'uploads', options: s3Options(`p-${randomUUID()}`, 'private'), visibility: 'private', clock });

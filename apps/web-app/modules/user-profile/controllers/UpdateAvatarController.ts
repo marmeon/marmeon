@@ -40,9 +40,11 @@ export class UpdateAvatarController extends Controller {
     const { user } = ctx.params;
     const disk = this.#storage.disk('public');
     const previous = (await this.#users.find(user.id))?.avatar_path;
+    // The size is read from the file's first bytes before store() moves it; a file whose header says nothing keeps none.
+    const size = await ctx.body.avatar.dimensions();
     // Uses the upload up (once — a second submit of the same token is a 422) and moves it: avatars/<random>.<its type>.
     const path = await ctx.body.avatar.store(disk, 'avatars');
-    await this.#users.update(user.id, { avatar_path: path });
+    await this.#users.update(user.id, { avatar_path: path, avatar_width: size?.width ?? null, avatar_height: size?.height ?? null });
     // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(user.public_id), { only: ['profile'] });
     // The picture it replaces goes (a failure here leaves a file nobody links to — nothing worse).

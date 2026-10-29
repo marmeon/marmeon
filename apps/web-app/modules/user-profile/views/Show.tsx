@@ -2,6 +2,7 @@ import type { PageProps } from '@marmeon/http';
 import {
   Deferred,
   Head,
+  Image,
   Link,
   useAction,
   usePendingSubmissions,
@@ -54,7 +55,11 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
       {/* The avatar the list showed small: it moves here and grows — and back to the list with Back. */}
       {profile.avatar && (
         <ViewTransition name={`avatar-${profile.public_id}`} share="avatar">
-          <img src={profile.avatar} alt={t('show.avatar', { name: profile.name })} width={96} height={96} className="avatar" />
+          {profile.avatarSize ? (
+            <Image src={{ src: profile.avatar, ...profile.avatarSize }} alt={t('show.avatar', { name: profile.name })} style={{ width: 96, height: 96 }} className="avatar" />
+          ) : (
+            <img src={profile.avatar} alt={t('show.avatar', { name: profile.name })} width={96} height={96} className="avatar" />
+          )}
         </ViewTransition>
       )}
       <h1>{profile.name}</h1>

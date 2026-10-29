@@ -211,6 +211,11 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
 - **Once.** `store(disk, directory)` uses the token up and moves the file under a random name with the extension of its real
   type. Of two submits that race, exactly one stores the file, and the other gets a 422 at its field. A submit that fails on
   another field keeps the token usable.
+- **An image's size.** `await upload.dimensions()` returns the `{ width, height }` of a PNG, JPEG, GIF, WebP or AVIF as a browser
+  shows it, with an EXIF turn or an AVIF rotation applied. It reads only the first 256 KB (a ranged read on S3, pinned by the
+  ETag like the type check) and decodes nothing; a file that is no image, or whose header is cut off or damaged, gives
+  `undefined`. Call it before `store()`, which moves the file (afterwards it throws), and keep the size with the record. See
+  [images](images.md#images-from-the-server).
 - **A session.** An upload belongs to the session it was made in, and a request without one gets a 419. A guest's page keeps no
   session by itself, so a guest's page with an upload field calls `persist()` of the injected `Session` in its controller. The
   [session](session.md#when-a-session-is-kept) page explains why.
