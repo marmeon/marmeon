@@ -189,6 +189,44 @@ For a `GET` visit, the page they wanted is kept in the session, and `this.redire
 back there. A prefetch and a request that only reads are not remembered. A client that expects JSON gets
 `401 {"message":"Unauthenticated."}` instead of the redirect.
 
+#### Sending a guest from an open page to sign in and back
+
+A page anyone may open, such as an invitation, has no `authenticate()` in front of it, so it remembers nothing. Give it a thin
+`GET` route behind `authenticate()` and link "Sign in" to that route. A guest who follows the link is turned away, the middleware
+keeps the route's path, and `intended()` brings the guest back to it after the sign-in. A signed-in user passes straight through:
+
+```ts title="modules/invitations/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { JoinInvitationController } from './controllers/JoinInvitationController.ts';
+import { ShowInvitationController } from './controllers/ShowInvitationController.ts';
+
+export default defineRoutes((Route) => {
+  Route.get('/invitations/:token', ShowInvitationController).name('invitations.show');
+  Route.middleware(authenticate()).get('/invitations/:token/join', JoinInvitationController).name('invitations.join');
+});
+```
+
+```ts title="modules/invitations/controllers/JoinInvitationController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+
+export class JoinInvitationController extends Controller {
+  handle(ctx: HttpContext<Authenticated, { token: string }>) {
+    return this.redirect().route('invitations.show', { token: ctx.params.token });
+  }
+}
+```
+
+The "Sign in" link on the invitation page points at `/invitations/<token>/join`. After the sign-in, `LoginController` ends with
+`this.redirect().intended().route('dashboard')` and the guest lands on the join route, which sends the now signed-in user back to
+the invitation. Accept it there with a form that posts: the join route is a `GET`, which a browser may prefetch, so it changes
+nothing.
+
+Do not carry the target in a `?next=` parameter. Anyone can send a link with a `next` that leads to another site, and the sign-in
+would follow it; the path kept in the session was written by `authenticate()` itself, and `intended()` follows only a path of this
+site.
+
 Every route name these middleware take, `loginRoute`, `noticeRoute` and `confirmRoute`, is checked against your routes when you
 compile. The defaults are the names of the starter kit's routes.
 
