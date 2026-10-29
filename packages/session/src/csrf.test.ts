@@ -1,4 +1,4 @@
-import { createApplication, defineModule } from '@marmeon/core';
+import { createApplication, defineModule, EnvironmentConfig } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, signed, UrlSigner, ValidationError, verifyWebhook, view, Webhooks, type PageObject } from '@marmeon/http';
 import { signWebhook } from '@marmeon/http/internal';
@@ -281,6 +281,33 @@ describe('VerifyCsrfToken', () => {
     expect((await send('/save', form({ _token: token() }))).status).toBe(200);
   });
 
+  describe('the hint in a 419 for a client without a browser', () => {
+    const HINT = 'CSRF token mismatch. A client without a browser sends an Origin header or the X-XSRF-TOKEN — docs/csrf.md#clients-without-a-browser';
+
+    it('names the remedy in development when the request has neither Origin nor Fetch Metadata', async () => {
+      const { send } = await boot({ NODE_ENV: 'development' });
+      const response = await send('/save', { method: 'POST' });
+      expect(response.status).toBe(419);
+      expect(await response.json()).toEqual({ message: HINT });
+    });
+
+    it('names it with a session, too — a script with a cookie jar has one', async () => {
+      const { send } = await boot({ NODE_ENV: 'development' });
+      await send('/form');
+      expect(await (await send('/save', { method: 'POST' })).json()).toEqual({ message: HINT });
+    });
+
+    it.each(['production', 'test'])('keeps the plain message with NODE_ENV %s', async (value) => {
+      const { send } = await boot({ NODE_ENV: value });
+      expect(await (await send('/save', { method: 'POST' })).json()).toEqual({ message: 'CSRF token mismatch.' });
+    });
+
+    it('adds nothing in development for a foreign Origin', async () => {
+      const { send } = await boot({ NODE_ENV: 'development' });
+      expect(await (await send('/save', { method: 'POST', headers: { origin: 'https://evil.example' } })).json()).toEqual({ message: 'Cross-site request refused.' });
+    });
+  });
+
   it('stage 3 — neither Fetch Metadata nor Origin (curl, older clients): the session token decides, 419 without it', async () => {
     const { send, token } = await boot();
     await send('/form');
@@ -548,6 +575,7 @@ describe('VerifyCsrfToken', () => {
       application.container.make(CsrfConfig),
       application.container.make(SessionConfig),
       application.container.make(UrlSigner),
+      application.container.make(EnvironmentConfig),
     );
     const request = new Request('http://app.test/x', { method: 'POST' });
     const ctx = { request, input: async () => ({}) } as never;

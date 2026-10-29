@@ -50,6 +50,9 @@ anyway, so the token is a second line.
 A `<Form>` also works without JavaScript, and so does a [link that sends](navigation.md#links-that-send). It then posts as a
 plain HTML form, and writes the token into a hidden `_token` field when the page has one. A guest's page has none and needs none: the browser's headers carry the guest's form.
 
+A script or a mobile app has no browser to send those headers: see [Clients without a browser](#clients-without-a-browser). In development,
+the 419 for a request without a token and without an `Origin` header points there.
+
 ### The token
 
 A session makes its token when something first needs it: the token is drawn on demand, never for a session that never hands one
