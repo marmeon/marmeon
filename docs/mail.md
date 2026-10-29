@@ -116,7 +116,7 @@ when the mail is composed: a line break there could add recipients.
 
 Mails load no web font by themselves, even when a `font-family` names one such as Roboto: opening a mail would call the font's host. Add an `<mj-font name="…" href="…" />` to the `<mj-head>` to use one, with a source you may load; the starter kit's frame uses system fonts.
 
-Some MJML components load images from a host of someone else when you give them none: `mj-social-element` without `src` (icons from Mailjet), `mj-accordion` without `icon-wrapped-url` and `icon-unwrapped-url`, and `mj-carousel` without `left-icon` and `right-icon` (Imgur). Set these attributes to images you serve.
+Some MJML components would load an image from a host of someone else when you give them none: `mj-social-element` without `src` (icons from Mailjet), `mj-accordion` without `icon-wrapped-url` and `icon-unwrapped-url`, and `mj-carousel` without `left-icon` and `right-icon` (Imgur). A mail that leaves one of these out fails with an `MjmlError` (Q7) naming the component and the attribute, instead of calling that host in every opened mail. Set the attribute on the tag, in `mj-attributes` (a tag, `mj-all` or an `mj-class`), to an image you serve. As a second check, the compiled HTML may load from the hosts your template itself loads from (an image `src`, a `background-url`, an `mj-font`; a link or text does not count) and no other; an image from any other host, whatever brings it, is refused with Q7 and the URL. Relative, `data:` and `cid:` URLs are fine.
 
 MJML is a library of its own. A new app has it, and an app without it gets `pnpm add mjml@^5` in the error of its first MJML mail.
 
