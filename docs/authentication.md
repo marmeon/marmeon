@@ -984,7 +984,7 @@ export class AccountDeletion {
 ```
 
 The starter kit's own version also asks the other modules before it deletes (`AccountDeleting`: a listener calls `refuse(reason)`
-to keep the account) and dispatches `AccountDeleted` for them inside the transaction. Use it for every deletion of an account, such
+to keep the account, asked one account at a time after the accounts before it in the same call are deleted) and dispatches `AccountDeleted` for them inside the transaction. Use it for every deletion of an account, such
 as a "delete my account" page: `const { deleted, refused } = await accounts.delete([user.id])`. When `refused` has the account, show
 its `reasons` to the user and tell them nothing was deleted. See [verification](verification.md#unconfirmed-accounts).
 

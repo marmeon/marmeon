@@ -157,6 +157,8 @@ it(
     expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed — the default')).toBe(10);
     // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became.
     expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false')).toBe(4);
+    // AccountDeletion asks about one account after the earlier ones of the call are gone.
+    expect(ran('account-deletion', 'AccountDeletion asks about each account after the earlier ones of the call are gone')).toBe(3);
     // The passkey tests ran with the app's database (the software authenticator stands in for the browser), the mails' and the browser code's too.
     expect(ran('passkeys', 'passkeys')).toBe(24);
     expect(ran('passkeys', 'the mails about passkeys')).toBe(8);

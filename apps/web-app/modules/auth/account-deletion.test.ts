@@ -1,0 +1,77 @@
+import { EventRegistry } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { createTestApp, type TestApp } from '@marmeon/testing';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { AccountDeleted, AccountDeleting, AccountDeletion } from './AccountDeletion.ts';
+import { UserFactory } from './factories/UserFactory.ts';
+import type { User } from './users.ts';
+import { UserRepository } from './UserRepository.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+beforeAll(warmUp, WARM_UP_TIMEOUT);
+
+// The web app's AccountDeletion (the same test as make:auth's) asks about one account at a time, after the accounts before it in the same
+// call are gone. A listener that keeps the last administrator of a workspace therefore counts what is really left. Runs on SQLite
+// and Postgres.
+
+let app: TestApp;
+beforeEach(async () => {
+  app = await createTestApp(application, { database: 'refresh' });
+}, 30_000);
+
+/** Two administrators of one workspace, and somebody who is no administrator. */
+const accounts = async () => {
+  const created: User[] = [];
+  for (const name of ['first', 'second', 'other']) created.push((await app.factory(UserFactory).create({ email: `${name}@example.com` })) as User);
+  const [first, second, other] = created;
+  return { first: first!, second: second!, other: other! };
+};
+const exists = async (user: User) => (await app.make(UserRepository).find(user.id)) !== undefined;
+
+/**
+ * Refuses an administrator when no other administrator of the workspace is left, counting what is left within one call. The lock
+ * across concurrent calls is the docs' (docs/verification.md#unconfirmed-accounts): on rows of a membership table, never on `users`.
+ */
+const keepLastAdministrator = (administrators: readonly number[], events: string[] = []) => {
+  app.make(EventRegistry).listen(AccountDeleting, async (event: AccountDeleting) => {
+    events.push(`deleting:${event.user.email}`);
+    if (!administrators.includes(event.user.id)) return;
+    const connections = app.make(Connections);
+    const left = await connections.get<any>().selectFrom('users').select('id').where('id', 'in', [...administrators]).execute();
+    if (left.length === 1) event.refuse('This account is the last administrator of a workspace.');
+  });
+  app.make(EventRegistry).listen(AccountDeleted, (event: AccountDeleted) => {
+    events.push(`deleted:${event.user.email}`);
+  });
+  return events;
+};
+
+describe('AccountDeletion asks about each account after the earlier ones of the call are gone', { timeout: 30_000 }, () => {
+  it('deletes the first of the two last administrators and refuses the second', async () => {
+    const { first, second } = await accounts();
+    keepLastAdministrator([first.id, second.id]);
+    const outcome = await app.make(AccountDeletion).delete([second.id, first.id]);
+    expect(outcome.deleted.map((user) => user.id)).toEqual([first.id]);
+    expect(outcome.refused).toMatchObject([{ user: { id: second.id }, reasons: ['This account is the last administrator of a workspace.'] }]);
+    expect(await exists(first)).toBe(false);
+    expect(await exists(second)).toBe(true);
+  });
+
+  it('dispatches AccountDeleted for an account before it asks about the next one', async () => {
+    const { first, second, other } = await accounts();
+    const events = keepLastAdministrator([first.id, second.id]);
+    await app.make(AccountDeletion).delete([other.id, second.id, first.id]);
+    expect(events).toEqual(['deleting:first@example.com', 'deleted:first@example.com', 'deleting:second@example.com', 'deleting:other@example.com', 'deleted:other@example.com']);
+  });
+
+  it('rolls the deletion of the first account back when a listener throws at the second', async () => {
+    const { first, second } = await accounts();
+    app.make(EventRegistry).listen(AccountDeleting, (event: AccountDeleting) => {
+      if (event.user.id === second.id) throw new Error('a listener failed');
+    });
+    await expect(app.make(AccountDeletion).delete([first.id, second.id])).rejects.toThrow('a listener failed');
+    expect(await exists(first)).toBe(true);
+    expect(await exists(second)).toBe(true);
+  });
+});
