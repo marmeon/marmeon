@@ -1,5 +1,5 @@
 import { Controller } from '@marmeon/http';
-import type { HttpContext, Route } from '@marmeon/router';
+import type { HttpContext, MiddlewareLike, Route } from '@marmeon/router';
 import { isEveryone } from '@marmeon/router/internal';
 import type { DataTable } from './define.ts';
 import { endpointOf, recordEndpoint, DataTables } from './tables.ts';
@@ -52,19 +52,56 @@ type RegistrarContext<R> = R extends Route<infer TState, infer TParams, infer TB
 /** `T` when the registrar's routes give its query what it needs; otherwise the message. */
 type CheckRegistrar<R, T> = T extends DataTable<any, infer Ctx> ? (RegistrarContext<R> extends Ctx ? T : { readonly 'the table needs more of the request than these routes have — register them on the registrar of its page, after its middleware (authenticate(), …)': Ctx }) : T;
 
+/** The context state the routes of registrar `R` have built when an endpoint's middleware runs. */
+type StateOf<R> = R extends Route<infer TState, any, any> ? (TState extends object ? TState : {}) : {};
+
+/** Middleware for one kind of a table's endpoints, on top of the registrar's. */
+export interface EndpointOptions<S extends object = {}> {
+  /**
+   * Runs after the registrar's middleware, in this order, before the endpoint's own checks and the controller. Like any route
+   * middleware it runs before the route bindings and the registrar's `authorize()`: `ctx.params` are still strings and the request
+   * is not yet authorized. It may need only what the registrar's middleware has added to the context.
+   */
+  readonly middleware: readonly MiddlewareLike<S, any>[];
+}
+
+/** What `tableRoutes()` takes besides the table: middleware for the export, the bulk and the row action endpoints. */
+export interface TableRoutesOptions<S extends object = {}> {
+  readonly export?: EndpointOptions<S>;
+  readonly bulk?: EndpointOptions<S>;
+  readonly action?: EndpointOptions<S>;
+}
+
+const OPTION_KEYS: readonly string[] = ['export', 'bulk', 'action'];
+
+/** The registrar with an endpoint's middleware appended — after the registrar's own, so it adds to the page's protection and never replaces it. */
+function withMiddleware(registrar: Route, endpoint: EndpointOptions<any> | undefined, kind: string, table: string): Route {
+  if (endpoint === undefined) return registrar;
+  if (!Array.isArray(endpoint.middleware)) throw new TypeError(`tableRoutes(${table}): options.${kind}.middleware must be a list of middleware.`);
+  return endpoint.middleware.reduce<Route>((chain, layer) => chain.middleware(layer as never) as unknown as Route, registrar);
+}
+
 /**
  * Registers a table's endpoints **on the registrar of its page**, so they run the same middleware, route bindings and group as the
  * page — but not the page controller's `authorize`: a table that needs one says so itself (`defineTable({ authorize })`). A
  * registrar whose routes lack what the table's query needs is a compile error. A table on several pages is registered once for each, on that page's registrar: `docs/tables.md#one-table-on-several-pages`.
+ *
+ * `options` adds middleware to the export, bulk or action endpoints alone, such as a stricter throttle for the export. It runs after
+ * the registrar's middleware and before the table's checks: `docs/tables.md#middleware-per-endpoint`.
  */
-export function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>): void {
+export function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>, options?: TableRoutesOptions<StateOf<R>>): void {
   const { definition } = table;
+  for (const key of Object.keys(options ?? {})) {
+    if (!OPTION_KEYS.includes(key)) throw new TypeError(`tableRoutes(${definition.name}): unknown option '${key}' — the options are ${OPTION_KEYS.join(', ')}.`);
+  }
   const base = `/_tables/${definition.name}`;
   const registrar = Route as unknown as Route;
-  const action = registrar.post(`${base}/actions/:tableAction`, TableActionController as never);
+  const action = withMiddleware(registrar, options?.action, 'action', definition.name).post(`${base}/actions/:tableAction`, TableActionController as never);
   recordEndpoint(action, definition, 'action');
-  recordEndpoint(registrar.post(`${base}/bulk/:tableBulk`, TableBulkController as never), definition, 'bulk');
-  recordEndpoint(registrar.get(`${base}/export/:tableExport`, TableExportController as never), definition, 'export');
+  const bulk = withMiddleware(registrar, options?.bulk, 'bulk', definition.name).post(`${base}/bulk/:tableBulk`, TableBulkController as never);
+  recordEndpoint(bulk, definition, 'bulk');
+  const download = withMiddleware(registrar, options?.export, 'export', definition.name).get(`${base}/export/:tableExport`, TableExportController as never);
+  recordEndpoint(download, definition, 'export');
   openRegistrar(action.checks, definition);
 }
 

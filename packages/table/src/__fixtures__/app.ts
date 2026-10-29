@@ -467,6 +467,17 @@ export const RoleOptionsTable = defineTable({
   filters: { role: filter.select('members.role', (_resolve, ctx: TeamContext) => ((ctx.user as unknown as TestUser).admin ? [{ value: 'admin', label: 'Administrators' }, 'member'] : ['member'])) },
 });
 
+/** An action, a bulk action and an export that each decide for themselves — registered with middleware per endpoint. */
+export const ProbedTable = defineTable({
+  name: 'probed',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable() },
+  actions: { deactivate: action(Deactivate).authorize(MemberPolicy, 'deactivate') },
+  bulk: { deactivate: bulk(DeactivateMany).authorize(MemberPolicy, 'deactivate').max(5) },
+  export: { csv: exportCsv().authorize(MemberPolicy, 'export').onExport(RecordExport) },
+});
+
 export const MembersRequest = defineRequest({ query: MembersTable.query });
 export const FeedRequest = defineRequest({ query: FeedTable.query });
 export const LeakyRequest = defineRequest({ query: LeakyTable.query });
@@ -647,6 +658,13 @@ const routes = openRoutes((Route) => {
   tableRoutes(team, GuardedTable);
   tableRoutes(team, ActiveTable);
   tableRoutes(team, InputTable);
+  tableRoutes(team.middleware(traced('registrar')), ProbedTable, {
+    export: { middleware: [traced('export-first'), traced('export-second')] },
+    bulk: { middleware: [traced('bulk')] },
+    action: { middleware: [traced('action')] },
+  });
+  // A path that holds the word `export`: the middleware follows the kind of endpoint, not the path.
+  tableRoutes(team.prefix('/export').middleware(traced('registrar')), ProbedTable, { export: { middleware: [traced('export-first')] } });
 });
 
 export interface TableTestApp {
@@ -676,6 +694,20 @@ async function freshDatabase(driver: TestDriver): Promise<{ env: Record<string, 
     },
   };
 }
+
+/** Which middleware ran for a request to the endpoints of `ProbedTable`, in order. Cleared by the test that reads it. */
+export const endpointTrace: string[] = [];
+
+/**
+ * Middleware that writes its name to `endpointTrace`; answers 429 when `x-test-block` names it and throws when `x-test-throw` does.
+ */
+export const traced = (name: string) =>
+  defineMiddleware(`traced-${name}`, (ctx, next) => {
+    endpointTrace.push(name);
+    if (ctx.request.headers.get('x-test-block') === name) return new Response('Too Many Requests', { status: 429 });
+    if (ctx.request.headers.get('x-test-throw') === name) throw new Error(`${name} failed`);
+    return next();
+  });
 
 /** The team members of every test: Ada, Alan, Grace (protected by the policy) and Edsger in team 1, Mallory in team 2. */
 export const MEMBERS = [

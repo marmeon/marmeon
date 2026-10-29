@@ -4,7 +4,7 @@ import type { Serialize } from '@marmeon/http';
 import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
-import { defineMiddleware, defineRequest, defineRoutes } from '@marmeon/router';
+import { defineMiddleware, defineRequest, defineRoutes, type HttpContext, type Next } from '@marmeon/router';
 // @ts-expect-error — `RowAuthorization` is not exported
 import type { RowAuthorization } from './index.ts';
 // @ts-expect-error — `TableDefinition` is not exported
@@ -339,6 +339,27 @@ describe('the query schema and the routes', () => {
       tableRoutes(signedIn, Members);
       // @ts-expect-error — the table's query needs ctx.user: these routes have no authenticate() before them
       tableRoutes(Route, Members);
+    });
+  });
+
+  it('takes middleware for the export, bulk and action endpoints, and nothing else', () => {
+    defineRoutes((Route) => {
+      const signedIn = Route.middleware(defineMiddleware<Authenticated>('auth', (_ctx, next) => next({ user: null! })));
+      const limit = defineMiddleware('limit', (_ctx, next) => next());
+      tableRoutes(signedIn, Members, { export: { middleware: [limit] }, bulk: { middleware: [] }, action: { middleware: [limit, limit] } });
+      // @ts-expect-error — an endpoint kind the table does not have
+      tableRoutes(signedIn, Members, { exports: { middleware: [limit] } });
+      class NeedsUser {
+        handle(_ctx: HttpContext<Authenticated>, next: Next<{}>) {
+          return next();
+        }
+      }
+      const needsUser = NeedsUser;
+      tableRoutes(signedIn, Members, { export: { middleware: [needsUser] } });
+      // @ts-expect-error — the middleware needs ctx.user, which these routes do not have
+      tableRoutes(Route, Members, { export: { middleware: [needsUser] } });
+      // @ts-expect-error — the middleware is a list
+      tableRoutes(signedIn, Members, { export: { middleware: limit } });
     });
   });
 });
