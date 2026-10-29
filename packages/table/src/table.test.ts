@@ -194,7 +194,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(names((await page(application, ADA, 'per_page=10&search=grace@')).members)).toEqual(['Grace']);
       const filtered = await page(application, ALAN, 'filter[role]=member&search=a');
       expect(filtered.members.filters).toEqual([
-        { name: 'role', type: 'select', key: 'filter[role]', options: ['admin', 'member'], value: 'member' },
+        { name: 'role', type: 'select', key: 'filter[role]', options: ['admin', 'member'], labels: ['admin', 'member'], value: 'member' },
         { name: 'joined', type: 'dateRange', key: 'filter[joined]', value: null },
       ]);
       expect(filtered.members.search).toEqual({ value: 'a' });

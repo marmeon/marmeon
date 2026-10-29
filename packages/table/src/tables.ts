@@ -9,8 +9,8 @@ import { fillPath, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
-import { isSchema, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableProps, type TableVisibility } from './define.ts';
-import { parseState, queryKeys, stateQuery, type TableState } from './state.ts';
+import { isSchema, normalizeOptions, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableProps, type TableVisibility } from './define.ts';
+import { parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
 export type ContextOfTable<T> = T extends DataTable<any, infer Ctx> ? Ctx : never;
@@ -42,7 +42,26 @@ interface View {
   readonly actions: readonly (readonly [string, AnyRowAction])[];
   readonly bulk: readonly (readonly [string, AnyBulkAction])[];
   readonly exports: readonly (readonly [string, TableExport])[];
+  /** The options a select or `has` filter allows for this request — computed once, on first ask; `undefined` for a filter without options. */
+  readonly options: (name: string) => Promise<ResolvedOptions | undefined>;
 }
+
+/** A filter's options for one request: as they are shown, and the values the URL may carry. */
+interface ResolvedOptions {
+  readonly values: readonly string[];
+  readonly labels: readonly string[];
+  readonly allowed: ReadonlySet<string>;
+}
+
+/** What `DataTables` reads of the schema's metadata to check a relation filter: the relations and the columns (without the secret ones) of each table. */
+export interface RelationMetadata {
+  readonly fresh: boolean;
+  readonly relations: { get(table: string): ReadonlyMap<string, { readonly table: string }> | undefined };
+  readonly columns: { get(table: string): readonly string[] | undefined };
+}
+
+/** The related-table column each `has` filter of a definition compares with, qualified (`profile_links.label`) — once the definition was checked against the schema. */
+const CHECKED = new WeakMap<TableDefinition, ReadonlyMap<string, string>>();
 
 type Row = Record<string, unknown>;
 
@@ -67,14 +86,16 @@ export class DataTables {
   readonly #resolve: ClassResolver;
   readonly #router: Router;
   readonly #encrypter: () => CursorEncrypter;
+  readonly #metadata: (() => RelationMetadata) | undefined;
 
   /** @internal — the container builds it (`TableServiceProvider`); an app injects `DataTables`. */
-  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter) {
+  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata) {
     this.#db = db;
     this.#gate = gate;
     this.#resolve = resolve;
     this.#router = router;
     this.#encrypter = encrypter;
+    this.#metadata = metadata;
   }
 
   /**
@@ -85,10 +106,11 @@ export class DataTables {
     const definition = table.definition;
     const context = ctx as unknown as HttpContext;
     await this.#authorizeTable(definition, context);
+    await this.#verify(definition, context);
     assertQuerySchema(definition, context);
     const view = await this.#view(definition, context);
     const state = parseState(definition, new URL(context.request.url).searchParams);
-    checkState(definition, state, view);
+    await checkState(definition, state, view);
     const filtered = this.#filtered(definition, context, state, view);
     const projected = project(definition, filtered, view);
     const keyName = keyNameOf(definition);
@@ -133,12 +155,14 @@ export class DataTables {
       rows: picked.map((row, index) => ({ ...row, can: can[index]! })),
       sort: state.sort ? { column: state.sort.column, direction: state.sort.direction } : null,
       search: view.columns.some(([, col]) => col.isSearchable) ? { value: state.search } : null,
-      filters: view.filters.map(([name, entry]): TableFilter => {
-        const value = state.filters[name] ?? null;
-        return entry.type === 'select'
-          ? { name, type: 'select', key: keys.filter(name), options: entry.options, value }
-          : { name, type: 'dateRange', key: keys.filter(name), value };
-      }),
+      filters: await Promise.all(
+        view.filters.map(async ([name, entry]): Promise<TableFilter> => {
+          const value = state.filters[name] ?? null;
+          if (entry.type === 'dateRange') return { name, type: 'dateRange', key: keys.filter(name), value };
+          const { values, labels } = (await view.options(name))!;
+          return { name, type: entry.type, key: keys.filter(name), options: values, labels, value };
+        }),
+      ),
       page,
       query: { sort: keys.sort, page: keys.page, perPage: keys.perPage, cursor: keys.cursor, search: keys.search },
       state: query,
@@ -185,6 +209,7 @@ export class DataTables {
    */
   async runBulk(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown> {
     await this.#authorizeTable(definition, ctx);
+    await this.#verify(definition, ctx);
     const entry = Object.hasOwn(definition.bulk, name) ? definition.bulk[name]! : undefined;
     if (!entry) throw new HttpError(404);
     if (!(await this.#visible(entry.visibility, ctx))) throw forbidden(); // a hidden bulk action: refused when called directly too
@@ -205,7 +230,7 @@ export class DataTables {
     } else {
       // A form without JavaScript sends `all=1` and posts to the bulk URL with the table's query; an action sends `{ all: true, query }`.
       const state = parseState(definition, body.query ? Object.entries(body.query) : new URL(ctx.request.url).searchParams);
-      checkState(definition, state, view);
+      await checkState(definition, state, view);
       const filtered = this.#filtered(definition, ctx, state, view);
       // At most max + 1: one more than allowed says "too many" without counting them all.
       const found = await ordered(definition, project(definition, filtered, view), state).limit(entry.limit + 1).execute();
@@ -249,12 +274,13 @@ export class DataTables {
    */
   async export(definition: TableDefinition, name: string, ctx: HttpContext): Promise<Response> {
     await this.#authorizeTable(definition, ctx);
+    await this.#verify(definition, ctx);
     const entry = Object.hasOwn(definition.exports, name) ? definition.exports[name]! : undefined;
     if (!entry) throw new HttpError(404);
     if (!(await this.#visible(entry.visibility, ctx))) throw forbidden(); // the export's own authorization
     const view = await this.#view(definition, ctx); // the export's columns: the visible ones
     const state = parseState(definition, new URL(ctx.request.url).searchParams);
-    checkState(definition, state, view);
+    await checkState(definition, state, view);
     const filtered = this.#filtered(definition, ctx, state, view);
     // Its limit first (one count): an export over it is refused before a byte is streamed — never a file cut short.
     const { count } = (await this.#db
@@ -353,14 +379,67 @@ export class DataTables {
     // on a hidden column would answer, by its counts, what the column hides).
     const shown = new Set(columns.map(([, col]) => col));
     const hidden = Object.values(definition.columns).filter((col) => !shown.has(col));
-    const filters = (await keep(definition.filters)).filter(([, filter]) => !hidden.some((col) => sameColumn(col.ref, filter.ref)));
+    // (`has` reads a related row's column, not one of the table's.)
+    const filters = (await keep(definition.filters)).filter(([, filter]) => filter.type === 'has' || !hidden.some((col) => sameColumn(col.ref, filter.ref)));
+    const options = new Map<string, Promise<ResolvedOptions | undefined>>();
     return {
       columns,
       filters,
+      options: (name) => {
+        let found = options.get(name);
+        if (!found) options.set(name, (found = this.#optionsOf(definition, name, ctx)));
+        return found;
+      },
       actions: await keep(definition.actions),
       bulk: await keep(definition.bulk),
       exports: await keep(definition.exports),
     };
+  }
+
+  /**
+   * Checks the table's `has` filters against the schema, once per definition: the relation must belong to a table of the base query
+   * and the column to the related table (a secret column is none). A misdeclared filter is a developer error on the table's first
+   * request, whatever the URL carries.
+   */
+  async #verify(definition: TableDefinition, ctx: HttpContext): Promise<void> {
+    if (CHECKED.has(definition)) return;
+    const filters = Object.entries(definition.filters).filter(([, entry]) => entry.type === 'has');
+    const qualified = new Map<string, string>();
+    if (filters.length > 0) {
+      const metadata = this.#metadata?.();
+      if (!metadata) throw new Error(`Table "${definition.name}": filter.has() needs the schema's metadata, which this DataTables was built without.`);
+      if (!metadata.fresh) await sql`select 1`.execute(this.#db);
+      const node = (definition.query(this.#db, ctx) as unknown as { toOperationNode(): any }).toOperationNode();
+      const tables = [...(node.from?.froms ?? []), ...(node.joins ?? []).map((join: any) => join.table)].flatMap((item: any): string[] => {
+        const table = item?.table ?? item?.node?.table;
+        return typeof table?.identifier?.name === 'string' ? [table.identifier.name] : [];
+      });
+      for (const [name, entry] of filters) {
+        const where = `Table "${definition.name}": the filter '${name}' (filter.has('${entry.ref}'))`;
+        const found = tables.flatMap((table) => metadata.relations.get(table)?.get(entry.ref) ?? []);
+        if (found.length !== 1) {
+          throw new Error(`${where} needs ${found.length === 0 ? `a relation '${entry.ref}' of ${tables.join(', ') || 'the query'}, which has none` : `exactly one table of the query with a relation '${entry.ref}', but ${found.length} have it`}.`);
+        }
+        const related = found[0]!.table;
+        const column = entry.column ?? 'id';
+        if (!metadata.columns.get(related)?.includes(column)) {
+          throw new Error(`${where} compares with ${related}.${column}, which is no column of ${related} (or a secret one) — name one: filter.has('${entry.ref}', options, { column: … }).`);
+        }
+        qualified.set(name, `${related}.${column}`);
+      }
+    }
+    CHECKED.set(definition, qualified);
+  }
+
+  /** The options of one filter for this request: a function is called here, with the request's `ctx`, and its list checked. */
+  async #optionsOf(definition: TableDefinition, name: string, ctx: HttpContext): Promise<ResolvedOptions | undefined> {
+    const entry = Object.hasOwn(definition.filters, name) ? definition.filters[name] : undefined;
+    if (!entry || entry.type === 'dateRange') return undefined;
+    // Rebuilt from the named fields, whichever way they came: nothing else an option carries reaches the props.
+    const { values, labels } = entry.source
+      ? normalizeOptions(`Table "${definition.name}": the options of the filter '${name}'`, await entry.source(this.#resolve, ctx))
+      : { values: [...entry.options], labels: [...entry.labels] };
+    return { values, labels, allowed: new Set(values) };
   }
 
   /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column). */
@@ -388,6 +467,14 @@ export class DataTables {
     const selected = selectedBy(query);
     for (const [name, value] of Object.entries(state.filters)) {
       const entry = definition.filters[name]!;
+      if (entry.type === 'has') {
+        // A bound value on the related table's column, and only ever one more AND on the base query: the filter narrows, never widens.
+        // The column is qualified with the related table: an unqualified name the related table lacks would resolve to the outer row's.
+        const column = CHECKED.get(definition)?.get(name);
+        if (column === undefined) throw new Error(`Table "${definition.name}": the filter '${name}' was not checked against the schema.`);
+        query = query.whereHas(entry.ref as never, ((related: any) => related.where(column, '=', value)) as never);
+        continue;
+      }
       if (selected.has(entry.ref)) {
         throw new Error(`Table "${definition.name}": the filter '${name}' reads ${entry.ref}, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`);
       }
@@ -521,14 +608,20 @@ function sameColumn(a: string, b: string): boolean {
   return a.slice(a.lastIndexOf('.') + 1) === b.slice(b.lastIndexOf('.') + 1);
 }
 
-/** The state may use only what is visible: a hidden column cannot be sorted by, a hidden filter not used (400). */
-function checkState(definition: TableDefinition, state: TableState, view: View): void {
+/** The state may use only what is visible: a hidden column cannot be sorted by, a hidden filter not used, a filter value only from the request's options (400). */
+async function checkState(definition: TableDefinition, state: TableState, view: View): Promise<void> {
   const keys = queryKeys(definition);
   const visible = new Set(view.columns.map(([alias]) => alias));
   if (state.sort && !visible.has(state.sort.column)) throw new HttpError(400, `${keys.sort}: the table "${definition.name}" does not sort by that.`);
   const filters = new Set(view.filters.map(([name]) => name));
   for (const name of Object.keys(state.filters)) if (!filters.has(name)) throw new HttpError(400, `${keys.filter(name)}: the table "${definition.name}" has no such filter.`);
   if (state.search && !view.columns.some(([, col]) => col.isSearchable)) throw new HttpError(400, `${keys.search}: the table "${definition.name}" has no such field.`);
+  // Last, because options computed for the request may ask the database: only a value this request's list holds goes on (the
+  // message names the key, never the value).
+  for (const [name, value] of Object.entries(state.filters)) {
+    const options = await view.options(name);
+    if (options && !options.allowed.has(value)) throw new TableQueryError(`${keys.filter(name)}: one of its options.`);
+  }
 }
 
 /** The page's route must parse the table's state (its query schema): the browser gets the state from the page object. */

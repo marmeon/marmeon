@@ -350,11 +350,57 @@ export const TeamsTable = defineTable({
   export: { csv: exportCsv().authorize(MemberPolicy, 'export') },
 });
 
+/** How often the options below were computed, and with which route parameters — computed for a request that was not let on, they have told it something. */
+export const filterOptions = { calls: 0, params: [] as unknown[] };
+
+/**
+ * Teams filtered by the members they have: the options are the names of the request's own team, so another team's member is no option.
+ * The role filter offers `admin` to administrators only.
+ */
+export const TeamFilterTable = defineTable({
+  name: 'team-filter',
+  query: (db, _ctx: TeamContext) => db.selectFrom('teams'),
+  key: 'teams.id',
+  columns: { name: column('teams.name').sortable() },
+  defaultSort: 'name',
+  authorize: (ctx) => (ctx as unknown as { user: { id: number } }).user.id !== 4,
+  filters: {
+    member: filter.has(
+      'members',
+      async (resolve, ctx: TeamContext & { params: { team: string } }) => {
+        filterOptions.calls++;
+        filterOptions.params.push(ctx.params.team);
+        const rows = await resolve(Connections).get().selectFrom('members').select(['name', 'email', 'team_id']).where('team_id', '=', ctx.team).orderBy('name').execute();
+        // A row spread into the option: what else it carries (the e-mail) must not reach the props.
+        return rows.map((row) => ({ ...row, value: row.name, label: `Member ${row.name}` }));
+      },
+      { column: 'name' },
+    ),
+    ada: filter.has('members', ['Ada', 'Mallory'], { column: 'name' }),
+    role: filter.has('members', (_resolve, ctx: TeamContext) => ((ctx.user as unknown as TestUser).admin ? ['admin', 'member'] : ['member']), { column: 'role' }),
+    hidden: filter.has('members', ['Ada'], { column: 'name' }).visible((ctx: { user: { admin?: boolean } }) => ctx.user.admin === true),
+  },
+  bulk: { touch: bulk(DeactivateMany).authorize(MemberPolicy, 'act').max(5) },
+  export: { csv: exportCsv().authorize(() => true) },
+});
+
+/** Members filtered by an own-team option list on a column of the table itself (`select` with options per request). */
+export const RoleOptionsTable = defineTable({
+  name: 'role-options',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable(), role: column('members.role') },
+  defaultSort: 'name',
+  filters: { role: filter.select('members.role', (_resolve, ctx: TeamContext) => ((ctx.user as unknown as TestUser).admin ? [{ value: 'admin', label: 'Administrators' }, 'member'] : ['member'])) },
+});
+
 export const MembersRequest = defineRequest({ query: MembersTable.query });
 export const FeedRequest = defineRequest({ query: FeedTable.query });
 export const LeakyRequest = defineRequest({ query: LeakyTable.query });
 export const WithTeamRequest = defineRequest({ query: WithTeamTable.query });
 export const TeamsRequest = defineRequest({ query: TeamsTable.query });
+export const TeamFilterRequest = defineRequest({ query: TeamFilterTable.query });
+export const RoleOptionsRequest = defineRequest({ query: RoleOptionsTable.query });
 
 /** The page: the table as JSON (the page protocol is the http package's — here the prop alone). */
 export class MembersPage extends Controller {
@@ -427,6 +473,34 @@ export class WithTeamPage extends Controller {
   }
 }
 
+export class TeamFilterPage extends Controller {
+  static request = TeamFilterRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof TeamFilterRequest> & Authenticated & { team: number }) {
+    return this.json({ teams: await this.#tables.resolve(TeamFilterTable, ctx) });
+  }
+}
+
+export class RoleOptionsPage extends Controller {
+  static request = RoleOptionsRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof RoleOptionsRequest> & Authenticated & { team: number }) {
+    return this.json({ members: await this.#tables.resolve(RoleOptionsTable, ctx) });
+  }
+}
+
 export class TeamsPage extends Controller {
   static request = TeamsRequest;
   readonly #tables: DataTables;
@@ -481,6 +555,9 @@ const routes = openRoutes((Route) => {
   team.get('/with-team', WithTeamPage);
   team.get('/teams', TeamsPage);
   tableRoutes(team, TeamsTable);
+  team.get('/team-filter', TeamFilterPage);
+  tableRoutes(team, TeamFilterTable);
+  team.get('/role-options', RoleOptionsPage);
   team.get('/no-schema', NoSchemaPage);
   team.get('/export-in-transaction', ExportInTransaction);
   tableRoutes(team, LedgerTable);

@@ -44,7 +44,7 @@ function members(query: URLSearchParams): Members {
     rows: live.map((row) => ({ ...row, can: { removeLinks: row.id !== 1 } })),
     sort: { column, direction },
     search: { value: '' },
-    filters: [{ name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], value: query.get('filter[locale]') }],
+    filters: [{ name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], labels: ['en', 'de'], value: query.get('filter[locale]') }],
     page: { type: 'offset', page: 1, perPage: 10, perPageOptions: [10, 25], total: live.length, lastPage: 1, from: 1, to: live.length },
     query: { sort: 'sort', page: 'page', perPage: 'per_page', cursor: 'cursor', search: 'search' },
     state,

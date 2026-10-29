@@ -114,6 +114,23 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(page.queryDefaults).toEqual({ sort: 'name', page: 1, per_page: 10, search: '' });
   });
 
+  it('filters by a relation with options per request: members who link to what the viewer links to — another member\'s label is a 400', async () => {
+    // Ada has two links, Alan and Grace one each (their own labels): the viewer's labels are the only options.
+    const asAda = await members(ada);
+    const link = asAda.filters.find((entry) => entry.name === 'link')!;
+    expect(link.type).toBe('has');
+    const labels = link.type === 'dateRange' ? [] : link.options;
+    expect(labels.length).toBeGreaterThan(0);
+    expect((await members(ada, `filter[link]=${encodeURIComponent(labels[0]!)}`)).rows.map((row) => row.name)).toEqual(['Ada Lovelace']);
+    const foreign = `filter[link]=${encodeURIComponent(`${alan.name}'s site`)}`;
+    await app.actingAs(ada).navigating().get(`/members?${foreign}`).assertStatus(400);
+    // The same label is an option for Alan, who has it.
+    expect((await members(alan, foreign)).rows.map((row) => row.name)).toEqual(['Alan Turing']);
+    await app.actingAs(ada).acting().post('/members/_tables/members/bulk/removeLinks', { json: { all: true, query: { 'filter[link]': `${alan.name}'s site` } } }).assertStatus(400);
+    expect(await linksOf(alan)).toBe(1);
+    await app.actingAs(ada).get(`/members/_tables/members/export/csv?${foreign}`).assertStatus(400);
+  });
+
   it('removes a member\'s links (a row action): the policy again on the server — not your own, not as a member', async () => {
     const asAda = await members(ada);
     expect(asAda.rows.map((row) => [row.name, row.can.removeLinks])).toEqual([

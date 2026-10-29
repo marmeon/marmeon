@@ -47,7 +47,7 @@ function members(query: URLSearchParams, rows = live): Members {
     sort: { column, direction },
     search: { value: query.get('search') ?? '' },
     filters: [
-      { name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], value: locale },
+      { name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], labels: ['en', 'de'], value: locale },
       { name: 'joined', type: 'dateRange', key: 'filter[joined]', value: null },
     ],
     page: { type: 'offset', page: Number(query.get('page') ?? 1), perPage: 10, perPageOptions: [10, 25], total: rows.length, lastPage: 3, from: 1, to: rows.length },
@@ -178,6 +178,18 @@ describe('the headless table on the client core alone', () => {
     new TableController(app.navigator, app.navigator.page.props.members as Members).filter('locale', null);
     await settle();
     expect(requests.at(-1)!.url).toBe('/members');
+  });
+
+  it('checks the value of a has filter against its options, whatever their labels', async () => {
+    const data = app.navigator.page.props.members as Members;
+    const labelled = { ...data, filters: [{ name: 'team', type: 'has', key: 'filter[team]', options: ['7'], labels: ['Seven'], value: null }] as never } as Members;
+    const table = new TableController(app.navigator, labelled);
+    // @ts-expect-error — the typed filters are the fixture's
+    table.filter('team', '7');
+    await settle();
+    expect(requests.at(-1)!.url).toBe('/members?filter%5Bteam%5D=7');
+    // @ts-expect-error — the typed filters are the fixture's
+    expect(() => table.filter('team', 'Seven')).toThrow('takes 7 — not "Seven"');
   });
 
   it('takes a filter and a page kind it does not know: filtering goes through, paging by number or cursor is refused', async () => {

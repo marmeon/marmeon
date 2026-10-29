@@ -18,6 +18,11 @@ declare module '@marmeon/database' {
       last_seen_at: Timestamp | null;
       active: boolean | null;
     };
+    vaults: {
+      id: Generated<number>;
+      team_id: number;
+      token: Secret<string>;
+    };
     ledger: {
       id: Generated<number>;
       note: string;
@@ -38,17 +43,22 @@ declare module '@marmeon/database' {
     teams: 'directory';
     members: 'directory';
     ledger: 'billing';
+    vaults: 'directory';
   }
   interface ExposedTables {
     teams: true;
   }
   // What `db:types` derives from `members.team_id` (a foreign key to `teams`).
   interface Relations {
+    vaults: {
+      team: { kind: 'belongsTo'; table: 'teams'; foreignKey: 'team_id'; localKey: 'team_id'; targetKey: 'id'; nullable: false };
+    };
     members: {
       team: { kind: 'belongsTo'; table: 'teams'; foreignKey: 'team_id'; localKey: 'team_id'; targetKey: 'id'; nullable: false };
     };
     teams: {
       members: { kind: 'hasMany'; table: 'members'; foreignKey: 'team_id'; localKey: 'id'; targetKey: 'team_id' };
+      vaults: { kind: 'hasMany'; table: 'vaults'; foreignKey: 'team_id'; localKey: 'id'; targetKey: 'team_id' };
     };
   }
 }

@@ -30,8 +30,21 @@ export type TableFilter<F extends string = string> =
       readonly type: 'select';
       /** Its key in the URL (`filter[role]`, with the table's prefix). */
       readonly key: string;
-      /** The values it allows. */
+      /** The values it allows — computed for this request when the table says so. */
       readonly options: readonly string[];
+      /** The text to show for each of `options`, in the same order — the value itself when the table gave no label. */
+      readonly labels: readonly string[];
+      readonly value: string | null;
+    }
+  | {
+      readonly name: F;
+      readonly type: 'has';
+      /** Its key in the URL (`filter[team]`, with the table's prefix). */
+      readonly key: string;
+      /** The values it allows — the related rows the user may choose, for this request. */
+      readonly options: readonly string[];
+      /** The text to show for each of `options`, in the same order. */
+      readonly labels: readonly string[];
       readonly value: string | null;
     }
   | {

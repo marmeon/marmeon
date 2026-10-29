@@ -230,6 +230,87 @@ describe('defineTable — typed from the query', () => {
   });
 });
 
+describe('filters by a relation and by options per request', () => {
+  const Teams = defineTable({
+    name: 'teams',
+    query: (db) => db.selectFrom('teams'),
+    key: 'teams.id',
+    columns: { name: column('teams.name').sortable() },
+    filters: {
+      kind: filter.has('members', ['admin', { value: 'member', label: 'Members' }], { column: 'role' }),
+      owner: filter.has('members', () => [{ value: '1', label: 'Ada' }]),
+      name: filter.select('teams.name', () => ['x']),
+    },
+  });
+  type Values = NonNullable<(typeof Teams.query)['~standard']['types']>['output'];
+
+  it('types the URL value: the static options as a union, options computed for the request as text', () => {
+    expectTypeOf<Values['filter[kind]']>().toEqualTypeOf<'admin' | 'member' | undefined>();
+    expectTypeOf<Values['filter[owner]']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<Values['filter[name]']>().toEqualTypeOf<string | undefined>();
+  });
+
+  it('needs options, and takes a "column" for has() only', () => {
+    // @ts-expect-error — a filter without options allows nothing
+    filter.has('members', []);
+    // @ts-expect-error — an option is a text or { value, label }
+    filter.select('role', [1]);
+    // @ts-expect-error — a function must give the options, not a number
+    filter.has('members', () => 1);
+    // @ts-expect-error — only has() names a column of a related table
+    filter.select('role', ['a'], { column: 'x' });
+  });
+
+  it('puts the options of a select or has filter into the props, with their labels', () => {
+    type Filters = TableProps<typeof Teams>['filters'][number];
+    expectTypeOf<Filters['name']>().toEqualTypeOf<'kind' | 'owner' | 'name'>();
+    expectTypeOf<Extract<Filters, { type: 'has' }>['options']>().toEqualTypeOf<readonly string[]>();
+    expectTypeOf<Extract<Filters, { type: 'has' }>['labels']>().toEqualTypeOf<readonly string[]>();
+  });
+
+  it('checks the relation and the column against the query\'s tables', () => {
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams'),
+      key: 'teams.id',
+      columns: { name: column('teams.name') },
+      // @ts-expect-error — no such relation
+      filters: { kind: filter.has('nope', ['a']) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams'),
+      key: 'teams.id',
+      columns: { name: column('teams.name') },
+      // @ts-expect-error — a relation of members, not of teams
+      filters: { kind: filter.has('team', ['a']) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams'),
+      key: 'teams.id',
+      columns: { name: column('teams.name') },
+      // @ts-expect-error — no such column in members
+      filters: { kind: filter.has('members', ['a'], { column: 'nope' }) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams'),
+      key: 'teams.id',
+      columns: { name: column('teams.name') },
+      // @ts-expect-error — a secret column of the related table
+      filters: { kind: filter.has('vaults', ['a'], { column: 'token' }) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'members.id',
+      columns: { name: column('members.name') },
+      filters: { team: filter.has('team', ['1']), name: filter.has('team', ['a'], { column: 'name' }) },
+    });
+  });
+});
+
 describe('the query schema and the routes', () => {
   it('types the table\'s query fields — with its prefix, its sorts, its page sizes, its filter options', () => {
     type Values = NonNullable<(typeof Members.query)['~standard']['types']>['output'];
