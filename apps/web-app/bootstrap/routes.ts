@@ -201,6 +201,7 @@ declare module '@marmeon/http/page' {
     'lab/ClientOnly': true;
     'lab/Devtools': true;
     'lab/Errors': true;
+    'lab/Invitation': true;
     'lab/LateError': true;
     'lab/OneTimeLink': true;
     'lab/RenderError': true;

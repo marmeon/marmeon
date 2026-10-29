@@ -95,6 +95,10 @@ export declare class CookieEncryption {
 export type { CookieJar } from '@marmeon/router';
 // CookieOptions
 export type { CookieOptions } from '@marmeon/router';
+// CredentialPageOptions
+export interface CredentialPageOptions {
+    referrer?: 'no-referrer' | 'same-origin';
+}
 // CspDirectives
 export interface CspDirectives {
     defaultSrc?: readonly CspSource[] | false;
@@ -637,6 +641,8 @@ export declare function always<V>(value: V): AlwaysProp<Unlazy<V>>;
 export declare function cacheControl(value: string): MiddlewareClass<{}, {}>;
 // contentSecurityPolicy
 export declare function contentSecurityPolicy(options?: ContentSecurityPolicyOptions): MiddlewareClass<{}, {}>;
+// credentialPage
+export declare function credentialPage(options?: CredentialPageOptions): MiddlewareClass<{}, {}>;
 // deepMerge
 export declare function deepMerge<V>(value: V): MergeProp<Unlazy<V>, 'deepMerge'>;
 // defer

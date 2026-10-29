@@ -1,6 +1,6 @@
 import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
-import { defineRoutes, everyone, signed } from '@marmeon/http';
+import { credentialPage, defineRoutes, everyone, signed } from '@marmeon/http';
 import { ConfirmUnsubscribeController } from './controllers/ConfirmUnsubscribeController.ts';
 import { DeleteNotificationController } from './controllers/DeleteNotificationController.ts';
 import { MarkAllNotificationsReadController } from './controllers/MarkAllNotificationsReadController.ts';
@@ -21,8 +21,9 @@ export default defineRoutes((Route) => {
 
   // Outside the signed-in group: a mail client posts to the signed link with no session, and a reader who clicks it gets a page. The link is
   // the ticket, and it is why the post needs neither a CSRF token nor a `csrfExcept`: a post without a valid signature meets the CSRF
-  // check first, and then `signed()`. The page (GET) leaves nothing, so only the post needs `withoutCsrf`.
-  const mail = Route.prefix('/notifications/unsubscribe').middleware(throttle('notifications.unsubscribe')).authorize(everyone);
+  // check first, and then `signed()`. The page (GET) leaves nothing, so only the post needs `withoutCsrf`. The address is a credential:
+  // `credentialPage()` keeps every answer of it out of caches and indexes.
+  const mail = Route.prefix('/notifications/unsubscribe').middleware(credentialPage()).middleware(throttle('notifications.unsubscribe')).authorize(everyone);
   mail.middleware(signed({ forever: true })).get('/:user', ConfirmUnsubscribeController).name('notifications.unsubscribe.confirm');
   mail.middleware(signed({ forever: true, withoutCsrf: true })).post('/:user', UnsubscribeController).name('notifications.unsubscribe');
 });

@@ -47,6 +47,7 @@ export { ClientInfo } from './client-info.ts';
 export { AfterResponse } from './after-response.ts';
 export { ReadOnlyError } from './read-only.ts';
 export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
+export { credentialPage, type CredentialPageOptions } from './credential-page.ts';
 export type { SiteData } from './client-history.ts';
 export { contentSecurityPolicy, CookieDefaults, DEFAULT_CSP, NONCE } from './csp.ts';
 export type { ContentSecurityPolicyOptions, CspDirectives, CspSource } from './csp.ts';

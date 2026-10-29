@@ -398,6 +398,7 @@ These middleware come with the framework's packages. Add them to routes with `Ro
 | `signed()` | `@marmeon/http` | Only URLs with a valid signature that have not expired. Answers 403 otherwise, also for a link without `expires`; `signed({ forever: true })` accepts one ([urls](urls.md#signed-urls)). |
 | `verifyWebhook(name)` | `@marmeon/http` | Only requests a defined [webhook sender](webhooks.md) signed. Answers 401 otherwise, skips the CSRF check and adds `ctx.webhook`. |
 | `cacheControl(value)` | `@marmeon/http` | Sets `Cache-Control` on responses that do not set it themselves. |
+| `credentialPage()` | `@marmeon/http` | For pages whose URL is a credential: `no-store, private`, `noindex` and `Referrer-Policy: no-referrer` on every response of the route ([security](security.md#a-link-that-is-a-credential)). |
 
 The [authentication](authentication.md), [API tokens](api-tokens.md), [rate limiting](rate-limiting.md),
 [URL generation](urls.md) and [responses](responses.md#headers) pages explain them in detail.

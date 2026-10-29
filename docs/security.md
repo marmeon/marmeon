@@ -95,6 +95,45 @@ The [CSRF protection](csrf.md) page explains every stage.
 - **Requests that only read never write.** Islands, live streams and the tabs' session checks write no session data and set no
   cookie. The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.
 
+## A link that is a credential
+
+A page whose URL grants a right (an invitation, a ticket, a one-time link, a confirmation to leave a list) must not stay in a shared
+cache, a search index or another site's logs. Put `credentialPage()` on the routes that carry the token:
+
+```ts title="modules/events/routes.ts"
+const tickets = Route.middleware(credentialPage()).middleware(throttle('tickets'));
+
+tickets.authorize(everyone).bind('ticket', TicketRepository, { public: true }).get('/tickets/:ticket', ShowTicketController);
+```
+
+Every answer of those routes then carries `Cache-Control: no-store, private`, `X-Robots-Tag: noindex, nofollow` and
+`Referrer-Policy: no-referrer`: the page, the JSON of a partial reload, a redirect, and the errors the route itself answers with (the
+binder's 404, `abort()`, the 403 of `signed()`, the 429 of `throttle()`, a 422, a 500 in production). Put the middleware in front of
+`throttle()` and `signed()`, so their refusals carry the headers too. A middleware that answers before the route, such as the CSRF check
+(419), the protocol gate (409) or, in development, the error page for a 5xx, does not. `Cache-Control` replaces any value the route set;
+a `Referrer-Policy` of `no-referrer` or `same-origin` that a controller set stays.
+
+- **`public` binding, one throttle, one 404.** A binder with `{ public: true }` finds the row by the token's hash; a wrong token, a
+  used link and a token of the wrong shape all answer the same 404. Throttle the route, so a token cannot be guessed by trying.
+- **`no-referrer`, because the token is in the path.** The browser's default, `strict-origin-when-cross-origin`, keeps the path from
+  other sites, but every request of your own origin from the page would send the token in its `Referer`, and the next page would read
+  it in `document.referrer`, where analytics and proxy logs pick it up. The app stores only the token's hash, so it must not hold the
+  token anywhere else.
+- **A form behind a token.** Without a `Referer`, `back()` has nowhere to go (it lands on `/`), and a browser without Fetch Metadata
+  sends `Origin: null` with the post, which the CSRF check cannot match. So let the token route trade the token for the row's id in
+  the session and redirect to a page without it. That page and its post use `credentialPage({ referrer: 'same-origin' })`, and a
+  failed validation returns to it with its errors and `old()` input. The trade has rules of its own:
+  - Call `session.regenerate()` before the `put`, so a session id planted by whoever sent the link carries nothing.
+  - Show on the page what the invitation is for (the workspace, the event), so a visitor sent to an attacker's link can tell.
+  - Look the row up again on the page and on the post, in `authorize` of the request so it runs before the schema; a session
+    that holds an id is no right by itself (the link may be used up or revoked since), and a visitor without one gets a 404.
+  - After the use, `redeem()` the row and `session.forget()` the id.
+
+  A request class with a schema always returns with `back()` on a failure. A form that must keep the token in its path validates in
+  its controller instead, and redirects to its own URL with `this.redirect(…)` and the input.
+
+The [URL generation](urls.md#a-link-that-is-used-once) page shows how to make and look up the token.
+
 ## Keys
 
 `APP_KEY` encrypts cookies, encrypted jobs and sealed sessions, and the keys that sign URLs, live channels and uploads are derived
