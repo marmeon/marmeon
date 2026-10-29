@@ -279,6 +279,7 @@ import { can } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Storage, upload } from '@marmeon/storage';
 import { rules as r } from '@marmeon/validation';
+import { NoteRepository } from '../NoteRepository.ts';
 import { NotePolicy } from '../policies/NotePolicy.ts';
 
 export const UpdateCoverRequest = defineRequest({
@@ -290,14 +291,17 @@ export class UpdateCoverController extends Controller {
   static request = UpdateCoverRequest;
 
   readonly #storage: Storage;
+  readonly #notes: NoteRepository;
 
-  constructor(storage: Storage) {
+  constructor(storage: Storage, notes: NoteRepository) {
     super();
     this.#storage = storage;
+    this.#notes = notes;
   }
 
   async handle(ctx: ContextOf<typeof UpdateCoverRequest>) {
-    await ctx.body.cover.store(this.#storage.disk('public'), `covers/${ctx.params.note.id}`);
+    const key = await ctx.body.cover.store(this.#storage.disk('public'), 'covers'); // a random name: keep it
+    await this.#notes.update(ctx.params.note.id, { cover_path: key });
     return this.redirect().route('notes.show', { note: ctx.params.note.id });
   }
 }
@@ -334,7 +338,9 @@ export default function Cover({ note }: PageProps<ShowCoverController>) {
 The field holds the upload: its `status` (`uploading`, `uploaded` or `failed`), `progress` from 0 to 1, a `preview` URL of the
 chosen image, an `error` and `cancel()`. The upload's target comes from the form's own route, so its middleware and `authorize`
 decide who may upload, and the `upload()` rule sets the limit. On submit, the server checks the file again by its size and by its
-first bytes. The [requests](requests.md#files) page covers the server's side.
+first bytes. The [requests](requests.md#files) page covers the server's side. `store()` names the file itself and returns the
+key, so the controller keeps it in the record. The [storage](storage.md#replacing-a-file) page shows how to replace a cover and
+delete the old file in the right order, and how to keep a file private until its record is published.
 
 `useUpload(form.field('cover'))` returns a function that uploads a `File` you have, for a drop zone or a cropped image. Uploads
 need JavaScript, because the upload field accepts only the token of a file uploaded ahead. The upload code loads when the first

@@ -317,6 +317,115 @@ export const schedule = defineSchedule((s) => {
 
 With a local uploads disk on several servers, each server has its own files: run it on every server, without `onOneServer()`.
 
+### Replacing a file
+
+`store()` returns the key it chose, a random name, so keep that key in the record. Replacing a stored file touches two systems
+that cannot commit together, a disk and the database. Order the work so that a failure leaves at most a stray file, never a
+record that points at nothing. Only a connection lost during the commit itself can leave the record without its file: the server
+may have committed while the app sees an error, and `afterRollback()` then deletes a file the committed row names. To rule that
+out, leave the delete out of `afterRollback()` and clear stray files with `list()` from time to time.
+
+1. Store the new file **before** the transaction, so the record never names a file that does not exist yet.
+2. Inside the transaction, register `afterRollback()` to delete the new file, then write the new key.
+3. Register `afterCommit()` to delete the old file, so it goes only once nothing points at it any more.
+
+```ts title="modules/notes/NoteCovers.ts"
+import { afterCommit, afterRollback, Connections } from '@marmeon/database';
+import { Storage, type TemporaryUpload } from '@marmeon/storage';
+import { NoteRepository } from './NoteRepository.ts';
+
+export class NoteCovers {
+  readonly #connections: Connections;
+  readonly #notes: NoteRepository;
+  readonly #storage: Storage;
+
+  constructor(connections: Connections, notes: NoteRepository, storage: Storage) {
+    this.#connections = connections;
+    this.#notes = notes;
+    this.#storage = storage;
+  }
+
+  async replace(noteId: number, upload: TemporaryUpload) {
+    const disk = this.#storage.disk('public');
+    const key = await upload.store(disk, 'covers');
+    return this.#connections.transaction(async () => {
+      await afterRollback(() => disk.delete(key).catch(() => false)); // the record never got the new file
+      const note = await this.#notes.findOrFail(noteId); // a missing note throws, which rolls back
+      await this.#notes.update(noteId, { cover_path: key });
+      const old = note.cover_path;
+      if (old) await afterCommit(() => disk.delete(old).catch(() => false)); // nothing points at it any more
+      return key;
+    });
+  }
+}
+```
+
+The `catch` keeps a failed delete from turning a committed replacement into an error: a stray file is all that is left, and
+`list()` finds it. Throw, or return an `err()`, rather than returning plainly: a plain return commits, and `afterRollback()` would not delete the
+new file (a stray, not a broken record). The [transactions](transactions.md#after-the-commit) page covers
+both hooks.
+
+### A file that is private until its record is published
+
+A file on the `public` disk is reachable at `url()` the moment it is stored, and nothing checks who asks. A file that must wait
+for its record, such as an attachment of a draft, therefore never goes onto a public disk before the publication. Store it on a
+private disk, `local` for example. A private disk has no `url()` and no route but the signed one of `temporaryUrl()`, so the file has no address at all until your app
+gives it one, and the start fails when a private disk shares a directory with a public one (see [public and private
+files](#public-and-private-files)). Then choose how readers get the file:
+
+- **Through your own route.** Its controller answers with `serveFile()` behind the policy, which lets the author in at any time
+  and everyone else only once `published_at` is set. The [responses](responses.md#downloads) page shows the controller.
+  Unpublishing only clears the column.
+- **Through a signed link.** `temporaryUrl(key, { expiresIn: { minutes: 5 } })` makes a link that expires. Make it per request,
+  after the policy said yes, and never store it. Whoever holds the link can use it until it expires, also after the
+  note is unpublished.
+- **By copying it to the public disk on publication.** The public copy exists from the commit on, so a draft's file is never
+  public, and a transaction that rolls back publishes nothing:
+
+```ts title="modules/notes/NotePublishing.ts"
+import { afterCommit, Connections } from '@marmeon/database';
+import { Storage } from '@marmeon/storage';
+import { NoteRepository } from './NoteRepository.ts';
+
+export class NotePublishing {
+  readonly #connections: Connections;
+  readonly #notes: NoteRepository;
+  readonly #storage: Storage;
+
+  constructor(connections: Connections, notes: NoteRepository, storage: Storage) {
+    this.#connections = connections;
+    this.#notes = notes;
+    this.#storage = storage;
+  }
+
+  publish(noteId: number) {
+    return this.#connections.transaction(async () => {
+      const note = await this.#notes.findOrFail(noteId);
+      const key = note.attachment_path;
+      if (key) {
+        const draft = this.#storage.disk('local');
+        const live = this.#storage.disk('public');
+        await afterCommit(async () => live.put(key, await draft.stream(key)));
+      }
+      return this.#notes.update(noteId, { published_at: new Date() });
+    });
+  }
+}
+```
+
+A disk copies within itself only, so the file is streamed from one disk to the other. If the copy fails, `transaction()` throws
+although the note is published; `put()` replaces a file under the same key, so publishing again is safe. Keep the draft's file
+on the private disk if you may unpublish later. When the note is unpublished, delete the public copy in `afterCommit()` and do
+not catch the error: a failed delete must show, so that the step can be repeated, since a URL somebody has seen stays reachable
+until the copy is gone. Deleting such a record has to remove both copies ([files of deleted records](#files-of-deleted-records)).
+
+### Files of deleted records
+
+A file does not follow its record. When rows are deleted by a foreign key's `cascadeOnDelete()`, the database removes the child rows and
+none of your code runs, so their files stay on the disk, public ones still reachable. Delete such a record through code that reads
+its files' keys first and deletes the files with `afterCommit()`, as the listener of
+[unconfirmed accounts](verification.md#unconfirmed-accounts) does for an avatar.
+
 ## Mail attachments
 
 `diskAttachment(disk, key, { filename }?)` turns a file of a disk into an attachment for a mail. The [mail](mail.md#attachments)
