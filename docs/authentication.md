@@ -421,7 +421,7 @@ The language the visitor chose outlives the session it was stored in, because th
 
 The response also tells the browser to forget the site's storage with `Clear-Site-Data: "storage"`, and
 the next page loads in full. A sign-out from the client side answers `409` with `x-marmeon-location` and `x-marmeon-reload: history`:
-that is the full reload, not an error. The other tabs of the same browser follow by themselves. The
+that is the full reload, not an error. The browser still logs that `409` in the console, as it does every `409`; see [navigation](navigation.md#a-new-version-of-the-app). The other tabs of the same browser follow by themselves. The
 [client features](client-features.md#the-browsers-storage-on-sign-out) page explains both, and how to keep the storage.
 
 ## How long a sign-in lasts
