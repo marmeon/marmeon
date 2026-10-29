@@ -56,6 +56,8 @@ export interface ProjectedTable {
   readonly foreignKeys: readonly ProjectedForeignKey[];
   /** `timestamps()` and `softDeletes()`. */
   readonly markers: readonly TableMarker[];
+  /** `false` after `notPivot()`: a table with two unique foreign keys that is a record of its own. Absent otherwise. */
+  readonly pivot?: false;
 }
 
 /** The schema the migrations leave: tables by name, one namespace for every connection. */
@@ -138,6 +140,7 @@ function signature(table: ProjectedTable): string {
     indexes: sorted(table.indexes, (index) => index.name),
     foreignKeys: sorted(table.foreignKeys, (key) => key.column),
     markers: [...table.markers].toSorted(byCodePoint),
+    pivot: table.pivot,
   });
 }
 
@@ -187,6 +190,7 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
     // A retired column stays secret until it is dropped: reading it explicitly is still refused.
     for (const column of table.columns) if (column.secret) secretColumns.push({ table: table.name, column: column.name });
     for (const marker of table.markers) markers.push({ table: table.name, column: '', marker, value: null });
+    if (table.pivot === false) markers.push({ table: table.name, column: '', marker: 'not_pivot', value: null });
     const primary = known.filter((column) => column.primary).map((column) => column.name);
     if (primary.length) primaryKeys.set(table.name, primary);
     const nullable = new Map(known.map((column) => [column.name, column.nullable]));
@@ -333,7 +337,7 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     if (MARKER_COLUMNS[column]) markers = markers.filter((m) => m !== MARKER_COLUMNS[column]);
   }
 
-  return { ...table, columns, indexes, foreignKeys, markers: markers.toSorted(byCodePoint), uniques: uniqueSets(columns, indexes) };
+  return { ...table, columns, indexes, foreignKeys, markers: markers.toSorted(byCodePoint), uniques: uniqueSets(columns, indexes), ...(parts.notPivot ? { pivot: false as const } : {}) };
 }
 
 /** The primary key, and every unique index, as column sets without a repeated one. */

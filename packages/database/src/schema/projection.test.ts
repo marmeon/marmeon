@@ -5,7 +5,7 @@ import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
-import { introspect, tableColumns, type CatalogQuery } from '../introspection.ts';
+import { deriveRelations, introspect, tableColumns, type CatalogQuery } from '../introspection.ts';
 import { Migrator, type Connections } from '../index.ts';
 import { isMigratorTable } from '../migration-state.ts';
 import { loadMigration } from '../migrations/load.ts';
@@ -118,6 +118,30 @@ describe('the projection of a plan', () => {
     expect(notes.uniques).toEqual([['id'], ['label']]);
     expect(notes.indexes[0]!.columns).toEqual(['label']);
     expect(notes.foreignKeys[0]).toMatchObject({ column: 'owner_id', inverse: 'notes_of', referenced: 'key' });
+  });
+
+  it('marks a table notPivot() and writes no field for any other', () => {
+    const projection = project(
+      (s) => { s.create('events', (t) => { t.id(); }); s.create('users', (t) => { t.id(); }); },
+      (s) => s.create('guest_imports', (t) => { t.foreignId('event_id').constrained(); t.foreignId('user_id').constrained(); t.unique(['event_id', 'user_id']); t.notPivot(); }),
+      (s) => s.create('tags', (t) => { t.foreignId('event_id').constrained(); t.foreignId('user_id').constrained(); t.unique(['event_id', 'user_id']); }),
+    );
+    expect(table(projection, 'guest_imports').pivot).toBe(false);
+    expect('pivot' in table(projection, 'tags')).toBe(false);
+    expect(JSON.stringify(table(projection, 'tags'))).not.toContain('pivot');
+    const relations = deriveRelations(factsOf(projection, 'sqlite'));
+    expect(relations.relations.get('events')?.get('users')).toMatchObject({ pivot: 'tags' });
+    expect(relations.relations.get('guest_imports')?.get('event')).toMatchObject({ kind: 'belongsTo' });
+  });
+
+  it('keeps the notPivot() mark through alter and rename, and loses it with drop()', () => {
+    const create: Up = (s) => s.create('files', (t) => { t.id(); t.string('path'); });
+    const marked = project(create, (s) => s.alter('files', (t) => t.notPivot()));
+    expect(table(marked, 'files').pivot).toBe(false);
+    expect(table(project(create, (s) => s.alter('files', (t) => t.notPivot()), (s) => s.alter('files', (t) => { t.string('mime').nullable(); t.unique('path'); })), 'files').pivot).toBe(false);
+    expect(table(project(create, (s) => s.alter('files', (t) => t.notPivot()), (s) => s.rename('files', 'documents')), 'documents').pivot).toBe(false);
+    const again = project(create, (s) => s.alter('files', (t) => t.notPivot()), (s) => s.drop('files'), create);
+    expect('pivot' in table(again, 'files')).toBe(false);
   });
 
   it('loses the table mark when its column is renamed or dropped', () => {
@@ -367,6 +391,7 @@ const GROUPS: Record<string, string[]> = {
   'relations-secrets': ['auth', 'relations-secrets'],
   'relations-readers': ['auth', 'relations', 'relations-readers'],
   'relations-archived': ['auth', 'relations', 'relations-archived'],
+  'relations-not-pivot': ['auth', 'relations', 'relations-not-pivot'],
   // The DDL groups build on each other: the later ones alter, rename and drop what the first made.
   'ddl-columns': ['ddl/columns'],
   'ddl-indexes': ['ddl/columns', 'ddl/indexes'],

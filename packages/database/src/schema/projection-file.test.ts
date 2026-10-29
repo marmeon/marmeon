@@ -149,11 +149,18 @@ describe('the schema projection file', () => {
     ['an unknown default', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], default: 'random' }] } } })],
     ['a retired flag that is not a boolean', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], retired: 'yes' }] } } })],
     ['an unknown marker', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, markers: ['hidden'] } } })],
+    ['a pivot flag that is not false', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, pivot: true } } })],
     ['an unknown onDelete', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, foreignKeys: [{ column: 'id', references: 'x', referenced: 'id', onDelete: 'explode' }] } } })],
   ])('does not accept a file with %s', (_, change) => {
     const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
     expect(parseProjectionFile(JSON.stringify(file))).toBeDefined();
     expect(parseProjectionFile(JSON.stringify(change(file)))).toBeUndefined();
+  });
+
+  it('reads a table that says notPivot()', () => {
+    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
+    file.tables.users.pivot = false;
+    expect(parseProjectionFile(JSON.stringify(file))?.tables.users?.pivot).toBe(false);
   });
 
   it('keeps the projection in memory whatever stops the write, a file where the directory should be included', async () => {

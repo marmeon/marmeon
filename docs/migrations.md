@@ -205,7 +205,7 @@ Every migration runs in a transaction, so `create index concurrently` of Postgre
 
 `Migrator.projection()` computes the schema the migrations describe from their plans alone, without a database and without running
 anything: every table with its columns in order, their types, nullability, defaults and secret marks, its unique column sets, indexes
-and foreign keys (with `onDelete` and `inverse`), its `timestamps()` and `softDeletes()` marks and the module that created it. It
+and foreign keys (with `onDelete` and `inverse`), its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. It
 replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then renamed columns, new columns, `notNull()`
 and `nullable()` changes (by the column's name after the renames), new indexes, retired columns and last the dropped columns. A retired column stays in it, marked, and is left out of everything Marmeon derives from it except the secret marks. `schema.raw()` and
 `schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run
@@ -863,6 +863,29 @@ export default defineMigration({
 });
 ```
 
+A table that happens to have two foreign keys that are unique together, but is a record of its own, says so with
+`table.notPivot()`: a file per user and event, say. It gets a belongsTo per key and the other tables a hasMany, and no
+belongsToMany between them. Without it, such a table is read as a pivot; when the relations that gives clash with others,
+`db:types` names the unique columns and suggests `notPivot()`. A primary key of its own does not decide: many pivots have an `id`. The mark can be set later in `schema.alter()`; it survives
+a rename and later `unique()` and column changes, `drop()` removes it, a new `create` starts without it, and no call takes it back.
+
+```ts title="modules/events/migrations/2026_10_08_100000_create_guest_files_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) =>
+    schema.create('guest_files', (table) => {
+      table.id();
+      table.foreignId('event_id').constrained().cascadeOnDelete();
+      table.foreignId('user_id').constrained().cascadeOnDelete();
+      table.string('path');
+      table.unique(['event_id', 'user_id']);
+      table.notPivot();
+    }),
+  down: (schema) => schema.drop('guest_files'),
+});
+```
+
 A one-relation, a belongsTo or a hasOne, may find no row. A hasOne always may. A belongsTo finds a row only when its foreign key is
 `NOT NULL` and the referenced table has no soft deletes: a soft-deleted row never comes back through a relation.
 
@@ -898,6 +921,8 @@ posts has two foreign keys to users (author_id, editor_id) — name the inverse 
 A foreign key to its own table follows the same rules: `categories.parent_id` gives `categories.parent` and the children as
 `categories.categories`. `.inverse('children')` gives them a better name. A relation never hides a column either: a foreign key
 named `owner` would give a relation `owner`, so `db:types` asks for `owner_id` instead.
+
+`.inverse()` names a relation; it does not make a pivot a record of its own, which only `table.notPivot()` does.
 
 `db:types` writes the relations into `bootstrap/database.d.ts` next to the tables, as `Relations`, with the keys each one
 joins on. The connection derives the same relations at runtime, from the same migrations.

@@ -181,6 +181,25 @@ describe.each(drivers)('Relations from db:types on %s', (driver) => {
   const generator = (blog: string) =>
     typeGenerator({ root, modules: [{ name: 'auth', migrations: fixtures('auth') }, { name: 'blog', migrations: fixtures(blog) }] } as unknown as Application, driver);
 
+  it('gives a table that says notPivot() a belongsTo per key and no belongsToMany', async () => {
+    const files = typeGenerator(
+      {
+        root,
+        modules: [
+          { name: 'auth', migrations: fixtures('auth') },
+          { name: 'blog', migrations: fixtures('relations') },
+          { name: 'files', migrations: fixtures('relations-not-pivot') },
+        ],
+      } as unknown as Application,
+      driver,
+    );
+    const { source } = await files.render();
+    const relations = source.slice(source.indexOf('  interface Relations {'), source.indexOf('  interface PrimaryKeys {'));
+    expect(relations).toMatch(/post_files: \{\n\s+post: \{ kind: 'belongsTo'/);
+    expect(relations).toMatch(/post_files: \{ kind: 'hasMany'; table: 'post_files'; foreignKey: 'post_id'/);
+    expect(relations).not.toContain("pivot: 'post_files'");
+  });
+
   it('derives them from the foreign keys — inverse names, hasOne, belongsToMany, nullable one-relations', async () => {
     const { source } = await generator('relations').render();
     const relations = source.slice(source.indexOf('  interface Relations {'), source.indexOf('  interface PrimaryKeys {'));
