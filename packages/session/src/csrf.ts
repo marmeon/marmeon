@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { defineConfig, env, type ConfigOf } from '@marmeon/core';
+import { defineConfig, env, EnvironmentConfig, type ConfigOf } from '@marmeon/core';
 import { UrlSigner } from '@marmeon/http';
 import { isWebhookMiddleware, withoutCsrfSignature } from '@marmeon/http/internal';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
@@ -33,6 +33,9 @@ export type CsrfConfig = ConfigOf<typeof CsrfConfig>;
 
 /** The cookie the browser's JavaScript reads to send the token back as `X-XSRF-TOKEN`. */
 export const XSRF_COOKIE = 'XSRF-TOKEN';
+
+/** What a 419 adds in development: a request that names no origin is a script, and this is what it sends. */
+const HINT = 'A client without a browser sends an Origin header or the X-XSRF-TOKEN — docs/csrf.md#clients-without-a-browser';
 
 const READING = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -106,14 +109,16 @@ export class VerifyCsrfToken {
   readonly #config: CsrfConfig;
   readonly #sessionConfig: SessionConfig;
   readonly #signer: UrlSigner;
+  readonly #environment: EnvironmentConfig;
 
   /** @internal Built by the container. */
-  constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig, signer: UrlSigner) {
+  constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig, signer: UrlSigner, environment: EnvironmentConfig) {
     this.#session = session;
     this.#protection = protection;
     this.#config = config;
     this.#sessionConfig = sessionConfig;
     this.#signer = signer;
+    this.#environment = environment;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
@@ -125,7 +130,11 @@ export class VerifyCsrfToken {
     if (!signed && !READING.has(request.method) && !this.#protection.skips(new URL(request.url).pathname) && !this.#validlySigned(ctx)) {
       const from = this.#origin(request);
       if (from === 'foreign') throw new HttpError(403, 'Cross-site request refused.', {}, { key: 'marmeon.errors.cross_site' });
-      if (from === 'unknown' && !(await this.#tokenMatches(ctx))) throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'marmeon.errors.csrf' });
+      if (from === 'unknown' && !(await this.#tokenMatches(ctx))) {
+        // The hint has no translation key: the handler would show the translated plain text instead of it.
+        if (this.#environment.node === 'development') throw new HttpError(419, `CSRF token mismatch. ${HINT}`);
+        throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'marmeon.errors.csrf' });
+      }
     }
     // After the route: the token may have been rotated (login, logout).
     const response = await next();
