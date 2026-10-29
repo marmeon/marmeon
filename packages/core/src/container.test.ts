@@ -159,6 +159,90 @@ describe('Container — errors', () => {
     expect(() => new Container().make(A)).toThrow('Circular dependency: A → B → A.');
   });
 
+  it('resolves with a fresh chain when a factory calls make after it returned', () => {
+    class Hub {
+      build: () => unknown;
+      constructor(build: () => unknown) {
+        this.build = build;
+      }
+    }
+    class Listener {
+      static inject = [Hub];
+      constructor(_hub: Hub) {}
+    }
+    // The hub keeps `make` and builds the listener later, as a dispatcher does; the listener needs a hub of its own.
+    const container = new Container().bind(Hub, (c) => new Hub(() => c.make(Listener)));
+    const hub = container.make(Hub);
+    expect(hub.build()).toBeInstanceOf(Listener);
+  });
+
+  it('reports a cycle that closes through a late make while another build runs', () => {
+    class Hub {
+      build: () => unknown;
+      constructor(build: () => unknown) {
+        this.build = build;
+      }
+    }
+    class Self {
+      static inject = [Hub] as const;
+      constructor(hub: Hub) {
+        hub.build();
+      }
+    }
+    const container = new Container().bind(Hub, (c) => new Hub(() => c.make(Self)));
+    expect(() => container.make(Self)).toThrow('Circular dependency: Self → Self.');
+  });
+
+  it('keeps an async factory in its chain until its promise settles', async () => {
+    class Loop {}
+    const container = new Container().bind(Loop, async (c) => {
+      await Promise.resolve();
+      return c.make(Loop);
+    });
+    await expect(container.make(Loop)).rejects.toThrow('Circular dependency: Loop → Loop.');
+  });
+
+  it('resolves two concurrent makes of an async factory', async () => {
+    class Thing {}
+    const container = new Container().bind(Thing, async () => {
+      await Promise.resolve();
+      return new Thing();
+    });
+    const [first, second] = await Promise.all([container.make(Thing), container.make(Thing)]);
+    expect(first).toBeInstanceOf(Thing);
+    expect(second).toBeInstanceOf(Thing);
+  });
+
+  it('starts a new chain for a make kept past the settled promise', async () => {
+    class Again {}
+    let kept: (() => unknown) | undefined;
+    const container = new Container().bind(Again, async (c) => {
+      kept = () => c.make(Again);
+      await Promise.resolve();
+      return 'built';
+    });
+    await container.make(Again);
+    await expect(kept?.()).resolves.toBe('built');
+  });
+
+  it('keeps the singleton in the message of a scoped service a late make reaches', () => {
+    class Request {}
+    class Holder {
+      get: () => unknown;
+      constructor(get: () => unknown) {
+        this.get = get;
+      }
+    }
+    const container = new Container().scoped(Request).singleton(Holder, (c) => new Holder(() => c.make(Request)));
+    expect(() => container.make(Holder).get()).toThrow('(needed by Holder). A singleton must not depend on a scoped service.');
+  });
+
+  it('still reports a cycle that closes while a factory runs', () => {
+    class Loop {}
+    const container = new Container().singleton(Loop, (c) => c.make(Loop));
+    expect(() => container.make(Loop)).toThrow('Circular dependency: Loop → Loop.');
+  });
+
   it('names the class and the parameter of a dependency that is undefined', () => {
     class Mailer {}
     class Notifier {}

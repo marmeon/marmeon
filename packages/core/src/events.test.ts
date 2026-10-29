@@ -79,6 +79,31 @@ export class SendShippingMail {
   }
 }
 
+// A listener whose service needs the dispatcher, and a service that dispatches: the dispatcher is built again while a listener is.
+export class Audit {
+  readonly dispatcher: EventDispatcher;
+  constructor(dispatcher: EventDispatcher) {
+    this.dispatcher = dispatcher;
+  }
+}
+export class OnPlaced {
+  readonly #audit: Audit;
+  readonly #journal: Journal;
+  constructor(audit: Audit, journal: Journal) {
+    this.#audit = audit;
+    this.#journal = journal;
+  }
+  handle(event: OrderPlaced) {
+    this.#journal.entries.push(`audited ${event.orderId} with ${this.#audit.dispatcher.constructor.name}`);
+  }
+}
+export class Checkout {
+  readonly dispatcher: EventDispatcher;
+  constructor(dispatcher: EventDispatcher) {
+    this.dispatcher = dispatcher;
+  }
+}
+
 async function app(listeners: Parameters<typeof createApplication>[0]['listeners']) {
   const application = await createApplication({ root: tmpdir(), discover: false, listeners }, { env: {} });
   application.container.scoped(Journal);
@@ -98,6 +123,15 @@ describe('events', () => {
 
     expect(scope.make(Journal).entries).toEqual(['confirmation for o-1']);
     expect(calls).toEqual(['closure saw o-1']);
+  });
+
+  it('builds a listener whose service needs the dispatcher, from a service that dispatches', async () => {
+    const application = await app([listen(OrderPlaced, OnPlaced)]);
+    const scope = application.container.createScope();
+
+    await scope.make(Checkout).dispatcher.dispatch(new OrderPlaced('o-9'));
+
+    expect(scope.make(Journal).entries).toEqual(['audited o-9 with EventDispatcher']);
   });
 
   it('resolves listeners from the scope that dispatches — one journal per request', async () => {

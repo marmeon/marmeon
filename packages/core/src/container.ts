@@ -90,6 +90,8 @@ export class Container implements Resolver {
   readonly #parent: Container | undefined;
   readonly #bindings = new Map<unknown, Binding>();
   readonly #instances = new Map<unknown, unknown>();
+  /** On the root: the chain of the build running right now. A `make` a factory kept and calls later continues from it. */
+  #active: readonly Key[] = [];
   /** Root only: the classes whose injection warnings were reported, and who hears about them. */
   readonly #warned = new Map<Concrete, InjectionWarning[]>();
   readonly #warningListeners = new Set<(warning: InjectionWarning) => void>();
@@ -187,7 +189,7 @@ export class Container implements Resolver {
     return this.#resolve(key, []) as Resolve<K>;
   }
 
-  #resolve(key: Key, path: readonly Key[]): unknown {
+  #resolve(key: Key, path: readonly Key[], singletonOrigin?: readonly Key[]): unknown {
     const id = idOf(key);
     const binding = this.#findBinding(id);
     // What is already there — an instance, a built singleton, this scope's built service — is handed out as it is: no chain to
@@ -205,7 +207,7 @@ export class Container implements Resolver {
     const chain = [...path, key];
 
     if (!binding) {
-      if (typeof key === 'function') return this.#build(key as Concrete, chain);
+      if (typeof key === 'function') return this.#within(chain, () => this.#build(key as Concrete, chain));
       throw new ContainerError(withCode('K1', `No binding for [${describeKey(key)}]${neededBy(path)}. Bind it in a service provider.`), {
         reason: 'unbound',
         key: describeKey(key),
@@ -215,12 +217,12 @@ export class Container implements Resolver {
 
     switch (binding.lifetime) {
       case 'transient':
-        return binding.create(this, chain);
+        return this.#within(chain, () => binding.create(this, chain));
 
       case 'singleton': {
         // Built in the owning (root) container, so it can never capture request-scoped state.
         const { owner } = binding;
-        if (!owner.#instances.has(id)) owner.#instances.set(id, binding.create(owner, chain));
+        if (!owner.#instances.has(id)) owner.#instances.set(id, this.#within(chain, () => binding.create(owner, chain)));
         return owner.#instances.get(id);
       }
 
@@ -229,15 +231,27 @@ export class Container implements Resolver {
           throw new ContainerError(
             withCode(
               'K2',
-              `[${describeKey(key)}] is scoped and can only be resolved inside a scope (e.g. a request)${neededBy(path)}.` +
-                (path.length ? ' A singleton must not depend on a scoped service.' : ''),
+              `[${describeKey(key)}] is scoped and can only be resolved inside a scope (e.g. a request)${neededBy(singletonOrigin ?? path)}.` +
+                (singletonOrigin?.length || path.length ? ' A singleton must not depend on a scoped service.' : ''),
             ),
-            { reason: 'scoped', key: describeKey(key), path: path.map(describeKey) },
+            { reason: 'scoped', key: describeKey(key), path: (singletonOrigin ?? path).map(describeKey) },
           );
         }
-        if (!this.#instances.has(id)) this.#instances.set(id, binding.create(this, chain));
+        if (!this.#instances.has(id)) this.#instances.set(id, this.#within(chain, () => binding.create(this, chain)));
         return this.#instances.get(id);
       }
+    }
+  }
+
+  /** Runs a build with `chain` as the active chain of the root, and puts the earlier one back. */
+  #within<T>(chain: readonly Key[], build: () => T): T {
+    const root = this.#root();
+    const before = root.#active;
+    root.#active = chain;
+    try {
+      return build();
+    } finally {
+      root.#active = before;
     }
   }
 
@@ -289,13 +303,30 @@ export class Container implements Resolver {
   #register(key: Key, lifetime: Exclude<Lifetime, 'instance'>, target: Concrete | Factory<unknown>): this {
     const create = isClass(target)
       ? (container: Container, chain: readonly Key[]) => container.#build(target, chain)
-      : (container: Container, chain: readonly Key[]) =>
-          (target as Factory<unknown>)({
+      : (container: Container, chain: readonly Key[]) => {
+          // True from the call of an async factory until its promise settles: its `make` still belongs to this build.
+          let pending = false;
+          // A factory may keep `make` and call it later (a dispatcher builds listeners at dispatch time). It then continues the
+          // build running at that moment, if any, so a real cycle is still found and a service that needs the factory's own
+          // key is none. A singleton's factory keeps its chain for the message of a scoped service it reaches late.
+          const value = (target as Factory<unknown>)({
             make: (dependency) => {
-              if (dependency === undefined) throw undefinedKey(chain);
-              return container.#resolve(dependency, chain) as never;
+              const active = container.#root().#active;
+              const path = active.length > 0 || !pending ? active : chain;
+              if (dependency === undefined) throw undefinedKey(path);
+              return container.#resolve(dependency, path, lifetime === 'singleton' && path.length === 0 ? chain : undefined) as never;
             },
           });
+          if (value instanceof Promise) {
+            pending = true;
+            // A separate branch: the caller still sees the rejection.
+            value.then(
+              () => void (pending = false),
+              () => void (pending = false),
+            );
+          }
+          return value;
+        };
 
     const id = idOf(key);
     this.#instances.delete(id); // re-binding replaces a cached singleton

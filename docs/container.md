@@ -136,6 +136,10 @@ The container knows four lifetimes:
 container.singleton(NoteSearch, (c) => new DatabaseNoteSearch(c.make(NoteRepository), { limit: 50 }));
 ```
 
+A factory may keep the resolver and call it later, for example to build a service when it is first used. That call continues the build
+running at that moment; when none runs, it starts a new chain, so a service that needs the factory's own key is no circular dependency.
+A cycle that closes while a build runs is still reported. An async factory's `make` continues its own chain until its promise settles.
+
 Binding a key again replaces the earlier binding, and a singleton built from it already. `container.make(key)` resolves a service,
 `container.has(key)` tells whether a key is bound, and `container.keys()` lists every key. Prefer constructor injection to
 `make()`: the dependencies then show in the constructor, and tests replace them without knowing where they are used.
