@@ -75,7 +75,7 @@ export default {
     date: 'Das Feld {attribute} muss ein gültiges Datum sein.',
     iso_timestamp: 'Das Feld {attribute} muss ein gültiger Zeitpunkt sein.',
     local_date_time: 'Das Feld {attribute} muss ein Datum mit Uhrzeit wie 2026-10-07T14:30 sein.',
-    time_zone: 'Das Feld {attribute} muss eine gültige Zeitzone sein.',
+    time_zone: 'Das Feld {attribute} muss eine Zeitzone wie Europe/Berlin sein.',
     confirmed: 'Das Feld {attribute} stimmt nicht überein.',
     unique: 'Der Wert für {attribute} ist bereits vergeben.',
     exists: 'Der gewählte Wert für {attribute} ist ungültig.',

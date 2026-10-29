@@ -95,7 +95,7 @@ export const StoreEventRequest = defineRequest({
   schema: r
     .object({
       title: r.string().trim().required().max(120),
-      time_zone: r.timeZone(),
+      time_zone: r.timeZone(), // a name only, in IANA's spelling: `europe/berlin` becomes `Europe/Berlin`
       starts_at: r.localDateTime({ field: 'time_zone' }),
       ends_at: r.localDateTime({ field: 'time_zone' }),
     })
@@ -106,6 +106,8 @@ export const StoreEventRequest = defineRequest({
 `starts_at` in the handler is `'2026-10-07T12:30:00.000Z'` for `2026-10-07T14:30` in `Europe/Berlin`: store it as a timestamp column. The
 check in `custom()` runs after the conversion, so it compares instants, and it is a plain string comparison because every instant has the same shape. A zone that is a fixed name for the whole form
 can be written in the rule: `r.localDateTime('Europe/Berlin')`.
+
+Store the zone of a place, not an offset: an offset knows no summer time, so an event saved with `+01:00` shows the wrong hour half of the year. That is why `r.timeZone()` takes only names.
 
 Two nights a year the wall clock has no single answer, and the rule picks one, the same way every time:
 

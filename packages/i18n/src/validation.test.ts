@@ -28,6 +28,11 @@ describe('the texts of @marmeon/validation: English and German for every rule', 
     for (const [key, text] of Object.entries(rules)) expect(en[key], `marmeon.validation.${key}`).toBe(text);
   });
 
+  it('the time zone message names a zone, in English and German', () => {
+    expect(en.time_zone).toBe('The {attribute} field must be a time zone such as Europe/Berlin.');
+    expect(de.time_zone).toBe('Das Feld {attribute} muss eine Zeitzone wie Europe/Berlin sein.');
+  });
+
   it('German for every rule — in its own words, with the same placeholders', () => {
     for (const [key, text] of Object.entries(rules)) {
       const german = de[key];

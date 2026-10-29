@@ -496,6 +496,20 @@ export function isTimeZone(zone: unknown): zone is string {
   }
 }
 
+/**
+ * `zone` spelled as IANA does (`europe/berlin` → `Europe/Berlin`) when it is a named zone; undefined for an offset (`+02:00`), an
+ * `Etc/GMT±N` zone and anything `Temporal` does not know. Link names (`Asia/Calcutta` and `Asia/Kolkata` both) stay as typed.
+ */
+export function namedTimeZone(zone: unknown): string | undefined {
+  if (typeof zone !== 'string' || !ZONE_NAME.test(zone)) return undefined;
+  try {
+    const id = Temporal.Now.zonedDateTimeISO(zone).timeZoneId;
+    return /^Etc\/GMT[+-][1-9]\d*$/i.test(id) ? undefined : id;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The shape `<input type="datetime-local">` sends: `2026-10-07T14:30`, with seconds when the field has them. */
 export const isLocalDateTime = (value: unknown): value is string => typeof value === 'string' && LOCAL_DATE_TIME.test(value);
 

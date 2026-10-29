@@ -369,9 +369,10 @@ export class StringRule extends Rule<string, string> {
     return this.with(step(() => engine.check(isDate, engine.message('date'))), FORMAT);
   }
 
-  /** A time zone: an IANA name (`Europe/Berlin`, `UTC`) or an offset (`+02:00`). Stays a string. */
+  /** A named time zone (`Europe/Berlin`, `UTC`), never an offset (`+02:00`); the letter case is IANA's (`europe/berlin` → `Europe/Berlin`). Stays a string. */
   timeZone(): this {
-    return this.with(step(() => engine.check(engine.isTimeZone, engine.message('time_zone'))), FORMAT);
+    return this.with(step(() => engine.check((value: string) => engine.namedTimeZone(value) !== undefined, engine.message('time_zone'))), FORMAT)
+      .with(step(() => engine.transform((value: string) => engine.namedTimeZone(value), false)));
   }
 
   /** A date and time in ISO 8601 (`2026-10-07T14:30:00Z`, with an offset or `Z`). Stays a string. */

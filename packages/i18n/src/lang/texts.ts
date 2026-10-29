@@ -76,7 +76,7 @@ const en = {
     date: 'The {attribute} field must be a valid date.',
     iso_timestamp: 'The {attribute} field must be a valid date and time.',
     local_date_time: 'The {attribute} field must be a date and time like 2026-10-07T14:30.',
-    time_zone: 'The {attribute} field must be a valid time zone.',
+    time_zone: 'The {attribute} field must be a time zone such as Europe/Berlin.',
     confirmed: 'The {attribute} does not match.',
     unique: 'The {attribute} has already been taken.',
     exists: 'The selected {attribute} is invalid.',
