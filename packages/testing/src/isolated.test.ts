@@ -3,8 +3,9 @@ import { afterCommit, defineModule, Logger, outsideTransaction, TransactionError
 import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
+import { guarded, type GuardedTables } from './__fixtures__/guarded.ts';
 import { workshops, type WorkshopTables } from './__fixtures__/workshops.ts';
 import { createTestApp, type TestApp } from './index.ts';
 
@@ -303,3 +304,227 @@ it('types the modes', () =>
     // @ts-expect-error — (2) not a boolean
     await createTestApp(definition, { database: true });
   }));
+
+const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
+
+describe.each(drivers)('a table a trigger guards, on %s', (driver) => {
+  const env = { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_DRIVER: 'pgsql', DB_URL: PGSQL_URL } : { DB_DRIVER: 'sqlite', DB_URL: undefined, DB_DATABASE: ':memory:' }) };
+  const definition: ApplicationDefinition = {
+    root: workspaceTempDir('marmeon-testing-guarded-'),
+    discover: false,
+    providers: [EncryptionServiceProvider, HttpServiceProvider, DatabaseServiceProvider],
+    modules: [guarded],
+  };
+
+  let app: TestApp | undefined;
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  const open = async (database: 'refresh' | 'isolated') => (app = await createTestApp(definition, { env, database }));
+  const db = () => app!.make(Connections).get<GuardedTables>();
+  const log = (entry: string) => db().insertInto('audit_logs').values({ entry }).execute();
+  const triggerStates = async () =>
+    (await sql<{ name: string; enabled: string }>`select tgname::text as name, tgenabled::text as enabled from pg_trigger where tgrelid = 'audit_logs'::regclass and not tgisinternal order by tgname`.execute(db())).rows;
+
+  it('empties an append-only log when the app starts and when it closes, and the ids start over', async () => {
+    const first = await open('isolated');
+    await log('one');
+    await log('two');
+    await first.close();
+    const second = await open('isolated');
+    await second.assertDatabaseCount<'audit_logs', GuardedTables>('audit_logs', 0);
+    await log('again');
+    expect((await db().selectFrom('audit_logs').select('id').execute()).map((row) => row.id)).toEqual([1]);
+  });
+
+  it('puts the guard back: a statement of the test meets it again', async () => {
+    await open('isolated');
+    await log('kept');
+    await expect(sql`delete from audit_logs`.execute(db())).rejects.toThrow('append-only');
+    if (driver === 'sqlite') {
+      const { rows } = await sql<{ name: string }>`select name from sqlite_master where type = 'trigger' order by name`.execute(db());
+      expect(rows.map((row) => row.name)).toEqual(['audit_logs_no_change', 'orders_trail']);
+      return;
+    }
+    await expect(sql`truncate audit_logs`.execute(db())).rejects.toThrow('append-only');
+    await expect(sql`update audit_logs set entry = 'changed'`.execute(db())).rejects.toThrow('append-only');
+    expect(await triggerStates()).toEqual([
+      { name: 'audit_logs_no_change', enabled: 'O' },
+      { name: 'audit_logs_no_truncate', enabled: 'O' },
+    ]);
+  });
+
+  it.runIf(driver === 'sqlite')('does not let a trigger of another table write while the tables are emptied', async () => {
+    await open('isolated');
+    await sql`insert into orders default values`.execute(db());
+    await sql`insert into orders default values`.execute(db());
+    await app!.close();
+    await open('isolated');
+    await app!.assertDatabaseCount<'orders', GuardedTables>('orders', 0);
+    await app!.assertDatabaseCount<'order_trail', GuardedTables>('order_trail', 0);
+    await sql`insert into orders default values`.execute(db());
+    await sql`delete from orders`.execute(db());
+    await app!.assertDatabaseCount<'order_trail', GuardedTables>('order_trail', 1);
+  });
+
+  it('empties it before a refreshed app uses a database an isolated app left behind', async () => {
+    const abandoned = await open('isolated');
+    await log('left behind');
+    await abandoned.make(Connections).destroy();
+    await abandoned.close().catch(() => {});
+    app = undefined;
+    const refreshed = await open('refresh');
+    await refreshed.assertDatabaseCount<'audit_logs', GuardedTables>('audit_logs', 0);
+  });
+
+  describe.runIf(driver === 'pgsql')('Postgres', () => {
+    const other = () => {
+      const options = app!.make(Connections).options();
+      if (options.driver !== 'pgsql') throw new Error('These tests need Postgres.');
+      return new Connections({ connections: { default: { driver: 'pgsql', url: options.url, poolMax: 1 } }, root: definition.root, logger: app!.make(Logger) });
+    };
+
+    it('brings a trigger back in the mode it had: always stays always, a switched-off one stays off', async () => {
+      await open('isolated');
+      await sql`alter table audit_logs enable always trigger audit_logs_no_truncate`.execute(db());
+      await sql`alter table audit_logs disable trigger audit_logs_no_change`.execute(db());
+      // Statement triggers of the kind the emptying meets: one switched off, one that fires only in the replica role.
+      await sql`create trigger audit_logs_truncate_off before truncate on audit_logs for each statement execute function refuse_audit_changes()`.execute(db());
+      await sql`alter table audit_logs disable trigger audit_logs_truncate_off`.execute(db());
+      await sql`create trigger audit_logs_truncate_replica before truncate on audit_logs for each statement execute function refuse_audit_changes()`.execute(db());
+      await sql`alter table audit_logs enable replica trigger audit_logs_truncate_replica`.execute(db());
+      try {
+        await log('kept');
+        const reader = other();
+        try {
+          // The close empties the table; what the table looks like afterwards is what the reader sees.
+          await app!.close();
+          const states = (await sql<{ name: string; enabled: string }>`select tgname::text as name, tgenabled::text as enabled from pg_trigger where tgrelid = 'audit_logs'::regclass and not tgisinternal order by tgname`.execute(reader.get())).rows;
+          expect(states).toEqual([
+            { name: 'audit_logs_no_change', enabled: 'D' },
+            { name: 'audit_logs_no_truncate', enabled: 'A' },
+            { name: 'audit_logs_truncate_off', enabled: 'D' },
+            { name: 'audit_logs_truncate_replica', enabled: 'R' },
+          ]);
+          expect((await sql`select 1 from audit_logs`.execute(reader.get())).rows).toHaveLength(0);
+        } finally {
+          await sql`drop trigger audit_logs_truncate_off on audit_logs`.execute(reader.get());
+          await sql`drop trigger audit_logs_truncate_replica on audit_logs`.execute(reader.get());
+          await sql`alter table audit_logs enable trigger audit_logs_no_truncate`.execute(reader.get());
+          await sql`alter table audit_logs enable trigger audit_logs_no_change`.execute(reader.get());
+          await reader.destroy();
+        }
+      } finally {
+        app = undefined;
+      }
+    });
+
+    /** A connection to the server as the role the URL names, for what the test does outside the app. */
+    const as = (url: string) => new Connections({ connections: { default: { driver: 'pgsql', url, poolMax: 1 } }, root: definition.root, logger: silent });
+    const states = async (connections: Connections) =>
+      (await sql<{ enabled: string }>`select tgenabled::text as enabled from pg_trigger where tgrelid = 'audit_logs'::regclass and not tgisinternal order by tgname`.execute(connections.get())).rows.map((row) => row.enabled);
+
+    // An app whose start fails closes itself, which empties again and fails the same way: the error that comes out is the first.
+    it('rolls back with the guard on when the emptying fails half way', async () => {
+      // Every connection of this app gives up waiting for a lock after a moment.
+      const url = new URL(PGSQL_URL!);
+      url.searchParams.set('options', '-c lock_timeout=300');
+      const options = { env: { ...env, DB_URL: url.href }, database: 'isolated' } as const;
+      const first = await createTestApp(definition, options);
+      const workerUrl = (first.make(Connections).options() as { url: string }).url;
+      await first.close();
+      const holder = as(workerUrl);
+      try {
+        await holder.transaction(async (trx) => {
+          await sql`lock table orders in access exclusive mode`.execute(trx);
+          await expect(createTestApp(definition, options)).rejects.toThrow(/lock timeout/);
+        });
+        // The guard was put aside before the truncate failed, and came back with the rollback.
+        expect(await states(holder)).toEqual(['O', 'O']);
+      } finally {
+        await holder.destroy();
+      }
+    });
+
+    describe('as a role that is not a superuser', () => {
+      const role = `marmeon_guard_${process.pid}`;
+      const admin = () => new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL!, poolMax: 1 } }, root: definition.root, logger: silent });
+      const roleUrl = () => {
+        const url = new URL(PGSQL_URL!);
+        url.username = role;
+        url.password = 'guard';
+        return url.href;
+      };
+      const databasesOfTheRole = async (connections: Connections) =>
+        (await sql<{ name: string }>`select datname::text as name from pg_database where datdba = (select oid from pg_roles where rolname = ${role})`.execute(connections.get())).rows.map((row) => row.name);
+
+      beforeAll(async () => {
+        const server = admin();
+        try {
+          await sql.raw(`create role ${role} login createdb password 'guard'`).execute(server.get());
+        } finally {
+          await server.destroy();
+        }
+      });
+      afterAll(async () => {
+        const server = admin();
+        try {
+          for (const name of await databasesOfTheRole(server)) await sql`drop database if exists ${sql.id(name)} with (force)`.execute(server.get());
+          await sql.raw(`drop role if exists ${role}`).execute(server.get());
+        } finally {
+          await server.destroy();
+        }
+      });
+
+      // Its own root, so its own database: the role cannot drop one that another role created.
+      const owned: ApplicationDefinition = { ...definition, root: workspaceTempDir('marmeon-testing-guarded-role-') };
+      const start = () => createTestApp(owned, { env: { ...env, DB_URL: roleUrl() }, database: 'isolated' });
+
+      it('says which table the role may not truncate, and empties nothing', async () => {
+        const first = await start();
+        const owner = as((first.make(Connections).options() as { url: string }).url);
+        const rows = as((first.make(Connections).options() as { url: string }).url);
+        try {
+          await sql`revoke truncate on audit_logs from current_user`.execute(owner.get());
+          await first.make(Connections).get<GuardedTables>().insertInto('audit_logs').values({ entry: 'kept' }).execute();
+          await first.make(Connections).destroy();
+          await first.close().catch(() => {});
+          await expect(start()).rejects.toThrow(/may not truncate `audit_logs` there.*docs\/database-testing\.md#testing-a-lock/s);
+          expect((await sql`select 1 from audit_logs`.execute(rows.get())).rows).toHaveLength(1);
+          expect(await states(rows)).toEqual(['O', 'O']);
+        } finally {
+          await sql`grant truncate on audit_logs to current_user`.execute(owner.get());
+          await owner.destroy();
+          await rows.destroy();
+        }
+      });
+
+      it('says which table with a guard the role does not own', async () => {
+        const first = await start();
+        const server = admin();
+        const owner = as(roleUrl());
+        try {
+          await first.close();
+          const name = (await databasesOfTheRole(server)).find((database) => database.includes('_test_'))!;
+          const url = new URL(PGSQL_URL!);
+          url.pathname = `/${name}`;
+          const inside = as(url.href);
+          try {
+            await sql.raw(`alter table audit_logs owner to ${new URL(PGSQL_URL!).username}`).execute(inside.get());
+            await sql.raw(`grant truncate on audit_logs to ${role}`).execute(inside.get());
+            await expect(start()).rejects.toThrow(/does not own `audit_logs`, whose truncate trigger it has to put aside/);
+            expect(await states(inside)).toEqual(['O', 'O']);
+          } finally {
+            await sql.raw(`alter table audit_logs owner to ${role}`).execute(inside.get());
+            await inside.destroy();
+          }
+        } finally {
+          await owner.destroy();
+          await server.destroy();
+        }
+      });
+    });
+  });
+});
