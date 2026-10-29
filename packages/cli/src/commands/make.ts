@@ -10,7 +10,7 @@ export const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
 export const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /** Shared checks and file writing for the `make:*` generators. */
-function write(input: CommandInput, file: string, contents: string): boolean {
+export function write(input: CommandInput, file: string, contents: string): boolean {
   if (leavesProject(input, [file])) return false;
   if (existsSync(file) && input.options.force !== true) {
     input.output.error(`${relative(input.root, file)} already exists (use --force to overwrite).`);
@@ -22,7 +22,7 @@ function write(input: CommandInput, file: string, contents: string): boolean {
   return true;
 }
 
-function moduleDir(input: CommandInput): string | undefined {
+export function moduleDir(input: CommandInput): string | undefined {
   const module = input.options.module;
   if (typeof module !== 'string' || !KEBAB.test(module)) {
     throw new CommandArgumentsError('Pass the module: --module=<kebab-case-name>');
@@ -37,7 +37,7 @@ function moduleDir(input: CommandInput): string | undefined {
   return dir;
 }
 
-function className(input: CommandInput, suffix = ''): string | undefined {
+export function className(input: CommandInput, suffix = ''): string | undefined {
   const [name] = input.args;
   if (!name || !PASCAL.test(name)) {
     throw new CommandArgumentsError(`Pass a PascalCase name, e.g. ${suffix ? `Show${suffix}` : 'OrderShipped'}.`);
@@ -45,7 +45,7 @@ function className(input: CommandInput, suffix = ''): string | undefined {
   return suffix && !name.endsWith(suffix) ? `${name}${suffix}` : name;
 }
 
-const moduleOption = { module: { type: 'string', short: 'm' }, force: { type: 'boolean' } } as const;
+export const moduleOption = { module: { type: 'string', short: 'm' }, force: { type: 'boolean' } } as const;
 
 const registeringOption = { ...moduleOption, 'no-register': { type: 'boolean' } } as const;
 
@@ -598,7 +598,7 @@ export function dependsOn(root: string, name: string): boolean {
 /** Whether a module's source sets `migrations` (the test `marmeon publish:migration` uses too). */
 const MIGRATIONS_PROPERTY = /migrations\s*:/;
 
-const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+export const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /**
  * Creates a migration in a module. The name decides the template: `create_users_table` creates the

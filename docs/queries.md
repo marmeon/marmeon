@@ -169,6 +169,9 @@ Timestamps and soft deletes follow the table's migration. When it calls `timesta
 `insertMany()` and a [relation's](#writing-through-relations) `create()` and `createMany()` set `created_at` and `updated_at` (and `attach()` and `sync()` those of a pivot with `timestamps()`), and `update()` sets `updated_at`, all from the app's clock. When it calls `softDeletes()`, `delete()` sets `deleted_at`, and every read leaves deleted rows out. The
 [migrations](migrations.md#timestamps-and-soft-deletes) page explains the marks.
 
+`marmeon make:repository Note --module=notes` writes that class for `notes` (`--table` names another table) and registers nothing.
+The table has to be in your app's generated types, so write its migration and run `marmeon migrate` and `marmeon db:types` first.
+
 A repository is an ordinary class, built by the [container](container.md#binding-services). It holds nothing but its connection,
 so register it once in your module's provider: `container.singleton(NoteRepository)`. Its constructor takes `Connections` and
 nothing else, which is what lets [`using(trx)`](transactions.md#transactions-you-control-yourself) rebuild it for another
