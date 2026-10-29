@@ -444,6 +444,7 @@ export const AnswersRequest = defineRequest({
   no field is checked.
 - **Errors sit at the fields you built**, such as `answers.diet`. `attributes` and `messages` are static, so they name fields
   you know in advance.
+  How errors reach fields whose keys the rows decide is in [errors at nested and dynamic fields](forms.md#errors-at-nested-and-dynamic-fields).
 - **The types follow the built schema.** `ContextOf` and `FormOf` read the schema the function returns, not its promise. A
   schema with keys that only the rows know is typed as a record (`Record<string, string>`), and `useForm()` gets that record.
 - **Uploads in it are checked per request.** The start cannot read a schema that is built later, so a form shape it would refuse (a list of files, a file in an optional object; see [storage](storage.md#uploads)) is found when the request builds it, and answers 500.

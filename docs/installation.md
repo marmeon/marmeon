@@ -150,7 +150,9 @@ uses for every query. You switch to PostgreSQL in four steps:
    whole address in `DB_URL`. The database's name is required, there is no default.
 3. Set `DB_DATABASE` in `.env.test` to the test database's name. It says `:memory:`, which is SQLite's, and the start refuses
    `DB_DRIVER=pgsql` with it unless `DB_URL` names the database.
-4. Create both databases on the server. [Database testing](database-testing.md) shows how the tests run on Postgres.
+4. Create the app's database on the server. The test database need not exist: the tests create their workers' databases next to it,
+   through the server's `postgres` database when the test database is missing, so the role in `.env.test` needs the right to create
+   and drop databases. [Database testing](database-testing.md) shows how the tests run on Postgres.
 
 ### Security from the start
 
