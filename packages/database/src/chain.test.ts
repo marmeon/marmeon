@@ -523,6 +523,16 @@ describe.each(drivers)('loading relations on %s', (driver) => {
           .select('api_keys.name')
           .with('user', (u) => u.select(['name', sql<string>`${sql.ref('token')}`.as('pw')]))
           .execute(),
+      ).rejects.toThrow(`with('user'): "token" is not a column of users`);
+    });
+
+    it('leaves a select with unknown columns to the secret guard', async () => {
+      await expect(
+        db
+          .selectFrom('api_keys')
+          .select('api_keys.name')
+          .with('user', (u) => u.innerJoin((eb) => eb.selectFrom('tags').selectAll().as('s'), (join) => join.onTrue()).select(['name', sql<string>`${sql.ref('token')}`.as('pw')]))
+          .execute(),
       ).rejects.toThrow(refused(`with('user')`));
     });
 
@@ -591,7 +601,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
           .innerJoin((eb) => eb.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')]).as('k'), (join) => join.onRef('k.user_id', '=', 'posts.author_id'))
           .select('posts.title');
       await expect(posts().with('comments', (c) => c.select(['body', sql.ref('k.token').as('t')])).execute()).rejects.toThrow(refused(`with('comments')`, 'k.token'));
-      await expect(posts().with('comments', (c) => c.select(['body', sql.ref('token').as('t')])).execute()).rejects.toThrow(refused(`with('comments')`, 'k.token'));
+      await expect(posts().with('comments', (c) => c.select(['body', sql.ref('token').as('t')])).execute()).rejects.toThrow(`with('comments'): "token" is not a column of comments`);
       await expect(posts().with('comments', (c) => c.select((eb) => ['body', secret(eb as never, 'k.token' as never)])).execute()).rejects.toThrow(
         refused(`with('comments')`, 'k.token'),
       );
@@ -1103,6 +1113,69 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       await expect(posts.withCount('author').execute()).rejects.toThrow(
         "withCount('author') counts the rows of a list — author is a belongsTo of posts, one row or none: ask whereHas('author') instead.",
       );
+    });
+
+    it('reads an unqualified column of a relation callback as the related table’s — one it lacks is refused, not resolved by the outer query', async () => {
+      const posts = () => db.selectFrom('posts').select('title');
+      const outer = 'title' as never;
+      const refused = (label: string) => `${label}: "title" is not a column of comments — an unqualified column in the callback is the related table's. To compare a column of the outer query, name its table: "<table>.title".`;
+      await expect(posts().whereHas('comments', (q) => q.where(outer, '=', 'First' as never)).execute()).rejects.toThrow(refused("whereHas('comments')"));
+      await expect(posts().whereDoesntHave('comments', (q) => q.where(outer, '=', 'First' as never)).execute()).rejects.toThrow(refused("whereDoesntHave('comments')"));
+      await expect(posts().whereHas('comments', (q) => q.where((eb) => eb.or([eb('body', '=', 'one'), eb(outer, '=', 'First' as never)]))).execute()).rejects.toThrow(refused("whereHas('comments')"));
+      await expect(posts().whereHas('comments', (q) => q.where(outer, 'in', ['First'] as never)).execute()).rejects.toThrow(refused("whereHas('comments')"));
+      await expect(posts().whereHas('comments', (q) => q.orderBy(outer)).execute()).rejects.toThrow(refused("whereHas('comments')"));
+      await expect(posts().withCount('comments', (q) => q.where(outer, '=', 'First' as never)).execute()).rejects.toThrow(refused("withCount('comments')"));
+      await expect(posts().with('comments', (q) => q.select(outer)).execute()).rejects.toThrow(refused("with('comments')"));
+      // Nested: the inner callback is the tags', whose columns lack the title as well.
+      await expect(
+        posts()
+          .whereHas('comments', (comments) => comments.whereHas('post', (post) => post.where('featured', '=', true)))
+          .whereHas('tags', (tags) => tags.whereHas('posts', (other) => other.where('name' as never, '=', 'x' as never)))
+          .execute(),
+      ).rejects.toThrow(`whereHas('posts'): "name" is not a column of posts`);
+      // Naming a table is explicit correlation: the outer table, or the related one.
+      expect(await posts().whereHas('comments', (q) => q.where('posts.title' as never, '=', 'First' as never)).execute()).toEqual([{ title: 'First' }]);
+      expect(await posts().whereHas('comments', (q) => q.where('comments.body', '=', 'deleted').withTrashed().where('posts.title' as never, '=', 'First' as never)).execute()).toEqual([{ title: 'First' }]);
+      // A selection's alias is not a column of a condition: it would read the outer one. An order may name it, where the order stays.
+      await expect(posts().whereHas('comments', (q) => q.select('body as title').where(outer, '=', 'First' as never)).execute()).rejects.toThrow(refused("whereHas('comments')"));
+      await expect(posts().with('comments', (q) => q.select('body as title').where(outer, '=', 'First' as never)).execute()).rejects.toThrow(refused("with('comments')"));
+      await expect(posts().with('comments', (q) => q.select('body as title').groupBy(outer)).execute()).rejects.toThrow(refused("with('comments')"));
+      expect(await posts().with('comments', (q) => q.select('body as text').orderBy('text').where('body', '!=', 'nope')).where('title', '=', 'First').execute()).toHaveLength(1);
+      // Subqueries in the callback: their own tables first, then the callback's — never the outer query's.
+      await expect(
+        posts().whereHas('comments', (q) => q.where((eb) => eb.exists(eb.selectFrom('tags').select('id').where(outer, '=', 'First' as never)))).execute(),
+      ).rejects.toThrow(`whereHas('comments'): "title" is not a column of tags or comments`);
+      await expect(
+        posts().whereHas('comments', (q) => q.where((eb) => eb(eb.selectFrom('tags').select(outer).limit(1), '=', 'First'))).execute(),
+      ).rejects.toThrow(`"title" is not a column of tags or comments`);
+      // A subquery may use the callback's own columns (correlation to the related row) and its own.
+      expect(
+        await posts().whereHas('comments', (q) => q.where((eb) => eb.exists(eb.selectFrom('tags').select('id').where('slug', '=', 'kysely').where('id', '>', 0).where('body' as never, '!=', 'x' as never)))).execute(),
+      ).toEqual([{ title: 'First' }]);
+      // A subquery joined in has the columns it selects; one without named columns leaves the select to the database.
+      const joined = (select: (eb: any) => any) => (q: any) => q.innerJoin((eb: any) => select(eb).as('s'), (join: any) => join.onTrue()).where(outer, '=', 'First' as never);
+      await expect(posts().whereHas('comments', joined((eb) => eb.selectFrom('tags').select('slug'))).execute()).rejects.toThrow(`"title" is not a column of comments or s`);
+      expect(await posts().whereHas('comments', (q) => q.innerJoin((eb) => eb.selectFrom('tags').select('slug').as('s'), (join) => join.onTrue()).where('slug', '!=', 'nope')).execute()).toEqual([{ title: 'First' }]);
+      // A derived table does not see its siblings: inside it, the name of its own output is the outer query's, not the join's.
+      const leaks = `"title" is not a column of tags`;
+      const derived = (q: any) => q.innerJoin((eb: any) => eb.selectFrom('tags').select(outer).as('s'), (join: any) => join.onTrue());
+      await expect(posts().whereHas('comments', (q: any) => derived(q).where('s.title', '=', 'First')).execute()).rejects.toThrow(leaks);
+      await expect(posts().with('comments', (q: any) => derived(q).select(['body', 's.title as leak'])).execute()).rejects.toThrow(leaks);
+      await expect(
+        posts().whereHas('comments', (q) => q.where((eb) => eb.exists(eb.selectFrom((e) => e.selectFrom('tags').select(outer).as('d')).select('d.title').where('d.title' as never, '=', 'First' as never)))).execute(),
+      ).rejects.toThrow(leaks);
+      if (driver === 'pgsql') {
+        await expect(
+          posts().whereHas('comments', (q: any) => q.innerJoinLateral((eb: any) => eb.selectFrom('tags').select(outer).as('s'), (join: any) => join.onTrue()).where('s.title', '=', 'First')).execute(),
+        ).rejects.toThrow(leaks);
+        // A lateral subquery sees the tables before it.
+        expect(
+          await posts().whereHas('comments', (q: any) => q.innerJoinLateral((eb: any) => eb.selectFrom('tags').select('slug').where('slug', '!=', 'nope').whereRef('slug', '!=', 'comments.body').as('s'), (join: any) => join.onTrue())).execute(),
+        ).toEqual([{ title: 'First' }]);
+      }
+      // A column the related table has, and a nested relation still work.
+      expect(await posts().whereHas('comments', (q) => q.where('body', '!=', 'nope')).execute()).toEqual([{ title: 'First' }]);
+      expect(await posts().whereHas('tags', (tags) => tags.whereHas('posts', (other) => other.where('title', '=', 'Nothing'))).execute()).toEqual([]);
     });
 
     it('may filter on a secret column, never select one — a subquery of its callback that selects one is refused', async () => {
