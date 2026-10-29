@@ -48,6 +48,7 @@ export default function Index({ members }: Props) {
   const total = table.page.type === 'offset' ? table.page.total : table.rows.length;
   const remove = table.actions.find((entry) => entry.name === 'removeLinks');
   const removeMany = table.bulk.find((entry) => entry.name === 'removeLinks');
+  const setLocale = table.bulk.find((entry) => entry.name === 'setLocale');
   const csv = table.exports.find((entry) => entry.name === 'csv');
   const filters = Object.fromEntries(table.filters.map((entry) => [entry.name, entry]));
   const [joinedFrom = '', joinedTo = ''] = (filters.joined?.value ?? '').split('..');
@@ -74,6 +75,10 @@ export default function Index({ members }: Props) {
   const report = (outcome: TableRunOutcome) => {
     if (outcome.kind === 'cancelled') return;
     setNotice(outcome.kind === 'data' ? t('removed', { done: outcome.data.done, skipped: outcome.data.skipped + outcome.data.missing }) : t('remove_failed'));
+  };
+  const reportLocale = (outcome: TableRunOutcome) => {
+    if (outcome.kind === 'cancelled') return;
+    setNotice(outcome.kind === 'data' ? t('locale_set', { done: outcome.data.done, skipped: outcome.data.skipped + outcome.data.missing }) : t('locale_set_failed'));
   };
   /** A control that cannot be used right now stays focusable (aria-disabled) — a click does nothing. */
   const unless = (blocked: boolean, run: () => void) => (event: MouseEvent<HTMLButtonElement>) => {
@@ -235,6 +240,21 @@ export default function Index({ members }: Props) {
           <button type="button" aria-disabled={table.selectedCount === 0 || undefined} onClick={unless(table.selectedCount === 0, () => table.clearSelection())}>
             {t('select_none')}
           </button>
+          {/* Only the clicked button's name and value are posted, so the form's other buttons never send an `input`. */}
+          {setLocale &&
+            (['en', 'de'] as const).map((option) => (
+              <button
+                key={option}
+                type="submit"
+                formAction={setLocale.url}
+                name="input[locale]"
+                value={option}
+                aria-disabled={table.selectedCount === 0 || table.pending || undefined}
+                onClick={unless(table.selectedCount === 0 || table.pending, () => void table.runBulk('setLocale', { input: { locale: option } }).then(reportLocale))}
+              >
+                {t('set_locale_button', { count: table.selectedCount, locale: option })}
+              </button>
+            ))}
         </form>
       )}
       <p role="status" aria-live="polite" data-notice="">

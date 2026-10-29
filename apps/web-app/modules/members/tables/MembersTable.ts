@@ -1,7 +1,9 @@
 import type { Authenticated } from '@marmeon/auth';
+import { rules as r } from '@marmeon/validation';
 import { action, bulk, column, defineTable, exportCsv, filter, type DataTableRow, type TableContext } from '@marmeon/table';
 import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
 import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
+import { SetMembersLocale } from '../actions/SetMembersLocale.ts';
 import { MemberPolicy } from '../policies/MemberPolicy.ts';
 
 /**
@@ -27,7 +29,11 @@ export const MembersTable = defineTable({
   defaultSort: 'name',
   pagination: { perPage: [10, 25, 50] },
   actions: { removeLinks: action(RemoveMemberLinks).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'removeLinks').confirm() },
-  bulk: { removeLinks: bulk(RemoveMembersLinks).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'removeLinks').confirm().max(100) },
+  bulk: {
+    removeLinks: bulk(RemoveMembersLinks).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'removeLinks').confirm().max(100),
+    // One action for every value: the language comes with the request and is checked before any member is read.
+    setLocale: bulk(SetMembersLocale).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'setLocale').input(r.object({ locale: r.in(['en', 'de']) })).max(100),
+  },
   export: { csv: exportCsv().authorize(MemberPolicy, 'export') },
 });
 

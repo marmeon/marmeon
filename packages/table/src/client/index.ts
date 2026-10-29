@@ -102,7 +102,8 @@ export interface TableExportEntry<E extends string = string> {
 /**
  * The prop a table sends (`TableProps<typeof MembersTable>` on the server). `R` is the row — the visible columns by name plus the
  * key; `can` holds, per row, whether each row action is allowed for it (booleans only — never a policy's reason). `C` names the
- * columns, `S` the sortable ones, `F` the filters, `A`/`B`/`E` the row actions, bulk actions and exports.
+ * columns, `S` the sortable ones, `F` the filters, `A`/`B`/`E` the row actions, bulk actions and exports, `AI`/`BI` what the
+ * actions that take input take (by name).
  */
 export interface TableData<
   R extends object = Record<string, unknown>,
@@ -112,7 +113,11 @@ export interface TableData<
   B extends string = string,
   E extends string = string,
   S extends string = C,
+  AI extends object = {},
+  BI extends object = {},
 > {
+  /** Types only, never sent: what each row action (`AI`) and bulk action (`BI`) that takes input takes — `run(name, row, { input })`. */
+  readonly '~inputs'?: { readonly actions: AI; readonly bulk: BI };
   /** The table's name — unique on its page. */
   readonly name: string;
   /** Which property of a row is its key (what actions send). */
@@ -152,7 +157,9 @@ export interface TableActionResult<D = unknown> {
 export { exportUrl, keyOf, sortUrl, TableController, tableStatus } from './table.ts';
 export type {
   ActionOf,
+  ActionRunArgs,
   AnyTableData,
+  BulkRunArgs,
   BulkOf,
   ColumnOf,
   ExportOf,

@@ -9,7 +9,7 @@ import { fillPath, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
-import type { AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, DataTable, TableDefinition, TableExport, TableProps, TableVisibility } from './define.ts';
+import { isSchema, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableProps, type TableVisibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
@@ -46,8 +46,10 @@ interface View {
 
 type Row = Record<string, unknown>;
 
-/** The body of a row action: the key of the row. */
-const ActionBody = v.object({ key: v.union([v.pipe(v.number(), v.safeInteger()), v.pipe(v.string(), v.minLength(1), v.maxLength(200))]) });
+const RowKey = v.union([v.pipe(v.number(), v.safeInteger()), v.pipe(v.string(), v.minLength(1), v.maxLength(200))]);
+
+/** The body of a row action: the key of the row, and the action's input (checked against its schema, not here). */
+const ActionBody = v.object({ key: RowKey, input: v.optional(v.unknown()) });
 
 /**
  * Resolves tables per request: the page's prop (`resolve`), and the work of the endpoints `tableRoutes` registers — row actions,
@@ -157,6 +159,7 @@ export class DataTables {
     if (!entry) throw new HttpError(404);
     if (!(await this.#visible(entry.visibility, ctx))) throw forbidden(); // a hidden action: refused when called directly too
     const body = await parseBody(ActionBody, ctx);
+    const input = await this.#input(entry.inputSource, body.input, ctx);
     const view = await this.#view(definition, ctx);
     // Parsed by the key's type first: a key that is none (text for an integer key) is no row — it never reaches the database.
     const key = parseKey(definition.keyType, body.key);
@@ -170,7 +173,7 @@ export class DataTables {
       const allowed = await this.#gate().allows(entry.authorization.policy as PolicyClass<any>, entry.authorization.ability as never, row as never);
       if (!allowed) throw forbidden();
     }
-    const result = await (this.#resolve(entry.handler) as { handle(row: unknown, ctx: unknown): unknown }).handle(row, ctx);
+    const result = await (this.#resolve(entry.handler) as { handle(row: unknown, ctx: unknown, input: unknown): unknown }).handle(row, ctx, input);
     return answer(ctx, result, { done: 1, skipped: 0, missing: 0 });
   }
 
@@ -186,6 +189,8 @@ export class DataTables {
     if (!entry) throw new HttpError(404);
     if (!(await this.#visible(entry.visibility, ctx))) throw forbidden(); // a hidden bulk action: refused when called directly too
     const body = await parseBody(bulkBody(entry.limit), ctx);
+    // Before any row is read: values the schema refuses never reach the database, whichever rows were chosen.
+    const input = await this.#input(entry.inputSource, body.input, ctx);
     const view = await this.#view(definition, ctx);
     const keyName = keyNameOf(definition);
     let rows: Row[];
@@ -216,8 +221,25 @@ export class DataTables {
       allowed = rows.filter((_, index) => answers[index]!.can[ability] === true);
     }
     const skipped = rows.length - allowed.length;
-    const result = allowed.length > 0 ? await (this.#resolve(entry.handler) as { handle(rows: unknown, ctx: unknown): unknown }).handle(allowed, ctx) : undefined;
+    const result = allowed.length > 0 ? await (this.#resolve(entry.handler) as { handle(rows: unknown, ctx: unknown, input: unknown): unknown }).handle(allowed, ctx, input) : undefined;
     return answer(ctx, result, { done: allowed.length, skipped, missing });
+  }
+
+  /**
+   * What an action's `.input()` schema makes of the body's `input` (a 422 under `input.<field>` when it refuses) — and a 422 for an input
+   * the action does not take, so a field that does nothing is never taken for one that is checked.
+   */
+  async #input(source: ActionInputSource | undefined, given: unknown, ctx: HttpContext): Promise<unknown> {
+    if (source === undefined) {
+      if (given !== undefined) throw new ValidationError({ input: ['This action takes no input.'] });
+      return undefined;
+    }
+    const schema = isSchema(source) ? source : await source(this.#resolve, ctx);
+    const result = await schema['~standard'].validate(given, { libraryOptions: { marmeon: { resolve: this.#resolve, ctx, live: false } } });
+    if (result.issues) {
+      throw ValidationError.fromIssues(result.issues.map((issue) => ({ ...issue, path: ['input', ...(issue.path ?? [])] })), {});
+    }
+    return result.value;
   }
 
   /**
@@ -559,8 +581,9 @@ function bulkBody(max: number) {
     v.object({
       all: v.union([v.literal(true), v.literal('1'), v.literal('true')]),
       query: v.optional(v.record(v.pipe(v.string(), v.maxLength(200)), v.pipe(v.string(), v.maxLength(2048)))),
+      input: v.optional(v.unknown()),
     }),
-    v.object({ keys: v.pipe(v.array(ActionBody.entries.key), v.minLength(1), v.maxLength(max, `At most ${max} rows at once.`)) }),
+    v.object({ keys: v.pipe(v.array(RowKey), v.minLength(1), v.maxLength(max, `At most ${max} rows at once.`)), input: v.optional(v.unknown()) }),
   ]);
 }
 

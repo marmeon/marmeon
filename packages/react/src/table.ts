@@ -5,7 +5,9 @@
 import { exportUrl, keyOf, sortUrl, tableStatus, TableController } from '@marmeon/table/client';
 import type {
   ActionOf,
+  ActionRunArgs,
   AnyTableData,
+  BulkRunArgs,
   TableStatusInfo,
   BulkOf,
   ColumnOf,
@@ -15,7 +17,6 @@ import type {
   SortableOf,
   SortDirection,
   TableColumn,
-  TableRunOptions,
   TableRunOutcome,
 } from '@marmeon/table/client';
 import type { SelectionKey } from '@marmeon/http/client';
@@ -146,10 +147,10 @@ export interface Table<T extends AnyTableData> {
   readonly exports: T['exports'];
   /** Whether row action `action` is offered for `row` (its policy said yes). */
   can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
-  /** Runs a row action; then the table reloads (replacing what it showed). */
-  run(action: ActionOf<T>, row: TableRowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
-  /** Runs a bulk action for what is selected; then the selection is cleared and the table reloads. */
-  runBulk(name: BulkOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
+  /** Runs a row action; then the table reloads (replacing what it showed). An action defined with `.input()` takes `{ input }`. */
+  run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome>;
+  /** Runs a bulk action for what is selected; then the selection is cleared and the table reloads. A bulk action defined with `.input()` takes `{ input }`. */
+  runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome>;
   /** The name of a row action's button for `row` ({@link TableLabels.action}). */
   actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
   /** An action of this table is under way. */
@@ -286,8 +287,8 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
       bulk: data.bulk,
       exports: data.exports,
       can: (action, row) => data.actions.some((entry) => entry.name === action) && (row.can as Record<string, boolean>)[action] === true,
-      run: (action, row, runOptions) => track(browser().run(action, row, runOptions)),
-      runBulk: (name, runOptions) => track(browser().runBulk(name, runOptions)),
+      run: (action, row, ...runOptions) => track(browser().run(action, row, ...runOptions)),
+      runBulk: (name, ...runOptions) => track(browser().runBulk(name, ...runOptions)),
       actionLabel: (action, row) => labels.action?.(action, rowLabel(row)) ?? `${action}: ${rowLabel(row)}`,
       pending: running > 0,
       exportUrl: (name) => exportUrl(data, name),

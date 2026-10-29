@@ -267,7 +267,7 @@ up, and only its column goes into the query.
 
 ### Row actions
 
-A row action is a class with `handle(row, ctx)`, built per request through the container:
+A row action is a class with `handle(row, ctx)` (`handle(row, ctx, input)` with [input](#an-action-with-input)), built per request through the container:
 
 ```ts title="modules/members/actions/RemoveMemberLinks.ts"
 import { ProfileLinkRepository } from '#modules/user-profile';
@@ -291,7 +291,7 @@ browser ask first. The endpoint checks, in this order:
 
 1. the table's `authorize`, else 403,
 2. that the action exists, else 404, and is visible, else 403,
-3. the body,
+3. the body, and the action's [input](#an-action-with-input) against its schema, else 422,
 4. that the row is in the **base query**: another tenant's row, a deleted one or a made-up key is a 404,
 5. the action's policy for that row, else 403.
 
@@ -300,13 +300,69 @@ looks the row up by its key, or the column becomes part of the table.
 
 ### Bulk actions
 
-A bulk action is a class with `handle(rows, ctx)`. It acts on the chosen keys **∩ the base query ∩ the policy per row**. Keys that
+A bulk action is a class with `handle(rows, ctx)` (`handle(rows, ctx, input)` with [input](#an-action-with-input)). It acts on the chosen keys **∩ the base query ∩ the policy per row**. Keys that
 are no rows of the table are left out and counted as `missing`, and rows the policy refuses as `skipped`. The handler gets only the
 rest, and none of it runs when nothing is left.
 
 "All matching" sends the table's state, `{ all: true, query }`, never a list of keys. The server parses it again, as strictly as
 the URL, and refuses more rows than the action's `max`, 1000 by default, with a 422. It never acts on a list that was cut short.
 Chosen keys are held to `max` as well.
+
+### An action with input
+
+An action that needs a value from the user, such as a status, a category or a reason, takes it with `.input()`. One action serves
+every value, instead of one action per value:
+
+```ts title="modules/members/tables/MembersTable.ts"
+import { rules as r } from '@marmeon/validation';
+
+export const MembersTable = defineTable({
+  // …
+  bulk: {
+    setLocale: bulk(SetMembersLocale)
+      .authorize(MemberPolicy, 'setLocale')
+      .input(r.object({ locale: r.in(['en', 'de']) })),
+  },
+});
+```
+
+```ts title="modules/members/actions/SetMembersLocale.ts"
+export class SetMembersLocale {
+  // …
+  async handle(members: readonly { readonly id: number }[], _ctx: unknown, input: { readonly locale: 'en' | 'de' }) {
+    // `input` is the schema's output.
+  }
+}
+```
+
+`.input()` takes any [Standard Schema](validation.md), and works the same on `action()` and `bulk()`. The browser sends the values
+along, `table.run('setLocale', row, { input })` or `table.runBulk('setLocale', { input })`. Both are typed from the schema: the
+call needs `input` when the action has a schema and refuses it when it has none. "All matching" sends the input next to the
+state. A form posted without JavaScript names its fields `input[locale]`.
+
+The server validates the input after the table's `authorize`, the action's visibility and the shape of the body, and **before
+any row is read**. A value the schema refuses is a 422 with the errors under `input.<field>` (`input.locale`), and the handler
+does not run. An action without `.input()` that gets an `input` answers 422 as well (`This action takes no input.`), so a field
+that does nothing is never mistaken for one that is checked. A handler's third parameter must fit the schema's output, which the
+table's type check enforces, and a handler that takes an input needs a schema.
+
+A value that has to belong to the request, such as a category of this event, is a rule that asks the database. Build the
+schema per request with a function, whose `resolve` and `ctx` are the request's, like a [request's schema](validation.md#a-schema-built-per-request):
+
+```ts
+bulk(MoveToCategory)
+  .authorize(EventPolicy, 'update')
+  .input(() =>
+    r.object({
+      category: r.integer().exists(CategoryRepository, 'id', {
+        where: (query, ctx: HttpContext<Authenticated, { event: Row<'events'> }>) => query.where('event_id', '=', ctx.params.event.id),
+      }),
+    }),
+  ),
+```
+
+A category of another event is a 422, and nothing is written. An action can also tell values apart by the route's
+`ctx.params.tableBulk` or `ctx.params.tableAction`, with one class or one branch per value.
 
 ### The answer
 
@@ -381,6 +437,7 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | Another tenant's rows | The **base query**: a row action looks its row up there, a bulk action intersects with it, an export reads from it. |
 | An endpoint without the page's protection | `tableRoutes()` runs on the **page's registrar**, with its middleware. A registrar without what the base query needs does not compile. |
 | An action or export open to anyone who sees the table | On a registrar whose checks are all `everyone`, nothing decides who may act on a row key sent in a body: `tableRoutes()` refuses to load a row action, bulk action or export without `.authorize()`. |
+| A value the action does not expect: a status that is none, a category of another event | `.input()`: the schema validates the body's `input` **before any row is read**, with the request's `resolve` and `ctx`, so an `exists` can be limited to the request. An `input` for an action without a schema is a 422. |
 | Keys of rows you may not touch, in a bulk action's body | **Keys ∩ base query ∩ policy per row**: what is left out is counted, never acted on. |
 | "All matching" as a huge or forged list | The **state** is sent, never keys, and parsed again. More rows than `max` is a 422. |
 | A cell a spreadsheet runs, such as `=HYPERLINK(…)` | **Escaping** of every text cell that starts like a formula. |
@@ -490,7 +547,8 @@ function FilterField({ filter }: { filter: TableFilter }) {
 - **The selection** lives with the history entry, in memory, never in `history.state` or the browser's storage. A new sort, filter
   or page starts with nothing selected, and Back brings the old selection back. Leaving the document, by signing out or after a new
   build, forgets it. `table.selectMatching()` selects every matching row, not only those on screen.
-- **Actions** are [action requests](actions.md): `table.run(action, row)` and `table.runBulk(action)`. Afterwards the table's prop
+- **Actions** are [action requests](actions.md): `table.run(action, row)` and `table.runBulk(action)`, with `{ input }` for an action
+  that has an [input](#an-action-with-input). Afterwards the table's prop
   reloads and **replaces** what the page had, also a merged table. A bulk action clears the selection. The action's code loads with
   the table's first run, in a chunk of its own. An action with `.confirm()` asks first, with `labels.confirm` or the run's
   `confirm` option.
@@ -554,7 +612,7 @@ the key 'email' holds text — say how to read it: key: { column: 'email', type:
 'deactivat' is not an ability of this policy — it has deactivate, export, …
 ```
 
-The same goes for a default sort by a hidden column, an action whose handler takes other rows than the table's, a `.visible()`
+The same goes for a default sort by a hidden column, an action whose handler takes other rows than the table's or another input than its schema gives, a `.visible()`
 ability that wants a row, and `tableRoutes()` on a registrar that lacks what the base query needs. A handler's `ctx` is not compared
 with the base query's context, so type it as `TableContext<…>` like the query.
 

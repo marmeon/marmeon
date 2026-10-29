@@ -17,6 +17,9 @@ const HISTORY = [await loadHistoryFallback()];
 type Row = { id: number; name: string; joined: string; email?: string };
 type Members = TableData<Row, 'name' | 'joined' | 'email', 'locale' | 'joined', 'removeLinks', 'removeLinks', 'csv', 'name' | 'joined'>;
 
+/** The same table with actions that take input. */
+type MembersWithInput = TableData<Row, 'name' | 'joined' | 'email', 'locale' | 'joined', 'removeLinks', 'removeLinks', 'csv', 'name' | 'joined', { removeLinks: { reason: string } }, { removeLinks: { reason: string } }>;
+
 const ALL: Row[] = [
   { id: 1, name: 'Ada', joined: '2026-01-01' },
   { id: 2, name: 'Grace', joined: '2026-02-01' },
@@ -278,6 +281,21 @@ describe('the headless table on the client core alone', () => {
     const bulk = requests.find((request) => request.method === 'POST')!;
     expect(bulk.body, '"all matching" sent something else than the table’s state').toEqual({ all: true, query: { 'filter[locale]': 'de' } });
     expect(filtered.selection.matching).toBe(false);
+  });
+
+  it('sends an action\'s input along: { key, input } for a row, { keys | all, input } for bulk — and nothing when there is none', async () => {
+    const table = new TableController(app.navigator, app.navigator.page.props.members as MembersWithInput);
+    await table.run('removeLinks', table.data.rows[1]!, { input: { reason: 'spam' } });
+    expect(requests[0]!.body).toEqual({ key: 2, input: { reason: 'spam' } });
+    requests.length = 0;
+    table.select(table.data.rows[0]!);
+    await table.runBulk('removeLinks', { input: { reason: 'spam' } });
+    expect(requests[0]!.body).toEqual({ keys: [1], input: { reason: 'spam' } });
+    requests.length = 0;
+    const plain = app.table();
+    const first = plain.data.rows[0]!;
+    await plain.run('removeLinks', first);
+    expect(requests[0]!.body).toEqual({ key: first.id });
   });
 
   it('asks before an action defined with .confirm() — a no sends nothing', async () => {

@@ -19,6 +19,9 @@ export default {
   page_of: ', Seite {page} von {lastPage}',
   removed: '{done, plural, =0 {Keine Links entfernt} one {Links von # Mitglied entfernt} other {Links von # Mitgliedern entfernt}}{skipped, plural, =0 {} other {, # ausgelassen}}.',
   remove_failed: 'Die Links konnten nicht entfernt werden — bitte noch einmal versuchen.',
+  locale_set: '{done, plural, =0 {Keine Sprache geändert} one {Sprache von # Mitglied geändert} other {Sprache von # Mitgliedern geändert}}{skipped, plural, =0 {} other {, # ausgelassen}}.',
+  locale_set_failed: 'Die Sprache konnte nicht geändert werden — bitte versuchen Sie es erneut.',
+  set_locale_button: 'Sprache der Ausgewählten ({count}) auf {locale, select, en {Englisch} other {Deutsch}} setzen',
   column: {
     name: 'Name',
     email: 'E-Mail',

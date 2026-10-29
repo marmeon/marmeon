@@ -18,6 +18,9 @@ const en = {
   page_of: ', page {page} of {lastPage}',
   removed: '{done, plural, =0 {No links removed} one {Links of # member removed} other {Links of # members removed}}{skipped, plural, =0 {} other {, # left out}}.',
   remove_failed: 'The links could not be removed — please try again.',
+  locale_set: '{done, plural, =0 {No language changed} one {Language of # member changed} other {Language of # members changed}}{skipped, plural, =0 {} other {, # left out}}.',
+  locale_set_failed: 'The language could not be changed — please try again.',
+  set_locale_button: 'Set the language of the selected ({count}) to {locale, select, en {English} other {German}}',
   column: {
     name: 'Name',
     email: 'E-mail',

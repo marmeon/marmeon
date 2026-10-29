@@ -13,7 +13,7 @@ import type { SortDirection, TableActionResult, TableData } from './index.ts';
 
 /** Any table's props. */
 // oxlint-disable-next-line typescript/no-explicit-any -- the type parameters of the props, whatever they are
-export type AnyTableData = TableData<any, string, string, string, string, string, string>;
+export type AnyTableData = TableData<any, string, string, string, string, string, string, any, any>;
 
 /** A row of table `T`, with its `can`. */
 export type TableRowOf<T extends AnyTableData> = T['rows'][number];
@@ -42,6 +42,14 @@ export interface TableRunOptions {
   /** Aborts the run (it ends `cancelled`). */
   signal?: AbortSignal;
 }
+
+type ActionInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['actions'];
+type BulkInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['bulk'];
+
+/** The options of `run(name, row, options)`: `input` is required for an action defined with `.input()` and refused for any other (optional on an untyped controller). */
+export type ActionRunArgs<T extends AnyTableData, N> = 0 extends 1 & ActionInputs<T> ? [options?: TableRunOptions & { input?: unknown }] : N extends keyof ActionInputs<T> ? [options: TableRunOptions & { input: ActionInputs<T>[N] }] : [options?: TableRunOptions & { input?: never }];
+/** The options of `runBulk(name, options)`: `input` is required for a bulk action defined with `.input()` and refused for any other (optional on an untyped controller). */
+export type BulkRunArgs<T extends AnyTableData, N> = 0 extends 1 & BulkInputs<T> ? [options?: TableRunOptions & { input?: unknown }] : N extends keyof BulkInputs<T> ? [options: TableRunOptions & { input: BulkInputs<T>[N] }] : [options?: TableRunOptions & { input?: never }];
 
 /** What a table controller takes besides the props. See docs/tables.md#in-the-browser. */
 export interface TableControllerOptions {
@@ -307,24 +315,30 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   /** The text `confirm` asks with when an action defined with `.confirm()` runs without one of its own. */
   confirmText = (action: string, rows: number): string => `Run "${action}" for ${rows} ${rows === 1 ? 'row' : 'rows'}?`;
 
-  /** Runs row action `name` for `row` — then the table reloads (replacing what it showed). */
-  run(name: ActionOf<T>, row: TableRowOf<T>, options: TableRunOptions = {}): Promise<TableRunOutcome> {
+  /**
+   * Runs row action `name` for `row` — then the table reloads (replacing what it showed). An action defined with `.input()` takes
+   * its values as `{ input }`; the server validates them (a 422 under `input.<field>`).
+   */
+  run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableRunOutcome> {
+    const options: TableRunOptions & { input?: unknown } = given ?? {};
     const data = this.#data;
     const entry = data.actions.find((action) => action.name === name);
     if (!entry) refuse('[marmeon:C12]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" offers no row action "${String(name)}" to this user — it offers ${list(data.actions.map((action) => action.name))}.`);
-    return this.#run(entry.url, { key: keyOf(data, row) }, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, 1)) : options.confirm, options.signal, false);
+    return this.#run(entry.url, { key: keyOf(data, row), ...(options.input !== undefined ? { input: options.input } : {}) }, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, 1)) : options.confirm, options.signal, false);
   }
 
   /**
    * Runs bulk action `name` for what is selected: the keys ticked, or — every matching row selected — the table's state (`{ all: true,
-   * query }`), never a list of keys. Then the selection is cleared and the table reloads.
+   * query }`), never a list of keys. Then the selection is cleared and the table reloads. A bulk action defined with `.input()` takes
+   * its values as `{ input }`, for "all matching" too.
    */
-  runBulk(name: BulkOf<T>, options: TableRunOptions = {}): Promise<TableRunOutcome> {
+  runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableRunOutcome> {
+    const options: TableRunOptions & { input?: unknown } = given ?? {};
     const data = this.#data;
     const entry = data.bulk.find((action) => action.name === name);
     if (!entry) refuse('[marmeon:C12]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" offers no bulk action "${String(name)}" to this user — it offers ${list(data.bulk.map((action) => action.name))}.`);
     const selected = this.selection;
-    const body = selected.matching ? { all: true, query: data.state } : { keys: selected.keys };
+    const body = { ...(selected.matching ? { all: true, query: data.state } : { keys: selected.keys }), ...(options.input !== undefined ? { input: options.input } : {}) };
     return this.#run(entry.url, body, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, this.selectedCount)) : options.confirm, options.signal, true);
   }
 

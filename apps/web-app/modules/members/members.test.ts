@@ -33,6 +33,8 @@ async function members(user: User, query = ''): Promise<Members> {
   return response.page()!.props.members as Members;
 }
 
+const localeOf = async (user: User) => (await app.make(UserRepository).find(user.id))?.locale ?? null;
+
 const linksOf = async (user: User) => (await app.make(Connections).get().selectFrom('profile_links').select('id').where('user_id', '=', user.id).execute()).length;
 
 describe('the members table (/members) — @marmeon/table in the app', () => {
@@ -140,6 +142,37 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(all.json()).toMatchObject({ done: 1, skipped: 0, missing: 0 });
     expect(await linksOf(grace)).toBe(0);
     await app.actingAs(ada).acting().post('/members/_tables/members/bulk/removeLinks', { json: { all: true, query: { sort: 'password' } } }).assertStatus(400);
+  });
+
+  it('sets the language of many (a bulk action with input): the value is checked before any member is read — nothing changes on a 422', async () => {
+    const asAda = await members(ada);
+    expect(asAda.bulk.map((entry) => entry.name)).toEqual(['removeLinks', 'setLocale']);
+    const set = (user: User, json: unknown) => app.actingAs(user).acting().post('/members/_tables/members/bulk/setLocale', { json });
+    const answer = await set(ada, { keys: [ada.id, alan.id, grace.id], input: { locale: 'de' } }).assertOk();
+    expect(answer.json()).toMatchObject({ done: 2, skipped: 1, missing: 0, data: { updated: 2 } }); // not your own
+    expect([await localeOf(alan), await localeOf(grace)]).toEqual(['de', 'de']);
+    const refused = await set(ada, { keys: [alan.id], input: { locale: 'fr' } }).assertStatus(422);
+    expect(Object.keys((refused.json() as { errors: object }).errors)).toEqual(['input.locale']);
+    await set(ada, { keys: [alan.id] }).assertStatus(422);
+    await set(ada, { all: true, query: {}, input: { locale: 'xx' } }).assertStatus(422);
+    expect(await localeOf(alan)).toBe('de');
+    const all = await set(ada, { all: true, query: { search: 'grace' }, input: { locale: 'en' } }).assertOk();
+    expect(all.json()).toMatchObject({ done: 1 });
+    expect([await localeOf(alan), await localeOf(grace)]).toEqual(['de', 'en']);
+    await app.actingAs(alan).acting().post('/members/_tables/members/bulk/setLocale', { json: { keys: [grace.id], input: { locale: 'de' } } }).assertForbidden();
+    expect(await localeOf(grace)).toBe('en');
+    // The checks come first: a member is refused (403) before the input is looked at — a wrong value is no 422 for them.
+    await set(alan, { keys: [grace.id], input: { locale: 'fr' } }).assertForbidden();
+  });
+
+  it('a form posted without JavaScript: a wrong value goes back (303) with the error flashed under input.locale, and nothing changes', async () => {
+    const form = { 'keys[]': String(alan.id), 'input[locale]': 'fr' };
+    const back = { accept: 'text/html', referer: 'http://localhost/members' };
+    const refused = await app.actingAs(ada).withHeaders(back).post('/members/_tables/members/bulk/setLocale', { form }).assertRedirect('/members');
+    refused.assertInvalid(['input.locale']);
+    expect(await localeOf(alan)).not.toBe('fr');
+    await app.actingAs(ada).withHeaders(back).post('/members/_tables/members/bulk/setLocale', { form: { ...form, 'input[locale]': 'de' } }).assertRedirect('/members').assertValid();
+    expect(await localeOf(alan)).toBe('de');
   });
 
   it('downloads the list as CSV — administrators only, the visible columns, formulas escaped, no-store', async () => {
