@@ -98,6 +98,18 @@ function blockedByNewerTypes(generator: TypeGenerator, { options, output, root }
   return true;
 }
 
+/**
+ * Before anything runs: whether the foreign keys of the migrations give relations that clash — then `db:types` could not follow
+ * the migration, and nothing runs. Like the check above it asks only when development would write the types afterwards.
+ */
+async function blockedByRelations(generator: TypeGenerator, { options, output }: CommandInput): Promise<boolean> {
+  if (options['no-types'] === true || !environment.isDevelopment()) return false;
+  const refusal = await generator.relationsRefusal();
+  if (!refusal) return false;
+  output.error(`${refusal}\nNothing was migrated (--no-types skips this check).`);
+  return true;
+}
+
 /** Runs every pending migration of every module, in one batch, then updates the table types. */
 export class MigrateCommand {
   static command = 'migrate';
@@ -115,7 +127,7 @@ export class MigrateCommand {
   }
 
   async handle(input: CommandInput): Promise<number> {
-    if (!confirmed(input, 'migrate') || blockedByNewerTypes(this.#types, input)) return 1;
+    if (!confirmed(input, 'migrate') || blockedByNewerTypes(this.#types, input) || (await blockedByRelations(this.#types, input))) return 1;
     return underLock(this.#migrator, input, async () => {
       const runs = await this.#migrator.migrate({ onRun: report(input.output, 'Migrated'), ...notices(input.output) });
       if (runs.length === 0) input.output.info('Nothing to migrate.');
@@ -191,7 +203,7 @@ export class MigrateFreshCommand {
   }
 
   async handle(input: CommandInput): Promise<number> {
-    if (!confirmed(input, 'drop every table') || blockedByNewerTypes(this.#types, input)) return 1;
+    if (!confirmed(input, 'drop every table') || blockedByNewerTypes(this.#types, input) || (await blockedByRelations(this.#types, input))) return 1;
     const migrated = await underLock(this.#migrator, input, async () => {
       const connections = await this.#migrator.dropAllTables();
       input.output.info(connections.length === 1 ? 'Dropped all tables.' : `Dropped all tables of the connections ${connections.join(', ')}.`);

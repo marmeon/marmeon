@@ -229,6 +229,14 @@ describe.each(drivers)('Relations from db:types on %s', (driver) => {
       "posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')",
     );
   });
+
+  it('stops on a foreign key without _id with an error that has a code, not a bare one', async () => {
+    const error = await generator('relations-shadowed').render().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('[marmeon:D26]');
+    expect((error as Error).message).toContain('uploads.uploaded_by references users, so its relation would be named "uploaded_by" like the column — name the column uploaded_by_id');
+    await expect(generator('relations-named').render()).resolves.toBeDefined();
+  });
 });
 
 describe.each(drivers)('UUIDv7 columns in db:types on %s', (driver) => {
