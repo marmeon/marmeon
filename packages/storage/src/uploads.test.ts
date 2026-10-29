@@ -8,7 +8,7 @@ import { MemoryDisk } from './drivers/memory.ts';
 import { S3Disk } from './drivers/s3.ts';
 import { NO_TEMPORARY_URLS } from './temporary.ts';
 import { formatBytes, upload, uploadFields } from './uploads/rule.ts';
-import { sniff } from './uploads/sniff.ts';
+import { isPlainText, sniff } from './uploads/sniff.ts';
 import { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';
 
 const bytes = (...values: (number | string)[]) => new Uint8Array(values.flatMap((value) => (typeof value === 'string' ? [...value].map((c) => c.charCodeAt(0)) : [value])));
@@ -65,6 +65,90 @@ describe('sniff — a file’s type by its first bytes, never by its name', () =
   });
 });
 
+const utf16 = (value: string, order: 'le' | 'be', mark = true) => {
+  const out: number[] = mark ? (order === 'le' ? [0xff, 0xfe] : [0xfe, 0xff]) : [];
+  for (const unit of [...value].map((c) => c.charCodeAt(0))) out.push(...(order === 'le' ? [unit & 0xff, unit >> 8] : [unit >> 8, unit & 0xff]));
+  return new Uint8Array(out);
+};
+const withBom = (value: string) => new Uint8Array([0xef, 0xbb, 0xbf, ...text(value)]);
+const CSV = 'name;email\nÄnne;a@example.com\n';
+const MARKUP: [string, string, string][] = [
+  ['HTML', '<!DOCTYPE html><html><script>alert(1)</script></html>', 'text/html'],
+  ['SVG', '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>', 'image/svg+xml'],
+  ['XML', '<?xml version="1.0"?><note/>', 'application/xml'],
+  ['SVG with a doctype', '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg onload="alert(1)"/>', 'image/svg+xml'],
+  ['HTML with a public doctype', '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"><script>alert(1)</script>', 'text/html'],
+];
+const encodings: [string, (value: string) => Uint8Array][] = [
+  ['UTF-8', text],
+  ['UTF-8 with a BOM', withBom],
+  ['UTF-16LE', (value) => utf16(value, 'le')],
+  ['UTF-16BE', (value) => utf16(value, 'be')],
+];
+
+describe('sniff — markup behind a byte order mark', () => {
+  it.each(MARKUP.flatMap(([name, markup, mime]) => encodings.map(([encoding, encode]) => [name, encoding, encode(markup), mime] as const)))('%s in %s is recognised as markup', (_name, _encoding, head, mime) => {
+    expect(sniff(head).mime).toBe(mime);
+  });
+
+  it('keeps UTF-16 text that is no markup as octet-stream', () => {
+    for (const [, encode] of encodings) expect(sniff(encode(CSV)).mime).toBe('application/octet-stream');
+  });
+});
+
+describe('isPlainText — no known format, no markup, no NUL', () => {
+  it('takes text in UTF-8, with a BOM, in Windows-1252 and in UTF-16 with a BOM, and an empty file', () => {
+    for (const [, encode] of encodings) expect(isPlainText(encode(CSV))).toBe(true);
+    expect(isPlainText(new Uint8Array([0x6e, 0x61, 0x6d, 0x65, 0x3b, 0xc4, 0x0a, 0xe4, 0xfc, 0x80]))).toBe(true);
+    expect(isPlainText(new Uint8Array())).toBe(true);
+  });
+
+  it('refuses markup in every encoding', () => {
+    for (const [, markup] of MARKUP) for (const [, encode] of encodings) expect(isPlainText(encode(markup))).toBe(false);
+  });
+
+  it('refuses a format behind a UTF-16 byte order mark and a unit of U+0000 in it — UTF-32 included', () => {
+    const behind = (...header: (number | string)[]) => bytes(0xff, 0xfe, ...header);
+    for (const head of [
+      behind('PK', 3, 4, 0x14, 0, 0, 0, 8, 0),
+      behind('%PDF-1.7\n'),
+      behind(0x7f, 'ELF', 2, 1, 1, 0, 0, 0, 0, 0),
+      behind(0, 0, 0x3c, 0, 0, 0, 'h', 0, 0, 0, 't', 0, 0, 0), // UTF-32LE `<ht…`
+      bytes(0xfe, 0xff, 0, 0x3c, 0, 0, 0, 0x68), // a UTF-16BE unit of zero
+      withBom('%PDF-1.7\n'),
+    ]) {
+      expect(isPlainText(head), [...head.subarray(0, 8)].join()).toBe(false);
+    }
+    expect(isPlainText(utf16(CSV, 'le'))).toBe(true);
+    expect(isPlainText(utf16(CSV, 'be'))).toBe(true);
+  });
+
+  it('refuses a long file whose start is blank — a browser looks further than the start that was read', () => {
+    const blank = new Uint8Array(1024).fill(0x20);
+    expect(isPlainText(blank, 1024)).toBe(true);
+    expect(isPlainText(blank, 1025)).toBe(false);
+    expect(isPlainText(utf16(' \n'.repeat(520), 'le'), 5000)).toBe(false);
+    expect(isPlainText(text('a,b\n'), 5000)).toBe(true);
+  });
+
+  it('refuses a type known by its bytes and anything with a NUL but a UTF-16 byte order mark', () => {
+    for (const head of [
+      bytes(0x89, 'PNG', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0),
+      bytes('PK', 3, 4),
+      text('%PDF-1.7\n'),
+      bytes('ID3', 4, 0),
+      bytes(0x7f, 'ELF', 2, 1, 1, 0, 0, 0),
+      bytes('MZ', 0x90, 0, 3, 0, 0, 0),
+      bytes(0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1),
+      bytes('a,b', 0, 'c'),
+      utf16(CSV, 'le', false),
+      utf16(CSV, 'be', false),
+    ]) {
+      expect(isPlainText(head), [...head.subarray(0, 8)].join()).toBe(false);
+    }
+  });
+});
+
 describe('upload() — the rule of an upload field', () => {
   it('refuses a type it cannot recognise by its bytes and points to the docs for the ones it can', () => {
     for (const mime of ['image/svg+xml', 'application/octet-stream', 'text/plain']) {
@@ -115,6 +199,49 @@ describe('upload() — the rule of an upload field', () => {
       }),
     );
     expect(Object.fromEntries(found)).toEqual({ avatar: rule, cv: rule, 'profile.photo': rule });
+  });
+
+
+  describe('with text: true', () => {
+    const textual = r.object({ file: upload({ maxBytes: 5_000_000, text: true }) });
+    // What the uploads service makes of a file: the type and the text verdict, both from its first bytes.
+    const checked = (head: Uint8Array) => {
+      const { mime, extension } = sniff(head);
+      const file = new TemporaryUpload({ id: 'x', field: 'file', name: 'f', size: head.length, mime, extension, plainText: isPlainText(head) }, { disk: undefined!, key: 'x', consume: async () => true });
+      return (textual['~standard'].validate({ file }) as { issues?: { message: string }[] }).issues?.map((issue) => issue.message);
+    };
+    const refused = ['Only a text file is accepted, such as a CSV.'];
+
+    it('accepts a CSV in UTF-8, with a BOM, in Windows-1252 and in UTF-16 with a BOM', () => {
+      for (const [, encode] of encodings) expect(checked(encode(CSV))).toBeUndefined();
+      expect(checked(new Uint8Array([0x61, 0x3b, 0x62, 0x0a, 0xe4, 0x3b, 0xfc, 0x0a]))).toBeUndefined();
+    });
+
+    it('refuses HTML, SVG and XML in UTF-8, UTF-8 with a BOM, UTF-16LE and UTF-16BE', () => {
+      for (const [, markup] of MARKUP) for (const [, encode] of encodings) expect(checked(encode(markup))).toEqual(refused);
+    });
+
+    it('refuses what has a signature, an executable and a NUL without a UTF-16 byte order mark', () => {
+      for (const head of [bytes(0x89, 'PNG', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0), bytes('PK', 3, 4), text('%PDF-1.7\n'), bytes(0xff, 0xd8, 0xff, 0xe0), bytes(0x7f, 'ELF', 2, 1, 1, 0), bytes('MZ', 0x90, 0, 3, 0), bytes('a,b', 0, 'c'), utf16(CSV, 'le', false)]) {
+        expect(checked(head)).toEqual(refused);
+      }
+    });
+
+    it('takes the text flag from the service, never from the name: an upload built without it is refused', () => {
+      const file = new TemporaryUpload({ id: 'x', field: 'file', name: 'data.csv', size: 3, mime: 'application/octet-stream', extension: 'bin' }, { disk: undefined!, key: 'x', consume: async () => true });
+      expect((textual['~standard'].validate({ file }) as { issues?: unknown[] }).issues).toHaveLength(1);
+    });
+
+    it('is a rule of its own: with mime it is a type error and throws', () => {
+      // @ts-expect-error text and mime are two statements about the same thing
+      expect(() => upload({ maxBytes: 1, text: true, mime: ['image/png'] })).toThrow('upload() takes text or mime, not both');
+      // @ts-expect-error text is true or left out
+      expect(() => upload({ maxBytes: 1, text: false })).toThrow('text: true');
+    });
+
+    it('is found by path with its mark', () => {
+      expect(Object.fromEntries(uploadFields(textual))).toEqual({ file: { maxBytes: 5_000_000, mime: undefined, text: true } });
+    });
   });
 
   const file = () => upload({ maxBytes: 5 });

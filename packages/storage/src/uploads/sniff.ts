@@ -51,17 +51,26 @@ function isoBrands(bytes: Uint8Array): string[] {
   return brands;
 }
 
+/** The encoding a byte order mark at the start names, if there is one. */
+function byteOrderMark(bytes: Uint8Array): 'utf-8' | 'utf-16le' | 'utf-16be' | undefined {
+  if (startsWith(bytes, [0xef, 0xbb, 0xbf])) return 'utf-8';
+  if (startsWith(bytes, [0xff, 0xfe])) return 'utf-16le';
+  if (startsWith(bytes, [0xfe, 0xff])) return 'utf-16be';
+  return undefined;
+}
+
 /**
  * Markup a browser would render, after a BOM and whitespace (the WHATWG MIME sniffing rules' "HTML", plus SVG and XML): a tag
- * like `<html`, `<script`, `<svg`, `<!DOCTYPE html`, `<?xml`, `<!--`.
+ * like `<html`, `<script`, `<svg`, `<!DOCTYPE html`, `<?xml`, `<!--`. A byte order mark names the encoding it is read in (UTF-8,
+ * UTF-16LE, UTF-16BE; none: UTF-8), because a browser reads HTML and SVG behind a UTF-16 mark too.
  */
 function markup(bytes: Uint8Array): ActiveType | undefined {
-  let text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, SNIFF_BYTES));
+  let text = new TextDecoder(byteOrderMark(bytes) ?? 'utf-8', { fatal: false }).decode(bytes.subarray(0, SNIFF_BYTES));
   text = text.replace(/^﻿/, '').replace(/^[\s\0]+/, '').toLowerCase();
   if (/^<svg[\s>/]/.test(text)) return 'image/svg+xml';
   if (text.startsWith('<?xml')) return /<svg[\s>/]/.test(text) ? 'image/svg+xml' : /<html[\s>/]|<script[\s>/]/.test(text) ? 'text/html' : 'application/xml';
-  if (/^<(!doctype html|html|head|body|script|iframe|h1|div|font|table|a|style|title|b|br|p|img|object|embed|!--)[\s>/!]/.test(text)) {
-    return /<svg[\s>/]/.test(text.slice(0, 200)) && !/<html[\s>/]/.test(text) ? 'image/svg+xml' : 'text/html';
+  if (/^<(!doctype|html|head|body|script|iframe|h1|div|font|table|a|style|title|b|br|p|img|object|embed|!--)[\s>/!]/.test(text)) {
+    return /<svg[\s>/]/.test(text) && !/<html[\s>/]/.test(text) ? 'image/svg+xml' : 'text/html';
   }
   return undefined;
 }
@@ -99,6 +108,28 @@ export function sniff(bytes: Uint8Array): Sniffed {
   const active = markup(bytes);
   if (active) return { mime: active, extension: active === 'text/html' ? 'html' : active === 'image/svg+xml' ? 'svg' : 'xml' };
   return { mime: 'application/octet-stream', extension: 'bin' };
+}
+
+/**
+ * Whether a file passes as text, by its first bytes: {@link sniff} finds no type for it, also not behind a byte order mark,
+ * and no byte is `0x00` — behind a UTF-16 byte order mark no 16-bit unit is. What `upload({ text: true })` accepts; an empty
+ * file is text. A script (shell, JavaScript, PostScript) is text too: this says the file is no known binary format and no
+ * markup, not that its content is harmless. `size` is the file's size when `bytes` are only its start: a long file whose
+ * start is blank cannot be judged by it (a browser looks further than {@link SNIFF_BYTES}) and is refused.
+ */
+export function isPlainText(bytes: Uint8Array, size = bytes.length): boolean {
+  if (sniff(bytes).mime !== 'application/octet-stream') return false;
+  const encoding = byteOrderMark(bytes);
+  const start = encoding === undefined ? 0 : encoding === 'utf-8' ? 3 : 2;
+  // A signature behind the mark is still that format for a reader that skips junk (a PDF reader does).
+  if (start > 0 && sniff(bytes.subarray(start)).mime !== 'application/octet-stream') return false;
+  const head = bytes.subarray(start, SNIFF_BYTES);
+  if (size > SNIFF_BYTES && head.every((byte) => byte === 0 || (byte >= 0x09 && byte <= 0x0d) || byte === 0x20)) return false;
+  if (encoding === 'utf-16le' || encoding === 'utf-16be') {
+    for (let at = 0; at + 1 < head.length; at += 2) if (head[at] === 0 && head[at + 1] === 0) return false;
+    return true;
+  }
+  return !head.includes(0x00);
 }
 
 /** Whether `mime` is a type a browser would run script in. */

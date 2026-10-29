@@ -354,6 +354,7 @@ declare const en: {
             readonly used: 'This file was saved already — choose it again.';
             readonly max: 'The file may be at most {max}.';
             readonly type: 'This type of file is not accepted (allowed: {types}).';
+            readonly text: 'Only a text file is accepted, such as a CSV.';
         };
         readonly more: '(and {count, plural, one {# more error} other {# more errors}})';
         readonly required: 'The {attribute} field is required.';

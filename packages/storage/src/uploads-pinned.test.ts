@@ -84,6 +84,21 @@ describe('an uploaded S3 object is pinned by its ETag from the check to the stor
     return { disk, uploads, token, id: token.slice(3, 39) };
   }
 
+  it('the service marks a file as text only when it is nothing but text — a CSV, not UTF-16 HTML or a PNG', async () => {
+    const encode = (value: string, bom: number[]) => Uint8Array.from([...bom, ...[...value].flatMap((c) => [c.charCodeAt(0), 0])]);
+    for (const [head, text] of [
+      [new TextEncoder().encode('a;b\n1;2\n'), true],
+      [encode('a,b\n', [0xff, 0xfe]), true],
+      [encode('<html><script>alert(1)</script>', [0xff, 0xfe]), false],
+      [PNG, false],
+    ] as const) {
+      const fake = new FakeS3();
+      const { uploads, token, id } = await target(fake, head.byteLength);
+      fake.post('uploads', id, head);
+      expect(upload(await uploads.resolve(token, SCOPE)).plainText).toBe(text);
+    }
+  });
+
   it('a second POST to the policy after the check: store() refuses and nothing lands', async () => {
     const fake = new FakeS3();
     const { uploads, token, id } = await target(fake);

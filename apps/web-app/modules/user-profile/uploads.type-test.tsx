@@ -22,6 +22,10 @@ export function serverTypes(ctx: ContextOf<typeof UpdateAvatarRequest>) {
   upload({ maxBytes: 1_000_000, mime: ['image/svg+xml'] });
   // @ts-expect-error — not a type at all
   upload({ maxBytes: 1_000_000, mime: ['text/csv'] });
+
+  upload({ maxBytes: 1_000_000, text: true });
+  // @ts-expect-error — text and mime are two statements about the same file
+  upload({ maxBytes: 1_000_000, text: true, mime: ['image/png'] });
 }
 
 /** In the browser: the field holds an Upload (or nothing yet); `form.field()` only for upload fields. */

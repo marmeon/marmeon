@@ -37,6 +37,7 @@ export default {
       used: 'Diese Datei wurde schon gespeichert — bitte noch einmal wählen.',
       max: 'Die Datei darf höchstens {max} groß sein.',
       type: 'Dieser Dateityp ist nicht erlaubt (erlaubt: {types}).',
+      text: 'Es ist nur eine Textdatei erlaubt, zum Beispiel eine CSV-Datei.',
     },
     more: '(und {count, plural, one {# weiterer Fehler} other {# weitere Fehler}})',
     // Die Regeln von @marmeon/validation.

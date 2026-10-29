@@ -274,6 +274,11 @@ export declare function serveFile(disk: Disk, key: string, request: Request, opt
 export declare function upload<const M extends string = UploadMime>(options: {
     readonly maxBytes: number;
     readonly mime?: readonly CheckUploadMime<M>[];
+    readonly text?: never;
+} | {
+    readonly maxBytes: number;
+    readonly text: true;
+    readonly mime?: never;
 }): UploadSchema;
 // uploadsTableConnection
 export declare function uploadsTableConnection(container: Resolver): string;
