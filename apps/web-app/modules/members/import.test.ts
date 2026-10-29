@@ -65,7 +65,7 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
     const preview = async (as: TestApp) => {
       const token = await as.upload(ROUTE, 'file', new File([windows1252(CSV)], 'members.csv', { type: 'text/csv' }));
       const response = await send(as, token);
-      return { response, id: (response.flashed().find((message) => message.key === 'toast')!.data as { confirm: string }).confirm };
+      return { response, id: (response.flashed().find((message) => message.key === 'memberImport')!.data as { id: string }).id };
     };
 
     it('shows the count, keeps the file for the session, and the confirmation takes it over once and drops the file', async () => {
@@ -73,6 +73,8 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
       const { response, id } = await preview(as);
       response.assertRedirect('/members').assertFlashed('toast', { message: '2 rows read, 1 to correct.' });
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
+      response.assertFlashed('memberImport', { id, rows: 2 });
+      expect(response.flashed().find((message) => message.key === 'toast')!.data, 'the toast carries only what it shows').toEqual({ kind: 'info', message: '2 rows read, 1 to correct.' });
       (await confirm(as, id)).assertRedirect('/members').assertFlashed('toast', { kind: 'success', message: '1 row taken over.' });
       expect(app.storage.disk('uploads').files()).toEqual([]);
       (await confirm(as, id)).assertNotFound();

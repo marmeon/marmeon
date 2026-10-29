@@ -43,7 +43,7 @@ async function checkRows(file: TemporaryUpload, translator: Translator): Promise
 
 /**
  * The first step of the import: reads the file and shows what it holds. A file that passes is kept for 30 minutes — it stays bound to the
- * session — and its id goes to the next page in the toast's `confirm`, for {@link ConfirmMemberImportController}.
+ * session — and its id goes to the next page in the `memberImport` flash, for {@link ConfirmMemberImportController}.
  */
 export class ImportMembersController extends Controller {
   static request = ImportMembersRequest;
@@ -61,7 +61,8 @@ export class ImportMembersController extends Controller {
     const id = await ctx.body.file.keep({ scope: IMPORT_SCOPE, minutes: CONFIRM_WITHIN_MINUTES });
     return this.redirect()
       .route('members.index')
-      .flash('toast', { kind: checked.invalid === 0 ? 'success' : 'info', message: this.#translator.get('members.imported', checked), confirm: id });
+      .flash('toast', { kind: checked.invalid === 0 ? 'success' : 'info', message: this.#translator.get('members.imported', checked) })
+      .flash('memberImport', { id, rows: checked.rows });
   }
 }
 

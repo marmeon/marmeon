@@ -31,7 +31,7 @@ export class FlashingController extends Controller {
 export function Toasts() {
   // The data is the declared type.
   useFlash('toast', (toast, message) => {
-    expectTypeOf(toast).toEqualTypeOf<{ kind: 'success' | 'error' | 'info'; message: string; confirm?: string }>();
+    expectTypeOf(toast).toEqualTypeOf<{ kind: 'success' | 'error' | 'info'; message: string }>();
     expectTypeOf(message.id).toEqualTypeOf<string>();
   });
   // Argument of type '"tost"' is not assignable to parameter of type '"'tost' is not a flash key — the app declares toast (…)"'.
