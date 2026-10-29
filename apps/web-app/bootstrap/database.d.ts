@@ -90,6 +90,22 @@ declare module '@marmeon/database' {
       updated_at: Generated<Timestamp>;
     };
     /**
+     * Owned by `lab`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: (survey, name).
+     */
+    lab_survey_questions: {
+      id: Generated<string>;
+      survey: string;
+      name: string;
+      label: string;
+      required: Generated<boolean>;
+      position: Generated<number>;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
      * Owned by `user-profile`.
      * Primary key: user_id.
      * Foreign key: user_id -> users.id (on delete cascade).
@@ -345,6 +361,7 @@ declare module '@marmeon/database' {
     failed_jobs: 'uuid';
     jobs: 'id';
     lab_one_time_links: 'id';
+    lab_survey_questions: 'id';
     login_activity: 'user_id';
     notification_opt_outs: 'user_id';
     notifications: 'id';
@@ -367,6 +384,7 @@ declare module '@marmeon/database' {
     failed_jobs: 'system';
     jobs: 'system';
     lab_one_time_links: 'lab';
+    lab_survey_questions: 'lab';
     login_activity: 'user-profile';
     notification_opt_outs: 'notifications';
     notifications: 'system';

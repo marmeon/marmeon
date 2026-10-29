@@ -95,7 +95,8 @@ export class StoreNoteController extends Controller {
 ```
 
 Invalid input is a 422 with the errors per field for a JSON client, and a redirect back to the form with the errors and the old
-input for a page. The [validation](validation.md) page covers the rules and their messages.
+input for a page. The [validation](validation.md) page covers the rules and their messages, and shows a
+[schema built per request](validation.md#a-schema-built-per-request) for a form whose fields are rows.
 
 ## The query string
 

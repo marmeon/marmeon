@@ -268,7 +268,7 @@ export interface RequestContext<TParams extends object = EmptyObject> extends Re
 }
 // RequestDefinition
 export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx = any, TQuery extends StandardSchemaV1 = any> {
-    readonly schema?: TSchema | SchemaFactory<TSchema> | undefined;
+    readonly schema?: TSchema | SchemaFactory<TSchema, TCtx> | undefined;
     readonly query?: TQuery | undefined;
     readonly queryOptions?: QueryOptions | undefined;
     readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
@@ -415,11 +415,11 @@ export declare class Router {
 export interface Routes {
 }
 // SchemaFactory
-export type SchemaFactory<TSchema extends StandardSchemaV1> = (resolve: ClassResolver) => TSchema;
+export type SchemaFactory<TSchema extends StandardSchemaV1, TCtx = HttpContext> = (resolve: ClassResolver, ctx: TCtx) => TSchema | Promise<TSchema>;
 // SchemaOf
 export type SchemaOf<R> = R extends {
     readonly schema?: infer S;
-} ? S extends StandardSchemaV1 ? S : S extends (resolve: never) => infer Built ? Built extends StandardSchemaV1 ? Built : never : never : never;
+} ? S extends StandardSchemaV1 ? S : S extends (...args: never[]) => infer Built ? Awaited<Built> extends infer Schema extends StandardSchemaV1 ? Schema : never : never : never;
 // Simplify
 export type Simplify<T> = {
     [K in keyof T]: T[K];
@@ -496,7 +496,7 @@ export declare function addVary(headers: Readonly<Record<string, string>> | unde
 export declare function defineMiddleware<TAdds extends object & NoReservedKeys = EmptyObject, TRequires extends object = EmptyObject>(name: string, handle: Middleware<TRequires, TAdds>['handle'], options?: DefineMiddlewareOptions<TAdds>): Middleware<TRequires, TAdds>;
 // defineRequest
 export declare function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TCtx = HttpContext>(definition: {
-    schema?: TSchema | SchemaFactory<TSchema>;
+    schema?: TSchema | SchemaFactory<TSchema, TCtx>;
     query?: CheckQuery<TQuery>;
     queryOptions?: QueryOptions;
     authorize?: (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;

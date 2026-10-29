@@ -205,6 +205,7 @@ declare module '@marmeon/http/page' {
     'lab/OneTimeLink': true;
     'lab/RenderError': true;
     'lab/Streaming': true;
+    'lab/Survey': true;
     'lab/Validation': true;
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;
