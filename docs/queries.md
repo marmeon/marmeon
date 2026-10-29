@@ -235,6 +235,8 @@ an `insertInto(…).onConflict(…)`.
 | `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at`. |
 | `tryInsert(values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index already holds the values. Its `columns` name that index's columns. |
 | `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. A `duplicate` has `columns` too. |
+| `insertMany(rows)` | The number of rows inserted. No rows come back. Throws on a unique violation, like `insert()`, with none of the rows written. |
+| `tryInsertMany(rows)` | `ok(count)`, or an `err` of kind `duplicate` when a unique index already holds a value of any row, with `columns` like `tryInsert()`. |
 | `delete(id)` | Whether there was a row. With soft deletes, it sets `deleted_at`. |
 | `forceDelete(id)` | Whether there was a row. It deletes for real, soft deletes or not. |
 | `restore(id)` | Whether there was a soft-deleted row to bring back (`false` for a row that is not deleted). It clears `deleted_at`. |
@@ -282,6 +284,21 @@ export class UserRepository extends Repository<'users'> {
 
 To answer a form with "taken" at its field instead, wrap the write in `failOnDuplicate()`. The
 [validation](validation.md#the-unique-index-is-the-truth) page shows it.
+
+`insertMany()` and `tryInsertMany()` are for an import of thousands of rows. Both cut them into statements the driver accepts, since one statement takes at most
+65 535 parameters on Postgres and 32 766 on SQLite (a row of two columns: about 32 000 and 16 000 rows), and writes all of them in one
+transaction, or in a savepoint inside an open one. When the third of five chunks fails, the first two are rolled back with it: all rows
+or none. `insertMany()` throws on a duplicate in any chunk, as `insert()` does. `tryInsertMany()` returns the same `err` as `tryInsert()`, with
+`columns`; the transaction around it stays usable, and returning the `err` from its callback rolls it back. Any other failure throws. Every row needs the same columns, and at least one, else a
+`TypeError` names the row that differs; an empty list is `0` (`ok(0)`) without a statement. No rows come back: they would be one result of
+the size of the whole import, held in memory. Read them with a query when you need them, or use `insert()` for each when the ids are
+what you want.
+
+```ts
+const imported = await members.tryInsertMany(rows.map((row) => ({ name: row.name, email: row.email })));
+if (!imported.ok) return err({ kind: 'email-taken' }); // none of the rows was written
+return ok(imported.value);
+```
 
 ### Route binding
 
