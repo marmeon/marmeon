@@ -354,6 +354,11 @@ export type PrimaryKeyOf<T extends keyof DB, DB = Tables> = T extends keyof Prim
 // PrimaryKeys
 export interface PrimaryKeys {
 }
+// ProjectedCheck
+export interface ProjectedCheck {
+    readonly name: string;
+    readonly sql: string;
+}
 // ProjectedColumn
 export interface ProjectedColumn {
     readonly name: string;
@@ -700,11 +705,6 @@ export type OwnedTables<All, Owners, M extends string> = {
 };
 // PageSizes
 type PageSizes<P extends number> = P | readonly [P, ...P[]];
-// ProjectedCheck
-export interface ProjectedCheck {
-    readonly name: string;
-    readonly sql: string;
-}
 // READ_METHODS
 export declare const READ_METHODS: readonly ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynamic', 'isTransaction'];
 // RawStatements
