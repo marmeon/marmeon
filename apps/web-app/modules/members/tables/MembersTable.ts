@@ -19,10 +19,11 @@ export const MembersTable = defineTable({
     db.selectFrom('users').withCount('profile_links', { as: 'links' }).where('users.email_verified_at', 'is not', null),
   key: 'users.id',
   columns: {
-    name: column('users.name').sortable().searchable(),
-    email: column('users.email').visible(MemberPolicy, 'viewEmails').sortable().searchable(),
-    joined: column('users.created_at').sortable(),
-    links: column('links').sortable(),
+    // Headings in the request's language, in the props and in the export.
+    name: column('users.name').label((t) => t('members.column.name')).sortable().searchable(),
+    email: column('users.email').label((t) => t('members.column.email')).visible(MemberPolicy, 'viewEmails').sortable().searchable(),
+    joined: column('users.created_at').label((t) => t('members.column.joined')).sortable(),
+    links: column('links').label((t) => t('members.column.links')).sortable(),
   },
   filters: {
     joined: filter.dateRange('users.created_at'),
@@ -46,7 +47,8 @@ export const MembersTable = defineTable({
     // One action for every value: the language comes with the request and is checked before any member is read.
     setLocale: bulk(SetMembersLocale).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'setLocale').input(r.object({ locale: r.in(['en', 'de']) })).max(100),
   },
-  export: { csv: exportCsv().authorize(MemberPolicy, 'export').onExport(RecordMembersExport) },
+  // A German spreadsheet reads a semicolon as the column break (its decimal sign is the comma).
+  export: { csv: exportCsv().authorize(MemberPolicy, 'export').delimiter((_ctx, _resolve, translator) => (translator?.locale === 'de' ? ';' : ',')).onExport(RecordMembersExport) },
 });
 
 /** A row of the table as actions and policies get it: the key and the visible columns. */

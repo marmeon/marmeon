@@ -68,7 +68,7 @@ export declare class ColumnDefinition<R extends string = string, S extends boole
     readonly ref: R;
     sortable(): ColumnDefinition<R, true, Q, V>;
     searchable(): ColumnDefinition<R, S, true, V>;
-    label(text: string): ColumnDefinition<R, S, Q, V>;
+    label(text: string | ((t: TableText) => string)): ColumnDefinition<R, S, Q, V>;
     visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): ColumnDefinition<R, S, Q, true>;
     visible(check: TableVisibilityCheck): ColumnDefinition<R, S, Q, true>;
 }
@@ -263,6 +263,8 @@ export interface TableData<R extends object = Record<string, unknown>, C extends
     readonly bulk: readonly TableBulkEntry<B>[];
     readonly exports: readonly TableExportEntry<E>[];
 }
+// TableDelimiterChoice
+export type TableDelimiterChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => CsvDelimiter | Promise<CsvDelimiter>;
 // TableExport
 export declare class TableExport {
     readonly format: 'csv';
@@ -270,6 +272,7 @@ export declare class TableExport {
     authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
     authorize(check: TableVisibilityCheck): TableExport;
     onExport(Recorder: ExportRecorderClass): TableExport;
+    delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport;
 }
 // TableExportEntry
 export interface TableExportEntry<E extends string = string> {
@@ -371,6 +374,8 @@ export declare class TableServiceProvider implements ServiceProvider {
     boot(app: Application): void;
     register(container: Container): void;
 }
+// TableText
+export type TableText = (key: string, params?: Readonly<Record<string, unknown>>) => string;
 // TableVisibilityCheck
 export type TableVisibilityCheck = (ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>;
 // action

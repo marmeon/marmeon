@@ -1,6 +1,7 @@
 import { Encrypter } from '@marmeon/encryption';
 import { readdirSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readCsv } from './csv-read.ts';
 import { drivers, tableApp, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
 
 let open: TableTestApp | undefined;
@@ -25,6 +26,12 @@ async function seed(application: TableTestApp, driver: TestDriver): Promise<void
     .execute();
 }
 
+/** Fixtures of an export's choice on the same data: the export's key in the ledger table, the file, its delimiter. */
+const CASES = [
+  ['semicolon', 'v1-semicolon.csv', ';'],
+  ['tab', 'v1-tab.csv', '\t'],
+] as const;
+
 describe.each(drivers)('frozen formats of the table package on %s', (driver) => {
   it('writes the CSV export byte for byte as the newest fixture of csv/ holds it — and names the file by the day', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-06T08:00:00Z') });
@@ -36,16 +43,33 @@ describe.each(drivers)('frozen formats of the table package on %s', (driver) => 
     const bytes = Buffer.from(await response.arrayBuffer());
 
     const directory = new URL('./__fixtures__/formats/csv/', import.meta.url);
-    const names = readdirSync(directory).filter((name) => name.endsWith('.csv'));
+    // `v<N>.csv`: the default export. A file of another name shows a choice of the export (its delimiter) on the same data.
+    const names = readdirSync(directory).filter((name) => /^v\d+\.csv$/.test(name));
     expect(names).toEqual(expect.arrayContaining(['v1.csv']));
     // The newest version is what the code writes; an older one stays in the directory, and keeps the form of its time.
     const newest = names.toSorted().at(-1)!;
     expect(bytes.toString('hex'), newest).toBe(readFileSync(new URL(newest, directory)).toString('hex'));
+    // Every file is either a version of the default export or a case below: nothing in the directory goes unchecked.
+    expect(readdirSync(directory).toSorted()).toEqual([...names, ...CASES.map(([, name]) => name)].toSorted());
     for (const name of names) {
       const text = readFileSync(new URL(name, directory)).toString('utf8');
       expect(text.startsWith('﻿"Note","qty","amount","paid","booked","meta","formula"\r\n'), `${name}: BOM and the header`).toBe(true);
       expect(text.endsWith('\r\n'), `${name}: CRLF`).toBe(true);
     }
+  });
+
+  it.each(CASES)('writes the %s export byte for byte as its fixture holds it — the same cells as the default, one separator in their place', async (which, name, delimiter) => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-06T08:00:00Z') });
+    open = await tableApp(driver);
+    await seed(open, driver);
+    const bytes = Buffer.from(await (await open.request(`/teams/1/_tables/ledger/export/${which}`, { user: ADA })).arrayBuffer());
+    const directory = new URL('./__fixtures__/formats/csv/', import.meta.url);
+    expect(bytes.toString('hex'), name).toBe(readFileSync(new URL(name, directory)).toString('hex'));
+    // Only the separator differs: read back with the delimiter, the cells are the default export's.
+    const read = readCsv(bytes, { delimiter: delimiter as ';' });
+    const base = readCsv(readFileSync(new URL('v1.csv', directory)), { delimiter: ',' });
+    if (!read.ok || !base.ok) throw new Error('a fixture did not read');
+    expect({ headers: read.value.headers, rows: read.value.rows }, name).toEqual({ headers: base.value.headers, rows: base.value.rows });
   });
 
   it('opens every cursor fixture: the context it is sealed under and the payload of the feed table', async () => {

@@ -8,6 +8,8 @@
  * {@link unescapeCsvCell} gives every exported text back exactly as it was.
  */
 
+import type { CsvDelimiter } from './csv-read.ts';
+
 /** Byte order mark: spreadsheets read the file as UTF-8 (umlauts) only with it. */
 export const CSV_BOM = '﻿';
 
@@ -68,7 +70,16 @@ export function unescapeCsvCell(text: string): string {
   return quotedFormula(text) ? text.slice(1) : text;
 }
 
-/** A line of cells, ended by CRLF. */
-export function csvLine(values: readonly unknown[]): string {
-  return `${values.map(csvCell).join(',')}\r\n`;
+/** The separators an export may use — the ones {@link readCsv} detects: nothing else is a delimiter, so none can be a quote, a line break or a formula sign. */
+export const CSV_DELIMITERS: readonly CsvDelimiter[] = [',', ';', '\t'];
+
+/** Whether `value` is one of the separators an export may use. */
+export function isCsvDelimiter(value: unknown): value is CsvDelimiter {
+  return typeof value === 'string' && (CSV_DELIMITERS as readonly string[]).includes(value);
+}
+
+/** A line of cells, ended by CRLF. Every cell is quoted, so a separator inside a cell is no separator. */
+export function csvLine(values: readonly unknown[], delimiter: CsvDelimiter = ','): string {
+  if (!isCsvDelimiter(delimiter)) throw new TypeError(`csvLine(): the delimiter is "," ";" or a tab, not ${JSON.stringify(delimiter)}.`);
+  return `${values.map(csvCell).join(delimiter)}\r\n`;
 }

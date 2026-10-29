@@ -2,13 +2,14 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
 import { cursorPaginate, outsideTransaction, paginate, sql, type Connection, type CursorEncrypter, type SelectQuery } from '@marmeon/database';
 import { leaveOutSelections, selectionsOf } from '@marmeon/database/internal';
+import type { Translator } from '@marmeon/core';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
 import { fillPath, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
-import { csvLine, CSV_BOM } from './csv.ts';
+import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
 import { isSchema, normalizeOptions, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableExportInfo, type TableProps, type TableVisibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
 
@@ -42,6 +43,8 @@ interface View {
   readonly actions: readonly (readonly [string, AnyRowAction])[];
   readonly bulk: readonly (readonly [string, AnyBulkAction])[];
   readonly exports: readonly (readonly [string, TableExport])[];
+  /** A column's label for this request: its text, or its function asked once with the request's translator; `null` without one. */
+  readonly label: (column: AnyColumn) => string | null;
   /** The options a select or `has` filter allows for this request — computed once, on first ask; `undefined` for a filter without options. */
   readonly options: (name: string) => Promise<ResolvedOptions | undefined>;
 }
@@ -87,15 +90,17 @@ export class DataTables {
   readonly #router: Router;
   readonly #encrypter: () => CursorEncrypter;
   readonly #metadata: (() => RelationMetadata) | undefined;
+  readonly #translator: () => Translator | undefined;
 
   /** @internal — the container builds it (`TableServiceProvider`); an app injects `DataTables`. */
-  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata) {
+  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata, translator: () => Translator | undefined = () => undefined) {
     this.#db = db;
     this.#gate = gate;
     this.#resolve = resolve;
     this.#router = router;
     this.#encrypter = encrypter;
     this.#metadata = metadata;
+    this.#translator = translator;
   }
 
   /**
@@ -146,7 +151,7 @@ export class DataTables {
       columns: view.columns.map(
         ([name, col]): TableColumn => ({
           name,
-          label: col.text,
+          label: view.label(col),
           sortable: col.isSortable,
           searchable: col.isSearchable,
           sort: state.sort?.column === name ? state.sort.direction : null,
@@ -282,6 +287,8 @@ export class DataTables {
     const state = parseState(definition, new URL(ctx.request.url).searchParams);
     await checkState(definition, state, view);
     const filtered = this.#filtered(definition, ctx, state, view);
+    // Before the count and the record: an answer that is no delimiter fails the export with nothing written down.
+    const delimiter = await this.#delimiter(entry, ctx);
     // Its limit first (one count): an export over it is refused before a byte is streamed — never a file cut short.
     const { count } = (await this.#db
       .selectFrom(filtered.select(sql<number>`1`.as('row')).as('exported'))
@@ -296,7 +303,7 @@ export class DataTables {
       const info: TableExportInfo = { table: definition.name, export: name, rows: Number(count), columns: names, state: { sort: state.sort && { ...state.sort }, search: state.search, filters: { ...state.filters } } };
       await (this.#resolve(entry.recorder) as { handle(info: TableExportInfo, ctx: unknown): unknown }).handle(info, ctx);
     }
-    const header = csvLine(view.columns.map(([alias, col]) => col.text ?? alias));
+    const header = csvLine(view.columns.map(([alias, col]) => view.label(col) ?? alias), delimiter);
     // Batch after batch by the key (keyset), never by OFFSET: each goes on after the last row written — in the table's order, then
     // the key — so a row deleted or added meanwhile shifts no later row out of the file or into it twice.
     const keyName = keyNameOf(definition);
@@ -314,7 +321,7 @@ export class DataTables {
         name: `table-export:${definition.name}`,
       });
     const encoder = new TextEncoder();
-    const lines = (batchRows: readonly Row[]) => batchRows.map((row) => csvLine(names.map((alias) => row[alias]))).join('');
+    const lines = (batchRows: readonly Row[]) => batchRows.map((row) => csvLine(names.map((alias) => row[alias]), delimiter)).join('');
     // The first batch before the answer: a failing query is an error page, not a cut-off file.
     const first = await batch(null);
     // Later batches run once the handler has answered — a framework boundary: in the request's context (its log context, its
@@ -364,6 +371,13 @@ export class DataTables {
     }
   }
 
+  /** The separator of this request's file: the export's own, or the answer of its function — checked, a refusal is an error before any byte. */
+  async #delimiter(entry: TableExport, ctx: HttpContext) {
+    const chosen = typeof entry.separator === 'function' ? await entry.separator(ctx, this.#resolve, this.#translator()) : entry.separator;
+    if (!isCsvDelimiter(chosen)) throw new TypeError(`exportCsv().delimiter(…) answered ${JSON.stringify(chosen)}: "," ";" or a tab.`);
+    return chosen;
+  }
+
   /** What this request may see — each visibility asked once. */
   async #view(definition: TableDefinition, ctx: HttpContext): Promise<View> {
     const answers = new Map<TableVisibility, Promise<boolean>>();
@@ -387,7 +401,18 @@ export class DataTables {
     // (`has` reads a related row's column, not one of the table's.)
     const filters = (await keep(definition.filters)).filter(([, filter]) => filter.type === 'has' || !hidden.some((col) => sameColumn(col.ref, filter.ref)));
     const options = new Map<string, Promise<ResolvedOptions | undefined>>();
+    // A label function asks the translator at its first use, after the locale middleware ran; once per column.
+    const labels = new Map<AnyColumn, string | null>();
+    const label = (col: AnyColumn): string | null => {
+      if (typeof col.text !== 'function') return col.text;
+      if (!labels.has(col)) {
+        const translator = this.#translator();
+        labels.set(col, col.text((key, params) => translator?.text(key, params) ?? key));
+      }
+      return labels.get(col)!;
+    };
     return {
+      label,
       columns,
       filters,
       options: (name) => {

@@ -199,11 +199,23 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     response.assertHeader('cache-control', 'no-store');
     expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="members-\d{4}-\d{2}-\d{2}\.csv"$/);
     const lines = response.body.replace(/^﻿/, '').split('\r\n');
-    expect(lines[0]).toBe('"name","email","joined","links"');
+    expect(lines[0]).toBe('"Name","E-mail","Joined","Links"');
     expect(lines[1], 'a formula reached the CSV').toMatch(/^"'=HYPERLINK\(""https:\/\/evil\.example"",""Grace""\)","grace@example\.com",/);
     expect(lines).toHaveLength(5);
     await app.actingAs(alan).get('/members/_tables/members/export/csv').assertForbidden();
     expect((await members(alan)).exports).toEqual([]);
+  });
+
+  it('downloads the list with headings and separator in the request\'s language — German with a semicolon, the props with the same headings', async () => {
+    await app.make(UserRepository).update(grace.id, { name: 'Grace; Hopper, "RADM"' });
+    const german = await app.actingAs(ada).withHeaders({ 'accept-language': 'de' }).get('/members/_tables/members/export/csv?sort=name').assertOk();
+    const lines = german.body.replace(/^﻿/, '').split('\r\n');
+    expect(lines[0]).toBe('"Name";"E-Mail";"Beigetreten";"Links"');
+    expect(lines.find((line) => line.includes('Hopper')), 'a separator or quote in a cell broke the quoting').toMatch(/^"Grace; Hopper, ""RADM""";"grace@example\.com";/);
+    const english = await app.actingAs(ada).withHeaders({ 'accept-language': 'en' }).get('/members/_tables/members/export/csv?sort=name').assertOk();
+    expect(english.body.replace(/^﻿/, '').split('\r\n')[0]).toBe('"Name","E-mail","Joined","Links"');
+    const props = (await app.actingAs(ada).withHeaders({ 'accept-language': 'de' }).navigating().get('/members').assertOk()).page()!.props.members as Members;
+    expect(props.columns.map((column) => column.label)).toEqual(['Name', 'E-Mail', 'Beigetreten', 'Links']);
   });
 
   it('renders accessible markup: a caption, aria-sort on the sorted heading only, named checkboxes and buttons, a live region', async () => {
