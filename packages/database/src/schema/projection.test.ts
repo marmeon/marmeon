@@ -357,6 +357,7 @@ const GROUPS: Record<string, string[]> = {
   plurals: ['plurals'],
   uuids: ['uuids'],
   'slug-keys': ['slug-keys'],
+  tenancy: ['tenancy'],
   system: ['system'],
   elsewhere: ['elsewhere'],
   'lock-lost': ['lock-lost'],

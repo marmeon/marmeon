@@ -233,8 +233,8 @@ an `insertInto(…).onConflict(…)`.
 | --- | --- |
 | `insert(values)` | The row as stored, with its id and defaults. Secret columns are not in it. |
 | `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at`. |
-| `tryInsert(values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index already holds the values. |
-| `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. |
+| `tryInsert(values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index already holds the values. Its `columns` name that index's columns. |
+| `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. A `duplicate` has `columns` too. |
 | `delete(id)` | Whether there was a row. With soft deletes, it sets `deleted_at`. |
 | `forceDelete(id)` | Whether there was a row. It deletes for real, soft deletes or not. |
 | `restore(id)` | Whether there was a soft-deleted row to bring back (`false` for a row that is not deleted). It clears `deleted_at`. |
@@ -246,7 +246,24 @@ deletes, `update()` leaves a deleted row alone.
 They run in a transaction of their own, or in a savepoint inside an open one: on Postgres a failed statement breaks the
 transaction around it, and the savepoint keeps that transaction usable. They return a [`Result`](errors.md#results): narrow it over
 `ok`, then look at `error.kind`. Returned from a transaction's callback, the `err` rolls that transaction back like any other, as
-the [transactions](transactions.md#returning-an-err) page explains. The starter kit registers a user this way:
+the [transactions](transactions.md#returning-an-err) page explains.
+
+The `duplicate` error of `tryInsert()` carries `columns`, the columns of the unique index that was hit. A table with several
+unique indexes tells them apart without a savepoint of your own:
+
+```ts
+const created = await this.tryInsert(values);
+if (!created.ok) {
+  // The address is taken, or only the invite code collided and a new one can be drawn.
+  return err({ kind: created.error.columns.includes('email') ? 'email-taken' : 'code-taken' });
+}
+```
+
+`columns` holds columns of the table only, and is empty when they are not known. An index a migration describes is found by its
+name, so its columns are exact. An index from raw SQL that no migration describes is read from what the driver reports: the
+index's name on SQLite, and on Postgres when the error has no `detail`. Its columns are the column names that occur in that name,
+so a word of the name that is also a column can be counted. Name such an index `{table}_{columns}_unique`, or describe it in a
+migration. `tryUpdate()` reports `columns` the same way. The starter kit registers a user this way:
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { PasswordHash } from '@marmeon/auth';

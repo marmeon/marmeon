@@ -1,9 +1,9 @@
 import type { Application, ModuleDefinition, Result } from '@marmeon/core';
-import type { Generated } from 'kysely';
+import { sql, type Generated } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections, type RowOf } from './index.ts';
+import { isUniqueViolation, Migrator, type DuplicateError, RecordNotFoundError, Repository, type Connections, type RowOf } from './index.ts';
 
 type Row = RowOf<FixtureTables['users']>;
 
@@ -66,23 +66,42 @@ describe.each(drivers)('Repository on %s', (driver) => {
     await users.insert({ name: 'Ada', email: 'ada@example.com' });
     await users.transaction(async (inTransaction) => {
       const taken = await inTransaction.tryInsert({ name: 'Ada 2', email: 'ada@example.com' });
-      expect(taken).toEqual({ ok: false, error: { kind: 'duplicate' } });
+      expect(taken).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['email'] } });
       const added = await inTransaction.tryInsert({ name: 'Alan', email: 'alan@example.com' });
       expect(added).toMatchObject({ ok: true, value: { name: 'Alan', email: 'alan@example.com' } });
-      expectTypeOf(added).toEqualTypeOf<Result<Row, { kind: 'duplicate' }>>();
+      expectTypeOf(added).toEqualTypeOf<Result<Row, DuplicateError>>();
       expect(await inTransaction.count()).toBe(2); // still usable
     });
     expect(await users.count()).toBe(2);
+  });
+
+  it('tryInsert(): the duplicate err names the columns of the index it hit — one per index, a composite one together, an expression one by its words', async () => {
+    const db = connections.get();
+    await sql`create unique index users_name_born_on_unique on users (name, born_on)`.execute(db);
+    try {
+      await users.insert({ name: 'Ada', email: 'ada@example.com', born_on: '1815-12-10' });
+      const byEmail = await users.tryInsert({ name: 'Other', email: 'ada@example.com' });
+      expect(byEmail).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['email'] } });
+      const byPair = await users.tryInsert({ name: 'Ada', email: 'ada2@example.com', born_on: '1815-12-10' });
+      expect(byPair.ok === false && [...byPair.error.columns].sort()).toEqual(['born_on', 'name']);
+      await sql`create unique index users_lower_email_unique on users (lower(email))`.execute(db);
+      // Only the expression index holds these values: the other case slips past the plain index of `email`.
+      const byExpression = await users.tryInsert({ name: 'Third', email: 'ADA@example.com' });
+      expect(byExpression.ok === false && byExpression.error.columns).toEqual(['email']);
+    } finally {
+      await sql`drop index users_name_born_on_unique`.execute(db);
+      await sql`drop index if exists users_lower_email_unique`.execute(db);
+    }
   });
 
   it('tryUpdate(): a duplicate err when the new value is taken, a missing err without the row, the row otherwise — the transaction survives', async () => {
     const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const alan = await users.insert({ name: 'Alan', email: 'alan@example.com' });
     await users.transaction(async (inTransaction) => {
-      expect(await inTransaction.tryUpdate(ada.id, { email: 'alan@example.com' })).toEqual({ ok: false, error: { kind: 'duplicate' } });
+      expect(await inTransaction.tryUpdate(ada.id, { email: 'alan@example.com' })).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['email'] } });
       const changed = await inTransaction.tryUpdate(ada.id, { email: 'ada@new.example' });
       expect(changed).toMatchObject({ ok: true, value: { email: 'ada@new.example' } });
-      expectTypeOf(changed).toEqualTypeOf<Result<Row, { kind: 'duplicate' } | { kind: 'missing' }>>();
+      expectTypeOf(changed).toEqualTypeOf<Result<Row, DuplicateError | { kind: 'missing' }>>();
     });
     expect(await users.tryUpdate(ada.id + 999, { name: 'Nobody' })).toEqual({ ok: false, error: { kind: 'missing' } });
     // A soft-deleted row is no row to update.
@@ -96,7 +115,7 @@ describe.each(drivers)('Repository on %s', (driver) => {
       await users.insert({ name: 'Alan', email: 'alan@example.com' });
       return users.tryInsert({ name: 'Ada 2', email: 'ada@example.com' });
     });
-    expect(result).toEqual({ ok: false, error: { kind: 'duplicate' } });
+    expect(result).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['email'] } });
     expect(await users.findByEmail('alan@example.com')).toBeUndefined();
     // Taken apart instead of returned, it leaves the transaction alone.
     await connections.transaction(async () => {
