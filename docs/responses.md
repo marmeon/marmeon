@@ -339,7 +339,10 @@ sign-out. A route that may be kept sets its own header, for example with the `ca
 Route.middleware(authenticate()).middleware(cacheControl('private, max-age=60')).authorize(everyone).get('/notes/report', ShowReportController);
 ```
 
-Never use `public` for anything that depends on the user: a shared cache would hand it to the next visitor.
+Never use `public` for anything that depends on the user: a shared cache would hand it to the next visitor. A page whose URL is a
+credential takes the `credentialPage()` middleware instead; it also sets `Referrer-Policy: no-referrer`, so the token does not leave in a `Referer`.
+That leaves `back()` without a `Referer` on such a page: a form on it returns by an explicit redirect. See
+[a link that is a credential](security.md#a-link-that-is-a-credential).
 
 A response that sets a cookie, or belongs to a session, is never shared: the framework turns `public` into `private` (dropping `s-maxage`, `proxy-revalidate`, `CDN-Cache-Control` and `Surrogate-Control`) and logs a warning once per route. Cache public pages in a group without the session.
 

@@ -52,7 +52,7 @@ describe('leaving the digest mails with one click', () => {
     page.assertOk();
     expect(page.headers.get('cache-control')).toBe('no-store, private');
     expect(page.headers.get('referrer-policy')).toBe('no-referrer');
-    expect(page.headers.get('x-robots-tag')).toBe('noindex');
+    expect(page.headers.get('x-robots-tag')).toBe('noindex, nofollow');
     // The page object a view answers with; the address is masked, and the form posts to the address the page was opened at.
     const props = JSON.parse(page.body).props as { body: string; action: string };
     expect(props.body).toContain('a…@example.com');
@@ -79,5 +79,35 @@ describe('leaving the digest mails with one click', () => {
   it('a signed link to an account that does not exist is a 404', async () => {
     const app = await boot();
     await app.post(link(app, '0190a000-0000-7000-8000-00000000ffff'), post).assertStatus(404);
+  });
+
+  it('every answer of the address keeps out of caches and indexes: the page, the post, the 404 and the refused signature', async () => {
+    const app = await boot();
+    const ada = await app.factory(UserFactory).create({ name: 'Ada' });
+    const url = link(app, ada.public_id);
+    const html = { headers: { accept: 'text/html' } };
+    const answers = [
+      await app.get(url, html).assertOk(),
+      await app.post(url, post).assertOk(),
+      await app.get(link(app, '0190a000-0000-7000-8000-00000000ffff'), html).assertStatus(404),
+      await app.get(`/notifications/unsubscribe/${ada.public_id}`, html).assertStatus(403),
+    ];
+    for (const response of answers) {
+      expect(response.headers.get('cache-control')).toBe('no-store, private');
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    }
+  });
+
+  it('the 429 of the throttle carries the headers too: credentialPage() stands in front of it', async () => {
+    const app = await boot();
+    const ada = await app.factory(UserFactory).create({ name: 'Ada' });
+    const unsigned = `/notifications/unsubscribe/${ada.public_id}`;
+    const html = { headers: { accept: 'text/html' } };
+    for (let attempt = 0; attempt < 60; attempt++) await app.get(unsigned, html).assertStatus(403);
+    const limited = await app.get(unsigned, html).assertStatus(429);
+    expect(limited.headers.get('cache-control')).toBe('no-store, private');
+    expect(limited.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(limited.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
 });

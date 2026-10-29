@@ -1,5 +1,5 @@
 import { throttle } from '@marmeon/cache';
-import { defineRoutes, describeAccess, everyone } from '@marmeon/http';
+import { credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
 import {
   ShowBrowserOnlyLabController,
   ShowClientOnlyLabController,
@@ -11,6 +11,7 @@ import {
 } from './controllers/ShowLabPageController.ts';
 import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
 import { CreateOneTimeLinkLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
+import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
@@ -40,10 +41,18 @@ export default defineRoutes((Route) => {
   lab.post('/validation/race', RaceValidationLabController);
   // A link that is used once: its path is the token, found by its hash (`hashLinkToken()`). Open to everyone and public by design — the
   // token is the key, and every wrong token gets the same 404. The GET only shows a page; the POST uses the link up.
-  lab.middleware(throttle('lab.one-time-links')).post('/one-time-links', CreateOneTimeLinkLabController);
-  lab.bind('link', OneTimeLinkRepository, { public: true }).get('/one-time-links/:link', OpenOneTimeLinkLabController);
+  // `credentialPage()` marks every answer of the routes that carry the token, errors and the 404 for a wrong token included.
+  const link = group.middleware(credentialPage());
+  link.authorize(everyone).middleware(throttle('lab.one-time-links')).post('/one-time-links', CreateOneTimeLinkLabController);
+  link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/one-time-links/:link', OpenOneTimeLinkLabController);
   // The POST changes data, so the link itself is the decision: the binder found an unused link by its token, and the update that
   // uses it up decides again.
   const holdsLink = describeAccess((ctx) => ctx.params.link !== undefined, 'one-time link');
-  group.authorize(holdsLink).middleware(throttle('lab.one-time-links')).bind('link', OneTimeLinkRepository).post('/one-time-links/:link', UseOneTimeLinkLabController);
+  link.authorize(holdsLink).middleware(throttle('lab.one-time-links')).bind('link', OneTimeLinkRepository).post('/one-time-links/:link', UseOneTimeLinkLabController);
+  // A form behind a token: the token's route trades it for the link's id in the session and redirects to a page without it. That page
+  // and its POST keep `same-origin`, so `back()` returns to the form after a failed validation.
+  link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/invitations/:link', ClaimInvitationLabController);
+  const form = group.middleware(credentialPage({ referrer: 'same-origin' })).authorize(everyone);
+  form.get('/invitation', ShowInvitationLabController);
+  form.post('/invitation', StoreInvitationLabController);
 });

@@ -44,6 +44,25 @@ describe('a link that is used once', () => {
     for (const response of [made, page, used]) {
       expect(response.headers.get('cache-control')).toBe('no-store, private');
       expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    }
+  });
+
+  it('sends the same headers on the answers that refuse: a wrong token and a used link', async () => {
+    const path = await create();
+    const wrong = `/lab/one-time-links/${'A'.repeat(43)}`;
+    await app.post(path, { json: {}, headers: json }).assertOk();
+    const refused = [
+      await app.get(wrong, { headers: { accept: 'text/html' } }).assertNotFound(),
+      await app.get(wrong, { headers: json }).assertNotFound(),
+      await app.post(wrong, { json: {}, headers: json }).assertNotFound(),
+      await app.get(path, { headers: json }).assertNotFound(),
+      await app.post(path, { json: {}, headers: json }).assertNotFound(),
+    ];
+    for (const response of refused) {
+      expect(response.headers.get('cache-control')).toBe('no-store, private');
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
     }
   });
 
@@ -85,5 +104,55 @@ describe('a link that is used once', () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh' });
     await app.post('/lab/one-time-links', { json: {}, headers: json }).assertNotFound();
+  });
+
+  it('trades the token for session state in a new session id, and a failed form returns with its errors and input', async () => {
+    const path = await create();
+    const token = path.split('/').pop()!;
+    // A stored session of the attacker's, planted in the visitor's browser: it already holds an invitation of the attacker's own link.
+    const other = (await create()).split('/').pop()!;
+    const planted = (await app.get(`/lab/invitations/${other}`, { headers: { accept: 'text/html' } })).cookie('marmeon_session')!;
+    const claimed = await app.withCookie('marmeon_session', planted).get(`/lab/invitations/${token}`, { headers: { accept: 'text/html' } }).assertRedirect('/lab/invitation');
+    expect(claimed.headers.get('referrer-policy')).toBe('no-referrer');
+    // A new id after the trade: the planted one is gone, so whoever planted it reads nothing of the visitor's. The session keeps an id, never the token.
+    expect(claimed.cookie('marmeon_session')).not.toBe(planted);
+    await app.withCookie('marmeon_session', planted).get('/lab/invitation', { headers: json }).assertNotFound();
+    claimed.assertSessionHas('lab.invitation');
+    expect(JSON.stringify(claimed.session())).not.toContain(token);
+    const session = claimed.cookie('marmeon_session')!;
+
+    const form = await app.withCookie('marmeon_session', session).get('/lab/invitation', { headers: { accept: 'text/html' } }).assertOk();
+    expect(form.headers.get('referrer-policy')).toBe('same-origin');
+    expect(form.headers.get('cache-control')).toBe('no-store, private');
+    expect(form.body).not.toContain(token);
+
+    // The browser posts from the page (a Referer of this site) and the failure sends it back there: errors and old input flashed.
+    const failed = await app
+      .withCookie('marmeon_session', session)
+      .post('/lab/invitation', { form: { name: 'x'.repeat(41) }, headers: { referer: 'http://localhost/lab/invitation' } })
+      .assertRedirect('/lab/invitation');
+    failed.assertInvalid(['name']);
+    expect(JSON.stringify(failed.session())).toContain('x'.repeat(41));
+    expect(failed.headers.get('referrer-policy')).toBe('same-origin');
+    expect(JSON.stringify(failed.session())).not.toContain(token);
+  });
+
+  it('shows the form and takes it only for a session that holds an unused invitation, once', async () => {
+    const token = (await create()).split('/').pop()!;
+    const claim = async () => (await app.get(`/lab/invitations/${token}`, { headers: { accept: 'text/html' } }).assertRedirect('/lab/invitation')).cookie('marmeon_session')!;
+    const [one, two] = [await claim(), await claim()];
+    const as = (cookie: string) => app.withCookie('marmeon_session', cookie);
+
+    await app.get('/lab/invitation', { headers: json }).assertNotFound();
+    await app.post('/lab/invitation', { json: { name: 'Ada' }, headers: json }).assertNotFound();
+    await app.post('/lab/invitation', { json: { name: '' }, headers: json }).assertNotFound();
+
+    const used = await as(one).post('/lab/invitation', { json: { name: 'Ada' }, headers: json }).assertOk();
+    used.assertSessionMissing('lab.invitation');
+    // Used up: the session that used it, and the other that held the same invitation, are shut out.
+    await as(one).get('/lab/invitation', { headers: json }).assertNotFound();
+    await as(one).post('/lab/invitation', { json: { name: 'Ada' }, headers: json }).assertNotFound();
+    await as(two).get('/lab/invitation', { headers: json }).assertNotFound();
+    await as(two).post('/lab/invitation', { json: { name: 'Ada' }, headers: json }).assertNotFound();
   });
 });

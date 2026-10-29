@@ -295,9 +295,8 @@ in or acts on an account is used once, and needs a row with a hashed token. So d
 not work twice, and its owner must be able to take it back.
 
 Use the link up in a POST, never in the GET that opens it: mail scanners and link previews fetch every link in a mail. The GET
-shows a page with a button, and the button's POST calls `redeem()`. A page whose URL holds the token must not be cached and must
-not send the token on in a `Referer`, so it answers with `Cache-Control: no-store, private` and `Referrer-Policy: no-referrer`;
-set both headers yourself for now. A helper for this page is to follow.
+shows a page with a button, and the button's POST calls `redeem()`. A page whose URL holds the token must not stay in a shared cache or a search index, nor leave in a `Referer`, so the routes that carry the token take the `credentialPage()` middleware;
+the [security](security.md#a-link-that-is-a-credential) page lists what it sends.
 
 ### The same link, sent more than once
 

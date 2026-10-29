@@ -20,6 +20,11 @@ export class OneTimeLinkRepository extends Repository<'lab_one_time_links'> {
     return this.query().selectAll().where((eb) => secretEquals(eb, 'token_hash', hashLinkToken(value))).where('used_at', 'is', null).executeTakeFirst();
   }
 
+  /** The link of a session's invitation, unless it is used up since: looked up on every request, never trusted from the session. */
+  findOpen(id: Row<'lab_one_time_links'>['id']): Promise<Row<'lab_one_time_links'> | undefined> {
+    return this.query().selectAll().where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
+  }
+
   /** Marks the link used — true for exactly one caller, however many arrive at once: the update itself decides. */
   async redeem(id: Row<'lab_one_time_links'>['id']): Promise<boolean> {
     const result = await this.db.updateTable('lab_one_time_links').set({ used_at: new Date() }).where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
