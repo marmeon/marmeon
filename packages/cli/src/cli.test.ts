@@ -207,6 +207,14 @@ describe('marmeon (in the web app)', () => {
     expect(unknown.stderr).toBe('✗ [marmeon:D13] There is no seeder "Nope".\n');
   });
 
+  it('writes the table types when make:module adds a module, so Database<\'checkin\'> compiles at once', () => {
+    const app = webAppCopy();
+    const made = marmeon(app, ['make:module', 'checkin'], { DB_DATABASE: ':memory:' });
+    expect(made.code).toBe(0);
+    expect(made.stdout).toContain('Wrote bootstrap/database.d.ts');
+    expect(readFileSync(join(app, 'bootstrap/database.d.ts'), 'utf8')).toContain('checkin: true;');
+  });
+
   it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
     const { code, stdout } = marmeon(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
     expect(stdout).toContain('✓ bootstrap/database.d.ts matches the migrations.');

@@ -543,7 +543,7 @@ on SQLite and Postgres alike.
 
 ## Module boundaries
 
-`Database` sees every table. `Database<'notes'>` is the connection as the `notes` module sees it:
+`Database` sees every table. `Database<'notes'>` is the connection as the `notes` module sees it (`make:module` runs `db:types` for a new module; one you create or register by hand needs `marmeon db:types` before its name compiles):
 
 - its **own tables**, created by its migrations, for everything;
 - the tables other modules **expose**, for reading and joins only.

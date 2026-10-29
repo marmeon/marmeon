@@ -22,7 +22,7 @@ function app(index = MODULE): { root: string; index: string } {
   return { root, index: file };
 }
 
-function run(command: { handle(input: any): number }, root: string, args: string[], options: Record<string, unknown> = {}) {
+function run(command: { handle(input: any): number | Promise<number> }, root: string, args: string[], options: Record<string, unknown> = {}) {
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
@@ -269,6 +269,55 @@ function bootstrapApp(source: string | null = APP): { root: string; file: string
 }
 
 const makeModule = (root: string, name: string, options: Record<string, unknown> = {}) => run(new MakeModuleCommand(), root, [name], options);
+
+describe('make:module writes the table types', () => {
+  const withDatabase = (source = APP) => {
+    const made = bootstrapApp(source);
+    writeFileSync(join(made.root, 'package.json'), JSON.stringify({ dependencies: { '@marmeon/database': '*' } }));
+    return made;
+  };
+
+  async function runWith(root: string, spawn: (...args: string[]) => Promise<number>, options: Record<string, unknown> = {}) {
+    const lines: string[] = [];
+    const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
+    const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
+    const code = await new MakeModuleCommand().handle({ root, args: ['checkin'], options, output, spawn } as never);
+    return { code, lines: lines.map((line) => stripVTControlCharacters(line)) };
+  }
+
+  it('runs db:types once the module is registered in an app with a database', async () => {
+    const { root } = withDatabase();
+    const calls: string[][] = [];
+    const { code } = await runWith(root, async (...args) => (calls.push(args), 0));
+    expect(code).toBe(0);
+    expect(calls).toEqual([['db:types']]);
+  });
+
+  it('names the command to run when db:types fails, and still exits 0', async () => {
+    const { root } = withDatabase();
+    const { code, lines } = await runWith(root, async () => 1);
+    expect(code).toBe(0);
+    expect(lines).toContain("! Run marmeon db:types before you use Database<'checkin'>.");
+  });
+
+  it('prints db:types as the last line to run when the module is left to register by hand', async () => {
+    const { root } = withDatabase();
+    const calls: string[][] = [];
+    const { code, lines } = await runWith(root, async (...args) => (calls.push(args), 0), { 'no-register': true });
+    expect(code).toBe(0);
+    expect(calls).toEqual([]);
+    expect(lines.at(-1)).toBe('  marmeon db:types');
+  });
+
+  it('runs nothing without @marmeon/database, or when the module is not registered', async () => {
+    const calls: string[][] = [];
+    const spawn = async (...args: string[]) => (calls.push(args), 0);
+    await runWith(bootstrapApp().root, spawn);
+    await runWith(withDatabase().root, spawn, { 'no-register': true });
+    await runWith(withDatabase('export default {};\n').root, spawn);
+    expect(calls).toEqual([]);
+  });
+});
 
 describe('make:module registers the module in bootstrap/app.ts', () => {
   it('adds the import after the last one and the module at the end of the list', () => {

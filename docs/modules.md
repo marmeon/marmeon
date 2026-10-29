@@ -125,7 +125,7 @@ pnpm marmeon make:module billing
 
 It writes `modules/billing/index.ts` and `modules/billing/routes.ts`, and adds the module last in `modules` of
 `bootstrap/app.ts` (routes match in module order). When that file has another shape, or with `--no-register`, it prints the two
-lines to add instead. The [directory structure](structure.md#your-first-module) page walks through a first module from there.
+lines to add instead. In an app with `@marmeon/database` it then runs `marmeon db:types`, so `Database<'billing'>` compiles at once; a module you create or register by hand needs that command too. The [directory structure](structure.md#your-first-module) page walks through a first module from there.
 
 ### The order of modules
 
