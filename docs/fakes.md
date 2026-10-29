@@ -72,6 +72,16 @@ its composed message and, for a queued one, its queue options:
 its message says the mail was queued. The fake does not put queued mails on the queue: with `mail: 'real'` they go through the
 queue and its `marmeon.mail` job like in production. The [mail](mail.md) page covers writing mails.
 
+`send()` resolves with a made-up message id (`<fake-1@marmeon.test>`), different for every mail. `failNext(error, times)` makes
+the next send fail, to test what the app does when the provider is down: `app.mail.failNext(new Error('smtp down'))` fails the
+next `send()` with that error, shows the failure on the `mail.send` channel, and records nothing for it. Without an error it
+fails with `The fake mailer failed this send.`; `times` fails that many sends in a row, then sends work again.
+
+`failNext()` reaches `send()` only: the fake takes a queued mail without delivering it. An outage on the way through the queue,
+the retries and the failed jobs, is tested with `mail: 'real'` and `queue: 'real'` and a `MailTransport` of the test's own that
+throws, bound with `override: (c) => c.instance(MailTransport, transport)`. The tests of the web app's
+`modules/auth/queued-mails.test.ts` show the pattern.
+
 ## Queue
 
 The queue fake checks a dispatch as the real queue does, against the job's schema and the transaction around it, and records it

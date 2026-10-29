@@ -18,6 +18,8 @@ export class MailFake implements Mailer {
   readonly #queued: { mailable: Mailable; message: MailMessage; options: QueueMailOptions }[] = [];
 
   readonly #app: Application | undefined;
+  readonly #failures: Error[] = [];
+  #ids = 0;
 
   /**
    * @internal createTestApp() makes it. `app`: its mails are reported on the `mail.send` channel like real ones — the devtools
@@ -28,11 +30,33 @@ export class MailFake implements Mailer {
     this.#app = app;
   }
 
-  /** Resolves with the composed mail; `messageId` is `undefined`, no provider took part. */
+  /**
+   * Makes the next `times` sends fail with `error`: `send()`. The mail is still composed, the failure shows on the `mail.send`
+   * channel, and nothing is recorded for a failed send. A queued mail is not delivered by the fake: test a failing job with `mail: 'real'`. See `docs/fakes.md#mail`.
+   */
+  failNext(error: Error = new Error('The fake mailer failed this send.'), times = 1): this {
+    for (let i = 0; i < times; i++) this.#failures.push(error);
+    return this;
+  }
+
+  /** Resolves with the composed mail and a made-up message id (`<fake-1@marmeon.test>`), unique per fake. */
   async send(mailable: Mailable): Promise<SentMail> {
-    const message = await traceMail(this.#app, mailable.constructor.name, 'send', () => compose(mailable, this.#from));
+    const message = await traceMail(this.#app, mailable.constructor.name, 'send', async () => {
+      const composed = await compose(mailable, this.#from);
+      this.#fail();
+      return composed;
+    });
     this.#sent.push({ mailable, message });
-    return { ...message, messageId: undefined };
+    return { ...message, messageId: this.#nextId() };
+  }
+
+  #fail(): void {
+    const error = this.#failures.shift();
+    if (error) throw error;
+  }
+
+  #nextId(): string {
+    return `<fake-${++this.#ids}@marmeon.test>`;
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
