@@ -143,8 +143,14 @@ are resolved.
 
 The app starts on SQLite, in the file `storage/database.sqlite`. The creator runs `marmeon migrate`, so the tables exist when you
 first start the app. In development, `migrate` also writes the table types to `bootstrap/database.d.ts`, which the type checker
-uses for every query. You switch to PostgreSQL with `DB_DRIVER=pgsql` and the server's `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and
-`DB_PASSWORD` in `.env`, or its whole address in `DB_URL`; the database's name is required, there is no default.
+uses for every query. You switch to PostgreSQL in four steps:
+
+1. Install the driver: `pnpm add pg@^8`.
+2. Set `DB_DRIVER=pgsql` and the server's `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD` in `.env`, or its
+   whole address in `DB_URL`. The database's name is required, there is no default.
+3. Set `DB_DATABASE` in `.env.test` to the test database's name. It says `:memory:`, which is SQLite's, and the start refuses
+   `DB_DRIVER=pgsql` with it unless `DB_URL` names the database.
+4. Create both databases on the server. [Database testing](database-testing.md) shows how the tests run on Postgres.
 
 ### Security from the start
 

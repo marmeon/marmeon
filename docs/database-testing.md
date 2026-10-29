@@ -227,7 +227,7 @@ explains infrastructure connections.
 ## Running the tests on Postgres
 
 With `DB_DRIVER=pgsql` and the server in the environment, refreshed test apps use Postgres instead of SQLite. Name the
-database in the shell too, since otherwise the `DB_DATABASE=:memory:` of `.env.test` names it:
+database in the shell too, since the start refuses the `DB_DATABASE=:memory:` of `.env.test` (K6):
 
 ```sh
 DB_DRIVER=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWORD=secret pnpm test
