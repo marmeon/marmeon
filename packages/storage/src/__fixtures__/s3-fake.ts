@@ -82,7 +82,8 @@ export class FakeS3 {
       case 'GetObject': {
         this.beforeGet?.();
         const object = this.#find(id, input.IfMatch);
-        const { bytes } = object;
+        const range = /^bytes=0-(\d+)$/.exec(String(input.Range ?? ''));
+        const bytes = range ? object.bytes.subarray(0, Number(range[1]) + 1) : object.bytes;
         const stream = () =>
           new ReadableStream<Uint8Array>({
             start(controller) {

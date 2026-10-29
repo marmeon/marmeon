@@ -307,6 +307,8 @@ declare module '@marmeon/database' {
       email_verified_at: Timestamp | null;
       locale: string | null;
       avatar_path: string | null;
+      avatar_width: number | null;
+      avatar_height: number | null;
     };
   }
   interface Relations {

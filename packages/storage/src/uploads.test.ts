@@ -50,7 +50,7 @@ describe('sniff — a file’s type by its first bytes, never by its name', () =
     const mpegOnly = r.object({ track: upload({ maxBytes: 2_000_000, mime: ['audio/mpeg'] }) });
     const verifiedAs = (head: Uint8Array) => {
       const { mime, extension } = sniff(head);
-      return new TemporaryUpload({ id: 'x', field: 'track', name: 't', size: head.length, mime, extension }, { disk: undefined!, key: 'x', consume: async () => true });
+      return new TemporaryUpload({ id: 'x', field: 'track', name: 't', size: head.length, mime, extension }, { disk: undefined!, key: 'x', readStart: async () => new Uint8Array(0), consume: async () => true });
     };
     const check = (head: Uint8Array) => (mpegOnly['~standard'].validate({ track: verifiedAs(head) }) as { issues?: unknown[] }).issues;
     expect(check(new Uint8Array([0xff, 0xfe, 0x61, 0x00, 0x2c, 0x00]))).toHaveLength(1);
@@ -158,8 +158,25 @@ describe('upload() — the rule of an upload field', () => {
 
   const schema = r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg'] }) });
   const parse = (rule: StandardSchemaV1, value: unknown) => rule['~standard'].validate(value) as { value?: { avatar?: unknown }; issues?: StandardResult<unknown>['issues'] };
-  const verified = (mime: string, size = 10) => new TemporaryUpload({ id: 'x', field: 'avatar', name: 'a', size, mime, extension: 'png' }, { disk: undefined!, key: 'x', consume: async () => true });
+  const verified = (mime: string, size = 10) => new TemporaryUpload({ id: 'x', field: 'avatar', name: 'a', size, mime, extension: 'png' }, { disk: undefined!, key: 'x', readStart: async () => new Uint8Array(0), consume: async () => true });
   const issues = (avatar: unknown) => parse(schema, { avatar }).issues?.map((issue) => issue.message);
+
+  it('dimensions() asks the source for no bytes when the type is no image', async () => {
+    let reads = 0;
+    const source = { disk: undefined!, key: 'x', readStart: async () => (reads++, new Uint8Array(0)), consume: async () => true };
+    const details = { id: 'x', field: 'f', name: 'n', size: 1, extension: 'bin' };
+    expect(await new TemporaryUpload({ ...details, mime: 'application/pdf' }, source).dimensions()).toBeUndefined();
+    expect(reads).toBe(0);
+    expect(await new TemporaryUpload({ ...details, mime: 'image/png' }, source).dimensions()).toBeUndefined();
+    expect(reads).toBe(1);
+  });
+
+  it('dimensions() after store() throws — the file has moved, and a silent undefined would be kept as no size', async () => {
+    const disk = new MemoryDisk({ name: 'public', visibility: 'private', url: undefined, temporaryUrls: NO_TEMPORARY_URLS, clock: new TestClock() });
+    const upload = verified('image/png');
+    await expect(upload.store(disk)).rejects.toThrow(); // the source here has no file; the attempt counts
+    await expect(upload.dimensions()).rejects.toThrow('before storing');
+  });
 
   it('passes a verified upload of an allowed type and size — the field is the TemporaryUpload', () => {
     const upload = verified('image/png');
@@ -207,7 +224,7 @@ describe('upload() — the rule of an upload field', () => {
     // What the uploads service makes of a file: the type and the text verdict, both from its first bytes.
     const checked = (head: Uint8Array) => {
       const { mime, extension } = sniff(head);
-      const file = new TemporaryUpload({ id: 'x', field: 'file', name: 'f', size: head.length, mime, extension, plainText: isPlainText(head) }, { disk: undefined!, key: 'x', consume: async () => true });
+      const file = new TemporaryUpload({ id: 'x', field: 'file', name: 'f', size: head.length, mime, extension, plainText: isPlainText(head) }, { disk: undefined!, key: 'x', readStart: async () => new Uint8Array(0), consume: async () => true });
       return (textual['~standard'].validate({ file }) as { issues?: { message: string }[] }).issues?.map((issue) => issue.message);
     };
     const refused = ['Only a text file is accepted, such as a CSV.'];
@@ -228,7 +245,7 @@ describe('upload() — the rule of an upload field', () => {
     });
 
     it('takes the text flag from the service, never from the name: an upload built without it is refused', () => {
-      const file = new TemporaryUpload({ id: 'x', field: 'file', name: 'data.csv', size: 3, mime: 'application/octet-stream', extension: 'bin' }, { disk: undefined!, key: 'x', consume: async () => true });
+      const file = new TemporaryUpload({ id: 'x', field: 'file', name: 'data.csv', size: 3, mime: 'application/octet-stream', extension: 'bin' }, { disk: undefined!, key: 'x', readStart: async () => new Uint8Array(0), consume: async () => true });
       expect((textual['~standard'].validate({ file }) as { issues?: unknown[] }).issues).toHaveLength(1);
     });
 

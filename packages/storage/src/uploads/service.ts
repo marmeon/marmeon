@@ -245,7 +245,7 @@ export class TemporaryUploads {
       throw error;
     }
     const { mime, extension } = sniff(head);
-    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) }, { disk, key: row.key, etag, consume: () => this.consume(id) });
+    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) }, { disk, key: row.key, etag, readStart: (count) => readStart(disk, row.key, etag, count), consume: () => this.consume(id) });
   }
 
   /** Uses upload `id` up — `false` when it was used already or has expired. One statement: of two at once, one wins. */
@@ -351,6 +351,17 @@ export class TemporaryUploads {
     let valid = false;
     for (const key of this.#options.keys) valid = timingSafeEqual(createHmac('sha256', key).update(`upload:${id}`).digest(), given) || valid;
     return valid;
+  }
+}
+
+/** The first `count` bytes of an upload's file; on S3 a ranged read of the object the check saw. */
+async function readStart(disk: Disk, key: string, etag: string | undefined, count: number): Promise<Uint8Array> {
+  try {
+    const stream = disk instanceof S3Disk && etag !== undefined ? await disk.streamIfMatch(key, etag, count) : await disk.stream(key);
+    return await firstBytes(stream, count);
+  } catch (error) {
+    if (error instanceof FileNotFoundError || error instanceof ObjectChangedError) return new Uint8Array(0);
+    throw error;
   }
 }
 

@@ -90,7 +90,7 @@ describe('user-profile module', () => {
     // A change of address waiting for its link: kept in `email_changes`, which no module exposes.
     await app.make(Connections).get<any>().insertInto('email_changes').values({ user_id: alan.id, email: 'new-alan@example.com', token_hash: 'a'.repeat(64), session_key: null, expires_at: new Date(Date.now() + 3_600_000), created_at: new Date() }).execute();
     const props = (await as(ada).get(profile(alan)).assertOk()).page()!.props as { profile: Record<string, unknown> };
-    expect(Object.keys(props.profile).sort()).toEqual(['avatar', 'bio', 'created_at', 'links', 'name', 'public_id']);
+    expect(Object.keys(props.profile).sort()).toEqual(['avatar', 'avatarSize', 'bio', 'created_at', 'links', 'name', 'public_id']);
     for (const field of ['pending_email', 'locale', 'email_verified_at', 'first_verified_at']) {
       expect(props.profile).not.toHaveProperty(field);
     }
@@ -283,7 +283,7 @@ describe('user-profile module', () => {
   });
 
   it('lets tests replace services before the app boots — singletons included', async () => {
-    const stub: User = { id: 7, public_id: '0190a000-0000-7000-8000-000000000007', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', first_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null };
+    const stub: User = { id: 7, public_id: '0190a000-0000-7000-8000-000000000007', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', first_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null, avatar_width: null, avatar_height: null };
     class StubUserRepository extends UserRepository {
       override async findById(id: number) {
         return id === stub.id ? { user: stub, passwordHash: null, sessionKey: null } : undefined;

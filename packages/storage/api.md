@@ -107,6 +107,11 @@ export declare class FileNotFoundError extends Error {
     readonly key: string;
     constructor(disk: string, key: string);
 }
+// ImageDimensions
+export interface ImageDimensions {
+    readonly width: number;
+    readonly height: number;
+}
 // InvalidKeyError
 export declare class InvalidKeyError extends Error {
     name: string;
@@ -220,6 +225,7 @@ export declare class TemporaryUpload {
     readonly name: string;
     readonly size: number;
     readonly mime: string;
+    dimensions(): Promise<ImageDimensions | undefined>;
     store(disk: Disk, directory?: string): Promise<string>;
     toJSON(): undefined;
 }

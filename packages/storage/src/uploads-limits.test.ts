@@ -140,6 +140,21 @@ describe('temporary uploads: what may wait unsent', () => {
     await expect(service.receive(await idOf(service.target(request('a', 5))), 'a', null, 6)).rejects.toMatchObject({ status: 413 });
   });
 
+  it('dimensions() of a received upload reads the size from its first bytes — and is undefined for a file that is no image', async () => {
+    const service = uploads();
+    const stream = (contents: Uint8Array) => new ReadableStream<Uint8Array>({ start: (controller) => (controller.enqueue(contents), controller.close()) });
+    const png = new Uint8Array(2000);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x2c, 0, 0, 0, 0xc8]);
+    const scope = { session: 'a', route: 'avatar.update', field: 'avatar' };
+    for (const [contents, expected] of [[png, { width: 300, height: 200 }], [new TextEncoder().encode('just text, no image'), undefined]] as const) {
+      const token = (await service.target(request('a', contents.byteLength))).token;
+      await service.receive(token.slice(3, 39), 'a', stream(contents), undefined);
+      const found = await service.resolve(token, scope);
+      expect(found).toMatchObject({ field: 'avatar' });
+      expect(await (found as { dimensions(): Promise<unknown> }).dimensions()).toEqual(expected);
+    }
+  });
+
   it('uploads:prune deletes what expired — rows and files — and keeps what is still open', async () => {
     const service = uploads();
     await service.receive(await idOf(service.target(request('a'))), 'a', bytes(3), undefined);

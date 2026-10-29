@@ -3,6 +3,7 @@ import { ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { ObjectChangedError, S3Disk } from '../drivers/s3.ts';
 import { normalizeDirectory } from '../keys.ts';
+import { DIMENSION_BYTES, imageDimensions, type ImageDimensions } from './dimensions.ts';
 
 /** @internal Why an upload token was refused — the user sees one message per kind, never which check failed in detail. */
 export type UploadProblem = 'invalid' | 'expired' | 'used';
@@ -14,6 +15,8 @@ export interface UploadSource {
   readonly key: string;
   /** An S3 object's ETag as the check saw it: the file is stored only if it still has it. */
   readonly etag?: string | undefined;
+  /** The first `count` bytes of the file (fewer if it is shorter; none if it is gone or changed) — a ranged read on S3. */
+  readStart(count: number): Promise<Uint8Array>;
   /** Marks the upload used — once: `false` when it was used already (or expired meanwhile). Atomic across processes. */
   consume(): Promise<boolean>;
 }
@@ -56,6 +59,7 @@ export class TemporaryUpload {
   /** @internal Whether its first bytes pass as text (no signature, no markup, no NUL) — what `upload({ text: true })` accepts. */
   readonly plainText: boolean;
   readonly #source: UploadSource;
+  #stored = false;
 
   /** @internal The uploads service makes them. */
   constructor(details: { id: string; field: string; name: string; size: number; mime: string; extension: string; plainText?: boolean }, source: UploadSource) {
@@ -70,11 +74,23 @@ export class TemporaryUpload {
   }
 
   /**
+   * The image's width and height in pixels, as a browser shows it (an EXIF turn applied), read from the file's first bytes without
+   * decoding it — `undefined` for a file that is not a PNG, JPEG, GIF, WebP or AVIF, or whose header is cut off or damaged. Call it
+   * before `store()`, which moves the file — afterwards it throws: keep the size with the record (`docs/images.md#images-from-the-server`).
+   */
+  async dimensions(): Promise<ImageDimensions | undefined> {
+    if (this.#stored) throw new Error('TemporaryUpload.dimensions() was called after store(), which moves the file — read the size before storing it.');
+    if (!this.mime.startsWith('image/')) return undefined;
+    return imageDimensions(await this.#source.readStart(DIMENSION_BYTES), this.mime);
+  }
+
+  /**
    * Uses the upload up and stores the file on `disk` in `directory`, under a random name with the extension of its type —
    * returns the key (`avatars/q3k…x7.png`). An upload already used (two submits racing) is a validation error of its field
    * (422): only one of them stores the file.
    */
   async store(disk: Disk, directory = ''): Promise<string> {
+    this.#stored = true;
     if (!(await this.#source.consume())) {
       throw ValidationError.fromIssues(
         [Object.assign({ message: 'This file was saved already — choose it again.', path: this.field.split('.') }, { [TRANSLATION]: { key: 'marmeon.validation.upload.used' } })],
