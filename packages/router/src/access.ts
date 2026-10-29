@@ -132,6 +132,7 @@ export function formatAccessProblems(problems: readonly AccessProblem[], { path 
       '  - check access with a policy: Route.authorize(can(Policy, …))',
       "  - scope the binding to its parent: bind('child', Binder, { scopedBy: 'parent' })",
       "  - say that every record is public, on a route that only reads: bind('param', Binder, { public: true })",
+      "  - decide with a check of your own, for a route whose credential is a token in its path: Route.authorize(describeAccess((ctx) => …, 'invitation link'))",
     );
   }
   parts.push('See docs/authorization.md#every-route-decides.');
