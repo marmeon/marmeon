@@ -197,6 +197,7 @@ export declare class TestResponse {
     readonly headers: Headers;
     readonly body: string;
     session(): Record<string, unknown>;
+    bytes(): Uint8Array<ArrayBuffer>;
     json<T = unknown>(): T;
     page(): PageObject | undefined;
     cookie(name: string): string | undefined;

@@ -424,6 +424,20 @@ The file streams from the disk with `X-Content-Type-Options: nosniff` and `Conte
 raster images goes out as an attachment, so HTML, SVG or a PDF is downloaded instead of shown on your app's origin. A missing file
 is a 404. The route's middleware and policy decide who may download: check them as for any other route.
 
+A file your code generates goes out as a `Response` with its type. An image of a one-time link, say a QR code, is as secret as
+the link, so its route takes `credentialPage()`:
+
+```ts
+Route.middleware(credentialPage()).authorize(everyone).get('/invites/:token/code.png', ShowInviteCodeController);
+```
+
+A test reads the image with `bytes()`:
+
+```ts
+const image = await app.get(`/invites/${token}/code.png`).assertOk().assertHeader('content-type', 'image/png');
+expect(Array.from(image.bytes().slice(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47]);
+```
+
 A file the browser should fetch later, say from a mail, gets a signed link instead:
 `await this.#storage.disk('local').temporaryUrl(key, { expiresIn: { minutes: 5 } })`. Redirect to it, or send it along. The
 [file storage](storage.md#public-and-private-files) page covers disks and their URLs.
