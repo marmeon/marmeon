@@ -248,7 +248,7 @@ A table the projection does not know passes through the query builder unguarded,
 | `marmeon migrate:status [--json]` | Lists every migration, with its batch or `Pending`. See [status](#status). |
 | `marmeon migrate:rollback` | Undoes the last batch. `--step=3` undoes the last three migrations instead, whatever their batch. |
 | `marmeon migrate:reset` | Undoes every migration. |
-| `marmeon migrate:fresh` | Drops every table and runs every migration again. `--seed` runs the [seeders](seeding.md) afterwards. |
+| `marmeon migrate:fresh` | Drops every view and table and runs every migration again. On Postgres it also drops the functions, procedures, aggregates, standalone types (enum, domain, range, composite) and sequences no column owns, in the schemas of your tables and the current schema. Extensions stay, and so do objects in other schemas and the functions, types and sequences another role owns. A table of another role is dropped by a superuser and stops the command otherwise. `--seed` runs the [seeders](seeding.md) afterwards. |
 
 **Each migration runs in a transaction of its own.** SQLite and Postgres both roll back a schema change, so a migration that fails
 leaves no half-changed table behind, and it is not recorded. The migrations before it in the same run stay done.
