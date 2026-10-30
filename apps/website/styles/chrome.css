@@ -242,7 +242,17 @@
   position: absolute;
   top: var(--space-1);
   right: var(--space-1);
-  background: var(--bg-raised);
+}
+
+/* The corner is a gutter the code never scrolls into: content is clipped at the padding box, so a wide transparent right
+   border keeps the lines clear of the button while the background still fills it; the edge moves to the outline, and the low
+   specificity leaves the outline to the focus ring. */
+:where(.code-block:has(> .copy-button)) pre.code {
+  border: 0 solid transparent;
+  border-right-width: 6rem;
+  padding: 17px 18px 19px 19px;
+  outline: var(--code-edge);
+  outline-offset: -1px;
 }
 
 figure.code {

@@ -283,6 +283,7 @@ details[open] > summary .nav-sign::before {
 .page.doc-page {
   display: grid;
   grid-template-columns: minmax(0, var(--measure)) 13.75rem;
+  justify-content: center; /* a wide window splits the room left over on both sides */
   gap: 3.5rem;
   align-items: start;
   padding: var(--space-7) 3.5rem 5rem;
