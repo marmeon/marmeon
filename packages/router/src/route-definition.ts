@@ -1,12 +1,15 @@
 import { durationToSeconds, type Duration } from '@marmeon/core';
-import type { AccessCheck, AfterAuthorizeHook } from './access.ts';
+import { registrationSite, type AccessCheck, type AfterAuthorizeHook } from './access.ts';
+import type { CheckAttachment, RouteAttachment } from './attach.ts';
+import { tokenizePattern } from './pattern.ts';
+import type { Route } from './route.ts';
 import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
 /**
  * A single registered route.
  * Created by the `Route` registrar; its name, `internal()` and `block()` can be set until the router loads it.
  */
-export class RouteDefinition {
+export class RouteDefinition<TContext extends object = any> {
   readonly methods: readonly HttpMethod[];
   readonly path: string;
   readonly action: AnyAction;
@@ -34,6 +37,7 @@ export class RouteDefinition {
   #sitemap = false;
   #blocking: RouteBlocking | undefined;
   #sealed = false;
+  #attacher: ((page: RouteDefinition, site: string | undefined) => Route<any, any, any>) | undefined;
 
   /** @internal — built by `Route` when a route file registers a route. */
   constructor(options: {
@@ -51,6 +55,8 @@ export class RouteDefinition {
     localized?: boolean;
     /** @internal */
     generatedFrom?: RouteDefinition | undefined;
+    /** @internal The registrar of `attach()`: the page's attributes, its path as the prefix and its whole access as the checks. */
+    attacher?: (page: RouteDefinition, site: string | undefined) => Route<any, any, any>;
   }) {
     // Frozen copies: a middleware reaching `ctx.route` cannot add a method or take a middleware out for every later request.
     this.methods = Object.freeze([...options.methods]);
@@ -73,6 +79,7 @@ export class RouteDefinition {
     this.generatedFrom = options.generatedFrom;
     this.#namePrefix = options.namePrefix;
     this.#internal = options.internal ?? false;
+    this.#attacher = options.attacher;
   }
 
   /** Names the route, prepending any group name prefix: `name('show')` in `name('profile.')` -> `profile.show`. */
@@ -156,6 +163,37 @@ export class RouteDefinition {
   }
 
   /**
+   * Hangs the routes a package makes for this page under its path, such as an exporter's routes. They carry the page's middleware,
+   * bindings, checks and its request's `authorize`; an attachment can add to these, never take one away. See docs/routing.md#routes-under-a-page.
+   *
+   * ```ts
+   * Route.get('/audit', ListAuditController).attach(csvExport);
+   * ```
+   */
+  attach<A extends RouteAttachment<any>>(attachment: A & CheckAttachment<A, Omit<TContext, 'query'>>): this {
+    this.#assertOpen('attach');
+    const attachTo = (attachment as Partial<RouteAttachment> | null | undefined)?.attachTo;
+    if (typeof attachTo !== 'function') {
+      throw new TypeError(`attach() takes what a package makes for a page, such as a route attachment — got ${describeValue(attachment)} — ${this.path}.`);
+    }
+    if (this.methods.length !== 1 || this.methods[0] !== 'GET') {
+      throw new TypeError(`attach() hangs routes on a page, a GET route — ${this.methods.join('|')} ${this.path} is none.`);
+    }
+    if (tokenizePattern(this.path).some((token) => 'optional' in token && token.optional)) {
+      throw new TypeError(`attach(): ${this.path} has an optional parameter — the routes under the page would have none to fill. Give the page a path without one.`);
+    }
+    const attacher = this.#attacher;
+    if (!attacher) throw new TypeError(`attach() needs a route registered through Route — ${this.methods.join('|')} ${this.path} was built by hand.`);
+    // The caller's frame: the routes name the app's route file in a message, not the package that registered them.
+    const site = registrationSite(RouteDefinition.prototype.attach);
+    const returned: unknown = attachTo.call(attachment, attacher(this, site), this);
+    if (typeof (returned as { then?: unknown } | undefined)?.then === 'function') {
+      throw new Error('attach() takes a synchronous attachTo: routes registered after its first await would escape the checks made at load.');
+    }
+    return this;
+  }
+
+  /**
    * Called by `Router.load` once the route passed its checks: the route and what it holds can no longer change, so nothing a
    * request runs (`ctx.route`) alters it for the requests after.
    *
@@ -163,6 +201,7 @@ export class RouteDefinition {
    */
   seal(): void {
     this.#sealed = true;
+    this.#attacher = undefined;
     Object.freeze(this);
   }
 
@@ -174,6 +213,10 @@ export class RouteDefinition {
   get blocking(): RouteBlocking | undefined {
     return this.#blocking;
   }
+}
+
+function describeValue(value: unknown): string {
+  return typeof value === 'object' && value !== null ? 'an object without attachTo' : typeof value;
 }
 
 /** What {@link RouteDefinition.block} asks for: hold the session's lock at most `lockSeconds`, wait for it at most `waitSeconds`. */

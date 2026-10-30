@@ -454,6 +454,41 @@ A hook decides nothing. What it returns is ignored, it does not extend the conte
 is still a route that does not say who may call it. It may throw an `HttpError`, which answers as it does from a check. A
 registrar that never registers a route fails at `load()` for its hooks as it does for its checks.
 
+### Routes under a page
+
+`attach()` hangs the routes a package makes for a page under the page's path, such as an export
+of the page's data. An attached route is registered through a registrar derived
+from the page's, so it carries everything a request to the page passes:
+
+- the page's middleware, group and bindings, so its parameters resolve to the same records and a record of another parent is
+  the same 404;
+- the registrar's `authorize` checks, then the `authorize` of the page controller's request, then the `afterAuthorize` hooks;
+- the `/:locale` of a [localized](#routes-under-a-locale) page.
+
+An attachment can add checks and middleware to its routes, never take one away: `authorize(everyone)` inside it leaves the
+page's checks where they are. That is why a page whose request refuses a caller refuses it on every route attached to it.
+
+```ts title="modules/audit/routes.ts"
+import type { RouteAttachment } from '@marmeon/http';
+
+const exportCsv: RouteAttachment = {
+  attachTo(routes) {
+    routes.get('/_csv', ExportAuditController);
+  },
+};
+
+export default defineRoutes((Route) => {
+  // GET /audit/_csv is refused for everyone the page refuses.
+  Route.middleware(authenticate()).authorize(everyone).get('/audit', ListAuditController).attach(exportCsv);
+});
+```
+
+`attachTo(routes, page)` runs once, synchronously, while the route file runs. The `site` of an attached route in a message is the line of the
+`attach()` call. Only a `GET` route takes an attachment, and not one whose path has an optional parameter, because the attached
+routes would have none to fill. After `Router.load` a route takes none. An attachment that reads the context the page's
+middleware adds (`ctx.user`) says so in its `'~needs'` type, and the compiler asks for the middleware, such as `authenticate()`,
+before the page.
+
 ### Middleware
 
 Middleware runs before the controller and can answer instead of it. A route runs the global middleware first, then its group's

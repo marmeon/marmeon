@@ -321,7 +321,7 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     afterAuthorize(hook: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => void | Promise<void>): Route<TState, TParams, TBindings>;
     internal(): Route<TState, TParams, TBindings>;
     group(callback: (Route: this) => void): void;
-    get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(path: TPath, action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>): RouteDefinition;
+    get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(path: TPath, action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>): RouteDefinition<RouteContext<TState, TParams, TBindings, TPath>>;
     post<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
     put<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
     patch<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
@@ -336,6 +336,11 @@ export declare class RouteAccessError extends Error {
 }
 // RouteArgs
 export type RouteArgs<N extends string> = {} extends ParamsOf<N> ? [params?: ParamsOf<N>, query?: QueryParams<N>] : [params: ParamsOf<N>, query?: QueryParams<N>];
+// RouteAttachment
+export interface RouteAttachment<TNeeds extends object = {}> {
+    readonly attachTo: (routes: Route<any, any, any>, page: RouteDefinition) => void;
+    readonly '~needs'?: TNeeds;
+}
 // RouteBinder
 export interface RouteBinder<T> {
     resolveRouteBinding(value: string, binding: RouteBindingContext): T | undefined | Promise<T | undefined>;
@@ -370,7 +375,7 @@ export interface RouteBindingWith {
     readonly value: unknown;
 }
 // RouteDefinition
-export declare class RouteDefinition {
+export declare class RouteDefinition<TContext extends object = any> {
     #private;
     readonly methods: readonly HttpMethod[];
     readonly path: string;
@@ -387,6 +392,7 @@ export declare class RouteDefinition {
         lock?: Duration;
         wait?: Duration;
     }): this;
+    attach<A extends RouteAttachment<any>>(attachment: A & CheckAttachment<A, Omit<TContext, 'query'>>): this;
 }
 // RouteDefinitions
 export interface RouteDefinitions {
@@ -549,6 +555,10 @@ type BindOptions<TScope extends string, TWith, TScoping extends boolean> = {
     readonly public?: true;
     readonly with?: TWith;
 };
+// CheckAttachment
+export type CheckAttachment<A, TContext> = A extends {
+    readonly '~needs'?: infer TNeeds;
+} ? [TContext] extends [Exclude<TNeeds, undefined>] ? A : LacksNeeds : A;
 // ControllerQuery
 type ControllerQuery<C> = C extends {
     readonly request?: infer R;
@@ -575,6 +585,10 @@ type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : 
 type Join<U extends string, Count extends unknown[] = [], Done extends string = ''> = [U] extends [never] ? Done : Count['length'] extends 5 ? `${Done}, …` : LastOf<U> extends infer L extends string ? Join<Exclude<U, L>, [...Count, L], Done extends '' ? L : `${L}, ${Done}`> : Done;
 // JoinKeys
 type JoinKeys<K> = [K] extends [never] ? '' : Quoted<K>;
+// LacksNeeds
+type LacksNeeds = {
+    "this page's route lacks what the routes attached to it need — add the middleware they read (authenticate(), …) to the page's registrar, before the page": never;
+};
 // LastOf
 type LastOf<U> = UnionToIntersection<U> extends () => infer R ? R : never;
 // LastSegment
