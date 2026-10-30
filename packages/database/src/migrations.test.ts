@@ -12,6 +12,8 @@ import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
 const blog: ModuleDefinition = { name: 'blog', migrations: fixtures('blog') };
+const views: ModuleDefinition = { name: 'views', migrations: fixtures('views') };
+const routines: ModuleDefinition = { name: 'routines', migrations: fixtures('routines') };
 const broken: ModuleDefinition = { name: 'broken', migrations: fixtures('broken') };
 
 /** The migrator only needs the app's modules and root. */
@@ -163,6 +165,74 @@ describe.each(drivers)('migrations on %s', (driver) => {
     expect(runs.map((run) => run.name)).toHaveLength(3);
     expect(await tables()).toEqual(['articles', 'migrations', 'users']);
     expect((await migrator(connections, auth, blog).status()).every((m) => m.batch === 1)).toBe(true);
+  });
+
+  it('migrate:fresh drops a view that sorts before its table, run after run', async () => {
+    const own = await freshConnections(driver);
+    try {
+      const withView = migrator(own.connections, views);
+      await withView.migrate();
+      expect((await withView.fresh()).length).toBe(1);
+      expect((await withView.fresh()).length).toBe(1);
+      await sql`select * from aa_zebras`.execute(own.connections.get<any>());
+    } finally {
+      await own.close();
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('migrate:fresh drops functions, types and sequences a migration made, so it runs again', async () => {
+    const own = await freshConnections(driver);
+    try {
+      const withRoutines = migrator(own.connections, routines);
+      await withRoutines.migrate();
+      expect((await withRoutines.fresh()).length).toBe(1);
+      const left = await sql<{ n: number }>`select count(*)::int as n from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = current_schema() and p.proname = 'stamp_ticket'`.execute(own.connections.get<any>());
+      expect(left.rows[0]?.n).toBe(2);
+    } finally {
+      await own.close();
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('migrate:fresh leaves a function in a schema without tables of the app, extensions and objects of other roles', async () => {
+    const own = await freshConnections(driver);
+    const rows = own.connections.get<any>();
+    const role = `marmeon_other_${Math.random().toString(36).slice(2, 10)}`;
+    await sql.raw(`create role ${role}`).execute(rows);
+    try {
+      await sql`create schema elsewhere_fns`.execute(rows);
+      await sql`create function elsewhere_fns.keep() returns integer language sql as 'select 1'`.execute(rows);
+      await sql`create extension if not exists pg_trgm`.execute(rows);
+      await sql`create function theirs() returns integer language sql as 'select 2'`.execute(rows);
+      await sql.raw(`alter function theirs() owner to ${role}`).execute(rows);
+      await sql`create type their_mood as enum ('calm')`.execute(rows);
+      await sql.raw(`alter type their_mood owner to ${role}`).execute(rows);
+      await migrator(own.connections, auth).fresh();
+      expect((await sql<{ keep: number }>`select elsewhere_fns.keep() as keep`.execute(rows)).rows[0]?.keep).toBe(1);
+      expect((await sql<{ n: number }>`select count(*)::int as n from pg_extension where extname = 'pg_trgm'`.execute(rows)).rows[0]?.n).toBe(1);
+      expect((await sql<{ s: number }>`select similarity('a', 'a') as s`.execute(rows)).rows[0]?.s).toBe(1);
+      expect((await sql<{ theirs: number }>`select theirs() as theirs`.execute(rows)).rows[0]?.theirs).toBe(2);
+      expect((await sql<{ n: number }>`select count(*)::int as n from pg_type where typname = 'their_mood'`.execute(rows)).rows[0]?.n).toBe(1);
+    } finally {
+      try {
+        await sql`drop schema if exists elsewhere_fns cascade`.execute(rows);
+        await sql.raw(`drop owned by ${role}`).execute(rows);
+        await sql.raw(`drop role if exists ${role}`).execute(rows);
+      } finally {
+        await own.close();
+      }
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('migrate:fresh drops a table whose name contains a dot', async () => {
+    const own = await freshConnections(driver);
+    const rows = own.connections.get<any>();
+    try {
+      await sql`create table "a.b" (id integer)`.execute(rows);
+      await migrator(own.connections, auth).fresh();
+      expect((await sql<{ n: number }>`select count(*)::int as n from pg_class where relname = 'a.b'`.execute(rows)).rows[0]?.n).toBe(0);
+    } finally {
+      await own.close();
+    }
   });
 });
 
