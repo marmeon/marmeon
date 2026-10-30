@@ -1,7 +1,7 @@
 import { Controller, defineRequest } from '@marmeon/http';
 import { defineMiddleware, defineRoutes, everyone, Router, type Route, type RouteDefinition } from '@marmeon/router';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AdminOnlyTable, Deactivate, drivers, endpoint, tableApp, type TableTestApp } from './__fixtures__/app.ts';
+import { AdminOnlyTable, Deactivate, drivers, endpoint, tableApp, TeamRepository, type TableTestApp } from './__fixtures__/app.ts';
 import { endpointOf } from './tables.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
 import { action, column, defineTable, exportCsv, type DataTable } from './index.ts';
@@ -83,6 +83,21 @@ describe('attachTo() called by hand, not through attach()', () => {
       }),
     );
     const made = router.routes.filter((route) => route.path.includes('/_tables/') && route.middleware.length === 0);
+    expect(made.length).toBeGreaterThan(0);
+    for (const route of made) expect(() => endpointOf(route)).toThrow();
+  });
+
+  it('refuses a registrar with the page\'s checks and middleware but not its binding', () => {
+    const rows = table({ authorized: true });
+    const router = new Router().load(
+      defineRoutes((Root) => {
+        const open = Root.authorize(everyone);
+        const page = open.bind('team', TeamRepository, { public: true }).get('/t/:team/rows', Page);
+        expect(() => rows.endpoints().attachTo(open.prefix('/t/:team/rows'), page)).toThrow(message);
+        expect(() => rows.endpoints().attachTo(open.bind('team', TeamRepository, { public: true }).prefix('/t/:team/rows'), page)).not.toThrow();
+      }),
+    );
+    const made = router.routes.filter((route) => route.path.includes('/_tables/') && route.bindings.length === 0);
     expect(made.length).toBeGreaterThan(0);
     for (const route of made) expect(() => endpointOf(route)).toThrow();
   });

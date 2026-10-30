@@ -141,6 +141,16 @@ export function tableAttachment(definition: TableDefinition, options: TableEndpo
   return Object.freeze({ attachTo });
 }
 
+/** Bindings are copied when a route is made, so they are compared by what they hold: the same keys, each value `===` (the `with` list element-wise). */
+function startsWithBindings(own: readonly object[], expected: readonly object[]): boolean {
+  const same = (a: unknown, b: unknown): boolean => (Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((entry, index) => entry === b[index]) : a === b);
+  return expected.every((binding, index) => {
+    const mine = own[index] as Record<string, unknown> | undefined;
+    const keys = Object.keys(binding);
+    return mine !== undefined && keys.length === Object.keys(mine).length && keys.every((key) => key in mine && same(mine[key], (binding as Record<string, unknown>)[key]));
+  });
+}
+
 /**
  * Refuses an endpoint that does not carry the page's whole access — made by calling `attachTo` by hand on some other registrar
  * instead of through `attach()`. Nothing is recorded for it, so no page links it.
@@ -154,7 +164,7 @@ function assertOnPage(route: RouteDefinition, page: RouteDefinition, table: stri
     !route.path.startsWith(prefix) ||
     !starts(route.checks, access) ||
     !starts(route.middleware, page.middleware) ||
-    !starts(route.bindings, page.bindings) ||
+    !startsWithBindings(route.bindings, page.bindings) ||
     !starts(route.afterAuthorize, page.afterAuthorize)
   ) {
     throw new Error(`${table}.endpoints() hangs on a page with attach(): ${route.path} does not carry the middleware, bindings, checks, path and group of ${page.path}. See docs/tables.md#the-controller-and-the-routes.`);

@@ -133,6 +133,13 @@ describe.each(drivers)('the URLs under the page (%s)', (driver) => {
     expect(open.recorder.deactivated).toHaveLength(1);
   });
 
+  it('hangs the endpoints on a page with a route binding, and they answer', async () => {
+    open = await tableApp(driver);
+    expect(await urlsOf(open, ADA, '/bound/1/members')).toMatchObject({ export: '/bound/1/members/_tables/members/export/csv' });
+    expect((await open.request('/bound/1/members/_tables/members/export/csv', { user: ADA })).status).toBe(200);
+    expect((await open.request('/bound/1/members/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: { key: '4' } })).status).toBe(200);
+  });
+
   it('links /de/… endpoints from a localized page', async () => {
     open = await tableApp(driver);
     const router = routerOf((Root) => void Root.localized().get('/members', () => 'page').attach(MembersTable.endpoints() as never));

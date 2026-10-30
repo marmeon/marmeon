@@ -742,6 +742,7 @@ const routes = openRoutes((Route) => {
   team.get('/input', StubPage).attach(InputTable.endpoints());
   // A parameter in the page's path: the endpoints under it carry it, too.
   team.get('/views/:view', MembersPage).attach(MembersTable.endpoints());
+  Route.prefix('/bound/:team').middleware(acting).bind('team', TeamRepository).authorize(() => true).get('/members', MembersPage).attach(MembersTable.endpoints());
   team.get('/admin-only', AdminOnlyPage).attach(AdminOnlyTable.endpoints());
   team.middleware(traced('registrar')).get('/probed', StubPage).attach(
     ProbedTable.endpoints({
