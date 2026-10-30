@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/validation",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "Validation rules for Marmeon apps, typed: Standard Schema objects with messages in the request's language, database rules that never run live, query and .env rules.",
   "keywords": [
     "marmeon",

@@ -1,6 +1,6 @@
 # @marmeon/http
 
-## 1.0.0-rc.2
+## 1.0.0-rc.3
 
 ### Breaking changes
 
@@ -112,7 +112,7 @@
 - Show tenants with roles and a token in the path in authorization.md by @maxeckel in https://github.com/marmeon/marmeon/pull/569
 - Say what hashLinkToken() hashes and how to move from a hash of your own by @maxeckel in https://github.com/marmeon/marmeon/pull/573
 
-**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.1...v1.0.0-rc.2
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.1...v1.0.0-rc.3
 
 ## 1.0.0-rc.1
 
