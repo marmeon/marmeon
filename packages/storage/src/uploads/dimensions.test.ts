@@ -217,6 +217,15 @@ describe('imageDimensions()', () => {
       expect(imageDimensions(bytes(box('ftyp', text('avif')), [0, 0, 0, 1], text('meta'), [0, 0, 0, 1, 0, 0, 0, 0]), 'image/avif')).toBeUndefined();
     });
 
+    it('a 64-bit AVIF box size is refused for its high word alone — the low word is the true length', () => {
+      const file = avif(400, 300);
+      const ftyp = new DataView(file.buffer).getUint32(0);
+      const body = [...file.subarray(ftyp + 8)]; // what the 32-bit `meta` box holds
+      const meta = (high: number) => bytes(file.subarray(0, ftyp), [0, 0, 0, 1], text('meta'), be32(high), be32(16 + body.length), body);
+      expect(imageDimensions(meta(0), 'image/avif')).toEqual({ width: 400, height: 300 });
+      expect(imageDimensions(meta(1), 'image/avif')).toBeUndefined();
+    });
+
     it('random bytes never throw and never hang', () => {
       let seed = 12345;
       const next = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) >> 8) & 255;
