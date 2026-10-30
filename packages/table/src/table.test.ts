@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { drivers, MEMBERS, MembersTable, tableApp, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import { ActiveTable, ByEmailTable, drivers, endpoint, GuardedTable, MEMBERS, MembersTable, SmallExportTable, tableApp, TeamsTable, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
 import { secret, type Database } from '@marmeon/database';
-import { column, defineTable, filter } from './define.ts';
+import { column, defineTable, filter, type DataTable } from './define.ts';
+import { pageOf } from './test-helpers/attached-page.ts';
 import { DataTables } from './tables.ts';
 import type { TableData } from './client/index.ts';
 
@@ -117,10 +118,10 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       for (const text of selects) expect(text, 'the SQL selects a hidden value').not.toContain('admins');
       expect((await application.request('/teams/1/teams?sort=admins', { user: ALAN })).status).toBe(400);
       application.queries.length = 0;
-      const exported = await (await application.request('/teams/1/_tables/teams/export/csv?sort=-size', { user: EDSGER })).text();
+      const exported = await (await application.request(`${endpoint(TeamsTable, 'export', 'csv')}?sort=-size`, { user: EDSGER })).text();
       expect(exported.split('\r\n')).toEqual(['"name","size"', '"Team one","4"', '"Team two","1"', '']);
       for (const query of application.queries) expect(query.sql, 'the export selects a hidden value').not.toContain('admins');
-      const all = await (await application.request('/teams/1/_tables/teams/export/csv?sort=-admins', { user: ADA })).text();
+      const all = await (await application.request(`${endpoint(TeamsTable, 'export', 'csv')}?sort=-admins`, { user: ADA })).text();
       expect(all.split('\r\n')).toEqual(['"name","size","admins"', '"Team two","1","1"', '"Team one","4","1"', '']);
     });
 
@@ -130,10 +131,13 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       const ctx = { request: new Request('http://localhost/teams/1/teams'), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 };
       const table = (columns: Record<string, unknown>) =>
         defineTable({ name: 'teams', query: (db: Database) => db.selectFrom('teams').withCount('members', { as: 'size' }), key: 'teams.id', columns: columns as never } as never);
-      await expect(tables.resolve(table({ name: column('teams.name'), members: column('size') }), ctx as never)).rejects.toThrow(
+      const on = (t: DataTable, over: object = {}) => ({ ...ctx, ...over, route: pageOf(t) }) as never;
+      const members = table({ name: column('teams.name'), members: column('size') });
+      await expect(tables.resolve(members, on(members))).rejects.toThrow(
         `Table "teams": the column 'members' reads size, a value its query selects — name the column size: size: column('size').`,
       );
-      await expect(tables.resolve(table({ size: column('size').searchable() }), { ...ctx, request: new Request('http://localhost/teams/1/teams?search=x') } as never)).rejects.toThrow(
+      const searched = table({ size: column('size').searchable() });
+      await expect(tables.resolve(searched, on(searched, { request: new Request('http://localhost/teams/1/teams?search=x') }))).rejects.toThrow(
         `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
       );
       const filtered = defineTable({
@@ -143,7 +147,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         columns: { size: column('size') },
         filters: { size: filter.select('size', ['1']) },
       } as never);
-      await expect(tables.resolve(filtered, { ...ctx, request: new Request('http://localhost/teams/1/teams?filter%5Bsize%5D=1') } as never)).rejects.toThrow(
+      await expect(tables.resolve(filtered, on(filtered, { request: new Request('http://localhost/teams/1/teams?filter%5Bsize%5D=1') }))).rejects.toThrow(
         `Table "teams": the filter 'size' reads size, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`,
       );
     });
@@ -158,7 +162,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         key: 'members.id',
         columns: { name: column('members.name'), password: column('password') },
       } as never);
-      await expect(tables.resolve(table, ctx as never)).rejects.toThrow(
+      await expect(tables.resolve(table, { ...ctx, route: pageOf(table) } as never)).rejects.toThrow(
         `Table "members": the column 'password' reads password, a secret column its query asks for with secret() — a table never shows one.`,
       );
     });
@@ -218,16 +222,16 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         ['Edsger', { deactivate: true }],
         ['Grace', { deactivate: false }], // protected
       ]);
-      expect(admin.actions).toEqual([{ name: 'deactivate', url: '/teams/1/_tables/members/actions/deactivate', confirm: true }]);
-      expect(admin.bulk).toEqual([{ name: 'deactivate', url: '/teams/1/_tables/members/bulk/deactivate', confirm: false, max: 5 }]);
-      expect(admin.exports).toEqual([{ name: 'csv', format: 'csv', url: '/teams/1/_tables/members/export/csv', max: 10_000 }]);
+      expect(admin.actions).toEqual([{ name: 'deactivate', url: endpoint(MembersTable, 'action', 'deactivate'), confirm: true }]);
+      expect(admin.bulk).toEqual([{ name: 'deactivate', url: endpoint(MembersTable, 'bulk', 'deactivate'), confirm: false, max: 5 }]);
+      expect(admin.exports).toEqual([{ name: 'csv', format: 'csv', url: endpoint(MembersTable, 'export', 'csv'), max: 10_000 }]);
       const member = (await page(application, ALAN, 'per_page=10&sort=-joined&filter[role]=member')).members;
       expect(member.actions).toEqual([]);
       expect(member.bulk).toEqual([]);
       expect(member.exports).toEqual([]);
       expect(member.rows.every((row) => JSON.stringify(row.can) === '{}')).toBe(true);
       const exporter = (await page(application, EDSGER, 'per_page=10&sort=-joined&filter[role]=member')).members;
-      expect(exporter.exports).toEqual([{ name: 'csv', format: 'csv', url: '/teams/1/_tables/members/export/csv?sort=-joined&filter%5Brole%5D=member', max: 10_000 }]);
+      expect(exporter.exports).toEqual([{ name: 'csv', format: 'csv', url: `${endpoint(MembersTable, 'export', 'csv')}?sort=-joined&filter%5Brole%5D=member`, max: 10_000 }]);
     });
 
     it('pages by an encrypted cursor when asked to — a changed cursor is a 400', async () => {
@@ -301,7 +305,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
 
   describe('row actions (POST …/actions/:action)', () => {
     const run = (application: TableTestApp, user: number | undefined, key: unknown, action = 'deactivate', team = 1) =>
-      application.request(`/teams/${team}/_tables/members/actions/${action}`, { method: 'POST', user, json: { key } });
+      application.request(endpoint(MembersTable, 'action', action, team), { method: 'POST', user, json: { key } });
 
     it('runs for a row of the table the policy allows — and answers with what it did', async () => {
       const application = await app(driver);
@@ -337,7 +341,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     it('refuses an unknown action (404), a body without a key (422) and a guest (the page\'s middleware: 401)', async () => {
       const application = await app(driver);
       expect((await run(application, ADA, 2, 'delete')).status).toBe(404);
-      expect((await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: {} })).status).toBe(422);
+      expect((await application.request(endpoint(MembersTable, 'action', 'deactivate'), { method: 'POST', user: ADA, json: {} })).status).toBe(422);
       expect((await run(application, undefined, 2)).status).toBe(401);
       expect((await run(application, MALLORY, 2)).status).toBe(404); // not her team: the tenant middleware
       expect(application.recorder.deactivated).toEqual([]);
@@ -347,7 +351,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
   describe('keys are parsed by the key\'s type before any query', () => {
     it('a text key (`{ column, type: \'string\' }`) takes text — a number is just text that matches no row', async () => {
       const application = await app(driver);
-      const run = (key: unknown) => application.request('/teams/1/_tables/by-email/actions/deactivate', { method: 'POST', user: ADA, json: { key } });
+      const run = (key: unknown) => application.request(endpoint(ByEmailTable, 'action', 'deactivate'), { method: 'POST', user: ADA, json: { key } });
       expect((await run('alan@example.com')).status).toBe(200);
       expect((await run(2)).status).toBe(404);
       expect(application.recorder.deactivated).toEqual(['alan@example.com']);
@@ -356,10 +360,10 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     it('an integer key never sends text to the database (Postgres would fail: a 500) — no row, no query for it', async () => {
       const application = await app(driver);
       application.queries.length = 0;
-      const response = await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: { key: 'abc' } });
+      const response = await application.request(endpoint(MembersTable, 'action', 'deactivate'), { method: 'POST', user: ADA, json: { key: 'abc' } });
       expect(response.status, 'text reached an integer key column').toBe(404);
       expect(application.queries.some((query) => query.parameters.includes('abc')), 'text reached an integer key column').toBe(false);
-      const bulk = await application.request('/teams/1/_tables/members/bulk/deactivate', { method: 'POST', user: ADA, json: { keys: ['abc', '2', '2.5', '99999999999999999'] } });
+      const bulk = await application.request(endpoint(MembersTable, 'bulk', 'deactivate'), { method: 'POST', user: ADA, json: { keys: ['abc', '2', '2.5', '99999999999999999'] } });
       expect(await bulk.json()).toMatchObject({ done: 1, missing: 3 });
       expect(application.queries.some((query) => query.parameters.includes('abc')), 'text reached an integer key column').toBe(false);
     });
@@ -370,10 +374,10 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       what === 'page'
         ? application.request('/teams/1/guarded', { user })
         : what === 'action'
-          ? application.request('/teams/1/_tables/guarded/actions/deactivate', { method: 'POST', user, json: { key: 4 } })
+          ? application.request(endpoint(GuardedTable, 'action', 'deactivate'), { method: 'POST', user, json: { key: 4 } })
           : what === 'bulk'
-            ? application.request('/teams/1/_tables/guarded/bulk/deactivate', { method: 'POST', user, json: { keys: [4] } })
-            : application.request('/teams/1/_tables/guarded/export/csv', { user });
+            ? application.request(endpoint(GuardedTable, 'bulk', 'deactivate'), { method: 'POST', user, json: { keys: [4] } })
+            : application.request(endpoint(GuardedTable, 'export', 'csv'), { user });
 
     for (const what of ['page', 'action', 'bulk', 'export'] as const) {
       it(`refuses a user it denies on the ${what} (403, no handler ran) and lets one it allows through`, async () => {
@@ -388,7 +392,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
 
   describe('bulk actions (POST …/bulk/:action)', () => {
     const run = (application: TableTestApp, user: number | undefined, body: unknown) =>
-      application.request('/teams/1/_tables/members/bulk/deactivate', { method: 'POST', user, json: body });
+      application.request(endpoint(MembersTable, 'bulk', 'deactivate'), { method: 'POST', user, json: body });
 
     it('keys ∩ the base query: keys that are no rows of the table (another team\'s, none) are left out and counted', async () => {
       const application = await app(driver);
@@ -435,7 +439,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
   });
 
   describe('CSV export (GET …/export/:export)', () => {
-    const csv = (application: TableTestApp, user: number | undefined, query = '') => application.request(`/teams/1/_tables/members/export/csv${query ? `?${query}` : ''}`, { user });
+    const csv = (application: TableTestApp, user: number | undefined, query = '') => application.request(`${endpoint(MembersTable, 'export', 'csv')}${query ? `?${query}` : ''}`, { user });
 
     it('streams the visible columns as the table is filtered and sorted — no-store, a safe file name', async () => {
       const application = await app(driver);
@@ -516,7 +520,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         ['active', (value: boolean | null) => (value === false ? 0 : value === true ? 1 : 2)],
         ['-active', (value: boolean | null) => (value === true ? 0 : value === false ? 1 : 2)],
       ] as const) {
-        const response = await application.request(`/teams/1/_tables/active/export/csv?search=bulk&sort=${sort}`, { user: ADA });
+        const response = await application.request(`${endpoint(ActiveTable, 'export', 'csv')}?search=bulk&sort=${sort}`, { user: ADA });
         const text = await response.text().catch((error: unknown) => `the stream failed: ${String(error)}`);
         const rows = text.split('\r\n').filter(Boolean).slice(1).map((line) => line.slice(1, line.indexOf('"', 1)));
         expect(rows.length, `${sort}: ${rows.length} rows — ${text.includes('the stream failed') ? text.slice(text.indexOf('the stream failed')) : 'complete'}`).toBe(600);
@@ -527,7 +531,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
 
     it('refuses an export over its limit (422) before streaming a byte — never a file cut short', async () => {
       const application = await app(driver);
-      const response = await application.request('/teams/1/_tables/small/export/csv', { user: ADA });
+      const response = await application.request(endpoint(SmallExportTable, 'export', 'csv'), { user: ADA });
       expect(response.status, 'an export over its limit was streamed').toBe(422);
       expect(await response.text()).toContain('More than 3 rows match');
     });
@@ -562,12 +566,12 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect((await application.request('/teams/1/no-schema', { user: ALAN })).status).toBe(500);
       const tables = application.application.container.createScope().make(DataTables);
       const ctx = { request: new Request('http://localhost/teams/1/members'), query: new URLSearchParams(), user: USERS[ALAN], team: 1 };
-      await expect(tables.resolve(MembersTable, ctx as never)).rejects.toThrow('give its request the table\'s schema: defineRequest({ query: membersTable.query })');
+      await expect(tables.resolve(MembersTable, { ...ctx, route: pageOf(MembersTable) } as never)).rejects.toThrow('give its request the table\'s schema: defineRequest({ query: membersTable.query })');
     });
 
     it('answers an action request (x-marmeon-action) like useAction expects — JSON, no-store', async () => {
       const application = await app(driver);
-      const response = await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: { key: 4 }, action: true });
+      const response = await application.request(endpoint(MembersTable, 'action', 'deactivate'), { method: 'POST', user: ADA, json: { key: 4 }, action: true });
       expect(response.status).toBe(200);
       expect(response.headers.get('cache-control')).toContain('no-store');
       expect(await response.json()).toEqual({ done: 1, skipped: 0, missing: 0 });
@@ -575,7 +579,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
 
     it('names the headers that choose between the redirect and the JSON in Vary — on both, and not on a handler\'s own response', async () => {
       const application = await app(driver);
-      const url = '/teams/1/_tables/members/actions/deactivate';
+      const url = endpoint(MembersTable, 'action', 'deactivate');
       const names = (response: Response) => (response.headers.get('vary') ?? '').toLowerCase().split(/\s*,\s*/).sort();
       const expected = ['accept', 'x-marmeon', 'x-marmeon-action', 'x-requested-with'];
       const json = await application.request(url, { method: 'POST', user: ADA, json: { key: 4 }, action: true });
@@ -583,25 +587,25 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(json.headers.get('cache-control')).toContain('no-store');
       const back = await application.request(url, { method: 'POST', user: ADA, form: 'key=2', headers: { accept: 'text/html' } });
       expect([back.status, names(back)]).toEqual([303, expected]);
-      const own = await application.request('/teams/1/_tables/by-email/actions/deactivate', { method: 'POST', user: ADA, json: { key: 'edsger@example.com' } });
+      const own = await application.request(endpoint(ByEmailTable, 'action', 'deactivate'), { method: 'POST', user: ADA, json: { key: 'edsger@example.com' } });
       expect([own.status, own.headers.get('vary')]).toEqual([418, null]);
     });
 
     it('a form posted without JavaScript goes back to the page (303) — the same checks, keys as text', async () => {
       const application = await app(driver);
       const back = { accept: 'text/html', referer: 'http://localhost/teams/1/members?sort=-joined' };
-      const row = await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, form: 'key=2', headers: back });
+      const row = await application.request(endpoint(MembersTable, 'action', 'deactivate'), { method: 'POST', user: ADA, form: 'key=2', headers: back });
       expect(row.status).toBe(303);
       expect(row.headers.get('location')).toBe('/teams/1/members?sort=-joined');
-      const many = await application.request('/teams/1/_tables/members/bulk/deactivate', { method: 'POST', user: ADA, form: 'keys[]=4&keys[]=3&keys[]=9', headers: back });
+      const many = await application.request(endpoint(MembersTable, 'bulk', 'deactivate'), { method: 'POST', user: ADA, form: 'keys[]=4&keys[]=3&keys[]=9', headers: back });
       expect(many.status).toBe(303);
       // "All matching" without JavaScript: `all=1`, the table's state in the bulk URL's query.
-      const all = await application.request('/teams/1/_tables/members/bulk/deactivate?filter%5Brole%5D=admin', { method: 'POST', user: ADA, form: 'all=1', headers: back });
+      const all = await application.request(`${endpoint(MembersTable, 'bulk', 'deactivate')}?filter%5Brole%5D=admin`, { method: 'POST', user: ADA, form: 'all=1', headers: back });
       expect(all.status).toBe(303);
       expect(application.recorder.deactivated).toEqual([2]);
       expect(application.recorder.batches).toEqual([[4]]);
       // A refused one is the same 403 — never a redirect that hides it.
-      expect((await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, form: 'key=3', headers: back })).status).toBe(403);
+      expect((await application.request(endpoint(MembersTable, 'action', 'deactivate'), { method: 'POST', user: ADA, form: 'key=3', headers: back })).status).toBe(403);
     });
   });
 });

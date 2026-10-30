@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { drivers, tableApp, type TableTestApp } from './__fixtures__/app.ts';
+import { AuditedTable, drivers, endpoint, tableApp, type TableTestApp } from './__fixtures__/app.ts';
 import { exportCsv } from './index.ts';
 
 const ADA = 1; // admin of team 1: sees e-mails, exports
@@ -14,7 +14,7 @@ afterEach(async () => {
 
 describe.each(drivers)('exportCsv().onExport() (%s)', (driver) => {
   const download = (application: TableTestApp, user: number | undefined, query = '', which = 'csv') =>
-    application.request(`/teams/1/_tables/audited/export/${which}${query ? `?${query}` : ''}`, { user });
+    application.request(`${endpoint(AuditedTable, 'export', which)}${query ? `?${query}` : ''}`, { user });
 
   it('tells the recorder what was exported: the rows of the filtered query, the visible columns, the state, the route parameters', async () => {
     open = await tableApp(driver);
@@ -52,7 +52,7 @@ describe.each(drivers)('exportCsv().onExport() (%s)', (driver) => {
     expect((await download(open, undefined)).status).toBe(401);
     expect((await download(open, ALAN)).status, 'the export ran without its authorization').toBe(403);
     expect((await download(open, ADA, '', 'missing')).status).toBe(404);
-    expect((await open.request('/teams/2/_tables/audited/export/csv', { user: ADA })).status).toBe(404);
+    expect((await open.request(endpoint(AuditedTable, 'export', 'csv', 2), { user: ADA })).status).toBe(404);
     expect((await download(open, ADA, 'sort=password')).status).toBe(400);
     expect((await download(open, EDSGER, 'sort=email')).status).toBe(400);
     expect((await download(open, ADA, 'filter[role]=owner')).status).toBe(400);

@@ -5,12 +5,13 @@ import { leaveOutSelections, selectionsOf } from '@marmeon/database/internal';
 import type { Translator } from '@marmeon/core';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
-import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
+import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition } from '@marmeon/router';
 import { fillPath, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
-import { isSchema, normalizeOptions, type ActionInputSource, type AnyBulkAction, type AnyColumn, type AnyFilter, type AnyRowAction, type KeyType, type DataTable, type TableDefinition, type TableExport, type TableExportInfo, type TableProps, type TableVisibility } from './define.ts';
+import { isSchema, normalizeOptions } from './helpers.ts';
+import type { ActionInputSource, AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, DataTable, TableDefinition, TableExport, TableExportInfo, TableProps, TableVisibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
@@ -19,20 +20,30 @@ export type ContextOfTable<T> = T extends DataTable<any, infer Ctx> ? Ctx : neve
 /** Rows a CSV export reads per query. */
 const EXPORT_BATCH = 500;
 
-/** Where `tableRoutes` registered a table's endpoints — by route, so the page can link to them. */
+/** The kinds of endpoint a table has. */
 export type TableEndpointKind = 'action' | 'bulk' | 'export';
 
 const ENDPOINTS = new WeakMap<RouteDefinition, { readonly definition: TableDefinition; readonly kind: TableEndpointKind }>();
 
-/** @internal — `tableRoutes` records its routes. */
+/** @internal — `endpoints()` records the routes it registers. */
 export function recordEndpoint(route: RouteDefinition, definition: TableDefinition, kind: TableEndpointKind): void {
   ENDPOINTS.set(route, { definition, kind });
+}
+
+/** The endpoints of each table on each page it was attached to — what `resolve()` links. */
+const PAGES = new WeakMap<RouteDefinition, Map<TableDefinition, Partial<Record<TableEndpointKind, RouteDefinition>>>>();
+
+/** @internal — `endpoints()` records the page a table is attached to, with the endpoints it made (none for a table without actions and exports). */
+export function recordPage(page: RouteDefinition, definition: TableDefinition, routes: Partial<Record<TableEndpointKind, RouteDefinition>>): void {
+  const tables = PAGES.get(page) ?? new Map();
+  tables.set(definition, routes);
+  PAGES.set(page, tables);
 }
 
 /** @internal — the table an endpoint route serves. */
 export function endpointOf(route: RouteDefinition): { readonly definition: TableDefinition; readonly kind: TableEndpointKind } {
   const found = ENDPOINTS.get(route);
-  if (!found) throw new Error(`${route.path} is no route of a table — register table endpoints with tableRoutes(Route, Table).`);
+  if (!found) throw new Error(`${route.path} is no route of a table — a table's endpoints are registered by Route.get(…).attach(Table.endpoints()).`);
   return found;
 }
 
@@ -74,7 +85,7 @@ const RowKey = v.union([v.pipe(v.number(), v.safeInteger()), v.pipe(v.string(), 
 const ActionBody = v.object({ key: RowKey, input: v.optional(v.unknown()) });
 
 /**
- * Resolves tables per request: the page's prop (`resolve`), and the work of the endpoints `tableRoutes` registers — row actions,
+ * Resolves tables per request: the page's prop (`resolve`), and the work of the endpoints `endpoints()` registers — row actions,
  * bulk actions, exports. Built per request (the policies are the request user's).
  *
  * The order is the security model: **who may see the table** (`authorize`) → **what they may see** (column, filter, action and
@@ -87,17 +98,15 @@ export class DataTables {
   readonly #db: Connection<any>;
   readonly #gate: () => Gate;
   readonly #resolve: ClassResolver;
-  readonly #router: Router;
   readonly #encrypter: () => CursorEncrypter;
   readonly #metadata: (() => RelationMetadata) | undefined;
   readonly #translator: () => Translator | undefined;
 
   /** @internal — the container builds it (`TableServiceProvider`); an app injects `DataTables`. */
-  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata, translator: () => Translator | undefined = () => undefined) {
+  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata, translator: () => Translator | undefined = () => undefined) {
     this.#db = db;
     this.#gate = gate;
     this.#resolve = resolve;
-    this.#router = router;
     this.#encrypter = encrypter;
     this.#metadata = metadata;
     this.#translator = translator;
@@ -110,6 +119,7 @@ export class DataTables {
   async resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>> {
     const definition = table.definition;
     const context = ctx as unknown as HttpContext;
+    const routes = this.#attached(definition, context);
     await this.#authorizeTable(definition, context);
     await this.#verify(definition, context);
     assertQuerySchema(definition, context);
@@ -144,7 +154,7 @@ export class DataTables {
     const can = await this.#abilities(view.actions, picked);
     const keys = queryKeys(definition);
     const query = stateQuery(definition, state);
-    const urls = this.#endpoints(definition, context, view);
+    const urls = this.#endpoints(definition, context, view, routes);
     const data: TableData = {
       name: definition.name,
       key: keyName,
@@ -554,12 +564,23 @@ export class DataTables {
     return can;
   }
 
-  /** The URLs of the table's endpoints for this page — from the routes `tableRoutes` registered, with the page's own parameters. */
-  #endpoints(definition: TableDefinition, ctx: HttpContext, view: View) {
-    const needed = view.actions.length + view.bulk.length + view.exports.length > 0;
-    const routes = needed ? this.#routesOf(definition, ctx.route?.path ?? '/') : undefined;
-    const raw = needed ? rawParams(ctx.route?.path ?? '/', new URL(ctx.request.url).pathname) : {};
-    const url = (kind: TableEndpointKind, param: string, name: string) => fillPath(definition.name, routes![kind]!.path, { ...raw, [param]: name }).path;
+  /**
+   * The endpoints `endpoints()` made for the table on this page. A table nobody attached to the page has none, and the page refuses
+   * before it reads a row: a programming error, in every environment.
+   */
+  #attached(definition: TableDefinition, ctx: HttpContext): Partial<Record<TableEndpointKind, RouteDefinition>> {
+    const found = ctx.route ? PAGES.get(ctx.route)?.get(definition) : undefined;
+    if (found) return found;
+    throw new Error(
+      `Table "${definition.name}" is not attached to ${ctx.route ? `${ctx.route.methods.join('|')} ${ctx.route.path}` : "this request's route"} — hang it on the page that shows it: ` +
+        `Route.get('…', Page).attach(${definition.name}Table.endpoints()). See docs/tables.md#the-controller-and-the-routes.`,
+    );
+  }
+
+  /** The URLs of the table's endpoints for this page — of the routes attached to it, with the page's own parameters. */
+  #endpoints(definition: TableDefinition, ctx: HttpContext, view: View, routes: Partial<Record<TableEndpointKind, RouteDefinition>>) {
+    const url = (kind: TableEndpointKind, param: string, name: string) =>
+      fillPath(definition.name, routes[kind]!.path, { ...rawParams(ctx.route?.path ?? '/', new URL(ctx.request.url).pathname), [param]: name }).path;
     return {
       action: (name: string) => url('action', 'tableAction', name),
       bulk: (name: string) => url('bulk', 'tableBulk', name),
@@ -569,44 +590,10 @@ export class DataTables {
       },
     };
   }
-
-  /**
-   * The endpoints of the registration next to this page: of those `tableRoutes` made for the table, the one whose prefix is the longest
-   * whole-segment prefix of the page's route path — each page links its own, with its own checks and parameters. A table with a single
-   * registration is linked from any page; with several, the page must sit under one of them.
-   */
-  #routesOf(definition: TableDefinition, pagePath: string): Partial<Record<TableEndpointKind, RouteDefinition>> {
-    const registrations = new Map<string, { readonly prefix: string; readonly routes: Partial<Record<TableEndpointKind, RouteDefinition>> }>();
-    for (const route of this.#router.routes) {
-      const entry = ENDPOINTS.get(route);
-      if (entry?.definition !== definition) continue;
-      const prefix = prefixOf(definition, route, entry.kind);
-      const found = registrations.get(prefix) ?? { prefix, routes: {} };
-      if (found.routes[entry.kind]) throw twice(definition, found.routes[entry.kind]!.path, route.path);
-      found.routes[entry.kind] = route;
-      registrations.set(prefix, found);
-    }
-    if (registrations.size === 1) return [...registrations.values()][0]!.routes;
-    const page = pagePath.split('/').filter((segment) => segment !== '');
-    let best: { length: number; routes: Partial<Record<TableEndpointKind, RouteDefinition>> } | undefined;
-    for (const [key, { routes }] of registrations) {
-      const own = key.split('/').filter((segment) => segment !== '');
-      if (own.length > page.length || own.some((segment, index) => segment !== page[index])) continue;
-      if (!best || own.length > best.length) best = { length: own.length, routes };
-    }
-    if (!best) {
-      throw new Error(
-        registrations.size === 0
-          ? `Table "${definition.name}" has actions or exports but no routes — add tableRoutes(Route, Table) to its module's routes, on the registrar of its page (with the page's middleware).`
-          : `Table "${definition.name}" is shown on ${pagePath}, which is under none of the pages it has routes for (${[...registrations.values()].map(({ prefix }) => prefix || '/').join(', ')}) — register next to its page: tableRoutes(Route, Table) on that page's registrar.`,
-      );
-    }
-    return best.routes;
-  }
 }
 
 function twice(definition: TableDefinition, first: string, second: string): Error {
-  return new Error(`Table "${definition.name}": tableRoutes() registered its endpoints twice (${first}, ${second}) — once for each page.`);
+  return new Error(`Table "${definition.name}": its endpoints are attached to two pages with the same URLs (${first}, ${second}) — the router serves the first alone.`);
 }
 
 /** The path of a registration: an endpoint's path without its `/_tables/<name>/…` tail. */
@@ -620,7 +607,7 @@ function shapeOf(path: string): string {
 }
 
 /**
- * @internal — a route check for the router: two registrations of one table under the same URLs stop the start. The router would serve
+ * @internal — a route check for the router: two pages of one table under the same URLs stop the start. The router would serve
  * the first route of a path and never run the second's middleware, `authorize` or bindings.
  */
 export function distinctRegistrations(): (route: RouteDefinition) => void {

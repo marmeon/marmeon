@@ -1,7 +1,6 @@
-import { defineRoutes, Router } from '@marmeon/router';
+import { defineRoutes, everyone, Router } from '@marmeon/router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, endpointTrace, ProbedTable, tableApp, traced, type TableTestApp } from './__fixtures__/app.ts';
-import { tableRoutes } from './index.ts';
+import { drivers, endpoint, endpointTrace, ProbedTable, tableApp, traced, type TableTestApp } from './__fixtures__/app.ts';
 
 const ADA = 1; // admin of team 1: acts and exports
 const ALAN = 2; // may not export
@@ -15,16 +14,15 @@ afterEach(async () => {
   open = undefined;
 });
 
-describe.each(drivers)('tableRoutes() middleware per endpoint (%s)', (driver) => {
-  const BASE = '/teams/1/_tables/probed';
+describe.each(drivers)('endpoints() middleware per endpoint (%s)', (driver) => {
   const act = (application: TableTestApp, user: number | undefined, headers: Record<string, string> = {}) =>
-    application.request(`${BASE}/actions/deactivate`, { method: 'POST', user, json: { key: '4' }, headers });
+    application.request(endpoint(ProbedTable, 'action', 'deactivate'), { method: 'POST', user, json: { key: '4' }, headers });
   const bulk = (application: TableTestApp, user: number | undefined, headers: Record<string, string> = {}) =>
-    application.request(`${BASE}/bulk/deactivate`, { method: 'POST', user, json: { keys: ['4'] }, headers });
-  const download = (application: TableTestApp, user: number | undefined, headers: Record<string, string> = {}, base = BASE) =>
-    application.request(`${base}/export/csv`, { user, headers });
+    application.request(endpoint(ProbedTable, 'bulk', 'deactivate'), { method: 'POST', user, json: { keys: ['4'] }, headers });
+  const download = (application: TableTestApp, user: number | undefined, headers: Record<string, string> = {}, url = endpoint(ProbedTable, 'export', 'csv')) =>
+    application.request(url, { user, headers });
 
-  it('runs the registrar\'s middleware first, then the endpoint\'s in the order given', async () => {
+  it('runs the page\'s middleware first, then the endpoint\'s in the order given', async () => {
     open = await tableApp(driver);
     expect((await download(open, ADA)).status).toBe(200);
     expect(endpointTrace).toEqual(['registrar', 'export-first', 'export-second']);
@@ -75,7 +73,7 @@ describe.each(drivers)('tableRoutes() middleware per endpoint (%s)', (driver) =>
     expect(open.recorder.exports).toEqual([]);
   });
 
-  it('does not let an endpoint skip the registrar: a guest never reaches the endpoint middleware', async () => {
+  it('does not let an endpoint skip the page\'s middleware: a guest never reaches the endpoint middleware', async () => {
     open = await tableApp(driver);
     expect((await download(open, undefined)).status).toBe(401);
     expect((await act(open, undefined)).status).toBe(401);
@@ -87,7 +85,7 @@ describe.each(drivers)('tableRoutes() middleware per endpoint (%s)', (driver) =>
     expect((await download(open, ALAN)).status).toBe(403);
     // Grace is protected by the policy: the action refuses her however the endpoint was reached.
     const grace = { method: 'POST', user: ADA };
-    const refused = await open.request(`${BASE}/actions/deactivate`, { ...grace, json: { key: '3' } });
+    const refused = await open.request(endpoint(ProbedTable, 'action', 'deactivate'), { ...grace, json: { key: '3' } });
     expect(refused.status).toBe(403);
     expect(endpointTrace).toContain('action');
     expect(open.recorder.deactivated).toEqual([]);
@@ -95,33 +93,51 @@ describe.each(drivers)('tableRoutes() middleware per endpoint (%s)', (driver) =>
     expect(open.recorder.deactivated).toEqual([]);
   });
 
-  it('follows the kind of endpoint, not the path: a registration under /export gives its action nothing of the export\'s', async () => {
+  it('follows the kind of endpoint, not the path: a page under /export gives its action nothing of the export\'s', async () => {
     open = await tableApp(driver);
-    const under = '/teams/1/export/_tables/probed';
+    const under = (kind: string, name: string) => `/teams/1/export/_tables/probed/${kind}/${name}`;
     expect((await act(open, ADA)).status).toBe(200);
     endpointTrace.length = 0;
-    expect((await open.request(`${under}/actions/deactivate`, { method: 'POST', user: ADA, json: { key: '4' } })).status).toBe(200);
-    expect(endpointTrace).toEqual(['registrar']);
+    // `all` is the middleware for every kind: after the page's, before the kind's.
+    expect((await open.request(under('actions', 'deactivate'), { method: 'POST', user: ADA, json: { key: '4' } })).status).toBe(200);
+    expect(endpointTrace).toEqual(['registrar', 'all']);
     endpointTrace.length = 0;
-    expect((await download(open, ADA, {}, under)).status).toBe(200);
-    expect(endpointTrace).toEqual(['registrar', 'export-first']);
+    expect((await open.request(under('bulk', 'deactivate'), { method: 'POST', user: ADA, json: { keys: ['4'] } })).status).toBe(200);
+    expect(endpointTrace).toEqual(['registrar', 'all']);
+    endpointTrace.length = 0;
+    expect((await download(open, ADA, {}, under('export', 'csv'))).status).toBe(200);
+    expect(endpointTrace).toEqual(['registrar', 'all', 'export-first']);
   });
 });
 
-describe('tableRoutes() options', () => {
-  const load = (options: unknown) => new Router().load(defineRoutes((Root) => tableRoutes(Root as never, ProbedTable as never, options as never)));
-
-  it('loads with middleware per endpoint, or none', () => {
-    expect(() => load(undefined)).not.toThrow();
-    expect(() => load({ export: { middleware: [traced('one')] } })).not.toThrow();
+describe('endpoints() options', () => {
+  it('loads with middleware, per endpoint or for all, or none', () => {
+    expect(() => ProbedTable.endpoints()).not.toThrow();
+    expect(() => ProbedTable.endpoints({ export: { middleware: [traced('one')] } })).not.toThrow();
+    expect(() => ProbedTable.endpoints({ middleware: [traced('one')] })).not.toThrow();
   });
 
   it('refuses an option it does not know, naming the options', () => {
-    expect(() => load({ exports: { middleware: [] } })).toThrow(/unknown option 'exports' — the options are export, bulk, action/);
+    expect(() => ProbedTable.endpoints({ exports: { middleware: [] } } as never)).toThrow(/probed\.endpoints\(\): unknown option 'exports' — the options are middleware, export, bulk, action/);
   });
 
   it('refuses a middleware that is not a list, or not a middleware', () => {
-    expect(() => load({ export: { middleware: traced('one') } })).toThrow(/options\.export\.middleware must be a list/);
-    expect(() => load({ bulk: { middleware: ['throttle'] } })).toThrow(/middleware/);
+    expect(() => ProbedTable.endpoints({ export: { middleware: traced('one') } } as never)).toThrow(/options\.export\.middleware must be a list/);
+    expect(() => ProbedTable.endpoints({ middleware: traced('one') } as never)).toThrow(/options\.middleware must be a list/);
+    const attach = () => new Router().load(defineRoutes((Root) => Root.authorize(everyone).get('/x', () => 'x').attach(ProbedTable.endpoints({ bulk: { middleware: ['throttle'] } } as never) as never)));
+    expect(attach).toThrow(/middleware/);
+  });
+
+  it('refuses a kind given without a list of middleware', () => {
+    for (const given of [{}, { middlware: [] }, null]) {
+      expect(() => ProbedTable.endpoints({ export: given } as never)).toThrow(/options\.export\.middleware must be a list/);
+    }
+    expect(() => ProbedTable.endpoints({ middleware: 'x' } as never)).toThrow(/options\.middleware must be a list/);
+  });
+
+  it('gives a new, frozen object each time', () => {
+    const first = ProbedTable.endpoints();
+    expect(first).not.toBe(ProbedTable.endpoints());
+    expect(Object.isFrozen(first)).toBe(true);
   });
 });

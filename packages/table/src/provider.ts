@@ -21,7 +21,6 @@ export class TableServiceProvider implements ServiceProvider {
           // Asked only when a table names a policy, a cursor is encrypted: a table without them needs neither.
           () => scope.make(Gate),
           (Class) => scope.make(Class),
-          scope.make(Router),
           () => scope.make(Encrypter),
           // The schema's relations and columns, to check a `filter.has()` against: read when the table is first used.
           () => scope.make(Connections).metadata(),

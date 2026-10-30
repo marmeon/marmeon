@@ -364,7 +364,7 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `SERVER_TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
   `X-Forwarded-*` itself and does not compress pages.
 - `SESSION_ENCRYPT=true` when the session store is shared.
-- Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the
+- Tables: the tenant in the base query, `endpoints()` attached to the page's route, an `authorize` for exports, a `throttle` on the
   table's routes.
 - Update the framework's packages together and read [UPGRADING.md](../UPGRADING.md). Security fixes go to the latest minor
   version (and, from 1.0 on, to the previous major for 12 months), as the [releases](releases.md#which-versions-get-fixes) page

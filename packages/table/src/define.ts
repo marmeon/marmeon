@@ -6,6 +6,8 @@ import type { Translator } from '@marmeon/core';
 import type { TableData } from './client/index.ts';
 import { isCsvDelimiter } from './csv.ts';
 import type { CsvDelimiter } from './csv-read.ts';
+import { tableAttachment, type KnownOptions, type TableEndpoints, type TableEndpointsOptions } from './routes.ts';
+import { isSchema, normalizeOptions } from './helpers.ts';
 import { querySchema } from './state.ts';
 
 /**
@@ -145,25 +147,6 @@ export type FilterOptions<O extends string = string> = readonly (O | FilterOptio
  */
 export type FilterOptionsSource = (resolve: ClassResolver, ctx: any) => FilterOptions | Promise<FilterOptions>;
 
-/**
- * @internal — the values and labels of a list, rebuilt from the named fields only (an extra field of an option, such as a spread
- * row, never reaches the props). A label is the value when none is given.
- */
-export function normalizeOptions(label: string, options: unknown): { readonly values: string[]; readonly labels: string[] } {
-  const values: string[] = [];
-  const labels: string[] = [];
-  const fail = () => new TypeError(`${label}: strings, or { value, label } objects, of 1 to 100 characters.`);
-  if (!Array.isArray(options)) throw fail();
-  for (const option of options as unknown[]) {
-    const value = typeof option === 'string' ? option : typeof option === 'object' && option !== null ? (option as FilterOption).value : undefined;
-    const text = typeof option === 'string' ? option : (option as FilterOption).label;
-    if (typeof value !== 'string' || value.length === 0 || value.length > 100 || typeof text !== 'string') throw fail();
-    values.push(value);
-    labels.push(text);
-  }
-  return { values, labels };
-}
-
 /** A filter of the table — its key in `filters` is its name in the URL (`?filter[role]=admin`). */
 export class Filter<R extends string = string, T extends 'select' | 'dateRange' | 'has' = 'select' | 'dateRange' | 'has', O extends string = string, C extends string = string> {
   readonly ref: R;
@@ -273,11 +256,6 @@ interface ActionOptions {
   readonly confirm?: boolean;
   readonly max?: number;
   readonly input?: ActionInputSource | undefined;
-}
-
-/** @internal — whether `value` is a Standard Schema (ArkType's are callable, so a function alone does not say "factory"). */
-export function isSchema(value: unknown): value is StandardSchemaV1 {
-  return (typeof value === 'object' || typeof value === 'function') && value !== null && '~standard' in value;
 }
 
 function checkInput(source: unknown, where: string): void {
@@ -562,7 +540,7 @@ const TABLE_TYPES = Symbol.for('marmeon.table.types');
 
 /**
  * A table: its definition, and its types for the client — `TableProps<typeof MembersTable>`. Use it with
- * `tables.resolve(MembersTable, ctx)` (the page's prop) and `tableRoutes(Route, MembersTable)` (its actions and exports).
+ * `tables.resolve(MembersTable, ctx)` (the page's prop) and `Route.get('/', Page).attach(MembersTable.endpoints())` (its actions and exports).
  */
 export interface DataTable<
   Row extends object = any,
@@ -598,6 +576,13 @@ export interface DataTable<
    * fields: an unknown sort, a filter that is none, a page size the table does not offer is a **400**, never a quiet default.
    */
   readonly query: TableQuerySchema<QV>;
+  /**
+   * The table's action, bulk and export endpoints, for the page that shows it: `Route.get('/', Page).attach(MembersTable.endpoints())`.
+   * They carry the page's middleware, bindings and checks, its request's `authorize` included; `options.middleware` runs on all of
+   * them, `export`, `bulk` and `action` on one kind. Every table is attached to the page that resolves it, one without actions and
+   * exports too. See docs/tables.md#the-controller-and-the-routes.
+   */
+  endpoints<const O extends TableEndpointsOptions = {}>(options?: O & KnownOptions<O>): TableEndpoints<Ctx, O>;
 }
 
 /** What a table's query fields parse to — by key (`sort`, `page`, `filter[role]`, …, with the table's prefix). */
@@ -909,7 +894,7 @@ export function defineTable<
   R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>,
 >(input: TableInput<(db: D, ctx: C) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg> {
   const definition = normalize(input as unknown as RawInput);
-  return { definition, query: querySchema(definition) } as unknown as TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
+  return { definition, query: querySchema(definition), endpoints: (options?: TableEndpointsOptions) => tableAttachment(definition, options) } as unknown as TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 }
 
 interface RawInput {

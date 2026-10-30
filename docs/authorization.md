@@ -216,7 +216,7 @@ Route.authorize(everyone).get('/ping', () => 'pong');
 ```
 
 Routes a package attaches to a page with `attach()` carry the page's checks and its request's `authorize` too, so a page's
-exports and actions answer nobody the page refuses. See [routes under a page](routing.md#routes-under-a-page).
+exports and actions answer nobody the page refuses (a table's [endpoints](tables.md#the-controller-and-the-routes) are such routes). See [routes under a page](routing.md#routes-under-a-page).
 
 ### Open routes and bindings
 
