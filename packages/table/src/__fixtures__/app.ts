@@ -8,7 +8,7 @@ import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { rules as r } from '@marmeon/validation';
-import { action, bulk, column, defineTable, exportCsv, filter, DataTables, tableRoutes, TableServiceProvider, type TableContext, type TableExportInfo } from '../index.ts';
+import { action, bulk, column, defineTable, exportCsv, filter, DataTables, TableServiceProvider, type DataTable, type TableContext, type TableExportInfo } from '../index.ts';
 import { EmailPolicy, MemberPolicy } from './policies.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import './schema.ts';
@@ -629,42 +629,129 @@ export class NoSchemaPage extends Controller {
   }
 }
 
+/** The members table on a page whose request, not its registrar, holds the admin check: the endpoints have to carry it. */
+export const AdminMembersRequest = defineRequest({
+  query: MembersTable.query,
+  authorize: (ctx) => (ctx as unknown as { user: TestUser }).user.admin === true,
+});
+
+export class AdminMembersPage extends Controller {
+  static request = AdminMembersRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof AdminMembersRequest> & Authenticated & { team: number }) {
+    return this.json({ members: await this.#tables.resolve(MembersTable, ctx) });
+  }
+}
+
+/** No `.authorize()` on its action, bulk action or export, and none on the table: the page's request alone says who may use it. */
+export const AdminOnlyTable = defineTable({
+  name: 'admin-only',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable() },
+  actions: { deactivate: action(Deactivate) },
+  bulk: { deactivate: bulk(DeactivateMany).max(5) },
+  export: { csv: exportCsv().onExport(RecordExport) },
+});
+
+/** The admin check sits in the request of the page alone — not on the registrar, not on the table. */
+export const AdminOnlyRequest = defineRequest({
+  query: AdminOnlyTable.query,
+  authorize: (ctx) => (ctx as unknown as { user: TestUser }).user.admin === true,
+});
+
+export class AdminOnlyPage extends Controller {
+  static request = AdminOnlyRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof AdminOnlyRequest> & Authenticated & { team: number }) {
+    return this.json({ adminOnly: await this.#tables.resolve(AdminOnlyTable, ctx) });
+  }
+}
+
+/** A page that shows nothing: it only gives a table with endpoints a route to hang them on. */
+export class StubPage extends Controller {
+  handle() {
+    return this.json({});
+  }
+}
+
+/** The pages the tables are attached to in the app, by the table's name — the endpoints are under them. */
+const PAGE_PATHS: Readonly<Record<string, string>> = {
+  members: '/members',
+  feed: '/feed',
+  'feed-copy': '/feed-copy',
+  leaky: '/leaky',
+  'with-team': '/with-team',
+  teams: '/teams',
+  'team-filter': '/team-filter',
+  'role-options': '/role-options',
+  ledger: '/ledger',
+  small: '/small',
+  audited: '/audited',
+  'by-email': '/by-email',
+  localized: '/localized',
+  guarded: '/guarded',
+  active: '/active',
+  input: '/input',
+  probed: '/probed',
+  'admin-only': '/admin-only',
+};
+
+/** The URL of an endpoint of `table` in the app, for the page the table is attached to: `endpoint(MembersTable, 'action', 'deactivate')`. */
+export function endpoint(table: DataTable, kind: 'action' | 'bulk' | 'export', name: string, team = 1): string {
+  const page = PAGE_PATHS[table.definition.name];
+  if (page === undefined) throw new Error(`The fixture app has no page for the table '${table.definition.name}'.`);
+  const segment = kind === 'action' ? 'actions' : kind === 'bulk' ? 'bulk' : 'export';
+  return `/teams/${team}${page}/_tables/${table.definition.name}/${segment}/${name}`;
+}
+
 const routes = openRoutes((Route) => {
   const team = Route.prefix('/teams/:team').middleware(acting);
-  team.get('/members', MembersPage);
-  tableRoutes(team, MembersTable);
-  // The same table on a second page, whose endpoints decide for themselves: only an admin of the team uses them.
-  const inRole = team.prefix('/in/:role');
-  inRole.get('/members', MembersPage);
-  tableRoutes(inRole.authorize((ctx) => (ctx as unknown as { user: TestUser }).user.admin === true), MembersTable);
-  team.get('/feed', FeedPage);
-  team.get('/feed-copy', FeedCopyPage);
-  team.get('/leaky', LeakyPage);
-  team.get('/with-team', WithTeamPage);
-  team.get('/teams', TeamsPage);
-  tableRoutes(team, TeamsTable);
-  team.get('/team-filter', TeamFilterPage);
-  tableRoutes(team, TeamFilterTable);
-  team.get('/role-options', RoleOptionsPage);
-  team.get('/no-schema', NoSchemaPage);
+  team.get('/members', MembersPage).attach(MembersTable.endpoints());
+  // The same table on a second page, whose request decides who may see it: its endpoints answer only an admin of the team.
+  team.prefix('/in/:role').get('/members', AdminMembersPage).attach(MembersTable.endpoints());
+  team.get('/feed', FeedPage).attach(FeedTable.endpoints());
+  team.get('/feed-copy', FeedCopyPage).attach(FeedCopyTable.endpoints());
+  team.get('/leaky', LeakyPage).attach(LeakyTable.endpoints());
+  team.get('/with-team', WithTeamPage).attach(WithTeamTable.endpoints());
+  team.get('/teams', TeamsPage).attach(TeamsTable.endpoints());
+  team.get('/team-filter', TeamFilterPage).attach(TeamFilterTable.endpoints());
+  team.get('/role-options', RoleOptionsPage).attach(RoleOptionsTable.endpoints());
+  // Reads the table without a query schema in its request.
+  team.get('/no-schema', NoSchemaPage).attach(MembersTable.endpoints());
   team.get('/export-in-transaction', ExportInTransaction);
-  tableRoutes(team, LedgerTable);
-  tableRoutes(team, SmallExportTable);
-  tableRoutes(team, AuditedTable);
-  tableRoutes(team, ByEmailTable);
-  team.get('/localized', LocalizedPage);
-  tableRoutes(team, LocalizedTable);
-  team.get('/guarded', GuardedPage);
-  tableRoutes(team, GuardedTable);
-  tableRoutes(team, ActiveTable);
-  tableRoutes(team, InputTable);
-  tableRoutes(team.middleware(traced('registrar')), ProbedTable, {
-    export: { middleware: [traced('export-first'), traced('export-second')] },
-    bulk: { middleware: [traced('bulk')] },
-    action: { middleware: [traced('action')] },
-  });
-  // A path that holds the word `export`: the middleware follows the kind of endpoint, not the path.
-  tableRoutes(team.prefix('/export').middleware(traced('registrar')), ProbedTable, { export: { middleware: [traced('export-first')] } });
+  team.get('/ledger', StubPage).attach(LedgerTable.endpoints());
+  team.get('/small', StubPage).attach(SmallExportTable.endpoints());
+  team.get('/audited', StubPage).attach(AuditedTable.endpoints());
+  team.get('/by-email', StubPage).attach(ByEmailTable.endpoints());
+  team.get('/localized', LocalizedPage).attach(LocalizedTable.endpoints());
+  team.get('/guarded', GuardedPage).attach(GuardedTable.endpoints());
+  team.get('/active', StubPage).attach(ActiveTable.endpoints());
+  team.get('/input', StubPage).attach(InputTable.endpoints());
+  // A parameter in the page's path: the endpoints under it carry it, too.
+  team.get('/views/:view', MembersPage).attach(MembersTable.endpoints());
+  team.get('/admin-only', AdminOnlyPage).attach(AdminOnlyTable.endpoints());
+  team.middleware(traced('registrar')).get('/probed', StubPage).attach(
+    ProbedTable.endpoints({
+      export: { middleware: [traced('export-first'), traced('export-second')] },
+      bulk: { middleware: [traced('bulk')] },
+      action: { middleware: [traced('action')] },
+    }),
+  );
+  // A path that holds the word `export`: the middleware follows the kind of endpoint, not the path. `all` runs on every kind.
+  team.prefix('/export').middleware(traced('registrar')).get('/', StubPage).attach(ProbedTable.endpoints({ middleware: [traced('all')], export: { middleware: [traced('export-first')] } }));
 });
 
 export interface TableTestApp {

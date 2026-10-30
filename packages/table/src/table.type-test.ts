@@ -13,7 +13,7 @@ import type { TableDefinition } from './index.ts';
 import type { TableVisibility } from './index.ts';
 import { rules as r } from '@marmeon/validation';
 import type { AnyTableData, TableController } from './client/index.ts';
-import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type DataTableRow, type TableContext, type TableProps } from './index.ts';
+import { action, bulk, column, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
   handle(_row: { readonly id: number }, _ctx: TableContext<Authenticated>) {}
@@ -333,34 +333,47 @@ describe('the query schema and the routes', () => {
     defineRequest({ query: Members.query });
   });
 
-  it('registers the endpoints only where the routes give the query what it needs', () => {
+  it('attaches the endpoints only to a page whose route gives the query what it needs', () => {
     defineRoutes((Route) => {
       const signedIn = Route.middleware(defineMiddleware<Authenticated>('auth', (_ctx, next) => next({ user: null! })));
-      tableRoutes(signedIn, Members);
-      // @ts-expect-error — the table's query needs ctx.user: these routes have no authenticate() before them
-      tableRoutes(Route, Members);
+      signedIn.get('/members', () => 'page').attach(Members.endpoints());
+      // @ts-expect-error — the table's query needs ctx.user: this page's route has no authenticate() before it
+      Route.get('/members', () => 'page').attach(Members.endpoints());
     });
   });
 
-  it('takes middleware for the export, bulk and action endpoints, and nothing else', () => {
+  it('takes middleware for all endpoints and for the export, bulk and action endpoints, and nothing else', () => {
     defineRoutes((Route) => {
       const signedIn = Route.middleware(defineMiddleware<Authenticated>('auth', (_ctx, next) => next({ user: null! })));
       const limit = defineMiddleware('limit', (_ctx, next) => next());
-      tableRoutes(signedIn, Members, { export: { middleware: [limit] }, bulk: { middleware: [] }, action: { middleware: [limit, limit] } });
+      signedIn.get('/a', () => 'page').attach(Members.endpoints({ middleware: [limit], export: { middleware: [limit] }, bulk: { middleware: [] }, action: { middleware: [limit, limit] } }));
       // @ts-expect-error — an endpoint kind the table does not have
-      tableRoutes(signedIn, Members, { exports: { middleware: [limit] } });
+      signedIn.get('/b', () => 'page').attach(Members.endpoints({ exports: { middleware: [limit] } }));
+      // @ts-expect-error — an unknown option next to a known one
+      signedIn.get('/c', () => 'page').attach(Members.endpoints({ middleware: [limit], exports: { middleware: [limit] } }));
       class NeedsUser {
         handle(_ctx: HttpContext<Authenticated>, next: Next<{}>) {
           return next();
         }
       }
       const needsUser = NeedsUser;
-      tableRoutes(signedIn, Members, { export: { middleware: [needsUser] } });
-      // @ts-expect-error — the middleware needs ctx.user, which these routes do not have
-      tableRoutes(Route, Members, { export: { middleware: [needsUser] } });
+      signedIn.get('/d', () => 'page').attach(Members.endpoints({ export: { middleware: [needsUser] } }));
+      signedIn.get('/e', () => 'page').attach(Members.endpoints({ middleware: [needsUser] }));
+      // A table whose query needs nothing: only the middleware's needs can fail these.
+      const Plain = defineTable({ name: 'plain', query: (db) => db.selectFrom('members'), key: 'id', columns: { name: column('name').sortable() } });
+      Route.get('/p', () => 'page').attach(Plain.endpoints());
+      // @ts-expect-error — the middleware needs ctx.user, which this page's route does not have
+      Route.get('/f', () => 'page').attach(Plain.endpoints({ export: { middleware: [needsUser] } }));
+      // @ts-expect-error — the middleware for all endpoints needs ctx.user, too
+      Route.get('/g', () => 'page').attach(Plain.endpoints({ middleware: [needsUser] }));
       // @ts-expect-error — the middleware is a list
-      tableRoutes(signedIn, Members, { export: { middleware: limit } });
+      signedIn.get('/h', () => 'page').attach(Members.endpoints({ export: { middleware: limit } }));
     });
+  });
+
+  it('leaves the types of the table as they were', () => {
+    expectTypeOf<ContextOfTable<typeof Members>>().toEqualTypeOf<TableContext<Authenticated>>();
+    expectTypeOf<TableProps<typeof Members>['page']>().toHaveProperty('perPage');
   });
 });
 

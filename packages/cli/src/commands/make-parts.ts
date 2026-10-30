@@ -5,7 +5,7 @@ import { className, dependsOn, moduleDir, moduleOption, SNAKE, write } from './m
 import { pluralOf, tableDeclared, wordsOf } from './make-resource.ts';
 
 // These three add one file to a module that exists. None registers it: a factory is imported where a test or seeder uses it, a
-// table is registered by `tableRoutes()` in the page's routes, and a repository is built by the container from its class.
+// table is attached to its page with `endpoints()` in the page's routes, and a repository is built by the container from its class.
 
 const partOptions = { ...moduleOption, table: { type: 'string' } } as const;
 
@@ -113,7 +113,7 @@ export class MakeTableCommand {
     if (!write(input, join(dir, 'tables', `${name}.ts`), TABLE(name, table, module))) return 1;
     tableHint(input, table);
     input.output.line(style('dim', `Decide who may see it: replace \`authorize: () => false\` with can(Policy, 'viewAny'). The columns of ${table} go in \`columns\`.`));
-    input.output.line(style('dim', `Show it: tableRoutes(<the page's registrar>, ${name}); in the module's routes.ts, with a controller that resolves it (DataTables).`));
+    input.output.line(style('dim', `Show it: attach(${name}.endpoints()) to the page that shows it, in the module's routes.ts, with a controller that resolves it (DataTables).`));
     input.output.line(style('dim', 'See docs/tables.md#the-controller-and-the-routes'));
     return 0;
   }

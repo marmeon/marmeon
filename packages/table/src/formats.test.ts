@@ -2,7 +2,7 @@ import { Encrypter } from '@marmeon/encryption';
 import { readdirSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readCsv } from './csv-read.ts';
-import { drivers, tableApp, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import { drivers, endpoint, LedgerTable, tableApp, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
 
 let open: TableTestApp | undefined;
 afterEach(async () => {
@@ -37,7 +37,7 @@ describe.each(drivers)('frozen formats of the table package on %s', (driver) => 
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-06T08:00:00Z') });
     open = await tableApp(driver);
     await seed(open, driver);
-    const response = await open.request('/teams/1/_tables/ledger/export/csv', { user: ADA });
+    const response = await open.request(endpoint(LedgerTable, 'export', 'csv'), { user: ADA });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="ledger-2026-10-06.csv"');
     const bytes = Buffer.from(await response.arrayBuffer());
@@ -62,7 +62,7 @@ describe.each(drivers)('frozen formats of the table package on %s', (driver) => 
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-06T08:00:00Z') });
     open = await tableApp(driver);
     await seed(open, driver);
-    const bytes = Buffer.from(await (await open.request(`/teams/1/_tables/ledger/export/${which}`, { user: ADA })).arrayBuffer());
+    const bytes = Buffer.from(await (await open.request(endpoint(LedgerTable, 'export', which), { user: ADA })).arrayBuffer());
     const directory = new URL('./__fixtures__/formats/csv/', import.meta.url);
     expect(bytes.toString('hex'), name).toBe(readFileSync(new URL(name, directory)).toString('hex'));
     // Only the separator differs: read back with the delimiter, the cells are the default export's.

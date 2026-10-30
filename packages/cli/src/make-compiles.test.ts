@@ -359,16 +359,15 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
         expect([made.code, made.stderr]).toEqual([0, '']);
         expect(made.stdout).toContain(`Created modules/billing/${file}`);
       }
-      // The table is shown by the page's routes; this registrar is the one a page of signed-in users has.
+      // The table is attached to the page that shows it; this registrar is the one a page of signed-in users has.
       writeFileSync(
         join(app, 'modules/billing/invoice-routes.ts'),
         [
           "import { authenticate } from '@marmeon/auth';",
           "import { defineRoutes, everyone } from '@marmeon/http';",
-          "import { tableRoutes } from '@marmeon/table';",
           "import { InvoiceTable } from './tables/InvoiceTable.ts';",
           'export default defineRoutes((Route) => {',
-          '  tableRoutes(Route.prefix(\'/invoices\').middleware(authenticate()).authorize(everyone), InvoiceTable);',
+          '  Route.prefix(\'/invoices\').middleware(authenticate()).authorize(everyone).get(\'/\', () => \'invoices\').attach(InvoiceTable.endpoints());',
           '});',
           '',
         ].join('\n'),
@@ -379,7 +378,7 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       expect(typecheck.stdout + typecheck.stderr).toBe('');
       expect(typecheck.status).toBe(0);
 
-      // The table passes the check of a registrar that lets everyone call it (it has no action or export to leave open),
+      // The table passes the check of a page that lets everyone call it (it has no action or export to leave open),
       // and the boot check of the table package.
       const { Router, TableServiceProvider } = (await import(join(app, 'modules/billing/boot.ts'))) as {
         Router: new () => { load(routes: unknown): unknown };

@@ -1,7 +1,6 @@
 import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
-import { tableRoutes } from '@marmeon/table';
 import { ConfirmMemberImportController, ImportMembersController } from './controllers/ImportMembersController.ts';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
@@ -13,20 +12,18 @@ export default defineRoutes((Route) => {
   // and export endpoints act on rows by key; they are safe because MembersTable authorizes each with MemberPolicy. A route you add
   // needs its own decision.
   const readers = members.authorize(everyone);
-  readers.get('/', ListMembersController).name('index');
-  // The same table on a second page: its endpoints are registered under this page's own path too (/members/directory/_tables/members/…),
+  // The table's actions, bulk actions and CSV export (POST /members/_tables/members/…, GET …/export/csv) hang on the page that shows
+  // them: the same middleware and checks as the page — a guest or an unconfirmed account never reaches them. CSRF as for every POST of
+  // the `web` group. Throttled (60 a minute per user, MembersServiceProvider), the export further (ten a minute): it reads the whole
+  // filtered table.
+  const endpoints = () => MembersTable.endpoints({ middleware: [throttle('members-table')], export: { middleware: [throttle('members-export')] } });
+  readers.get('/', ListMembersController).name('index').attach(endpoints());
+  // The same table on a second page: its endpoints hang under this page's own path too (/members/directory/_tables/members/…),
   // and each page's props link its own.
-  readers.get('/directory', ListMembersController).name('directory');
-  // The table's actions, bulk actions and CSV export (POST /members/_tables/members/…, GET …/export/csv): the same middleware as
-  // the page — a guest or an unconfirmed account never reaches them. CSRF as for every POST of the `web` group. Throttled (60 a minute
-  // per user, MembersServiceProvider), the export further (ten a minute): it reads the whole filtered table.
+  readers.get('/directory', ListMembersController).name('directory').attach(endpoints());
   // The file import: uploaded ahead, this route hands out the upload target for its `file` field, and its request authorizes
   // (administrators only, MemberPolicy) — which is why it is on `members`, not `readers`. Throttled like the table's endpoints.
   members.middleware(throttle('members-table')).post('/import', ImportMembersController).name('import');
   // The second step: confirms the file the first one kept (its id in the path; only this session's, under this flow's scope, finds it).
   members.middleware(throttle('members-table')).post('/import/:import', ConfirmMemberImportController).name('import.confirm');
-  // The export has a throttle of its own on top of the registrar's (ten a minute per user, MembersServiceProvider).
-  const exportThrottle = { export: { middleware: [throttle('members-export')] } };
-  tableRoutes(readers.middleware(throttle('members-table')), MembersTable, exportThrottle);
-  tableRoutes(readers.prefix('/directory').middleware(throttle('members-table')), MembersTable, exportThrottle);
 });

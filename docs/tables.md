@@ -104,7 +104,7 @@ value is left out of the base query too, so it never reaches the SQL.
 
 ### Generating a table
 
-`marmeon make:table Members --module=members` writes `modules/members/tables/MembersTable.ts` (`--table` names the table; it is the plural of the name by default): the base query typed with the module's `Database`, the key, an `id` column and `authorize: () => false`. Nobody sees the table until you replace that with `can(Policy, 'viewAny')`. It registers nothing; `tableRoutes()` does, [on the page's routes](#the-controller-and-the-routes).
+`marmeon make:table Members --module=members` writes `modules/members/tables/MembersTable.ts` (`--table` names the table; it is the plural of the name by default): the base query typed with the module's `Database`, the key, an `id` column and `authorize: () => false`. Nobody sees the table until you replace that with `can(Policy, 'viewAny')`. It registers nothing; `endpoints()` of the table does, when you [attach it to its page](#the-controller-and-the-routes).
 
 ### The key
 
@@ -191,14 +191,16 @@ counting every row. The [pagination](pagination.md) page explains both.
 authorize: can(MemberPolicy, 'viewAny'),
 ```
 
-The endpoints run the middleware of the page's routes, but **not** the `authorize` of the page's controller. A table that needs a
-check says so here.
+The table's endpoints hang on the page's route, so they carry everything the page checks: its middleware, the registrar's
+`authorize`, and the `authorize` of the page controller's request. A user the page refuses is refused on every endpoint, too. This
+`authorize` is for what the table itself requires, on every page that shows it.
 
 ### More than one table on a page
 
 `prefix: 'teams'` puts a prefix before the table's keys in the URL: `teams_sort`, `teams_filter[role]`. Spread both tables' query
 schemas into the page's request:
-`defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
+`defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`. Attach both to the page:
+`.attach(MembersTable.endpoints()).attach(TeamsTable.endpoints())`.
 
 ## The controller and the routes
 
@@ -228,22 +230,20 @@ export class ListMembersController extends Controller {
 }
 ```
 
-The prop is a function, so a partial reload of another prop leaves the table out. `tableRoutes()` registers the table's endpoints
-**on the registrar you pass**, the page's:
+The prop is a function, so a partial reload of another prop leaves the table out. The table's `endpoints()` hang its action, bulk and
+export endpoints **on the page's route**, with `attach()`:
 
 ```ts title="modules/members/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
-import { tableRoutes } from '@marmeon/table';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
 
 export default defineRoutes((Route) => {
-  // Every verified user may see the members. The table's endpoints inherit this decision from the registrar.
+  // Every verified user may see the members. The table's endpoints inherit this decision from the page's route.
   const members = Route.prefix('/members').middleware(authenticate()).middleware(verified()).authorize(everyone).name('members.');
-  members.get('/', ListMembersController).name('index');
-  tableRoutes(members.middleware(throttle('members-table')), MembersTable);
+  members.get('/', ListMembersController).name('index').attach(MembersTable.endpoints({ middleware: [throttle('members-table')] }));
 });
 ```
 
@@ -253,55 +253,61 @@ export default defineRoutes((Route) => {
 | `POST /members/_tables/members/bulk/:tableBulk` | `{ keys: [...] }` or `{ all: true, query }` | `{ done, skipped, missing, data? }` |
 | `GET /members/_tables/members/export/:tableExport` | none: the table's state in the query | a CSV file |
 
-The endpoints are ordinary routes of the page's group, with its middleware, its route bindings, the session and CSRF protection
-for the posts. A guest or an unconfirmed account never reaches them. A registrar that lacks what the base query needs, such as
-`ctx.user` without `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs. Throttle
-them: an export reads the whole filtered table, and [can have a limit of its own](#middleware-per-endpoint). The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
+The endpoints are ordinary routes under the page's path, with its middleware, its route bindings, its checks and the `authorize` of
+its request, the session and CSRF protection for the posts. A guest or an unconfirmed account never reaches them, and a user the
+page's request refuses does not either. A page whose route lacks what the base query needs, such as `ctx.user` without
+`authenticate()`, is a compile error. The routes have no names, because the props carry their URLs, and a table has routes only for
+the kinds it has: a table without an export has no export route.
+
+Every table is attached to the page that shows it, also one without actions and exports: `endpoints()` is how `resolve()` finds
+the table's URLs, and a page that resolves a table nobody attached to it fails with an error that names the table and the page.
+Throttle the endpoints: an export reads the whole filtered table, and [can have a limit of its own](#middleware-per-endpoint). The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
 
 ### Middleware per endpoint
 
 The page's middleware covers the action, bulk and export endpoints alike. An export reads the whole filtered table, so it usually
-wants a stricter limit than a row action. Give the third argument of `tableRoutes()` a list of middleware for each kind of endpoint:
+wants a stricter limit than a row action. `endpoints()` takes `middleware` for all three kinds, and a list of middleware for each
+kind of endpoint:
 
 ```ts title="modules/members/routes.ts"
-tableRoutes(members.middleware(throttle('members-table')), MembersTable, {
-  export: { middleware: [throttle('members-export')] },
-  // bulk: { middleware: [...] }, action: { middleware: [...] }
-});
+members.get('/', ListMembersController).name('index').attach(
+  MembersTable.endpoints({
+    middleware: [throttle('members-table')],
+    export: { middleware: [throttle('members-export')] },
+    // bulk: { middleware: [...] }, action: { middleware: [...] }
+  }),
+);
 ```
 
 ```ts title="modules/members/MembersServiceProvider.ts"
 app.container.make(RateLimiter).for('members-export', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
 ```
 
-`export`, `bulk` and `action` are the options; a kind without one has the page's middleware alone. The endpoint's middleware runs
-**after** the registrar's, in the order of the list, and before the endpoint's own checks (`authorize`, visibility, the input) and
-the controller. Like any route middleware it runs before the route bindings and the registrar's `authorize()`: `ctx.params` are
-still strings and the request is not yet authorized. It adds to the page's protection and never replaces it: with `authenticate()` on
-the registrar a guest never reaches it, the table's own `authorize` and the CSRF protection of the `web` group still apply, and the
-start still checks every registration. Middleware that answers the request
+`middleware`, `export`, `bulk` and `action` are the options; a kind without one has the page's middleware and `middleware` alone.
+The order is the page's middleware, then `middleware`, then the kind's, each in the order of its list, and then the endpoint's own
+checks (`authorize`, visibility, the input) and the controller. Like any route middleware it runs before the route bindings and the
+page's `authorize()`: `ctx.params` are still strings and the request is not yet authorized. It adds to the page's protection and
+never replaces it: with `authenticate()` on the registrar a guest never reaches it, the table's own `authorize` and the CSRF
+protection of the `web` group still apply, and the start still checks every attachment. Middleware that answers the request
 or throws stops the endpoint; for an export, that is before the count, the first batch and the export recorder. The middleware
 follows the kind of endpoint, not its path, so a workspace slug such as `export` changes nothing. Both throttles count: with the
 two throttles above an export uses one request of `members-table` and one of `members-export`.
 
 ### One table on several pages
 
-A table can be registered next to more than one page. Call `tableRoutes()` once for each page, on that page's registrar:
+A table can be shown on more than one page. `attach()` its endpoints to each page:
 
 ```ts title="modules/members/routes.ts"
 const readers = members.authorize(everyone);
-readers.get('/', ListMembersController).name('index');
-readers.get('/directory', ListMembersController).name('directory');
-tableRoutes(readers.middleware(throttle('members-table')), MembersTable);
-tableRoutes(readers.prefix('/directory').middleware(throttle('members-table')), MembersTable);
+const endpoints = () => MembersTable.endpoints({ middleware: [throttle('members-table')] });
+readers.get('/', ListMembersController).name('index').attach(endpoints());
+readers.get('/directory', ListMembersController).name('directory').attach(endpoints());
 ```
 
-Each page links the endpoints of the registration whose path is the longest whole-segment prefix of its own: `/members` gets
-`/members/_tables/members/…`, `/members/directory` gets `/members/directory/_tables/members/…`. Every registration keeps its own
-middleware, `authorize` checks, route bindings and parameters, so one page can be stricter than another. Two registrations under the
-same URLs (even with other parameter names) stop the start with an error that names both paths. A table with a single registration is
-linked from any page; once it has several, a page has to be under one of them, or its render fails. Use the same parameter names on
-the page and its registration: the page's own parameters fill the links.
+Each page links the endpoints attached to it: `/members` gets `/members/_tables/members/…`, `/members/directory` gets
+`/members/directory/_tables/members/…`. Every page keeps its own middleware, `authorize` checks, route bindings and parameters, so
+one page can be stricter than another, with an `authorize` in its request. Two pages under the same URLs (even with other parameter
+names) stop the start with an error that names both paths. A page's own parameters fill the links.
 
 ## What the browser gets
 
@@ -563,8 +569,8 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | Sorting by a column you may not see: the order alone tells its values | The **allowlist**: a sort, a filter, a search or a page size the definition does not offer is a 400, never a fallback. Sorting or filtering by a hidden column is a 400 too, and the search never looks into one. |
 | Another tenant's rows | The **base query**: a row action looks its row up there, a bulk action intersects with it, an export reads from it. |
 | A related row of another tenant chosen through a filter, its existence told by the count | `filter.has()` takes only the table's declared relation and column, binds the value, and accepts a value of the **options of this request** only (a 400 otherwise). The options function scopes like the base query. |
-| An endpoint without the page's protection | `tableRoutes()` runs on the **page's registrar**, with its middleware. A registrar without what the base query needs does not compile. |
-| An action or export open to anyone who sees the table | On a registrar whose checks are all `everyone`, nothing decides who may act on a row key sent in a body: `tableRoutes()` refuses to load a row action, bulk action or export without `.authorize()`. |
+| An endpoint without the page's protection | `endpoints()` hangs on the **page's route**: its middleware, bindings, checks and the `authorize` of its request. A page without what the base query needs does not compile. |
+| An action or export open to anyone who sees the table | On a page whose checks are all `everyone`, with no `authorize` in its request, nothing decides who may act on a row key sent in a body: `endpoints()` refuses to load a row action, bulk action or export without `.authorize()`. |
 | A value the action does not expect: a status that is none, a category of another event | `.input()`: the schema validates the body's `input` **before any row is read**, with the request's `resolve` and `ctx`, so an `exists` can be limited to the request. An `input` for an action without a schema is a 422. |
 | Keys of rows you may not touch, in a bulk action's body | **Keys ∩ base query ∩ policy per row**: what is left out is counted, never acted on. |
 | "All matching" as a huge or forged list | The **state** is sent, never keys, and parsed again. More rows than `max` is a 422. |
@@ -741,7 +747,7 @@ the key 'email' holds text — say how to read it: key: { column: 'email', type:
 ```
 
 The same goes for a default sort by a hidden column, an action whose handler takes other rows than the table's or another input than its schema gives, a `.visible()`
-ability that wants a row, and `tableRoutes()` on a registrar that lacks what the base query needs. A handler's `ctx` is not compared
+ability that wants a row, and `attach(Table.endpoints())` on a page whose route lacks what the base query needs. A handler's `ctx` is not compared
 with the base query's context, so type it as `TableContext<…>` like the query.
 
 ## Testing

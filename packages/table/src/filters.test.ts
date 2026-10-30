@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, filterOptions, tableApp, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import { drivers, endpoint, filterOptions, TeamFilterTable, tableApp, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
 import { Database } from '@marmeon/database';
-import { Router } from '@marmeon/router';
 import { runMigration } from '@marmeon/database/internal';
-import { column, defineTable, filter } from './define.ts';
+import { column, defineTable, filter, type DataTable } from './define.ts';
+import { pageOf } from './test-helpers/attached-page.ts';
 import { DataTables } from './tables.ts';
 import type { TableData } from './client/index.ts';
 
@@ -110,14 +110,15 @@ describe.each(drivers)('filters by a relation and by options per request on %s',
 
   describe('checked against the schema', () => {
     const request = (query = '') => ({ request: new Request(`http://localhost/teams/1/x${query}`), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 });
+    const resolveOn = (tables: DataTables, table: DataTable, query = '') => tables.resolve(table, { ...request(query), route: pageOf(table) } as never);
     const tableOf = (filters: Record<string, unknown>, from = 'teams') =>
       defineTable({ name: 'x', query: (db: Database) => (db as any).selectFrom(from), key: `${from}.id`, columns: { name: column(`${from}.name`) }, filters } as never);
 
     it('refuses a relation the query\'s table does not have, or a column the related table lacks, on the first request — whatever the URL carries', async () => {
       const application = await app(driver);
       const tables = application.application.container.createScope().make(DataTables);
-      await expect(tables.resolve(tableOf({ x: filter.has('nope' as never, ['a'] as never) }), request() as never)).rejects.toThrow(/the filter 'x' .* needs a relation 'nope' of teams/);
-      await expect(tables.resolve(tableOf({ x: filter.has('members', ['a'], { column: 'nope' } as never) }), request() as never)).rejects.toThrow(/members\.nope, which is no column of members/);
+      await expect(resolveOn(tables, tableOf({ x: filter.has('nope' as never, ['a'] as never) }))).rejects.toThrow(/the filter 'x' .* needs a relation 'nope' of teams/);
+      await expect(resolveOn(tables, tableOf({ x: filter.has('members', ['a'], { column: 'nope' } as never) }))).rejects.toThrow(/members\.nope, which is no column of members/);
     });
 
     it('refuses a secret column of the related table', async () => {
@@ -144,10 +145,10 @@ describe.each(drivers)('filters by a relation and by options per request on %s',
       const unused = () => {
         throw new Error('not needed');
       };
-      const tables = new DataTables(scope.make(Database), unused, (Class) => scope.make(Class), scope.make(Router), unused, () => metadata);
-      await expect(tables.resolve(tableOf({ x: filter.has('vaults', ['a'], { column: 'token' } as never) }), request() as never)).rejects.toThrow(/vaults\.token, which is no column of vaults \(or a secret one\)/);
+      const tables = new DataTables(scope.make(Database), unused, (Class) => scope.make(Class), unused, () => metadata);
+      await expect(resolveOn(tables, tableOf({ x: filter.has('vaults', ['a'], { column: 'token' } as never) }))).rejects.toThrow(/vaults\.token, which is no column of vaults \(or a secret one\)/);
       // A column that is not secret goes through.
-      await expect(tables.resolve(tableOf({ x: filter.has('vaults', ['1'], { column: 'team_id' }) }), request() as never)).resolves.toBeDefined();
+      await expect(resolveOn(tables, tableOf({ x: filter.has('vaults', ['1'], { column: 'team_id' }) }))).resolves.toBeDefined();
     });
 
     it('compares the related table\'s column, named with its table — never a column of the outer row', async () => {
@@ -163,9 +164,9 @@ describe.each(drivers)('filters by a relation and by options per request on %s',
       const application = await app(driver);
       const tables = application.application.container.createScope().make(DataTables);
       const members = tableOf({ team: filter.has('team', ['1', '2']) }, 'members');
-      const props = (await tables.resolve(members, request('?filter%5Bteam%5D=2') as never)) as unknown as Teams;
+      const props = (await resolveOn(tables, members, '?filter%5Bteam%5D=2')) as unknown as Teams;
       expect(props.rows.map((row) => row.name)).toEqual(['Mallory']);
-      await expect(tables.resolve(members, request('?filter%5Bteam%5D=3') as never)).rejects.toThrow(/one of its options/);
+      await expect(resolveOn(tables, members, '?filter%5Bteam%5D=3')).rejects.toThrow(/one of its options/);
     });
   });
 
@@ -204,9 +205,9 @@ describe.each(drivers)('filters by a relation and by options per request on %s',
   });
 
   describe('exports and "all matching"', () => {
-    const csv = (application: TableTestApp, user: number, query: string) => application.request(`/teams/1/_tables/team-filter/export/csv?${query}`, { user });
+    const csv = (application: TableTestApp, user: number, query: string) => application.request(`${endpoint(TeamFilterTable, 'export', 'csv')}?${query}`, { user });
     const touch = (application: TableTestApp, user: number, query: Record<string, string>) =>
-      application.request('/teams/1/_tables/team-filter/bulk/touch', { method: 'POST', user, json: { all: true, query } });
+      application.request(endpoint(TeamFilterTable, 'bulk', 'touch'), { method: 'POST', user, json: { all: true, query } });
 
     it('an export is narrowed by the filter and refuses a value outside the options', async () => {
       const application = await app(driver);
@@ -231,7 +232,7 @@ describe.each(drivers)('filters by a relation and by options per request on %s',
       const application = await app(driver);
       const { teams: table } = await teams(application, ADA, 'filter[member]=Ada');
       expect(table.state).toEqual({ 'filter[member]': 'Ada' });
-      expect(table.exports[0]!.url).toBe('/teams/1/_tables/team-filter/export/csv?filter%5Bmember%5D=Ada');
+      expect(table.exports[0]!.url).toBe(`${endpoint(TeamFilterTable, 'export', 'csv')}?filter%5Bmember%5D=Ada`);
     });
   });
 });

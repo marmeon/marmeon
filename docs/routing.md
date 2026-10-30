@@ -483,6 +483,12 @@ export default defineRoutes((Route) => {
 });
 ```
 
+A [table](tables.md#the-controller-and-the-routes) hangs its action, bulk and export endpoints on its page this way:
+
+```ts title="modules/members/routes.ts"
+Route.middleware(authenticate()).authorize(everyone).get('/members', ListMembersController).attach(MembersTable.endpoints());
+```
+
 `attachTo(routes, page)` runs once, synchronously, while the route file runs. The `site` of an attached route in a message is the line of the
 `attach()` call. Only a `GET` route takes an attachment, and not one whose path has an optional parameter, because the attached
 routes would have none to fill. After `Router.load` a route takes none. An attachment that reads the context the page's

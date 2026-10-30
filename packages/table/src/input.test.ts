@@ -14,7 +14,7 @@ async function app(driver: TestDriver): Promise<TableTestApp> {
 }
 
 const ADA = 1;
-const BASE = '/teams/1/_tables/input';
+const BASE = '/teams/1/input/_tables/input';
 
 const post = (application: TableTestApp, path: string, json: unknown, user = ADA) => application.request(`${BASE}/${path}`, { method: 'POST', user, json, action: true });
 const rolesOf = async (application: TableTestApp) =>

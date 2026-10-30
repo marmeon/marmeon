@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { drivers, tableApp, type TableTestApp } from './__fixtures__/app.ts';
+import { drivers, endpoint, LedgerTable, LocalizedTable, tableApp, type TableTestApp } from './__fixtures__/app.ts';
 import { CSV_BOM, csvLine, unescapeCsvCell } from './csv.ts';
 import { readCsv } from './csv-read.ts';
-import { exportCsv } from './index.ts';
+import { exportCsv, type DataTable } from './index.ts';
 
 const ADA = 1; // an administrator
 const ALAN = 2;
@@ -79,14 +79,14 @@ describe('exportCsv().delimiter()', () => {
 });
 
 describe.each(drivers)('a delimiter and headings per request (%s)', (driver) => {
-  const download = (application: TableTestApp, name: string, user: number, headers: Record<string, string> = {}, which = 'localized') =>
-    application.request(`/teams/1/_tables/${which}/export/${name}`, { user, headers });
+  const download = (application: TableTestApp, name: string, user: number, headers: Record<string, string> = {}, table: DataTable = LocalizedTable) =>
+    application.request(endpoint(table, 'export', name), { user, headers });
 
   it('writes the export with the separator of the table — default, semicolon or tab', async () => {
     open = await tableApp(driver);
     await open.connections.get().insertInto('ledger').values({ id: 1, note: 'a;b\tc,d', qty: 1, amount: '1.00', paid: true, booked_at: '2026-10-06T12:00:00.000Z', meta: '{}', formula: '=1+1' } as never).execute();
     for (const [name, delimiter] of [['csv', ','], ['semicolon', ';'], ['tab', '\t']] as const) {
-      const response = await download(open, name, ADA, {}, 'ledger');
+      const response = await download(open, name, ADA, {}, LedgerTable);
       expect(response.status, name).toBe(200);
       const lines = linesOf(await response.text());
       expect(lines[0], name).toBe(['"Note"', '"qty"', '"amount"', '"paid"', '"booked"', '"meta"', '"formula"'].join(delimiter));

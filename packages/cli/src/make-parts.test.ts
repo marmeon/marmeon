@@ -156,7 +156,7 @@ describe('make:table', () => {
     const root = app();
     const { code, lines } = run(MakeTableCommand, root, ['Invoice']);
     expect(code).toBe(0);
-    expect(lines.join('\n')).toContain('tableRoutes(');
+    expect(lines.join('\n')).toContain('attach(InvoiceTable.endpoints())');
     const table = readFileSync(join(root, 'modules/billing/tables/InvoiceTable.ts'), 'utf8');
     expect(table).toContain("export const InvoiceTable = defineTable({");
     expect(table).toContain("name: 'invoices',");

@@ -1,15 +1,16 @@
-import { Encrypter, EncryptionServiceProvider } from '@marmeon/encryption';
 import { Gate } from '@marmeon/auth';
 import { Database } from '@marmeon/database';
 import { defineRoutes, everyone, Router, type Route } from '@marmeon/router';
 import { afterEach, describe, expect, it } from 'vitest';
-import { drivers, MembersTable, tableApp, USERS, type TableTestApp } from './__fixtures__/app.ts';
+import { AuditedTable, ByEmailTable, drivers, endpoint, MembersTable, tableApp, USERS, WithTeamTable, type TableTestApp } from './__fixtures__/app.ts';
 import { createApplication, defineModule, Logger } from '@marmeon/core';
 import { DatabaseServiceProvider } from '@marmeon/database';
+import { Encrypter, EncryptionServiceProvider } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { ServerServiceProvider } from '@marmeon/server';
-import { DataTables, TableServiceProvider, tableRoutes } from './index.ts';
+import { DataTables, TableServiceProvider, type DataTable } from './index.ts';
 import { distinctRegistrations } from './tables.ts';
+import { pageOf } from './test-helpers/attached-page.ts';
 import type { TableData } from './client/index.ts';
 
 const ADA = 1; // admin of team 1
@@ -28,122 +29,154 @@ const urlsOf = async (application: TableTestApp, user: number, path: string) => 
   return { action: members.actions[0]!.url, bulk: members.bulk[0]!.url, export: members.exports[0]!.url };
 };
 
+/** The endpoints of the members table under the second page of the fixture app (`/teams/:team/in/:role/members`). */
+const staff = (kind: 'actions' | 'bulk' | 'export', name: string, team = 1) => `/teams/${team}/in/staff/members/_tables/members/${kind}/${name}`;
+
 describe.each(drivers)('one table on several pages (%s)', (driver) => {
-  it('links the endpoints of the registration next to each page, with that page\'s own parameters', async () => {
+  it('links the endpoints attached to each page, with that page\'s own parameters', async () => {
     open = await tableApp(driver);
     expect(await urlsOf(open, ADA, '/teams/1/members')).toEqual({
-      action: '/teams/1/_tables/members/actions/deactivate',
-      bulk: '/teams/1/_tables/members/bulk/deactivate',
-      export: '/teams/1/_tables/members/export/csv',
+      action: endpoint(MembersTable, 'action', 'deactivate'),
+      bulk: endpoint(MembersTable, 'bulk', 'deactivate'),
+      export: endpoint(MembersTable, 'export', 'csv'),
     });
     expect(await urlsOf(open, ADA, '/teams/1/in/staff/members')).toEqual({
-      action: '/teams/1/in/staff/_tables/members/actions/deactivate',
-      bulk: '/teams/1/in/staff/_tables/members/bulk/deactivate',
-      export: '/teams/1/in/staff/_tables/members/export/csv',
+      action: staff('actions', 'deactivate'),
+      bulk: staff('bulk', 'deactivate'),
+      export: staff('export', 'csv'),
     });
   });
 
   it('serves the endpoints of both pages, each behind its own checks', async () => {
     open = await tableApp(driver);
-    const deactivate = (user: number, prefix: string) => open!.request(`${prefix}/_tables/members/actions/deactivate`, { method: 'POST', user, json: { key: '4' } });
-    const download = (user: number, prefix: string) => open!.request(`${prefix}/_tables/members/export/csv`, { user });
-    expect((await deactivate(ADA, '/teams/1')).status).toBe(200);
-    expect((await deactivate(ADA, '/teams/1/in/staff')).status).toBe(200);
+    const deactivate = (user: number, url: string) => open!.request(url, { method: 'POST', user, json: { key: '4' } });
+    const download = (user: number, url: string) => open!.request(url, { user });
+    expect((await deactivate(ADA, endpoint(MembersTable, 'action', 'deactivate'))).status).toBe(200);
+    expect((await deactivate(ADA, staff('actions', 'deactivate'))).status).toBe(200);
     // Edsger may export (the table's own rule), and the first page has no check beyond that ...
-    expect((await download(EDSGER, '/teams/1')).status).toBe(200);
-    // ... the second registration adds an admin-only check of its own, which stays on its routes.
-    expect((await download(EDSGER, '/teams/1/in/staff')).status).toBe(403);
-    expect((await download(ADA, '/teams/1/in/staff')).status).toBe(200);
+    expect((await download(EDSGER, endpoint(MembersTable, 'export', 'csv'))).status).toBe(200);
+    // ... the second page's request adds an admin-only check, which its endpoints carry.
+    expect((await download(EDSGER, staff('export', 'csv'))).status).toBe(403);
+    expect((await download(ADA, staff('export', 'csv'))).status).toBe(200);
   });
 
-  it('keeps the tenant: a team that is not the user\'s gets nothing from either registration', async () => {
+  it('keeps the tenant: a team that is not the user\'s gets nothing from either page', async () => {
     open = await tableApp(driver);
-    for (const prefix of ['/teams/2', '/teams/2/in/staff']) {
-      expect((await open.request(`${prefix}/_tables/members/export/csv`, { user: ADA })).status).toBe(404);
+    for (const url of [endpoint(MembersTable, 'export', 'csv', 2), staff('export', 'csv', 2)]) {
+      expect((await open.request(url, { user: ADA })).status).toBe(404);
     }
   });
 });
 
-/** A `DataTables` of the test app that reads its endpoints from `router` instead. */
-function tablesOn(application: TableTestApp, router: Router): DataTables {
+/** A `DataTables` of the test app. */
+function tablesOn(application: TableTestApp): DataTables {
   const scope = application.application.container.createScope();
-  return new DataTables(scope.make(Database), () => new Gate({ user: async () => USERS[ADA] } as never, (Class) => scope.make(Class)), (Class) => scope.make(Class), router, () => scope.make(Encrypter));
+  return new DataTables(scope.make(Database), () => new Gate({ user: async () => USERS[ADA] } as never, (Class) => scope.make(Class)), (Class) => scope.make(Class), () => scope.make(Encrypter));
 }
 
 const routerOf = (register: (Root: Route) => void) => new Router().load(defineRoutes((Root) => register(Root.authorize(everyone))));
 
-describe.each(drivers)('registrations that cannot be told apart, or none for the page (%s)', (driver) => {
-  const ctx = (path: string, url = path.replace(':team', '1')) => ({ route: { path }, request: new Request(`http://localhost${url}`), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 }) as never;
+describe.each(drivers)('a table that is not attached to the page (%s)', (driver) => {
+  const ctx = (route: unknown, url = 'http://localhost/teams/1/members') => ({ route, request: new Request(url), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 }) as never;
 
-  it('refuses the same prefix twice, naming both paths', async () => {
+  it('is refused before any query, naming the table and the page', async () => {
     open = await tableApp(driver);
-    const router = routerOf((Root) => {
-      tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
-      tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
-    });
-    await expect(tablesOn(open, router).resolve(MembersTable, ctx('/teams/:team/members'))).rejects.toThrow(
-      /registered its endpoints twice \(\/teams\/:team\/_tables\/members\/actions\/:tableAction, \/teams\/:team\/_tables\/members\/actions\/:tableAction\)/,
+    open.queries.length = 0;
+    await expect(tablesOn(open).resolve(MembersTable, ctx(pageOf(AuditedTable, '/teams/:team/members')))).rejects.toThrow(
+      'Table "members" is not attached to GET /teams/:team/members — hang it on the page that shows it: Route.get(\'…\', Page).attach(membersTable.endpoints()). See docs/tables.md#the-controller-and-the-routes.',
     );
+    expect(open.queries).toEqual([]);
   });
 
-  it('picks the longest prefix of the page, by whole segments', async () => {
+  it('is refused on the page it was not attached to, though it is attached to another', async () => {
     open = await tableApp(driver);
-    const router = routerOf((Root) => {
-      tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
-      tableRoutes(Root.prefix('/teams/:team/in/:role') as never, MembersTable as never);
-      tableRoutes(Root.prefix('/teams/:tea') as never, MembersTable as never);
-    });
-    const data = async (path: string, url?: string) => (await tablesOn(open!, router).resolve(MembersTable, ctx(path, url))) as unknown as TableData;
-    expect((await data('/teams/:team/members')).actions[0]!.url).toBe('/teams/1/_tables/members/actions/deactivate');
-    expect((await data('/teams/:team/in/:role/members', '/teams/1/in/staff/members')).actions[0]!.url).toBe('/teams/1/in/staff/_tables/members/actions/deactivate');
+    const attached = pageOf(MembersTable, '/a');
+    const other = pageOf(AuditedTable, '/b');
+    await expect(tablesOn(open).resolve(MembersTable, ctx(other))).rejects.toThrow(/Table "members" is not attached to GET \/b /);
+    expect((await tablesOn(open).resolve(MembersTable, ctx(attached))) as unknown as TableData).toMatchObject({ actions: [{ name: 'deactivate' }] });
   });
 
-  it('refuses a page under none of several registrations, and says where to register', async () => {
+  it('is refused without a route in the context', async () => {
     open = await tableApp(driver);
-    const router = routerOf((Root) => {
-      tableRoutes(Root.prefix('/teams/:team/in/:role') as never, MembersTable as never);
-      tableRoutes(Root.prefix('/teams/:team/out') as never, MembersTable as never);
-    });
-    await expect(tablesOn(open, router).resolve(MembersTable, ctx('/teams/:team/members'))).rejects.toThrow(
-      /under none of the pages it has routes for \(\/teams\/:team\/in\/:role, \/teams\/:team\/out\) — register next to its page/,
-    );
+    await expect(tablesOn(open).resolve(MembersTable, ctx(undefined))).rejects.toThrow(/Table "members" is not attached to this request's route/);
   });
 
-  it('links a single registration from any page, and refuses a table without routes', async () => {
+  it('is refused when it has no actions and exports, too — and renders once attached, with no route of its own', async () => {
     open = await tableApp(driver);
-    const router = routerOf((Root) => tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never));
-    const data = (await tablesOn(open, router).resolve(MembersTable, ctx('/teams/:team/elsewhere/members', '/teams/1/elsewhere/members'))) as unknown as TableData;
-    expect(data.actions[0]!.url).toBe('/teams/1/_tables/members/actions/deactivate');
-    await expect(tablesOn(open, new Router()).resolve(MembersTable, ctx('/teams/:team/members'))).rejects.toThrow(/has actions or exports but no routes/);
+    await expect(tablesOn(open).resolve(WithTeamTable, ctx(pageOf(MembersTable, '/x')))).rejects.toThrow(/Table "with-team" is not attached to GET \/x /);
+    const data = (await tablesOn(open).resolve(WithTeamTable, ctx(pageOf(WithTeamTable, '/x')))) as unknown as TableData;
+    expect(data.rows.length).toBeGreaterThan(0);
+    const router = routerOf((Root) => void Root.get('/x', () => 'page').attach(WithTeamTable.endpoints() as never));
+    expect(router.routes.map((route) => route.path)).toEqual(['/x']);
   });
 });
 
-describe('two registrations under the same URLs', () => {
+describe('the endpoints a table has', () => {
+  it('registers a route only for the kinds it has: none for a table without actions, bulk actions and exports', () => {
+    const router = routerOf((Root) => void Root.get('/x', () => 'page').attach(WithTeamTable.endpoints() as never));
+    expect(router.routes.some((route) => route.path.includes('/_tables/'))).toBe(false);
+    const partial = routerOf((Root) => void Root.get('/x', () => 'page').attach(AuditedTable.endpoints() as never));
+    expect(partial.routes.map((route) => `${route.methods.join('|')} ${route.path}`).sort()).toEqual(['GET /x', 'GET /x/_tables/audited/export/:tableExport']);
+  });
+});
+
+describe.each(drivers)('the URLs under the page (%s)', (driver) => {
+  it('carries the parameters of the page\'s path, and an action under it lands', async () => {
+    open = await tableApp(driver);
+    expect(await urlsOf(open, ADA, '/teams/1/views/wide')).toEqual({
+      action: '/teams/1/views/wide/_tables/members/actions/deactivate',
+      bulk: '/teams/1/views/wide/_tables/members/bulk/deactivate',
+      export: '/teams/1/views/wide/_tables/members/export/csv',
+    });
+    const done = await open.request('/teams/1/views/wide/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: { key: '4' } });
+    expect(done.status).toBe(200);
+    expect(open.recorder.deactivated).toHaveLength(1);
+  });
+
+  it('links /de/… endpoints from a localized page', async () => {
+    open = await tableApp(driver);
+    const router = routerOf((Root) => void Root.localized().get('/members', () => 'page').attach(MembersTable.endpoints() as never));
+    const page = router.routes.find((route) => route.path === '/:locale/members')!;
+    const request = { route: page, request: new Request('http://localhost/de/members'), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 } as never;
+    const data = (await tablesOn(open).resolve(MembersTable, request)) as unknown as TableData;
+    expect(data.actions[0]!.url).toBe('/de/members/_tables/members/actions/deactivate');
+    expect(data.exports[0]!.url).toBe('/de/members/_tables/members/export/csv');
+  });
+
+  it('answers 404 for an endpoint kind the table does not have', async () => {
+    open = await tableApp(driver);
+    expect((await open.request(endpoint(ByEmailTable, 'export', 'csv'), { user: ADA })).status).toBe(404);
+    expect((await open.request(endpoint(ByEmailTable, 'bulk', 'deactivate'), { method: 'POST', user: ADA, json: { keys: [1] } })).status).toBe(404);
+  });
+});
+
+describe('two pages of one table under the same URLs', () => {
   const load = (register: (Root: Route) => void) => new Router().checkRoutes(distinctRegistrations()).load(defineRoutes((Root) => register(Root.authorize(everyone))));
+  const attach = (Root: Route, path: string, table: DataTable = MembersTable) => void Root.get(path, () => 'page').attach(table.endpoints() as never);
 
   it('stop the start, naming both paths', () => {
     expect(() =>
       load((Root) => {
-        tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
-        tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
+        attach(Root, '/teams/:team/m');
+        attach(Root, '/teams/:team/m');
       }),
-    ).toThrow(/registered its endpoints twice \(\/teams\/:team\/_tables\/members\/actions\/:tableAction, \/teams\/:team\/_tables\/members\/actions\/:tableAction\)/);
+    ).toThrow(/attached to two pages with the same URLs \(\/teams\/:team\/m\/_tables\/members\/actions\/:tableAction, \/teams\/:team\/m\/_tables\/members\/actions\/:tableAction\)/);
   });
 
   it('stop the start when only the names of their parameters differ', () => {
     expect(() =>
       load((Root) => {
-        tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
-        tableRoutes(Root.prefix('/teams/:id') as never, MembersTable as never);
+        attach(Root, '/teams/:team/m');
+        attach(Root, '/teams/:id/m');
       }),
-    ).toThrow(/registered its endpoints twice \(\/teams\/:team\/_tables.*\/teams\/:id\/_tables/);
+    ).toThrow(/same URLs \(\/teams\/:team\/m\/_tables.*\/teams\/:id\/m\/_tables/);
   });
 
   it('are told apart by the pattern of a parameter', () => {
     expect(() =>
       load((Root) => {
-        tableRoutes(Root.prefix('/teams/:team{[0-9]+}') as never, MembersTable as never);
-        tableRoutes(Root.prefix('/teams/:slug{[a-z]+}') as never, MembersTable as never);
+        attach(Root, '/teams/:team{[0-9]+}/m');
+        attach(Root, '/teams/:slug{[a-z]+}/m');
       }),
     ).not.toThrow();
   });
@@ -151,8 +184,8 @@ describe('two registrations under the same URLs', () => {
   it('load when the paths differ', () => {
     expect(() =>
       load((Root) => {
-        tableRoutes(Root.prefix('/teams/:team') as never, MembersTable as never);
-        tableRoutes(Root.prefix('/teams/:team/in/:role') as never, MembersTable as never);
+        attach(Root, '/teams/:team/m');
+        attach(Root, '/teams/:team/in/:role/m');
       }),
     ).not.toThrow();
   });
@@ -163,8 +196,8 @@ describe('the table provider', () => {
     const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent } as unknown as Logger;
     const routes = defineRoutes((Root) => {
       const open = Root.authorize(everyone);
-      tableRoutes(open.prefix('/teams/:team') as never, MembersTable as never);
-      tableRoutes(open.prefix('/teams/:id') as never, MembersTable as never);
+      open.get('/teams/:team/m', () => 'page').attach(MembersTable.endpoints() as never);
+      open.get('/teams/:id/m', () => 'page').attach(MembersTable.endpoints() as never);
     });
     await expect(
       createApplication(
@@ -179,6 +212,6 @@ describe('the table provider', () => {
           override: (container) => void container.instance(Logger, silent),
         },
       ),
-    ).rejects.toThrow(/registered its endpoints twice/);
+    ).rejects.toThrow(/attached to two pages with the same URLs/);
   });
 });

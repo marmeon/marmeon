@@ -141,6 +141,7 @@ export interface DataTable<Row extends object = any, Ctx = any, C extends string
         readonly bulkInputs: BI;
     };
     readonly query: TableQuerySchema<QV>;
+    endpoints<const O extends TableEndpointsOptions = {}>(options?: O & KnownOptions<O>): TableEndpoints<Ctx, O>;
 }
 // DataTableRow
 export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
@@ -150,8 +151,8 @@ export declare class DataTables {
     resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
 }
 // EndpointOptions
-export interface EndpointOptions<S extends object = {}> {
-    readonly middleware: readonly MiddlewareLike<S, any>[];
+export interface EndpointOptions {
+    readonly middleware: readonly AnyMiddleware[];
 }
 // ExportRecorderClass
 export type ExportRecorderClass<C = any> = new (...args: any[]) => {
@@ -269,6 +270,16 @@ export interface TableData<R extends object = Record<string, unknown>, C extends
 }
 // TableDelimiterChoice
 export type TableDelimiterChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => CsvDelimiter | Promise<CsvDelimiter>;
+// TableEndpoints
+export interface TableEndpoints<Ctx = any, O = {}> extends RouteAttachment<TableNeeds<Ctx, O>> {
+}
+// TableEndpointsOptions
+export interface TableEndpointsOptions {
+    readonly middleware?: readonly AnyMiddleware[];
+    readonly export?: EndpointOptions;
+    readonly bulk?: EndpointOptions;
+    readonly action?: EndpointOptions;
+}
 // TableExport
 export declare class TableExport {
     readonly format: 'csv';
@@ -373,12 +384,6 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
         readonly [K in keyof QV]: Rule<QV[K], string | readonly string[] | undefined>;
     };
 }
-// TableRoutesOptions
-export interface TableRoutesOptions<S extends object = {}> {
-    readonly export?: EndpointOptions<S>;
-    readonly bulk?: EndpointOptions<S>;
-    readonly action?: EndpointOptions<S>;
-}
 // TableServiceProvider
 export declare class TableServiceProvider implements ServiceProvider {
     boot(app: Application): void;
@@ -408,8 +413,6 @@ export declare const filter: {
 };
 // readCsv
 export declare function readCsv(bytes: Uint8Array, options?: ReadCsvOptions): Result<CsvTable, CsvReadError>;
-// tableRoutes
-export declare function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>, options?: TableRoutesOptions<StateOf<R>>): void;
 // unescapeCsvCell
 export declare function unescapeCsvCell(text: string): string;
 ```
@@ -421,10 +424,6 @@ export declare function unescapeCsvCell(text: string): string;
 export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S | ((resolve: ClassResolver, ctx: any) => S | Promise<S>);
 // CheckKeyColumn
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
-// CheckRegistrar
-type CheckRegistrar<R, T> = T extends DataTable<any, infer Ctx> ? (RegistrarContext<R> extends Ctx ? T : {
-    readonly 'the table needs more of the request than these routes have — register them on the registrar of its page, after its middleware (authenticate(), …)': Ctx;
-}) : T;
 // ColumnProblem
 type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends ColumnReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
 // CtxOf
@@ -459,6 +458,28 @@ type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> :
 type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
 // KeyType
 export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
+// KnownOptions
+export type KnownOptions<O> = {
+    readonly [K in keyof O]: K extends keyof TableEndpointsOptions ? O[K] : never;
+};
+// ListedMiddleware
+type ListedMiddleware<O> = (O extends {
+    readonly middleware: readonly (infer M)[];
+} ? M : never) | (O extends {
+    readonly export: {
+        readonly middleware: readonly (infer M)[];
+    };
+} ? M : never) | (O extends {
+    readonly bulk: {
+        readonly middleware: readonly (infer M)[];
+    };
+} ? M : never) | (O extends {
+    readonly action: {
+        readonly middleware: readonly (infer M)[];
+    };
+} ? M : never);
+// MiddlewareRequires
+type MiddlewareRequires<M> = M extends MiddlewareLike<infer R, any> ? R : never;
 // OutOf
 type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
 // PlainColumns
@@ -485,14 +506,14 @@ export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<([Sort
 }) & {
     readonly [N in keyof Filters & string as `${KeyPrefix<P>}filter[${N}]`]?: FilterValue<Filters[N]>;
 }>;
-// RegistrarContext
-type RegistrarContext<R> = R extends Route<infer TState, infer TParams, infer TBindings> ? Omit<HttpContext<TState, Omit<TParams, keyof TBindings> & TBindings>, 'query'> : never;
 // RelatedTable
 type RelatedTable<DB, TB extends keyof DB, R extends string> = {
     [T in TB]: T extends keyof Relations ? (R extends keyof Relations[T] ? (Relations[T][R] extends {
         readonly table: infer X extends keyof DB;
     } ? X : never) : never) : never;
 }[TB];
+// RequiresOf
+type RequiresOf<O> = UnionToIntersection<MiddlewareRequires<ListedMiddleware<O>>>;
 // RowOf
 type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<{
     readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]>;
@@ -527,10 +548,10 @@ type SortableForEveryone<Cols> = {
 type SortableNames<Cols> = {
     [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, true> ? A : never;
 }[keyof Cols] & string;
-// StateOf
-type StateOf<R> = R extends Route<infer TState, any, any> ? (TState extends object ? TState : {}) : {};
 // TABLE_TYPES
 declare const TABLE_TYPES: unique symbol;
+// TableNeeds
+type TableNeeds<Ctx, O> = (unknown extends Ctx ? {} : Ctx) & (unknown extends RequiresOf<O> ? {} : RequiresOf<O>) & object;
 // TableOf
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof Cols & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
     [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0;
@@ -541,6 +562,8 @@ export type TableQueryValues = {
 };
 // TbOf
 type TbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
+// UnionToIntersection
+type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never;
 // ValueOf
 type ValueOf<DB, TB extends keyof DB, O, C> = C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ReferencedType<DB, TB, R>) : never;
 // hasFilter
