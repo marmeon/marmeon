@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/live",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "Live props for Marmeon apps: pages, islands and layers follow channels and reload when the server hints a change.",
   "keywords": [
     "marmeon",

@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/server",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "The HTTP server of Marmeon apps: the kernel on Hono, server rendering through Vite or the build, islands, health checks and graceful shutdown.",
   "keywords": [
     "marmeon",
