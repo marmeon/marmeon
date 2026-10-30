@@ -60,7 +60,8 @@ Before you change `server` in `vite.config.ts`, know what the app relies on:
   a client on the network. A page that loads a file from `storage/` through Vite stops working: serve it with a route. An entry
   of your own in `server.fs.deny` is added to the list. A symlink elsewhere in the app that points into `storage/` is still
   served, so do not create one. Tests and builds are unchanged.
-- **Styles and the policy.** The `<style>` elements Vite adds in development carry the response's CSP nonce. A
+- **Styles and the policy.** The stylesheets the client entry imports are linked in development with a `<link>` to the
+  app's own origin that carries the response's CSP nonce; the `<style>` elements Vite adds later carry it too. A
   Content-Security-Policy with `styleSrc: ["'self'", NONCE]` therefore holds in development too. The
   [styling](styling.md#a-strict-policy-for-styles) page explains the policy.
 

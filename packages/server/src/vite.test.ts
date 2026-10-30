@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { Redactor } from '@marmeon/core';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -182,6 +182,142 @@ describe('createViteDevRenderer', () => {
       new ViteSetupError('[marmeon:H5] vite.config.ts imports @marmeon/vite, which is not installed in this app: pnpm add -D vite@^8 @marmeon/vite@<version of your app>'),
     );
     await expect(start(app({ config: 'export default {};' }))).rejects.toThrow(/^\[marmeon:H5\] vite\.config\.ts does not use the marmeon\(\) plugin/);
+  });
+});
+
+describe('development stylesheets', () => {
+  const page = { component: 'demo/Home', props: {}, url: '/', version: null };
+  const options = { complete: false, onError() {}, onWarning() {} };
+
+  /** The fixture app: static, virtual, foreign, CSS-module, broken and lazy stylesheets behind the client entry. */
+  function stylesApp(): string {
+    const root = app({
+      config: [
+        "import { marmeon } from '@marmeon/vite';",
+        'export default { plugins: [',
+        "  marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } }),",
+        // `\\0` writes a NUL escape into the config's source.
+        "  { name: 'test-css', resolveId: (id) => (id === 'virtual:test.css' ? '\\0virtual:test.css' : undefined), load: (id) => (id.split('?')[0] === '\\0virtual:test.css' ? 'p { color: red }' : undefined) },",
+        "  { name: 'strict-css', resolveId: (id) => (id === 'virtual:strict.css' ? '\\0virtual:strict.css' : undefined), load: (id) => (id === '\\0virtual:strict.css' ? 'p { color: blue }' : undefined) },",
+        // Without a PostCSS setup Vite does not parse CSS, so a syntax error is simulated by a plugin that refuses the file.
+        "  { name: 'broken-css', transform: (code, id) => { if (id.split('?')[0].endsWith('broken.css')) throw new Error('Unclosed block'); } },",
+        '] };',
+      ].join('\n'),
+    });
+    const files: Record<string, string> = {
+      'bootstrap/client.ts': [
+        "import './dep.ts';",
+        "import '../styles/second.css';",
+        "import 'virtual:test.css';",
+        "import 'virtual:strict.css';",
+        "import 'https://example.com/foreign.css';",
+        "import '../styles/card.module.css';",
+        "import '../styles/broken.css';",
+        "export const later = () => import('./lazy.ts');",
+      ].join('\n'),
+      'bootstrap/dep.ts': "import '../styles/first.css';\nexport {};\n",
+      'bootstrap/lazy.ts': "import '../styles/lazy.css';\nexport {};\n",
+      'styles/first.css': 'a { color: red }',
+      'styles/second.css': 'b { color: red }',
+      'styles/third.css': 'i { color: red }',
+      'styles/lazy.css': 'u { color: red }',
+      'styles/card.module.css': '.card { color: red }',
+      'styles/broken.css': 'a { color: red }',
+    };
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), content);
+    }
+    return root;
+  }
+
+  async function startStyled(root: string) {
+    const httpServer = createServer();
+    const started = await createViteDevRenderer({ root, httpServer, styles: true });
+    return { ...started, httpServer, render: async (nonce?: string) => String(await started.renderer.render(page, new Request('http://localhost/'), { ...options, ...(nonce ? { nonce } : {}) })) };
+  }
+
+  it('links the static stylesheets of the client entry in import order, before </head>', async () => {
+    const root = stylesApp();
+    const { vite, httpServer, render } = await startStyled(root);
+    try {
+      const html = await render();
+      const links = [...html.matchAll(/<link rel="stylesheet" href="([^"]*)"/g)].map((match) => match[1]);
+      expect(links).toEqual(['/styles/first.css', '/styles/second.css', '/@id/__x00__virtual:test.css']);
+      expect(html.lastIndexOf('<link rel="stylesheet"')).toBeLessThan(html.indexOf('</head>'));
+      expect(html).toContain(`data-vite-dev-id="${realpathSync(root)}/styles/first.css"`);
+      const virtual = /<link rel="stylesheet" href="\/@id\/__x00__virtual:test\.css" data-marmeon-dev-id="([^"]*)"/.exec(html);
+      expect(JSON.parse(virtual![1]!.replaceAll('&quot;', '"'))).toBe('\0virtual:test.css');
+      expect(html.match(/<script nonce|<script>for/g)).toHaveLength(1);
+      expect(html.indexOf('<script>for')).toBeGreaterThan(html.indexOf('virtual:test.css'));
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
+  it('leaves out lazy, CSS-module, unservable and foreign stylesheets — and still renders', async () => {
+    const { vite, httpServer, render } = await startStyled(stylesApp());
+    try {
+      const html = await render();
+      for (const left of ['lazy.css', 'card.module.css', 'broken.css', 'virtual:strict.css', 'example.com']) expect(html, left).not.toContain(left);
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
+  it('puts the response\'s nonce on every link and the script, and leaves no placeholder without one', async () => {
+    const { vite, httpServer, render } = await startStyled(stylesApp());
+    try {
+      const html = await render('n0nce');
+      expect(html.match(/<link rel="stylesheet"[^>]*nonce="n0nce">/g)).toHaveLength(3);
+      expect(html).toContain('<script nonce="n0nce">for(');
+      const plain = await render();
+      expect(plain).toContain('<link rel="stylesheet"');
+      expect(plain).not.toContain('nonce=');
+      expect(plain).not.toContain('__marmeon_csp_nonce__');
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
+  it('keeps the linked stylesheets hot-updatable: the ?direct module is a self-accepting css module', async () => {
+    const { vite, httpServer, render } = await startStyled(stylesApp());
+    try {
+      await render();
+      const node = await vite.environments.client!.moduleGraph.getModuleByUrl('/styles/second.css?direct');
+      expect(node?.type).toBe('css');
+      expect(node?.isSelfAccepting).toBe(true);
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
+  it('shows a stylesheet the entry imports later on the next reload', async () => {
+    const root = stylesApp();
+    const { vite, httpServer, render } = await startStyled(root);
+    try {
+      expect(await render()).not.toContain('/styles/third.css');
+      writeFileSync(join(root, 'bootstrap/client.ts'), `${readFileSync(join(root, 'bootstrap/client.ts'), 'utf8')}\nimport '../styles/third.css';\n`);
+      vite.environments.client!.moduleGraph.onFileChange(join(realpathSync(root), 'bootstrap/client.ts'));
+      const html = await render();
+      expect(html.indexOf('/styles/third.css')).toBeGreaterThan(html.indexOf('/@id/__x00__virtual:test.css'));
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
+  it('links nothing unless asked to', async () => {
+    const { vite, renderer } = await start(stylesApp());
+    try {
+      expect(String(await renderer.render(page, new Request('http://localhost/'), options))).not.toContain('<link rel="stylesheet"');
+    } finally {
+      await vite.close();
+    }
   });
 });
 

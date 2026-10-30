@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { fallbackFace } from './fonts.ts';
 import { marmeon } from './plugin.ts';
@@ -123,6 +124,23 @@ describe('the fonts option of marmeon()', () => {
     expect(css).toContain('font-family:Fixture Sans-2 Fallback');
     expect(css).toContain('src:local(Arial)');
     expect(css).toContain('size-adjust:120.75%');
+  }, 60_000);
+
+  it('serves the fallback stylesheet to a link in development (`?direct`)', async () => {
+    const font = Buffer.concat([woff2({ unitsPerEm: 1000, ascender: 1025, descender: -275, lineGap: 0, xAvgCharWidth: 533 }), Buffer.alloc(FONT_SIZE)]);
+    const root = app({ fonts: "[{ file: 'fontpkg/files/f0.woff2', family: 'Fixture Sans-2', fallback: 'Arial' }]", font });
+    const vite = await createServer({ root, configLoader: 'native', appType: 'custom', logLevel: 'silent', server: { middlewareMode: true, hmr: false, ws: false } });
+    try {
+      const result = await vite.environments.client.transformRequest('\0virtual:marmeon/fonts.css?direct');
+      expect(result?.code).toContain('@font-face');
+      expect(result?.code).toContain("font-family: 'Fixture Sans-2 Fallback'");
+      const plugin = vite.config.plugins.find((candidate) => candidate.name === 'marmeon:font-fallbacks');
+      const load = plugin?.load as { handler?: (this: unknown, id: string) => unknown } | ((this: unknown, id: string) => unknown);
+      const call = typeof load === 'function' ? load : load?.handler;
+      expect(await call?.call({}, '\0virtual:marmeon/fontsXcss')).toBeUndefined();
+    } finally {
+      await vite.close();
+    }
   }, 60_000);
 
   it('writes the face from the formulas: the width scales the fallback, the line box divides by that scale', () => {
