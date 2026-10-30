@@ -655,7 +655,11 @@ and the rules of `main` — so that no branch from an unreviewed commit satisfie
 - **A hash check of the `stage` job is red** (before its first `npm stage publish`; the log says which line failed): nothing was
   staged, but the artifact is not what the `build` job hashed — do not re-run, look into the run, and start a new one.
 - **The "stage the tarballs" step is red after a hash check passed:** treat it as possibly partly staged. Never re-run it:
-  reject whatever was staged on npmjs.com and release the next patch (a candidate: the next one, `--rc`).
+  reject whatever was staged on npmjs.com, then run `pnpm release:prepare --replace` (a candidate: `--rc --replace`). It takes the
+  untagged version the packages carry as rejected, removes its CHANGELOG sections and prepares the one after it (the next patch,
+  or what the labels ask for if higher; a candidate: the next number) with the notes since the last tag. Merge that release pull
+  request and start the workflow. A rejected breaking release moves its UPGRADING.md heading to the new version; the script says
+  which `UPGRADING_ANCHORS` key in `scripts/check-release.ts` to rename. Later plain runs stay on the replacing version (within its line: a release that labels pushed too high still comes down when the label is fixed).
 - **The tag step or the draft step failed after staging:** use **"Re-run failed jobs"** on the run. It repeats only the `release`
   job with the `build` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
   draft is created. **Never "Re-run all jobs"**, and never start a new run after one that staged: a staged version is invisible

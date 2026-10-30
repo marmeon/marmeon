@@ -166,6 +166,11 @@ describe('checkUpgrading — bound to the version', () => {
     expectProblems(problems, ['UPGRADING.md: "## Upgrading to 0.1.0 from 0.1.0" — a release upgrades from a lower version to a higher one']);
   });
 
+  it('accepts the section of a rejected breaking release moved to the patch that replaced it', () => {
+    const moved = section('## Upgrading to 1.0.1 from 0.9.3');
+    expectProblems(checkUpgrading(repositoryWith(moved), { '1.0.1': ['low-a-change-of-020'] }, '1.0.1'), []);
+  });
+
   it('needs nothing for a version that is no breaking release', () => {
     expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.1.3'), []);
     expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.2.1'), []);
