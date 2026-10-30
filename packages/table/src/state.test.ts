@@ -54,6 +54,18 @@ describe('the table\'s state in the URL', () => {
     expect(Object.keys(MembersTable.query.entries)).toEqual(['sort', 'page', 'per_page', 'search', 'filter[role]', 'filter[joined]']);
   });
 
+  it('reads ?sort= in the schema of a table whose sortable columns all carry .visible() — no default, but still the table\'s key', async () => {
+    const Hidden = defineTable({ query: (db: never) => db, key: 'id', name: 'hidden', columns: { email: column('email').visible(MemberPolicy, 'viewEmails').sortable() } } as never);
+    expect(Object.keys(Hidden.query.entries)).toEqual(['sort', 'page', 'per_page']);
+    const sorted = await parseQuery(Hidden.query, search('sort=-email'));
+    expect(sorted.value.sort).toBe('-email');
+    const plain = await parseQuery(Hidden.query, search(''));
+    expect(plain.value.sort).toBeUndefined();
+    expect(plain.canonical).not.toHaveProperty('sort');
+    expect(plain.defaults.sort).toBeUndefined();
+    await expect(parseQuery(Hidden.query, search('sort=nope'))).rejects.toThrow(TableQueryError);
+  });
+
   it('stays strict when the entries of two tables, one prefixed, with a cursor, are spread into another r.query()', async () => {
     const page = r.query({ ...MembersTable.query.entries, ...FeedTable.query.entries, tab: r.in(['all', 'mine']).default('all') });
     const parsed = await parseQuery(page, search('filter[role]=admin&feed_per_page=2&tab=mine'));

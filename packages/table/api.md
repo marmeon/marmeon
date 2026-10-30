@@ -491,7 +491,9 @@ type Problem<M extends string> = {
     readonly [K in M]: true;
 };
 // QueryValuesOf
-export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<([SortableNames<Cols>] extends [never] ? {} : {
+export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<([SortableNames<Cols>] extends [never] ? {} : [SortableForEveryone<Cols>] extends [never] ? {
+    readonly [K in `${KeyPrefix<P>}sort`]?: SortableNames<Cols> | `-${SortableNames<Cols>}`;
+} : {
     readonly [K in `${KeyPrefix<P>}sort`]: SortableNames<Cols> | `-${SortableNames<Cols>}`;
 }) & (Pg extends {
     readonly cursor: true;

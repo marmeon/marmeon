@@ -187,7 +187,8 @@ function strict(definition: TableDefinition, key: string, fallback?: string | nu
 export function querySchema(definition: TableDefinition): TableQuerySchema {
   const keys = queryKeys(definition);
   const fields: Record<string, Rule<string | number | undefined, QueryValue>> = {};
-  if (definition.defaultSort !== undefined) fields[keys.sort] = strict(definition, keys.sort, definition.defaultSort);
+  // Without a sortable column everyone sees there is no default sort (`undefined`), the key is still the table's.
+  if (Object.values(definition.columns).some((column) => column.isSortable)) fields[keys.sort] = strict(definition, keys.sort, definition.defaultSort);
   if (definition.cursor) fields[keys.cursor] = strict(definition, keys.cursor);
   else fields[keys.page] = strict(definition, keys.page, 1);
   fields[keys.perPage] = strict(definition, keys.perPage, definition.perPage[0]);
