@@ -588,9 +588,12 @@ export interface DataTable<
 /** What a table's query fields parse to — by key (`sort`, `page`, `filter[role]`, …, with the table's prefix). */
 export type TableQueryValues = { readonly [key: string]: string | number | undefined };
 
-/** The table's query schema — an object rule of @marmeon/validation (spread its `entries` into another `r.query()`). */
+/**
+ * The table's query schema — an object rule of @marmeon/validation (spread its `entries` into another `r.query()`). `entries` has
+ * a rule for every key; a filter or cursor the URL leaves out parses to `undefined`.
+ */
 export interface TableQuerySchema<QV extends object = TableQueryValues> extends StandardSchemaV1<{ readonly [K in keyof QV]?: string | readonly string[] }, QV> {
-  readonly entries: { readonly [K in keyof QV]: Rule<QV[K], string | readonly string[] | undefined> };
+  readonly entries: { readonly [K in keyof QV]-?: Rule<QV[K], string | readonly string[] | undefined> };
 }
 
 type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;

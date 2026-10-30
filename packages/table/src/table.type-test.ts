@@ -333,6 +333,35 @@ describe('the query schema and the routes', () => {
     defineRequest({ query: Members.query });
   });
 
+  it('spreads the entries of tables with filters and a cursor into another r.query()', () => {
+    const Other = defineTable({
+      name: 'other',
+      prefix: 'b',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name').sortable() },
+      filters: { kind: filter.select('role', ['x', 'y']) },
+      pagination: { cursor: true },
+    });
+    const query = r.query({ ...Members.query.entries, ...Other.query.entries, tab: r.in(['all', 'mine']).default('all') });
+    defineRequest({ query });
+    type Values = NonNullable<(typeof query)['~standard']['types']>['output'];
+    expectTypeOf<Values['filter[role]']>().toEqualTypeOf<'admin' | 'member' | undefined>();
+    expectTypeOf<Values['b_filter[kind]']>().toEqualTypeOf<'x' | 'y' | undefined>();
+    expectTypeOf<Values['b_cursor']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<Values['tab']>().toEqualTypeOf<'all' | 'mine'>();
+    expectTypeOf<Values['page']>().toEqualTypeOf<number>();
+    // An entry is a rule for every key, never `undefined`, even for a key whose value may be.
+    // @ts-expect-error — an entry is a rule, never undefined
+    const cursorEntry: (typeof Other.query.entries)['b_cursor'] = undefined;
+    // @ts-expect-error — an entry is a rule, never undefined
+    const roleEntry: (typeof Members.query.entries)['filter[role]'] = undefined;
+    void [cursorEntry, roleEntry];
+    // CheckQuery still refuses a field of the page's own that cannot go back into a URL.
+    // @ts-expect-error — a Date cannot go back into a URL
+    defineRequest({ query: r.query({ ...Members.query.entries, since: r.string().transform((value) => new Date(value)).default(new Date(0)) }) });
+  });
+
   it('attaches the endpoints only to a page whose route gives the query what it needs', () => {
     defineRoutes((Route) => {
       const signedIn = Route.middleware(defineMiddleware<Authenticated>('auth', (_ctx, next) => next({ user: null! })));
