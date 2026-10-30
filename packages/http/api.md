@@ -467,6 +467,8 @@ export interface ResultOptions {
     readonly status?: number;
     readonly headers?: Readonly<Record<string, string>>;
 }
+// RouteAttachment
+export type { RouteAttachment } from '@marmeon/router';
 // RouteBinder
 export type { RouteBinder } from '@marmeon/router';
 // RouteBindingContext

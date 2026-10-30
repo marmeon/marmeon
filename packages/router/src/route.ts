@@ -1,5 +1,5 @@
 import { withCode } from '@marmeon/core/internal';
-import { isScoped, registrationSite, siteOf, type AccessCheck, type AfterAuthorizeHook } from './access.ts';
+import { isScoped, registrationSite, routeAccess, siteOf, type AccessCheck, type AfterAuthorizeHook } from './access.ts';
 import { assertMiddleware } from './middleware.ts';
 import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import { RouteDefinition } from './route-definition.ts';
@@ -75,6 +75,8 @@ export interface GroupAttributes {
   readonly internal?: boolean;
   /** Every route of the group lives under `/:locale` (`Route.localized()`). */
   readonly localized?: boolean;
+  /** @internal Where the routes were registered, taken before the stack: `attach()` names the app's line, not the package's. */
+  readonly site?: string | undefined;
 }
 
 /** Path parameters, with bound ones replaced by what their binder resolves (`Route.bind`). */
@@ -291,7 +293,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
     action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
-  ): RouteDefinition {
+  ): RouteDefinition<RouteContext<TState, TParams, TBindings, TPath>> {
     return this.#add(['GET'], path, action as unknown as AnyAction, Route.prototype.get);
   }
 
@@ -353,7 +355,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return new Route(this.#register, { ...this.#attributes, ...attributes });
   }
 
-  #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string, caller: (...args: never[]) => unknown): RouteDefinition {
+  #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string, caller: (...args: never[]) => unknown): RouteDefinition<any> {
     const fullPath = joinPaths(this.#attributes.prefix, path);
     // The types refuse this already; a route built without them fails at boot.
     const request = typeof action === 'function' ? (action as { request?: { schema?: unknown } }).request : undefined;
@@ -378,9 +380,12 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       bindings,
       checks: this.#attributes.checks ?? [],
       afterAuthorize: this.#attributes.afterAuthorize ?? [],
-      site: registrationSite(caller),
+      site: this.#attributes.site ?? registrationSite(caller),
       internal: this.#attributes.internal ?? false,
       localized: this.#attributes.localized ?? false,
+      // Everything a request to the page passes — the registrar's attributes, the page's path and its whole access, the request's
+      // `authorize` included — so no route attached to it answers a caller the page refuses.
+      attacher: (page, site) => this.#with({ prefix: fullPath, checks: [...routeAccess(page)], pending: [], site }),
     });
     for (const entry of this.#attributes.pending ?? []) entry.used = true;
     this.#register(route);

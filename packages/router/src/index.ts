@@ -1,5 +1,6 @@
 export { describeAccess, everyone, RouteAccessError } from './access.ts';
 export type { AccessCheck } from './access.ts';
+export type { RouteAttachment } from './attach.ts';
 export { Route } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
 export { Router, defineRoutes } from './router.ts';

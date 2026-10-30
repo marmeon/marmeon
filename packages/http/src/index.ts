@@ -78,6 +78,7 @@ export type {
   RequestDefinition,
   RouteName,
   Routes,
+  RouteAttachment,
   RouteBinder,
   RouteBindingContext,
   RouteBindingWith,

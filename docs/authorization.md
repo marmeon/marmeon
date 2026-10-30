@@ -215,6 +215,9 @@ A route that answers with a closure has no request, so it takes its decision fro
 Route.authorize(everyone).get('/ping', () => 'pong');
 ```
 
+Routes a package attaches to a page with `attach()` carry the page's checks and its request's `authorize` too, so a page's
+exports and actions answer nobody the page refuses. See [routes under a page](routing.md#routes-under-a-page).
+
 ### Open routes and bindings
 
 A route whose only checks are `everyone` may not bind a record that any key finds. `bind('note', NoteRepository)` on such a route
