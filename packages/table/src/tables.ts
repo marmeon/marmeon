@@ -40,6 +40,11 @@ export function recordPage(page: RouteDefinition, definition: TableDefinition, r
   PAGES.set(page, tables);
 }
 
+/** @internal — the tables already attached to a page. */
+export function tablesOn(page: RouteDefinition): readonly TableDefinition[] {
+  return [...(PAGES.get(page)?.keys() ?? [])];
+}
+
 /** @internal — the table an endpoint route serves. */
 export function endpointOf(route: RouteDefinition): { readonly definition: TableDefinition; readonly kind: TableEndpointKind } {
   const found = ENDPOINTS.get(route);

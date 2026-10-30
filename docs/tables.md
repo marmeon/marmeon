@@ -202,6 +202,12 @@ schemas into the page's request:
 `defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`. Attach both to the page:
 `.attach(MembersTable.endpoints()).attach(TeamsTable.endpoints())`.
 
+The start refuses a page whose tables would share a key in the URL: two without a prefix, two with the same prefix, or a prefix that
+makes a key of the other table (`per` gives `per_page`, which an unprefixed table already reads). Without that they would sort
+and page together, or answer a 400 to a key the other does not know. It also refuses two tables of one name (their endpoints would
+share `/_tables/<name>/…`) and the same table attached twice, naming the page and both tables. A table may sit on several pages.
+The start cannot see the page's own request schema: its query fields need names other than the tables' keys.
+
 ## The controller and the routes
 
 The page's controller validates the table's state as its query and resolves the table as a prop:
