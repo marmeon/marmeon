@@ -2,7 +2,8 @@ import { Controller } from '@marmeon/http';
 import type { AnyMiddleware, HttpContext, MiddlewareLike, Route, RouteAttachment, RouteDefinition } from '@marmeon/router';
 import { isEveryone, routeAccess } from '@marmeon/router/internal';
 import type { TableDefinition } from './define.ts';
-import { endpointOf, recordEndpoint, recordPage, DataTables, type TableEndpointKind } from './tables.ts';
+import { queryKeys } from './state.ts';
+import { endpointOf, recordEndpoint, recordPage, tablesOn, DataTables, type TableEndpointKind } from './tables.ts';
 
 /** `POST …/_tables/<name>/actions/:tableAction` — a row action (`{ key }`). */
 export class TableActionController extends Controller {
@@ -126,6 +127,7 @@ export function tableAttachment(definition: TableDefinition, options: TableEndpo
   const own: Record<TableEndpointKind, readonly AnyMiddleware[] | undefined> = { action: ownList('action'), bulk: ownList('bulk'), export: ownList('export') };
   const base = `/_tables/${name}`;
   const attachTo = (routes: Route<any, any, any>, page: RouteDefinition): void => {
+    assertKeysFree(definition, page);
     const on = (kind: TableEndpointKind) => withMiddleware(withMiddleware(routes as Route, shared), own[kind]);
     const made: Partial<Record<TableEndpointKind, RouteDefinition>> = {};
     // Only the kinds the table has: a table without an export has no export route, and its URL is a 404.
@@ -149,6 +151,52 @@ function startsWithBindings(own: readonly object[], expected: readonly object[])
     const keys = Object.keys(binding);
     return mine !== undefined && keys.length === Object.keys(mine).length && keys.every((key) => key in mine && same(mine[key], (binding as Record<string, unknown>)[key]));
   });
+}
+
+/** Why two tables share keys, for the message. */
+function because(a: TableDefinition, b: TableDefinition): string {
+  if (a.prefix === b.prefix) return a.prefix === undefined ? 'with no prefix' : `with the prefix "${a.prefix}"`;
+  return `with the prefixes ${a.prefix === undefined ? 'none' : `"${a.prefix}"`} and ${b.prefix === undefined ? 'none' : `"${b.prefix}"`}`;
+}
+
+/** A key both tables read from the URL — or a filter key of one that the other's keys begin with — or `undefined`. */
+function sharedKey(a: TableDefinition, b: TableDefinition): string | undefined {
+  const keysOf = (definition: TableDefinition) => {
+    const keys = queryKeys(definition);
+    return { fixed: [keys.sort, keys.page, keys.perPage, keys.cursor, keys.search], filters: keys.filterPrefix };
+  };
+  const [one, other] = [keysOf(a), keysOf(b)];
+  const same = one.fixed.find((key) => other.fixed.includes(key));
+  if (same !== undefined) return same;
+  if (one.filters === other.filters) return `${one.filters}…]`;
+  // With today's prefix syntax (letters and digits) no key begins with another table's filter key; this keeps the check right if
+  // the syntax ever allows more.
+  const inside = (filters: string, keys: { fixed: string[]; filters: string }) => [...keys.fixed, keys.filters].find((key) => key.startsWith(filters));
+  const found = inside(one.filters, other) ?? inside(other.filters, one);
+  return found === undefined ? undefined : found === one.filters || found === other.filters ? `${found}…]` : found;
+}
+
+/**
+ * Refuses a table that would share its URL keys or its endpoint paths with one already on the page. Runs before any route is
+ * made, so a refused table leaves nothing in the router.
+ */
+function assertKeysFree(definition: TableDefinition, page: RouteDefinition): void {
+  const where = `${page.methods.join('|').toUpperCase()} ${page.path}`;
+  for (const other of tablesOn(page)) {
+    if (other === definition) {
+      throw new Error(`Table "${definition.name}" is attached to ${where} twice — once serves the whole page.`);
+    }
+    if (other.name === definition.name) {
+      throw new Error(`${where} has two tables named "${definition.name}" — their endpoints would share /_tables/${definition.name}/…: give one another name.`);
+    }
+    const shared = sharedKey(other, definition);
+    if (shared !== undefined) {
+      throw new Error(
+        `${where} shows tables "${other.name}" and "${definition.name}" ${because(other, definition)} — they would share the URL's key ${shared}. ` +
+          "Give each but one its own prefix that no key of the other starts with: defineTable({ prefix: 'teams' }). See docs/tables.md#more-than-one-table-on-a-page.",
+      );
+    }
+  }
 }
 
 /**
