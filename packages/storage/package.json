@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/storage",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "File storage for Marmeon apps: local, S3 and memory disks behind one contract, public and private files, uploads.",
   "keywords": [
     "marmeon",
