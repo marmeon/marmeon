@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/auth",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "Authentication and authorization for Marmeon apps: session guard, remember-me, password hashing and resets, e-mail verification, API tokens, policies and make:auth.",
   "keywords": [
     "marmeon",

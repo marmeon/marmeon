@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/session",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "Sessions for Marmeon apps: an injectable session, file, database, Redis and memory stores, flash data and CSRF protection.",
   "keywords": [
     "marmeon",
