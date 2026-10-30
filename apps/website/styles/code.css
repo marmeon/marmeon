@@ -27,8 +27,9 @@ pre.code {
   margin: 0;
   padding: 16px 18px 18px;
   overflow-x: auto;
+  --code-edge: 1px solid var(--line);
   background: var(--bg-raised);
-  border: 1px solid var(--line);
+  border: var(--code-edge);
   border-radius: 4px;
   color: var(--syn-text);
   font: 400 var(--text-code) / 1.75 var(--font-mono);
@@ -42,8 +43,8 @@ pre.code:focus-visible {
 
 /* A command is never source: dark in both themes, no syntax colour but the dimmed comment. */
 pre.code[data-lang='sh'] {
+  --code-edge: 1px solid var(--term-line);
   background: var(--term-bg);
-  border-color: var(--term-line);
   color: var(--term-fg);
   line-height: 1.85;
 }
@@ -57,8 +58,8 @@ pre.code[data-lang='sh'] .tc {
 
 /* Output is what the machine printed: a dashed edge, no syntax colour. */
 pre.code[data-lang='text'] {
+  --code-edge: 1px dashed var(--line-strong);
   background: var(--output-bg);
-  border: 1px dashed var(--line-strong);
   color: var(--fg-2);
   font-size: 0.84375rem;
   line-height: 1.7;
