@@ -1082,6 +1082,7 @@ export async function startServer({
       root,
       ssrEntry,
       httpServer: server,
+      styles: true,
       // Bound only with NODE_ENV=development: a Vite dev server elsewhere adds nothing.
       devBody: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).body : ''),
       devHead: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).head : ''),

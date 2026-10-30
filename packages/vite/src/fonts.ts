@@ -166,7 +166,8 @@ export function fontFallbacks(fonts: readonly MarmeonFont[]): Plugin {
     name: 'marmeon:font-fallbacks',
     resolveId: (source) => (source === FONTS_CSS ? resolved : undefined),
     async load(id) {
-      if (id !== resolved) return undefined;
+      // A stylesheet linked in development is requested as `?direct`.
+      if (id.split('?')[0] !== resolved) return undefined;
       const faces = new Map<string, string>();
       for (const { file, family, fallback } of fonts) {
         if (!family || !fallback || faces.has(family)) continue;

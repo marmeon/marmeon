@@ -8,6 +8,7 @@ import { withCode } from '@marmeon/core/internal';
 import type { SsrRender } from '@marmeon/http';
 import type { ResolvedConfig, ViteDevServer } from 'vite';
 import { withDevBody } from './dev-document.ts';
+import { devStyleTags, entryStylesheets } from './dev-styles.ts';
 import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
 /** The app's Vite setup is incomplete: no `vite`, no `@marmeon/vite`, or no `marmeon()` plugin. The message says what to do. */
@@ -86,20 +87,22 @@ export interface ViteDevOptions {
   devBody?: () => string;
   /** Development HTML for the end of every document's head (`DevDocument`: the devtools' bar, before the app's entry) — read per request. */
   devHead?: () => string;
+  /** Link the stylesheets the client entry imports in each document's head, so a reload paints styled (`marmeon dev`). Off where no browser paints the document (page tests). */
+  styles?: boolean;
 }
 
 /**
  * Starts Vite in middleware mode. SSR modules run in Vite's module runner, so
  * view edits hot-reload without restarting the Node process.
  */
-export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody, devHead }: ViteDevOptions): Promise<{
+export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody, devHead, styles }: ViteDevOptions): Promise<{
   vite: ViteDevServer;
   renderer: PageRenderer;
   /** The app's SSR entry's `render`, loaded through Vite's module runner — for what a document does not carry (a placeholder's markup). */
   ssr: () => Promise<SsrRender>;
 }> {
   // Imported lazily: production servers never load Vite.
-  const { createServer, isRunnableDevEnvironment } = await importVite(root);
+  const { createServer, isRunnableDevEnvironment, parseAst } = await importVite(root);
 
   let vite: ViteDevServer;
   try {
@@ -118,8 +121,15 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
   }
 
   let entry: string;
+  let clientEntry: string | undefined;
   try {
-    entry = ssrEntry ?? marmeonEntries(vite.config).ssr;
+    if (ssrEntry) {
+      entry = ssrEntry;
+      // An explicit SSR entry works without the plugin (tests): then there is no client entry to read the stylesheets from.
+      if (styles && vite.config.plugins.some((plugin) => plugin.name === 'marmeon')) clientEntry = marmeonEntries(vite.config).client;
+    } else {
+      ({ ssr: entry, client: clientEntry } = marmeonEntries(vite.config));
+    }
   } catch (error) {
     await vite.close();
     throw error;
@@ -132,9 +142,19 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
   }
 
   const loadRender = async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render;
+  const imports = new WeakMap<object, readonly string[]>();
+  const client = vite.environments.client;
+  const stylesheets = async () =>
+    styles && clientEntry !== undefined && client ? devStyleTags(await entryStylesheets(client, `/${clientEntry}`, { base: vite.config.base, parse: parseAst, imports })) : '';
   const renderer = createDocumentRenderer({
-    template: async (request) =>
-      withDevBody(await vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')), devBody?.() ?? '', devHead?.() ?? ''),
+    template: async (request) => {
+      const [html, links] = await Promise.all([
+        readFile(join(root, 'index.html'), 'utf8').then((template) => vite.transformIndexHtml(new URL(request.url).pathname, template)),
+        stylesheets(),
+      ]);
+      // The links come first, ahead of the devtools' bar.
+      return withDevBody(html, devBody?.() ?? '', [links, devHead?.() ?? ''].filter(Boolean).join('\n'));
+    },
     // Through Vite's module runner on every request: an edited view renders without a restart.
     ssr: loadRender,
     // Stack traces of SSR errors point into the sources, not into Vite's transformed modules.
