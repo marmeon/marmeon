@@ -113,7 +113,7 @@ function sourceFiles(dir: string) {
   return files;
 }
 
-function go(repo: { dir: string }, world: World, dryRun = false, flags: { rc?: boolean; major?: boolean } = {}) {
+function go(repo: { dir: string }, world: World, dryRun = false, flags: { rc?: boolean; major?: boolean; replace?: boolean } = {}) {
   const runner = fake(world);
   const log: string[] = [];
   const result = prepare({ root: repo.dir, run: runner.run, dryRun, ...flags, files: () => sourceFiles(repo.dir), log: (line) => log.push(line) });
@@ -279,11 +279,18 @@ describe('prepare', () => {
   });
 
   it('refuses when an UPGRADING section of an untagged version is left behind', () => {
-    const repo = repository('0.2.0', {
+    const repo = repository('0.1.3', {
       upgrading: '# Upgrading\n\n## Upgrading to 0.2.0 from 0.1.2\n\nText.\n',
-      changelog: (short) => `# @marmeon/${short}\n\n## 0.2.0\n\nold\n\n## 0.1.2\n\nx\n`,
+      changelog: (short) => `# @marmeon/${short}\n\n## 0.1.3\n\nold\n\n## 0.1.2\n\nx\n`,
     });
     expect(() => go(repo, { generate: { default: notes({ fix: fixes }) } })).toThrow(/Upgrading to 0\.2\.0 from 0\.1\.2.*makes 0\.1\.3/s);
+  });
+
+  it('refuses when an UPGRADING section of a version prepared too high is left behind, and comes down when there is none', () => {
+    const changelog = (short: string) => `# @marmeon/${short}\n\n## 0.2.0\n\nold\n\n## 0.1.2\n\nx\n`;
+    const left = repository('0.2.0', { upgrading: '# Upgrading\n\n## Upgrading to 0.2.0 from 0.1.2\n\nText.\n', changelog });
+    expect(() => go(left, { generate: { default: notes({ fix: fixes }) } })).toThrow(/Upgrading to 0\.2\.0 from 0\.1\.2.*makes 0\.1\.3/s);
+    expect(go(repository('0.2.0', { changelog }), { generate: { default: notes({ fix: fixes }) } }).result.version).toBe('0.1.3');
   });
 
   it('refuses when the packages are at a version that is already tagged on origin', () => {
@@ -544,5 +551,97 @@ describe('prepare — 1.0 and release candidates', () => {
     expect(() => go(repo, world(), false, { major: true, rc: true })).toThrow(/These deprecations are due in 1\.0\.0-rc\.1:\n  - packages\/core\/src\/legacy\.ts:3/);
     expect(() => go(repo, world(), false, { major: true })).toThrow(/due in 1\.0\.0:/);
     expect(repo.read('packages/core/package.json')).toContain('"version": "0.9.3"');
+  });
+
+  describe('--replace', () => {
+    const rejected = () =>
+      repository('1.0.0-rc.2', { changelog: (short) => `# @marmeon/${short}\n\n## 1.0.0-rc.2\n\nrejected\n\n## 1.0.0-rc.1\n\nx\n\n## 0.9.3\n\nx\n` });
+    const state = (extra: Partial<World> = {}): World => ({ previous: 'v0.9.3', lastTag: 'v1.0.0-rc.1', generate: { default: notes({ fix: fixes }) }, ...extra });
+
+    it('makes rc.3 of an untagged rc.2 with the notes since rc.1, and drops the rc.2 section', () => {
+      const repo = rejected();
+      const { result, calls, log } = go(repo, state({ releaseCommit: { commit: 'd'.repeat(40), parent: HEAD } }), false, { rc: true, replace: true });
+      expect(result).toMatchObject({ version: '1.0.0-rc.3', previous: '0.9.3', since: '1.0.0-rc.1' });
+      expect(calls.find((call) => call[0] === 'gh')).toContain('previous_tag_name=v1.0.0-rc.1');
+      expect(versionsOf(repo)).toEqual(['1.0.0-rc.3', '1.0.0-rc.1', '0.9.3']);
+      expect([...repo.read('packages/http/CHANGELOG.md').matchAll(/^## (\S+)$/gm)].map((match) => match[1])).toEqual(['1.0.0-rc.3', '1.0.0-rc.1', '0.9.3']);
+      expect(repo.read('packages/http/package.json')).toContain('"version": "1.0.0-rc.3"');
+      expect(repo.read('.github/release-base')).toBe(`1.0.0-rc.3 ${HEAD}\n`);
+      expect(log.join('\n')).toContain('reject the packages of 1.0.0-rc.2');
+    });
+
+    it('writes nothing on a dry run', () => {
+      const repo = rejected();
+      const before = repo.read('packages/core/CHANGELOG.md');
+      expect(go(repo, state(), true, { rc: true, replace: true }).result.version).toBe('1.0.0-rc.3');
+      expect(repo.read('packages/core/CHANGELOG.md')).toBe(before);
+      expect(repo.read('packages/core/package.json')).toContain('"version": "1.0.0-rc.2"');
+    });
+
+    it('refuses when there is nothing to replace', () => {
+      const tagged = repository('1.0.0-rc.1', { changelog: (short) => `# @marmeon/${short}\n\n## 1.0.0-rc.1\n\nx\n` });
+      expect(() => go(tagged, state(), false, { rc: true, replace: true })).toThrow(/Nothing to replace/);
+      expect(() => go(at093(), world(), false, { replace: true })).toThrow(/Nothing to replace/);
+    });
+
+    it('refuses a candidate replaced as a release, a release replaced as a candidate, and --major', () => {
+      expect(() => go(rejected(), state(), false, { replace: true })).toThrow(/use --replace --rc/);
+      expect(() => go(repository('0.9.4', { changelog: (short) => `# @marmeon/${short}\n\n## 0.9.4\n\nx\n\n## 0.9.3\n\nx\n` }), world(), false, { rc: true, replace: true })).toThrow(/leave out --rc/);
+      expect(() => go(rejected(), state(), false, { rc: true, replace: true, major: true })).toThrow(/use one of them/);
+    });
+
+    const http = (repo: { read: (path: string) => string }) => [...repo.read('packages/http/CHANGELOG.md').matchAll(/^## (\S+)$/gm)].map((match) => match[1]);
+
+    it('is not undone by the plain run that follows it, for a candidate and for a release', () => {
+      const candidate = repository('1.0.0-rc.3', { changelog: (short) => `# @marmeon/${short}\n\n## 1.0.0-rc.3\n\nx\n\n## 1.0.0-rc.1\n\nx\n\n## 0.9.3\n\nx\n` });
+      expect(go(candidate, state({ head: 'e'.repeat(40) }), false, { rc: true }).result.version).toBe('1.0.0-rc.3');
+      expect(versionsOf(candidate)).toEqual(['1.0.0-rc.3', '1.0.0-rc.1', '0.9.3']);
+      expect(candidate.read('packages/core/package.json')).toContain('"version": "1.0.0-rc.3"');
+      const release = repository('0.9.5', { changelog: (short) => `# @marmeon/${short}\n\n## 0.9.5\n\nx\n\n## 0.9.3\n\nx\n` });
+      expect(go(release, world({ generate: { default: notes({ fix: fixes }) } })).result.version).toBe('0.9.5');
+      expect(release.read('packages/http/package.json')).toContain('"version": "0.9.5"');
+    });
+
+    it('replaces twice in a row: rc.3 becomes rc.4, the tagged rc.1 stays, in every package', () => {
+      const repo = rejected();
+      go(repo, state(), false, { rc: true, replace: true });
+      const second = go(repo, state({ head: 'e'.repeat(40) }), false, { rc: true, replace: true });
+      expect(second.result).toMatchObject({ version: '1.0.0-rc.4', since: '1.0.0-rc.1' });
+      expect(versionsOf(repo)).toEqual(['1.0.0-rc.4', '1.0.0-rc.1', '0.9.3']);
+      expect(http(repo)).toEqual(['1.0.0-rc.4', '1.0.0-rc.1', '0.9.3']);
+    });
+
+    it('takes the notes since the release when the rejected candidate was for another release than the tagged ones', () => {
+      const repo = repository('2.0.0-rc.1', { changelog: (short) => `# @marmeon/${short}\n\n## 2.0.0-rc.1\n\nx\n\n## 1.3.0-rc.1\n\nx\n\n## 1.2.0\n\nx\n` });
+      const { result, calls } = go(repo, { previous: 'v1.2.0', lastTag: 'v1.3.0-rc.1', generate: { default: notes({ breaking }) } }, false, { rc: true, replace: true });
+      expect(result).toMatchObject({ version: '2.0.0-rc.2', since: '1.2.0' });
+      expect(calls.filter((call) => call[0] === 'gh').at(-1)).toContain('previous_tag_name=v1.2.0');
+      expect(versionsOf(repo)).toEqual(['2.0.0-rc.2', '1.3.0-rc.1', '1.2.0']);
+    });
+
+    it('moves the upgrade guide section of a rejected breaking release to its replacement', () => {
+      const guide = '# Upgrading\n\n## Upgrading to 1.0.0 from 0.9.3\n\n#### Low: a change\n\nText.\n';
+      const repo = repository('1.0.0', { upgrading: guide, changelog: (short) => `# @marmeon/${short}\n\n## 1.0.0\n\nrejected\n\n## 1.0.0-rc.1\n\nx\n\n## 0.9.3\n\nx\n` });
+      const { result, log } = go(repo, state(), false, { replace: true });
+      expect(result.version).toBe('1.0.1');
+      expect(repo.read('UPGRADING.md')).toBe(guide.replace('to 1.0.0 from', 'to 1.0.1 from'));
+      expect(log.join('\n')).toContain('rename UPGRADING_ANCHORS["1.0.0"] in scripts/check-release.ts to "1.0.1"');
+      expect(log.join('\n')).not.toContain('Replace the placeholder');
+    });
+
+    it('works on a maintenance branch for a release, and refuses a candidate there', () => {
+      const repo = repository('0.9.5', { changelog: (short) => `# @marmeon/${short}\n\n## 0.9.5\n\nx\n\n## 0.9.3\n\nx\n` });
+      const branch = world({ branch: '0.9.x', generate: { default: notes({ fix: fixes }) } });
+      expect(go(repo, branch, false, { replace: true }).result.version).toBe('0.9.6');
+      expect(() => go(rejected(), { ...branch, lastTag: 'v1.0.0-rc.1' }, false, { rc: true, replace: true })).toThrow(/Release candidates are made on main/);
+    });
+
+    it('makes the next patch of an untagged release, or what the labels ask for if higher', () => {
+      const untagged = () => repository('0.9.4', { changelog: (short) => `# @marmeon/${short}\n\n## 0.9.4\n\nrejected\n\n## 0.9.3\n\nx\n` });
+      const patch = untagged();
+      expect(go(patch, world({ generate: { default: notes({ fix: fixes }) } }), false, { replace: true }).result).toMatchObject({ version: '0.9.5', since: '0.9.3' });
+      expect(versionsOf(patch)).toEqual(['0.9.5', '0.9.3']);
+      expect(go(untagged(), world({ generate: { default: notes({ breaking }) } }), false, { replace: true }).result.version).toBe('0.10.0');
+    });
   });
 });
