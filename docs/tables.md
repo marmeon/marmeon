@@ -263,7 +263,8 @@ The endpoints are ordinary routes under the page's path, with its middleware, it
 its request, the session and CSRF protection for the posts. A guest or an unconfirmed account never reaches them, and a user the
 page's request refuses does not either. A page whose route lacks what the base query needs, such as `ctx.user` without
 `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs, and a table has routes only for
-the kinds it has: a table without an export has no export route.
+the kinds it has: a table without an export has no export route, and a request to its export URL is a 404 for every user, before
+the page's middleware and checks.
 
 Every table is attached to the page that shows it, also one without actions and exports: `endpoints()` is how `resolve()` finds
 the table's URLs, and a page that resolves a table nobody attached to it fails with an error that names the table and the page.
