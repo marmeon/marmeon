@@ -603,7 +603,11 @@ type FilterValue<F> = F extends Filter<string, 'select' | 'has', infer O> ? O : 
 
 /** The parsed query of a table — what `ctx.query` and `useQueryState` hold for its keys. */
 export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<
-  ([SortableNames<Cols>] extends [never] ? {} : { readonly [K in `${KeyPrefix<P>}sort`]: SortableNames<Cols> | `-${SortableNames<Cols>}` }) &
+  ([SortableNames<Cols>] extends [never]
+    ? {}
+    : [SortableForEveryone<Cols>] extends [never]
+      ? { readonly [K in `${KeyPrefix<P>}sort`]?: SortableNames<Cols> | `-${SortableNames<Cols>}` }
+      : { readonly [K in `${KeyPrefix<P>}sort`]: SortableNames<Cols> | `-${SortableNames<Cols>}` }) &
   (Pg extends { readonly cursor: true } ? { readonly [K in `${KeyPrefix<P>}cursor`]?: string } : { readonly [K in `${KeyPrefix<P>}page`]: number }) & {
     readonly [K in `${KeyPrefix<P>}per_page`]: SizesOf<Pg>;
   } & ([SearchableNames<Cols>] extends [never] ? {} : { readonly [K in `${KeyPrefix<P>}search`]: string }) & {

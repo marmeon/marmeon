@@ -329,6 +329,15 @@ describe('the query schema and the routes', () => {
     });
     type FeedValues = NonNullable<(typeof Feed.query)['~standard']['types']>['output'];
     expectTypeOf<FeedValues>().toEqualTypeOf<{ readonly feed_sort: 'name' | '-name'; readonly feed_cursor?: string; readonly feed_per_page: 10 | 20 }>();
+    // No sortable column is everyone's: the sort has no default, so it is optional.
+    const Hidden = defineTable({
+      name: 'hidden',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { email: column('email').visible(MemberPolicy, 'viewEmails').sortable() },
+    });
+    type HiddenValues = NonNullable<(typeof Hidden.query)['~standard']['types']>['output'];
+    expectTypeOf<HiddenValues>().toEqualTypeOf<{ readonly sort?: 'email' | '-email'; readonly page: number; readonly per_page: 25 | 50 | 100 }>();
     // A query schema the router takes: `defineRequest({ query: Members.query })` type-checks (CheckQuery).
     defineRequest({ query: Members.query });
   });
