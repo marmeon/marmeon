@@ -204,6 +204,19 @@ ends.custom(never, { field: 'end_at' });
 r.string().custom(never, { field: 'x' });
 // @ts-expect-error — the other rules take a message, not options
 r.string().custom(never, { message: 'x' });
+// A later condition sees the fields of the earlier blocks, optional; a field no block has stays an error.
+r.object({ kind: r.in(['a', 'b']) })
+  .when((data) => data.kind === 'b', { mid: r.in(['yes', 'no']) })
+  .when((data) => {
+    const mid: 'yes' | 'no' | undefined = data.mid;
+    // @ts-expect-error — an earlier block's field may be absent
+    const sure: 'yes' | 'no' = data.mid;
+    void sure;
+    // @ts-expect-error — no block has this field
+    data.nothing;
+    return mid === 'yes';
+  }, { last: r.string() });
+
 // @ts-expect-error — a field of when() is not there before .when()
 ends.custom(never, { field: 'vat' });
 r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(never, { field: 'vat' }); // fine

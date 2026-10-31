@@ -65,7 +65,7 @@ export declare class ObjectRule<S extends Shape, When extends Shape = {}> extend
         readonly field?: (keyof S | keyof When) & string;
     }): this;
     live(this: typeof LIVE_ON_CONTAINER): never;
-    when<const W extends Shape>(condition: (data: ShapeOutput<S>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>>;
+    when<const W extends Shape>(condition: (data: Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>>;
     confirmed(field: keyof S & string, confirmation?: string): this;
 }
 // QueryOfRepository

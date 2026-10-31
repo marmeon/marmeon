@@ -512,13 +512,14 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
   }
 
   /**
-   * Fields checked only when `condition` holds for the others, else left out:
+   * Fields checked only when `condition` holds for the fields the object always has and those of the `.when()`s before it, else
+   * left out. See `docs/validation.md#objects`:
    *
    * ```ts
    * r.object({ kind: r.in(['person', 'company']) }).when((data) => data.kind === 'company', { vat: r.string().trim().required() })
    * ```
    */
-  when<const W extends Shape>(condition: (data: ShapeOutput<S>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>> {
+  when<const W extends Shape>(condition: (data: Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>> {
     const parts = objectParts(this);
     return new ObjectRule(objectDefinition({ ...parts, whens: [...parts.whens, { condition, shape: fields }] }, this['~rule'])) as never;
   }

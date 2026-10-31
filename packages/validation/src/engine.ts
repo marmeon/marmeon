@@ -270,7 +270,7 @@ export interface Confirmation {
 
 /**
  * An object of fields: keys the shape does not name are left out. Conditional fields (`when`) are checked when their condition
- * holds for the object's other fields, confirmations (`confirmed`) once their field is valid — both alongside the other fields'
+ * holds for the fields the object always has and those of the `when`s before it, confirmations (`confirmed`) once their field is valid — both alongside the other fields'
  * problems, not after them.
  */
 export function objectEngine(
@@ -305,18 +305,14 @@ function afterObject(
   if (typeof input !== 'object' || input === null) return dataset; // the type's issue is there already
   const fields = input as Record<string, unknown>;
   const output = dataset.value as Record<string, unknown>;
-  const runs: { key: string; result: Dataset | Promise<Dataset> }[] = [];
-  for (const { condition, entries } of whens) {
-    let holds = false;
+  const holds = (condition: (data: any) => boolean): boolean => {
     try {
-      holds = condition(output) === true;
+      return condition(output) === true;
     } catch {
-      // A condition over a field that is not valid: it does not hold.
+      return false; // a condition over a field that is not valid: it does not hold
     }
-    if (!holds) continue;
-    for (const [key, schema] of Object.entries(entries)) runs.push({ key, result: (schema as Schema)['~run']({ value: fields[key] }, config) });
-  }
-  const finish = (results: { key: string; result: Dataset }[]): Dataset => {
+  };
+  const take = (results: { key: string; result: Dataset }[]): void => {
     for (const { key, result } of results) {
       if (result.issues) {
         for (const issue of result.issues) {
@@ -327,9 +323,13 @@ function afterObject(
         }
         dataset.typed = false;
       } else if (result.value !== undefined) {
-        output[key] = result.value;
+        output[key] = result.value; // at once: the condition of the next block reads it
       }
     }
+  };
+  const start = (entries: Readonly<Record<string, Engine>>) =>
+    Object.entries(entries).map(([key, schema]) => ({ key, result: (schema as Schema)['~run']({ value: fields[key] }, config) }));
+  const finish = (): Dataset => {
     for (const { field, zone } of zoned) {
       const failed = (key: string) => dataset.issues?.some((issue) => issue.path?.[0]?.key === key) === true;
       if (failed(field) || failed(zone) || typeof output[field] !== 'string') continue; // not valid yet, or left out
@@ -349,8 +349,18 @@ function afterObject(
     }
     return dataset;
   };
-  if (!async) return finish(runs as { key: string; result: Dataset }[]);
-  return Promise.all(runs.map(async ({ key, result }) => ({ key, result: await result }))).then(finish);
+  if (!async) {
+    for (const { condition, entries } of whens) {
+      if (holds(condition)) take(start(entries) as { key: string; result: Dataset }[]);
+    }
+    return finish();
+  }
+  return (async () => {
+    for (const { condition, entries } of whens) {
+      if (holds(condition)) take(await Promise.all(start(entries).map(async ({ key, result }) => ({ key, result: await result }))));
+    }
+    return finish();
+  })();
 }
 
 /** An issue of the object at `key` — what the engine's own issues look like. */

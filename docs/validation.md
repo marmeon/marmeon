@@ -205,8 +205,16 @@ r.object({ kind: r.in(['person', 'company']), name: r.string().required() })
 - **`confirmed(field, confirmation)`** compares the confirmation, by default `<field>_confirmation`, with the field as typed. It
   reports on the confirmation, "The password confirmation does not match.", once the field itself is valid. A form that gets both
   wrong shows the password's problem first. `password()` of `@marmeon/auth` is the rule for a new password.
-- **`when(condition, fields)`** checks the fields while the condition holds for the object's other fields, and leaves them out
-  otherwise. They are checked alongside the other fields, not after them.
+- **`when(condition, fields)`** checks the fields while the condition holds for the fields the object always has and those of the
+  `.when()`s before it, in the order they are written, and leaves them out otherwise. A block's fields are checked alongside the
+  other fields, not after them. A field of an earlier `.when()` that is invalid is not in what a later condition reads. To make a field depend on a
+  conditional one, chain the blocks:
+
+  ```ts
+  r.object({ kind: r.in(['press', 'guest']) })
+    .when((data) => data.kind === 'press', { outlet: r.in(['print', 'online']) })
+    .when((data) => data.outlet === 'print', { press_id: r.string().required() }) // required once kind is "press" and outlet "print"
+  ```
 - **`custom(check, options?)`** checks the object once every field is valid. The check gets the object, so it can compare fields.
   A failed check reports under the key `_`, the errors that belong to the form and no field, and a form shows it with
   `form.errors._`. To report it at one of the fields, where the user can fix it, name the field:

@@ -268,6 +268,41 @@ describe('objects', () => {
     expect(await errors(form, { kind: 'other', name: 'Ada' })).toEqual({ kind: ['The selected kind is invalid.'] });
   });
 
+  it('when: a condition sees the fields of the .when()s before it, so a chain makes a field required', async () => {
+    const chain = r
+      .object({ kind: r.in(['Presse', 'Gast']) })
+      .when((data) => data.kind === 'Presse', { mid: r.in(['ja', 'nein']) })
+      .when((data) => data.mid === 'ja', { last: r.string().required() });
+    expect(await errors(chain, { kind: 'Presse', mid: 'ja' })).toEqual({ last: ['The last field is required.'] });
+    expect(await check(chain, { kind: 'Presse', mid: 'ja', last: 'x' })).toEqual({ value: { kind: 'Presse', mid: 'ja', last: 'x' } });
+    expect(await check(chain, { kind: 'Presse', mid: 'nein', last: 'x' })).toEqual({ value: { kind: 'Presse', mid: 'nein' } });
+    // The first condition does not hold, so `mid` is left out and the second condition sees nothing.
+    expect(await check(chain, { kind: 'Gast', mid: 'ja' })).toEqual({ value: { kind: 'Gast' } });
+    // An invalid `mid` is not in the output: `last` is not checked.
+    expect(await errors(chain, { kind: 'Presse', mid: 'vielleicht' })).toEqual({ mid: ['The selected mid is invalid.'] });
+    // Issues come in the order of the blocks.
+    const both = r
+      .object({ kind: r.in(['Presse']) })
+      .when((data) => data.kind === 'Presse', { mid: r.in(['ja']), other: r.string().required() })
+      .when((data) => data.mid === 'ja', { last: r.string().required() });
+    expect(Object.keys(await errors(both, { kind: 'Presse', mid: 'ja' }))).toEqual(['other', 'last']);
+  });
+
+  it('when: the chain works with an asynchronous rule in an earlier block', async () => {
+    const chain = r
+      .object({ kind: r.in(['Presse', 'Gast']) })
+      .when((data) => data.kind === 'Presse', {
+        mid: r.in(['ja', 'nein']).custom(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return true;
+        }),
+      })
+      .when((data) => data.mid === 'ja', { last: r.string().required() });
+    expect(await errors(chain, { kind: 'Presse', mid: 'ja' })).toEqual({ last: ['The last field is required.'] });
+    expect(await check(chain, { kind: 'Presse', mid: 'ja', last: 'x' })).toEqual({ value: { kind: 'Presse', mid: 'ja', last: 'x' } });
+    expect(await check(chain, { kind: 'Gast', mid: 'ja' })).toEqual({ value: { kind: 'Gast' } });
+  });
+
   it('confirmed: on the confirmation field, once the field itself is valid', async () => {
     const form = r.object({ password: r.string().min(8), password_confirmation: r.string() }).confirmed('password');
     expect(await check(form, { password: 'correct horse', password_confirmation: 'correct horse' })).toEqual({
