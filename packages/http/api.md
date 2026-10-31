@@ -43,7 +43,7 @@ export type CheckOnceValue<T> = [UnstorablePart<T>] extends [never] ? unknown : 
 // CheckUploadField
 export type CheckUploadField<F, K extends string> = string extends K ? UploadField<F> : string extends keyof F ? K : K extends UploadField<F> ? K : [UploadField<F>] extends [never] ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)` : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
 // CheckViewName
-export type CheckViewName<V extends string> = string extends V ? ViewName : V extends ViewName ? V : V extends `${infer Module}/${infer Rest}` ? `'${V}' is not a view: modules/${Module}/views/${Rest}.tsx is not in bootstrap/routes.ts — a new view needs \`marmeon route:types\` (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}` : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
+export type CheckViewName<V extends string> = string extends V ? ViewName : V extends ViewName ? V : V extends `${infer Module}/${infer Rest}` ? `'${V}' is not a view: create modules/${Module}/views/${Rest}.tsx, or run \`marmeon route:types\` if it exists (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}` : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
 // ClearClientHistory
 export declare class ClearClientHistory {
     #private;
@@ -2493,7 +2493,7 @@ export type { CheckRouteName } from '@marmeon/router';
 // CheckUploadField
 export type CheckUploadField<F, K extends string> = string extends K ? UploadField<F> : string extends keyof F ? K : K extends UploadField<F> ? K : [UploadField<F>] extends [never] ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)` : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
 // CheckViewName
-export type CheckViewName<V extends string> = string extends V ? ViewName : V extends ViewName ? V : V extends `${infer Module}/${infer Rest}` ? `'${V}' is not a view: modules/${Module}/views/${Rest}.tsx is not in bootstrap/routes.ts — a new view needs \`marmeon route:types\` (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}` : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
+export type CheckViewName<V extends string> = string extends V ? ViewName : V extends ViewName ? V : V extends `${infer Module}/${infer Rest}` ? `'${V}' is not a view: create modules/${Module}/views/${Rest}.tsx, or run \`marmeon route:types\` if it exists (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}` : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
 // ControllerOf
 export type { ControllerOf } from '@marmeon/router';
 // DeferredProp
