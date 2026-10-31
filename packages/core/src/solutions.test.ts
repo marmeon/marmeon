@@ -124,6 +124,8 @@ describe('the core solutions', () => {
     expect(solution).toMatchObject({ title: "A module's entry reached a component", docs: 'docs/structure.md#components-several-modules-share' });
     expect(solution?.text).toContain('#modules/<name>');
     expect(solution?.text).toContain('/app/modules/ui/Button.tsx');
+    const spaced = Object.assign(new TypeError('Unknown file extension ".tsx" for /home/Jane Doe/app/modules/ui/Button.tsx'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
+    expect((await solutions.find(spaced))[0]?.text).toContain('(/home/Jane Doe/app/modules/ui/Button.tsx)');
     const json = Object.assign(new TypeError('Unknown file extension ".json" for /app/data.json'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
     expect(await solutions.find(json)).toEqual([]);
     expect(await solutions.find(new TypeError('Unknown file extension ".tsx" for /app/x.tsx'))).toEqual([]);

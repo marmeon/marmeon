@@ -26,7 +26,7 @@ describe('DbTypesCheck', { timeout: 30_000 }, () => {
 
     const { source } = await generator.render();
     writeFileSync(file, source.replace('articles', 'posts_old'));
-    expect(await check.handle()).toEqual([{ severity: 'error', message: "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` changed", file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' }]);
+    expect(await check.handle()).toEqual([{ severity: 'error', message: "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` may have changed", file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' }]);
 
     writeFileSync(file, source.replace('@marmeon-format 2', '@marmeon-format 9'));
     expect(await check.handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('newer version of Marmeon'), code: 'D7' }]);

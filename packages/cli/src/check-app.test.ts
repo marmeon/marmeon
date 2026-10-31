@@ -351,11 +351,11 @@ export default defineModule({ name: 'twice', routes: defineRoutes((Route) => { R
     // The stored sample predates the causes in the db-types message; the assertion below pins that text, the sample the rest of the format.
     const sample = readFileSync(new URL('./__fixtures__/formats/cli-check/v1-app.json', import.meta.url), 'utf8').replace(
       'database.d.ts is out of date"',
-      "database.d.ts is out of date — a migration or a module's `exposes` changed\"",
+      "database.d.ts is out of date — a migration or a module's `exposes` may have changed\"",
     );
     expect(JSON.parse(stale.stdout)).toMatchObject(JSON.parse(sample));
     expect(reportOf(stale.stdout, 'route-types').problems[0]).toMatchObject({ message: 'bootstrap/routes.ts is out of date', file: 'bootstrap/routes.ts', fix: 'marmeon route:types' });
-    expect(reportOf(stale.stdout, 'db-types').problems[0]).toMatchObject({ message: "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` changed", file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' });
+    expect(reportOf(stale.stdout, 'db-types').problems[0]).toMatchObject({ message: "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` may have changed", file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' });
   });
 
   it('names a generated file of another Marmeon version with its code, and the command that writes it again', () => {

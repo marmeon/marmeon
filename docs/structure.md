@@ -210,7 +210,7 @@ A module's `index.ts` is loaded as server code, so it cannot export a `.tsx` com
 }
 ```
 
-Views import from `#ui` directly, and the `ui` module's `index.ts` stays free of components.
+Views import from `#ui` directly. The target is a file you write: `modules/ui/components/index.ts` re-exports the shared components (`export { Button } from './Button.tsx';`), and the `ui` module's own `index.ts` stays free of components.
 
 ## Your first module
 

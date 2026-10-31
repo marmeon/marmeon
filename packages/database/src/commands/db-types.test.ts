@@ -23,6 +23,6 @@ describe('DbTypesCommand --check', { timeout: 30_000 }, () => {
     const { source } = await generator.render();
     writeFileSync(join(root, 'bootstrap/database.d.ts'), source.replace('articles', 'posts_old'));
     expect(await run()).toBe(1);
-    expect(lines.at(-1)).toBe("err bootstrap/database.d.ts is out of date — a migration or a module's `exposes` changed. Run: marmeon db:types");
+    expect(lines.at(-1)).toBe("err bootstrap/database.d.ts is out of date — a migration or a module's `exposes` may have changed. Run: marmeon db:types");
   });
 });
