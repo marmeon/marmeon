@@ -348,7 +348,12 @@ export default defineModule({ name: 'twice', routes: defineRoutes((Route) => { R
     const stale = check(root, ['--only=boot,route-types,modules,db-types,readiness', '--json']);
     expect(stale.code).toBe(1);
     // The variants of the app's checks, pinned beside the tools' document.
-    expect(JSON.parse(stale.stdout)).toMatchObject(JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-check/v1-app.json', import.meta.url), 'utf8')));
+    // The stored sample predates the causes in the db-types message; the assertion below pins that text, the sample the rest of the format.
+    const sample = readFileSync(new URL('./__fixtures__/formats/cli-check/v1-app.json', import.meta.url), 'utf8').replace(
+      'database.d.ts is out of date"',
+      "database.d.ts is out of date — a migration or a module's `exposes` changed\"",
+    );
+    expect(JSON.parse(stale.stdout)).toMatchObject(JSON.parse(sample));
     expect(reportOf(stale.stdout, 'route-types').problems[0]).toMatchObject({ message: 'bootstrap/routes.ts is out of date', file: 'bootstrap/routes.ts', fix: 'marmeon route:types' });
     expect(reportOf(stale.stdout, 'db-types').problems[0]).toMatchObject({ message: "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` changed", file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' });
   });
