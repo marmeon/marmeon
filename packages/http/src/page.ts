@@ -81,13 +81,13 @@ export interface Views {}
 /** A page component name: `user-profile/Show` for `modules/user-profile/views/Show.tsx`. */
 export type ViewName = [keyof Views] extends [never] ? string : keyof Views & string;
 
-/** `V` when it is a view; otherwise a message naming the file that is missing. */
+/** `V` when it is a view; otherwise a message naming the view file and the command that registers it. */
 export type CheckViewName<V extends string> = string extends V
   ? ViewName
   : V extends ViewName
     ? V
     : V extends `${infer Module}/${infer Rest}`
-      ? `'${V}' is not a view: there is no modules/${Module}/views/${Rest}.tsx${Suggest<V, ViewName, '/'>}`
+      ? `'${V}' is not a view: modules/${Module}/views/${Rest}.tsx is not in bootstrap/routes.ts — a new view needs \`marmeon route:types\` (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}`
       : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
 
 /** The routes the browser knows — `routes` of `virtual:marmeon/routes` (the `marmeon()` Vite plugin). */
