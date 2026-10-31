@@ -288,7 +288,7 @@ it.
 | `assertHeader(name, value)` | The header is there, with that exact value when given. |
 | `assertJson(subset)` | The JSON body contains `subset`: other keys of an object may exist, but an array must match element by element. |
 | `assertExactJson(value)` | The JSON body equals `value`. |
-| `assertSee(text)`, `assertDontSee(text)` | The body contains the text, or does not. |
+| `assertSee(text)`, `assertDontSee(text)` | The body contains the text, or does not. It searches the markup as written: a text React splits (`{count} guests` renders `3<!-- --> guests`) and escaped characters are not found as you type them; search a part, or the element. See [Testing Pages](testing-pages.md#server-rendering). |
 
 ### When an assertion fails
 
