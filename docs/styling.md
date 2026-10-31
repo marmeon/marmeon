@@ -129,9 +129,12 @@ for streamed parts of a page. `styleSrc: ["'self'"]` alone blocks nothing of the
 | A failed visit | `marmeon-failure--network` for the notice when the server cannot be reached, `marmeon-failure--server` for the dialog with the server's error page, `marmeon-failure__frame`, `marmeon-failure__close` |
 | The built-in error page | `marmeon-error`, `marmeon-error__status`, `marmeon-error__title`, `marmeon-error__exception` |
 
-Every rule sits in `:where()`, so it has no specificity. A class of your own, passed as `className`, overrides it, and so does a
+Every rule stands in the cascade layer `marmeon` and inside it in `:where()`, so it has no specificity: a class of your own,
+passed as `className`, overrides it when it has no layer or stands in a layer after `marmeon`, and so does a
 rule on the components' data attributes: `[data-marmeon-layer]`, `[data-variant]`, `[data-marmeon-confirm]`, `[data-kind]`,
-`[data-destructive]` and `[data-marmeon-failure]`. The failure notices take their colours from variables, which you set on `:root`:
+`[data-destructive]` and `[data-marmeon-failure]`. A modal dialog keeps its `margin: auto`, its backdrop and the look of its
+buttons under a CSS reset, which removes the browser's own. The backdrop colour is `--marmeon-backdrop`, the colour of the
+confirm button of a destructive question `--marmeon-confirm-danger`. The failure notices take their colours from variables, which you set on `:root`:
 
 ```css title="styles/app.css"
 :root {
@@ -144,6 +147,35 @@ rule on the components' data attributes: `[data-marmeon-layer]`, `[data-variant]
 
 The progress bar reads `--marmeon-progress-color`, `--marmeon-progress-height` and `--marmeon-progress-z-index`. Without the import
 of `styles.css`, the components are unstyled, and their look is yours.
+
+### Cascade layers
+
+A rule without a layer beats every rule in a layer, whatever its specificity, and of two layers the one that appeared first in
+the CSS loses. So your own CSS without a layer wins over the framework's look, and so does a layer you declare after `marmeon`.
+
+If you use layers of your own (Tailwind CSS puts its reset in `base` and its classes in `utilities`), name the order in the first
+stylesheet that loads, before anything else, so that `marmeon` stands after the reset and before your components and utilities:
+
+```css title="styles/app.css"
+@layer theme, base, marmeon, components, utilities;
+```
+
+Import that stylesheet before `@marmeon/react/styles.css` in the client entry, so utilities beat the framework.
+
+`styles.css` itself opens with `@layer base, marmeon;`. Without your line the layers stand in the order the stylesheets load.
+When `styles.css` loads first, `marmeon` sits above a reset in `base` and below your components and utilities, which keeps the
+confirm dialog's margin and buttons. When Tailwind's layers come first, `marmeon` is appended after `utilities` and beats
+them until you declare the order.
+
+A reset without a layer (`* { margin: 0 }`) beats the dialogs' margin and padding too. Put it in a layer before `marmeon`:
+
+```css title="styles/app.css"
+@layer reset, marmeon;
+@import './reset.css' layer(reset);
+```
+
+An app that relied on the framework's rules beating its own layered CSS sees its rules win now. To get the old order back,
+declare its layer before `marmeon`.
 
 ## Styling state
 
