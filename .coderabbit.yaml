@@ -68,7 +68,8 @@ reviews:
         - `NODE_ENV` compared negatively against 'production', or `import.meta.env.DEV`, in package code, stubs, the template or
           apps. Development branches ask `=== 'development' || === 'test'` or `environment.isDevelopment()`.
         - An import of `kysely` outside packages/database/src, of Valibot outside a package's src/, or of
-          `@marmeon/<name>/internal` outside packages/<name>/src.
+          `@marmeon/<name>/internal` outside packages/*/src (the framework's packages share it; apps, stubs, the template and
+          scripts never import it).
         - A change to a public API, an environment default or a command without the matching page under docs/ in the same pull
           request.
 
@@ -89,8 +90,9 @@ reviews:
 
     - path: "**/*.test.{ts,tsx}"
       instructions: |
-        Tests sit next to the code. A temporary directory comes from `tempDir('marmeon-...')`; a test that leaves one behind
-        fails the run. Postgres and Redis suites run against shared databases, so a test must not depend on other sessions
+        Tests sit next to the code. A temporary directory comes from `tempDir('marmeon-...')`, and the root of an app whose
+        modules come from the repository's fixtures from `workspaceTempDir('marmeon-...')` (its migrations must lie in the
+        workspace); a test that leaves one behind fails the run. Postgres and Redis suites run against shared databases, so a test must not depend on other sessions
         being absent (match its own marker, not a generic pattern). Prefer counting work over measuring wall-clock time.
 
     - path: "docs/**/*.md"
