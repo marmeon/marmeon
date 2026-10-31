@@ -280,7 +280,10 @@ export function objectEngine(
   async: boolean,
   zoned: readonly ZonedField[] = [],
 ): Engine {
-  const base: Schema = async ? v.objectAsync(entries as Record<string, Schema>, typeMessage('object')) : v.object(entries as Record<string, Schema>, typeMessage('object'));
+  // Valibot's object lets an array through (an array is an object in JavaScript); a JSON array is not the object a form or body means.
+  const shape: Schema = async ? v.objectAsync(entries as Record<string, Schema>, typeMessage('object')) : v.object(entries as Record<string, Schema>, typeMessage('object'));
+  const notArray = v.custom((value) => !Array.isArray(value), typeMessage('object'));
+  const base: Schema = async ? v.pipeAsync(notArray, shape) : v.pipe(notArray, shape);
   if (whens.length === 0 && confirmations.length === 0 && zoned.length === 0) return base as unknown as Engine;
   return {
     ...base,
@@ -302,7 +305,7 @@ function afterObject(
   config: unknown,
   async: boolean,
 ): Dataset | Promise<Dataset> {
-  if (typeof input !== 'object' || input === null) return dataset; // the type's issue is there already
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return dataset; // the type's issue is there already
   const fields = input as Record<string, unknown>;
   const output = dataset.value as Record<string, unknown>;
   const holds = (condition: (data: any) => boolean): boolean => {
