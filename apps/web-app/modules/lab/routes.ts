@@ -10,7 +10,7 @@ import {
   TriggerErrorLabController,
 } from './controllers/ShowLabPageController.ts';
 import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
-import { CreateOneTimeLinkLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
+import { CreateOneTimeLinkLabController, ShowAnnouncementLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
 import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
 import { CreateGuestLabController, EditGuestLabController, StoreGuestLabController, UpdateGuestLabController } from './controllers/GuestLabController.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
@@ -64,6 +64,8 @@ export default defineRoutes((Route) => {
   // A form behind a token: the token's route trades it for the link's id in the session and redirects to a page without it. That page
   // and its POST keep `same-origin`, so `back()` returns to the form after a failed validation.
   link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/invitations/:link', ClaimInvitationLabController);
+  // A public page that carries a token only sometimes: cacheable as it is, `no-store` and without a Referer once the address has `?invite=`.
+  group.middleware(credentialPage({ query: ['invite'] })).authorize(everyone).get('/announcement', ShowAnnouncementLabController);
   const form = group.middleware(credentialPage({ referrer: 'same-origin' })).authorize(everyone);
   form.get('/invitation', ShowInvitationLabController);
   form.post('/invitation', StoreInvitationLabController);

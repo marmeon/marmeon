@@ -156,3 +156,14 @@ describe('a link that is used once', () => {
     await as(two).post('/lab/invitation', { json: { name: 'Ada' }, headers: json }).assertNotFound();
   });
 });
+
+describe('a public page that carries a token only sometimes', () => {
+  it('is cacheable without ?invite= and a credential with it', async () => {
+    const plain = await app.get('/lab/announcement').assertOk();
+    expect([plain.headers.get('cache-control'), plain.headers.has('x-robots-tag'), plain.headers.get('referrer-policy')]).toEqual(['public, max-age=60', false, 'strict-origin-when-cross-origin']);
+    for (const search of ['?invite=abc', '?invite=']) {
+      const credential = await app.get(`/lab/announcement${search}`).assertOk();
+      expect([credential.headers.get('cache-control'), credential.headers.get('x-robots-tag'), credential.headers.get('referrer-policy')]).toEqual(['no-store, private', 'noindex, nofollow', 'no-referrer']);
+    }
+  });
+});

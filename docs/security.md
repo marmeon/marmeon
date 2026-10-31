@@ -134,6 +134,23 @@ a `Referrer-Policy` of `no-referrer` or `same-origin` that a controller set stay
 
 The [URL generation](urls.md#a-link-that-is-used-once) page shows how to make and look up the token.
 
+### A public page that carries a token only sometimes
+
+A page that is public for everyone and holds a token in its query only for some visitors (`?invite=`, `?g=`) is no credential
+without the parameter. Name the parameters, and the headers follow the request:
+
+```ts title="modules/events/routes.ts"
+Route.middleware(credentialPage({ query: ['invite'] })).get('/events/:event', ShowEventController);
+```
+
+A request whose query has `invite` (also `?invite=` with no value) gets the headers above; any other answer stays as the route made
+it. A cache keys on the whole URL (check that your CDN does not ignore the query string for this path), so the page without the parameter may be cached while `?invite=…` never is. Names are matched
+exactly, `Invite` is another parameter. Leave `query` out for a route whose path is the credential.
+
+Two `credentialPage()` on one route, each for its own parameter, give the stricter `Referrer-Policy` to a URL that has both: with
+`?g=` (`no-referrer`) and `?invite=` (`referrer: 'same-origin'`), the answer is `no-referrer`, so neither token travels in a same-origin
+`Referer`. `same-origin` sends the URL, token included, to your own origin, so choose it only as in "A form behind a token" above.
+
 ## Keys
 
 `APP_KEY` encrypts cookies, encrypted jobs and sealed sessions, and the keys that sign URLs, live channels and uploads are derived
