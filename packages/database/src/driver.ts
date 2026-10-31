@@ -85,6 +85,12 @@ export class MarmeonDriver implements Driver {
   #init: Promise<void> | undefined;
   /** While isolated: the one connection every query uses, inside a transaction that is rolled back later. */
   #pinned: DatabaseConnection | undefined;
+  /**
+   * Connections an isolation pinned, until the pool hands them out again. Work still running after the rollback (a request that
+   * outlived its test) releases the connection it had been given; the rollback has released it already, and a second release
+   * would hand the pool's client back twice.
+   */
+  readonly #isolated = new WeakSet<DatabaseConnection>();
   /** The dialect has one physical connection (SQLite): one user at a time, by {@link #lock}. */
   readonly #single: boolean;
   readonly #lock = new ConnectionLock();
@@ -175,7 +181,7 @@ export class MarmeonDriver implements Driver {
       this.#holders.delete(connection);
     }
     try {
-      if (connection !== this.#pinned) await this.#driver.releaseConnection(connection, options);
+      if (connection !== this.#pinned && !this.#isolated.has(connection)) await this.#driver.releaseConnection(connection, options);
     } finally {
       if (this.#single) this.#lock.release();
     }
@@ -217,6 +223,7 @@ export class MarmeonDriver implements Driver {
     let connection: DatabaseConnection;
     try {
       connection = this.#pinned ?? this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection(options)));
+      if (connection !== this.#pinned) this.#isolated.delete(connection);
     } catch (error) {
       if (this.#single) this.#lock.release();
       throw error;
@@ -271,6 +278,7 @@ export class MarmeonDriver implements Driver {
     this.#depth.set(connection, 1);
     this.#tainted.delete(connection);
     this.#pinned = connection;
+    this.#isolated.add(connection);
     this.#warnedOfTurns = false;
     return {
       rollback: async () => {

@@ -2,11 +2,12 @@ import { setTimeout } from 'node:timers/promises';
 import { afterCommit, defineModule, Logger, outsideTransaction, TransactionError, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider } from '@marmeon/http';
+import { Controller, HttpServiceProvider, SharedData } from '@marmeon/http';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { guarded, type GuardedTables } from './__fixtures__/guarded.ts';
 import { workshops, type WorkshopTables } from './__fixtures__/workshops.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { createTestApp, type TestApp } from './index.ts';
 
 interface NotesTables {
@@ -19,6 +20,28 @@ class WelcomeNoteSeeder {
     await factory(NoteFactory).create({ title: 'Welcome', pinned: true });
   }
 }
+
+/** A page whose lazy shared prop throws: the response is a 500, and what ran for the page may outlive it. */
+class BoomController extends Controller {
+  readonly #shared: SharedData;
+  readonly #connections: Connections;
+  constructor(shared: SharedData, connections: Connections) {
+    super();
+    this.#shared = shared;
+    this.#connections = connections;
+  }
+  handle() {
+    // Still holding a connection when the other prop fails.
+    this.#shared.share('slow' as never, (() => this.#connections.transaction(() => setTimeout(100))) as never);
+    this.#shared.share('boom' as never, (() => {
+      throw new Error('boom');
+    }) as never);
+    return this.view('boom/Show', {});
+  }
+}
+const boomRoutes = openRoutes((Route) => {
+  Route.get('/boom', BoomController);
+});
 
 const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
@@ -40,6 +63,7 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
     modules: [
       defineModule({ name: 'notes', migrations: new URL('./__fixtures__/migrations/', import.meta.url), seeders: [WelcomeNoteSeeder] }),
       workshops,
+      defineModule({ name: 'boom', routes: boomRoutes }),
     ],
   };
 
@@ -89,6 +113,22 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
   });
 
   describe.runIf(driver === 'pgsql')('Postgres', () => {
+    it('closes cleanly under refresh after a page failed on a lazy shared prop', async () => {
+      const errors: unknown[] = [];
+      const onError = (reason: unknown) => errors.push(reason);
+      process.on('unhandledRejection', onError);
+      try {
+        await open('refresh');
+        expect((await app!.get('/boom')).status).toBe(500);
+        await expect(app!.close()).resolves.toBeUndefined();
+        app = undefined;
+        await setTimeout(250);
+      } finally {
+        process.off('unhandledRejection', onError);
+      }
+      expect(errors.map(String)).toEqual([]);
+    });
+
     const second = () => {
       const options = app!.make(Connections).options();
       if (options.driver !== 'pgsql') throw new Error('These tests need Postgres.');

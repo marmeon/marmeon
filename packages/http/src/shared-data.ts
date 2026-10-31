@@ -58,7 +58,9 @@ export class SharedData {
 
   /** @internal — resolves the given keys, all of them by default; lazy ones now, each at most once per request. */
   async resolve(keys: Iterable<string> = this.#values.keys()): Promise<Record<string, unknown>> {
-    const entries = await Promise.all(
+    // Every prop settles before the first failure is thrown (in key order): a page that fails while another prop is still
+    // running would leave that prop's work, and its rejection, behind the response.
+    const settled = await Promise.allSettled(
       [...keys]
         .filter((key) => this.#values.has(key))
         .map(async (key) => {
@@ -71,6 +73,8 @@ export class SharedData {
           return [key, await value] as const;
         }),
     );
-    return Object.fromEntries(entries);
+    const failed = settled.find((result) => result.status === 'rejected');
+    if (failed) throw failed.reason;
+    return Object.fromEntries(settled.map((result) => (result as PromiseFulfilledResult<readonly [string, unknown]>).value));
   }
 }
