@@ -84,6 +84,10 @@ describe('the types', () => {
       expect(await errors(footer, array)).toEqual({ _: ['The value field must be an object.'] });
       expect(await errors(footer, 'x')).toEqual(await errors(footer, array));
     }
+    // An object with an asynchronous rule is built another way (objectAsync); it refuses arrays too.
+    const slow = r.object({ footer: r.object({ tag: r.string().custom(async (value) => value !== 'bad') }) });
+    expect(await errors(slow, { footer: [] })).toEqual({ footer: [message] });
+    expect(await errors(slow, { footer: ['a'] })).toEqual({ footer: [message] });
     expect(await errors(form, { footer: 'x' })).toEqual({ footer: [message] });
     expect(await check(form, { footer: {} })).toEqual({ value: { footer: { groups: [] } } });
     expect(await check(form, { footer: { groups: ['a'] } })).toEqual({ value: { footer: { groups: ['a'] } } });
