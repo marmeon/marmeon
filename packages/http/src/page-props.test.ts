@@ -55,6 +55,27 @@ describe('partialReloadOf', () => {
 });
 
 describe('resolvePageProps', () => {
+  it('a page prop that throws fails the page only once the lazy shared props have settled', async () => {
+    let settled = false;
+    const shared = new SharedData().share('pageProps', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      settled = true;
+      return { user: null };
+    });
+    await expect(
+      resolvePageProps(
+        {
+          broken: () => {
+            throw new Error('own failed');
+          },
+        },
+        shared,
+        undefined,
+      ),
+    ).rejects.toThrow('own failed');
+    expect(settled).toBe(true);
+  });
+
   it('a full response: everything but optional and defer props, which are never computed — deferred ones are listed by group', async () => {
     const { calls, count } = counted();
     const page = await resolvePageProps(

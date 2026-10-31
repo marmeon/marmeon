@@ -1,12 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import { afterCommit, defineModule, Logger, outsideTransaction, TransactionError, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider } from '@marmeon/http';
+import { Controller, HttpServiceProvider, SharedData } from '@marmeon/http';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { guarded, type GuardedTables } from './__fixtures__/guarded.ts';
 import { workshops, type WorkshopTables } from './__fixtures__/workshops.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { createTestApp, type TestApp } from './index.ts';
 
 interface NotesTables {
@@ -19,6 +21,50 @@ class WelcomeNoteSeeder {
     await factory(NoteFactory).create({ title: 'Welcome', pinned: true });
   }
 }
+
+/** Set by the slow lazy prop of `/boom` once it ran to its end. */
+let slowSettled = false;
+
+/** A page whose lazy shared prop throws while another one is still running. */
+class BoomController extends Controller {
+  readonly #shared: SharedData;
+  constructor(shared: SharedData) {
+    super();
+    this.#shared = shared;
+  }
+  handle() {
+    slowSettled = false;
+    this.#shared.share('slow' as never, (async () => {
+      await setTimeout(50);
+      slowSettled = true;
+      return 1;
+    }) as never);
+    this.#shared.share('boom' as never, (() => {
+      throw new Error('boom');
+    }) as never);
+    return this.view('boom/Show', {});
+  }
+}
+
+/** Tells this run's slow query from any other session's on a shared server. */
+const LEAVE_QUERY_MARK = `leave-${randomUUID().replaceAll('-', '')}`;
+
+/** A page that leaves a query running on the pinned connection when its response goes out. */
+class LeaveQueryController extends Controller {
+  readonly #connections: Connections;
+  constructor(connections: Connections) {
+    super();
+    this.#connections = connections;
+  }
+  handle() {
+    void sql`select pg_sleep(1.5) /* ${sql.raw(LEAVE_QUERY_MARK)} */`.execute(this.#connections.get()).catch(() => {});
+    return this.view('boom/Show', {});
+  }
+}
+const boomRoutes = openRoutes((Route) => {
+  Route.get('/boom', BoomController);
+  Route.get('/leave-query', LeaveQueryController);
+});
 
 const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
@@ -40,6 +86,7 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
     modules: [
       defineModule({ name: 'notes', migrations: new URL('./__fixtures__/migrations/', import.meta.url), seeders: [WelcomeNoteSeeder] }),
       workshops,
+      defineModule({ name: 'boom', routes: boomRoutes }),
     ],
   };
 
@@ -89,6 +136,32 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
   });
 
   describe.runIf(driver === 'pgsql')('Postgres', () => {
+    it('fails a page on a lazy shared prop only once the others have settled', async () => {
+      await open('refresh');
+      expect((await app!.get('/boom')).status).toBe(500);
+      expect(slowSettled).toBe(true);
+    });
+
+    it('closes under refresh while a page left a query running on the pinned connection', async () => {
+      await open('refresh');
+      const observer = second();
+      try {
+        // Connected before the request: the connect must not eat into the time the query runs.
+        await sql`select 1`.execute(observer.get());
+        expect((await app!.get('/leave-query')).status).toBe(200);
+        // Close only once the server runs the query: before that, the rollback comes first and nothing is released late.
+        const running = () => sql<{ pid: number }>`select pid from pg_stat_activity where state = 'active' and query like ${`%${LEAVE_QUERY_MARK}%`}`.execute(observer.get());
+        for (let waited = 0; (await running()).rows.length === 0; waited += 10) {
+          if (waited > 2000) throw new Error('The query never started.');
+          await setTimeout(10);
+        }
+      } finally {
+        await observer.destroy();
+      }
+      await expect(app!.close()).resolves.toBeUndefined();
+      app = undefined;
+    });
+
     const second = () => {
       const options = app!.make(Connections).options();
       if (options.driver !== 'pgsql') throw new Error('These tests need Postgres.');

@@ -18,6 +18,22 @@ describe('SharedData', () => {
     expect(evaluated).toBe(1);
   });
 
+  it('throws the first failure only once every other lazy prop has settled', async () => {
+    const events: string[] = [];
+    const shared = new SharedData()
+      .share('locale', () => {
+        throw new Error('locale failed');
+      })
+      .share('counter', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        events.push('counter settled');
+        return 1;
+      });
+    await expect(shared.resolve()).rejects.toThrow('locale failed');
+    events.push('rejected');
+    expect(events).toEqual(['counter settled', 'rejected']);
+  });
+
   it('checks keys and values against SharedProps', () => {
     const shared = new SharedData();
     // @ts-expect-error -- `locale` is a string
