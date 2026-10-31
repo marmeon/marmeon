@@ -284,7 +284,14 @@ export function useForm(...args: unknown[]): unknown {
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');
   const kept = remember && store?.has(rememberKey) ? (store.get(rememberKey) as KeptForm | undefined) : undefined;
   const [defaults, setDefaults] = useState(initial);
-  const [data, setData] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
+  const [data, setState] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
+  // The newest data, written by `set()`, `setData()` and `reset()` as they run: a `submit()` in the same handler sends it before the next render.
+  const dataRef = useRef(data);
+  // `render` is a functional update for field changes, so React applies them by lane: an urgent `set()` must not render a field a pending transition set.
+  const setData = (next: Record<string, unknown>, render: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>) = next) => {
+    dataRef.current = next;
+    setState(render);
+  };
   // Saved: the form starts over where it is once the submit's callbacks ran — what was sent, but what they `reset()` back at the
   // defaults it had before (a password field empty again). Taken in the next render, so a reset inside `onSuccess`/`onFinish` counts.
   const [saved, setSaved] = useState(false);
@@ -313,7 +320,7 @@ export function useForm(...args: unknown[]): unknown {
   const [recentlySuccessful, setRecentlySuccessful] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const live = useLiveValidation(target, options.validate, data, errors, setErrors);
+  const live = useLiveValidation(target, options.validate, dataRef, errors, setErrors);
 
   const send = useCallback(
     async (method: VisitMethod, url: string, { onSuccess, onError, onFinish, onProgress, ...options }: FormSubmitOptions = {}) => {
@@ -328,7 +335,7 @@ export function useForm(...args: unknown[]): unknown {
           // Its own guard does not stop it — the others (another form's unsaved changes) still ask.
           ignoreGuards: options.ignoreGuards === true ? true : [...(options.ignoreGuards ?? []), guard],
           method,
-          data,
+          data: dataRef.current,
           onProgress: (next, current) => {
             setProgress(next);
             onProgress?.(next, current);
@@ -355,7 +362,7 @@ export function useForm(...args: unknown[]): unknown {
         onFinish?.();
       }
     },
-    [visit, data, guard, live],
+    [visit, guard, live],
   );
 
   const submit = (...submitArgs: unknown[]): Promise<void> => {
@@ -367,11 +374,12 @@ export function useForm(...args: unknown[]): unknown {
   const form: Form<Record<string, unknown>> & { method?: VisitMethod; url?: string } = {
     data,
     set: (field, value) => {
-      setData((current) => ({ ...current, [field]: value }));
+      setData({ ...dataRef.current, [field]: value }, (current) => ({ ...current, [field]: value }));
       live?.changed(field);
     },
     setData: (next) => {
-      for (const field in { ...data, ...next }) if (!Object.is(data[field], next[field])) live?.changed(field);
+      const current = dataRef.current;
+      for (const field in { ...current, ...next }) if (!Object.is(current[field], next[field])) live?.changed(field);
       setData(next);
     },
     errors,
@@ -384,7 +392,11 @@ export function useForm(...args: unknown[]): unknown {
     recentlySuccessful,
     isDirty: (path?: string) => isDirtyPath(dirty, path),
     dirty,
-    reset: (...fields) => setData((current) => (fields.length === 0 ? defaults : { ...current, ...Object.fromEntries(fields.map((field) => [field, defaults[field]])) })),
+    reset: (...fields) => {
+      if (fields.length === 0) return setData(defaults);
+      const restored = Object.fromEntries(fields.map((field) => [field, defaults[field]]));
+      setData({ ...dataRef.current, ...restored }, (current) => ({ ...current, ...restored }));
+    },
     submit: submit as Form<Record<string, unknown>>['submit'],
     ...(Object.fromEntries((['get', 'post', 'put', 'patch', 'delete'] as const).map((method) => [method, (url: string, options?: FormSubmitOptions) => send(method, url, options)])) as Pick<
       Form<Record<string, unknown>>,
@@ -440,13 +452,11 @@ function isPending(pending: readonly string[], field?: string): boolean {
 function useLiveValidation(
   target: { method: string; url: string } | undefined,
   setting: RouteFormOptions<Record<string, unknown>>['validate'],
-  data: Record<string, unknown>,
+  dataRef: { readonly current: Record<string, unknown> },
   errors: Partial<Record<string, string>>,
   setErrors: (update: (current: Partial<Record<string, string>>) => Partial<Record<string, string>>) => void,
 ): FormLiveValidation | undefined {
   const navigator = useRouterContext().navigator();
-  const dataRef = useRef(data);
-  dataRef.current = data;
   const errorsRef = useRef(errors);
   errorsRef.current = errors;
   const config = setting === true ? {} : setting || undefined;

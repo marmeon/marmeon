@@ -2,7 +2,7 @@
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
 import type { FlashMessage, RouteManifest } from '@marmeon/http/page';
 import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
-import { act, useState } from 'react';
+import { act, startTransition, StrictMode, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp } from './app.tsx';
@@ -94,12 +94,76 @@ function Secret({ name }: { name: string }) {
 }
 Secret.layout = Layout;
 
+// Buttons that set and submit in one handler: the request has to carry what the handler set, not the last render's data.
+const sent: Record<string, unknown>[] = [];
+function Publish() {
+  const form = useForm('profile.update', { title: 'Draft', status: 'draft', tags: [] as string[], meta: { pinned: false } }, { guard: false });
+  return (
+    <section>
+      <button type="button" data-testid="publish" onClick={() => { form.set('status', 'published'); void form.submit(); }}>
+        Publish
+      </button>
+      <button
+        type="button"
+        data-testid="several"
+        onClick={() => {
+          form.set('title', 'Final');
+          form.set('status', 'published');
+          form.set('tags', ['a', 'b']);
+          void form.submit();
+        }}
+      >
+        Several
+      </button>
+      <button type="button" data-testid="nested" onClick={() => { form.set('meta', { pinned: true }); form.set('tags', ['x']); void form.submit(); }}>
+        Nested
+      </button>
+      <button type="button" data-testid="set-data" onClick={() => { form.setData({ ...form.data, title: 'Whole' }); void form.submit(); }}>
+        Set data
+      </button>
+      <button type="button" data-testid="set-twice" onClick={() => { form.set('title', 'Once'); void form.submit(); form.set('title', 'Twice'); }}>
+        Twice
+      </button>
+      <button type="button" data-testid="reset-one" onClick={() => { form.set('title', 'Changed'); form.set('status', 'published'); form.reset('title'); void form.submit(); }}>
+        Reset one
+      </button>
+      <button type="button" data-testid="reset-all" onClick={() => { form.set('title', 'Changed'); form.reset(); void form.submit(); }}>
+        Reset all
+      </button>
+      <button type="button" data-testid="lane-a" onClick={() => { form.set('title', 'A'); startTransition(() => form.set('status', 'B')); }}>
+        Lane A
+      </button>
+      <button type="button" data-testid="lane-b" onClick={() => { form.set('tags', ['c']); void form.submit(); }}>
+        Lane B
+      </button>
+      <button type="button" data-testid="set-only" onClick={() => form.set('title', 'Typed')}>
+        Set only
+      </button>
+      <button
+        type="button"
+        data-testid="transition"
+        onClick={() => {
+          startTransition(() => form.set('title', 'Later'));
+          void form.submit();
+        }}
+      >
+        Transition
+      </button>
+      <p data-testid="title">{String(form.data.title)}</p>
+      <p data-testid="status">{String(form.data.status)}</p>
+      <p data-testid="title-dirty">{String(form.isDirty('title'))}</p>
+      <p data-testid="processing">{String(form.processing)}</p>
+    </section>
+  );
+}
+Publish.layout = Layout;
+
 function People() {
   return <p data-testid="people">People</p>;
 }
 People.layout = Layout;
 
-const pages: Record<string, PageComponent> = { Edit, Secret, People };
+const pages: Record<string, PageComponent> = { Edit, Secret, Publish, People };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'profile.edit': { method: 'get', path: '/users/1/edit' },
@@ -133,10 +197,11 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function mount(initial: PageObject) {
+async function mount(initial: PageObject, strict = false) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} confirm={ConfirmDialog} />));
+  const app = <MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} confirm={ConfirmDialog} />;
+  await act(async () => root.render(strict ? <StrictMode>{app}</StrictMode> : app));
 }
 
 const $ = (selector: string) => container.querySelector(selector.startsWith('[') || selector.includes(' ') ? selector : `[data-testid="${selector}"]`)! as HTMLElement;
@@ -236,6 +301,135 @@ describe('reset() in a submit callback', () => {
     expect(($('password') as HTMLInputElement).value).toBe('');
     expect(($('name') as HTMLInputElement).value).toBe('Ada King');
     expect($('form').hasAttribute('data-dirty')).toBe(true);
+  });
+});
+
+describe('set() and submit() in one handler', () => {
+  const lastBody = () => JSON.parse(String(sent.at(-1)));
+  beforeEach(() => {
+    sent.length = 0;
+    server = (url, init) => {
+      if (init.body !== undefined) sent.push(init.body as never);
+      return json(page('Publish', '/users/1/edit'));
+    };
+  });
+  const open = () => mount(page('Publish', '/users/1/edit'), true);
+
+  it('sends the value that set() wrote, once', async () => {
+    await open();
+    await click('publish');
+    await until(() => expect(requests).toEqual(['PUT /users/1']));
+    expect(lastBody()).toMatchObject({ title: 'Draft', status: 'published' });
+    expect($('status').textContent).toBe('published');
+  });
+
+  it('sends several set() calls, an array and a nested object', async () => {
+    await open();
+    await click('several');
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody()).toMatchObject({ title: 'Final', status: 'published', tags: ['a', 'b'] });
+    await click('nested');
+    await until(() => expect(requests.length).toBe(2));
+    expect(lastBody()).toMatchObject({ meta: { pinned: true }, tags: ['x'] });
+  });
+
+  it('sends the data of setData()', async () => {
+    await open();
+    await click('set-data');
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody().title).toBe('Whole');
+  });
+
+  it('sends the default after reset(), the rest as set', async () => {
+    await open();
+    await click('reset-one');
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody()).toMatchObject({ title: 'Draft', status: 'published' });
+  });
+
+  it('sends the defaults after reset() of the whole form', async () => {
+    await open();
+    await click('reset-all');
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody()).toMatchObject({ title: 'Draft', status: 'draft' });
+  });
+
+  it('a set() after the submit() in the same handler is not part of that request', async () => {
+    await open();
+    await click('set-twice');
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody().title).toBe('Once');
+  });
+
+  it('sends a value set in a transition', async () => {
+    await open();
+    await click('transition');
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody().title).toBe('Later');
+  });
+
+  it('keeps isDirty() on the rendered data', async () => {
+    server = () => new Promise<Response>(() => {});
+    await open();
+    expect($('title-dirty').textContent).toBe('false');
+    await click('set-only');
+    expect($('title-dirty').textContent).toBe('true');
+    await click('reset-one');
+    expect($('processing').textContent).toBe('true');
+    expect($('title-dirty').textContent).toBe('false');
+  });
+
+  it('a set() while a submit is under way is sent by the next submit', async () => {
+    const releases: (() => void)[] = [];
+    server = (url, init) => {
+      sent.push(init.body as never);
+      return new Promise<Response>((resolve) => releases.push(() => resolve(json(page('Publish', '/users/1/edit')))));
+    };
+    await open();
+    await click('publish');
+    expect($('processing').textContent).toBe('true');
+    expect(lastBody()).toMatchObject({ title: 'Draft', status: 'published' });
+    await click('set-only');
+    await click('lane-b');
+    expect(requests.length).toBe(2);
+    expect(lastBody()).toMatchObject({ title: 'Typed', status: 'published', tags: ['c'] });
+    await act(async () => releases.forEach((release) => release()));
+    await until(() => expect($('processing').textContent).toBe('false'));
+  });
+
+  it('keeps a set() made in a transition when an urgent update renders first', async () => {
+    await open();
+    // Outside act(), the urgent render of the first click commits while the transition is still waiting for its turn.
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    env.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      $('lane-a').click();
+      await Promise.resolve();
+      $('lane-b').click();
+    } finally {
+      env.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    await until(() => expect(requests.length).toBe(1));
+    expect(lastBody()).toMatchObject({ title: 'A', status: 'B', tags: ['c'] });
+  });
+
+  it('does not render a field a pending transition set in the commit of an urgent set()', async () => {
+    await open();
+    const before = $('status').textContent;
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    env.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      $('lane-a').click();
+      await Promise.resolve();
+      $('set-only').click();
+      await Promise.resolve();
+      // The urgent commit is on screen; the transition has not rendered yet.
+      expect($('title').textContent).toBe('Typed');
+      expect($('status').textContent).toBe(before);
+    } finally {
+      env.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    await until(() => expect($('status').textContent).toBe('B'));
   });
 });
 
