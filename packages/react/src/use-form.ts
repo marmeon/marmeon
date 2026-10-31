@@ -287,9 +287,10 @@ export function useForm(...args: unknown[]): unknown {
   const [data, setState] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
   // The newest data, written by `set()`, `setData()` and `reset()` as they run: a `submit()` in the same handler sends it before the next render.
   const dataRef = useRef(data);
-  const setData = (next: Record<string, unknown>) => {
+  // `render` is a functional update for field changes, so React applies them by lane: an urgent `set()` must not render a field a pending transition set.
+  const setData = (next: Record<string, unknown>, render: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>) = next) => {
     dataRef.current = next;
-    setState(next);
+    setState(render);
   };
   // Saved: the form starts over where it is once the submit's callbacks ran — what was sent, but what they `reset()` back at the
   // defaults it had before (a password field empty again). Taken in the next render, so a reset inside `onSuccess`/`onFinish` counts.
@@ -373,7 +374,7 @@ export function useForm(...args: unknown[]): unknown {
   const form: Form<Record<string, unknown>> & { method?: VisitMethod; url?: string } = {
     data,
     set: (field, value) => {
-      setData({ ...dataRef.current, [field]: value });
+      setData({ ...dataRef.current, [field]: value }, (current) => ({ ...current, [field]: value }));
       live?.changed(field);
     },
     setData: (next) => {
@@ -391,7 +392,11 @@ export function useForm(...args: unknown[]): unknown {
     recentlySuccessful,
     isDirty: (path?: string) => isDirtyPath(dirty, path),
     dirty,
-    reset: (...fields) => setData(fields.length === 0 ? defaults : { ...dataRef.current, ...Object.fromEntries(fields.map((field) => [field, defaults[field]])) }),
+    reset: (...fields) => {
+      if (fields.length === 0) return setData(defaults);
+      const restored = Object.fromEntries(fields.map((field) => [field, defaults[field]]));
+      setData({ ...dataRef.current, ...restored }, (current) => ({ ...current, ...restored }));
+    },
     submit: submit as Form<Record<string, unknown>>['submit'],
     ...(Object.fromEntries((['get', 'post', 'put', 'patch', 'delete'] as const).map((method) => [method, (url: string, options?: FormSubmitOptions) => send(method, url, options)])) as Pick<
       Form<Record<string, unknown>>,

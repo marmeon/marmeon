@@ -149,6 +149,7 @@ function Publish() {
       >
         Transition
       </button>
+      <p data-testid="title">{String(form.data.title)}</p>
       <p data-testid="status">{String(form.data.status)}</p>
       <p data-testid="title-dirty">{String(form.isDirty('title'))}</p>
       <p data-testid="processing">{String(form.processing)}</p>
@@ -410,6 +411,25 @@ describe('set() and submit() in one handler', () => {
     }
     await until(() => expect(requests.length).toBe(1));
     expect(lastBody()).toMatchObject({ title: 'A', status: 'B', tags: ['c'] });
+  });
+
+  it('does not render a field a pending transition set in the commit of an urgent set()', async () => {
+    await open();
+    const before = $('status').textContent;
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    env.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      $('lane-a').click();
+      await Promise.resolve();
+      $('set-only').click();
+      await Promise.resolve();
+      // The urgent commit is on screen; the transition has not rendered yet.
+      expect($('title').textContent).toBe('Typed');
+      expect($('status').textContent).toBe(before);
+    } finally {
+      env.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    await until(() => expect($('status').textContent).toBe('B'));
   });
 });
 
