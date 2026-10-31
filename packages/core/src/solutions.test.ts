@@ -118,6 +118,16 @@ describe('the core solutions', () => {
     }
   });
 
+  it("a module's entry that reaches a component: names the cause and the shared import", async () => {
+    const tsx = Object.assign(new TypeError('Unknown file extension ".tsx" for /app/modules/ui/Button.tsx'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
+    const [solution] = await solutions.find(tsx);
+    expect(solution).toMatchObject({ title: "A module's entry reached a component", docs: 'docs/structure.md#components-several-modules-share' });
+    expect(solution?.text).toContain('#modules/<name>');
+    const json = Object.assign(new TypeError('Unknown file extension ".json" for /app/data.json'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
+    expect(await solutions.find(json)).toEqual([]);
+    expect(await solutions.find(new TypeError('Unknown file extension ".tsx" for /app/x.tsx'))).toEqual([]);
+  });
+
   it('invalid configuration: the variables to set', async () => {
     const Config = defineConfig('mail', { env: env({ MAIL_HOST: env.string(), MAIL_PORT: env.port() }), resolve: (e) => e });
     const error = await resolveConfig([Config], {}).catch((failure: unknown) => failure);

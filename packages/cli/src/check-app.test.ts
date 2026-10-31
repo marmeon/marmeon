@@ -350,7 +350,7 @@ export default defineModule({ name: 'twice', routes: defineRoutes((Route) => { R
     // The variants of the app's checks, pinned beside the tools' document.
     expect(JSON.parse(stale.stdout)).toMatchObject(JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-check/v1-app.json', import.meta.url), 'utf8')));
     expect(reportOf(stale.stdout, 'route-types').problems[0]).toMatchObject({ message: 'bootstrap/routes.ts is out of date', file: 'bootstrap/routes.ts', fix: 'marmeon route:types' });
-    expect(reportOf(stale.stdout, 'db-types').problems[0]).toMatchObject({ message: 'bootstrap/database.d.ts is out of date', file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' });
+    expect(reportOf(stale.stdout, 'db-types').problems[0]).toMatchObject({ message: "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` changed", file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' });
   });
 
   it('names a generated file of another Marmeon version with its code, and the command that writes it again', () => {

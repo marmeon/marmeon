@@ -52,7 +52,7 @@
       "problems": [
         {
           "severity": "error",
-          "message": "bootstrap/database.d.ts is out of date",
+          "message": "bootstrap/database.d.ts is out of date — a migration or a module's `exposes` changed",
           "file": "bootstrap/database.d.ts",
           "line": null,
           "column": null,

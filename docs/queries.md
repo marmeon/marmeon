@@ -595,6 +595,8 @@ export default defineModule({
 });
 ```
 
+Changing `exposes` changes the types, so it needs `marmeon db:types` like a migration does (`marmeon dev` and `marmeon check` say so).
+
 In the `notes` module, `insertInto('users')`, `updateTable('users')` and `deleteFrom('users')` are compile errors, and a table of
 another module that is not exposed does not exist at all. Writing to `users` goes through the auth module's `UserRepository`. The
 boundary is a type: at runtime both are the same connection, and the connection checks none of the following: raw SQL, `sql`
