@@ -245,9 +245,20 @@ it('renders a note on the server, and the browser takes it over', async () => {
 - **`assertHydrates()`** renders the page again from the JSON the browser receives and compares the markup. A prop that the
   server renders differently from what it sends fails here, such as a `Date` that reaches the browser as a string. The comparison
   uses the response's CSP nonce, as the browser reads the document. It also fails when the browser's HTML parser would build
-  another tree than the markup says, such as a [link that sends](navigation.md#links-that-send) inside a `<p>`.
-- **`assertSee(text)`** and **`assertDontSee(text)`** search the markup. Without `ssr`, the body holds only the page object's
-  JSON.
+  another tree than the markup says. It checks these nestings:
+  - a block (`<div>`, `<ul>`, `<li>`, `<table>`, a [link that sends](navigation.md#links-that-send), …) inside a `<p>`, which the parser
+    closes first;
+  - a `<form>` inside a `<form>`, an `<a>` inside an `<a>`, a `<button>` inside a `<button>`, an `<option>` inside an `<option>`;
+  - an `<li>` inside an `<li>`, and a `<dt>` or `<dd>` inside one, with nothing but a `<div>`, a `<p>` or inline elements between them;
+  - a table row, cell or section outside a `<table>`, a `<tr>` right inside a `<table>` (the parser adds a `<tbody>`), a `<col>` right
+    inside one (a `<colgroup>`), and a cell right inside a `<tbody>`, `<thead>` or `<tfoot>`.
+
+  Other content, such as a block inside an `<a>`, is not checked.
+- **`assertSee(text)`** and **`assertDontSee(text)`** search the markup as it is written, not the text a reader sees. React
+  separates two adjacent text nodes with `<!-- -->`, so `<span>{count} guests</span>` renders `3<!-- --> guests` and
+  `assertSee('3 guests')` fails; escaped characters (`&amp;`, `&#x27;`) are not found as `&` or `'` either. Search for a part
+  of the text, or for the element. `assertDontSee('<script>')` relies on this. Without `ssr`, the body holds only the page
+  object's JSON.
 
 The test app renders every page completely, its islands included, as for a search engine, so the markup does not depend on
 timing. An island with `load="visible"` is never rendered on the server. The first render of a test app starts Vite and loads

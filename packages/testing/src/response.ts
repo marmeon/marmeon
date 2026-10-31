@@ -353,6 +353,7 @@ export class TestResponse {
     return this.#compare(() => deepStrictEqual(this.json(), value), 'JSON differs');
   }
 
+  /** The body contains `text` as written in the markup: React's `<!-- -->` between text nodes and escapes are not removed. See `docs/http-tests.md#assertions`. */
   assertSee(text: string): this {
     if (!this.body.includes(text)) this.#fail(`Expected to see "${text}"`);
     return this;
@@ -539,7 +540,8 @@ export class TestResponse {
    * The markup is what the browser renders from the page object it receives — the page hydrates without a mismatch.
    * Compares the document with one rendered again from the page's JSON (what the browser reads), so a prop the server
    * rendered differently than it sent (a `Date` instead of its string) fails here — and checks that the browser's HTML parser
-   * builds the tree the markup says: a `<form>` (a `<Link>` that sends) inside a `<p>` fails, the parser closes the `<p>` first.
+   * builds the tree the markup says: a `<form>` inside a `<p>`, an `<li>` inside an `<li>`, a link inside a link or table content
+   * outside a table fail. See `docs/testing-pages.md#server-rendering`.
    */
   assertHydrates(): this {
     this.#requireSsr('assertHydrates');
