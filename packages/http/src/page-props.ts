@@ -115,10 +115,15 @@ export async function resolvePageProps(
   }
 
   const fromShared = send.filter((key) => !Object.hasOwn(props, key));
-  const [sharedValues, own] = await Promise.all([
+  // Every prop settles before the first failure (shared first, then the page's own in order) is thrown: a failing page leaves no prop running behind it.
+  const [sharedSettled, ...ownSettled] = await Promise.allSettled([
     shared && fromShared.length > 0 ? shared.resolve(fromShared) : {},
-    Promise.all(send.filter((key) => Object.hasOwn(props, key)).map(async (key) => [key, await resolveProp(props[key])] as const)),
+    ...send.filter((key) => Object.hasOwn(props, key)).map(async (key) => [key, await resolveProp(props[key])] as const),
   ]);
+  const failed = [sharedSettled, ...ownSettled].find((result) => result.status === 'rejected');
+  if (failed) throw failed.reason;
+  const sharedValues = (sharedSettled as PromiseFulfilledResult<Record<string, unknown>>).value;
+  const own = ownSettled.map((result) => (result as PromiseFulfilledResult<readonly [string, unknown]>).value);
   // In the order the props were given — shared first.
   const values: Record<string, unknown> = { ...sharedValues, ...Object.fromEntries(own) };
   const resolved: Record<string, unknown> = {};

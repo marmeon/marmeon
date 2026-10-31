@@ -116,7 +116,8 @@ export class ShareAppProps {
 ```
 
 List the class in the `web` key of `middleware` in `bootstrap/app.ts`. A function is evaluated only when a page renders, at most
-once per request, never for a redirect or JSON. The wrappers of page props work here too. The page's own prop of the same name
+once per request, never for a redirect or JSON. If one throws, the page fails once the others have settled, with the error of
+the first in prop order (shared props first). The wrappers of page props work here too. The page's own prop of the same name
 wins, and `usePage().props` reads the shared ones in any component.
 
 > [!WARNING]

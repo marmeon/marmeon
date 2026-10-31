@@ -21,26 +21,45 @@ class WelcomeNoteSeeder {
   }
 }
 
-/** A page whose lazy shared prop throws: the response is a 500, and what ran for the page may outlive it. */
+/** Set by the slow lazy prop of `/boom` once it ran to its end. */
+let slowSettled = false;
+
+/** A page whose lazy shared prop throws while another one is still running. */
 class BoomController extends Controller {
   readonly #shared: SharedData;
-  readonly #connections: Connections;
-  constructor(shared: SharedData, connections: Connections) {
+  constructor(shared: SharedData) {
     super();
     this.#shared = shared;
-    this.#connections = connections;
   }
   handle() {
-    // Still holding a connection when the other prop fails.
-    this.#shared.share('slow' as never, (() => this.#connections.transaction(() => setTimeout(100))) as never);
+    slowSettled = false;
+    this.#shared.share('slow' as never, (async () => {
+      await setTimeout(50);
+      slowSettled = true;
+      return 1;
+    }) as never);
     this.#shared.share('boom' as never, (() => {
       throw new Error('boom');
     }) as never);
     return this.view('boom/Show', {});
   }
 }
+
+/** A page that leaves a query running on the pinned connection when its response goes out. */
+class LeaveQueryController extends Controller {
+  readonly #connections: Connections;
+  constructor(connections: Connections) {
+    super();
+    this.#connections = connections;
+  }
+  handle() {
+    void sql`select pg_sleep(0.2)`.execute(this.#connections.get()).catch(() => {});
+    return this.view('boom/Show', {});
+  }
+}
 const boomRoutes = openRoutes((Route) => {
   Route.get('/boom', BoomController);
+  Route.get('/leave-query', LeaveQueryController);
 });
 
 const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
@@ -113,20 +132,18 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
   });
 
   describe.runIf(driver === 'pgsql')('Postgres', () => {
-    it('closes cleanly under refresh after a page failed on a lazy shared prop', async () => {
-      const errors: unknown[] = [];
-      const onError = (reason: unknown) => errors.push(reason);
-      process.on('unhandledRejection', onError);
-      try {
-        await open('refresh');
-        expect((await app!.get('/boom')).status).toBe(500);
-        await expect(app!.close()).resolves.toBeUndefined();
-        app = undefined;
-        await setTimeout(250);
-      } finally {
-        process.off('unhandledRejection', onError);
-      }
-      expect(errors.map(String)).toEqual([]);
+    it('fails a page on a lazy shared prop only once the others have settled', async () => {
+      await open('refresh');
+      expect((await app!.get('/boom')).status).toBe(500);
+      expect(slowSettled).toBe(true);
+    });
+
+    it('closes under refresh while a page left a query running on the pinned connection', async () => {
+      await open('refresh');
+      expect((await app!.get('/leave-query')).status).toBe(200);
+      await setTimeout(50); // the query is running on the connection by now
+      await expect(app!.close()).resolves.toBeUndefined();
+      app = undefined;
     });
 
     const second = () => {
