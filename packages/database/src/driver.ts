@@ -86,11 +86,11 @@ export class MarmeonDriver implements Driver {
   /** While isolated: the one connection every query uses, inside a transaction that is rolled back later. */
   #pinned: DatabaseConnection | undefined;
   /**
-   * Connections an isolation pinned, until the pool hands them out again. Work still running after the rollback (a request that
-   * outlived its test) releases the connection it had been given; the rollback has released it already, and a second release
-   * would hand the pool's client back twice.
+   * The pinned connections of isolations that have rolled back. Work still running after the rollback (a request that outlived
+   * its test) releases the object it was given — the rollback has returned the pool's client already, and the pool may have
+   * handed it to someone else since, so these releases are swallowed. Each isolation pins an object of its own for that.
    */
-  readonly #isolated = new WeakSet<DatabaseConnection>();
+  readonly #retired = new WeakSet<DatabaseConnection>();
   /** The dialect has one physical connection (SQLite): one user at a time, by {@link #lock}. */
   readonly #single: boolean;
   readonly #lock = new ConnectionLock();
@@ -106,7 +106,10 @@ export class MarmeonDriver implements Driver {
 
   /** A pool that never joins an ambient transaction: an infrastructure connection's own pool. */
   readonly #detached: boolean;
-  /** Each connection of the dialect's driver as handed out here: its queries take turns ({@link serialQueries}). */
+  /**
+   * Each connection of the dialect's driver as handed out here: its queries take turns ({@link serialQueries}). An
+   * isolation pins a wrapper of its own that is not kept here; see `#retired`.
+   */
   readonly #serial = new WeakMap<DatabaseConnection, DatabaseConnection>();
 
   constructor(driver: Driver, context: DriverContext, options: { single?: boolean; detached?: boolean } = {}) {
@@ -181,7 +184,7 @@ export class MarmeonDriver implements Driver {
       this.#holders.delete(connection);
     }
     try {
-      if (connection !== this.#pinned && !this.#isolated.has(connection)) await this.#driver.releaseConnection(connection, options);
+      if (connection !== this.#pinned && !this.#retired.has(connection)) await this.#driver.releaseConnection(connection, options);
     } finally {
       if (this.#single) this.#lock.release();
     }
@@ -223,7 +226,6 @@ export class MarmeonDriver implements Driver {
     let connection: DatabaseConnection;
     try {
       connection = this.#pinned ?? this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection(options)));
-      if (connection !== this.#pinned) this.#isolated.delete(connection);
     } catch (error) {
       if (this.#single) this.#lock.release();
       throw error;
@@ -273,24 +275,26 @@ export class MarmeonDriver implements Driver {
   async isolate(): Promise<{ rollback(): Promise<void> }> {
     if (this.#pinned) throw new Error(`The database connection "${this.#context.name}" is already isolated.`);
     await this.init();
-    const connection = this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection()));
+    const acquired = await this.#connecting(() => this.#driver.acquireConnection());
+    // Not the cached one: this isolation's own object tells its late releases from those of whoever gets the client next.
+    const connection = this.#serialOf(acquired, false);
     await this.#driver.beginTransaction(connection, {});
     this.#depth.set(connection, 1);
     this.#tainted.delete(connection);
     this.#pinned = connection;
-    this.#isolated.add(connection);
     this.#warnedOfTurns = false;
     return {
       rollback: async () => {
         if (this.#pinned !== connection) return;
         this.#pinned = undefined;
+        this.#retired.add(connection);
         this.#depth.delete(connection);
         this.#tainted.delete(connection);
         this.#context.metadata?.release(connection);
         try {
           await this.#driver.rollbackTransaction(connection);
         } finally {
-          await this.#driver.releaseConnection(connection);
+          await this.#driver.releaseConnection(acquired);
         }
       },
     };
@@ -406,8 +410,8 @@ export class MarmeonDriver implements Driver {
     for (const level of levels) if (level >= from) levels.delete(level);
   }
 
-  #serialOf(connection: DatabaseConnection): DatabaseConnection {
-    let serial = this.#serial.get(connection);
+  #serialOf(connection: DatabaseConnection, cached = true): DatabaseConnection {
+    let serial = cached ? this.#serial.get(connection) : undefined;
     if (!serial) {
       const { metadata, deferred, results } = this.#context;
       const hooks: SerialHooks = { name: this.#context.name };
@@ -427,7 +431,8 @@ export class MarmeonDriver implements Driver {
         hooks.failed = (error) => this.#failed(serial!, error);
         hooks.passed = (query) => this.#passed(serial!, query);
       }
-      this.#serial.set(connection, (serial = serialQueries(connection, hooks)));
+      serial = serialQueries(connection, hooks);
+      if (cached) this.#serial.set(connection, serial);
     }
     return serial;
   }

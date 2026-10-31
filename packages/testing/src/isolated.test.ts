@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import { afterCommit, defineModule, Logger, outsideTransaction, TransactionError, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
@@ -45,6 +46,9 @@ class BoomController extends Controller {
   }
 }
 
+/** Tells this run's slow query from any other session's on a shared server. */
+const LEAVE_QUERY_MARK = `leave-${randomUUID().replaceAll('-', '')}`;
+
 /** A page that leaves a query running on the pinned connection when its response goes out. */
 class LeaveQueryController extends Controller {
   readonly #connections: Connections;
@@ -53,7 +57,7 @@ class LeaveQueryController extends Controller {
     this.#connections = connections;
   }
   handle() {
-    void sql`select pg_sleep(0.2)`.execute(this.#connections.get()).catch(() => {});
+    void sql`select pg_sleep(1.5) /* ${sql.raw(LEAVE_QUERY_MARK)} */`.execute(this.#connections.get()).catch(() => {});
     return this.view('boom/Show', {});
   }
 }
@@ -140,11 +144,13 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
 
     it('closes under refresh while a page left a query running on the pinned connection', async () => {
       await open('refresh');
-      expect((await app!.get('/leave-query')).status).toBe(200);
       const observer = second();
       try {
+        // Connected before the request: the connect must not eat into the time the query runs.
+        await sql`select 1`.execute(observer.get());
+        expect((await app!.get('/leave-query')).status).toBe(200);
         // Close only once the server runs the query: before that, the rollback comes first and nothing is released late.
-        const running = () => sql<{ pid: number }>`select pid from pg_stat_activity where state = 'active' and query like 'select pg_sleep%'`.execute(observer.get());
+        const running = () => sql<{ pid: number }>`select pid from pg_stat_activity where state = 'active' and query like ${`%${LEAVE_QUERY_MARK}%`}`.execute(observer.get());
         for (let waited = 0; (await running()).rows.length === 0; waited += 10) {
           if (waited > 2000) throw new Error('The query never started.');
           await setTimeout(10);
