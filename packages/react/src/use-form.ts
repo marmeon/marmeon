@@ -46,24 +46,31 @@ type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 
 type Primitive = string | number | boolean | bigint | symbol | null | undefined | Date | Blob;
 
-/** How many levels entering `T` costs: one, or three when `T` is a type the path already went through (a record that refers to itself). */
-type Step<T, Seen> = [NonNullable<T>] extends [Seen] ? [0, 0, 0] : [0];
+/** Whether `T` is, by identity and not by assignability, one of the types in `Seen`. */
+type Reenters<T, Seen> = Seen extends unknown ? ((<G>() => G extends T ? 1 : 2) extends <G>() => G extends Seen ? 1 : 2 ? true : never) : never;
+
+/** How many levels entering `T` costs: one, or three when it is past the fifth level and `T` is a type the path already went through. */
+type Step<T, Seen, Depth extends unknown[]> = Depth['length'] extends 0 | 1 | 2 | 3 | 4
+  ? [0]
+  : [Reenters<NonNullable<T>, Seen>] extends [never]
+    ? [0]
+    : [0, 0, 0];
 
 /**
  * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Eight levels
  * deep at most: every name or index between the dots counts one level. A record that refers to itself (`parent`,
- * `children`) costs three levels each time the path enters it again, so it is typed about two to three steps into itself.
- * A deeper path is not known to the compiler: type the key `as never`, `form.errors[path as never]`.
- * See docs/forms.md#errors-at-nested-and-dynamic-fields.
+ * `children`) is typed like any other data for five levels; past the fifth, each step back into it counts three levels, so
+ * `children.0.children.0.children.0` compiles and a name after it does not. A deeper path is not known to the compiler: type
+ * the key `as never`, `form.errors[path as never]`. See docs/forms.md#errors-at-nested-and-dynamic-fields.
  */
 export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10
   ? never
   : F extends Primitive
     ? never
     : F extends readonly (infer Item)[]
-      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen>], Seen>}`
+      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen, Depth>], Seen>}`
       : {
-          [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+          [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F, Depth>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
         }[keyof F & string];
 
 /** What a remembered form may not keep — in `remember.include`, the message for a password field. */

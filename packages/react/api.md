@@ -141,8 +141,8 @@ export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
 }[keyof F & string];
 // FieldPath
-export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen>], Seen>}` : {
-    [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen, Depth>], Seen>}` : {
+    [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F, Depth>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
 }[keyof F & string];
 // FileInput
 export declare function FileInput({ field, onChange, ...attributes }: FileInputProps): import("react").JSX.Element;
@@ -824,6 +824,8 @@ type QueryOption<N extends string> = MethodOf<N> extends 'get' ? {
 };
 // QueryStateOf
 type QueryStateOf<N extends string> = [RouteQueryOf<N>] extends [never] ? Record<string, unknown> : RouteQueryOf<N>;
+// Reenters
+type Reenters<T, Seen> = Seen extends unknown ? ((<G>() => G extends T ? 1 : 2) extends <G>() => (G extends Seen ? 1 : 2) ? true : never) : never;
 // RouteFormOf
 type RouteFormOf<N extends string> = FormOf<Instance<ControllerOf<N>>>;
 // RouteFormRest
@@ -847,7 +849,7 @@ type SensitiveFormField<F> = keyof {
 // SensitiveKey
 type SensitiveKey<K extends string> = IsPassword<K> extends true ? RememberKey<K> : K;
 // Step
-type Step<T, Seen> = [NonNullable<T>] extends [Seen] ? [0, 0, 0] : [0];
+type Step<T, Seen, Depth extends unknown[]> = Depth['length'] extends 0 | 1 | 2 | 3 | 4 ? [0] : [Reenters<NonNullable<T>, Seen>] extends [never] ? [0] : [0, 0, 0];
 // SubmitArgs
 type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends ActionSubmitOptions<N, RequiresParams> ? [options?: ActionSubmitOptions<N, RequiresParams>] : [options: ActionSubmitOptions<N, RequiresParams>];
 // ViewAction

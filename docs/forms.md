@@ -103,9 +103,8 @@ A path the data cannot have, `errors['adress.city']`, is a compile error. `clear
 
 The paths are typed up to eight levels deep: every name or index between the dots counts one level, so
 `` errors['sections.0.fields.1.guest_label.de'] `` is six levels. A path deeper than that is not known to the compiler; type
-the key `as never`: `form.errors[path as never]`. A record that refers to itself (`parent`, `children`) costs three levels each
-time a path enters it again, so it is typed only a couple of steps into itself: `errors['children.0.name']` and
-`errors['children.0.children.0']` compile, one more step does not.
+the key `as never`: `form.errors[path as never]`. A record that refers to itself (`parent`, `children`) is typed like any other data for five levels; past the fifth level, each
+step back into it counts three levels. So `` errors['children.0.children.0.children.0'] `` compiles, and a name after it does not.
 
 The key `_` holds a message that belongs to the form and to no field, such as a check over several fields that names none. Show
 it above the form: `form.errors._`. A check that can say where the fault lies reports at that field instead, see

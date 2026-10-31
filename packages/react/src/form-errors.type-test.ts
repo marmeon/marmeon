@@ -87,12 +87,12 @@ interface TreeNode {
   children: TreeNode[];
 }
 
-/** A form whose data refers to itself: the paths stop after a few steps into it instead of recursing without end (no TS2589). */
+/** A form whose data refers to itself: the paths stop a few steps into it instead of recursing without end (no TS2589). */
 export function tree(state: FormState<TreeNode>) {
-  state.clearErrors('children.0.name', 'children.0.children.0');
+  state.clearErrors('children.0.name', 'children.0.children.0', 'children.0.children.0.name', 'children.0.children.0.children', 'children.0.children.0.children.0');
   // @ts-expect-error — a typo inside the recursion
   state.clearErrors('children.0.nam');
-  // @ts-expect-error — the path stops a few steps into the record itself
+  // @ts-expect-error — past the fifth level each step back into the record counts three
   state.clearErrors('children.0.children.0.children.0.name');
   return state.errors['children.0.name'];
 }
@@ -111,8 +111,28 @@ interface Category {
 
 /** Three references to the record itself stay cheap: this compiles without TS2589. */
 export function category(state: FormState<Category>) {
-  state.clearErrors('parent.name', 'sibling.sibling', 'children.0.e');
+  state.clearErrors('parent.name', 'sibling.sibling', 'children.0.e', 'parent.parent.parent.name', 'sibling.parent.children.0.b');
   // @ts-expect-error — a typo inside the recursion
   state.clearErrors('children.0.sibling.nam');
   return [state.errors['children.0.name'], state.errors['parent.parent'], state.errors['sibling.children.0']];
+}
+
+interface Optional {
+  me?: Optional;
+  label: string;
+}
+
+interface Weak {
+  profile?: { name?: string; bio?: { name?: string; x?: { name?: string; y?: { name?: string } } } };
+}
+
+type Chain<T> = { name?: string; next?: T };
+
+/** Plain nesting, also through optional fields, is not cut short by the rule for records that refer to themselves. */
+export function throughOptionals(a: FormState<Optional>, b: FormState<Weak>, c: FormState<Chain<Chain<Chain<Chain<Chain<Chain<Chain<Chain<{ name?: string }>>>>>>>>>) {
+  return [
+    a.errors['me.me.me.me.label'],
+    b.errors['profile.bio.x.y.name'],
+    c.errors['next.next.next.next.next.next.next.name'],
+  ];
 }
