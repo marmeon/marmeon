@@ -81,6 +81,19 @@ export const coreSolutions = defineSolutions([
     solve: (e) => injectionSolution('The class', withoutCode(e.message)),
   },
   {
+    // A module's entry (#modules/<name>) is loaded as server code; Node has no loader for a component file.
+    for: Error,
+    when: (e) => (e as { code?: unknown }).code === 'ERR_UNKNOWN_FILE_EXTENSION' && /Unknown file extension "\.tsx"/.test(e.message),
+    solve: (e) => ({
+      title: "A module's entry reached a component",
+      text:
+        `Node loads server code, and a .tsx file (${/ for (.+)$/.exec(e.message)?.[1] ?? 'a component'}) cannot be loaded there. Usually a module's entry ` +
+        '(`#modules/<name>`) exports or imports a component; otherwise some other server code imports a component by value. Components several ' +
+        'modules share get an import of their own (an `imports` entry in package.json), which views import directly.',
+      docs: 'docs/structure.md#components-several-modules-share',
+    }),
+  },
+  {
     // Node refuses TypeScript under node_modules: a package that reaches Node with its sources instead of its dist/.
     for: Error,
     when: (e) => (e as { code?: unknown }).code === 'ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING',

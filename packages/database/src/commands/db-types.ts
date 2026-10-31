@@ -36,7 +36,7 @@ export class DbTypesCommand {
         output.success(`${file} matches the migrations.`);
         return 0;
       }
-      output.error(`${file} is out of date — run: marmeon db:types`);
+      output.error(`${file} is out of date — a migration or a module's \`exposes\` may have changed. Run: marmeon db:types`);
       return 1;
     }
     await writeTypes(this.#generator, output, root);

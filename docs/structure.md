@@ -197,6 +197,21 @@ export default defineModule({
 The [modules](modules.md) page shows every key a module definition can have, and how to enforce the boundaries with the lint
 preset.
 
+### Components several modules share
+
+A module's `index.ts` is loaded as server code, so it cannot export a `.tsx` component: Node refuses the file ("Unknown file extension"). Views read a module's entry with `import type` only (the lint preset says so). Components that several modules use get an import of their own, next to `#modules/*`:
+
+```json title="package.json"
+{
+  "imports": {
+    "#modules/*": "./modules/*/index.ts",
+    "#ui": "./modules/ui/components/index.ts"
+  }
+}
+```
+
+Views import from `#ui` directly. The target is a file you write: `modules/ui/components/index.ts` re-exports the shared components (`export { Button } from './Button.tsx';`), and the `ui` module's own `index.ts` stays free of components.
+
 ## Your first module
 
 A new feature starts as a module. This walk-through adds a page at `/notes` for signed-in users.
