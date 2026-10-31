@@ -39,8 +39,8 @@ state, and `<Form>` reads them from the inputs, which also works without JavaScr
 
 `useForm(name, initial, options)` takes the route's name, the fields' first values and the options. The route's parameters are the
 option `params`, and the compiler asks for it when the route has required parameters; a route without them takes
-`useForm(name, initial)`. The fields are typed by the route's request schema, as `FormOf<UpdateNoteController>`
-would type them, so a field the schema does not have is a compile error:
+`useForm(name, initial)`. The fields come from the route's request schema, as `FormOf<UpdateNoteController>` has them, with a number rule's field as `number` and a field
+with `.default()` present, so a field the schema does not have is a compile error:
 
 ```ts title="modules/notes/controllers/UpdateNoteController.ts"
 import { can } from '@marmeon/auth';
@@ -78,12 +78,12 @@ A route whose controller has no request schema cannot type a form, and `useForm(
 
 A field whose rule is a number rule (`r.integer()`, `r.number()`, `r.port()`) holds a `number` in the form, also inside an object or a
 list. An empty input is `''`, or `null` where the field is nullable, and the server reads both as missing. A number input
-therefore reads and writes the field like this:
+therefore reads and writes a field of `r.integer().nullable().optional()` like this:
 
 ```tsx
 <input
   type="number"
-  value={form.data.capacity}
+  value={form.data.capacity ?? ''}
   onChange={(event) => form.set('capacity', event.target.value === '' ? '' : event.target.valueAsNumber)}
 />
 ```

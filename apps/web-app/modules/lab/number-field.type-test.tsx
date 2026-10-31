@@ -13,6 +13,7 @@ const Request = defineRequest({
     starts_at: r.localDateTime('Europe/Berlin').optional(),
     flag: r.boolean(),
     settings: r.object({ limit: r.integer().default(10), label: r.string() }),
+    contact: r.union([r.object({ kind: r.literal('mail'), address: r.string(), copies: r.integer().default(1) }), r.object({ kind: r.literal('post'), street: r.string() })]),
     rows: r.array(r.object({ size: r.integer(), note: r.string().default('') })),
   }),
 });
@@ -40,8 +41,9 @@ export function numbers(
   size: Equal<typeof form.data.rows[number]['size'], number>,
   note: Equal<typeof form.data.rows[number]['note'], string>,
   partIds: Equal<typeof part.data.resource_ids, number[]>,
+  copies: Equal<Extract<typeof form.data.contact, { kind: 'mail' }>['copies'], number | ''>,
 ) {
-  const checked: true[] = [capacity, count, ratio, ids, startsAt, flag, limit, size, note, partIds];
+  const checked: true[] = [capacity, count, ratio, ids, startsAt, flag, limit, size, note, partIds, copies];
   const direct: number[] = form.data.resource_ids;
   form.set('capacity', '');
   form.set('capacity', null);
@@ -54,7 +56,11 @@ export function numbers(
   form.set('count', '');
   // @ts-expect-error — a list of numbers holds numbers
   form.set('resource_ids', ['1']);
-  return [checked, direct];
+  // The number input the forms page shows.
+  const input = (
+    <input type="number" value={form.data.capacity ?? ''} onChange={(event) => form.set('capacity', event.target.value === '' ? '' : event.target.valueAsNumber)} />
+  );
+  return [checked, direct, input];
 }
 
 export function initial() {
@@ -64,13 +70,14 @@ export function initial() {
     resource_ids: [],
     flag: false,
     settings: { limit: 10, label: '' },
+    contact: { kind: 'post', street: '' },
     rows: [],
   });
   // @ts-expect-error — a field with a default is present in the form, so it belongs in `initial`
-  useForm<Resources>({ count: 1, ratio: 1, flag: false, settings: { limit: 10, label: '' }, rows: [] });
+  useForm<Resources>({ count: 1, ratio: 1, flag: false, settings: { limit: 10, label: '' }, contact: { kind: 'post', street: '' }, rows: [] });
   // @ts-expect-error — also inside an object
-  useForm<Resources>({ count: 1, ratio: 1, resource_ids: [], flag: false, settings: { label: '' }, rows: [] });
+  useForm<Resources>({ count: 1, ratio: 1, resource_ids: [], flag: false, settings: { label: '' }, contact: { kind: 'post', street: '' }, rows: [] });
   // @ts-expect-error — a numeric string is not a number
-  useForm<Resources>({ count: '1', ratio: 1, resource_ids: [], flag: false, settings: { limit: 10, label: '' }, rows: [] });
+  useForm<Resources>({ count: '1', ratio: 1, resource_ids: [], flag: false, settings: { limit: 10, label: '' }, contact: { kind: 'post', street: '' }, rows: [] });
   return full;
 }

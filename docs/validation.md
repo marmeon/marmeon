@@ -190,7 +190,8 @@ r.string().trim().transform((text) => text.split(' ')) // input string, output s
 | Helper | Reads | For `UpdateNoteRequest` |
 | --- | --- | --- |
 | `ctx.body` | The body's output. | `{ title: string; slug: string; link: string \| null; tags: string[] }` |
-| `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` types its fields with it (a boolean rule's field as `boolean`). | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
+| `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` takes its fields from it: a boolean rule's as `boolean`, a number rule's as `number`. | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
+| `FormOutputOf<UpdateNoteController>` | The body's output, defaults filled in; `useForm()` reads it to make a defaulted field present. | `{ title: string; slug: string; link: string \| null; tags: string[] }` |
 | `QueryOf<ListNotesController>` | The parsed query, an output. | `{ sort: 'title' \| '-title'; page: number }` |
 
 A field of `when()` is optional in the output.

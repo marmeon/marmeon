@@ -199,7 +199,8 @@ A request's types travel to the views without its code:
 | Type | What it is |
 | --- | --- |
 | `ContextOf<typeof UpdateNoteRequest>` | The controller's context: what `authorize` needs, plus `body` and the parsed `query`. |
-| `FormOf<UpdateNoteController>` | What a form sends, the schema's input. `useForm()` types its fields with it. |
+| `FormOf<UpdateNoteController>` | What a form sends, the schema's input. `useForm()` takes its fields from it: a number rule's as `number`. |
+| `FormOutputOf<UpdateNoteController>` | The body's output, defaults filled in; `useForm()` reads it to make a defaulted field present. |
 | `QueryOf<ListNotesController>` | The parsed query, with its defaults. |
 | `PageProps<ShowNoteController>` | The props of the page the controller renders. |
 

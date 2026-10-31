@@ -773,6 +773,8 @@ interface LinkOptions {
     confirm?: Confirm;
     viewTransition?: ViewTransitionOption;
 }
+// MemberOf
+type MemberOf<V, O> = [Extract<O, Partial<V>>] extends [never] ? O : Extract<O, Partial<V>>;
 // MethodProps
 type MethodProps<N extends string> = [MethodOf<N>] extends ['get'] ? AnchorAttributes & PrefetchProps & CurrentProps & {
     method?: 'get';
@@ -801,7 +803,7 @@ type PageModules = Record<string, () => Promise<unknown>>;
 // PairedValue
 type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput | NumberRuleInput] ? FormValue<V, true, Missing> : V extends Primitive | Upload | ((...args: never) => unknown) ? V : V extends readonly unknown[] ? {
     [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly (infer Item)[] ? Item : never>;
-} : SchemaFields<V, NonNullable<O>>;
+} : SchemaFields<V, MemberOf<V, NonNullable<O>>>;
 // ParamsMissing
 type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
 // ParamsOption

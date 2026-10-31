@@ -57,7 +57,10 @@ type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown exte
         ? V
         : V extends readonly unknown[]
           ? { [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly (infer Item)[] ? Item : never> }
-          : SchemaFields<V, NonNullable<O>>;
+          : SchemaFields<V, MemberOf<V, NonNullable<O>>>;
+
+/** The member of a union output that a member `V` of the input belongs to (all of `O` when none is recognised). */
+type MemberOf<V, O> = [Extract<O, Partial<V>>] extends [never] ? O : Extract<O, Partial<V>>;
 
 type Flatten<T> = { [K in keyof T]: T[K] };
 
@@ -82,9 +85,6 @@ type DefaultedKeys<In, Out> = {
  * `boolean`, a number rule's as `number` and a defaulted field as present, or given directly.
  */
 type FormFields<T> = [FormOf<T>] extends [never] ? T : SchemaFields<FormOf<T>, FormOutputOf<T>>;
-
-/** `F` with every boolean rule's field typed `boolean` and every number rule's `number`. */
-export type BooleanFields<F> = { [K in keyof F]: FormValue<F[K]> };
 
 /** `F` with every boolean rule's field typed `boolean`, as an action sends it. */
 export type ActionFields<F> = { [K in keyof F]: FormValue<F[K], false> };
