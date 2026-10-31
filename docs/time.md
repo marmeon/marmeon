@@ -129,15 +129,18 @@ A time in the skipped hour comes back as the `03:30` it was read as, so a saved 
 
 ## A calendar day
 
-A `date` column is a day, not an instant: it reads back as `2026-10-14` and means the 14th in every zone. `format.date()` and a `date` placeholder show such a
-value as that day wherever the server or the browser runs, so a page in Los Angeles does not say the 13th:
+A `date` column is a day, not an instant: it reads back as `2026-10-14` and means the 14th in every zone. A `date` placeholder,
+and `format.date()` without a `timeZone`, show such a value as that day wherever the server or the browser runs, so a page in Los
+Angeles does not say the 13th:
 
 ```ts
 format.date(event.starts_on, { dateStyle: 'long' }); // "October 14, 2026", in every zone
 ```
 
-Only a string of the form `YYYY-MM-DD` is read this way. An instant (`2026-10-14T00:00:00Z`, a `Date`, a timestamp) is still shown in the zone
-of the process or the one in `timeZone`. When you format a day with `Intl` yourself, say `timeZone: 'UTC'`, and do the same for a range:
+Only a string of the form `YYYY-MM-DD` is read this way. An instant (`2026-10-14T00:00:00Z`, a `Date`, a timestamp) is still shown
+in the zone of the process or the one in `timeZone`. An explicit `timeZone` takes precedence for a day too: `2026-10-14` with
+`timeZone: 'America/Los_Angeles'` shows October 13. When you format a day with `Intl` yourself, say `timeZone: 'UTC'`, and do
+the same for a range:
 
 ```ts
 const days = new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' });

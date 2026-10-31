@@ -8,7 +8,7 @@ export interface Formatter {
   number(value: number | bigint, options?: Intl.NumberFormatOptions): string;
   /**
    * A date or time: a `Date`, a timestamp or an ISO string (what a `Date` prop is in the browser). A calendar day
-   * (`2026-10-14`, what a `date` column reads back as) is shown as that day in every zone; see
+   * (`2026-10-14`, what a `date` column reads back as) is shown as that day in every zone unless `options.timeZone` is set; see
    * [Time](docs/time.md#a-calendar-day).
    */
   date(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string;
