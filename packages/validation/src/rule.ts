@@ -471,6 +471,15 @@ export type ShapeOutput<S extends Shape> = Fields<{ [K in keyof S]: InferOutput<
 /** What an object of `S` takes. */
 export type ShapeInput<S extends Shape> = Fields<{ [K in keyof S]: InferInput<S[K]> }>;
 
+/** An object's output with the fields of its `.when()`s, optional. A block that repeats a field may replace its value, so the field is either type. */
+type WithWhens<Own, Conditional> = Simplify<{ [K in keyof Own]: K extends keyof Conditional ? Own[K] | Conditional[K] : Own[K] } & Partial<Omit<Conditional, keyof Own>>>;
+/** The same for the input: the object's own rule always runs on the raw value, so a repeated field keeps its type. */
+type WithWhensInput<Own, Conditional> = Simplify<Own & Partial<Omit<Conditional, keyof Own>>>;
+/** The fields of two `.when()` blocks; a field in both is either rule's, since either block may be skipped. */
+type MergeWhens<A extends Shape, B extends Shape> = Simplify<
+  Omit<A, keyof B> & Omit<B, keyof A> & { [K in keyof A & keyof B]: Rule<InferOutput<A[K]> | InferOutput<B[K]>, InferInput<A[K]> | InferInput<B[K]>> }
+>;
+
 interface ObjectParts {
   readonly shape: Shape;
   readonly whens: readonly { readonly condition: (data: any) => boolean; readonly shape: Shape }[];
@@ -481,7 +490,7 @@ interface ObjectParts {
  * An object of fields — a form's body, a query. Fields the shape does not name are left out. `When` holds the fields of
  * `.when()`: there only when their condition holds.
  */
-export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>, Simplify<ShapeInput<S> & Partial<ShapeInput<When>>>> {
+export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<WithWhens<ShapeOutput<S>, ShapeOutput<When>>, WithWhensInput<ShapeInput<S>, ShapeInput<When>>> {
   /**
    * The object's fields, a rule each (not those of `.when()`) — spread them into another object:
    * `r.query({ ...MembersTable.query.entries, tab: r.in(['all', 'mine']).default('all') })`.
@@ -499,7 +508,7 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
    * ```
    */
   override custom(
-    check: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>> | { readonly validate: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>> },
+    check: CustomCheck<WithWhens<ShapeOutput<S>, ShapeOutput<When>>> | { readonly validate: CustomCheck<WithWhens<ShapeOutput<S>, ShapeOutput<When>>> },
     options?: RuleMessage | { readonly message?: RuleMessage; readonly field?: (keyof S | keyof When) & string },
   ): this {
     const { message, field } = typeof options === 'object' ? options : { message: options, field: undefined };
@@ -519,7 +528,7 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
    * r.object({ kind: r.in(['person', 'company']) }).when((data) => data.kind === 'company', { vat: r.string().trim().required() })
    * ```
    */
-  when<const W extends Shape>(condition: (data: Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>> {
+  when<const W extends Shape>(condition: (data: WithWhens<ShapeOutput<S>, ShapeOutput<When>>) => boolean, fields: W): ObjectRule<S, MergeWhens<When, W>> {
     const parts = objectParts(this);
     return new ObjectRule(objectDefinition({ ...parts, whens: [...parts.whens, { condition, shape: fields }] }, this['~rule'])) as never;
   }

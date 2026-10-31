@@ -56,16 +56,16 @@ export declare class NumberRule extends Rule<number, number | `${number}`> {
     between(min: number, max: number): this;
 }
 // ObjectRule
-export declare class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>, Simplify<ShapeInput<S> & Partial<ShapeInput<When>>>> {
+export declare class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<WithWhens<ShapeOutput<S>, ShapeOutput<When>>, WithWhensInput<ShapeInput<S>, ShapeInput<When>>> {
     get entries(): S;
-    custom(check: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>> | {
-        readonly validate: CustomCheck<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>>;
+    custom(check: CustomCheck<WithWhens<ShapeOutput<S>, ShapeOutput<When>>> | {
+        readonly validate: CustomCheck<WithWhens<ShapeOutput<S>, ShapeOutput<When>>>;
     }, options?: RuleMessage | {
         readonly message?: RuleMessage;
         readonly field?: (keyof S | keyof When) & string;
     }): this;
     live(this: typeof LIVE_ON_CONTAINER): never;
-    when<const W extends Shape>(condition: (data: Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>>;
+    when<const W extends Shape>(condition: (data: WithWhens<ShapeOutput<S>, ShapeOutput<When>>) => boolean, fields: W): ObjectRule<S, MergeWhens<When, W>>;
     confirmed(field: keyof S & string, confirmation?: string): this;
 }
 // QueryOfRepository
@@ -188,6 +188,10 @@ type InputOf<R> = R extends Rule<any, any> ? InferInput<R> : never;
 export declare const LIVE_ON_CONTAINER = ".live() goes on the field whose being taken is no secret \u2014 r.object({ slug: r.string().unique(Teams, 'slug').live() }) \u2014 never on an object, a list or a union: it would open every rule inside.";
 // MaybePromise
 type MaybePromise<T> = T | Promise<T>;
+// MergeWhens
+type MergeWhens<A extends Shape, B extends Shape> = Simplify<Omit<A, keyof B> & Omit<B, keyof A> & {
+    [K in keyof A & keyof B]: Rule<InferOutput<A[K]> | InferOutput<B[K]>, InferInput<A[K]> | InferInput<B[K]>>;
+}>;
 // Message
 export type Message = (issue: object) => string;
 // MissingKeys
@@ -202,6 +206,12 @@ type Simplify<T> = {
 } & {};
 // Spelled
 type Spelled<T> = T extends number ? `${T}` : never;
+// WithWhens
+type WithWhens<Own, Conditional> = Simplify<{
+    [K in keyof Own]: K extends keyof Conditional ? Own[K] | Conditional[K] : Own[K];
+} & Partial<Omit<Conditional, keyof Own>>>;
+// WithWhensInput
+type WithWhensInput<Own, Conditional> = Simplify<Own & Partial<Omit<Conditional, keyof Own>>>;
 // localDateTime
 declare function localDateTime(zone: LocalDateTimeZone): Rule<string, string>;
 // numberRule

@@ -217,6 +217,23 @@ r.object({ kind: r.in(['a', 'b']) })
     return mid === 'yes';
   }, { last: r.string() });
 
+// A block that repeats a base key does not narrow it for the next condition: the block may have been skipped.
+r.object({ kind: r.in(['a', 'b']) })
+  .when((data) => data.kind === 'b', { kind: r.literal('b'), extra: r.string() })
+  .when((data) => data.kind === 'a' && data.extra === undefined, { last: r.string() });
+
+// A block that repeats a base key may replace its value: the output and the next condition see either type.
+const replaced = r.object({ n: r.string() }).when((d) => d.n === '5', { n: r.number() });
+same<NonNullable<(typeof replaced)['~standard']['types']>['output'], { n: string | number }>(true);
+same<NonNullable<(typeof replaced)['~standard']['types']>['input'], { n: string }>(true);
+replaced.when((d) => {
+  const n: string | number = d.n;
+  return n === 5;
+}, { m: r.string() });
+// Two blocks that share a field: it is optional and either type.
+const twice = r.object({ k: r.string() }).when((d) => d.k === 'a', { x: r.literal('a') }).when((d) => d.k === 'b', { x: r.literal('b') });
+same<NonNullable<(typeof twice)['~standard']['types']>['output'], { k: string; x?: 'a' | 'b' | undefined }>(true);
+
 // @ts-expect-error — a field of when() is not there before .when()
 ends.custom(never, { field: 'vat' });
 r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(never, { field: 'vat' }); // fine
