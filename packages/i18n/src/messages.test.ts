@@ -106,6 +106,49 @@ describe('Catalog', () => {
   });
 });
 
+describe('a calendar day', () => {
+  const zones = ['America/Los_Angeles', 'Pacific/Kiritimati', 'Europe/Berlin', 'UTC'];
+  const days = ['2026-10-14', '2026-03-08', '2026-11-01', '2026-03-29'];
+  const label = (day: string) => new Intl.DateTimeFormat('en', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(day));
+
+  // A fresh catalog per zone: an Intl formatter binds the process zone when it is created.
+  const inZone = <T>(zone: string, run: () => T): T => {
+    const before = process.env.TZ;
+    process.env.TZ = zone;
+    try {
+      return run();
+    } finally {
+      if (before === undefined) delete process.env.TZ;
+      else process.env.TZ = before;
+    }
+  };
+
+  it('is that day in every zone, from format.date() and from the placeholders', () => {
+    for (const zone of zones) {
+      inZone(zone, () => {
+        expect(new Intl.DateTimeFormat('en').resolvedOptions().timeZone).toBe(zone);
+        expect(formatMessage('{d, time, short}', { d: '2026-10-14' }, 'en').replaceAll('\u202f', ' ')).toBe('12:00 AM');
+        const format = new Catalog({ fallback: 'en' }).formatter('en');
+        for (const day of days) {
+          expect(format.date(day, { dateStyle: 'long' })).toBe(label(day));
+          expect(formatMessage('{d, date, long}', { d: day }, 'en')).toBe(label(day));
+        }
+        expect(new Catalog({ fallback: 'en' }).formatter('en').date('2026-10-14')).toBe('Oct 14, 2026');
+      });
+    }
+  });
+
+  it('keeps an explicit zone and leaves an instant to the zone it is shown in', () => {
+    inZone('America/Los_Angeles', () => {
+      const format = new Catalog({ fallback: 'en' }).formatter('en');
+      expect(format.date('2026-10-14', { dateStyle: 'long', timeZone: 'Pacific/Kiritimati' })).toBe('October 14, 2026');
+      expect(format.date('2026-10-14', { dateStyle: 'long', timeZone: 'America/Los_Angeles' })).toBe('October 13, 2026');
+      expect(format.date('2026-10-14T00:00:00Z', { dateStyle: 'long' })).toBe('October 13, 2026');
+      expect(format.date('2026-10-14T00:00:00Z', { dateStyle: 'long', timeZone: 'UTC' })).toBe('October 14, 2026');
+    });
+  });
+});
+
 describe('createMessageLoader (virtual:marmeon/lang)', () => {
   const files = () => {
     const load = (messages: object) => vi.fn(async () => ({ default: messages }));

@@ -430,6 +430,9 @@ format.relative(note.updated_at, now);              // "3 minutes ago", "yesterd
 `relative()` picks the largest unit that fits. Pass it the server's `now` as a prop rather than the browser's clock, so the server
 and the browser render the same text.
 
+A calendar day (`2026-10-14`, what a `date` column reads back as) is shown as that day in every time zone by a `date` placeholder
+and by `format.date()` without a `timeZone`; see [Time](time.md#a-calendar-day).
+
 ## Configuration
 
 | Variable | Default | Effect |

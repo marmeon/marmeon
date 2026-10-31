@@ -127,6 +127,41 @@ const form = { time_zone: event.time_zone, starts_at: toLocalDateTime(event.star
 
 A time in the skipped hour comes back as the `03:30` it was read as, so a saved event shows the time it really starts.
 
+## A calendar day
+
+A `date` column is a day, not an instant: it reads back as `2026-10-14` and means the 14th in every zone. A `date` placeholder,
+and `format.date()` without a `timeZone`, show such a value as that day wherever the server or the browser runs, so a page in Los
+Angeles does not say the 13th:
+
+```ts
+format.date(event.starts_on, { dateStyle: 'long' }); // "October 14, 2026", in every zone
+```
+
+Only a string of the form `YYYY-MM-DD` is read this way. An instant (`2026-10-14T00:00:00Z`, a `Date`, a timestamp) is still shown
+in the zone of the process or the one in `timeZone`. An explicit `timeZone` takes precedence for a day too: `2026-10-14` with
+`timeZone: 'America/Los_Angeles'` shows October 13. When you format a day with `Intl` yourself, say `timeZone: 'UTC'`, and do
+the same for a range:
+
+```ts
+const days = new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' });
+days.formatRange(new Date(event.starts_on), new Date(event.ends_on)); // "October 14 – 16, 2026"
+```
+
+## Showing a stored instant in a zone
+
+An instant has no zone of its own, so a page that prints one picks the zone: the `time_zone` of the record, as in [A time typed in a zone](#a-time-typed-in-a-zone), or a
+zone the app keeps in its configuration. Hand the zone to the view as a prop and to `format.date()`, so the server and the browser
+render the same text:
+
+```tsx
+<time dateTime={event.starts_at}>
+  {t.format.date(event.starts_at, { dateStyle: 'medium', timeStyle: 'short', timeZone: event.time_zone })}
+</time>
+```
+
+Without a `timeZone` the formatter uses the zone of the process, which differs between the server and a visitor's browser and shows as a
+hydration mismatch.
+
 ## What follows the clock
 
 Everything that reads the time through the app's `Clock` follows the test clock:
