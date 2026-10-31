@@ -437,7 +437,7 @@ import { contentDisposition } from '@marmeon/storage';
 
 export class ExportProfileController extends Controller {
   handle(ctx: HttpContext<Authenticated>) {
-    return new Response(JSON.stringify(profileOf(ctx.user), null, 2), {
+    return new Response(JSON.stringify({ name: ctx.user.name, email: ctx.user.email }, null, 2), {
       headers: {
         'content-type': 'application/json; charset=utf-8',
         'content-disposition': contentDisposition('attachment', `${ctx.user.name}-profile.json`),
