@@ -85,7 +85,7 @@ import { rules as r } from '@marmeon/validation';
 | `r.in([...])` | One of the values. A number also as a form spells it: `'25'`. | The value |
 | `r.literal(value)` | Exactly `value`. | The value |
 | `r.union([a, b])` | What the first rule that takes it takes. | Either output |
-| `r.object({...})` | An object. Fields the shape does not name are left out. | The fields' outputs |
+| `r.object({...})` | An object, not a list. Fields the shape does not name are left out. | The fields' outputs |
 | `r.array(rule)` | A list, each item checked by `rule`. | A list |
 | `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` | `r.string()` with that check. | `string` |
 | `r.localDateTime(zone)` | What `<input type="datetime-local">` sends, `2026-10-07T14:30`, read in `zone`. | An instant, as `string` |

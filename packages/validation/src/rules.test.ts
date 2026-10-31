@@ -69,6 +69,30 @@ describe('the types', () => {
     expect(await errors(form, { tags: 'a', address: 'Bonn' })).toEqual({ tags: ['The tags field must be a list.'], address: ['The address field must be an object.'] });
     expect(await errors(r.string(), 1)).toEqual({ _: ['The value field must be a string.'] });
   });
+
+  it('an object is never a JSON array, at any depth', async () => {
+    const message = 'The footer field must be an object.';
+    const footer = r.object({ groups: r.array(r.string()).default([]) });
+    const form = r.object({ footer });
+    for (const array of [[], ['a']]) {
+      expect(await errors(form, { footer: array })).toEqual({ footer: [message] });
+      expect(await errors(r.object({ footer: footer.optional() }), { footer: array })).toEqual({ footer: [message] });
+      expect(await errors(r.object({ footer: footer.nullable() }), { footer: array })).toEqual({ footer: [message] });
+      expect(await errors(r.object({ footer: footer.default({ groups: [] }) }), { footer: array })).toEqual({ footer: [message] });
+      expect(await errors(r.object({ rows: r.array(footer) }), { rows: [{}, array] })).toEqual({ 'rows.1': ['The rows.1 field must be an object.'] });
+      expect(await errors(r.object({ a: r.object({ b: r.object({ c: r.string() }) }) }), { a: { b: array } })).toEqual({ 'a.b': ['The a.b field must be an object.'] });
+      expect(await errors(footer, array)).toEqual({ _: ['The value field must be an object.'] });
+      expect(await errors(footer, 'x')).toEqual(await errors(footer, array));
+    }
+    expect(await errors(form, { footer: 'x' })).toEqual({ footer: [message] });
+    expect(await check(form, { footer: {} })).toEqual({ value: { footer: { groups: [] } } });
+    expect(await check(form, { footer: { groups: ['a'] } })).toEqual({ value: { footer: { groups: ['a'] } } });
+  });
+
+  it('a conditional object refuses an array too', async () => {
+    const form = r.object({ kind: r.in(['a', 'b']) }).when((v: any) => v.kind === 'a', { extra: r.string().required() } as never);
+    expect(await errors(form, [])).toEqual({ _: ['The value field must be an object.'] });
+  });
 });
 
 describe('the rules of a type', () => {
