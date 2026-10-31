@@ -83,11 +83,12 @@ export const coreSolutions = defineSolutions([
   {
     // A module's entry (#modules/<name>) is loaded as server code; Node has no loader for a component file.
     for: Error,
-    when: (e) => (e as { code?: unknown }).code === 'ERR_UNKNOWN_FILE_EXTENSION' && e.message.includes('.tsx'),
-    solve: () => ({
+    when: (e) => (e as { code?: unknown }).code === 'ERR_UNKNOWN_FILE_EXTENSION' && /Unknown file extension "\.tsx"/.test(e.message),
+    solve: (e) => ({
       title: "A module's entry reached a component",
       text:
-        "Node loads a module's entry (`#modules/<name>`) as server code, and a `.tsx` file cannot be loaded there. Components several " +
+        `Node loads server code, and a .tsx file (${/for (\S+)/.exec(e.message)?.[1] ?? 'a component'}) cannot be loaded there. Usually a module's entry ` +
+        '(`#modules/<name>`) exports or imports a component; otherwise some other server code imports a component by value. Components several ' +
         'modules share get an import of their own (an `imports` entry in package.json), which views import directly.',
       docs: 'docs/structure.md#components-several-modules-share',
     }),

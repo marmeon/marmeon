@@ -123,9 +123,12 @@ describe('the core solutions', () => {
     const [solution] = await solutions.find(tsx);
     expect(solution).toMatchObject({ title: "A module's entry reached a component", docs: 'docs/structure.md#components-several-modules-share' });
     expect(solution?.text).toContain('#modules/<name>');
+    expect(solution?.text).toContain('/app/modules/ui/Button.tsx');
     const json = Object.assign(new TypeError('Unknown file extension ".json" for /app/data.json'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
     expect(await solutions.find(json)).toEqual([]);
     expect(await solutions.find(new TypeError('Unknown file extension ".tsx" for /app/x.tsx'))).toEqual([]);
+    const inPath = Object.assign(new TypeError('Unknown file extension ".css" for /app/pages.tsx/site.css'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
+    expect(await solutions.find(inPath)).toEqual([]);
   });
 
   it('invalid configuration: the variables to set', async () => {
