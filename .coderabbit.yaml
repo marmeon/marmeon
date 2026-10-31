@@ -1,0 +1,126 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Review settings for CodeRabbit. The repository's rules live in AGENTS.md and CONTRIBUTING.md; the instructions below repeat
+# only what a reviewer gets wrong without them.
+language: en-US
+tone_instructions: >-
+  Be direct and brief. Lead with the failure scenario: the input or the order of events, and what goes wrong. Skip praise and
+  style opinions that no rule of the repository backs.
+
+reviews:
+  profile: chill
+  # Pull request descriptions say what an app has to do; the summary goes in the walkthrough comment instead.
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  # A maintainer sets exactly one release label; see CONTRIBUTING.md#pull-requests.
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+  poem: false
+  in_progress_fortune: false
+  sequence_diagrams: false
+  enable_prompt_for_ai_agents: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    # Stacked pull requests target another feature branch.
+    base_branches:
+      - ".*"
+
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: warning
+      requirements: >-
+        The title is the pull request's line in the release notes: an imperative sentence saying what the change does, like a
+        commit subject ("Add a dry-run flag to make:migration"). No type prefix such as "feat:" or "fix:", no issue number, no
+        trailing period.
+    description:
+      mode: "off"
+
+  path_filters:
+    - "!pnpm-lock.yaml"
+    - "!**/CHANGELOG.md"
+    - "!apps/*/bootstrap/routes.ts"
+    - "!apps/*/bootstrap/database.d.ts"
+    - "!packages/create-marmeon/template/base/bootstrap/routes.ts"
+    - "!packages/create-marmeon/template/base/bootstrap/database.d.ts"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Marmeon is a TypeScript full-stack framework; its packages run inside other people's apps. Security-correct beats
+        familiar. Review against AGENTS.md and CONTRIBUTING.md, and check a suggestion against them before you make it.
+
+        Do not suggest any of these; the repository refuses or rejects them on purpose:
+        - An absolute URL for a docs link in code or JSDoc. Code names a page by its repository path with an anchor
+          (`docs/time.md#a-calendar-day`), and apps/website/modules/docs/links.test.ts checks every such path. Only package
+          READMEs use https://marmeon.com/docs/... links.
+        - A changelog entry, an edit of a CHANGELOG.md, or a version bump. Release preparation writes them.
+        - Retrying a test (`retry`, `.retry()`, `--retry`). Make the test deterministic or move the timing into a
+          `<name>.timing.test.ts`.
+        - Comments that tell history ("used to", "after the review", "since"), narrate the next line, or name a decision, a
+          wave, a plan or a person. `pnpm check:source` refuses the last group.
+        - A comparison with another framework in docs, stubs, the starter's template, READMEs or messages.
+
+        Flag these:
+        - `NODE_ENV` compared negatively against 'production', or `import.meta.env.DEV`, in package code, stubs, the template or
+          apps. Development branches ask `=== 'development' || === 'test'` or `environment.isDevelopment()`.
+        - An import of `kysely` outside packages/database/src, of Valibot outside a package's src/, or of
+          `@marmeon/<name>/internal` outside packages/<name>/src.
+        - A change to a public API, an environment default or a command without the matching page under docs/ in the same pull
+          request.
+
+    - path: "packages/*/src/**/*.{ts,tsx}"
+      instructions: |
+        This is framework code that every app runs. Check security first: input that reaches SQL, HTML, headers, file paths or
+        redirects; authorization that a later route or a missing check could skip; timing-safe comparisons; secrets in logs or
+        errors. Then races and ordering: concurrent requests, pooled connections, transactions, React lanes and transitions.
+
+        In the data layer, a failure an app must handle is a `Result`, not a throw.
+
+        Exported API carries JSDoc of one or two sentences, plus only what is not obvious (the default, when it throws, a
+        security note), and links its docs page as `docs/<page>.md#<anchor>`. Strings an app developer reads (errors,
+        warnings, solutions, command output) speak to that developer and name no decision, wave or other framework.
+
+        Type-level guarantees are tested in `*.type-test.ts(x)` files with `@ts-expect-error`; a type test must fail without the
+        change it covers.
+
+    - path: "**/*.test.{ts,tsx}"
+      instructions: |
+        Tests sit next to the code. A temporary directory comes from `tempDir('marmeon-...')`; a test that leaves one behind
+        fails the run. Postgres and Redis suites run against shared databases, so a test must not depend on other sessions
+        being absent (match its own marker, not a generic pattern). Prefer counting work over measuring wall-clock time.
+
+    - path: "docs/**/*.md"
+      instructions: |
+        These pages are the framework's only documentation, for people who build apps. Follow CONTRIBUTING.md#writing-documentation:
+        address the reader as "you", present tense, active voice, one idea per sentence, no chains of parentheses. A code block
+        with a `title` names its file and is complete enough to copy, imports included; a block without a title may continue an
+        earlier example on the same page. Links to other pages are relative (`routing.md#route-model-binding`). Check that an
+        example matches the current code of the package it shows.
+
+    - path: "packages/*/README.md"
+      instructions: |
+        A package README is a card for npm: one sentence, the install line, one short example from its docs page, links to the
+        website as https://marmeon.com/docs/<slug>#<anchor>, and the licence line. Everything else belongs on a docs page.
+
+    - path: "packages/*/api.md"
+      instructions: |
+        Generated by `pnpm api:update` from the package's exports. Do not review the formatting. Say only when a change looks
+        unintended: an internal helper that became exported, or a changed signature that would break an app.
+
+    - path: "{packages/*/stubs/**,packages/create-marmeon/template/**,apps/**}"
+      instructions: |
+        Apps copy this code. It validates with `rules` of @marmeon/validation, decides access with `everyone` or a check, and
+        imports nothing internal. Keep it idiomatic and small; a reader learns the framework from it.
+
+knowledge_base:
+  learnings:
+    scope: local
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - CONTRIBUTING.md
