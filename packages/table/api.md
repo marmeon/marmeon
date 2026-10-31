@@ -381,7 +381,7 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
     readonly [K in keyof QV]?: string | readonly string[];
 }, QV> {
     readonly entries: {
-        readonly [K in keyof QV]: Rule<QV[K], string | readonly string[] | undefined>;
+        readonly [K in keyof QV]-?: Rule<QV[K], string | readonly string[] | undefined>;
     };
 }
 // TableServiceProvider

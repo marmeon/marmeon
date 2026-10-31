@@ -1,4 +1,5 @@
 import { parseQuery } from '@marmeon/router';
+import { rules as r } from '@marmeon/validation';
 import { describe, expect, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { FeedTable, MembersTable } from './__fixtures__/app.ts';
@@ -51,6 +52,14 @@ describe('the table\'s state in the URL', () => {
     await expect(parseQuery(MembersTable.query, search('per_page=10000'))).rejects.toMatchObject({ status: 400 });
     // Unknown keys of the table's namespace are the resolver's to refuse (the schema cannot see them): parseState does.
     expect(Object.keys(MembersTable.query.entries)).toEqual(['sort', 'page', 'per_page', 'search', 'filter[role]', 'filter[joined]']);
+  });
+
+  it('stays strict when the entries of two tables, one prefixed, with a cursor, are spread into another r.query()', async () => {
+    const page = r.query({ ...MembersTable.query.entries, ...FeedTable.query.entries, tab: r.in(['all', 'mine']).default('all') });
+    const parsed = await parseQuery(page, search('filter[role]=admin&feed_per_page=2&tab=mine'));
+    expect(parsed.value).toMatchObject({ 'filter[role]': 'admin', page: 1, feed_per_page: 2, tab: 'mine' });
+    await expect(parseQuery(page, search('filter[role]=root'))).rejects.toMatchObject({ status: 400 });
+    await expect(parseQuery(page, search('feed_sort=password'))).rejects.toThrow(TableQueryError);
   });
 });
 
