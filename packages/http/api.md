@@ -98,6 +98,7 @@ export type { CookieOptions } from '@marmeon/router';
 // CredentialPageOptions
 export interface CredentialPageOptions {
     referrer?: 'no-referrer' | 'same-origin';
+    query?: readonly [string, ...string[]];
 }
 // CspDirectives
 export interface CspDirectives {

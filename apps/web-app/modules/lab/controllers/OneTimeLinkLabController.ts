@@ -45,3 +45,11 @@ export class UseOneTimeLinkLabController extends LabController {
     return this.view('lab/OneTimeLink', { opened: true, path: new URL(ctx.request.url, 'http://localhost').pathname });
   }
 }
+
+/** A public page that is cacheable, and carries a token only when the address has `?invite=`: the route's `credentialPage({ query })` decides. */
+export class ShowAnnouncementLabController extends LabController {
+  handle() {
+    this.enabled();
+    return this.json({ announcement: 'Doors open at eight.' }, { headers: { 'cache-control': 'public, max-age=60' } });
+  }
+}
