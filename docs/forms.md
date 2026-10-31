@@ -120,6 +120,16 @@ void form.submit({
 });
 ```
 
+`submit()` sends what the form holds at that moment, including a `set()`, `setData()` or `reset()` earlier in the same handler,
+so a button can decide a value and send it in one go (no `setTimeout` or `flushSync` between them):
+
+```tsx
+<button type="button" onClick={() => { form.set('status', 'published'); void form.submit(); }}>Publish</button>
+```
+
+`form.data` is the value of the last render; use `set()` per field when building on an earlier `set()`
+(`form.set('a', 1); form.setData({ ...form.data, b: 2 })` drops `a`).
+
 `onError` gets the first message per field. `onFinish` runs after every submit, whether it succeeded, failed or was cancelled.
 After a successful submit, what was sent becomes where the form starts, so it is no longer dirty.
 
