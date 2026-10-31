@@ -175,7 +175,8 @@ reads `ctx.query['filter[x]']` itself gets a value that was only checked for its
 ### Sorting and pages
 
 `defaultSort` is the sort without a `?sort=`: an alias, with `-` in front for descending. Without it, the table sorts by its first
-sortable column that everyone sees. The key always breaks ties. A default sort by a column with `.visible(…)` is refused, as a
+sortable column that everyone sees; with none, there is no default sort and `ctx.query.sort` is optional. The key always breaks
+ties. A default sort by a column with `.visible(…)` is refused, as a
 compile error and when `defineTable()` runs, because it would answer 400 to everyone who may not see the column.
 
 `pagination` pages by number with a total, by default. `perPage` lists the page sizes `?per_page=` allows, and the first one is the

@@ -282,6 +282,30 @@ export class LocalizedPage extends Controller {
   }
 }
 
+/** Its only sortable column is one some may not see: no default sort, `?sort=` is the table's key all the same. */
+export const HiddenSortTable = defineTable({
+  name: 'hidden-sort',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name'), email: column('members.email').visible(MemberPolicy, 'viewEmails').sortable() },
+});
+
+export const HiddenSortRequest = defineRequest({ query: HiddenSortTable.query });
+
+export class HiddenSortPage extends Controller {
+  static request = HiddenSortRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof HiddenSortRequest> & Authenticated & { team: number }) {
+    return this.json({ sort: ctx.query.sort ?? null, hidden: await this.#tables.resolve(HiddenSortTable, ctx) });
+  }
+}
+
 /** Exports of at most three rows — the limit refuses, it never cuts. */
 export const SmallExportTable = defineTable({
   name: 'small',
@@ -737,6 +761,7 @@ const routes = openRoutes((Route) => {
   team.get('/audited', StubPage).attach(AuditedTable.endpoints());
   team.get('/by-email', StubPage).attach(ByEmailTable.endpoints());
   team.get('/localized', LocalizedPage).attach(LocalizedTable.endpoints());
+  team.get('/hidden-sort', HiddenSortPage).attach(HiddenSortTable.endpoints());
   team.get('/guarded', GuardedPage).attach(GuardedTable.endpoints());
   team.get('/active', StubPage).attach(ActiveTable.endpoints());
   team.get('/input', StubPage).attach(InputTable.endpoints());

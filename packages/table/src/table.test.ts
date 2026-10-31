@@ -303,6 +303,26 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     });
   });
 
+  describe('a table whose only sortable column is one some may not see', () => {
+    const sorted = (application: TableTestApp, user: number, query: string) => application.request(`/teams/1/hidden-sort${query}`, { user });
+
+    it('takes ?sort= from the request query: ctx.query.sort for who sees the column, a 400 from resolve() for who does not', async () => {
+      const application = await app(driver);
+      const allowed = await sorted(application, ADA, '?sort=-email');
+      expect(allowed.status).toBe(200);
+      const body = (await allowed.json()) as { sort: string | null; hidden: TableData<{ name: string }> };
+      expect(body.sort).toBe('-email');
+      expect(body.hidden.rows.map((row) => row.name)).toEqual(['Grace', 'Edsger', 'Alan', 'Ada']);
+
+      expect((await sorted(application, ALAN, '?sort=email')).status).toBe(400);
+      expect((await sorted(application, ALAN, '?sort=nope')).status).toBe(400);
+
+      const plain = await sorted(application, ALAN, '');
+      expect(plain.status).toBe(200);
+      expect(((await plain.json()) as { sort: string | null }).sort).toBeNull();
+    });
+  });
+
   describe('row actions (POST …/actions/:action)', () => {
     const run = (application: TableTestApp, user: number | undefined, key: unknown, action = 'deactivate', team = 1) =>
       application.request(endpoint(MembersTable, 'action', action, team), { method: 'POST', user, json: { key } });
