@@ -1,6 +1,7 @@
 import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
+import { DownloadMemberTemplateController } from './controllers/DownloadMemberTemplateController.ts';
 import { ConfirmMemberImportController, ImportMembersController } from './controllers/ImportMembersController.ts';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
@@ -24,6 +25,8 @@ export default defineRoutes((Route) => {
   // The file import: uploaded ahead, this route hands out the upload target for its `file` field, and its request authorizes
   // (administrators only, MemberPolicy) — which is why it is on `members`, not `readers`. Throttled like the table's endpoints.
   members.middleware(throttle('members-table')).post('/import', ImportMembersController).name('import');
+  // The file the import expects, made in memory and named through contentDisposition(); the same decision as the import.
+  members.get('/import-template', DownloadMemberTemplateController).name('import.template');
   // The second step: confirms the file the first one kept (its id in the path; only this session's, under this flow's scope, finds it).
   members.middleware(throttle('members-table')).post('/import/:import', ConfirmMemberImportController).name('import.confirm');
 });

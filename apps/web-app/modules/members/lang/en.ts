@@ -43,6 +43,8 @@ const en = {
   import_uploading: 'Sending the file: {percent}%',
   import_ready: 'The file is ready.',
   import_save: 'Import',
+  template_file: 'members-template.csv',
+  template_download: 'Download a template',
   import_columns: 'The first row needs the columns name and email.',
   imported: '{rows, plural, one {# row} other {# rows}} read, {invalid, number} to correct.',
   import_confirmed: '{rows, plural, one {# row} other {# rows}} taken over.',

@@ -44,6 +44,8 @@ export default {
   import_uploading: 'Datei wird gesendet: {percent} %',
   import_ready: 'Die Datei ist bereit.',
   import_save: 'Importieren',
+  template_file: 'Mitglieder-Vorlage-für-Übernahme.csv',
+  template_download: 'Vorlage herunterladen',
   import_columns: 'Die erste Zeile braucht die Spalten name und email.',
   imported: '{rows, plural, one {# Zeile} other {# Zeilen}} gelesen, {invalid, number} zu korrigieren.',
   import_confirmed: '{rows, plural, one {# Zeile} other {# Zeilen}} übernommen.',

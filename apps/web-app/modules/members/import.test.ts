@@ -59,6 +59,28 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
     expect(app.storage.disk('uploads').files().filter((key) => key.startsWith('imports/'))).toEqual([]);
   });
 
+  describe('the template (/members/import-template) — a file made in memory, named with contentDisposition()', () => {
+    it('answers the two columns as an attachment with a header-safe name, in ASCII and in UTF-8', async () => {
+      const english = await app.actingAs(ada).get('/members/import-template').assertOk();
+      expect(english.body).toBe('name,email\r\nAda Lovelace,ada@example.com\r\n');
+      expect(Object.fromEntries(english.headers)).toMatchObject({
+        'content-type': 'text/csv; charset=utf-8',
+        'x-content-type-options': 'nosniff',
+        'content-disposition': `attachment; filename="members-template.csv"; filename*=UTF-8''members-template.csv`,
+        'cache-control': 'private, no-store',
+      });
+      await app.make(UserRepository).updateLocale(ada.id, 'de');
+      const german = await app.actingAs(ada).get('/members/import-template').assertOk();
+      expect(german.headers.get('content-disposition')).toBe(
+        `attachment; filename="Mitglieder-Vorlage-f_r-_bernahme.csv"; filename*=UTF-8''Mitglieder-Vorlage-f%C3%BCr-%C3%9Cbernahme.csv`,
+      );
+    });
+
+    it('is for the people who may import: another member gets a 403', async () => {
+      await app.actingAs(alan).get('/members/import-template').assertForbidden();
+    });
+  });
+
   describe('the import over two requests: the preview keeps the file, the confirmation finds it again', () => {
     const CSV = 'name;email\nAnne;anne@example.com\nBen;not-an-address\n';
     const confirm = (as: TestApp, id: string) => as.expectingJson().post(`/members/import/${id}`, { json: {} });
