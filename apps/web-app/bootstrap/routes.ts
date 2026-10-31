@@ -16,6 +16,7 @@ import type { DeleteBookmarkController } from '../modules/bookmarks/controllers/
 import type { DeleteNotificationController } from '../modules/notifications/controllers/DeleteNotificationController.ts';
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { DisableTwoFactorController } from '../modules/auth/controllers/DisableTwoFactorController.ts';
+import type { DownloadMemberTemplateController } from '../modules/members/controllers/DownloadMemberTemplateController.ts';
 import type { EditBookmarkController } from '../modules/bookmarks/controllers/EditBookmarkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
 import type { EndSignInController } from '../modules/auth/controllers/EndSignInController.ts';
@@ -156,6 +157,7 @@ declare module '@marmeon/router' {
     'members.directory': { method: 'get'; path: '/members/directory'; controller: typeof ListMembersController };
     'members.import': { method: 'post'; path: '/members/import'; controller: typeof ImportMembersController };
     'members.import.confirm': { method: 'post'; path: '/members/import/:import'; controller: typeof ConfirmMemberImportController };
+    'members.import.template': { method: 'get'; path: '/members/import-template'; controller: typeof DownloadMemberTemplateController };
     'members.index': { method: 'get'; path: '/members'; controller: typeof ListMembersController };
     'notifications.destroy': { method: 'delete'; path: '/notifications/:notification'; controller: typeof DeleteNotificationController };
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };

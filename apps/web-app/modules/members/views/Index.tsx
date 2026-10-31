@@ -292,7 +292,10 @@ export default function Index({ members }: Props) {
             <FileInput id="members-import" field={importForm.field('file')} accept=".csv,.txt,text/csv,text/plain" aria-invalid={!!(importForm.errors.file ?? file?.error)} aria-describedby="members-import-status" />{' '}
             <button type="submit" disabled={file?.status !== 'uploaded' || importForm.processing}>
               {t('import_save')}
-            </button>
+            </button>{' '}
+            <a href="/members/import-template" download data-template="">
+              {t('template_download')}
+            </a>
           </p>
           <p id="members-import-status" aria-live="polite">
             {file?.uploading && <small>{t('import_uploading', { percent: Math.round(file.progress * 100) })}</small>}

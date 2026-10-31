@@ -43,6 +43,7 @@ export type { Disk, DiskDriver, DiskDriverTemporaryUrlOptions, FileContents, Lis
 export { FileNotFoundError, InvalidKeyError, StorageError, StorageSetupError } from './errors.ts';
 export { Storage } from './storage.ts';
 export { serveFile } from './serve.ts';
+export { contentDisposition } from './mime.ts';
 export type { ServeFileOptions } from './serve.ts';
 export { normalizeDirectory, normalizeKey } from './keys.ts';
 

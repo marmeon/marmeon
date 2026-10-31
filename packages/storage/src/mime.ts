@@ -58,8 +58,14 @@ export function isInlineType(contentType: string): boolean {
   return INLINE_TYPES.has(contentType.split(';')[0]!.trim().toLowerCase());
 }
 
-/** `attachment; filename="report.csv"; filename*=UTF-8''report.csv` — ASCII fallback without quotes or controls. */
+/**
+ * The `Content-Disposition` value that names a download, safe for any filename: an ASCII fallback in which quotes, backslashes,
+ * slashes, percent signs, control characters (CR and LF cannot break the header) and non-ASCII characters become `_`, plus the
+ * real name as `filename*` (RFC 8187; a lone surrogate becomes U+FFFD). `serveFile()` uses the same encoder. See docs/responses.md#downloads.
+ */
 export function contentDisposition(type: 'attachment' | 'inline', filename: string): string {
-  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  // encodeURIComponent throws on a lone surrogate (a slice() through an emoji).
+  filename = filename.toWellFormed();
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\/%]/g, '_');
   return `${type}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 }

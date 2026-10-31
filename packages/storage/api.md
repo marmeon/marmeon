@@ -268,6 +268,8 @@ export declare const UploadsConfig: import("@marmeon/core").ConfigDefinition<{
 export type UploadsConfig = ConfigOf<typeof UploadsConfig>;
 // Visibility
 export type Visibility = 'public' | 'private';
+// contentDisposition
+export declare function contentDisposition(type: 'attachment' | 'inline', filename: string): string;
 // defineStorage
 export declare function defineStorage<const D extends Readonly<Record<string, DiskOptions>>, const Default extends keyof D & string, const Schema extends StandardSchemaV1 = typeof NO_ENV>(definition: {
     readonly env?: Schema;

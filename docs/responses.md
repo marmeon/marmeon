@@ -424,8 +424,36 @@ The file streams from the disk with `X-Content-Type-Options: nosniff` and `Conte
 raster images goes out as an attachment, so HTML, SVG or a PDF is downloaded instead of shown on your app's origin. A missing file
 is a 404. The route's middleware and policy decide who may download: check them as for any other route.
 
-A file your code generates goes out as a `Response` with its type. An image of a one-time link, say a QR code, is as secret as
-the link, so its route takes `credentialPage()`:
+A file your code makes, a JSON export say, goes out as a `Response` of its own. `contentDisposition()` of
+`@marmeon/storage` names it: the same encoder `serveFile()` uses, safe for any name, even one made from what a person typed.
+The header gets an ASCII fallback in which quotes, backslashes, slashes, percent signs, control characters and non-ASCII characters are `_`
+(a line break cannot split the header), and the real name as `filename*` (UTF-8, RFC 8187). Use `'inline'` instead of
+`'attachment'` only for a type a browser may show on your app's origin, a raster image.
+
+```ts title="modules/account/controllers/ExportProfileController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { contentDisposition } from '@marmeon/storage';
+
+export class ExportProfileController extends Controller {
+  handle(ctx: HttpContext<Authenticated>) {
+    return new Response(JSON.stringify({ name: ctx.user.name, email: ctx.user.email }, null, 2), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'content-disposition': contentDisposition('attachment', `${ctx.user.name}-profile.json`),
+        'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
+      },
+    });
+  }
+}
+```
+
+`private, no-store` keeps a shared cache from holding one account's data. The name keeps the characters of the person's name
+(`Zoë-profile.json` downloads as written); the length is not limited, so cut a long one yourself.
+
+A generated image of a one-time link, say a QR code, is as secret as the link, so its route takes
+`credentialPage()`:
 
 ```ts
 Route.middleware(credentialPage()).authorize(everyone).get('/invites/:token/code.png', ShowInviteCodeController);
