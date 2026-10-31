@@ -254,17 +254,25 @@ export default defineRoutes((Route) => {
 
   events.authorize(everyone).bind('event', PublicEvents, { public: true }).get('/:event', ShowEventController);
 
-  const open = describeAccess((ctx) => {
-    if (!isOpen(ctx.params.event)) abort(404);
-    return true;
-  }, 'open event');
-  events.middleware(throttle('registrations')).authorize(open).bind('event', PublicEvents).post('/:event/register', RegisterController);
+  events
+    .middleware(throttle('registrations'))
+    .bind('event', PublicEvents)
+    .authorize(
+      describeAccess((ctx) => {
+        if (!isOpen(ctx.params.event)) abort(404);
+        return true;
+      }, 'open event'),
+    )
+    .post('/:event/register', RegisterController);
 });
 ```
 
-`marmeon route:list` shows `open event` in the `ACCESS` column of the `POST`. The check only decides what you write in it, so
-look at the event's state there, and answer a closed or unknown event with the same 404. The limiter is defined in a provider's
-`boot()` ([defining limiters](rate-limiting.md#defining-limiters)).
+`marmeon route:list` shows `open event` in the `ACCESS` column of the `POST`. `describeAccess()` only names the check; the
+function is all that guards the `POST`, so it reads the event's state, and a closed or unknown event gets the same 404.
+
+A limit without `.by()` is one counter for the whole app, so one script could close registration for everyone. Count it per
+client in a provider's `boot()`, as in [defining limiters](rate-limiting.md#defining-limiters):
+`limiter.for('registrations', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)))`.
 
 ### Records nobody owns
 
