@@ -141,8 +141,8 @@ export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
 }[keyof F & string];
 // FieldPath
-export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends 5 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${FieldPath<Item, [...Depth, 0]>}` : {
-    [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, 0]> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen>], Seen>}` : {
+    [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
 }[keyof F & string];
 // FileInput
 export declare function FileInput({ field, onChange, ...attributes }: FileInputProps): import("react").JSX.Element;
@@ -846,6 +846,8 @@ type SensitiveFormField<F> = keyof {
 } & string;
 // SensitiveKey
 type SensitiveKey<K extends string> = IsPassword<K> extends true ? RememberKey<K> : K;
+// Step
+type Step<T, Seen> = [NonNullable<T>] extends [Seen] ? [0, 0, 0] : [0];
 // SubmitArgs
 type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends ActionSubmitOptions<N, RequiresParams> ? [options?: ActionSubmitOptions<N, RequiresParams>] : [options: ActionSubmitOptions<N, RequiresParams>];
 // ViewAction

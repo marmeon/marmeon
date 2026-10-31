@@ -46,17 +46,25 @@ type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 
 type Primitive = string | number | boolean | bigint | symbol | null | undefined | Date | Blob;
 
+/** How many levels entering `T` costs: one, or three when `T` is a type the path already went through (a record that refers to itself). */
+type Step<T, Seen> = [NonNullable<T>] extends [Seen] ? [0, 0, 0] : [0];
+
 /**
- * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Five levels
- * deep at most.
+ * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Eight levels
+ * deep at most: every name or index between the dots counts one level. A record that refers to itself (`parent`,
+ * `children`) costs three levels each time the path enters it again, so it is typed about two to three steps into itself.
+ * A deeper path is not known to the compiler: type the key `as never`, `form.errors[path as never]`.
+ * See docs/forms.md#errors-at-nested-and-dynamic-fields.
  */
-export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends 5
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10
   ? never
   : F extends Primitive
     ? never
     : F extends readonly (infer Item)[]
-      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, 0]>}`
-      : { [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, 0]> extends infer Deeper extends string ? `${K}.${Deeper}` : never) }[keyof F & string];
+      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen>], Seen>}`
+      : {
+          [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+        }[keyof F & string];
 
 /** What a remembered form may not keep — in `remember.include`, the message for a password field. */
 export type PasswordNeverRemembered = 'password fields are never remembered — they stay in the field until the page is left';
