@@ -420,7 +420,7 @@ describe('Router.accessProblems()', () => {
   it('names a check of its own for a write under a public parent', () => {
     const problems = problemsOf((Route) => Route.authorize(everyone).bind('event', NoteBinder, { public: true }).post('/events/:event/register', NoteController));
     expect(problems).toMatchObject([{ kind: 'open-binding', write: true }]);
-    expect(formatAccessProblems(problems)).toContain("(…, 'open event') for a write under a public parent that the check finds open");
+    expect(formatAccessProblems(problems)).toContain("Route.authorize(describeAccess((ctx) => …, 'open event')) for a write under a public parent that the check finds open");
   });
 
   it('recognises everyone by its brand, from another copy of the package', () => {

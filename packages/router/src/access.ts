@@ -132,7 +132,7 @@ export function formatAccessProblems(problems: readonly AccessProblem[], { path 
       '  - check access with a policy: Route.authorize(can(Policy, …))',
       "  - scope the binding to its parent: bind('child', Binder, { scopedBy: 'parent' })",
       "  - say that every record is public, on a route that only reads: bind('param', Binder, { public: true })",
-      "  - decide with a check of your own: Route.authorize(describeAccess((ctx) => …, 'invitation link')) for a token in its path, or (…, 'open event') for a write under a public parent that the check finds open",
+      "  - decide with a check of your own: Route.authorize(describeAccess((ctx) => …, 'invitation link')) for a token in its path, or Route.authorize(describeAccess((ctx) => …, 'open event')) for a write under a public parent that the check finds open",
     );
   }
   parts.push('See docs/authorization.md#every-route-decides.');
