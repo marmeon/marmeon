@@ -106,10 +106,13 @@ top of `styles/app.css`, and [With a utility framework](styling.md#with-a-utilit
 
 `bootstrap/client.tsx` imports `styles/app.css` first, because the first stylesheet names the layer order, then the framework's
 stylesheet, and `make:auth` adds `auth.css` after it. The module's rules use the tokens with a fallback, so `auth.css` also works
-in an app that has a stylesheet of its own; your own rules without a layer beat the module's, so put element rules in a layer
-before `kit`.
+in an app that has a stylesheet of its own; your own rules without a layer beat the module's, even its
+class rules, and so does a rule in a layer after `kit`. To change how plain elements look while the kit's classes still win,
+edit the element rules in `styles/app.css`, which stand in `@layer kit`, or add yours inside `@layer kit { … }` after them.
+Put a reset in `base` or another layer before `marmeon`.
 
-A kit app from an earlier release: put `@layer base, marmeon, kit;` at the top of `styles/app.css`, wrap the rest of it and
+A kit app from an earlier release: put `@layer base, marmeon, kit;` at the top of `styles/app.css` and keep the font `@import`
+right below it, outside any block: an `@import` inside a block is invalid and dropped silently. Wrap the rest of the file and
 `modules/auth/auth.css` in `@layer kit { … }`, and import `app.css` before `@marmeon/react/styles.css`. Do this before
 `make:auth --force`, which writes `auth.css` in the layer.
 

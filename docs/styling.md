@@ -197,8 +197,10 @@ beat the framework's look and the starter kit's when their layers stand after `m
    stylesheet that names a layer.
 
 CSS without a layer beats every utility, whatever its specificity: a `* { margin: 0 }`, an element rule such as `a { color: … }`,
-or a stylesheet imported without `layer()`. Put such rules in a layer that stands before `utilities`, for instance
-`@import './elements.css' layer(components);`, or give them a layer in the file with `@layer components { … }`.
+or a stylesheet imported without `layer()`. Put a reset in `base`, before `marmeon`. Put element rules in a layer that stands
+after `kit` and before `utilities`, for instance `@import './elements.css' layer(components);`, or give them a layer in the file
+with `@layer components { … }`. In an app with the starter kit, such rules also beat the kit's class rules: see
+[the starter kit](starter-kit.md#the-look) for where element rules go.
 
 ## Styling state
 

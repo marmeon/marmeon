@@ -3,8 +3,8 @@
  * a `style` attribute in the server's markup is what a strict `style-src` blocks. Yours to change.
  * The tokens (`--color-*`, `--space-*`, `--radius-*`, `--shadow-*`) come from styles/app.css of the starter kit; every use here has a
  * fallback, so the module also looks right in an app that has its own stylesheet instead.
- * Everything stands in the cascade layer `kit`: after the framework's `marmeon`, below your own CSS without a layer, which beats it:
- * put element rules of your own in a layer before `kit`.
+ * Everything stands in the cascade layer `kit`: after the framework's `marmeon`, below your own CSS without a layer, which beats it.
+ * Change element rules in styles/app.css, inside `kit`: a layer after `kit` beats its class rules too. A reset goes in `base`.
  */
 
 @layer kit {
