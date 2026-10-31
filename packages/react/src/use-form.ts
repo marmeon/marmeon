@@ -60,18 +60,21 @@ type Step<T, Seen, Depth extends unknown[]> = Depth['length'] extends 0 | 1 | 2 
  * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Eight levels
  * deep at most: every name or index between the dots counts one level. A record that refers to itself (`parent`,
  * `children`) is typed like any other data for five levels; past the fifth, each step back into it counts three levels, so
- * `children.0.children.0.children.0` compiles and a name after it does not. A deeper path is not known to the compiler: type
- * the key `as never`, `form.errors[path as never]`. See docs/forms.md#errors-at-nested-and-dynamic-fields.
+ * `children.0.children.0.children.0` compiles and a name after it does not. A deeper path is not known to the compiler: read
+ * the errors as plain strings, `(form.errors as Partial<Record<string, string>>)[path]`. See docs/forms.md#errors-at-nested-and-dynamic-fields.
  */
 export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10
   ? never
   : F extends Primitive
     ? never
     : F extends readonly (infer Item)[]
-      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen, Depth>], Seen>}`
+      ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}`
       : {
-          [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F, Depth>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+          [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
         }[keyof F & string];
+
+/** The paths into a field's type, each branch of a union paying its own step (a `Node | { leaf: string }` re-enters `Node` like a plain `Node`). */
+type Enter<T, Seen, Depth extends unknown[]> = T extends unknown ? FieldPath<T, [...Depth, ...Step<T, Seen, Depth>], Seen> : never;
 
 /** What a remembered form may not keep — in `remember.include`, the message for a password field. */
 export type PasswordNeverRemembered = 'password fields are never remembered — they stay in the field until the page is left';

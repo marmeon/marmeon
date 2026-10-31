@@ -77,8 +77,8 @@ export function deepest(state: FormState<Levels>) {
   state.clearErrors('a.b.c.d.e.f.g.h');
   // @ts-expect-error — the ninth level is past the limit
   state.clearErrors('a.b.c.d.e.f.g.h.i');
-  // A deeper path is read as a string key.
-  found.push(state.errors['a.b.c.d.e.f.g.h.i' as never]);
+  // A deeper path is read through the errors as plain strings.
+  found.push((state.errors as Partial<Record<string, string>>)['a.b.c.d.e.f.g.h.i']);
   return found;
 }
 
@@ -135,4 +135,24 @@ export function throughOptionals(a: FormState<Optional>, b: FormState<Weak>, c: 
     b.errors['profile.bio.x.y.name'],
     c.errors['next.next.next.next.next.next.next.name'],
   ];
+}
+
+interface UNode {
+  name: string;
+  next: UNode | { leaf: string };
+}
+
+/** A recursive type in a union with a plain branch still pays the re-entry cost. */
+export function unionNode(state: FormState<UNode>) {
+  state.clearErrors('next.name', 'next.next.next.name', 'next.next.next.next.next.name');
+  // @ts-expect-error — past the fifth level each step back into the record counts three
+  state.clearErrors('next.next.next.next.next.next.name');
+  return [state.errors['next.leaf'], state.errors['next.next.next.next.next.next.leaf']];
+}
+
+export function widened(state: FormState<Levels>, path: string) {
+  const wide: string | undefined = (state.errors as Partial<Record<string, string>>)[path];
+  // @ts-expect-error — the widened lookup may be missing
+  const sure: string = (state.errors as Partial<Record<string, string>>)[path];
+  return [wide, sure];
 }

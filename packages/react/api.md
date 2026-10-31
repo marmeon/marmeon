@@ -141,8 +141,8 @@ export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
 }[keyof F & string];
 // FieldPath
-export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${FieldPath<Item, [...Depth, ...Step<Item, Seen, Depth>], Seen>}` : {
-    [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, ...Step<F[K], Seen | F, Depth>], Seen | F> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}` : {
+    [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
 }[keyof F & string];
 // FileInput
 export declare function FileInput({ field, onChange, ...attributes }: FileInputProps): import("react").JSX.Element;
@@ -672,6 +672,8 @@ type DataOption<N extends string> = [ActionBodyOf<N>] extends [never] ? {
 } : {
     data: BooleanFields<ActionBodyOf<N>>;
 };
+// Enter
+type Enter<T, Seen, Depth extends unknown[]> = T extends unknown ? FieldPath<T, [...Depth, ...Step<T, Seen, Depth>], Seen> : never;
 // ErrorKey
 type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 // Field
