@@ -664,6 +664,8 @@ type ArrayShape<F extends readonly unknown[]> = number extends F['length'] ? 'it
 type BooleanRuleInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
 // ButtonAttributes
 type ButtonAttributes = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'>;
+// ByLiterals
+type ByLiterals<V, O> = [LiteralKeys<V>] extends [never] ? Extract<O, Partial<V>> : Extract<O, Partial<Pick<V, LiteralKeys<V>>>>;
 // CheckFormRoute
 type CheckFormRoute<N extends string> = CheckBrowserRouteName<N> extends N ? N extends keyof Routes ? [RouteFormOf<N>] extends [never] ? `'${N}' has no request schema to type a form with — give its controller \`static request = defineRequest(…)\`` : N : N : CheckBrowserRouteName<N>;
 // CheckQueryRoute
@@ -773,8 +775,16 @@ interface LinkOptions {
     confirm?: Confirm;
     viewTransition?: ViewTransitionOption;
 }
+// LiteralKeys
+type LiteralKeys<V> = {
+    [K in keyof V]-?: [Exclude<V[K], undefined>] extends [never] ? never : [Exclude<V[K], undefined>] extends [string | number | boolean] ? string extends Exclude<V[K], undefined> ? never : number extends Exclude<V[K], undefined> ? never : boolean extends Exclude<V[K], undefined> ? never : K : never;
+}[keyof V];
+// MemberFields
+type MemberFields<In, Out> = {
+    [K in keyof WithDefaults<In, Out>]: PairedValue<WithDefaults<In, Out>[K], K extends keyof Out ? Out[K] : never, K extends keyof In ? TakesMissing<In[K]> : false>;
+};
 // MemberOf
-type MemberOf<V, O> = [Extract<O, Partial<V>>] extends [never] ? O : Extract<O, Partial<V>>;
+type MemberOf<V, O> = [ByLiterals<V, O>] extends [never] ? O : ByLiterals<V, O>;
 // MethodProps
 type MethodProps<N extends string> = [MethodOf<N>] extends ['get'] ? AnchorAttributes & PrefetchProps & CurrentProps & {
     method?: 'get';
@@ -803,7 +813,7 @@ type PageModules = Record<string, () => Promise<unknown>>;
 // PairedValue
 type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput | NumberRuleInput] ? FormValue<V, true, Missing> : V extends Primitive | Upload | ((...args: never) => unknown) ? V : V extends readonly unknown[] ? {
     [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly (infer Item)[] ? Item : never>;
-} : SchemaFields<V, MemberOf<V, NonNullable<O>>>;
+} : SchemaFields<V, NonNullable<O>>;
 // ParamsMissing
 type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
 // ParamsOption
@@ -879,9 +889,7 @@ type RouteLinkProps<N extends string> = LinkOptions & PartialReloadOptions<Insta
     href?: never;
 } & ParamsProp<N> & MethodProps<N>;
 // SchemaFields
-type SchemaFields<In, Out> = {
-    [K in keyof WithDefaults<In, Out>]: PairedValue<WithDefaults<In, Out>[K], K extends keyof Out ? Out[K] : never, K extends keyof In ? TakesMissing<In[K]> : false>;
-};
+type SchemaFields<In, Out> = In extends unknown ? MemberFields<In, MemberOf<In, Out>> : never;
 // SensitiveFormField
 type SensitiveFormField<F> = keyof {
     [K in keyof F & string as LooksLikePassword<K> extends true ? never : LooksSensitive<K> extends true ? K : never]: true;

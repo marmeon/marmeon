@@ -57,10 +57,34 @@ type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown exte
         ? V
         : V extends readonly unknown[]
           ? { [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly (infer Item)[] ? Item : never> }
-          : SchemaFields<V, MemberOf<V, NonNullable<O>>>;
+          : SchemaFields<V, NonNullable<O>>;
 
-/** The member of a union output that a member `V` of the input belongs to (all of `O` when none is recognised). */
-type MemberOf<V, O> = [Extract<O, Partial<V>>] extends [never] ? O : Extract<O, Partial<V>>;
+/**
+ * The keys of `V` whose type is a literal or a set of literals (`r.literal()`, `r.picklist()`), also optional — what tells the
+ * members of a union apart. A discriminator that a rule transforms, or two members with the same value, match several output
+ * members: the variant's defaulted fields then stay optional.
+ */
+type LiteralKeys<V> = {
+  [K in keyof V]-?: [Exclude<V[K], undefined>] extends [never]
+    ? never
+    : [Exclude<V[K], undefined>] extends [string | number | boolean]
+      ? string extends Exclude<V[K], undefined>
+        ? never
+        : number extends Exclude<V[K], undefined>
+          ? never
+          : boolean extends Exclude<V[K], undefined>
+            ? never
+            : K
+      : never;
+}[keyof V];
+
+type ByLiterals<V, O> = [LiteralKeys<V>] extends [never] ? Extract<O, Partial<V>> : Extract<O, Partial<Pick<V, LiteralKeys<V>>>>;
+
+/**
+ * The member of a union output that a member `V` of the input belongs to, found by its literal keys, or by its fields when it has
+ * none (all of `O` when nothing matches).
+ */
+type MemberOf<V, O> = [ByLiterals<V, O>] extends [never] ? O : ByLiterals<V, O>;
 
 type Flatten<T> = { [K in keyof T]: T[K] };
 
@@ -68,7 +92,9 @@ type Flatten<T> = { [K in keyof T]: T[K] };
  * The fields of a schema in a form: a field the input leaves out (optional, `.default()`) but the output has is required;
  * the others are as the input has them. `In` and `Out` are the schema's input and output.
  */
-type SchemaFields<In, Out> = {
+type SchemaFields<In, Out> = In extends unknown ? MemberFields<In, MemberOf<In, Out>> : never;
+
+type MemberFields<In, Out> = {
   [K in keyof WithDefaults<In, Out>]: PairedValue<WithDefaults<In, Out>[K], K extends keyof Out ? Out[K] : never, K extends keyof In ? TakesMissing<In[K]> : false>;
 };
 

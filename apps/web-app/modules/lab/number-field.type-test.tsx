@@ -18,6 +18,65 @@ const Request = defineRequest({
   }),
 });
 
+const Transformed = defineRequest({
+  schema: r.object({
+    contact: r.union([
+      r.object({ kind: r.literal('mail'), code: r.string().transform((value) => Number(value)), copies: r.integer().default(1) }),
+      r.object({ kind: r.literal('post'), street: r.string() }),
+    ]),
+  }),
+});
+
+const RootUnion = defineRequest({
+  schema: r.union([
+    r.object({ kind: r.literal('mail'), address: r.string(), copies: r.integer().default(1) }),
+    r.object({ kind: r.literal('post'), street: r.string() }),
+  ]),
+});
+
+const Tagged = defineRequest({
+  schema: r.union([
+    r.object({ kind: r.literal('mail').default('mail'), copies: r.integer().default(1) }),
+    r.object({ kind: r.literal('post'), street: r.string() }),
+  ]),
+});
+
+const Untagged = defineRequest({
+  schema: r.union([r.object({ a: r.string() }), r.object({ b: r.integer().default(1) })]),
+});
+
+class TaggedForm extends LabController {
+  static request = Tagged;
+
+  handle(_ctx: ContextOf<typeof Tagged>) {
+    return this.redirect('/lab');
+  }
+}
+
+class UntaggedForm extends LabController {
+  static request = Untagged;
+
+  handle(_ctx: ContextOf<typeof Untagged>) {
+    return this.redirect('/lab');
+  }
+}
+
+class Transforms extends LabController {
+  static request = Transformed;
+
+  handle(_ctx: ContextOf<typeof Transformed>) {
+    return this.redirect('/lab');
+  }
+}
+
+class Variants extends LabController {
+  static request = RootUnion;
+
+  handle(_ctx: ContextOf<typeof RootUnion>) {
+    return this.redirect('/lab');
+  }
+}
+
 class Resources extends LabController {
   static request = Request;
 
@@ -80,4 +139,24 @@ export function initial() {
   // @ts-expect-error — a numeric string is not a number
   useForm<Resources>({ count: '1', ratio: 1, resource_ids: [], flag: false, settings: { limit: 10, label: '' }, contact: { kind: 'post', street: '' }, rows: [] });
   return full;
+}
+
+export function unions(
+  transformed: FormHandle<Transforms>,
+  root: FormHandle<Variants>,
+  copies: Equal<Extract<typeof transformed.data.contact, { kind: 'mail' }>['copies'], number | ''>,
+  code: Equal<Extract<typeof transformed.data.contact, { kind: 'mail' }>['code'], string>,
+  rootCopies: Equal<Extract<typeof root.data, { kind: 'mail' }>['copies'], number | ''>,
+  street: Equal<Extract<typeof root.data, { kind: 'post' }>['street'], string>,
+  withTag: FormHandle<TaggedForm>,
+  withoutTag: FormHandle<UntaggedForm>,
+  tagged: Equal<Extract<typeof withTag.data, { copies: unknown }>['copies'], number | ''>,
+  untagged: Equal<Extract<typeof withoutTag.data, { b: unknown }>['b'], number | ''>,
+) {
+  const checked: true[] = [copies, code, rootCopies, street, tagged, untagged];
+  // @ts-expect-error — the variant's `copies` is present in the form, so it belongs in `initial`
+  useForm<Variants>({ kind: 'mail', address: '' });
+  useForm<Variants>({ kind: 'mail', address: '', copies: 1 });
+  useForm<Variants>({ kind: 'post', street: '' });
+  return checked;
 }
