@@ -1,4 +1,4 @@
-import { formatParts, LocaleFormats, MessageSyntaxError, parseMessage, type Part } from './format.ts';
+import { dayOptions, formatParts, LocaleFormats, MessageSyntaxError, parseMessage, type Part } from './format.ts';
 import { baseLanguage } from './locale.ts';
 import type { Translate } from './messages.ts';
 
@@ -6,7 +6,11 @@ import type { Translate } from './messages.ts';
 export interface Formatter {
   readonly locale: string;
   number(value: number | bigint, options?: Intl.NumberFormatOptions): string;
-  /** A date or time: a `Date`, a timestamp or an ISO string (what a `Date` prop is in the browser). */
+  /**
+   * A date or time: a `Date`, a timestamp or an ISO string (what a `Date` prop is in the browser). A calendar day
+   * (`2026-10-14`, what a `date` column reads back as) is shown as that day in every zone; see
+   * [Time](docs/time.md#a-calendar-day).
+   */
   date(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string;
   relativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions): string;
   /**
@@ -34,7 +38,7 @@ function createFormatter(formats: LocaleFormats): Formatter {
   return {
     locale: formats.locale,
     number: (value, options) => formats.number(options).format(value),
-    date: (value, options = { dateStyle: 'medium' }) => formats.date(options).format(new Date(time(value))),
+    date: (value, options = { dateStyle: 'medium' }) => formats.date(dayOptions(value, options)).format(new Date(time(value))),
     relativeTime: (value, unit, options) => formats.relative(options).format(value, unit),
     relative(date, now, options = { numeric: 'auto' }) {
       const seconds = (time(date) - time(now)) / 1000;

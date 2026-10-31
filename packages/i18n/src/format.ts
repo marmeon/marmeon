@@ -173,6 +173,16 @@ function cached<T>(cache: Map<string, T>, options: object, create: () => T): T {
 
 const STYLES = new Set(['short', 'medium', 'long', 'full']);
 
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A calendar day (`2026-10-14`) parses as UTC midnight, so it is shown in UTC: the same day in every zone, on the server and
+ * in the browser. An explicit `timeZone` wins.
+ */
+export function dayOptions(value: unknown, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
+  return typeof value === 'string' && CALENDAR_DAY.test(value) && options.timeZone === undefined ? { ...options, timeZone: 'UTC' } : options;
+}
+
 function toDate(value: unknown): Date | undefined {
   const date = value instanceof Date ? value : typeof value === 'number' || typeof value === 'string' ? new Date(value) : undefined;
   return date && !Number.isNaN(date.getTime()) ? date : undefined;
@@ -214,7 +224,8 @@ export function formatParts(parts: readonly Part[], params: Readonly<Record<stri
       case 'time': {
         const date = toDate(value);
         const style = (STYLES.has(part.style) ? part.style : 'medium') as 'short' | 'medium' | 'long' | 'full';
-        out += date ? formats.date(part.kind === 'date' ? { dateStyle: style } : { timeStyle: style }).format(date) : String(value);
+        const options = dayOptions(value, part.kind === 'date' ? { dateStyle: style } : { timeStyle: style });
+        out += date ? formats.date(options).format(date) : String(value);
         break;
       }
       case 'plural':
