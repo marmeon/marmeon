@@ -204,6 +204,36 @@ ends.custom(never, { field: 'end_at' });
 r.string().custom(never, { field: 'x' });
 // @ts-expect-error — the other rules take a message, not options
 r.string().custom(never, { message: 'x' });
+// A later condition sees the fields of the earlier blocks, optional; a field no block has stays an error.
+r.object({ kind: r.in(['a', 'b']) })
+  .when((data) => data.kind === 'b', { mid: r.in(['yes', 'no']) })
+  .when((data) => {
+    const mid: 'yes' | 'no' | undefined = data.mid;
+    // @ts-expect-error — an earlier block's field may be absent
+    const sure: 'yes' | 'no' = data.mid;
+    void sure;
+    // @ts-expect-error — no block has this field
+    data.nothing;
+    return mid === 'yes';
+  }, { last: r.string() });
+
+// A block that repeats a base key does not narrow it for the next condition: the block may have been skipped.
+r.object({ kind: r.in(['a', 'b']) })
+  .when((data) => data.kind === 'b', { kind: r.literal('b'), extra: r.string() })
+  .when((data) => data.kind === 'a' && data.extra === undefined, { last: r.string() });
+
+// A block that repeats a base key may replace its value: the output and the next condition see either type.
+const replaced = r.object({ n: r.string() }).when((d) => d.n === '5', { n: r.number() });
+same<NonNullable<(typeof replaced)['~standard']['types']>['output'], { n: string | number }>(true);
+same<NonNullable<(typeof replaced)['~standard']['types']>['input'], { n: string }>(true);
+replaced.when((d) => {
+  const n: string | number = d.n;
+  return n === 5;
+}, { m: r.string() });
+// Two blocks that share a field: it is optional and either type.
+const twice = r.object({ k: r.string() }).when((d) => d.k === 'a', { x: r.literal('a') }).when((d) => d.k === 'b', { x: r.literal('b') });
+same<NonNullable<(typeof twice)['~standard']['types']>['output'], { k: string; x?: 'a' | 'b' | undefined }>(true);
+
 // @ts-expect-error — a field of when() is not there before .when()
 ends.custom(never, { field: 'vat' });
 r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(never, { field: 'vat' }); // fine
