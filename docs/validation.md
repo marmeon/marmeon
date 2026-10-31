@@ -137,6 +137,8 @@ A form sends every field as a string, an empty one as `''`. A JSON client sends 
 arrive as `''`, neither as missing, which would keep the old subtitle, nor as an error. So the rules decide by type. Where `''` can
 be a value of the rule, it is one. Where it never can, it is a form's empty field and counts as missing.
 
+In a form, a number rule's field holds `''` for an empty input where it may be missing; [Forms](forms.md#fields-and-errors) shows the input.
+
 | Rule | `''` with `optional()`, `nullable()` or `default(v)` | `''` without a modifier |
 | --- | --- | --- |
 | `r.string()` with `trim()`, `lowercase()`, `max()`, `custom()`, `transform()` | `''`, a value | `''` |

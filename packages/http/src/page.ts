@@ -40,6 +40,7 @@ export type {
   CheckRouteName,
   ControllerOf,
   FormOf,
+  FormOutputOf,
   IslandRouteName,
   LayerBaseName,
   LayerRouteName,

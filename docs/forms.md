@@ -76,6 +76,22 @@ export class UpdateNoteController extends Controller {
 
 A route whose controller has no request schema cannot type a form, and `useForm()` says so.
 
+A field whose rule is a number rule (`r.integer()`, `r.number()`, `r.port()`) holds a `number` in the form, also inside an object or a
+list. An empty input is `''`, or `null` where the field is nullable, and the server reads both as missing. A number input
+therefore reads and writes the field like this:
+
+```tsx
+<input
+  type="number"
+  value={form.data.capacity}
+  onChange={(event) => form.set('capacity', event.target.value === '' ? '' : event.target.valueAsNumber)}
+/>
+```
+
+A required number has no empty state: the compiler refuses `''` for it. A field with `.default()` is always there in the form,
+so `form.data.resource_ids` is a `number[]` without a `?? []`, and the field belongs in `initial`. The data of `useAction()`
+stays as the request takes it, since an action has no first values.
+
 A field whose rule is `r.boolean()` or `r.accepted()` holds a `boolean` in the form, also inside an object or a list, so a checkbox needs no cast:
 `checked={form.data.agree}` and `onChange={(event) => form.set('agree', event.target.checked)}`. The form sends `true` or
 `false`; the rules also take what a browser posts without JavaScript (`'on'` for a ticked box, a hidden `'0'` or `'1'`), see

@@ -1,6 +1,6 @@
 import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { resolveRoute, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, Routes, SensitiveNeverLive, Upload } from '@marmeon/http/page';
+import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, FormOutputOf, Routes, SensitiveNeverLive, Upload } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
@@ -13,12 +13,20 @@ import { useGuard } from './state.ts';
  */
 type BooleanRuleInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
 
+/** What the number rules take (`r.integer()`, `r.number()`, …), spelled out like {@link BooleanRuleInput}. */
+type NumberRuleInput = number | `${number}`;
+
+/** Whether an input type takes a missing value — optional, `null` or defaulted — which a form leaves empty as `''`. */
+type TakesMissing<V> = undefined extends V ? true : null extends V ? true : false;
+
 /**
- * A field whose input is exactly what `r.boolean()` takes holds a `boolean` in the form (a checkbox gives one); `undefined` and
- * `null` stay. Equality by assignability both ways, so a field that takes only some of those inputs keeps its type. Objects
- * and lists are searched too; dates, files, uploads and functions are left alone.
+ * A field whose input is exactly what `r.boolean()` takes holds a `boolean` in the form (a checkbox gives one); one whose
+ * input is exactly what a number rule takes holds a `number`, and `''` where the field may be missing (an empty input).
+ * `undefined` and `null` stay. Equality by assignability both ways, so a field that takes only some of those inputs keeps
+ * its type. Objects and lists are searched too; dates, files, uploads and functions are left alone. `Numbers` off leaves
+ * the number fields as they are (an action's body is sent as it is typed).
  */
-type FormValue<V> = unknown extends V
+type FormValue<V, Numbers extends boolean = true, Missing extends boolean = TakesMissing<V>> = unknown extends V
   ? V
   : [NonNullable<V>] extends [never]
     ? V
@@ -26,18 +34,60 @@ type FormValue<V> = unknown extends V
       ? [BooleanRuleInput] extends [NonNullable<V>]
         ? boolean | Extract<V, null | undefined>
         : V
+      : Numbers extends true
+        ? [NonNullable<V>] extends [NumberRuleInput]
+          ? [NumberRuleInput] extends [NonNullable<V>]
+            ? number | Extract<V, null | undefined> | (Missing extends true ? '' : never)
+            : V
+          : FormValueInner<V, Numbers>
+        : FormValueInner<V, Numbers>;
+
+type FormValueInner<V, Numbers extends boolean> = V extends Primitive | Upload | ((...args: never) => unknown)
+  ? V
+  : { [K in keyof V]: FormValue<V[K], Numbers> };
+
+/** The same, with the output type beside the input: `V` is the input of a field, `O` what the server then holds. */
+type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown extends V
+  ? V
+  : [NonNullable<V>] extends [never]
+    ? V
+    : [NonNullable<V>] extends [BooleanRuleInput | NumberRuleInput]
+      ? FormValue<V, true, Missing>
       : V extends Primitive | Upload | ((...args: never) => unknown)
         ? V
-        : { [K in keyof V]: FormValue<V[K]> };
+        : V extends readonly unknown[]
+          ? { [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly (infer Item)[] ? Item : never> }
+          : SchemaFields<V, NonNullable<O>>;
+
+type Flatten<T> = { [K in keyof T]: T[K] };
+
+/**
+ * The fields of a schema in a form: a field the input leaves out (optional, `.default()`) but the output has is required;
+ * the others are as the input has them. `In` and `Out` are the schema's input and output.
+ */
+type SchemaFields<In, Out> = {
+  [K in keyof WithDefaults<In, Out>]: PairedValue<WithDefaults<In, Out>[K], K extends keyof Out ? Out[K] : never, K extends keyof In ? TakesMissing<In[K]> : false>;
+};
+
+/** `In` with every defaulted field required. */
+type WithDefaults<In, Out> = Flatten<In & { [K in DefaultedKeys<In, Out>]-?: Exclude<In[K], undefined> }>;
+
+/** The keys the input leaves out (optional) and the output has — a `.default()`. */
+type DefaultedKeys<In, Out> = {
+  [K in keyof In & keyof Out]-?: {} extends Pick<In, K> ? ({} extends Pick<Out, K> ? never : K) : never;
+}[keyof In & keyof Out];
 
 /**
  * The data of a form: the controller's schema input (`useForm<UpdateUserProfileController>`), with a boolean rule's field as
- * `boolean`, or given directly.
+ * `boolean`, a number rule's as `number` and a defaulted field as present, or given directly.
  */
-type FormFields<T> = [FormOf<T>] extends [never] ? T : BooleanFields<FormOf<T>>;
+type FormFields<T> = [FormOf<T>] extends [never] ? T : SchemaFields<FormOf<T>, FormOutputOf<T>>;
 
-/** `F` with every boolean rule's field typed `boolean`. */
+/** `F` with every boolean rule's field typed `boolean` and every number rule's `number`. */
 export type BooleanFields<F> = { [K in keyof F]: FormValue<F[K]> };
+
+/** `F` with every boolean rule's field typed `boolean`, as an action sends it. */
+export type ActionFields<F> = { [K in keyof F]: FormValue<F[K], false> };
 
 type Field<F> = keyof F & string;
 
@@ -252,8 +302,10 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
 
 type RouteFormOf<N extends string> = FormOf<Instance<ControllerOf<N>>>;
 
+type RouteFormOutputOf<N extends string> = FormOutputOf<Instance<ControllerOf<N>>>;
+
 /** The fields of route `N`: its controller's request schema input. */
-export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : BooleanFields<RouteFormOf<N>>;
+export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : SchemaFields<RouteFormOf<N>, RouteFormOutputOf<N>>;
 
 /** A browser route whose controller has a request schema — the form's fields come from it. (Any name while no routes are generated.) */
 type CheckFormRoute<N extends string> =

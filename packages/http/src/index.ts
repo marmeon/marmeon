@@ -67,6 +67,7 @@ export type {
   CookieOptions,
   EmptyObject,
   FormOf,
+  FormOutputOf,
   HttpContext,
   Input,
   Middleware,

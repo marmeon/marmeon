@@ -38,7 +38,7 @@ export function booleans(
   agree: Equal<typeof form.data.agree, boolean>,
   news: Equal<typeof form.data.news, boolean | undefined>,
   beta: Equal<typeof form.data.beta, boolean | null>,
-  flag: Equal<typeof form.data.flag, boolean | undefined>,
+  flag: Equal<typeof form.data.flag, boolean>,
   terms: Equal<typeof form.data.terms, boolean>,
   coming: Equal<typeof guest.data.coming, boolean>,
   partAgree: Equal<typeof part.data.agree, boolean>,
@@ -77,7 +77,7 @@ export function actions() {
   void save.submit({ data: { email: 'ada@example.test', password: 'x', remember: 'on' } });
 }
 
-export function route(fields: RouteFormFields<'auth.login.store'>, remember: Equal<typeof fields.remember, boolean | undefined>) {
+export function route(fields: RouteFormFields<'auth.login.store'>, remember: Equal<typeof fields.remember, boolean>) {
   const checked: true = remember;
   return checked;
 }
