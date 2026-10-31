@@ -164,7 +164,12 @@ describe('the devtools pages: only where the devtools run', () => {
         expect(response.status, path).toBeLessThan(500);
         expect(response.headers.get('set-cookie'), path).toBeNull();
         expect(response.headers.get('cache-control'), path).toBe('no-store');
-        expect(response.headers.get('content-security-policy'), path).toContain("frame-ancestors 'self'");
+        // A page has its own policy; every other answer is framed only by this origin through X-Frame-Options.
+        if (response.headers.get('content-type')?.startsWith('text/html')) expect(response.headers.get('content-security-policy'), path).toContain("frame-ancestors 'self'");
+        else {
+          expect(response.headers.get('content-security-policy'), path).toBeNull();
+          expect(response.headers.get('x-frame-options'), path).toBe('SAMEORIGIN');
+        }
         expect([...response.headers.keys()].filter((name) => name.startsWith('access-control-')), path).toEqual([]);
         // Nothing but GET (and HEAD) reaches a handler — a write never does.
         for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {

@@ -48,15 +48,31 @@ describe('the guard of every development route', () => {
     expect(await answered.text()).toBe('hello /_marmeon/mail');
     expect(ran).toBe(1);
     for (const response of [refused, answered]) {
-      expect(Object.fromEntries(['cache-control', 'x-content-type-options', 'cross-origin-resource-policy', 'cross-origin-opener-policy', 'content-security-policy'].map((name) => [name, response.headers.get(name)]))).toEqual({
+      expect(Object.fromEntries(['cache-control', 'x-content-type-options', 'cross-origin-resource-policy', 'cross-origin-opener-policy'].map((name) => [name, response.headers.get(name)]))).toEqual({
         'cache-control': 'no-store',
         'x-content-type-options': 'nosniff',
         'cross-origin-resource-policy': 'same-origin',
         'cross-origin-opener-policy': 'same-origin',
-        'content-security-policy': "frame-ancestors 'self'",
       });
       expect(response.headers.get('access-control-allow-origin')).toBeNull();
     }
+    expect(refused.headers.get('content-security-policy')).toBe("frame-ancestors 'self'");
+  });
+
+  it('devOnly leaves a page without a policy to the global CSP middleware and frames it with X-Frame-Options', async () => {
+    const guard = devOnly(devHosts(undefined), (_ctx: { request: Request }, next: () => Promise<Response>) => next());
+    const answered = await guard({ request: request('localhost') }, () => Promise.resolve(new Response('<p>page</p>')));
+    expect(answered.headers.get('content-security-policy'), 'a policy here would make the global middleware skip the page').toBeNull();
+    expect(answered.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect((await devOnly(devHosts(undefined), () => new Response('x'))({ request: request('evil.example') })).headers.get('x-frame-options')).toBeNull();
+  });
+
+  it('devOnly keeps the X-Frame-Options a page sets, and frames a page whose own policy has no frame-ancestors', async () => {
+    const answer = (headers: Record<string, string>) => devOnly(devHosts(undefined), () => new Response('x', { headers }))({ request: request('localhost') });
+    expect((await answer({ 'x-frame-options': 'DENY' })).headers.get('x-frame-options')).toBe('DENY');
+    const sandboxed = await answer({ 'content-security-policy': 'sandbox' });
+    expect(sandboxed.headers.get('content-security-policy')).toBe('sandbox');
+    expect(sandboxed.headers.get('x-frame-options')).toBe('SAMEORIGIN');
   });
 
   it('devOnly as a middleware: `next` comes through, and a page keeps its own CSP', async () => {
@@ -85,6 +101,8 @@ describe('the guard of every development route', () => {
         const response = await handler({ request: request(host, 'https://shop.example/_dev/report') });
         expect(response.status, `${host} under NODE_ENV=${name}`).toBe(404);
         expect(response.headers.get('cache-control')).toBe('no-store');
+        expect(response.headers.get('content-security-policy'), host).toBe("frame-ancestors 'self'");
+        expect(response.headers.get('x-frame-options'), host).toBeNull();
       }
       expect(ran, 'a development route ran outside development').toBe(0);
     });

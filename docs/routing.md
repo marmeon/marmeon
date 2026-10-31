@@ -954,7 +954,9 @@ export default defineRoutes((Route) => {
 The guard asks on every request. Unless `NODE_ENV` is `development` or `test`, it answers 404, so the route stays shut on a
 staging or production server even though it is registered there. In development it answers only requests for the loopback
 names and the hosts you pass, and gives every other host a 403. Its answers are never cached and never shared with another
-origin.
+origin. A page that your route answers keeps its Content-Security-Policy, and a page without one is left to the
+[global policy](csp.md#which-responses-get-the-policy); the guard adds `X-Frame-Options: SAMEORIGIN` unless the answer has one, and a `frame-ancestors` in your policy takes precedence. Its own 403 and 404 carry
+`frame-ancestors 'self'`.
 
 The host check stops DNS rebinding. A page on another site can point its own domain at `127.0.0.1` and then read your
 development server as if it were its own. A request for a host the guard does not know never reaches the handler.

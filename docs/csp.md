@@ -147,6 +147,9 @@ policy of its own keeps it:
 - the mail previews,
 - a file served from a disk, which goes out with `sandbox`.
 
+The [`devOnly()`](routing.md#development-only-routes) guard of your own development routes is not one of them: a page behind it
+still gets the policy of `contentSecurityPolicy()`, and the guard adds `X-Frame-Options: SAMEORIGIN` unless the answer has one; a `frame-ancestors` in your policy takes precedence.
+
 ## Pages in a shared cache
 
 A nonce must be secret to work. A page that a CDN or another shared cache keeps, through `Cache-Control: public` or `s-maxage`,

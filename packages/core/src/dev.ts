@@ -54,14 +54,21 @@ const DEV_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * A development route's answer as it leaves: never cached, never sniffed, never framed by another origin (its own CSP, or
- * `frame-ancestors 'self'` when it has none), never shared with another origin (every CORS header is taken out).
+ * A development route's answer as it leaves: never cached, never sniffed, never shared with another origin (every CORS
+ * header is taken out), never framed by another origin. A page keeps the `Content-Security-Policy` it has, or the one the
+ * global middleware still adds after it, and gets `X-Frame-Options: SAMEORIGIN` unless it sets one. Only the guard's own refusals
+ * (`own`) carry `frame-ancestors 'self'` as a policy, since nothing decorates them.
  * @internal
  */
-export function devSecured(response: Response): Response {
+export function devSecured(response: Response, own = false): Response {
   const out = new Response(response.body, response);
   for (const [name, value] of Object.entries(DEV_HEADERS)) out.headers.set(name, value);
-  if (!out.headers.has('content-security-policy')) out.headers.set('content-security-policy', "frame-ancestors 'self'");
+  if (own) {
+    if (!out.headers.has('content-security-policy')) out.headers.set('content-security-policy', "frame-ancestors 'self'");
+  } else if (!out.headers.has('x-frame-options')) {
+    // Never a CSP here: a policy of the guard's would make the global middleware skip the page.
+    out.headers.set('x-frame-options', 'SAMEORIGIN');
+  }
   for (const name of [...out.headers.keys()]) if (name.startsWith('access-control-')) out.headers.delete(name);
   return out;
 }
@@ -73,6 +80,7 @@ function forbiddenDevHost(): Response {
       'Development routes answer only on localhost, 127.0.0.1, [::1] and the host of APP_URL (DNS rebinding). Open this page through one of them.\n',
       { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } },
     ),
+    true,
   );
 }
 
@@ -83,14 +91,14 @@ function devEnvironment(env: { readonly NODE_ENV?: string | undefined } = proces
 
 /** The answer of a development route outside development: as if there were none. */
 function notInDevelopment(): Response {
-  return devSecured(new Response('Not Found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } }));
+  return devSecured(new Response('Not Found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } }), true);
 }
 
 /**
  * Wraps a development route's handler — or a middleware's `handle` (its `next` comes through): outside development (`NODE_ENV`
  * neither `development` nor `test` — production, none, a value the start check let through) a 404, fail-closed; a request for a host outside `hosts`
  * gets 403; in both cases the handler never runs. Every answer gets {@link devSecured}'s headers (`no-store`, CORP/COOP
- * `same-origin`, `nosniff`, no CORS).
+ * `same-origin`, `nosniff`, no CORS); the handler's page keeps its policy, so a global `contentSecurityPolicy()` still applies.
  *
  * ```ts
  * Route.get('/_playground', devOnly(hosts, () => previews.index()));
