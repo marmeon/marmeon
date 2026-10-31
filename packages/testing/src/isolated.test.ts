@@ -141,7 +141,17 @@ describe.each(drivers)('a test app on its real pool on %s', (driver) => {
     it('closes under refresh while a page left a query running on the pinned connection', async () => {
       await open('refresh');
       expect((await app!.get('/leave-query')).status).toBe(200);
-      await setTimeout(50); // the query is running on the connection by now
+      const observer = second();
+      try {
+        // Close only once the server runs the query: before that, the rollback comes first and nothing is released late.
+        const running = () => sql<{ pid: number }>`select pid from pg_stat_activity where state = 'active' and query like 'select pg_sleep%'`.execute(observer.get());
+        for (let waited = 0; (await running()).rows.length === 0; waited += 10) {
+          if (waited > 2000) throw new Error('The query never started.');
+          await setTimeout(10);
+        }
+      } finally {
+        await observer.destroy();
+      }
       await expect(app!.close()).resolves.toBeUndefined();
       app = undefined;
     });
