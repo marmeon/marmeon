@@ -36,7 +36,8 @@ export class ScheduleWorker {
   /** Ticks until `signal` aborts; resolves then (without waiting for runs — see {@link drain}). */
   async run(options: { signal: AbortSignal; sleep?: Sleep; onTick?: (minute: number, runs: TaskRun[]) => void }): Promise<void> {
     const sleep = options.sleep ?? realSleep;
-    let last = Number.NEGATIVE_INFINITY;
+    // The minute of the start counts as ticked: a timer firing early must not tick it, or the next minute would be skipped.
+    let last = minuteOf(this.#clock.now());
     while (!options.signal.aborted) {
       const now = this.#clock.now();
       await sleep(minuteOf(now) + MINUTE - now, options.signal);

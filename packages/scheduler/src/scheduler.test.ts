@@ -321,6 +321,30 @@ describe('missed runs (catchUp)', () => {
     await app.shutdown();
   });
 
+  it('a timer that fires 1 ms early on the first pass does not tick the minute the loop started in', async () => {
+    const { scheduler, clock, app, log } = await boot(tasks);
+    clock.freeze(at('2026-10-05T09:59:30Z'));
+    const worker = new ScheduleWorker(scheduler, clock, log, app.container.make(Redactor));
+    const stop = new AbortController();
+    let sleeps = 0;
+    const ticks: number[] = [];
+    await worker.run({
+      signal: stop.signal,
+      sleep: async (ms) => {
+        sleeps++;
+        clock.travel({ milliseconds: sleeps === 1 ? ms - 1 : ms });
+        await Promise.resolve();
+      },
+      onTick: (minute) => {
+        ticks.push(minute);
+        if (ticks.length === 2) stop.abort();
+      },
+    });
+    await worker.drain(1);
+    expect(ticks.map((minute) => new Date(minute).toISOString().slice(11, 16))).toEqual(['10:00', '10:01']);
+    await app.shutdown();
+  });
+
   it('nothing to catch up on the first tick ever', async () => {
     const { schedule, app } = await boot(tasks);
     expect((await schedule.run('2026-10-05T10:10:00Z')).map((result) => result.task)).toEqual(['count']);
