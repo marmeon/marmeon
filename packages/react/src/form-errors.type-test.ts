@@ -111,7 +111,7 @@ interface Category {
 
 /** Three references to the record itself stay cheap: this compiles without TS2589. */
 export function category(state: FormState<Category>) {
-  state.clearErrors('parent.name', 'sibling.sibling', 'children.0.e', 'parent.parent.parent.name', 'sibling.parent.children.0.b');
+  state.clearErrors('parent.name', 'sibling.sibling', 'children.0.e', 'parent.parent.parent.name', 'parent.parent.parent.parent.name', 'sibling.parent.children.0.b');
   // @ts-expect-error — a typo inside the recursion
   state.clearErrors('children.0.sibling.nam');
   return [state.errors['children.0.name'], state.errors['parent.parent'], state.errors['sibling.children.0']];
