@@ -230,9 +230,49 @@ would hand out every note to whoever guesses an id. The route fails to start unl
 - the route's credential is a token in its path, and a check of your own decides: `Route.authorize(describeAccess((ctx) => …, 'invitation link'))`
   (see [a link that is used once](urls.md#a-link-that-is-used-once)). The alternative is to pass the token unbound and look its row up in the controller
   ([Results](errors.md#results)).
+- the route changes data under a parent that is public, and a check of your own finds the parent open (next section).
 
 `marmeon route:list` shows each route that binds a record as public, as `everyone (public: user)` in the `ACCESS` column and
 as `publicBindings` in `--json` — review that list, not each file.
+
+#### A public write under a public parent
+
+A page that is open to everyone often has a form that changes data below it. The `GET` reads the event and says its records
+are public. The `POST` that registers a guest may not lean on that, because `{ public: true }` is never accepted on a route that
+changes data. Name the check that decides whether the event takes registrations, and limit how fast it is tried:
+
+```ts title="modules/events/routes.ts"
+import { throttle } from '@marmeon/cache';
+import { abort, defineRoutes, describeAccess, everyone } from '@marmeon/http';
+import { RegisterController } from './controllers/RegisterController.ts';
+import { ShowEventController } from './controllers/ShowEventController.ts';
+import { PublicEvents } from './PublicEvents.ts';
+import { isOpen } from './isOpen.ts';
+
+export default defineRoutes((Route) => {
+  const events = Route.prefix('/events');
+
+  events.authorize(everyone).bind('event', PublicEvents, { public: true }).get('/:event', ShowEventController);
+
+  events
+    .middleware(throttle('registrations'))
+    .bind('event', PublicEvents)
+    .authorize(
+      describeAccess((ctx) => {
+        if (!isOpen(ctx.params.event)) abort(404);
+        return true;
+      }, 'open event'),
+    )
+    .post('/:event/register', RegisterController);
+});
+```
+
+`marmeon route:list` shows `open event` in the `ACCESS` column of the `POST`. `describeAccess()` only names the check; the
+function is all that guards the `POST`, so it reads the event's state, and a closed or unknown event gets the same 404.
+
+A limit without `.by()` is one counter for the whole app, so one script could close registration for everyone. Count it per
+client in a provider's `boot()`, as in [defining limiters](rate-limiting.md#defining-limiters):
+`limiter.for('registrations', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)))`.
 
 ### Records nobody owns
 

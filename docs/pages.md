@@ -40,7 +40,8 @@ Only files under `modules/<module>/views/` of the app are pages. A path with `::
 registers such a page, neither in the browser nor in server rendering. Rename the file or its folder.
 
 A name with no file behind it is a compile error in the controller, because `marmeon route:types` lists every view in
-`bootstrap/routes.ts`. Each page is a chunk of its own, loaded the first time the browser shows it.
+`bootstrap/routes.ts`. The error names the file to create. A view you have just added is not in that file yet: run
+`marmeon route:types`, or keep `marmeon dev` running, which rewrites the file when a view appears. Each page is a chunk of its own, loaded the first time the browser shows it.
 
 ### Props
 
