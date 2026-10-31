@@ -157,8 +157,10 @@ If you use layers of your own (Tailwind CSS puts its reset in `base` and its cla
 stylesheet that loads, before anything else, so that `marmeon` stands after the reset and before your components and utilities:
 
 ```css title="styles/app.css"
-@layer theme, base, marmeon, components, utilities;
+@layer theme, base, marmeon, kit, components, utilities;
 ```
+
+Keep `kit` in the line when the app has the starter kit or `make:auth`'s `auth.css`: they put their rules in that layer, and a layer first named later would stand after `utilities`.
 
 Import that stylesheet before `@marmeon/react/styles.css` in the client entry, so utilities beat the framework.
 
@@ -176,6 +178,27 @@ A reset without a layer (`* { margin: 0 }`) beats the dialogs' margin and paddin
 
 An app that relied on the framework's rules beating its own layered CSS sees its rules win now. To get the old order back,
 declare its layer before `marmeon`.
+
+### With a utility framework
+
+A utility framework such as Tailwind CSS puts its classes in a layer (`utilities`) and its reset in another (`base`). They only
+beat the framework's look and the starter kit's when their layers stand after `marmeon` and `kit`. So three things have to agree:
+
+1. In `vite.config.ts`, the utility framework's plugin stands before `marmeon()`, so its CSS is handled before the framework's own: `plugins: [tailwindcss(), marmeon()]`.
+2. The first stylesheet names the whole order, before its `@import`s:
+
+   ```css title="styles/app.css"
+   @layer theme, base, marmeon, kit, components, utilities;
+   @import 'tailwindcss';
+   ```
+
+   Keep `kit` in the line in any app with `make:auth`'s `auth.css`; naming a layer that has no rules does nothing.
+3. The client entry imports that stylesheet before `@marmeon/react/styles.css`, because the layer order is fixed by the first
+   stylesheet that names a layer.
+
+CSS without a layer beats every utility, whatever its specificity: a `* { margin: 0 }`, an element rule such as `a { color: … }`,
+or a stylesheet imported without `layer()`. Put such rules in a layer that stands before `utilities`, for instance
+`@import './elements.css' layer(components);`, or give them a layer in the file with `@layer components { … }`.
 
 ## Styling state
 

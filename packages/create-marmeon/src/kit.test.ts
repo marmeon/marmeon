@@ -88,10 +88,12 @@ it(
     const throttled = marmeon('check', '--only=throttle', '--json');
     expect(throttled.code, throttled.out).toBe(0);
     expect(JSON.parse(throttled.out)).toMatchObject({ checks: [{ name: 'throttle', status: 'passed', problems: [], silenced: [] }] });
-    // The order counts: at equal specificity the module's class rules must come after the kit's base rules.
+    // The order counts. The first stylesheet names the layer order, so app.css comes before the framework's; the module's
+    // classes come after the kit's base rules, which sit in the same layer.
     const client = readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8');
     expect(client.match(/styles\/app\.css/g)).toHaveLength(1);
-    expect(client.indexOf('../styles/app.css')).toBeGreaterThan(client.indexOf('@marmeon/react/styles.css'));
+    expect(client.indexOf('../styles/app.css')).toBeLessThan(client.indexOf('@marmeon/react/styles.css'));
+    expect(client.indexOf('@marmeon/react/styles.css')).toBeLessThan(client.indexOf('modules/auth/auth.css'));
     expect(client.indexOf('../styles/app.css')).toBeLessThan(client.indexOf('modules/auth/auth.css'));
 
     // The kit has the migrations of the packages it uses: nothing is left for publish.
@@ -219,6 +221,25 @@ it(
     expect(styles).toContain('.auth-header');
     expect(styles).toContain('.marmeon-layer');
     expect(styles).toMatch(/img\s*\{[^}]*max-width:\s*100%[^}]*height:\s*auto/); // an <Image> with width/height stays in proportion
+    // The layers: `marmeon` stands before `kit`, the framework's rules in the one and the kit's and the auth module's in the
+    // other, and nothing but `@font-face` stands outside a layer — so a utility framework's classes, declared after both, win.
+    // (The minifier drops a layer's name from the order line when its block follows at once, so the order is the first
+    // appearance of each name.)
+    const top = topLevel(styles);
+    expect(top.filter((item) => !item.startsWith('@layer') && item !== '@font-face')).toEqual([]);
+    const names = top.filter((item) => item.startsWith('@layer')).flatMap((item) => item.slice(6).split(',').map((name) => name.trim()));
+    expect(names.indexOf('marmeon')).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf('base')).toBeLessThan(names.indexOf('marmeon'));
+    expect(names.indexOf('marmeon')).toBeLessThan(names.indexOf('kit'));
+    const inLayer = (layer: string) => [...styles.matchAll(new RegExp(`@layer\\s*${layer}\\s*\\{`, 'g'))].map((m) => balanced(styles, m.index + m[0].length)).join('\n');
+    expect(inLayer('marmeon')).toContain('.marmeon-layer');
+    expect(inLayer('marmeon')).not.toContain('.auth-header');
+    expect(inLayer('kit')).toContain('.auth-header');
+    expect(inLayer('kit')).toContain('.button');
+    expect(inLayer('kit')).not.toContain('.marmeon-layer');
+    // The source names the whole order before any rule (the build may shorten it).
+    const app = readFileSync(join(root, 'styles/app.css'), 'utf8');
+    expect(app.replace(/\/\*[\s\S]*?\*\//g, '').trim()).toMatch(/^@layer\s+base\s*,\s*marmeon\s*,\s*kit\s*;/);
     const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
     for (const file of css) expect(html, `index.html links ${file}`).toContain(`/${file}`);
     // HOME is named on the server only: the layout takes its URL from the page's props, so the browser's route table lacks it.
@@ -234,3 +255,31 @@ it(
   },
   300_000,
 );
+
+/** The text of a block whose `{` was just read: up to its matching `}`. */
+function balanced(css: string, from: number): string {
+  let depth = 1;
+  for (let i = from; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}' && --depth === 0) return css.slice(from, i);
+  }
+  return css.slice(from);
+}
+
+/** What stands at the top level of a stylesheet: each at-rule's name, each style rule's selector. */
+function topLevel(css: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < css.length; i++) {
+    if (css[i] === '{') {
+      if (depth++ === 0) items.push(css.slice(start, i).trim().replace(/^(@layer)\s*/, '$1 ').replace(/^(@font-face)[\s\S]*/, '$1'));
+    } else if (css[i] === '}') {
+      if (--depth === 0) start = i + 1;
+    } else if (css[i] === ';' && depth === 0) {
+      items.push(css.slice(start, i).trim().replace(/^(@layer)\s*/, '$1 '));
+      start = i + 1;
+    }
+  }
+  return items;
+}
