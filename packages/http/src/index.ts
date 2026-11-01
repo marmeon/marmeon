@@ -92,4 +92,4 @@ export { HttpServiceProvider } from './provider.ts';
 export { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 export { abort, DefaultExceptionHandler, ExceptionHandler, HttpError } from './errors.ts';
 export type { ExceptionRenderOptions } from './errors.ts';
-export type { MiddlewareClass, Next } from '@marmeon/router';
+export type { ClassResolver, MiddlewareClass, Next } from '@marmeon/router';
