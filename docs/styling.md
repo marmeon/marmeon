@@ -7,8 +7,8 @@ the build turns them into stylesheets that the document links:
 
 ```tsx title="bootstrap/client.tsx"
 import { createMarmeonApp, progressBar } from '@marmeon/react';
-import '@marmeon/react/styles.css';
 import '../styles/app.css';
+import '@marmeon/react/styles.css';
 import { routes } from 'virtual:marmeon/routes';
 import { title } from './head.ts';
 import { messages } from './i18n.ts';
@@ -151,14 +151,16 @@ of `styles.css`, the components are unstyled, and their look is yours.
 ### Cascade layers
 
 A rule without a layer beats every rule in a layer, whatever its specificity, and of two layers the one that appeared first in
-the CSS loses. So your own CSS without a layer wins over the framework's look, and so does a layer you declare after `marmeon`.
+the CSS loses (for declarations without `!important`; with it the layer order reverses). So your own CSS without a layer wins over the framework's look, and so does a layer you declare after `marmeon`.
 
 If you use layers of your own (Tailwind CSS puts its reset in `base` and its classes in `utilities`), name the order in the first
 stylesheet that loads, before anything else, so that `marmeon` stands after the reset and before your components and utilities:
 
 ```css title="styles/app.css"
-@layer theme, base, marmeon, components, utilities;
+@layer theme, base, marmeon, kit, components, utilities;
 ```
+
+Keep `kit` in the line when the app has the starter kit or `make:auth`'s `auth.css`: they put their rules in that layer, and a layer first named later would stand after `utilities`.
 
 Import that stylesheet before `@marmeon/react/styles.css` in the client entry, so utilities beat the framework.
 
@@ -176,6 +178,30 @@ A reset without a layer (`* { margin: 0 }`) beats the dialogs' margin and paddin
 
 An app that relied on the framework's rules beating its own layered CSS sees its rules win now. To get the old order back,
 declare its layer before `marmeon`.
+
+### With a utility framework
+
+A utility framework such as Tailwind CSS puts its classes in a layer (`utilities`) and its reset in another (`base`). Its classes
+only beat the framework's look and the starter kit's when `utilities` stands after `marmeon` and `kit`; its reset stays in `base`,
+before them. So three things have to agree:
+
+1. In `vite.config.ts`, the utility framework's plugin stands before `marmeon()`, so its CSS is handled before the framework's own: `plugins: [tailwindcss(), marmeon()]`.
+2. The first stylesheet names the whole order, before its `@import`s:
+
+   ```css title="styles/app.css"
+   @layer theme, base, marmeon, kit, components, utilities;
+   @import 'tailwindcss';
+   ```
+
+   Keep `kit` in the line in any app with `make:auth`'s `auth.css`; naming a layer that has no rules does nothing.
+3. The client entry imports that stylesheet before `@marmeon/react/styles.css`, because the layer order is fixed by the first
+   stylesheet that names a layer.
+
+CSS without a layer beats every utility, whatever its specificity: a `* { margin: 0 }`, an element rule such as `a { color: … }`,
+or a stylesheet imported without `layer()`. Put a reset in `base`, before `marmeon`. Put element rules in a layer that stands
+after `kit` and before `utilities`, for instance `@import './elements.css' layer(components);`, or give them a layer in the file
+with `@layer components { … }`. In an app with the starter kit, such rules also beat the kit's class rules: see
+[the starter kit](starter-kit.md#the-look) for where element rules go.
 
 ## Styling state
 

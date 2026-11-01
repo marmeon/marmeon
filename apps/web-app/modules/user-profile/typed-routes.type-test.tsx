@@ -4,7 +4,7 @@
  * the comment above it is the message they get (read with the directive removed).
  */
 import { authenticate } from '@marmeon/auth';
-import { Controller, UrlSigner, view } from '@marmeon/http';
+import { Controller, UrlSigner, view, type CheckViewName } from '@marmeon/http';
 import { Link, useForm, useRoute } from '@marmeon/react';
 import { Router } from '@marmeon/router';
 import type { TestResponse } from '@marmeon/testing';
@@ -136,7 +136,7 @@ export class OnTheServer extends Controller {
     // @ts-expect-error
     authenticate({ loginRoute: 'auth.lgin' });
     // Argument of type '"user-profile/Shwo"' is not assignable to parameter of type
-    // '"'user-profile/Shwo' is not a view: there is no modules/user-profile/views/Shwo.tsx — did you mean user-profile/Show?"'.
+    // '"'user-profile/Shwo' is not a view: create modules/user-profile/views/Shwo.tsx, or run `marmeon route:types` if it exists (`marmeon dev` runs it) — did you mean user-profile/Show?"'.
     // @ts-expect-error
     void this.view('user-profile/Shwo', {});
     // ... '"'profile' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)"'.
@@ -148,10 +148,23 @@ export class OnTheServer extends Controller {
 
 export function InTests(response: TestResponse) {
   response.assertPage('user-profile/Show');
-  // ... '"'user-profile/Shwo' is not a view: there is no modules/user-profile/views/Shwo.tsx — did you mean user-profile/Show?"'.
+  // ... '"'user-profile/Shwo' is not a view: create modules/user-profile/views/Shwo.tsx, or run `marmeon route:types` if it exists (`marmeon dev` runs it) — did you mean user-profile/Show?"'.
   // @ts-expect-error
   response.assertPage('user-profile/Shwo');
   // Argument of type '"user-profile/Edit"' is not assignable to parameter of type '"user-profile/Show"'.
   // @ts-expect-error — not the page this controller renders
   response.assertPage<ShowUserProfileController>('user-profile/Edit');
+}
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+/** The message for a view the generated `bootstrap/routes.ts` does not list names the file to create, the command and the closest view. */
+export function AMissingViewNamesFileAndCommand(
+  message: Equal<
+    CheckViewName<'user-profile/Shwo'>,
+    "'user-profile/Shwo' is not a view: create modules/user-profile/views/Shwo.tsx, or run `marmeon route:types` if it exists (`marmeon dev` runs it) — did you mean user-profile/Show?"
+  >,
+) {
+  const ok: true = message;
+  return ok;
 }

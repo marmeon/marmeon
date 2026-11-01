@@ -22,6 +22,9 @@ reviews:
 
   auto_review:
     enabled: true
+    # One review per pull request, when it is opened or marked ready: our own review checks the fixes, and every push would
+    # otherwise use one of the hourly reviews. `@coderabbitai review` asks for another one.
+    auto_incremental_review: false
     drafts: false
     # Stacked pull requests target another feature branch.
     base_branches:
