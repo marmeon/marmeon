@@ -1,6 +1,6 @@
 import type { CommandInput } from 'marmeon';
-import { Clock, CommandArgumentsError, environment, Logger, Redactor } from '@marmeon/core';
-import { environmentChecks } from '@marmeon/core/internal';
+import { Application, Clock, CommandArgumentsError, environment, Logger, Redactor } from '@marmeon/core';
+import { environmentChecks, exitAfterShutdown } from '@marmeon/core/internal';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute, isoMinute } from '../time.ts';
@@ -46,8 +46,10 @@ export class ScheduleWorkCommand {
   readonly #clock: Clock;
   readonly #logger: Logger;
   readonly #redactor: Redactor;
+  readonly #app: Application;
 
-  constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor) {
+  constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor, app: Application) {
+    this.#app = app;
     this.#scheduler = scheduler;
     this.#clock = clock;
     this.#logger = logger.child({ channel: 'schedule' });
@@ -66,7 +68,8 @@ export class ScheduleWorkCommand {
       if (stop.signal.aborted) return; // Ctrl+C arrives twice (terminal + launcher): one shutdown
       this.#logger.info(`${signal} received: no new runs; those still going have ${stopTimeout}s to finish`);
       stop.abort();
-      setTimeout(() => process.exit(1), (stopTimeout + 10) * 1000).unref();
+      // After the time one provider's `shutdown()` may take as well, so a stuck one does not cut off the providers after it.
+      setTimeout(() => process.exit(1), (stopTimeout + 10) * 1000 + this.#app.shutdownTimeoutMs).unref();
     };
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
@@ -84,7 +87,7 @@ export class ScheduleWorkCommand {
       if (!(await worker.drain(stopTimeout))) {
         this.#logger.warn(`${worker.running} ${worker.running === 1 ? 'run' : 'runs'} did not finish within ${stopTimeout}s and end with the process`);
         await this.#scheduler.releaseHeld();
-        setTimeout(() => process.exit(0), 2000).unref();
+        exitAfterShutdown(this.#app, 0, 2000);
       }
       this.#logger.info('Scheduler stopped');
       return 0;

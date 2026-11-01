@@ -1,5 +1,5 @@
-import { CommandArgumentsError, environment, Logger } from '@marmeon/core';
-import { environmentChecks } from '@marmeon/core/internal';
+import { CommandArgumentsError, environment, Application, Logger } from '@marmeon/core';
+import { environmentChecks, exitAfterShutdown } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import { QueueSetupError } from '../registry.ts';
@@ -37,10 +37,12 @@ export class QueueWorkCommand {
 
   readonly #connections: QueueConnections;
   readonly #logger: Logger;
+  readonly #app: Application;
 
-  constructor(connections: QueueConnections, logger: Logger) {
+  constructor(connections: QueueConnections, logger: Logger, app: Application) {
     this.#connections = connections;
     this.#logger = logger;
+    this.#app = app;
   }
 
   async handle(input: CommandInput): Promise<number> {
@@ -61,8 +63,8 @@ export class QueueWorkCommand {
       if (stop.signal.aborted) return; // a second signal (Ctrl+C reaches every process of the group, a supervisor may repeat): one shutdown
       this.#logger.info(`${signal} received: no new jobs; the running one has ${stopTimeout}s to finish`);
       stop.abort();
-      // A shutdown that hangs anyway (a stuck release) still ends.
-      setTimeout(() => process.exit(1), (stopTimeout + 10) * 1000).unref();
+      // A shutdown that hangs anyway (a stuck release) still ends — after the time one provider's `shutdown()` may take, so a stuck one does not cut off the providers after it.
+      setTimeout(() => process.exit(1), (stopTimeout + 10) * 1000 + this.#app.shutdownTimeoutMs).unref();
     };
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
@@ -84,7 +86,7 @@ export class QueueWorkCommand {
       });
       this.#logger.info(`Worker stopped (${result.reason}): ${result.processed} processed, ${result.released} released, ${result.failed} failed`);
       // An interrupted job was released but may still hold the process (a hung socket): once the app has shut down, exit anyway — with 0.
-      if (result.reason === 'interrupted') setTimeout(() => process.exit(0), 2000).unref();
+      if (result.reason === 'interrupted') exitAfterShutdown(this.#app, 0, 2000);
       return 0;
     } finally {
       process.off('SIGINT', onSignal).off('SIGTERM', onSignal);

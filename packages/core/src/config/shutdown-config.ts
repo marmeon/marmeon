@@ -8,7 +8,7 @@ import { env } from './env.ts';
 export const ShutdownConfig = defineConfig('shutdown', {
   env: env({
     /**
-     * Seconds a provider's `shutdown()` may take. Default 10 — as long as the server waits for the work after its responses.
+     * Seconds a provider's `shutdown()` may take. Default 10.
      * A provider that takes longer is left behind (its promise is not cancelled), so the providers before it in the order
      * (the database pool, the queue) still stop. Keep the sum with `SERVER_SHUTDOWN_DELAY_SECONDS` below the supervisor's grace period.
      */

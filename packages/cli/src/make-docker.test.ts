@@ -186,12 +186,12 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     }
   });
 
-  it("gives the scheduler more time to stop than its runs get: schedule:work's --stop-timeout (30 s) and its exit 10 s later fit in", () => {
+  it("gives the scheduler more time to stop than its runs get: schedule:work's --stop-timeout (30 s) and its exit 10 s plus the provider limit (10 s) later fit in", () => {
     const shop: DockerApp = { name: 'shop', packageManager: 'pnpm', pnpmVersion: TESTED_PNPM, installFiles: [], localPackages: [] };
-    // schedule:work drains for --stop-timeout (30 s by default), then frees the runs' locks; a run that hangs ends the process 10 s later.
+    // schedule:work drains for --stop-timeout (30 s by default), then frees the runs' locks; a run that hangs ends the process 10 s plus APP_SHUTDOWN_TIMEOUT_SECONDS later.
     const graceOf = (text: string, service: string) => Number(new RegExp(`\\n  ${service}:\\n(?:    .*\\n)*?    stop_grace_period: (\\d+)s`).exec(text)?.[1]);
-    expect(graceOf(compose(shop, {}), 'scheduler')).toBeGreaterThan(30 + 10);
-    expect(Number(/^TimeoutStopSec=(\d+)$/m.exec(systemdUnits(shop).scheduler)?.[1])).toBeGreaterThan(30 + 10);
+    expect(graceOf(compose(shop, {}), 'scheduler')).toBeGreaterThan(30 + 10 + 10);
+    expect(Number(/^TimeoutStopSec=(\d+)$/m.exec(systemdUnits(shop).scheduler)?.[1])).toBeGreaterThan(30 + 10 + 10);
   });
 
   it('--systemd: a unit per role (restart, TimeoutStopSec, loopback + trusted proxy for the web) — the proxy then on the host', () => {
@@ -199,7 +199,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     const web = result.file('deploy/systemd/web.service');
     expect(web).toContain('ExecStart=/srv/shop/node_modules/.bin/marmeon start');
     expect(web).toContain('Environment=HOST=127.0.0.1 PORT=3000 SERVER_TRUSTED_PROXIES=127.0.0.1');
-    expect(web).toContain('TimeoutStopSec=30');
+    expect(web).toContain('TimeoutStopSec=35');
     expect(web).toContain('ReadWritePaths=/srv/shop/storage');
     expect(result.file('deploy/systemd/worker.service')).toMatch(/^ExecStart=\/srv\/shop\/node_modules\/\.bin\/marmeon queue:work$/m);
     expect(result.file('deploy/systemd/worker.service')).toContain('Restart=always');

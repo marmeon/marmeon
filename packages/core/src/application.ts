@@ -117,6 +117,7 @@ export class Application {
   readonly #providers: ServiceProvider[] = [];
   #shutdown: Promise<void> | undefined;
   readonly #stuck: string[] = [];
+  #shutdownRunning = false;
 
   /** @internal `createApplication()` builds the app; nothing else does. */
   constructor(options: {
@@ -169,36 +170,48 @@ export class Application {
    */
   shutdown(): Promise<void> {
     this.#shutdown ??= (async () => {
-      const errors: unknown[] = [];
-      const limit = this.shutdownTimeoutMs;
-      // Reporters send what they buffer while the providers they may depend on are still up; waits at most 2 s, never throws.
-      if (this.phase !== 'build') await this.container.make(ErrorReports).flush();
-      for (const provider of this.phase === 'build' ? [] : this.#providers.toReversed()) {
-        try {
-          if (!provider.shutdown) continue;
-          if (!(await this.#within(provider.shutdown(this), limit))) {
-            this.#stuck.push(provider.constructor.name);
-            this.container.make(Logger).warn(`${provider.constructor.name}.shutdown() did not finish within ${limit / 1000} s (APP_SHUTDOWN_TIMEOUT_SECONDS); going on with the next provider`);
+      this.#shutdownRunning = true;
+      try {
+        const errors: unknown[] = [];
+        // Reporters send what they buffer while the providers they may depend on are still up; waits at most 2 s, never throws.
+        if (this.phase !== 'build') await this.container.make(ErrorReports).flush();
+        // Read here, not above: a build's app never shuts providers down, so its (possibly invalid) env must not matter.
+        const limit = this.phase === 'build' ? 0 : this.shutdownTimeoutMs;
+        for (const provider of this.phase === 'build' ? [] : this.#providers.toReversed()) {
+          try {
+            if (!provider.shutdown) continue;
+            if (!(await this.#within(provider.shutdown(this), limit, provider.constructor.name))) {
+              this.#stuck.push(provider.constructor.name);
+              this.container.make(Logger).warn(`${provider.constructor.name}.shutdown() did not finish within ${limit / 1000} s (APP_SHUTDOWN_TIMEOUT_SECONDS); going on with the next provider`);
+            }
+          } catch (error) {
+            errors.push(error);
           }
-        } catch (error) {
-          errors.push(error);
         }
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, `${errors.length} providers failed to shut down.`);
+      } finally {
+        this.#shutdownRunning = false;
       }
-      if (errors.length === 1) throw errors[0];
-      if (errors.length > 1) throw new AggregateError(errors, `${errors.length} providers failed to shut down.`);
     })();
     return this.#shutdown;
   }
 
   /** Resolves `true` when `work` settled in time (rethrowing its failure), `false` when `limit` ms passed first. */
-  async #within(work: void | Promise<void>, limit: number): Promise<boolean> {
+  async #within(work: void | Promise<void>, limit: number, name: string): Promise<boolean> {
     let timer: NodeJS.Timeout | undefined;
+    let timedOut = false;
     const timeout = new Promise<false>((resolve) => {
-      timer = setTimeout(() => resolve(false), limit);
+      timer = setTimeout(() => {
+        timedOut = true;
+        resolve(false);
+      }, limit);
     });
-    // A late rejection of a provider left behind must not become an unhandled rejection.
     const settled = Promise.resolve(work).then(() => true as const);
-    settled.catch(() => {});
+    // A provider left behind may still fail later: said here, since nobody awaits it any more (and it must not turn into an unhandled rejection).
+    settled.catch((error: unknown) => {
+      if (timedOut) this.container.make(Logger).warn(`${name}.shutdown() failed after its time limit: ${error instanceof Error ? error.message : String(error)}`);
+    });
     try {
       return await Promise.race([settled, timeout]);
     } finally {
@@ -209,6 +222,11 @@ export class Application {
   /** @internal The limit for one provider's `shutdown()`, in milliseconds — the CLI's own backstops add it to theirs. */
   get shutdownTimeoutMs(): number {
     return this.container.has(ShutdownConfig) ? this.container.make(ShutdownConfig).providerMs : 10_000;
+  }
+
+  /** @internal Whether `shutdown()` has begun and not yet finished. */
+  get shuttingDown(): boolean {
+    return this.#shutdownRunning;
   }
 
   /** @internal The providers whose `shutdown()` outlasted the limit, once the app has shut down: their work may still hold the process open. */

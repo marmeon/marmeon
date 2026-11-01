@@ -90,6 +90,39 @@ describe('Application.shutdown', () => {
       expect(calls).toEqual(['last', 'stuck', 'first']);
       expect(warnings).toEqual(['Stuck.shutdown() did not finish within 10 s (APP_SHUTDOWN_TIMEOUT_SECONDS); going on with the next provider']);
       expect(app.stuckProviders).toEqual(['Stuck']);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('leaves no timer behind after a shutdown within the limit', async () => {
+      vi.useFakeTimers();
+      const { provider } = recorder();
+      const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [provider('a')] }, { env: {} });
+      await app.shutdown();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('warns about a provider left behind that fails later', async () => {
+      vi.useFakeTimers();
+      const warnings: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: (message) => void warnings.push(message), error() {}, child: () => logger };
+      let fail: (error: Error) => void = () => {};
+      class Late {
+        shutdown(): Promise<void> {
+          return new Promise<void>((_, reject) => (fail = reject));
+        }
+      }
+      const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [Late] }, { env: {}, override: (container) => container.instance(Logger, logger) });
+      const shutdown = app.shutdown();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await shutdown;
+      fail(new Error('too late'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(warnings.at(-1)).toBe('Late.shutdown() failed after its time limit: too late');
+    });
+
+    it('does not read the limit in the build phase', async () => {
+      const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [recorder().provider('a')] }, { env: { APP_SHUTDOWN_TIMEOUT_SECONDS: 'soon' }, phase: 'build' });
+      await expect(app.shutdown()).resolves.toBeUndefined();
     });
 
     it('reads the limit from APP_SHUTDOWN_TIMEOUT_SECONDS', async () => {

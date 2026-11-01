@@ -9,6 +9,7 @@ import { loadApplication } from './load.ts';
 import { appFrameOf } from './load-failure.ts';
 import { Output, printError, stdoutToStderr, style } from './output.ts';
 import { createPrompt, isPromptCancelled } from './prompt.ts';
+import { shutDown } from './shut-down.ts';
 import { spawnMarmeon } from './spawn.ts';
 
 /** Exit code of a call that is wrong (unknown command, unknown option, missing option value), apart from a command that ran and failed (1). */
@@ -202,18 +203,6 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     return 1;
   } finally {
     await shutDown(app);
-  }
-}
-
-/**
- * Shuts the app down. A provider whose `shutdown()` outlasted its limit may still hold a handle (a socket, a timer) that
- * keeps the process from ending on its own, so the exit is forced shortly after — with the code the command ended with.
- */
-async function shutDown(app: Application | undefined): Promise<void> {
-  try {
-    await app?.shutdown();
-  } finally {
-    if (app && app.stuckProviders.length > 0) setTimeout(() => process.exit(process.exitCode ?? 0), 2000).unref();
   }
 }
 

@@ -301,7 +301,7 @@ On `SIGTERM` or `SIGINT` a worker takes no new job. The running job gets `--stop
 the queue for another worker with its attempt given back (a stop is not the job's failure, so a job with a single try still runs on
 the next worker), and the worker ends with exit code 0. The same goes for a job whose own load gets its worker stopped (a liveness
 probe, memory pressure): each stop gives the attempt back, so such a job comes back until it fits. A second signal does not cut this short. A shutdown that hangs
-anyway ends the process with exit code 1, `--stop-timeout` plus ten seconds after the signal. Give the supervisor a longer grace
+anyway ends the process with exit code 1, `--stop-timeout` plus ten seconds plus `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default) after the signal. Give the supervisor a longer grace
 period than `--stop-timeout`, and raise both together for long jobs.
 
 `marmeon make:docker` writes the worker as a container and as a systemd unit that restart it whenever it ends. The

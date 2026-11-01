@@ -90,7 +90,7 @@ order — so a provider that waits forever (a statement stuck behind a lock) doe
 from closing. The promise of the provider is not cancelled and the timeout is not an error: `app.shutdown()` does not throw for it.
 The limit applies to each provider, so several stuck ones add up; keep the sum below your supervisor's grace period. A
 `marmeon` command forces the exit two seconds after it ended if a provider timed out, since what it left open could keep
-the process alive. Bound the waits of your own `shutdown()` as well (a statement timeout, an abort signal): the limit is a backstop, and the work of a
+the process alive; the exit code is the command's, or 1 when that was 0, so cron, CI or a supervisor notices that work was left behind. Bound the waits of your own `shutdown()` as well (a statement timeout, an abort signal): the limit is a backstop, and the work of a
 provider that was left behind is lost when the process ends.
 
 ```ts title="modules/search/SearchServiceProvider.ts"
