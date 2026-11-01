@@ -257,7 +257,8 @@ it('renders a note on the server, and the browser takes it over', async () => {
 - **`assertSee(text)`** and **`assertDontSee(text)`** search the markup as it is written, not the text a reader sees. React
   separates two adjacent text nodes with `<!-- -->`, so `<span>{count} guests</span>` renders `3<!-- --> guests` and
   `assertSee('3 guests')` fails; escaped characters (`&amp;`, `&#x27;`) are not found as `&` or `'` either. Search for a part
-  of the text, or for the element. `assertDontSee('<script>')` relies on this.
+  of the text, or for the element. A test that a stored `<script>alert(1)</script>` comes out escaped relies on this:
+  `assertDontSee('<script>alert(1)')`. A bare `'<script'` would match the page's own script tags.
 
   They search the whole body, not only the elements: the attributes (`class`, `href`, the CSP `nonce`), the `<script>` tags, and
   the page's data, which sits in `<script type="application/json">` blocks: the page object (`marmeon-page`, every prop), the
@@ -266,7 +267,8 @@ it('renders a note on the server, and the browser takes it over', async () => {
   stored link the page leaves out of its markup, is therefore seen. Two consequences:
 
   - To prove a value never reaches the browser (a secret, another user's data), keep `assertDontSee()` on the whole body: a prop
-    is in the document as well.
+    is in the document as well. It searches the raw body, and the JSON blocks write `<` as `<`, so search a value that
+    contains `<` by a part without it.
   - `assertSee()` on an `ssr` page proves the text is in the document, not that it is rendered: search for the element
     (`<h1>Groceries</h1>`).
 

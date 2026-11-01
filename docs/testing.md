@@ -303,7 +303,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm build && DB_DATABASE=notes_browser_test APP_URL=http://localhost:3100 PORT=3100 pnpm start',
     url: 'http://localhost:3100',
-    reuseExistingServer: true,
+    reuseExistingServer: false,
   },
 });
 ```
