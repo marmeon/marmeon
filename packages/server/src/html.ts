@@ -110,6 +110,17 @@ export async function documentOf(
   });
 }
 
+/**
+ * `tags` (stylesheet links) put at the end of the template's head, after the links the build wrote there: the entry's
+ * stylesheet, which declares the layer order, must come before a page's. Without a `</head>` they go where
+ * {@link withPreloads} puts its tags.
+ */
+export function withStyles(template: string, tags: string): string {
+  if (!tags) return template;
+  const at = template.indexOf('</head>');
+  return at === -1 ? withPreloads(template, tags) : template.slice(0, at) + tags + '\n' + template.slice(at);
+}
+
 /** `tags` put into the template's head — before the head outlet, else before `</head>`; a template with neither is left alone. */
 export function withPreloads(template: string, tags: string): string {
   if (!tags) return template;
