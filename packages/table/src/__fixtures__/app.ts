@@ -337,13 +337,18 @@ export const ActiveTable = defineTable({
   export: { csv: exportCsv().authorize(() => true) },
 });
 
+/** A test sets this to make `GuardedTable`'s `authorize` answer something else than its policy; reset it to `undefined`. */
+export const guardedOverride: { check?: () => unknown } = {};
+
+const guardedPolicy = can(MemberPolicy, 'viewAny');
+
 /** Only admins see it: the table's own `authorize` is a policy's ability, asked by `can()`. */
 export const GuardedTable = defineTable({
   name: 'guarded',
   query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
   key: 'members.id',
   columns: { name: column('members.name').sortable() },
-  authorize: can(MemberPolicy, 'viewAny'),
+  authorize: (ctx, resolve) => (guardedOverride.check ? (guardedOverride.check() as never) : guardedPolicy(ctx, resolve)),
   actions: { deactivate: action(Deactivate).authorize(MemberPolicy, 'deactivate') },
   bulk: { deactivate: bulk(DeactivateMany).authorize(MemberPolicy, 'deactivate').max(5) },
   export: { csv: exportCsv().authorize(() => true) },
