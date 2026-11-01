@@ -463,7 +463,7 @@ change to a helper that the migration imports is not seen, since the checksum co
 To undo it, put the file back as it was and write the change as a new migration. An app can ask for the same answer in code with
 `Migrator.changed()`.
 
-The checksum is over the bytes of the file, so a comment counts as a change, a blank line too, even though the schema stays the
+The checksum covers the contents of the file, with CRLF read as LF, so a comment counts as a change, a blank line too, even though the schema stays the
 same. Only a file that differs in its line endings alone (CRLF against LF) hashes the same. The warning does not tell a comment from a
 new column. Take the comment out again, or put the note in the commit message or in the next migration.
 

@@ -322,7 +322,7 @@ shows only mail classes with a `static preview()`, not a stored template.
 
 The frame's document runs under the Content-Security-Policy of the page that holds it, because a `srcdoc` document inherits it, and
 `sandbox` does not change that. A mail brings its styles inline. A page with `styleSrc: ["'self'"]` and no `'unsafe-inline'` therefore shows the
-preview without them. Name no `styleSrc` and no `defaultSrc` there, or allow `'unsafe-inline'` in a `styleSrc` without `NONCE`; see [CSP](csp.md#frames-with-their-own-document).
+preview without them. Name none of `styleSrc`, `styleSrcElem`, `styleSrcAttr` and `defaultSrc` there, or allow `'unsafe-inline'` in a `styleSrc` without `NONCE` that no `styleSrcElem` or `styleSrcAttr` overrides; see [CSP](csp.md#frames-with-their-own-document).
 
 ## Previews
 

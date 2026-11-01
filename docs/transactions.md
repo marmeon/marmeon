@@ -248,9 +248,9 @@ This works the same on Postgres and SQLite, and it needs no `select … for upda
 and SQLite takes the write lock when a transaction begins.
 
 Answer a refused save with **422, or with a redirect back that carries the error. Never with 409**: `409` is the code the page protocol uses for its own full loads
-([a new version of the app](navigation.md#a-new-version-of-the-app)), and it reaches a form as no error at all. Only a 422 from a
-`ValidationError` keeps the form and shows the message. A `ValidationError` is both answers: a page request goes back to the form with
-the errors, and a JSON client gets the 422:
+([a new version of the app](navigation.md#a-new-version-of-the-app)), and it reaches a form as no error at all. A
+`ValidationError` keeps the form and shows the message: a page request goes back to the form with the errors and the input it was
+given, and a JSON client gets the 422:
 
 ```ts title="modules/documents/controllers/UpdateDocumentController.ts"
 import { can } from '@marmeon/auth';
@@ -281,7 +281,7 @@ export class UpdateDocumentController extends Controller {
   async handle(ctx: ContextOf<typeof UpdateDocumentRequest>) {
     const saved = await this.#documents.save(ctx.params.document.id, ctx.body.version, { title: ctx.body.title });
     if (saved.ok) return this.redirect().route('documents.show', { document: saved.value.id }).flash('toast', { kind: 'success', message: 'Document saved.' });
-    if (saved.error.kind === 'stale') throw new ValidationError({ version: ['Someone saved this document after you opened it. Reload it and make your change again.'] });
+    if (saved.error.kind === 'stale') throw new ValidationError({ version: ['Someone saved this document after you opened it. Reload it and make your change again.'] }, { title: ctx.body.title });
     abort(404);
   }
 }
