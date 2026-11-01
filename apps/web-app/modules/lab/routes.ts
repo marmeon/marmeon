@@ -59,8 +59,11 @@ export default defineRoutes((Route) => {
   link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/one-time-links/:link', OpenOneTimeLinkLabController);
   // The POST changes data, so the link itself is the decision: the binder found an unused link by its token, and the update that
   // uses it up decides again.
-  const holdsLink = describeAccess((ctx) => ctx.params.link !== undefined, 'one-time link');
-  link.authorize(holdsLink).middleware(throttle('lab.one-time-links')).bind('link', OneTimeLinkRepository).post('/one-time-links/:link', UseOneTimeLinkLabController);
+  link
+    .middleware(throttle('lab.one-time-links'))
+    .bind('link', OneTimeLinkRepository)
+    .authorize(describeAccess((ctx) => ctx.params.link !== undefined, 'one-time link'))
+    .post('/one-time-links/:link', UseOneTimeLinkLabController);
   // A form behind a token: the token's route trades it for the link's id in the session and redirects to a page without it. That page
   // and its POST keep `same-origin`, so `back()` returns to the form after a failed validation.
   link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/invitations/:link', ClaimInvitationLabController);
