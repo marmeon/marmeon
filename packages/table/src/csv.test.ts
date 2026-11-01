@@ -200,6 +200,13 @@ describe('writeCsv()', () => {
     }
   });
 
+  it('writes what the reader refuses: a cell over maxCellLength and a NUL are no round trip', () => {
+    const long = readCsv(Buffer.from(writeCsv([['a'], ['x'.repeat(10_001)]])));
+    expect(!long.ok && long.error.kind).toBe('cell-too-long');
+    const nul = readCsv(Buffer.from(writeCsv([['a'], ['x\0y']])));
+    expect(!nul.ok && nul.error.kind).toBe('not-text');
+  });
+
   it('separates by the delimiter and refuses any other', () => {
     expect(writeCsv([['a', 'b']], { delimiter: ';', bom: false })).toBe('"a";"b"\r\n');
     expect(writeCsv([['a', 'b']], { delimiter: '\t', bom: false })).toBe('"a"\t"b"\r\n');

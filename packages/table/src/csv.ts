@@ -88,7 +88,8 @@ export function csvLine(values: readonly unknown[], delimiter: CsvDelimiter = ',
  * Writes a CSV file of your own — an import template, a report that is no table — as text: a byte order mark (so spreadsheets read
  * umlauts right; `bom: false` leaves it out), then every row as one line of quoted cells ended by CRLF. The quoting and the
  * formula escape are the ones of a table's export (see the module comment), so a text that starts like a formula arrives as text.
- * `readCsv(…, { unescape: true })` gives every text back as it was, as long as every row is as wide as the header (a row of empty cells is skipped). A delimiter other than `,`, `;` or a tab throws a `TypeError`.
+ * `readCsv(…, { unescape: true })` gives every text back as it was, as long as every row is as wide as the header (a row of empty cells is skipped), the file stays within the reader's limits (`maxBytes`, `maxRows`, `maxColumns`, `maxCellLength`) and no
+ * text holds a NUL. A delimiter other than `,`, `;` or a tab throws a `TypeError`.
  * See docs/tables.md#a-csv-file-of-your-own.
  */
 export function writeCsv(rows: Iterable<readonly unknown[]>, options: { delimiter?: CsvDelimiter; bom?: boolean } = {}): string {
