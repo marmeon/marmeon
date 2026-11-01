@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ActiveTable, ByEmailTable, drivers, endpoint, GuardedTable, MEMBERS, MembersTable, SmallExportTable, tableApp, TeamsTable, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import { ActiveTable, ByEmailTable, drivers, endpoint, GuardedTable, guardedOverride, MEMBERS, MembersTable, SmallExportTable, tableApp, TeamsTable, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import { HttpError } from '@marmeon/router';
 import { secret, type Database } from '@marmeon/database';
 import { column, defineTable, filter, type DataTable } from './define.ts';
 import { pageOf } from './test-helpers/attached-page.ts';
@@ -8,6 +9,7 @@ import type { TableData } from './client/index.ts';
 
 let open: TableTestApp | undefined;
 afterEach(async () => {
+  guardedOverride.check = undefined;
   await open?.close();
   open = undefined;
 });
@@ -406,6 +408,24 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         expect(application.recorder.deactivated, 'a handler ran').toEqual([]);
         expect(application.recorder.batches, 'a handler ran').toEqual([]);
         expect((await guarded(application, ADA, what)).status).toBe(200);
+      });
+    }
+
+    for (const what of ['page', 'action', 'bulk', 'export'] as const) {
+      it(`allows only an exact true on the ${what}: a truthy non-boolean is a denial, a throwing check propagates`, async () => {
+        const application = await app(driver);
+        for (const verdict of [new Response('no'), { allowed: true }, 1, 'yes', []]) {
+          guardedOverride.check = () => verdict;
+          expect((await guarded(application, ALAN, what)).status, `${String(verdict)} let the ${what} through`).toBe(403);
+        }
+        expect(application.recorder.deactivated, 'a handler ran').toEqual([]);
+        expect(application.recorder.batches, 'a handler ran').toEqual([]);
+        guardedOverride.check = () => Promise.resolve(true);
+        expect((await guarded(application, ALAN, what)).status).toBe(200);
+        guardedOverride.check = () => {
+          throw new HttpError(404, 'Not found.');
+        };
+        expect((await guarded(application, ALAN, what)).status).toBe(404);
       });
     }
   });
