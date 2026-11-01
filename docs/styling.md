@@ -7,8 +7,8 @@ the build turns them into stylesheets that the document links:
 
 ```tsx title="bootstrap/client.tsx"
 import { createMarmeonApp, progressBar } from '@marmeon/react';
-import '@marmeon/react/styles.css';
 import '../styles/app.css';
+import '@marmeon/react/styles.css';
 import { routes } from 'virtual:marmeon/routes';
 import { title } from './head.ts';
 import { messages } from './i18n.ts';
@@ -151,7 +151,7 @@ of `styles.css`, the components are unstyled, and their look is yours.
 ### Cascade layers
 
 A rule without a layer beats every rule in a layer, whatever its specificity, and of two layers the one that appeared first in
-the CSS loses. So your own CSS without a layer wins over the framework's look, and so does a layer you declare after `marmeon`.
+the CSS loses (for declarations without `!important`; with it the layer order reverses). So your own CSS without a layer wins over the framework's look, and so does a layer you declare after `marmeon`.
 
 If you use layers of your own (Tailwind CSS puts its reset in `base` and its classes in `utilities`), name the order in the first
 stylesheet that loads, before anything else, so that `marmeon` stands after the reset and before your components and utilities:
@@ -181,8 +181,9 @@ declare its layer before `marmeon`.
 
 ### With a utility framework
 
-A utility framework such as Tailwind CSS puts its classes in a layer (`utilities`) and its reset in another (`base`). They only
-beat the framework's look and the starter kit's when their layers stand after `marmeon` and `kit`. So three things have to agree:
+A utility framework such as Tailwind CSS puts its classes in a layer (`utilities`) and its reset in another (`base`). Its classes
+only beat the framework's look and the starter kit's when `utilities` stands after `marmeon` and `kit`; its reset stays in `base`,
+before them. So three things have to agree:
 
 1. In `vite.config.ts`, the utility framework's plugin stands before `marmeon()`, so its CSS is handled before the framework's own: `plugins: [tailwindcss(), marmeon()]`.
 2. The first stylesheet names the whole order, before its `@import`s:

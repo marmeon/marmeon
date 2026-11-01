@@ -101,7 +101,7 @@ A new starter kit app has two stylesheets, both yours to change. They are plain 
 | `modules/auth/auth.css` | The auth module's classes: header, toasts, guest cards, settings navigation, the dashboard cards and `.placeholder`, `.hint`, the width of the settings forms, the token table and `.secret`, the box that shows a new token. |
 
 Both stand in the cascade layer `kit`, which comes after the framework's `marmeon`. Your own CSS without a layer beats them
-whatever its specificity, and a utility framework's classes win when its layers stand after `kit`: that is the order line at the
+whatever its specificity, and a utility framework's classes win when its `utilities` layer stands after `kit` (its reset stays in `base`): that is the order line at the
 top of `styles/app.css`, and [With a utility framework](styling.md#with-a-utility-framework) shows it for Tailwind CSS.
 
 `bootstrap/client.tsx` imports `styles/app.css` first, because the first stylesheet names the layer order, then the framework's
@@ -113,8 +113,8 @@ Put a reset in `base` or another layer before `marmeon`.
 
 A kit app from an earlier release: put `@layer base, marmeon, kit;` at the top of `styles/app.css` and keep the font `@import`
 right below it, outside any block: an `@import` inside a block is invalid and dropped silently. Wrap the rest of the file and
-`modules/auth/auth.css` in `@layer kit { … }`, and import `app.css` before `@marmeon/react/styles.css`. Do this before
-`make:auth --force`, which writes `auth.css` in the layer.
+`modules/auth/auth.css` in `@layer kit { … }`, and import `app.css` before `@marmeon/react/styles.css`. Change `app.css`
+before you take a newer auth module with `make:auth --force`: its `auth.css` already stands in the layer.
 
 The tokens are custom properties on `:root`:
 
