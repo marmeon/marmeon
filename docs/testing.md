@@ -280,6 +280,49 @@ DB_DATABASE=notes_browser_test APP_URL=http://localhost:3100 PORT=3100 pnpm star
 Migrate and seed that database first with the app's own commands, and never aim the run at the development or the production
 database. `marmeon start` runs in production, so it reads `.env` and the process environment, not `.env.test`.
 
+### Where a browser test writes
+
+A driver writes traces, screenshots and videos while it runs. Keep that directory outside the app's folder. This page
+recommends the built app, but the `webServer` of a Playwright config usually starts `pnpm dev`, and there it matters: Vite
+watches the whole app folder and reloads the open page for every `.html` file that changes in it. A Playwright trace
+(`trace: 'on'`) writes such files under its `outputDir`, so with that directory inside the app the page reloads again and
+again, never becomes interactive, and the wait for `marmeon:hydrated` below times out. With `outputDir` outside the app, or
+with tracing off, the page loads and hydrates normally.
+
+Point `outputDir` at the temp directory:
+
+```ts title="playwright.config.ts"
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: 'browser',
+  outputDir: join(tmpdir(), 'notes-e2e'),
+  use: { trace: 'retain-on-failure' },
+  webServer: {
+    command: 'pnpm build && DB_DATABASE=notes_browser_test APP_URL=http://localhost:3100 PORT=3100 pnpm start',
+    url: 'http://localhost:3100',
+    reuseExistingServer: true,
+  },
+});
+```
+
+If the driver has to write inside the app, have Vite leave that directory alone in the app's `vite.config.ts`:
+
+```ts title="vite.config.ts"
+import { marmeon } from '@marmeon/vite';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [marmeon(), react()],
+  server: { watch: { ignored: ['**/e2e-results/**'] } },
+});
+```
+
+Vite already ignores `.git`, `node_modules` and `test-results`, which is Playwright's default `outputDir`.
+
 ### Waiting for the page
 
 A page the server rendered is visible long before its scripts have run, so a test that clicks at once can hit a button nothing

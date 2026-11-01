@@ -257,8 +257,47 @@ it('renders a note on the server, and the browser takes it over', async () => {
 - **`assertSee(text)`** and **`assertDontSee(text)`** search the markup as it is written, not the text a reader sees. React
   separates two adjacent text nodes with `<!-- -->`, so `<span>{count} guests</span>` renders `3<!-- --> guests` and
   `assertSee('3 guests')` fails; escaped characters (`&amp;`, `&#x27;`) are not found as `&` or `'` either. Search for a part
-  of the text, or for the element. `assertDontSee('<script>')` relies on this. Without `ssr`, the body holds only the page
-  object's JSON.
+  of the text, or for the element. `assertDontSee('<script>')` relies on this.
+
+  They search the whole body, not only the elements: the attributes (`class`, `href`, the CSP `nonce`), the `<script>` tags, and
+  the page's data, which sits in `<script type="application/json">` blocks: the page object (`marmeon-page`, every prop), the
+  data of islands (`marmeon-island-…`) and deferred props (`marmeon-deferred-…`). JSON-LD from `<Head>` is
+  `application/ld+json` and stays in the markup: the page publishes it on purpose. A text that only exists as data, such as a
+  stored link the page leaves out of its markup, is therefore seen. Two consequences:
+
+  - To prove a value never reaches the browser (a secret, another user's data), keep `assertDontSee()` on the whole body: a prop
+    is in the document as well.
+  - `assertSee()` on an `ssr` page proves the text is in the document, not that it is rendered: search for the element
+    (`<h1>Groceries</h1>`).
+
+  A test of what the markup shows cuts those blocks out first. That is safe because `scriptJson()` escapes `<` in them, so no
+  value contains `</script>`. The test below is for a note page that renders the body as Markdown and leaves out `javascript:`
+  links:
+
+  ```ts title="modules/notes/ssr.test.ts"
+  import { createTestApp } from '@marmeon/testing';
+  import { expect, it } from 'vitest';
+  import application from '../../bootstrap/app.ts';
+  import { UserFactory } from '#modules/auth';
+  import { NoteFactory } from './factories/NoteFactory.ts';
+
+  const markupOf = (body: string) => body.replace(/<script type="application\/json"[^>]*>[\s\S]*?<\/script>/g, '');
+
+  it('leaves a stored script link out of the markup', async () => {
+    const app = await createTestApp(application, { database: 'refresh', ssr: true });
+    const ada = await app.factory(UserFactory).create();
+    const note = await app.factory(NoteFactory).create({ user_id: ada.id, title: 'Groceries', body: '[x](javascript:alert(1))' });
+    const response = await app
+      .actingAs(ada)
+      .get(`/notes/${note.id}`, { headers: { accept: 'text/html' } })
+      .assertOk();
+
+    expect(response.body).toContain('javascript:alert'); // the stored text, as data in the props
+    expect(markupOf(response.body)).not.toContain('javascript:alert');
+  });
+  ```
+
+  Without `ssr`, the body holds only the page object's JSON.
 
 The test app renders every page completely, its islands included, as for a search engine, so the markup does not depend on
 timing. An island with `load="visible"` is never rendered on the server. The first render of a test app starts Vite and loads
