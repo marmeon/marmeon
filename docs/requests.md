@@ -72,12 +72,17 @@ or `HEAD` request has the input `{}`. The parsed body is kept, so call `ctx.inpu
 #### A smaller limit on one route
 
 A public form needs far less than the server's limit, and an open route should not buffer more than it takes. `maxBodyBytes(bytes)` on a
-route, or on a group (`Route.maxBodyBytes(…).group(…)`), refuses a larger body with a 413. A body that declares its length (`Content-Length`) over the limit is refused before any middleware
-runs. One that does not, such as a chunked body, is cut off by the first read that crosses the limit, and in the `web` group that read
+route, or on a group (`Route.maxBodyBytes(…).group(…)`), refuses a larger body with a 413. A body that declares its length (`Content-Length`) over the limit is refused before any
+middleware runs. One that does not, such as a chunked body, is cut off by the first read that crosses the limit, and in the `web` group that read
 is the CSRF check's, which reads a form's body. Files in a multipart body are counted as they arrive, like any other bytes.
 
 ```ts title="modules/feedback/routes.ts"
-Route.authorize(everyone).post('/feedback', SendFeedbackController).maxBodyBytes(32 * 1024);
+import { defineRoutes, everyone } from '@marmeon/http';
+import { SendFeedbackController } from './controllers/SendFeedbackController.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone).post('/feedback', SendFeedbackController).maxBodyBytes(32 * 1024);
+});
 ```
 
 It only lowers: the limit that applies is the smallest of `SERVER_MAX_BODY_MB` and every `maxBodyBytes()` on the way, so a route cannot

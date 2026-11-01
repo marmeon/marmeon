@@ -115,7 +115,8 @@ export class RouteDefinition<TContext extends object = any> {
   }
 
   /**
-   * Refuses a request body larger than `bytes` with a 413, before any middleware reads it. It only lowers the server's limit
+   * Refuses a request body larger than `bytes` with a 413: a declared `Content-Length` over it before any middleware runs, a streamed
+   * body by the read that crosses it. It only lowers the server's limit
    * (`SERVER_MAX_BODY_MB`), never raises it; a group's limit and the route's, the smaller applies. See docs/requests.md#the-body.
    *
    * ```ts

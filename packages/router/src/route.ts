@@ -282,8 +282,8 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   /**
-   * Routes registered through the returned registrar refuse a body larger than `bytes` with a 413, before any middleware reads it
-   * (see `RouteDefinition.maxBodyBytes()`). It only lowers the server's limit, never raises it; the smaller of nested limits applies.
+   * Routes registered through the returned registrar refuse a body larger than `bytes` with a 413: a declared `Content-Length` over it before any
+   * middleware runs, a streamed body by the read that crosses it (see `RouteDefinition.maxBodyBytes()`). It only lowers the server's limit, never raises it; the smaller of nested limits applies.
    * See docs/requests.md#the-body.
    */
   maxBodyBytes(bytes: number): Route<TState, TParams, TBindings> {

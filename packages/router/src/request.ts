@@ -255,7 +255,12 @@ export function requestBytes(request: Request): Promise<Uint8Array<ArrayBuffer>>
     bytes = request.body === null ? Promise.resolve(new Uint8Array(0)) : readBody(request, limits.get(request) ?? DEFAULT_MAX_BODY_BYTES);
     bodies.set(request, bytes);
     // Only the first read counts: a later one on a body already taken fails, and must not stand in for its size.
-    if (!sizes.has(request)) sizes.set(request, bytes.then((body) => body.byteLength, () => 0));
+    if (!sizes.has(request)) {
+      // Keeps a failed read as it is, so a limit that applies later answers with that error. The branch nobody awaits is handled here.
+      const size = bytes.then((body) => body.byteLength);
+      size.catch(() => undefined);
+      sizes.set(request, size);
+    }
   }
   return bytes;
 }

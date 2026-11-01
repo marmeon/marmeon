@@ -31,6 +31,8 @@ const reader = defineMiddleware('reader', async (ctx, next) => {
   return next();
 });
 
+const mark = defineMiddleware('mark', (_ctx, next) => (seen.push(-1), next()));
+
 const router = new Router().load(
   openRoutes((Route) => {
     Route.post('/echo', async (ctx) => ({ size: (await requestBytes(ctx.request)).byteLength })).name('echo');
@@ -42,6 +44,7 @@ const router = new Router().load(
     Route.maxBodyBytes(KB).group((Route) => {
       Route.post('/narrow-group', async (ctx) => ({ size: (await requestBytes(ctx.request)).byteLength })).maxBodyBytes(4 * KB).name('narrow.group');
     });
+    Route.middleware(mark).post('/marked', () => 'handled').maxBodyBytes(KB).name('marked');
     Route.middleware(reader).post('/behind-middleware', () => 'handled').maxBodyBytes(KB).name('behind');
   }),
 );
@@ -128,6 +131,16 @@ describe('Route.maxBodyBytes()', () => {
     // A declared length that is no plain number is not trusted; the read counts the bytes instead.
     const odd = await guarded.dispatch(route, { request: post('/x', 'a='.padEnd(2 * KB, 'x'), { 'content-length': '0x10' }), params: {} }, { onError: refuse });
     expect(odd.status).toBe(413);
+  });
+
+  it('answers with the error of a read that failed before the match', async () => {
+    const request = post('/small', 'a='.padEnd(2 * KB, 'x'));
+    const state = createRequestState(request, { maxBodyBytes: 512 });
+    await requestBytes(request).catch(() => undefined);
+    seen.length = 0;
+    const route = router.routes.find((candidate) => candidate.routeName === 'marked')!;
+    const response = await router.dispatch(route, { request, params: {} }, { state, onError: (error) => new Response(null, { status: (error as { status: number }).status }) });
+    expect([response.status, seen]).toEqual([413, []]);
   });
 
   it('refuses a multipart body something read before the match that is over the limit', async () => {
