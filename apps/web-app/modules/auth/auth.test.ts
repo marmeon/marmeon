@@ -154,6 +154,17 @@ describe('auth module', () => {
     await app.post('/logout').assertRedirect('/login'); // guests cannot sign out
   });
 
+  it('signs in, reads a protected page and signs out as one browser, keeping the cookies between requests', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const browser = app.keepingCookies();
+    await browser.get('/users/me').assertRedirect('/login');
+    await browser.post('/login', credentials(ada)).assertRedirect('/users/me').assertAuthenticated(ada);
+    await browser.get('/users/me').assertRedirect(`/users/${ada.public_id}`);
+    await browser.get(`/users/${ada.public_id}`).assertOk();
+    await browser.post('/logout').assertRedirect('/login').assertGuest();
+    await browser.get('/users/me').assertRedirect('/login');
+  });
+
   it('keeps signed-in people away from the login page, and brings guests back where they wanted to go', async () => {
     const ada = await app.factory(UserFactory).create();
     await app.actingAs(ada).get('/login').assertRedirect('/users/me');
