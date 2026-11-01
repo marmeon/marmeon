@@ -543,7 +543,8 @@ return new Response(writeCsv([['name', 'email'], ['Ada Lovelace', 'ada@example.c
 
 `rows` is any iterable of arrays of cells (text, numbers, booleans, dates, `null`). `{ delimiter: ';' }` or `'\t'` separates by a
 semicolon or a tab, `{ bom: false }` leaves the byte order mark out; any other delimiter is a `TypeError`. `readCsv(bytes, { unescape: true })`
-reads the file back and gives every text as it was (see [Importing a CSV file](#importing-a-csv-file)).
+reads the file back and gives every text as it was, as long as every row is as wide as the header (a row of empty cells is skipped; see
+[Importing a CSV file](#importing-a-csv-file)).
 
 ## Importing a CSV file
 
@@ -590,7 +591,7 @@ for (const row of csv.value.rows) {
 - **`unescape: true`** runs `unescapeCsvCell()` over the headers and every cell (see "Reading an export back" under
   [Exports](#exports)), so an exported file reads back exactly as it was written.
 - **Values are only read.** Nothing in a cell is run or evaluated; `=HYPERLINK(…)` arrives as that text. The danger of a formula
-  is in a file you write, which the export escapes. Validate each row like any other input before it reaches the database.
+  is in a file you write, which the export and `writeCsv()` escape. Validate each row like any other input before it reaches the database.
 
 ## The security model
 
