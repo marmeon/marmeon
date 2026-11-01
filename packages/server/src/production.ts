@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { SsrRender } from '@marmeon/http';
-import { assetPreloads, parseManifest } from './preloads.ts';
+import { assetPreloads, baseOf, parseManifest } from './preloads.ts';
 import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
 export interface ProductionOptions {
@@ -31,12 +31,14 @@ export async function createProductionRenderer({
       throw error;
     },
   );
+  // Checked even without a manifest: a build whose base the server cannot serve would 404 every asset.
+  const base = baseOf(template, manifest);
   const { render } = (await import(pathToFileURL(join(root, ssrBundle)).href)) as { render: SsrRender };
 
   return createDocumentRenderer({
     template: () => template,
     ssr: () => render,
-    ...(manifest ? { preloads: assetPreloads(manifest) } : {}),
+    ...(manifest ? { preloads: assetPreloads(manifest, { base }) } : {}),
     // The built index.html names every hashed asset: it changes exactly when the assets do.
     version: createHash('sha256').update(template).digest('hex').slice(0, 12),
   });

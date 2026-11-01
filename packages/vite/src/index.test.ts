@@ -73,6 +73,14 @@ describe('marmeon()', () => {
     await expect(resolve({ envPrefix: ['APP_'] }, marmeon({ viteEnv: true }))).resolves.toMatchObject({ envPrefix: ['APP_'] });
   });
 
+  it('refuses a build whose base is a path or relative, since the server serves dist/client under / — a URL and / pass', async () => {
+    const resolve = (base: string, command: 'build' | 'serve' = 'build') => resolveConfig({ root: app, configFile: false, logLevel: 'silent', base, plugins: [marmeon()] }, command);
+    for (const base of ['./', '/static/', 'https://u:p@cdn.example/', 'https://cdn.example/?v=1/', 'https://cdn.example/a/../b/']) await expect(resolve(base)).rejects.toThrow(/`base` must be '\/' or an absolute URL/);
+    await expect(resolve('/')).resolves.toMatchObject({ base: '/' });
+    await expect(resolve('https://cdn.example/app/')).resolves.toMatchObject({ base: 'https://cdn.example/app/' });
+    await expect(resolve('/static/', 'serve')).resolves.toMatchObject({ base: '/static/' });
+  });
+
   it('builds the client to dist/client and the SSR entry to dist/server/ssr.js — not in test mode', () => {
     expect(configFor(marmeon(), { command: 'build', mode: 'production' }).build).toEqual({ outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } });
     expect(configFor(marmeon({ entries: { ssr: 'src/server.tsx' } }), { command: 'build', mode: 'production', isSsrBuild: true }).build).toEqual({

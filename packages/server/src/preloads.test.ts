@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetPreloads, parseManifest, preloadTags, stylesheetTags, type ViteManifest } from './preloads.ts';
+import { assetPreloads, baseOf, parseManifest, preloadTags, stylesheetTags, type ViteManifest } from './preloads.ts';
 
 const manifest: ViteManifest = {
   'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_vendor'] },
@@ -145,5 +145,64 @@ describe('stylesFor', () => {
       '<link rel="stylesheet" href="/assets/a.css" crossorigin nonce="N">\n<link rel="stylesheet" href="/assets/&quot;b&quot;.css" crossorigin nonce="N">',
     );
     expect(stylesheetTags([], 'N')).toBe('');
+  });
+});
+
+describe('a build under an absolute base', () => {
+  const cdn = 'https://cdn.example/app/';
+  const styled: ViteManifest = {
+    ...manifest,
+    'modules/site/views/Docs.tsx': { ...manifest['modules/site/views/Docs.tsx']!, css: ['assets/Docs-a.css'] },
+  };
+
+  it('starts every preload and page stylesheet with the base', () => {
+    const preloads = assetPreloads(styled, { base: cdn });
+    expect(hrefs(preloads.initial)).toEqual([`${cdn}assets/index-a.js`, `${cdn}assets/vendor-a.js`, `${cdn}assets/rolldown-runtime-a.js`]);
+    expect(hrefs(preloads.forPage({ component: 'site/Docs' }))).toEqual([`${cdn}assets/Docs-a.js`, `${cdn}assets/CodeBlock-a.js`, `${cdn}assets/CopyButton-a.js`, `${cdn}assets/tab-sync-a.js`]);
+    expect(preloads.stylesFor({ component: 'site/Docs' })).toEqual([`${cdn}assets/Docs-a.css`]);
+  });
+
+  it('keeps paths under / as before, and takes no base that is neither / nor an absolute URL', () => {
+    expect(assetPreloads(styled).stylesFor({ component: 'site/Docs' })).toEqual(['/assets/Docs-a.css']);
+    for (const base of ['', './', '/static/', 'https://cdn.example', 'https://cdn.example/?x=1', 'ftp://cdn.example/', 'https://u:p@cdn.example/']) {
+      expect(() => assetPreloads(styled, { base })).toThrow(/base must be/);
+    }
+  });
+
+  it('still refuses a manifest entry that leaves the base', () => {
+    expect(() => parseManifest({ a: { file: 'assets/a.js', css: ['//evil.example/x.css'] } }, 'm')).toThrow(/not a Vite manifest/);
+  });
+});
+
+describe('baseOf', () => {
+  const page = (src: string) => `<!doctype html><html><head><script type="module" crossorigin src="${src}"></script></head><body></body></html>`;
+
+  it('reads the base off the entry script of the built index.html', () => {
+    expect(baseOf(page('/assets/index-a.js'), manifest)).toBe('/');
+    expect(baseOf(page('https://cdn.example/app/assets/index-a.js'), manifest)).toBe('https://cdn.example/app/');
+    expect(baseOf('<html><body></body></html>', manifest)).toBe('/');
+  });
+
+  it('reads a base whose characters the build wrote as HTML references', () => {
+    expect(baseOf(page('https://cdn.example/a&amp;b/assets/index-a.js'), manifest)).toBe('https://cdn.example/a&b/');
+    expect(baseOf(page('https://cdn.example/&#97;/assets/index-a.js'), manifest)).toBe('https://cdn.example/a/');
+  });
+
+  it('judges the base without a manifest by the entry script under assets/', () => {
+    expect(baseOf(page('https://cdn.example/app/assets/index-a.js'))).toBe('https://cdn.example/app/');
+    expect(baseOf(page('/assets/index-a.js'))).toBe('/');
+    expect(() => baseOf(page('/static/assets/index-a.js'))).toThrow(/'\/static\/'/);
+  });
+
+  it('anchors the entry on a path segment, and checks every module script under assets/ when there is no manifest', () => {
+    expect(baseOf(page('https://cdn.example/myassets/index-a.js'))).toBe('/');
+    const foreign = '<script type="module" src="https://cdn.example/assets/lib.js"></script>';
+    expect(() => baseOf(foreign + page('/static/assets/index-a.js'))).toThrow(/'\/static\/'/);
+    expect(baseOf(foreign + page('https://cdn.example/assets/index-a.js'))).toBe('https://cdn.example/');
+  });
+
+  it('stops on a path or relative base, naming it', () => {
+    expect(() => baseOf(page('/static/assets/index-a.js'), manifest)).toThrow(/'\/static\/'/);
+    expect(() => baseOf(page('./assets/index-a.js'), manifest)).toThrow(/'\.\/'/);
   });
 });

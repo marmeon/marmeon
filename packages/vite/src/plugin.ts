@@ -117,6 +117,17 @@ const REMOVED_OPTIONS: Record<string, string> = {
   lang: 'language files live in `lang/` and `modules/<module>/lang/`',
 };
 
+/** Whether `base` is `/` or a clean absolute URL — the rule `@marmeon/server` applies again at start: http(s), ending in `/`, no credentials, query or fragment, and written as the URL normalizes. */
+function isServableBase(base: string): boolean {
+  if (base === '/') return true;
+  try {
+    const url = new URL(base);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.href === base && url.pathname.endsWith('/') && !url.username && !url.password && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The Vite plugin of a Marmeon app. UI-agnostic: the adapter brings its own plugin. See docs/vite.md#introduction.
  *
@@ -176,6 +187,10 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       return result;
     },
     configResolved(resolved) {
+      // The server serves `dist/client` under `/`: a path or relative `base` would build a site whose assets all 404.
+      if (resolved.command === 'build' && !options.test && !isServableBase(resolved.base)) {
+        throw new Error(`marmeon: \`base\` must be '/' or an absolute URL, not '${resolved.base}': the server serves dist/client under '/'. Build for the root, or put the assets on another origin with a URL such as 'https://cdn.example/'.`);
+      }
       if (options.viteEnv) return;
       // An app's own `envPrefix` array is concatenated with ours, a string or an `envDir` replaces it, and another plugin may add
       // prefixes: whatever the merge left, a public variable would reach the bundle by its name.

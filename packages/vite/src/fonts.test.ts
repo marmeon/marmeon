@@ -86,12 +86,12 @@ describe('the fonts option of marmeon()', () => {
     expect(out).not.toContain('`fonts` names');
   }, 60_000);
 
-  it('preloads a font below the inline limit, and under a base path', () => {
-    const root = app({ fonts: "[{ file: 'fontpkg/files/f0.woff2' }]", size: 2000, viteConfig: ", base: '/app/'" });
+  it('preloads a font below the inline limit, and under a URL base', () => {
+    const root = app({ fonts: "[{ file: 'fontpkg/files/f0.woff2' }]", size: 2000, viteConfig: ", base: 'https://cdn.example/app/'" });
     const { code, out } = build(root);
     expect(out).toContain('Built dist/client');
     expect(code).toBe(0);
-    expect(readFileSync(join(root, 'dist/client/index.html'), 'utf8')).toMatch(/<link rel="preload"[^>]*href="\/app\/assets\/f0-[\w-]+\.woff2"/);
+    expect(readFileSync(join(root, 'dist/client/index.html'), 'utf8')).toMatch(/<link rel="preload"[^>]*href="https:\/\/cdn\.example\/app\/assets\/f0-[\w-]+\.woff2"/);
   }, 60_000);
 
   it('adds no preload plugin under test: true, but still checks the entries', () => {
