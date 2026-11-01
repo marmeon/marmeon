@@ -174,3 +174,23 @@ export function resubmit() {
   if (first) void save.submit({ data: first.input });
   return null;
 }
+
+const Pairs = defineRequest({
+  schema: r.object({
+    pair: r.value<[{ n: number }, { n?: number }], [{ n?: number | `${number}` }, { n?: number | `${number}` }]>(() => undefined),
+  }),
+});
+
+class PairsForm extends LabController {
+  static request = Pairs;
+
+  handle(_ctx: ContextOf<typeof Pairs>) {
+    return this.redirect('/lab');
+  }
+}
+
+/** A tuple's elements are paired with the output's by position: a default in the first does not make the second required. */
+export function tuples(form: FormHandle<PairsForm>, first: Equal<typeof form.data.pair[0]['n'], number | ''>, second: Equal<typeof form.data.pair[1]['n'], number | '' | undefined>) {
+  const checked: true[] = [first, second];
+  return checked;
+}

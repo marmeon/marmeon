@@ -812,7 +812,7 @@ type NumberRuleInput = number | `${number}`;
 type PageModules = Record<string, () => Promise<unknown>>;
 // PairedValue
 type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput | NumberRuleInput] ? FormValue<V, true, Missing> : V extends Primitive | Upload | ((...args: never) => unknown) ? V : V extends readonly unknown[] ? {
-    [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly (infer Item)[] ? Item : never>;
+    [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly unknown[] ? (P extends keyof NonNullable<O> ? NonNullable<O>[P] : never) : never>;
 } : SchemaFields<V, NonNullable<O>>;
 // ParamsMissing
 type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
