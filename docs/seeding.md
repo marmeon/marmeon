@@ -169,8 +169,10 @@ Where the app is protected, in production, staging or without `NODE_ENV`, `db:se
 > Seeders are for development and test databases. The starter kit's seeder creates `test@example.com` with the password
 > `password`, an account anyone can sign in with, so it throws where the app is protected (any `NODE_ENV` but `development` and
 > `test`). A seeder that creates accounts has to guard itself the same way with `environment.isProtected()`, because `--force` is
-> all `db:seed` asks for. Never pass `--force` to `db:seed` or `migrate:fresh --seed` against a database with real data:
-> `migrate:fresh` drops every table first.
+> all `db:seed` asks for. The kit copies its seeder into the app, so updating the packages does not change it: in an app created
+> from a kit without this check, add it to the top of `handle()` in `modules/auth/seeders/UserSeeder.ts` as shown above. Never
+> pass `--force` to `db:seed` or `migrate:fresh --seed` against a database with real data: `migrate:fresh` drops every table
+> first.
 
 ## Testing
 
