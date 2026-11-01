@@ -102,8 +102,8 @@ it('has the mail previews in development only', async () => {
 });
 ```
 
-The `env` option reaches the definitions of the app's configuration, such as the mail previews' `previews` value, and nothing
-else. Code that asks `environment.isProtected()` without an argument, and the `devOnly()` guard, read `process.env`, which the
+The `env` option reaches the definitions of the app's configuration, such as the mail previews' `previews` value, and the test
+app's own choice of CSRF: under a protected `NODE_ENV` it keeps the check on. Code that asks `environment.isProtected()` without an argument, and the `devOnly()` guard, read `process.env`, which the
 option does not set: a test of such code with `{ env: { NODE_ENV: 'production' } }` still runs as `test`, and a development route
 it guards answers 200 although the test claims production. (A route gated on `environment.isDevelopment()` is off in every test
 instead and answers 404.) Test a route of your own in one of two ways:
