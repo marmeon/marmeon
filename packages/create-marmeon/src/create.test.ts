@@ -488,7 +488,7 @@ describe('the starter kit’s own files', () => {
   it('its client is the blank app’s — with its dialog (`confirm: Confirm`), its stylesheets and nothing else', () => {
     const base = readFileSync(join(TEMPLATE, 'base/bootstrap/client.tsx'), 'utf8');
     const kit = readFileSync(join(TEMPLATE, 'kit/bootstrap/client.tsx'), 'utf8');
-    const dialog = /^import 'virtual:marmeon\/fonts\.css';.*\n|^import '\.\.\/styles\/app\.css';.*\n|^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
+    const dialog = /^import 'virtual:marmeon\/fonts\.css';.*\n|^\/\/ app\.css first: .*\n|^import '\.\.\/styles\/app\.css';.*\n|^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
     expect(kit).not.toBe(base);
     expect(kit.replace(dialog, '')).toBe(base);
   });

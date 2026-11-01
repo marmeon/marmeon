@@ -7,7 +7,7 @@
  *
  * Everything stands in the cascade layer `marmeon`, so any rule of the app that has no layer, and any rule in a layer declared
  * after it, wins over the framework whatever its specificity. Whoever orders layers names `marmeon` after the reset
- * (`@layer theme, base, marmeon, components, utilities;`) in the first stylesheet that loads, before this file; without
+ * (`@layer theme, base, marmeon, kit, components, utilities;`, with `kit` for the starter kit's and `make:auth`'s styles) in the first stylesheet that loads, before this file; without
  * that line the layers stand in the order the stylesheets load. Inside the layer every rule is wrapped in :where(): no
  * specificity of its own. Leave the import out and style the components yourself. See docs/styling.md#the-frameworks-look.
  */
