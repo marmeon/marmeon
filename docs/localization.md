@@ -272,6 +272,28 @@ The route keeps `Vary: accept-language`: a visitor without a record still reads 
 
 A [localized route](#the-locale-in-the-url) cannot use it. Its URL names the locale, so `use()` throws there.
 
+The language has to be known before the schema runs, so it cannot come from the body of the form it is posted with. A hook gets
+the context, not the body: a `locale` field of a posted form reaches the checks of your controller, but the messages of a failed
+schema have been written in the request's language by then. When a form's schema errors must speak the record's or the guest's
+language, put the language into the address and read it in the hook:
+
+```ts title="modules/registration/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { RequestLocale } from '@marmeon/i18n';
+import { SubmitRegistrationController } from './controllers/SubmitRegistrationController.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone)
+    .afterAuthorize((ctx, resolve) => {
+      // An unsupported or missing value changes nothing: the visitor's language stays.
+      resolve(RequestLocale).use(new URL(ctx.request.url).searchParams.get('lang'));
+    })
+    .post('/register', SubmitRegistrationController);
+});
+```
+
+The form posts to `/register?lang=de`. Any value of `lang` becomes a locale only when it names a supported one.
+
 ### The locale in the URL
 
 A route under [`Route.localized()`](routing.md#routes-under-a-locale) speaks the locale of its URL: `/de/about` is in German
