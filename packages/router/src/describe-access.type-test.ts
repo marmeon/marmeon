@@ -1,4 +1,5 @@
 import { describeAccess, everyone } from './access.ts';
+import { defineMiddleware } from './middleware.ts';
 import { defineRoutes } from './router.ts';
 import type { HttpContext, RouteBinder } from './types.ts';
 
@@ -6,6 +7,8 @@ interface Event {
   id: number;
   open: boolean;
 }
+const authenticate = defineMiddleware<{ user: { id: number } }>('authenticate', (_ctx, next) => next({ user: { id: 1 } }));
+
 declare class Events implements RouteBinder<Event> {
   resolveRouteBinding(value: string): Event | undefined;
 }
@@ -51,6 +54,17 @@ export default defineRoutes((Route) => {
   Route.bind('event', Events).authorize(annotated).get('/d/:event', () => 'x');
   // @ts-expect-error — no `event` is bound on this route.
   Route.authorize(annotated).get('/e', () => 'x');
+
+  // An inline check sees the state the registrar's middleware adds.
+  Route.middleware(authenticate)
+    .bind('event', Events)
+    .authorize(describeAccess((ctx) => ctx.user.id > 0 && ctx.params.event.open, 'signed in'))
+    .get('/g/:event', () => 'x');
+
+  Route.middleware(authenticate)
+    // @ts-expect-error — `usr` is no state the middleware adds.
+    .authorize(describeAccess((ctx) => ctx.usr.id > 0, 'typo'))
+    .get('/h', () => 'x');
 
   Route.authorize(describeAccess(everyone, 'everyone')).get('/f', () => 'x');
 });
