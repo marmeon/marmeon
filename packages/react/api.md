@@ -439,7 +439,7 @@ export type PatchedProps<T> = unknown extends T ? Readonly<Record<string, unknow
 // PendingSubmission
 export interface PendingSubmission<N extends string> {
     readonly id: number;
-    readonly input: RouteFormFields<N>;
+    readonly input: ActionFields<ActionBodyOf<N>> | RouteFormFields<N>;
     readonly method: ActionMethod;
     readonly url: string;
 }

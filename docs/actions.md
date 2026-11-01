@@ -218,7 +218,8 @@ const adding = usePendingSubmissions('notes.store');
 ))}
 ```
 
-Each call has its `id`, its `input`, typed by the route's schema, its `method` and its `url`. A call stays listed until the props it
+Each call has its `id`, its `input`, typed by the route's schema, its `method` and its `url`. An action's `input` is its `data` as it
+was passed (a number field you gave as `'3'` is `'3'`); a route form's `input` holds the form's fields (an empty number field is `''`). A call stays listed until the props it
 reloads have landed, so its row never blinks out before the real one is there. Nothing has to be rolled back.
 
 ## In a dialog or an island

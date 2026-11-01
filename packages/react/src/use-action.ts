@@ -85,8 +85,8 @@ type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends A
 /** A call of an action under way, as `usePendingSubmissions` and `action.submissions` list it — a ghost row's data. */
 export interface PendingSubmission<N extends string> {
   readonly id: number;
-  /** What it sends: the route's request schema input. */
-  readonly input: RouteFormFields<N>;
+  /** What it sends: an action's data as it was passed, or a route form's fields. */
+  readonly input: ActionFields<ActionBodyOf<N>> | RouteFormFields<N>;
   readonly method: ActionMethod;
   readonly url: string;
 }
@@ -157,7 +157,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;
       const body = options.data as Record<string, unknown> | undefined;
       const id = ++nextCall.current;
-      const pending: PendingSubmission<string> = { id, input: (body ?? {}) as RouteFormFields<string>, method, url: target.url };
+      const pending: PendingSubmission<string> = { id, input: (body ?? {}) as PendingSubmission<string>['input'], method, url: target.url };
       setCalls((current) => [...current, pending]);
       setErrors({});
       let outcome: ActionOutcome;
@@ -233,7 +233,7 @@ export function usePendingSubmissions<const N extends BrowserRouteNameInput>(nam
     () =>
       all
         .filter((submission) => submission.name === name)
-        .map((submission) => ({ id: submission.id, input: submission.input as RouteFormFields<N>, method: submission.method, url: submission.url })),
+        .map((submission) => ({ id: submission.id, input: submission.input as PendingSubmission<N>['input'], method: submission.method, url: submission.url })),
     [all, name],
   );
 }

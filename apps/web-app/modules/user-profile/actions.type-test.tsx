@@ -26,6 +26,7 @@ export function Actions() {
     const added = await add.submit({ data: { label: 'Blog', url: 'https://blog.example' } });
     if (added.kind === 'invalid') expectTypeOf(added.errors).toEqualTypeOf<Partial<Record<'label' | 'url', string>>>();
     expectTypeOf(usePendingSubmissions('user-profile.links.store')[0]!.input).toEqualTypeOf<{ label: string; url: string }>();
+    expectTypeOf(usePendingSubmissions('auth.passkeys.destroy')[0]!.input.password).toEqualTypeOf<string | undefined>();
 
     // Argument of type '"user-profile.links.destory"' is not assignable to parameter of type '"'user-profile.links.destory' is not a
     // route name — did you mean user-profile.links.destroy?"'.
