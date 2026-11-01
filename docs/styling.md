@@ -24,7 +24,7 @@ instead, and the classes of the framework's own components.
 ## Your stylesheets
 
 A stylesheet imported in `bootstrap/client.tsx` becomes part of the build: `marmeon build` writes it into a stylesheet that the
-built `index.html` links, from your own origin. While you develop, the server links each stylesheet the client entry imports in the document's head, so a reload paints styled. A stylesheet that a lazily loaded module or a view imports still arrives when that module loads. The same holds for CSS modules (`*.module.css`, left out on purpose so their hot updates keep working) and for CSS that a dependency imports from its own code.
+built `index.html` links, from your own origin. A stylesheet that a page's view (or a component it imports) brings is part of that page's chunk: the server links it in the head of the page's first document too, after the entry's, so the first paint is styled and the browser does not wait for the chunk's script. A page's stylesheets come with the page they belong to, and a layer's with the layer's. While you develop, the server links each stylesheet the client entry imports in the document's head, so a reload paints styled. A stylesheet that a lazily loaded module or a view imports still arrives when that module loads. The same holds for CSS modules (`*.module.css`, left out on purpose so their hot updates keep working) and for CSS that a dependency imports from its own code.
 
 A stylesheet can also be linked from `index.html` directly, which Vite processes the same way in the build:
 
