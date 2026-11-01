@@ -275,7 +275,7 @@ export class WorkspaceRepository extends Repository<'memberships'> {
       .where('role', '=', 'admin')
       .orderBy('workspace_id')
       .orderBy('user_id')
-      .forUpdate() // Postgres; SQLite has one writer at a time and leaves it out
+      .forUpdate() // locks on Postgres; SQLite leaves the clause out, its transaction holds the only write lock
       .execute();
   }
 }
@@ -283,7 +283,7 @@ export class WorkspaceRepository extends Repository<'memberships'> {
 
 The listener runs inside the deletion's transaction. Within one call, the order above does the work: `delete([a, b])` for the
 only two administrators of a workspace deletes `a` and refuses `b`. Two deletions at once need a lock: the listener reads the
-administrator memberships of the workspace with `forUpdate()` (on Postgres), in the order of `(workspace_id, user_id)`, not only
+administrator memberships of the workspace with `forUpdate()`, in the order of `(workspace_id, user_id)`, not only
 the account's own membership. Locking only its own row separates nothing: both transactions would count two administrators and
 both would pass. With the whole set locked, the second waits, finds the first one's row gone, counts one and refuses. For that the
 membership must go with the account: its foreign key cascades, or your module's `AccountDeleted` listener deletes it.

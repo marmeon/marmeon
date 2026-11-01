@@ -160,9 +160,7 @@ export class TwoFactorStore extends TwoFactorState {
   async replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
     await this.#connections.transaction(async () => {
       // Two requests making new codes at once would interleave their deletes and inserts: the account's row is the lock.
-      if (this.#connections.options().driver === 'pgsql') {
-        await this.#db().selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
-      }
+      await this.#db().selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
       await this.#replaceCodes(userId, codeHashes);
     });
   }
