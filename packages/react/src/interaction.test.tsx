@@ -2,7 +2,7 @@
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
 import type { FlashMessage, RouteManifest } from '@marmeon/http/page';
 import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
-import { act, startTransition, StrictMode, useState } from 'react';
+import { act, startTransition, StrictMode, use, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp } from './app.tsx';
@@ -71,6 +71,22 @@ function Edit({ name }: { name: string }) {
 }
 Edit.layout = Layout;
 
+// Create, then clear: a field `initial` lacks, set, and gone again after the submit.
+function Clearing() {
+  const form = useForm('profile.update', { name: 'Ada' } as Record<string, unknown>, { guard: 'Unsaved changes.' });
+  return (
+    <form data-testid="form" data-dirty={form.isDirty() || undefined} onSubmit={(event) => event.preventDefault()}>
+      <button type="button" data-testid="bio-reset" onClick={() => { form.set('bio', 'x'); void form.submit({ onSuccess: () => form.reset() }); }}>
+        Bio reset
+      </button>
+      <button type="button" data-testid="bio-setdata" onClick={() => { form.set('bio', 'x'); void form.submit({ onSuccess: () => form.setData({ name: '' }) }); }}>
+        Bio setData
+      </button>
+    </form>
+  );
+}
+Clearing.layout = Layout;
+
 // A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent.
 function Secret({ name }: { name: string }) {
   const form = useForm('profile.update', { name, password: '' }, { guard: 'Unsaved changes.' });
@@ -96,6 +112,12 @@ Secret.layout = Layout;
 
 // Buttons that set and submit in one handler: the request has to carry what the handler set, not the last render's data.
 const sent: Record<string, unknown>[] = [];
+// A transition that renders `status` waits here until the test lets it through.
+let slowRender: Promise<void> | undefined;
+function SlowStatus({ status }: { status: string }) {
+  if (status === 'queued' && slowRender) use(slowRender);
+  return <p data-testid="status">{status}</p>;
+}
 function Publish() {
   const form = useForm('profile.update', { title: 'Draft', status: 'draft', tags: [] as string[], meta: { pinned: false } }, { guard: false });
   return (
@@ -149,8 +171,12 @@ function Publish() {
       >
         Transition
       </button>
+      <button type="button" data-testid="send-transition" onClick={() => { startTransition(() => form.set('status', 'queued')); void form.submit(); }}>
+        Send transition
+      </button>
+      <p data-testid="dirty">{String(form.isDirty())}</p>
       <p data-testid="title">{String(form.data.title)}</p>
-      <p data-testid="status">{String(form.data.status)}</p>
+      <SlowStatus status={String(form.data.status)} />
       <p data-testid="title-dirty">{String(form.isDirty('title'))}</p>
       <p data-testid="processing">{String(form.processing)}</p>
     </section>
@@ -163,7 +189,7 @@ function People() {
 }
 People.layout = Layout;
 
-const pages: Record<string, PageComponent> = { Edit, Secret, Publish, People };
+const pages: Record<string, PageComponent> = { Edit, Secret, Clearing, Publish, People };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'profile.edit': { method: 'get', path: '/users/1/edit' },
@@ -430,6 +456,101 @@ describe('set() and submit() in one handler', () => {
       env.IS_REACT_ACT_ENVIRONMENT = true;
     }
     await until(() => expect($('status').textContent).toBe('B'));
+  });
+});
+
+describe('what a successful submit saves', () => {
+  const lastBody = () => JSON.parse(String(sent.at(-1)));
+  const releases: (() => void)[] = [];
+  beforeEach(() => {
+    sent.length = 0;
+    releases.length = 0;
+    server = (url, init) => {
+      if (init.body !== undefined) sent.push(init.body as never);
+      return new Promise<Response>((resolve) => releases.push(() => resolve(json(page('Edit', '/users/1/edit', { name: 'Ada King' })))));
+    };
+  });
+
+  it('an edit typed while the request is under way was not sent: it stays dirty, and the guard still asks', async () => {
+    await mount(page('Edit', '/users/1/edit', { name: 'Ada' }));
+    await type($('name') as HTMLInputElement, 'Ada King');
+    await click('save');
+    expect($('saving').textContent).toBe('true');
+    await type($('name') as HTMLInputElement, 'Ada Kingsley');
+    await act(async () => releases.forEach((release) => release()));
+    await until(() => expect($('saving').textContent).toBe('false'));
+    expect(lastBody()).toEqual({ name: 'Ada King' });
+    expect($('form').hasAttribute('data-dirty')).toBe(true);
+    expect($('name').hasAttribute('data-dirty')).toBe(true);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await click('nav-people-exact');
+    expect(dialog()?.getAttribute('data-kind')).toBe('leave');
+    await answer('cancel');
+    // Typing the sent value back is clean again: the baseline is what was sent.
+    await type($('name') as HTMLInputElement, 'Ada King');
+    expect($('form').hasAttribute('data-dirty')).toBe(false);
+  });
+
+  it('a plain submit with no further edits is clean', async () => {
+    await mount(page('Edit', '/users/1/edit', { name: 'Ada' }));
+    await type($('name') as HTMLInputElement, 'Ada King');
+    await click('save');
+    await act(async () => releases.forEach((release) => release()));
+    await until(() => expect($('saving').textContent).toBe('false'));
+    expect($('form').hasAttribute('data-dirty')).toBe(false);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  });
+
+  it('a set() in a transition that was sent is saved with it, although the transition has not rendered at success', async () => {
+    server = (url, init) => {
+      sent.push(init.body as never);
+      return json(page('Publish', '/users/1/edit'));
+    };
+    await mount(page('Publish', '/users/1/edit'));
+    let release!: () => void;
+    slowRender = new Promise<void>((resolve) => (release = resolve));
+    try {
+      // The transition suspends, so the success renders first, with the old status.
+      await click('send-transition');
+      await until(() => expect($('processing').textContent).toBe('false'));
+      expect(lastBody().status).toBe('queued');
+      expect($('status').textContent).toBe('draft');
+      await act(async () => release());
+      await until(() => expect($('status').textContent).toBe('queued'));
+      expect($('dirty').textContent).toBe('false');
+    } finally {
+      slowRender = undefined;
+    }
+  });
+});
+
+describe('what the success callbacks change', () => {
+  const clean = () => {
+    expect($('form').hasAttribute('data-dirty')).toBe(false);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  };
+  beforeEach(() => {
+    server = () => json(page('Clearing', '/users/1/edit'));
+  });
+
+  it('a reset() of the whole form in onSuccess is clean although the data held a field the defaults lack', async () => {
+    await mount(page('Clearing', '/users/1/edit'));
+    await click('bio-reset');
+    await until(() => expect(requests).toEqual(['PUT /users/1']));
+    await until(clean);
+  });
+
+  it('a setData() in onSuccess is clean', async () => {
+    await mount(page('Clearing', '/users/1/edit'));
+    await click('bio-setdata');
+    await until(() => expect(requests).toEqual(['PUT /users/1']));
+    await until(clean);
   });
 });
 

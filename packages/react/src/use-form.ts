@@ -404,13 +404,6 @@ export function useForm(...args: unknown[]): unknown {
     dataRef.current = next;
     setState(render);
   };
-  // Saved: the form starts over where it is once the submit's callbacks ran — what was sent, but what they `reset()` back at the
-  // defaults it had before (a password field empty again). Taken in the next render, so a reset inside `onSuccess`/`onFinish` counts.
-  const [saved, setSaved] = useState(false);
-  if (saved) {
-    setSaved(false);
-    setDefaults(data);
-  }
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
   // The navigation guard, while dirty — its own submit passes it. A remembered input that differs is dirty, too.
   const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
@@ -440,6 +433,9 @@ export function useForm(...args: unknown[]): unknown {
       live?.cancel();
       setProcessing(true);
       setWasSuccessful(false);
+      // One snapshot for the body and for the baseline: a `set()` after this point is not part of the request.
+      const sentData = dataRef.current;
+      let atSuccess: Record<string, unknown> | undefined;
       try {
         const page = await visit(url, {
           preserveScroll: true,
@@ -447,7 +443,7 @@ export function useForm(...args: unknown[]): unknown {
           // Its own guard does not stop it — the others (another form's unsaved changes) still ask.
           ignoreGuards: options.ignoreGuards === true ? true : [...(options.ignoreGuards ?? []), guard],
           method,
-          data: dataRef.current,
+          data: sentData,
           onProgress: (next, current) => {
             setProgress(next);
             onProgress?.(next, current);
@@ -459,8 +455,7 @@ export function useForm(...args: unknown[]): unknown {
         if (Object.keys(failed).length > 0) {
           onError?.(failed);
         } else {
-          // Saved: not dirty any more (the guard lets go) — see `saved`.
-          setSaved(true);
+          atSuccess = dataRef.current;
           live?.reset();
           setWasSuccessful(true);
           setRecentlySuccessful(true);
@@ -471,7 +466,14 @@ export function useForm(...args: unknown[]): unknown {
       } finally {
         setProcessing(false);
         setProgress(null);
-        onFinish?.();
+        try {
+          onFinish?.();
+        } finally {
+          // Saved: the form starts over where the request left it, not dirty any more (the guard lets go). That is what was sent — an
+          // edit typed while it was under way was never sent and stays dirty, and a sent edit a transition has not rendered yet is
+          // saved all the same — plus what the callbacks changed (a `reset()` of the password, a cleared form), so their result is clean.
+          if (atSuccess) setDefaults(savedBaseline(sentData, atSuccess, dataRef.current));
+        }
       }
     },
     [visit, guard, live],
@@ -529,6 +531,17 @@ export function useForm(...args: unknown[]): unknown {
       : {}),
   };
   return form;
+}
+
+/** The baseline after a success: what was sent, with every top-level field the success callbacks changed (or removed) taken over. */
+function savedBaseline(sent: Record<string, unknown>, atSuccess: Record<string, unknown>, now: Record<string, unknown>): Record<string, unknown> {
+  const baseline = { ...sent };
+  for (const key in { ...atSuccess, ...now }) {
+    if (Object.is(atSuccess[key], now[key]) && key in atSuccess === key in now) continue;
+    if (key in now) baseline[key] = now[key];
+    else delete baseline[key];
+  }
+  return baseline;
 }
 
 const noSubscription = () => () => {};
