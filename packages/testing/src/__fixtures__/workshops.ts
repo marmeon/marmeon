@@ -16,10 +16,8 @@ export interface WorkshopTables {
 async function book(connections: Connections, locked: boolean): Promise<Response> {
   const db = connections.get<WorkshopTables>();
   const booked = await connections.transaction(async () => {
-    let workshop = db.selectFrom('workshops').select('capacity').where('id', '=', 1);
-    // SQLite has one writer and no row locks.
-    if (locked && connections.options().driver === 'pgsql') workshop = workshop.forUpdate();
-    const { capacity } = await workshop.executeTakeFirstOrThrow();
+    const workshop = db.selectFrom('workshops').select('capacity').where('id', '=', 1);
+    const { capacity } = await (locked ? workshop.forUpdate() : workshop).executeTakeFirstOrThrow();
     const taken = await db.selectFrom('bookings').select(({ fn }) => fn.countAll().as('taken')).where('workshop_id', '=', 1).executeTakeFirstOrThrow();
     await setTimeout(30);
     if (Number(taken.taken) >= capacity) return false;

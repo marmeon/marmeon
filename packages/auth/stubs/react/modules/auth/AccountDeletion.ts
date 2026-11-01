@@ -98,8 +98,7 @@ export class AccountDeletion {
     if (ids.length === 0) return { deleted: [], refused: [] };
     const now = new Date(this.#clock.now());
     const { deleted, refused } = await this.#connections.transaction(async (): Promise<DeletionOutcome> => {
-      const lock = this.#connections.options().driver === 'pgsql';
-      const candidates = await this.#users.lockAccounts(ids, only, lock);
+      const candidates = await this.#users.lockAccounts(ids, only);
       const refused: RefusedDeletion[] = [];
       const deleted: User[] = [];
       // One account at a time, in id order: the question about an account comes after the accounts before it are gone, with
