@@ -103,11 +103,11 @@ export type Shape = {
 };
 // ShapeInput
 export type ShapeInput<S extends Shape> = Fields<{
-    [K in keyof S]: InferInput<S[K]>;
+    [K in keyof S]: InferInput<NonNullable<S[K]>> | (undefined extends S[K] ? undefined : never);
 }>;
 // ShapeOutput
 export type ShapeOutput<S extends Shape> = Fields<{
-    [K in keyof S]: InferOutput<S[K]>;
+    [K in keyof S]: InferOutput<NonNullable<S[K]>> | (undefined extends S[K] ? undefined : never);
 }>;
 // StringRule
 export declare class StringRule extends Rule<string, string> {
@@ -190,7 +190,7 @@ export declare const LIVE_ON_CONTAINER = ".live() goes on the field whose being 
 type MaybePromise<T> = T | Promise<T>;
 // MergeWhens
 type MergeWhens<A extends Shape, B extends Shape> = Simplify<Omit<A, keyof B> & Omit<B, keyof A> & {
-    [K in keyof A & keyof B]: Rule<InferOutput<A[K]> | InferOutput<B[K]>, InferInput<A[K]> | InferInput<B[K]>>;
+    [K in keyof A & keyof B]: Rule<InferOutput<NonNullable<A[K]>> | InferOutput<NonNullable<B[K]>>, InferInput<NonNullable<A[K]>> | InferInput<NonNullable<B[K]>>>;
 }>;
 // Message
 export type Message = (issue: object) => string;
