@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp } from './app.tsx';
 import { FileInput } from './file-input.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
+import { until } from './test-helpers/settle.ts';
 import { useAction } from './use-action.ts';
 import { useForm } from './use-form.ts';
 import { loadHistoryFallback } from '@marmeon/http/client/adapter';
@@ -173,11 +174,10 @@ describe('<FileInput> — an upload field', () => {
   it('an action of the same route sends the token of the field the form holds', async () => {
     await mount();
     await choose(new File(['png!'], 'me.png', { type: 'image/png' }));
-    await wait();
+    await until(() => expect(xhrs).toHaveLength(1)); // the upload code loads lazily
     await act(async () => xhrs[0]!.finish());
-    await wait();
+    await until(() => expect($('status').textContent).toBe('uploaded 1'));
     await act(async () => $('act').click());
-    await wait();
-    expect(submitted).toEqual([{ avatar: TOKEN, name: 'Ada' }]);
+    await until(() => expect(submitted).toEqual([{ avatar: TOKEN, name: 'Ada' }]));
   });
 });

@@ -326,14 +326,17 @@ export default defineRoutes((Route) => {
 });
 ```
 
-The controller stores the file on the public disk, inserts the record (a `media` table with `path`, `width` and `height`) and
-returns what the picker needs:
+The controller refuses an image that is too large (the [pixel limit](images.md#limiting-the-size-in-pixels)), stores the file on
+the public disk, inserts the record (a `media` table with `path`, `width` and `height`) and returns what the picker needs. A
+failed insert deletes the stored file again, because `store()` cannot be undone and the record would never name it:
 
 ```ts title="modules/media/controllers/StoreMediaController.ts"
-import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Storage, upload } from '@marmeon/storage';
 import { rules as r } from '@marmeon/validation';
 import { MediaRepository } from '../MediaRepository.ts';
+
+const MAX_SIDE = 8000;
 
 export const StoreMediaRequest = defineRequest({
   schema: r.object({ file: upload({ maxBytes: 5_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
@@ -352,10 +355,18 @@ export class StoreMediaController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof StoreMediaRequest>) {
+    const { file } = ctx.body;
+    const size = await file.dimensions(); // before store(), which moves the file
+    if (!size || size.width > MAX_SIDE || size.height > MAX_SIDE) {
+      await file.discard();
+      throw new ValidationError({ file: [`Choose an image of at most ${MAX_SIDE} by ${MAX_SIDE} pixels.`] });
+    }
     const disk = this.#storage.disk('public');
-    const size = await ctx.body.file.dimensions(); // before store(), which moves the file
-    const path = await ctx.body.file.store(disk, 'media');
-    const media = await this.#media.insert({ path, width: size?.width ?? null, height: size?.height ?? null });
+    const path = await file.store(disk, 'media');
+    const media = await this.#media.insert({ path, width: size.width, height: size.height }).catch(async (error: unknown) => {
+      await disk.delete(path).catch(() => false); // store() has no undo: the file would stay without a record
+      throw error;
+    });
     return this.json({ id: media.id, url: disk.url(path) }, { status: 201 });
   }
 }
@@ -364,7 +375,9 @@ export class StoreMediaController extends Controller {
 The controller keeps any size in pixels, and `null` for a file whose size it cannot read. A picker that only takes images it can
 show refuses both before `store()`, as [limiting the size in pixels](images.md#limiting-the-size-in-pixels) shows.
 
-The component sends the action once the field says `uploaded`, and drops the used upload from the field when it is done:
+The component sends the action once the field says `uploaded`. Whatever the answer, the upload is spent: a file that was stored,
+discarded or lost to a failed insert cannot be sent again. So the component empties the field with `cancel()` after every call and
+lets the user choose a file again:
 
 ```tsx title="modules/media/views/MediaUploader.tsx"
 import { FileInput, useAction, useForm } from '@marmeon/react';
@@ -378,16 +391,15 @@ export function MediaUploader({ onUploaded }: { onUploaded: (media: { id: number
       <FileInput field={form.field('file')} accept="image/png,image/jpeg,image/webp" />
       {file?.uploading && <progress value={file.progress} max={1} />}
       {(store.errors.file ?? file?.error) && <p role="alert">{store.errors.file ?? file?.error}</p>}
+      {store.exception && <p role="alert">The image could not be saved. Choose it again.</p>}
       <button
         type="button"
         disabled={file?.status !== 'uploaded' || store.pending}
         onClick={async () => {
           if (file?.status !== 'uploaded') return;
           const result = await store.submit({ data: { file } });
-          if (result.ok && result.kind === 'data') {
-            file.cancel(); // the token is used up: empty the field for the next file
-            onUploaded(result.data);
-          }
+          file.cancel(); // the token is spent, whatever the answer: empty the field for the next file
+          if (result.ok && result.kind === 'data') onUploaded(result.data);
         }}
       >
         Use this image
@@ -397,8 +409,8 @@ export function MediaUploader({ onUploaded }: { onUploaded: (media: { id: number
 }
 ```
 
-A failed request leaves the field as it is. A 422 from the rule or the controller shows at `store.errors.file`, and the user
-chooses another file. The [actions](actions.md#the-result) page lists the other outcomes. A page that needs no record
+A 422 from the rule or the controller shows at `store.errors.file`, and a failure such as a 500 at `store.exception`; both stay
+until the next call. The [actions](actions.md#the-result) page lists the other outcomes. A page that needs no record
 in the answer keeps the form and its redirect.
 
 ### An upload over several requests

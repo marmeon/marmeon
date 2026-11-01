@@ -152,9 +152,9 @@ the text around it.
 ### Limiting the size in pixels
 
 The `upload()` rule limits bytes and types, not pixels. A small file can hold a picture of 30 000 by 30 000 pixels, which a
-browser needs gigabytes to decode. Read `dimensions()` in the controller and refuse what is too large. A refused upload is
-`discard()`ed first, or its file waits on the private disk until `uploads:prune` removes it. A file whose header cannot be read,
-`undefined`, is refused too: the rule has checked the type, so an image without a readable size is damaged.
+browser needs gigabytes to decode. The controller reads `dimensions()` and refuses what is too large. It calls `discard()` before
+it refuses, or the file waits on the private disk until `uploads:prune` removes it. It refuses a file whose header cannot be read,
+`undefined`, too: the rule has checked the type, so an image without a readable size is damaged.
 
 ```ts title="modules/media/controllers/StoreImageController.ts"
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
@@ -187,8 +187,14 @@ export class StoreImageController extends Controller {
       await file.discard();
       throw new ValidationError({ file: [`Choose an image of at most ${MAX_SIDE} by ${MAX_SIDE} pixels.`] });
     }
-    const path = await file.store(this.#storage.disk('public'), 'media');
-    await this.#media.insert({ path, width: size.width, height: size.height });
+    const disk = this.#storage.disk('public');
+    const path = await file.store(disk, 'media');
+    try {
+      await this.#media.insert({ path, width: size.width, height: size.height });
+    } catch (error) {
+      await disk.delete(path).catch(() => false); // store() has no undo: the file would stay without a record
+      throw error;
+    }
     return this.redirect().route('media.index');
   }
 }
