@@ -415,6 +415,11 @@ export declare const filter: {
 export declare function readCsv(bytes: Uint8Array, options?: ReadCsvOptions): Result<CsvTable, CsvReadError>;
 // unescapeCsvCell
 export declare function unescapeCsvCell(text: string): string;
+// writeCsv
+export declare function writeCsv(rows: Iterable<readonly unknown[]>, options?: {
+    delimiter?: CsvDelimiter;
+    bom?: boolean;
+}): string;
 ```
 
 ### Referenced, not exported

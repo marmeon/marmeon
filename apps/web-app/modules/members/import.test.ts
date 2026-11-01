@@ -62,7 +62,8 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
   describe('the template (/members/import-template) — a file made in memory, named with contentDisposition()', () => {
     it('answers the two columns as an attachment with a header-safe name, in ASCII and in UTF-8', async () => {
       const english = await app.actingAs(ada).get('/members/import-template').assertOk();
-      expect(english.body).toBe('name,email\r\nAda Lovelace,ada@example.com\r\n');
+      expect(english.body).toBe('"name","email"\r\n"Ada Lovelace","ada@example.com"\r\n');
+      expect(Array.from(english.bytes().subarray(0, 3)), 'a byte order mark first').toEqual([0xef, 0xbb, 0xbf]);
       expect(Object.fromEntries(english.headers)).toMatchObject({
         'content-type': 'text/csv; charset=utf-8',
         'x-content-type-options': 'nosniff',
@@ -74,6 +75,13 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
       expect(german.headers.get('content-disposition')).toBe(
         `attachment; filename="Mitglieder-Vorlage-f_r-_bernahme.csv"; filename*=UTF-8''Mitglieder-Vorlage-f%C3%BCr-%C3%9Cbernahme.csv`,
       );
+    });
+
+    it('is a file the import takes as it is', async () => {
+      const as = app.actingAs(ada);
+      const template = (await as.get('/members/import-template').assertOk()).bytes();
+      const token = await as.upload(ROUTE, 'file', new File([template], 'members.csv', { type: 'text/csv' }));
+      await send(as, token).assertRedirect('/members').assertFlashed('toast', { kind: 'success', message: '1 row read, 0 to correct.' });
     });
 
     it('is for the people who may import: another member gets a 403', async () => {

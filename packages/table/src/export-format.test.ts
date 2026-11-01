@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, endpoint, LedgerTable, LocalizedTable, tableApp, type TableTestApp } from './__fixtures__/app.ts';
-import { CSV_BOM, csvLine, unescapeCsvCell } from './csv.ts';
+import { CSV_BOM, csvLine, unescapeCsvCell, writeCsv } from './csv.ts';
 import { readCsv } from './csv-read.ts';
 import { exportCsv, type DataTable } from './index.ts';
 
@@ -95,6 +95,19 @@ describe.each(drivers)('a delimiter and headings per request (%s)', (driver) => 
       expect(read.ok && read.value.rows[0]?.[0], 'a separator inside a cell split it').toBe('a;b\tc,d');
       expect(read.ok && read.value.rows[0]?.at(-1), 'a formula was not escaped').toBe('=1+1');
       expect(lines[1]).toContain(`"'=1+1"`);
+    }
+  });
+
+  it('writes the same bytes as writeCsv() for the same rows — header, escape and byte order mark included', async () => {
+    open = await tableApp(driver);
+    const db = open.connections.get();
+    await db.insertInto('ledger').values({ id: 1, note: 'a;b\tc,d', qty: 1, amount: '1.00', paid: true, booked_at: '2026-10-06T12:00:00.000Z', meta: '{}', formula: '=1+1' } as never).execute();
+    await db.insertInto('ledger').values({ id: 2, note: '@SUM(1)', qty: 2, amount: '-2.50', paid: false, booked_at: '2026-10-07T12:00:00.000Z', meta: '{}', formula: "'-2E3" } as never).execute();
+    for (const [name, delimiter] of [['csv', ','], ['semicolon', ';'], ['tab', '\t']] as const) {
+      const file = await (await download(open, name, ADA, {}, LedgerTable)).text();
+      const read = readCsv(Buffer.from(file), { unescape: true, delimiter });
+      if (!read.ok) throw new Error(read.error.message);
+      expect(writeCsv([read.value.headers, ...read.value.rows], { delimiter }), name).toBe(CSV_BOM + file); // text() drops the byte order mark that the export sends
     }
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { csvCell, csvLine, unescapeCsvCell } from './csv.ts';
+import { CSV_BOM, csvCell, csvLine, unescapeCsvCell, writeCsv } from './csv.ts';
+import { readCsv } from './csv-read.ts';
 
 describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
   it.each([
@@ -165,5 +166,50 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
 
   it('ends a line with CRLF', () => {
     expect(csvLine(['a', 1, null])).toBe('"a","1",""\r\n');
+  });
+});
+
+describe('writeCsv()', () => {
+  const CELLS = ['=x', '+x', '-x', '@x', '\tx', '\rx', '\nx', '  =x', '\u200B=x', '\uFF1Dx', '\u2212x', "'=x", "'  =x", '-12.50', '-2E3', 'plain', 'say "hi"', 'a,b;c'];
+
+  it('puts the byte order mark first and ends every line with CRLF, every cell quoted', () => {
+    expect(writeCsv([['name', 'n'], ['Ada', 1]])).toBe(`${CSV_BOM}"name","n"\r\n"Ada","1"\r\n`);
+    expect(writeCsv([['a']], { bom: false })).toBe('"a"\r\n');
+    expect(writeCsv([])).toBe(CSV_BOM);
+  });
+
+  it('takes any iterable of rows', () => {
+    expect(writeCsv(new Set([['a'], ['b']]), { bom: false })).toBe('"a"\r\n"b"\r\n');
+  });
+
+  it('escapes every cell that starts like a formula and leaves a plain decimal alone', () => {
+    const written = writeCsv([CELLS], { bom: false });
+    expect(written).toBe(`${CELLS.map(csvCell).join(',')}\r\n`);
+    for (const formula of ['=x', '+x', '-x', '@x', '\tx', '\rx', '\nx', '  =x', '\u200B=x', '\uFF1Dx', '\u2212x', "'=x", "'  =x", '-2E3']) {
+      expect(written, JSON.stringify(formula)).toContain(`"'${formula}"`);
+    }
+    expect(written).toContain('"-12.50"');
+    expect(written).not.toContain('"\'-12.50"');
+  });
+
+  it('is read back cell for cell with readCsv({ unescape: true }), whatever the delimiter', () => {
+    for (const delimiter of [',', ';', '\t'] as const) {
+      const file = writeCsv([CELLS.map((_, index) => `h${index}`), CELLS], { delimiter });
+      const read = readCsv(Buffer.from(file), { unescape: true, delimiter });
+      expect(read.ok && read.value.rows, JSON.stringify(delimiter)).toEqual([CELLS]);
+    }
+  });
+
+  it('writes what the reader refuses: a cell over maxCellLength and a NUL are no round trip', () => {
+    const long = readCsv(Buffer.from(writeCsv([['a'], ['x'.repeat(10_001)]])));
+    expect(!long.ok && long.error.kind).toBe('cell-too-long');
+    const nul = readCsv(Buffer.from(writeCsv([['a'], ['x\0y']])));
+    expect(!nul.ok && nul.error.kind).toBe('not-text');
+  });
+
+  it('separates by the delimiter and refuses any other', () => {
+    expect(writeCsv([['a', 'b']], { delimiter: ';', bom: false })).toBe('"a";"b"\r\n');
+    expect(writeCsv([['a', 'b']], { delimiter: '\t', bom: false })).toBe('"a"\t"b"\r\n');
+    for (const delimiter of ['|', '"', '=', '', ';;']) expect(() => writeCsv([['a']], { delimiter: delimiter as never })).toThrow(TypeError);
   });
 });
