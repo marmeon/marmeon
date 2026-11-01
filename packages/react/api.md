@@ -141,7 +141,9 @@ export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
 }[keyof F & string];
 // FieldPath
-export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}` : {
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? number extends F['length'] ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}` : {
+    [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth>}`;
+}[keyof F & `${number}`] : {
     [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
 }[keyof F & string];
 // FileInput

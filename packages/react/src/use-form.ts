@@ -57,7 +57,7 @@ type Step<T, Seen, Depth extends unknown[]> = Depth['length'] extends 0 | 1 | 2 
     : [0, 0, 0];
 
 /**
- * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Eight levels
+ * The paths into a form's data — `name`, `address.city`, `links.${number}.url` (a tuple of fixed length has the paths of its positions only) — what `isDirty(path)` takes. Eight levels
  * deep at most: every name or index between the dots counts one level. A record that refers to itself (`parent`,
  * `children`) is typed like any other data for five levels; past the fifth, each step back into it counts three levels, so
  * `children.0.children.0.children.0` compiles and a name after it does not. A deeper path is not known to the compiler: read
@@ -68,7 +68,9 @@ export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['le
   : F extends Primitive
     ? never
     : F extends readonly (infer Item)[]
-      ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}`
+      ? number extends F['length']
+        ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}`
+        : { [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth>}` }[keyof F & `${number}`]
       : {
           [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
         }[keyof F & string];

@@ -53,6 +53,10 @@ export function listPaths(state: FormState<Editor>) {
     state.errors['sections.0.title.x'],
   ];
   state.clearErrors('sections.0.fields.1.guest_label.de', 'sections.0.fields.1.options.1.value');
+  // @ts-expect-error — position 0 of the tuple holds a string
+  state.clearErrors('sections.0.fields.1.options.0.value');
+  // @ts-expect-error — the tuple has two positions
+  state.clearErrors('sections.0.fields.1.options.7');
   // @ts-expect-error — clearing a path the data does not have
   state.clearErrors('sections.0.fields.1.missing');
   return found;
@@ -60,6 +64,23 @@ export function listPaths(state: FormState<Editor>) {
 
 function errors6(state: FormState<Editor>) {
   return [state.errors['sections.0.fields.1.guest_label.de'], state.errors['sections.0.fields.1.options.0'], state.errors['sections.0.fields.1.options.1.value']];
+}
+
+interface Tuples {
+  pair: readonly [string, { value: string }];
+  maybe: [string, { value: string }?];
+}
+
+export function tuplePaths(state: FormState<Tuples>) {
+  state.clearErrors('pair.0', 'pair.1.value', 'maybe.0', 'maybe.1.value');
+  // @ts-expect-error — position 0 of a readonly tuple holds a string
+  state.clearErrors('pair.0.value');
+  // @ts-expect-error — a readonly tuple of two has no position 2
+  state.clearErrors('pair.2');
+  // @ts-expect-error — position 0 of a tuple with an optional element holds a string
+  state.clearErrors('maybe.0.value');
+  // @ts-expect-error — a tuple with an optional element has no position 2
+  state.clearErrors('maybe.2');
 }
 
 interface Levels {
