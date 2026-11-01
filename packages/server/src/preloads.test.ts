@@ -183,6 +183,24 @@ describe('baseOf', () => {
     expect(baseOf('<html><body></body></html>', manifest)).toBe('/');
   });
 
+  it('reads a base whose characters the build wrote as HTML references', () => {
+    expect(baseOf(page('https://cdn.example/a&amp;b/assets/index-a.js'), manifest)).toBe('https://cdn.example/a&b/');
+    expect(baseOf(page('https://cdn.example/&#97;/assets/index-a.js'), manifest)).toBe('https://cdn.example/a/');
+  });
+
+  it('judges the base without a manifest by the entry script under assets/', () => {
+    expect(baseOf(page('https://cdn.example/app/assets/index-a.js'))).toBe('https://cdn.example/app/');
+    expect(baseOf(page('/assets/index-a.js'))).toBe('/');
+    expect(() => baseOf(page('/static/assets/index-a.js'))).toThrow(/'\/static\/'/);
+  });
+
+  it('anchors the entry on a path segment, and checks every module script under assets/ when there is no manifest', () => {
+    expect(baseOf(page('https://cdn.example/myassets/index-a.js'))).toBe('/');
+    const foreign = '<script type="module" src="https://cdn.example/assets/lib.js"></script>';
+    expect(() => baseOf(foreign + page('/static/assets/index-a.js'))).toThrow(/'\/static\/'/);
+    expect(baseOf(foreign + page('https://cdn.example/assets/index-a.js'))).toBe('https://cdn.example/');
+  });
+
   it('stops on a path or relative base, naming it', () => {
     expect(() => baseOf(page('/static/assets/index-a.js'), manifest)).toThrow(/'\/static\/'/);
     expect(() => baseOf(page('./assets/index-a.js'), manifest)).toThrow(/'\.\/'/);

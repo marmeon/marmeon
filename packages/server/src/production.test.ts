@@ -59,6 +59,15 @@ describe('createProductionRenderer', () => {
     expect(html).not.toContain('modulepreload');
   });
 
+  it('refuses to boot with a path base, with a manifest or without', async () => {
+    for (const manifestText of [JSON.stringify(manifest), null]) {
+      build('index-a1.js', manifestText);
+      const index = join(root, 'dist/client/index.html');
+      writeFileSync(index, '<html><head><script type="module" src="/static/assets/index-a1.js"></script></head><body></body></html>');
+      await expect(createProductionRenderer({ root })).rejects.toThrow("`base` is '/static/'");
+    }
+  });
+
   it('refuses to boot with a malformed manifest', async () => {
     build('index-a1.js', '{ "a": { "file": 1 } }');
     await expect(createProductionRenderer({ root })).rejects.toThrow('dist/client/.vite/manifest.json is not a Vite manifest — run `marmeon build` again.');
