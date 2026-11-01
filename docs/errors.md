@@ -120,33 +120,39 @@ caller sees it in the return type and has to handle it, and nothing is thrown or
 literal and gives the rest its usual types, so `err({ kind: 'invalid', fields: ['email'] })` fits a declared `fields: string[]`:
 
 ```ts
-accept(tokenHash: string, userId: number): Promise<Result<Member, { kind: 'expired' } | { kind: 'already-member'; teamId: number }>>
+accept(invitationId: number, userId: number): Promise<Result<Member, { kind: 'expired' } | { kind: 'already-member'; teamId: number }>>
 ```
 
 Inside, `return err({ kind: 'expired' })` ends with an error and `return ok(member)` with the value. `ok()` without a value is
 for work that only succeeds or fails. The caller narrows the result over `ok`, then switches over `error.kind`. The invitation's token
-is made with [`linkToken()`](urls.md#a-link-that-is-used-once), and the controller finds its row by `hashLinkToken()`:
+is made with [`linkToken()`](urls.md#a-link-that-is-used-once). The link's route trades it for the invitation's id in the session, and the
+controller takes the row from `PendingInvitation`, so the post has no token in its path
+([a form behind a token](security.md#a-form-behind-a-token-in-code)):
 
 ```ts title="modules/teams/controllers/AcceptInvitationController.ts"
 import type { Authenticated } from '@marmeon/auth';
-import { hashLinkToken } from '@marmeon/encryption';
 import { abort, Controller, type HttpContext } from '@marmeon/http';
 import { Invitations } from '../Invitations.ts';
+import { PendingInvitation } from '../PendingInvitation.ts';
 
 export class AcceptInvitationController extends Controller {
   readonly #invitations: Invitations;
+  readonly #pending: PendingInvitation;
 
-  constructor(invitations: Invitations) {
+  constructor(invitations: Invitations, pending: PendingInvitation) {
     super();
     this.#invitations = invitations;
+    this.#pending = pending;
   }
 
-  async handle(ctx: HttpContext<Authenticated, { token: string }>) {
-    const accepted = await this.#invitations.accept(hashLinkToken(ctx.params.token), ctx.user.id);
+  async handle(ctx: HttpContext<Authenticated>) {
+    const invitation = await this.#pending.require();
+    const accepted = await this.#invitations.accept(invitation.id, ctx.user.id);
     if (!accepted.ok) {
       switch (accepted.error.kind) {
         case 'expired':
-          return abort(410, 'This invitation has expired.');
+          // The same 404 as a link that never existed: an answer of its own would tell which links were real.
+          return abort(404);
         case 'already-member':
           return this.redirect(`/teams/${accepted.error.teamId}`);
         default:

@@ -227,9 +227,10 @@ would hand out every note to whoever guesses an id. The route fails to start unl
 - the binding is scoped to its parent: `bind('attachment', AttachmentRepository, { scopedBy: 'note' })`, with the parent checked;
 - the records are public by design, on a route that only reads: `bind('user', ProfileDirectory, { public: true })`. A route that
   changes data always needs a real check.
-- the route's credential is a token in its path, and a check of your own decides: `.bind('invitation', …).authorize(describeAccess((ctx) => …, 'invitation link'))`
+- the route's credential is a token in its path, and a check of your own decides: `.bind('ticket', …).authorize(describeAccess((ctx) => …, 'ticket link'))`
   (see [a link that is used once](urls.md#a-link-that-is-used-once)). The alternative is to pass the token unbound and look its row up in the controller
-  ([Results](errors.md#results)).
+  ([Results](errors.md#results)). A form that posts should not have the token in its path: trade the token first
+  ([a form behind a token](security.md#a-form-behind-a-token-in-code));
 - the route changes data under a parent that is public, and a check of your own finds the parent open (next section).
 
 `marmeon route:list` shows each route that binds a record as public, as `everyone (public: user)` in the `ACCESS` column and
@@ -521,46 +522,198 @@ shape of `ProjectPolicy`, asking `roleIn()` for the workspace's own id.
 
 An invitation or a ticket link has a token in its path, and the token is the whole credential: whoever holds it may use it, signed
 in as anyone or not. No policy can say more about it than the row does. The route says so, and the lookup by the token's hash
-decides:
+decides. Only the route that opens the link has the token in its path: it trades the token for the row's id in the session, and
+the page and the post that follow have none. That keeps the token out of the intended URL of a sign-in, out of `Referer`
+and logs, and keeps `back()` and the CSRF check working:
 
 ```ts title="modules/invitations/routes.ts"
 import { authenticate } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
-import { credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
+import { abort, credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
 import { AcceptInvitationController } from './controllers/AcceptInvitationController.ts';
+import { OpenInvitationController } from './controllers/OpenInvitationController.ts';
 import { ShowInvitationController } from './controllers/ShowInvitationController.ts';
 import { InvitationRepository } from './InvitationRepository.ts';
+import { PendingInvitation } from './PendingInvitation.ts';
 
 export default defineRoutes((Route) => {
-  const invitations = Route.prefix('/invitations').middleware(credentialPage()).middleware(throttle('invitations'));
+  // Anyone with the link may open it. InvitationRepository finds the row by the token's hash (see below) and answers 404 for any other value.
+  Route.middleware(credentialPage())
+    .middleware(throttle('invitations'))
+    .authorize(everyone)
+    .bind('invitation', InvitationRepository, { public: true })
+    .get('/invitations/:invitation', OpenInvitationController);
 
-  // Anyone with the link may look at it. InvitationRepository finds the row by the token's hash (see below) and answers 404 for any other value.
-  invitations.authorize(everyone).bind('invitation', InvitationRepository, { public: true }).get('/:invitation', ShowInvitationController);
+  // The page and the post: no token in the path. Accepting changes data, so it names its own check, and only a signed-in user may accept.
+  const pending = Route.middleware(credentialPage({ referrer: 'same-origin' })).authorize(
+    describeAccess(async (_ctx, resolve) => {
+      if ((await resolve(PendingInvitation).find()) === undefined) abort(404);
+      return true;
+    }, 'pending invitation'),
+  );
 
-  // Accepting changes data, so it names its credential, and only a signed-in user may accept.
-  invitations
-    .middleware(authenticate())
-    .bind('invitation', InvitationRepository)
-    .authorize(describeAccess((ctx) => ctx.params.invitation !== undefined, 'invitation link'))
-    .post('/:invitation', AcceptInvitationController);
+  pending.get('/invitation', ShowInvitationController).name('invitations.show');
+  pending.middleware(authenticate()).post('/invitation', AcceptInvitationController);
 });
 ```
+
+`OpenInvitationController`, `PendingInvitation` (the scoped holder of the looked-up row) and `AcceptInvitationController` are
+written out in [a form behind a token](security.md#a-form-behind-a-token-in-code).
 
 - **The binder is the check, so it must look the row up by the token.** `InvitationRepository` overrides `resolveRouteBinding()`
   with `hashLinkToken()`, `secretEquals()` and `used_at is null`, as `TicketRepository` does in
   [a link that is used once](urls.md#a-link-that-is-used-once). The default binding by id on a public GET would open every
   invitation. `{ public: true }` is allowed only on a route that reads. The route that changes data needs a
-  check of its own, and `describeAccess(check, 'invitation link')`, written inside `.authorize()` after the `.bind()` it reads, is that check: it tells `marmeon route:list` that the
-  credential is the link (the `ACCESS` column shows `invitation link`), and the start does not refuse the route
-  ([open routes and bindings](#open-routes-and-bindings)). It decides nothing more than "the binder found a row", so look
-  the row up with the token's hash, and answer a missing, used and revoked token with the same 404.
-- **Put `credentialPage()` on every route that carries the token.** It keeps the page out of shared caches, search indexes and
+  check of its own, and `describeAccess(check, label)`, written inside `.authorize()`, is that check: it tells `marmeon route:list` that the
+  credential is the invitation the session names (the `ACCESS` column shows `pending invitation`), and the start does not refuse the route
+  ([open routes and bindings](#open-routes-and-bindings)). It decides nothing more than "the session names an open invitation", so look
+  the row up again on every request, and answer a missing, used and revoked invitation with the same 404.
+- **Put `credentialPage()` on every route of the flow.** It keeps the page out of shared caches, search indexes and
   a `Referer` ([a link that is a credential](security.md#a-link-that-is-a-credential)). The `throttle('invitations')` after it
   limits how fast tokens can be tried; the app defines that limiter in a provider's `boot()`
   ([defining limiters](rate-limiting.md#defining-limiters)), or the start stops.
 - **Who may then do what is a different question.** The invitation lets a user in; the role the new member gets comes from the
   invitation's row, written when an owner issued it, never from the request that accepts it. Accepting redeems the row and inserts the membership in one
   transaction; a lost redeem answers 404. From then on the policy above decides. See [a link that is used once](urls.md#a-link-that-is-used-once) for the token and its hash.
+
+#### An invitation for someone without an account
+
+The invited address often has no account yet. The link already proved the address to whoever holds it, so the account is made
+confirmed, in the same transaction that uses the invitation up. The recipe rests on one rule: **the token is mailed only to the invited address.** It is never shown to
+the inviter, never returned by the invite request and never logged. An app that does show or copy the link (a "copy link"
+button, say) must not confirm the address from it, and sends the normal verification mail instead. Otherwise whoever issued the
+invitation could open the link first and make the account with a confirmed address and a password of their own choice.
+
+The calls go in this order:
+
+1. **Claim the invitation first** (`redeem()`). Two requests with one link then cannot both go on, and a refused account further
+   down rolls the claim back, so the link still works.
+2. `register()` of the kit's `UserRepository`, with the invitation's address, not one from the form. It returns a `duplicate` when the
+   address has an account.
+3. `markEmailVerified()`. It also sets `first_verified_at`, so `auth:prune-unverified` never takes the account.
+4. The membership, with the role of the invitation's row.
+5. `Registered`, so the listeners of a new account run. The kit's mail listener sees a confirmed address and sends nothing.
+6. After the commit, `auth.signIn()`.
+
+```ts title="modules/invitations/AccountSetUp.ts"
+import { Registered, type PasswordHash } from '@marmeon/auth';
+import { Clock, err, EventDispatcher, ok, type Result } from '@marmeon/core';
+import { Connections, type Row } from '@marmeon/database';
+import { UserRepository, type User } from '#modules/auth';
+import { MembershipRepository } from '../workspaces/MembershipRepository.ts';
+import { InvitationRepository } from './InvitationRepository.ts';
+
+export type SetUpError = { kind: 'used' } | { kind: 'taken' };
+
+export class AccountSetUp {
+  readonly #connections: Connections;
+  readonly #invitations: InvitationRepository;
+  readonly #users: UserRepository;
+  readonly #memberships: MembershipRepository;
+  readonly #events: EventDispatcher;
+  readonly #clock: Clock;
+
+  constructor(connections: Connections, invitations: InvitationRepository, users: UserRepository, memberships: MembershipRepository, events: EventDispatcher, clock: Clock) {
+    this.#connections = connections;
+    this.#invitations = invitations;
+    this.#users = users;
+    this.#memberships = memberships;
+    this.#events = events;
+    this.#clock = clock;
+  }
+
+  async run(invitation: Row<'invitations'>, details: { name: string; password: PasswordHash; locale: string }): Promise<Result<User, SetUpError>> {
+    return this.#connections.transaction(async () => {
+      if (!(await this.#invitations.redeem(invitation.id))) return err({ kind: 'used' });
+      const created = await this.#users.register({ ...details, email: invitation.email });
+      if (!created.ok) return err({ kind: 'taken' });
+      await this.#users.markEmailVerified(created.value.id, new Date(this.#clock.now()));
+      await this.#memberships.insert({ workspace_id: invitation.workspace_id, user_id: created.value.id, role: invitation.role });
+      await this.#events.dispatch(new Registered(created.value));
+      return ok(created.value);
+    });
+  }
+}
+```
+
+For an address that already has an account, the controller sends the visitor through the sign-in and back to the invitation,
+which is still open, where a new account would be signed in and sent to the workspace. The two answers differ, so the visitor
+learns that the address has an account. That is acceptable only because the link went to that address alone: the holder of the link is
+the person it was mailed to. This is why the rule above matters. The password is hashed before the lookup, which keeps the two
+answers' timing alike, not their content:
+
+```ts title="modules/invitations/controllers/SetUpAccountController.ts"
+import { Auth, Hasher, password } from '@marmeon/auth';
+import { abort, Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
+import { Session } from '@marmeon/session';
+import { rules as r } from '@marmeon/validation';
+import { AccountSetUp } from '../AccountSetUp.ts';
+import { PendingInvitation } from '../PendingInvitation.ts';
+
+export const SetUpAccountRequest = defineRequest({
+  schema: r.object({ name: r.string().trim().required().min(2).max(255), password: password(), password_confirmation: r.string() }).confirmed('password'),
+});
+
+export class SetUpAccountController extends Controller {
+  static request = SetUpAccountRequest;
+
+  readonly #pending: PendingInvitation;
+  readonly #hasher: Hasher;
+  readonly #setUp: AccountSetUp;
+  readonly #auth: Auth;
+  readonly #session: Session;
+  readonly #translator: Translator;
+
+  constructor(pending: PendingInvitation, hasher: Hasher, setUp: AccountSetUp, auth: Auth, session: Session, translator: Translator) {
+    super();
+    this.#pending = pending;
+    this.#hasher = hasher;
+    this.#setUp = setUp;
+    this.#auth = auth;
+    this.#session = session;
+    this.#translator = translator;
+  }
+
+  async handle(ctx: ContextOf<typeof SetUpAccountRequest>) {
+    const invitation = await this.#pending.require();
+    const hash = await this.#hasher.make(ctx.body.password);
+    const done = await this.#setUp.run(invitation, { name: ctx.body.name, password: hash, locale: this.#translator.locale });
+    if (!done.ok) {
+      if (done.error.kind === 'used') abort(404);
+      return this.redirect().route('invitations.continue');
+    }
+    // A new account has no second factor, so this signs in. The session keeps its data, so the id goes first.
+    this.#session.forget('invitation');
+    await this.#auth.signIn(done.value);
+    return this.redirect().route('workspaces.show', { workspace: invitation.workspace_id });
+  }
+}
+```
+
+Post the form to a route behind `pending` that is open to guests, next to the accept route. Each request costs a password hash,
+and an address that has an account redeems nothing, so one link can be tried again and again: the route carries a limiter of
+its own. A signed-in visitor never sees the form: they accept the invitation as above.
+
+```ts title="modules/invitations/routes.ts"
+// Added to the routes above, where `pending` is the registrar with the check:
+pending.middleware(throttle('invitations.account')).post('/invitation/account', SetUpAccountController);
+```
+
+```ts title="modules/invitations/InvitationsServiceProvider.ts"
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+
+export class InvitationsServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    app.container.make(RateLimiter).for('invitations.account', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)));
+  }
+}
+```
+
+The route also needs `import { throttle } from '@marmeon/cache'` and the controller's import. The `invitations` limiter of the trade route is defined the
+same way ([defining limiters](rate-limiting.md#defining-limiters)). The accept route needs none of its own: `authenticate()` is in front of it.
+
 
 ### The report
 
