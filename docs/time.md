@@ -169,6 +169,7 @@ Everything that reads the time through the app's `Clock` follows the test clock:
 - the cache's expiry, locks and rate limits on the `memory`, `file` and `database` drivers;
 - the session's lifetime and its expiry on the server;
 - signed URLs and temporary links to files;
+- the day in a table export's file name, as the UTC day;
 - password reset tokens, remember-me tokens and API tokens;
 - the sign-in: its absolute lifetime, the window of a password confirmation (`confirmedPassword()`), the proof of a second
   factor (`twoFactor()`, `confirmedSecondFactor()`) and the cap of a remember-me cookie (`AUTH_REMEMBER_DAYS`), and how long a started second-factor step stays open;

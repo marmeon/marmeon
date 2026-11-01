@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
 import { cursorPaginate, outsideTransaction, paginate, sql, type Connection, type CursorEncrypter, type SelectQuery } from '@marmeon/database';
 import { leaveOutSelections, selectionsOf } from '@marmeon/database/internal';
-import type { Translator } from '@marmeon/core';
+import { SystemClock, type Clock, type Translator } from '@marmeon/core';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition } from '@marmeon/router';
@@ -106,15 +106,17 @@ export class DataTables {
   readonly #encrypter: () => CursorEncrypter;
   readonly #metadata: (() => RelationMetadata) | undefined;
   readonly #translator: () => Translator | undefined;
+  readonly #clock: () => Clock;
 
   /** @internal — the container builds it (`TableServiceProvider`); an app injects `DataTables`. */
-  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata, translator: () => Translator | undefined = () => undefined) {
+  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, encrypter: () => CursorEncrypter, metadata?: () => RelationMetadata, translator: () => Translator | undefined = () => undefined, clock: () => Clock = () => new SystemClock()) {
     this.#db = db;
     this.#gate = gate;
     this.#resolve = resolve;
     this.#encrypter = encrypter;
     this.#metadata = metadata;
     this.#translator = translator;
+    this.#clock = clock;
   }
 
   /**
@@ -356,7 +358,8 @@ export class DataTables {
         if (next === null) controller.close();
       },
     });
-    const day = new Date().toISOString().slice(0, 10);
+    // The app's clock (so `app.freeze()` fixes the name), as the UTC day: the app has no display zone.
+    const day = new Date(this.#clock().now()).toISOString().slice(0, 10);
     return new Response(body, {
       headers: {
         'content-type': 'text/csv; charset=utf-8',
@@ -521,7 +524,7 @@ export class DataTables {
         continue;
       }
       if (selected.has(entry.ref)) {
-        throw new Error(`Table "${definition.name}": the filter '${name}' reads ${entry.ref}, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`);
+        throw new Error(`Table "${definition.name}": the filter '${name}' reads ${entry.ref}, a value its query selects — a filter runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be filtered by.`);
       }
       if (entry.type === 'select') {
         query = query.where(entry.ref, '=', value);
@@ -536,7 +539,7 @@ export class DataTables {
       const value = searched.find(([, col]) => selected.has(col.ref));
       if (value) {
         throw new Error(
-          `Table "${definition.name}": the column '${value[0]}' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
+          `Table "${definition.name}": the column '${value[0]}' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be searched.`,
         );
       }
       const pattern = `%${state.search.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

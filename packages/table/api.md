@@ -44,14 +44,14 @@ export type CheckBulk<Row, Bulk> = {
     [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>> : unknown;
 };
 // CheckColumnKey
-export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends number ? K : ReferencedType<DB, TB, K> extends ScalarKey ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')` : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
+export type CheckColumnKey<DB, TB extends keyof DB, K extends string, O = {}> = string extends K ? ColumnReference<DB, TB> : [KeyProblem<DB, TB, K, O>] extends [never] ? ReferencedType<DB, TB, K> extends number ? K : ReferencedType<DB, TB, K> extends ScalarKey ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')` : `the key '${K}' is no string or number column — rows are acted on by their key` : KeyProblem<DB, TB, K, O>;
 // CheckColumns
 export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
     [A in keyof Cols]: A extends 'can' ? Problem<`'can' is taken — a row's abilities are its 'can'; name the column otherwise`> : Cols[A] extends ColumnDefinition<infer R extends string> ? [ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>> : unknown;
 };
 // CheckFilters
 export type CheckFilters<DB, TB extends keyof DB, Filters, O = {}> = {
-    [N in keyof Filters]: Filters[N] extends Filter<infer R extends string, 'has', string, infer C extends string> ? HasProblem<DB, TB, R, C> : Filters[N] extends Filter<infer R extends string> ? R extends Selected<DB, TB, O> ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE)`> : [ColumnProblem<DB, TB, R>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R>> : unknown;
+    [N in keyof Filters]: Filters[N] extends Filter<infer R extends string, 'has', string, infer C extends string> ? HasProblem<DB, TB, R, C> : Filters[N] extends Filter<infer R extends string> ? R extends Selected<DB, TB, O> ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE) — or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be filtered by`> : [ColumnProblem<DB, TB, R>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R>> : unknown;
 };
 // CheckRequestAbility
 export type CheckRequestAbility<P, K extends string> = string extends K ? ResourcelessAbility<P> : K extends ResourcelessAbility<P> ? K : K extends AbilityOf<P> ? `'${K}' takes a resource — this is asked once per request: name an ability without one (rows are asked by .authorize())` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
@@ -340,8 +340,8 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
         readonly query: never;
     }, resolve: ClassResolver) => boolean | Promise<boolean>;
     readonly query: Q;
-    readonly key: CheckColumnKey<DbOf<Q>, TbOf<Q>, K> | {
-        readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>;
+    readonly key: CheckColumnKey<DbOf<Q>, TbOf<Q>, K, OutOf<Q>> | {
+        readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K, OutOf<Q>>;
         readonly type: KeyType;
     };
     readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols, OutOf<Q>>>;
@@ -428,7 +428,7 @@ export declare function writeCsv(rows: Iterable<readonly unknown[]>, options?: {
 // ActionInputSource
 export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S | ((resolve: ClassResolver, ctx: any) => S | Promise<S>);
 // CheckKeyColumn
-export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
+export type CheckKeyColumn<DB, TB extends keyof DB, K extends string, O = {}> = string extends K ? ColumnReference<DB, TB> : [KeyProblem<DB, TB, K, O>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : KeyProblem<DB, TB, K, O>;
 // ColumnProblem
 type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends ColumnReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
 // CtxOf
@@ -461,6 +461,8 @@ type InputsOf<Actions> = {
 type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
 // KeyPrefix
 type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
+// KeyProblem
+type KeyProblem<DB, TB extends keyof DB, K extends string, O> = K extends Selected<DB, TB, O> ? `'${K}' is a value the query selects — a key is a column of a table of the query: select from the query as a derived table, db.selectFrom(query.as('rows')), and name 'rows.${K}'` : ColumnProblem<DB, TB, K>;
 // KeyType
 export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
 // KnownOptions
@@ -538,7 +540,7 @@ type SearchableNames<Cols> = {
 // Selected
 type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColumns<DB, TB>>;
 // SelectedProblem
-type SelectedProblem<DB, TB extends keyof DB, O, A, C> = C extends ColumnDefinition<infer R extends string, boolean, infer Q> ? R extends Selected<DB, TB, O> ? A extends R ? Q extends true ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE)` : never : `'${A & string}' reads '${R}', a value the query selects — name the column '${R}': ${R}: column('${R}')` : never : never;
+type SelectedProblem<DB, TB extends keyof DB, O, A, C> = C extends ColumnDefinition<infer R extends string, boolean, infer Q> ? R extends Selected<DB, TB, O> ? A extends R ? Q extends true ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE) — or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be searched` : never : `'${A & string}' reads '${R}', a value the query selects — name the column '${R}': ${R}: column('${R}')` : never : never;
 // Simplify
 type Simplify<T> = {
     [K in keyof T]: T[K];

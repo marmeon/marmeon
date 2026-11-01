@@ -624,6 +624,16 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       await expect(db.selectFrom('api_keys').select(sql`to_jsonb(${sql.id('api_keys')})`.as('row')).execute()).rejects.toThrow(row('This query'));
     });
 
+    it('refuse raw SQL in FROM with the way that works: a subquery whose select list holds the function', async () => {
+      const raw = db.selectFrom(sql<{ day: number }>`(select 1 as day)`.as('days')).selectAll();
+      await expect(raw.execute()).rejects.toThrow(/^\[marmeon:D10\] This query reads "days", raw SQL or a function in FROM/);
+      await expect(raw.execute()).rejects.toThrow('db.selectFrom(db.selectNoFrom(sql`generate_series(1, 7)`.as(\'day\')).as(\'days\'))');
+      // The example the message gives passes the guard; the message gives it for Postgres (SQLite has no such function in a select list).
+      const days = driver === 'sqlite' ? sql<number>`1` : sql<number>`generate_series(1, 7)`;
+      const rows = await db.selectFrom(db.selectNoFrom(days.as('day')).as('days')).select('day').execute();
+      expect(rows.map((r) => Number(r.day))).toEqual(driver === 'sqlite' ? [1] : [1, 2, 3, 4, 5, 6, 7]);
+    });
+
     it('are refused when an insert copies one — also on the first query of a process', async () => {
       const copy = (target: Kysely<FixtureTables>) => target.insertInto('tags').columns(['slug']).expression((eb) => eb.selectFrom('api_keys').select('token' as never));
       await expect(copy(db).execute()).rejects.toThrow(unasked('api_keys.token'));

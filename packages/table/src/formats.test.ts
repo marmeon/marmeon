@@ -1,3 +1,4 @@
+import { Clock } from '@marmeon/core';
 import { Encrypter } from '@marmeon/encryption';
 import { readdirSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -33,9 +34,19 @@ const CASES = [
 ] as const;
 
 describe.each(drivers)('frozen formats of the table package on %s', (driver) => {
-  it('writes the CSV export byte for byte as the newest fixture of csv/ holds it — and names the file by the day', async () => {
-    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-06T08:00:00Z') });
+  it("names the export by the UTC day of the app's Clock, not of the machine — also just before midnight", async () => {
     open = await tableApp(driver);
+    let now = Date.parse('2026-11-18T23:30:00Z');
+    open.application.container.instance(Clock, { now: () => now });
+    const name = async () => (await open!.request(endpoint(LedgerTable, 'export', 'csv'), { user: ADA })).headers.get('content-disposition');
+    expect(await name()).toBe('attachment; filename="ledger-2026-11-18.csv"');
+    now = Date.parse('2026-11-19T00:00:01Z');
+    expect(await name()).toBe('attachment; filename="ledger-2026-11-19.csv"');
+  });
+
+  it('writes the CSV export byte for byte as the newest fixture of csv/ holds it — and names the file by the day', async () => {
+    open = await tableApp(driver);
+    open.application.container.instance(Clock, { now: () => Date.parse('2026-10-06T08:00:00Z') });
     await seed(open, driver);
     const response = await open.request(endpoint(LedgerTable, 'export', 'csv'), { user: ADA });
     expect(response.status).toBe(200);

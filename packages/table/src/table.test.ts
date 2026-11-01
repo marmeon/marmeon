@@ -138,7 +138,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       );
       const searched = table({ size: column('size').searchable() });
       await expect(tables.resolve(searched, on(searched, { request: new Request('http://localhost/teams/1/teams?search=x') }))).rejects.toThrow(
-        `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
+        `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be searched.`,
       );
       const filtered = defineTable({
         name: 'teams',
@@ -148,7 +148,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         filters: { size: filter.select('size', ['1']) },
       } as never);
       await expect(tables.resolve(filtered, on(filtered, { request: new Request('http://localhost/teams/1/teams?filter%5Bsize%5D=1') }))).rejects.toThrow(
-        `Table "teams": the filter 'size' reads size, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`,
+        `Table "teams": the filter 'size' reads size, a value its query selects — a filter runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be filtered by.`,
       );
     });
 
