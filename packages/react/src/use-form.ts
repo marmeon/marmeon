@@ -284,7 +284,7 @@ export function useForm(...args: unknown[]): unknown {
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');
   const kept = remember && store?.has(rememberKey) ? (store.get(rememberKey) as KeptForm | undefined) : undefined;
   const [defaults, setDefaults] = useState(initial);
-  const [data, setState] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
+  const [data, setState] = useState(() => (kept ? restoreKept(initial, kept.data) : initial));
   // The newest data, written by `set()`, `setData()` and `reset()` as they run: a `submit()` in the same handler sends it before the next render.
   const dataRef = useRef(data);
   // `render` is a functional update for field changes, so React applies them by lane: an urgent `set()` must not render a field a pending transition set.
@@ -421,6 +421,26 @@ export function useForm(...args: unknown[]): unknown {
 
 const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+/**
+ * The initial data with the kept input laid over it. What is remembered has lost its passwords, sensitive fields and files
+ * (their keys are gone, at any depth), so a key missing from the kept data comes back from `initial` — a nested
+ * `account.password` is still there. Only plain objects merge; lists, dates and everything else are replaced as a whole.
+ */
+function restoreKept(initial: Record<string, unknown>, kept: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...initial };
+  for (const [key, value] of Object.entries(kept)) {
+    const base = initial[key];
+    result[key] = isPlainRecord(base) && isPlainRecord(value) ? restoreKept(base, value) : value;
+  }
+  return result;
+}
 
 /** What a remembered form keeps. */
 interface KeptForm {

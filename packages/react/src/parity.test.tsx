@@ -51,7 +51,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function Edit({ name }: { name: string }) {
   const [tab, setTab] = useRemember('tab', 'links');
-  const form = useForm('profile.update', { name, password: '', card_number: '' }, { remember: true, guard: 'Unsaved.' });
+  const form = useForm('profile.update', { name, password: '', card_number: '', account: { email: 'ada@example.test', password: '', avatar: null as File | null }, tags: ['a', 'b'] }, { remember: true, guard: 'Unsaved.' });
+  const account = form.data.account as { email: string; password: string; avatar: File | null };
   return (
     <>
       <button data-testid="tab" onClick={() => setTab('activity')}>
@@ -60,6 +61,11 @@ function Edit({ name }: { name: string }) {
       <input data-testid="name" value={String(form.data.name)} onChange={(event) => form.set('name', event.target.value)} />
       <input data-testid="password" type="password" value={String(form.data.password)} onChange={(event) => form.set('password', event.target.value)} />
       <input data-testid="card" value={String(form.data.card_number)} onChange={(event) => form.set('card_number', event.target.value)} />
+      <input data-testid="email" value={account.email} onChange={(event) => form.set('account', { ...account, email: event.target.value })} />
+      <input data-testid="account-password" type="password" value={account.password} onChange={(event) => form.set('account', { ...account, password: event.target.value })} />
+      <button data-testid="avatar" onClick={() => form.set('account', { ...account, avatar: new File(['x'], 'a.png') })} />
+      <button data-testid="tags" onClick={() => form.set('tags', ['c'])} />
+      <output data-testid="nested">{JSON.stringify({ length: account.password.length, avatar: account.avatar, tags: form.data.tags, dirty: form.dirty })}</output>
     </>
   );
 }
@@ -209,6 +215,27 @@ describe('useRemember and useForm({ remember })', () => {
     expect(($('name') as HTMLInputElement).value).toBe('Ada L.');
     expect(($('password') as HTMLInputElement).value).toBe('');
     expect(($('card') as HTMLInputElement).value).toBe('');
+  });
+
+  it('restores the fields a nested object lost in memory from the initial data, and replaces a list as a whole', async () => {
+    server = () => json(page('People', '/people'));
+    await mount(page('Edit', '/users/1', { name: 'Ada' }));
+    await type('email', 'grace@example.test');
+    await type('account-password', 'hunter2-MARKER');
+    await click('avatar');
+    await click('tags');
+    await click('to-people');
+    await until(() => expect($('people')).not.toBeNull());
+    await back();
+    await until(() => expect($('email')).not.toBeNull());
+    expect(($('email') as HTMLInputElement).value).toBe('grace@example.test');
+    expect(($('account-password') as HTMLInputElement).value).toBe('');
+    const shown = JSON.parse($('nested')!.textContent!);
+    expect(shown.length).toBe(0);
+    expect(shown.avatar).toBeNull();
+    expect(shown.tags).toEqual(['c']);
+    // The restored password equals its initial value: only the remembered input is dirty.
+    expect(shown.dirty).toEqual(['account.email', 'tags', 'tags.0', 'tags.1']);
   });
 
   it('forgotten when the document is left — signing out answers 409', async () => {
