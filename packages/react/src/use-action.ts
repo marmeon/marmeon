@@ -18,7 +18,7 @@ import type {
 import { useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { RoutesContext } from './routes.ts';
-import type { BooleanFields, RouteFormFields } from './use-form.ts';
+import type { ActionFields, RouteFormFields } from './use-form.ts';
 
 export type { ActionError } from '@marmeon/http/client';
 
@@ -46,8 +46,8 @@ export type ActionReload = Reloading | readonly Reloading[];
 type DataOption<N extends string> = [ActionBodyOf<N>] extends [never]
   ? { data?: `'${N}' takes no body — its controller has no request schema (or it is a GET: pass \`query\`)` }
   : {} extends ActionBodyOf<N>
-    ? { data?: BooleanFields<ActionBodyOf<N>> }
-    : { data: BooleanFields<ActionBodyOf<N>> };
+    ? { data?: ActionFields<ActionBodyOf<N>> }
+    : { data: ActionFields<ActionBodyOf<N>> };
 
 type ParamsOption<N extends string, RequiresParams extends boolean> = RequiresParams extends true ? { params: BrowserParamsOf<N> } : { params?: BrowserParamsOf<N> };
 
@@ -83,10 +83,10 @@ type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends A
   : [options: ActionSubmitOptions<N, RequiresParams>];
 
 /** A call of an action under way, as `usePendingSubmissions` and `action.submissions` list it — a ghost row's data. */
-export interface PendingSubmission<N extends string> {
+export interface PendingSubmission<N extends string, Input = ActionFields<ActionBodyOf<N>> | RouteFormFields<N>> {
   readonly id: number;
-  /** What it sends: the route's request schema input. */
-  readonly input: RouteFormFields<N>;
+  /** What it sends: an action's data as it was passed, or a route form's fields. */
+  readonly input: Input;
   readonly method: ActionMethod;
   readonly url: string;
 }
@@ -100,8 +100,8 @@ export interface ClientAction<N extends string, RequiresParams extends boolean =
   submit(...args: SubmitArgs<N, RequiresParams>): Promise<ActionResultOf<N>>;
   /** A call is under way. */
   readonly pending: boolean;
-  /** This component's calls under way, oldest first. */
-  readonly submissions: readonly PendingSubmission<N>[];
+  /** This component's calls under way, oldest first — their `input` is the `data` they were passed, so it goes back into `submit()`. */
+  readonly submissions: readonly PendingSubmission<N, ActionFields<ActionBodyOf<N>>>[];
   /** How the last call that finished ended. */
   readonly result: ActionResultOf<N> | undefined;
   /** The data of the last call that succeeded with data. */
@@ -157,7 +157,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;
       const body = options.data as Record<string, unknown> | undefined;
       const id = ++nextCall.current;
-      const pending: PendingSubmission<string> = { id, input: (body ?? {}) as RouteFormFields<string>, method, url: target.url };
+      const pending: PendingSubmission<string> = { id, input: (body ?? {}) as PendingSubmission<string>['input'], method, url: target.url };
       setCalls((current) => [...current, pending]);
       setErrors({});
       let outcome: ActionOutcome;
@@ -233,7 +233,7 @@ export function usePendingSubmissions<const N extends BrowserRouteNameInput>(nam
     () =>
       all
         .filter((submission) => submission.name === name)
-        .map((submission) => ({ id: submission.id, input: submission.input as RouteFormFields<N>, method: submission.method, url: submission.url })),
+        .map((submission) => ({ id: submission.id, input: submission.input as PendingSubmission<N>['input'], method: submission.method, url: submission.url })),
     [all, name],
   );
 }

@@ -70,7 +70,7 @@ export function InTheBrowser() {
   // @ts-expect-error
   useForm('user-profile.updte', { name: '', bio: '' }, { params: { user: 7 } });
   // A route without parameters takes the initial data alone.
-  useForm('auth.login.store', { email: '', password: '' });
+  useForm('auth.login.store', { email: '', password: '', remember: false });
   // The controller form stays: fields from the controller, any URL.
   void useForm<UpdateUserProfileController>({ name: '', bio: '' }).put('/users/7');
 

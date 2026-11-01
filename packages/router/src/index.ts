@@ -28,6 +28,7 @@ export type {
   CheckQuery,
   ContextOf,
   FormOf,
+  FormOutputOf,
   InferInput,
   InferOutput,
   MessageTranslator,

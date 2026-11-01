@@ -137,6 +137,8 @@ A form sends every field as a string, an empty one as `''`. A JSON client sends 
 arrive as `''`, neither as missing, which would keep the old subtitle, nor as an error. So the rules decide by type. Where `''` can
 be a value of the rule, it is one. Where it never can, it is a form's empty field and counts as missing.
 
+In a form, a number rule's field holds `''` for an empty input where it may be missing; [Forms](forms.md#fields-and-errors) shows the input.
+
 | Rule | `''` with `optional()`, `nullable()` or `default(v)` | `''` without a modifier |
 | --- | --- | --- |
 | `r.string()` with `trim()`, `lowercase()`, `max()`, `custom()`, `transform()` | `''`, a value | `''` |
@@ -188,7 +190,8 @@ r.string().trim().transform((text) => text.split(' ')) // input string, output s
 | Helper | Reads | For `UpdateNoteRequest` |
 | --- | --- | --- |
 | `ctx.body` | The body's output. | `{ title: string; slug: string; link: string \| null; tags: string[] }` |
-| `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` types its fields with it (a boolean rule's field as `boolean`). | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
+| `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` takes its fields from it: a boolean rule's as `boolean`, a number rule's as `number`. | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
+| `FormOutputOf<UpdateNoteController>` | The body's output, defaults filled in; `useForm()` reads it to make a defaulted field present. | `{ title: string; slug: string; link: string \| null; tags: string[] }` |
 | `QueryOf<ListNotesController>` | The parsed query, an output. | `{ sort: 'title' \| '-title'; page: number }` |
 
 A field of `when()` is optional in the output.

@@ -114,6 +114,8 @@ export type EmptyObject = {};
 export type ExtractParams<Path extends string> = Path extends `:${string}` ? ExtractParams<`/${Path}`> : Path extends `${string}/:${infer Segment}/${infer Rest}` ? ParamEntry<Segment> & ExtractParams<`/${Rest}`> : Path extends `${string}/:${infer Segment}` ? ParamEntry<Segment> : EmptyObject;
 // FormOf
 export type FormOf<C> = InferInput<SchemaOf<RequestOf<C>>>;
+// FormOutputOf
+export type FormOutputOf<C> = InferOutput<SchemaOf<RequestOf<C>>>;
 // GLOBAL
 export declare const GLOBAL = "global";
 // Handler

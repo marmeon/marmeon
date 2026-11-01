@@ -187,6 +187,9 @@ export type RequestOf<C> = C extends { handle: (ctx: infer TCtx, ...rest: any[])
 /** The form a controller accepts — its schema's *input* type (what the browser sends). */
 export type FormOf<C> = InferInput<SchemaOf<RequestOf<C>>>;
 
+/** What a controller's `ctx.body` holds — its schema's *output* type, defaults filled in. */
+export type FormOutputOf<C> = InferOutput<SchemaOf<RequestOf<C>>>;
+
 /** The parsed query of a controller (`ctx.query`, defaults filled in) — `never` without a query schema. */
 export type QueryOf<C> = [QuerySchemaOf<RequestOf<C>>] extends [never] ? never : InferOutput<QuerySchemaOf<RequestOf<C>>>;
 

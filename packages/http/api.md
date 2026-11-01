@@ -194,6 +194,8 @@ export interface ForeverSignedRouteOptions {
 }
 // FormOf
 export type { FormOf } from '@marmeon/router';
+// FormOutputOf
+export type { FormOutputOf } from '@marmeon/router';
 // HstsOptions
 export interface HstsOptions {
     maxAge: Duration;
@@ -2519,6 +2521,8 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
 // FormOf
 export type { FormOf } from '@marmeon/router';
+// FormOutputOf
+export type { FormOutputOf } from '@marmeon/router';
 // ImageSource
 export interface ImageSource {
     readonly src: string;

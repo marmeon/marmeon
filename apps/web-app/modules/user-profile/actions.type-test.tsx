@@ -26,6 +26,10 @@ export function Actions() {
     const added = await add.submit({ data: { label: 'Blog', url: 'https://blog.example' } });
     if (added.kind === 'invalid') expectTypeOf(added.errors).toEqualTypeOf<Partial<Record<'label' | 'url', string>>>();
     expectTypeOf(usePendingSubmissions('user-profile.links.store')[0]!.input).toEqualTypeOf<{ label: string; url: string }>();
+    expectTypeOf(usePendingSubmissions('auth.passkeys.destroy')[0]!.input.password).toEqualTypeOf<string | undefined>();
+    // An action's own submissions hold the data they were passed, so a call's input goes back into submit().
+    const destroy = useAction('auth.passkeys.destroy', { passkey: '1' });
+    expectTypeOf(destroy.submissions[0]!.input).toEqualTypeOf<{ password?: string | undefined }>();
 
     // Argument of type '"user-profile.links.destory"' is not assignable to parameter of type '"'user-profile.links.destory' is not a
     // route name — did you mean user-profile.links.destroy?"'.
@@ -103,3 +107,8 @@ export const island = ['entries', 'now'] as const satisfies RevalidateOnBack<Sho
 // Type '"activty"' is not assignable to type '"activity" | "auth" | … | "stats"'. Did you mean '"activity"'?
 // @ts-expect-error
 export const typo = ['activty'] as const satisfies RevalidateOnBack<ShowUserProfileController>;
+
+/** A component's hook may return a call list without annotating it: the declaration can name every type in it (no TS2883). */
+export function useDestroyCalls() {
+  return [useAction('auth.passkeys.destroy', { passkey: '1' }).submissions, usePendingSubmissions('auth.passkeys.destroy')];
+}

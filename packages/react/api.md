@@ -13,6 +13,10 @@ Types from other packages: `react`, `react-dom`
 export type { ActionError } from '@marmeon/http/client';
 // ActionField
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
+// ActionFields
+export type ActionFields<F> = {
+    [K in keyof F]: FormValue<F[K], false>;
+};
 // ActionReload
 export type ActionReload = Reloading | readonly Reloading[];
 // ActionResultOf
@@ -60,7 +64,7 @@ export type CheckedPatch<R, P> = (props: P) => {
 export interface ClientAction<N extends string, RequiresParams extends boolean = false> {
     submit(...args: SubmitArgs<N, RequiresParams>): Promise<ActionResultOf<N>>;
     readonly pending: boolean;
-    readonly submissions: readonly PendingSubmission<N>[];
+    readonly submissions: readonly PendingSubmission<N, ActionFields<ActionBodyOf<N>>>[];
     readonly result: ActionResultOf<N> | undefined;
     readonly data: ([ActionDataOf<N>] extends [never] ? never : ActionDataOf<N>) | undefined;
     readonly errors: Partial<Record<ActionField<N>, string>>;
@@ -437,9 +441,9 @@ export type PasswordNeverRemembered = 'password fields are never remembered — 
 // PatchedProps
 export type PatchedProps<T> = unknown extends T ? Readonly<Record<string, unknown>> : PropsOf<T>;
 // PendingSubmission
-export interface PendingSubmission<N extends string> {
+export interface PendingSubmission<N extends string, Input = ActionFields<ActionBodyOf<N>> | RouteFormFields<N>> {
     readonly id: number;
-    readonly input: RouteFormFields<N>;
+    readonly input: Input;
     readonly method: ActionMethod;
     readonly url: string;
 }
@@ -491,7 +495,7 @@ export interface RouteForm<F> extends FormState<F> {
     field<const K extends string>(name: CheckUploadField<F, K>): FormField;
 }
 // RouteFormFields
-export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : BooleanFields<RouteFormOf<N>>;
+export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : SchemaFields<RouteFormOf<N>, RouteFormOutputOf<N>>;
 // RouteFormOptions
 export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
     validate?: true | LiveValidationSetting<F>;
@@ -656,14 +660,12 @@ type ArrayPath<F extends readonly unknown[], Item, Seen, Depth extends unknown[]
 }[ArrayShape<F>];
 // ArrayShape
 type ArrayShape<F extends readonly unknown[]> = number extends F['length'] ? 'items' : '0' extends keyof F ? 'positions' : F extends readonly [] ? 'none' : 'items';
-// BooleanFields
-export type BooleanFields<F> = {
-    [K in keyof F]: FormValue<F[K]>;
-};
 // BooleanRuleInput
 type BooleanRuleInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
 // ButtonAttributes
 type ButtonAttributes = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'>;
+// ByLiterals
+type ByLiterals<V, O> = [LiteralKeys<V>] extends [never] ? Extract<O, Partial<V>> : Extract<O, Partial<Pick<V, LiteralKeys<V>>>>;
 // CheckFormRoute
 type CheckFormRoute<N extends string> = CheckBrowserRouteName<N> extends N ? N extends keyof Routes ? [RouteFormOf<N>] extends [never] ? `'${N}' has no request schema to type a form with — give its controller \`static request = defineRequest(…)\`` : N : N : CheckBrowserRouteName<N>;
 // CheckQueryRoute
@@ -676,21 +678,31 @@ interface CurrentProps {
 type DataOption<N extends string> = [ActionBodyOf<N>] extends [never] ? {
     data?: `'${N}' takes no body — its controller has no request schema (or it is a GET: pass \`query\`)`;
 } : {} extends ActionBodyOf<N> ? {
-    data?: BooleanFields<ActionBodyOf<N>>;
+    data?: ActionFields<ActionBodyOf<N>>;
 } : {
-    data: BooleanFields<ActionBodyOf<N>>;
+    data: ActionFields<ActionBodyOf<N>>;
 };
+// DefaultedKeys
+type DefaultedKeys<In, Out> = {
+    [K in keyof In & keyof Out]-?: {} extends Pick<In, K> ? ({} extends Pick<Out, K> ? never : K) : never;
+}[keyof In & keyof Out];
 // Enter
 type Enter<T, Seen, Depth extends unknown[]> = T extends unknown ? FieldPath<T, [...Depth, ...Step<T, Seen, Depth>], Seen> : never;
 // ErrorKey
 type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 // Field
 type Field<F> = keyof F & string;
+// Flatten
+type Flatten<T> = {
+    [K in keyof T]: T[K];
+};
 // FormFields
-type FormFields<T> = [FormOf<T>] extends [never] ? T : BooleanFields<FormOf<T>>;
+type FormFields<T> = [FormOf<T>] extends [never] ? T : SchemaFields<FormOf<T>, FormOutputOf<T>>;
 // FormValue
-type FormValue<V> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput] ? [BooleanRuleInput] extends [NonNullable<V>] ? boolean | Extract<V, null | undefined> : V : V extends Primitive | Upload | ((...args: never) => unknown) ? V : {
-    [K in keyof V]: FormValue<V[K]>;
+type FormValue<V, Numbers extends boolean = true, Missing extends boolean = TakesMissing<V>> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput] ? [BooleanRuleInput] extends [NonNullable<V>] ? boolean | Extract<V, null | undefined> : V : Numbers extends true ? [NonNullable<V>] extends [NumberRuleInput] ? [NumberRuleInput] extends [NonNullable<V>] ? number | Extract<V, null | undefined> | (Missing extends true ? '' : never) : V : FormValueInner<V, Numbers> : FormValueInner<V, Numbers>;
+// FormValueInner
+type FormValueInner<V, Numbers extends boolean> = V extends Primitive | Upload | ((...args: never) => unknown) ? V : {
+    [K in keyof V]: FormValue<V[K], Numbers>;
 };
 // HeadFields
 export interface HeadFields {
@@ -763,6 +775,16 @@ interface LinkOptions {
     confirm?: Confirm;
     viewTransition?: ViewTransitionOption;
 }
+// LiteralKeys
+type LiteralKeys<V> = {
+    [K in keyof V]-?: [Exclude<V[K], undefined>] extends [never] ? never : [Exclude<V[K], undefined>] extends [string | number | boolean] ? string extends Exclude<V[K], undefined> ? never : number extends Exclude<V[K], undefined> ? never : boolean extends Exclude<V[K], undefined> ? never : K : never;
+}[keyof V];
+// MemberFields
+type MemberFields<In, Out> = {
+    [K in keyof WithDefaults<In, Out>]: PairedValue<WithDefaults<In, Out>[K], K extends keyof Out ? Out[K] : never, K extends keyof In ? TakesMissing<In[K]> : false>;
+};
+// MemberOf
+type MemberOf<V, O> = [ByLiterals<V, O>] extends [never] ? O : ByLiterals<V, O>;
 // MethodProps
 type MethodProps<N extends string> = [MethodOf<N>] extends ['get'] ? AnchorAttributes & PrefetchProps & CurrentProps & {
     method?: 'get';
@@ -784,8 +806,14 @@ interface NoPrefetch {
     cacheForMs?: never;
     preload?: 'only links (GET) are preloaded — never an action (POST, PUT, PATCH, DELETE)';
 }
+// NumberRuleInput
+type NumberRuleInput = number | `${number}`;
 // PageModules
 type PageModules = Record<string, () => Promise<unknown>>;
+// PairedValue
+type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput | NumberRuleInput] ? FormValue<V, true, Missing> : V extends Primitive | Upload | ((...args: never) => unknown) ? V : V extends readonly unknown[] ? {
+    [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly unknown[] ? (P extends keyof NonNullable<O> ? NonNullable<O>[P] : NonNullable<O>[number]) : never>;
+} : SchemaFields<V, NonNullable<O>>;
 // ParamsMissing
 type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
 // ParamsOption
@@ -844,6 +872,8 @@ type QueryStateOf<N extends string> = [RouteQueryOf<N>] extends [never] ? Record
 type Reenters<T, Seen> = Seen extends unknown ? ((<G>() => G extends T ? 1 : 2) extends <G>() => (G extends Seen ? 1 : 2) ? true : never) : never;
 // RouteFormOf
 type RouteFormOf<N extends string> = FormOf<Instance<ControllerOf<N>>>;
+// RouteFormOutputOf
+type RouteFormOutputOf<N extends string> = FormOutputOf<Instance<ControllerOf<N>>>;
 // RouteFormRest
 type RouteFormRest<N extends string> = {} extends BrowserParamsOf<N> ? [options?: RouteFormOptions<RouteFormFields<N>> & {
     params?: BrowserParamsOf<N>;
@@ -858,6 +888,8 @@ type RouteLinkProps<N extends string> = LinkOptions & PartialReloadOptions<Insta
     instant?: InstantProp<N>;
     href?: never;
 } & ParamsProp<N> & MethodProps<N>;
+// SchemaFields
+type SchemaFields<In, Out> = In extends unknown ? MemberFields<In, MemberOf<In, Out>> : never;
 // SensitiveFormField
 type SensitiveFormField<F> = keyof {
     [K in keyof F & string as LooksLikePassword<K> extends true ? never : LooksSensitive<K> extends true ? K : never]: true;
@@ -868,12 +900,18 @@ type SensitiveKey<K extends string> = IsPassword<K> extends true ? RememberKey<K
 type Step<T, Seen, Depth extends unknown[]> = Depth['length'] extends 0 | 1 | 2 | 3 | 4 ? [0] : [Reenters<NonNullable<T>, Seen>] extends [never] ? [0] : [0, 0, 0];
 // SubmitArgs
 type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends ActionSubmitOptions<N, RequiresParams> ? [options?: ActionSubmitOptions<N, RequiresParams>] : [options: ActionSubmitOptions<N, RequiresParams>];
+// TakesMissing
+type TakesMissing<V> = undefined extends V ? true : null extends V ? true : false;
 // ViewAction
 type ViewAction = {
     handle: (...args: never[]) => unknown;
 };
 // ViewPropsOf
 type ViewPropsOf<C extends ViewAction> = [PageProps<C>] extends [never] ? IslandProps<C> : PageProps<C>;
+// WithDefaults
+type WithDefaults<In, Out> = Flatten<In & {
+    [K in DefaultedKeys<In, Out>]-?: Exclude<In[K], undefined>;
+}>;
 ```
 
 ## `@marmeon/react/server`

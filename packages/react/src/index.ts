@@ -48,7 +48,7 @@ export { ConfirmDialog } from './confirm.tsx';
 export type { Confirm, ConfirmAnswer, ConfirmComponent, ConfirmDialogProps, ConfirmOptions, ConfirmProps, ConfirmRequest } from './confirm.tsx';
 export { useAction, usePendingSubmissions } from './use-action.ts';
 export type { ActionError, ActionField, ActionReload, ActionResultOf, ActionSubmitOptions, ClientAction, PendingSubmission } from './use-action.ts';
-export type { FieldPath, Form as FormHandle, FormField, FormOptions, FormPart, FormState, FormSubmitOptions, LiveValidationSetting, PasswordNeverRemembered, RememberFormOptions, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
+export type { ActionFields, FieldPath, Form as FormHandle, FormField, FormOptions, FormPart, FormState, FormSubmitOptions, LiveValidationSetting, PasswordNeverRemembered, RememberFormOptions, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
 export { useRoute } from './routes.ts';
 export type { RouteFunction } from './routes.ts';
 export { createMarmeonApp } from './client.tsx';

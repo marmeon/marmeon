@@ -14,8 +14,8 @@ export default function TwoFactorChallenge({ totp, passkey }: { totp: boolean; p
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   // Both forms post to the same route (auth.two-factor.challenge.store → TwoFactorChallengeController): the code of the app, or a
   // recovery code. Two forms, so the second works without JavaScript too — a plain post, vouched for by the browser's Fetch Metadata.
-  const codeForm = useForm('auth.two-factor.challenge.store', { code: '' });
-  const recoveryForm = useForm('auth.two-factor.challenge.store', { recovery_code: '' });
+  const codeForm = useForm('auth.two-factor.challenge.store', { code: '', recovery_code: '' });
+  const recoveryForm = useForm('auth.two-factor.challenge.store', { code: '', recovery_code: '' });
 
   async function usePasskey() {
     setPasskeyWorking(true);
