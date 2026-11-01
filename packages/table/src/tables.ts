@@ -371,7 +371,7 @@ export class DataTables {
   // --- the parts ----------------------------------------------------------------------------------------------------------
 
   async #authorizeTable(definition: TableDefinition, ctx: HttpContext): Promise<void> {
-    if (definition.authorize && !(await definition.authorize(ctx, this.#resolve))) throw forbidden();
+    if (definition.authorize && (await definition.authorize(ctx, this.#resolve)) !== true) throw forbidden();
   }
 
   async #visible(visibility: TableVisibility | undefined, ctx: HttpContext): Promise<boolean> {
