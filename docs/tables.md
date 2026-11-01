@@ -78,6 +78,63 @@ query: (db: Database<'members'>, ctx: TableContext<Authenticated, { team: Row<'t
 
 The restriction is a type, as everywhere else: at runtime the table passes the app's connection.
 
+The base query is a function of the connection and the request's context, nothing else. It has no `resolve`, so it cannot ask the
+container for a service, and the `Clock` is one. Its `ctx` has no `query`, because the page and the table's endpoints have
+different URLs and the query string of one is not the other's. A parameter of the table is therefore one of three things:
+
+- **A filter**, when the value narrows the rows: the URL chooses it, and the table checks it against the filter's options.
+- **A value of the request's state**, when the rows depend on something the request knows, such as the day. A middleware of the
+  page's route sets it. The table's endpoints hang on that route, so their `ctx` carries it too
+  (see [Middleware per endpoint](#middleware-per-endpoint)).
+- **A table of its own**, when the value changes which rows exist rather than which are shown: the window of a time series
+  (daily or weekly buckets, from another start) is one table for each window, built from one function and each with its own
+  `prefix`. The window is then the address of the page and of its file.
+
+The clock is state like any other. A middleware reads it and passes the instant on, so `app.travel()` in a test moves the
+table with the services:
+
+```ts title="modules/members/middleware/MonthAgo.ts"
+import { Clock } from '@marmeon/core';
+import type { HttpContext, Next } from '@marmeon/http';
+
+/** Adds `ctx.monthAgo`: the instant 30 days before the app's clock says now, as the ISO string a timestamp column compares with. */
+export class MonthAgo {
+  static inject = [Clock] as const;
+  static readonly adds = ['monthAgo'] as const;
+
+  readonly #clock: Clock;
+
+  constructor(clock: Clock) {
+    this.#clock = clock;
+  }
+
+  handle(_ctx: HttpContext, next: Next<{ monthAgo: string }>) {
+    return next({ monthAgo: new Date(this.#clock.now() - 30 * 24 * 60 * 60 * 1000).toISOString() });
+  }
+}
+```
+
+```ts title="modules/members/tables/RecentMembersTable.ts"
+import { can, type Authenticated } from '@marmeon/auth';
+import { column, defineTable, type TableContext } from '@marmeon/table';
+import { MemberPolicy } from '../policies/MemberPolicy.ts';
+
+export const RecentMembersTable = defineTable({
+  name: 'recent-members',
+  query: (db, ctx: TableContext<Authenticated & { monthAgo: string }>) => db.selectFrom('users').where('users.created_at', '>=', ctx.monthAgo),
+  key: 'users.id',
+  columns: {
+    name: column('users.name').sortable().searchable(),
+    joined: column('users.created_at').sortable(),
+  },
+  defaultSort: '-joined',
+  authorize: can(MemberPolicy, 'viewAny'),
+});
+```
+
+Put the middleware on the page's route, `members.middleware(MonthAgo).get('/recent', ListRecentMembersController).name('recent').attach(RecentMembersTable.endpoints())`.
+A page whose route lacks `MonthAgo` does not compile, and its controller types its `ctx` with `& { monthAgo: string }`.
+
 ### Columns
 
 A column is a column of the query: `column('name')`, or `column('users.name')` for a join. Its key in `columns` is its **alias**,
@@ -91,7 +148,8 @@ says `created_at`.
 | `.label(text)` | Its heading in the props and in the CSV. Without it, the props carry `label: null`, the page labels the column through `useTable()`'s `labels`, and the CSV heading is the alias. |
 | `.label((t) => t('members.column.name'))` | The heading in the request's language: the function runs once per request with `t(key, params?)` of the request's translator (`@marmeon/i18n`), and `t` gives the key itself where none is bound. The props and the CSV carry the same text. |
 | `.visible(Policy, 'ability')` | Only users the policy allows see it. Asked once per request, without a row. |
-| `.visible((ctx, resolve) => …)` | The same with a function of your own. |
+| `.visible((ctx, resolve) => …)` | The same with a function of your own. It must return exactly `true`; anything else hides the column. |
+| `.visible(can(Policy, 'ability', 'param'))` | The same with an ability that takes a resource of the path, such as the tenant the route binds: see [A capability of the path](#a-capability-of-the-path). A 403 or 404 of the check means hidden. |
 
 A hidden column is not selected, not sent and not exported, and in the row's type it is optional. A column that a migration marked
 `.secret()`, such as a password hash, cannot be a column at all: that is a compile error, and a column that names a `secret(eb, …)`
@@ -104,7 +162,10 @@ value is left out of the base query too, so it never reaches the SQL.
 
 To search or filter by a value the query computes, or to use it as the key, select from the query as a derived table: its columns
 are real ones, and a computed value that identifies a row can be the key (`key: 'rows.slot'`, say). A number column is searched
-as its digits.
+as its digits. The search, the filter and the sort then run on the computed value. A filter on a plain column of the inner table
+can still use that table's index through the derived table, since the database reads through a derived table that only selects
+and computes; a search or a filter on the computed value itself is evaluated for each row, unless an index spells exactly that
+expression.
 
 ```ts title="modules/teams/tables/TeamsTable.ts"
 import { can, type Authenticated } from '@marmeon/auth';
@@ -131,7 +192,10 @@ export const TeamsTable = defineTable({
 
 ### The key
 
-The key identifies a row, and it is what actions send. A number column goes by name, `key: 'users.id'`, and is read as an integer.
+The key identifies a row, and it is what actions send. It is a column of a table of the query, never a value the query computes
+under a name: `key: 'line'` for a `line` that the query selects is a compile error, although `column('line')` shows it. A
+computed value that identifies a row becomes a key when the query selects from the query as a derived table, as in the
+[`TeamsTable`](#columns) above. A number column goes by name, `key: 'users.id'`, and is read as an integer.
 A text key says how to read it: `key: { column: 'users.uuid', type: 'uuid' }`, with the types `integer`, `bigint`, `string` and
 `uuid`. A text key by name alone is a compile error. Every key from the browser is parsed by its type before any query. One that
 does not parse is no row, so text never reaches an integer column. In the props, the key of a row is under its column's name:
@@ -198,8 +262,9 @@ reads `ctx.query['filter[x]']` itself gets a value that was only checked for its
 ### Sorting and pages
 
 `defaultSort` is the sort without a `?sort=`: an alias, with `-` in front for descending. Without it, the table sorts by its first
-sortable column that everyone sees; with none, there is no default sort and `ctx.query.sort` is optional. The key always breaks
-ties. A default sort by a column with `.visible(…)` is refused, as a
+sortable column that everyone sees; with none, there is no default sort and `ctx.query.sort` is optional. The key breaks ties in
+the direction of the sort: rows with the same value come in ascending key order under `?sort=name` and in descending key order
+under `?sort=-name`, so a page never repeats or skips a row. A default sort by a column with `.visible(…)` is refused, as a
 compile error and when `defineTable()` runs, because it would answer 400 to everyone who may not see the column.
 
 `pagination` pages by number with a total, by default. `perPage` lists the page sizes `?per_page=` allows, and the first one is the
@@ -441,6 +506,82 @@ rest, and none of it runs when nothing is left.
 the URL, and refuses more rows than the action's `max`, 1000 by default, with a 422. It never acts on a list that was cut short.
 Chosen keys are held to `max` as well.
 
+**A table's actions belong to the module that defines it.** `defineTable()` closes the set of `actions` and `bulk`; another module
+cannot add one to a table it does not own. When a module above, one that imports `members`, should act on the rows of a table
+below, the lower module owns the seam: an abstract class for what the action needs done, which its action calls. The module above
+binds a class that extends it. The dependency keeps its direction, and the container resolves the abstract class by the same
+rules as [your own stores](authentication.md#your-own-stores). The class stays unbound until the module above is loaded: without
+that binding, running `invite` fails with K1 (`MemberNotices is abstract: bind …`), so the module above must be in the app.
+
+```ts title="modules/members/MemberNotices.ts"
+export abstract class MemberNotices {
+  abstract invite(memberIds: readonly number[]): Promise<void>;
+}
+```
+
+```ts title="modules/members/actions/InviteMembers.ts"
+import { MemberNotices } from '../MemberNotices.ts';
+
+export class InviteMembers {
+  readonly #notices: MemberNotices;
+
+  constructor(notices: MemberNotices) {
+    this.#notices = notices;
+  }
+
+  async handle(members: readonly { readonly id: number }[]) {
+    await this.#notices.invite(members.map((member) => member.id));
+    return { invited: members.length };
+  }
+}
+```
+
+The module above binds its class in a provider, `container.singleton(MemberNotices, SendInvitations)`; the action is in the lower
+module's table, `invite: bulk(InviteMembers).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'invite')`.
+
+### A capability of the path
+
+A table below a tenant's route often asks one question of the tenant: may this user change many rows or take the list away? The
+tenant is a bound route parameter, so the ability is a method of its policy that takes the tenant, `manageMembers(user, team)`.
+The abilities of a table take a row or nothing:
+
+- `.authorize(Policy, 'ability')` of an action or a bulk action is asked **for each row**, with the row.
+- `.visible(Policy, 'ability')` and an export's `.authorize(Policy, 'ability')` are asked **once per request, without a resource**.
+  An ability that needs the tenant is a compile error there.
+
+For an ability about a bound parameter, give the table `can(Policy, 'ability', 'param')` as the check. It reads `ctx.params.param`,
+asks the policy, and a denial (403 or 404) means hidden for a `.visible()` and refused for an `.authorize()`:
+
+```ts title="modules/members/tables/TeamMembersTable.ts"
+import { can, type Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { bulk, column, defineTable, exportCsv, type TableContext } from '@marmeon/table';
+import { RemoveMembers } from '../actions/RemoveMembers.ts';
+import { MemberPolicy } from '../policies/MemberPolicy.ts';
+import { TeamPolicy } from '../policies/TeamPolicy.ts';
+
+const mayManage = can(TeamPolicy, 'manageMembers', 'team');
+
+export const TeamMembersTable = defineTable({
+  name: 'team-members',
+  query: (db, ctx: TableContext<Authenticated, { team: Row<'teams'> }>) => db.selectFrom('users').where('users.team_id', '=', ctx.params.team.id),
+  key: 'users.id',
+  columns: {
+    name: column('users.name').sortable().searchable(),
+    email: column('users.email').visible(mayManage).sortable(),
+  },
+  defaultSort: 'name',
+  authorize: can(TeamPolicy, 'view', 'team'),
+  bulk: { remove: bulk(RemoveMembers).visible(mayManage).authorize(MemberPolicy, 'remove').confirm() },
+  export: { csv: exportCsv().authorize(mayManage) },
+});
+```
+
+The page's route is open to every member of the team, because they read the list, so nothing else asks about the capability.
+Leave the `.authorize()` off the export and whoever sees the table can download it. A function of your own works in `.visible()` and in the export's `.authorize()` too; it
+must return exactly `true` there, and anything else, a `Response` included, counts as no. `can()` throws its denial, a function
+of your own returns `false`.
+
 ### An action with input
 
 An action that needs a value from the user, such as a status, a category or a reason, takes it with `.input()`. One action serves
@@ -507,7 +648,31 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 
 `exportCsv()` downloads the visible columns, filtered and sorted as the URL says:
 
-- **Its own `authorize`.** Without one, whoever sees the table may download what they see.
+- **Its own `authorize`.** Without one, whoever sees the table may download what they see. For an ability that needs a resource
+  of the path, such as the tenant, use `can(Policy, 'ability', 'param')`, see [A capability of the path](#a-capability-of-the-path).
+- **The columns of the file.** The file has the columns of the page and no others, and a heading for every one. Columns that mean
+  nothing in a file, such as a helper column of the page, and columns only a file wants have no switch of their own. What tells
+  the page from the file is the route: an export is served by `/_tables/<name>/export/:tableExport`, so `ctx.params.tableExport` is
+  the name of the export in the file's request and `undefined` on the page. `.visible()` runs for the export request, with that
+  parameter, as it does for the page:
+
+  ```ts
+  const onThePage = (ctx: { params: { tableExport?: string } }) => ctx.params.tableExport === undefined;
+  const inTheFile = (ctx: { params: { tableExport?: string } }) => ctx.params.tableExport !== undefined;
+
+  columns: {
+    name: column('users.name').sortable(),
+    links: column('links').visible(onThePage),
+    locale: column('users.locale').visible(inTheFile),
+  },
+  ```
+
+  These checks decide the layout, not who may see what. A column that needs a permission combines its check with the policy in
+  its one `.visible()` check.
+
+  A column made conditional by `.visible()` is optional in the row's type. A sort by a column that only the page shows is a 400
+  for the export, and so is the export link of a page sorted by it: leave such a column out of `.sortable()`, or show it in the
+  file too. A file whose columns depend on the request, not on the route, is a [file of your own](#a-csv-file-of-your-own).
 - **A record.** `exportCsv().onExport(Recorder)` runs `handle(info, ctx)` of the class once the export is authorized, its URL checked
   and its rows counted within the limit, and before the first byte. `info` holds the `table`, the `export`, the number of `rows`
   that matched when the export started, its `columns` and the `state` (`sort`, `search`, `filters`); `ctx` is the request's, with
@@ -531,8 +696,14 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 - **Batches.** Rows stream in batches of 500. The first batch runs in the handler, and the later ones after it has answered: in the
   request's context, for the log and the request id, and **outside** any transaction that was open around the handler. Each batch
   goes on after the last row written, by the table's order and then the key, never at an offset. A row deleted meanwhile moves no
-  later row out of the file, and a row added meanwhile shows at most once.
-- **Headers.** `Content-Disposition: attachment` with a safe file name such as `members-2026-10-06.csv`, `Cache-Control: no-store`,
+  later row out of the file, and a row added meanwhile shows at most once. **Each batch runs the base query again**, wrapped as
+  a subquery, with the sort and the position. In key order (a table with no sortable column) a batch is a range of the key's index, so the
+  time of a file grows with its rows. With a sort, the position is a condition the database cannot use as an index range (it
+  keeps rows without a value last), so each batch reads every row before its position, whatever index exists, and the time of a
+  file grows with the square of its rows. Keep a sorted export small with filters and the table's `max`, and export a large file
+  from a table of its own in key order.
+- **Headers.** `Content-Disposition: attachment` with a safe file name, the table's name and a day (`members-<day>.csv`, the UTC
+  day of the app's `Clock`, so `app.freeze()` fixes it), `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`, and a byte order mark, so spreadsheets read umlauts right.
 - **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed, also
   after spaces or invisible characters such as a byte order mark or a zero-width space, or with a full-width `＝`, `＋`, `－` or `＠`, or a minus sign (U+2212),
@@ -645,7 +816,7 @@ sort, only the table's filters filter, only its actions run. The markup is yours
 
 ```tsx title="modules/members/views/Index.tsx"
 import type { PageProps } from '@marmeon/http';
-import { useTranslation } from '@marmeon/react';
+import { Pagination, useTranslation } from '@marmeon/react';
 import { useTable } from '@marmeon/react/table';
 import type { ListMembersController } from '../controllers/ListMembersController.ts';
 
@@ -694,6 +865,7 @@ export default function Index({ members }: PageProps<ListMembersController>) {
           ))}
         </tbody>
       </table>
+      {table.page.type === 'offset' && <Pagination meta={table.page} />}
       <button type="button" onClick={() => void table.runBulk('removeLinks')}>
         {t('bulk_remove', { count: table.selectedCount })}
       </button>
@@ -736,6 +908,11 @@ function FilterField({ filter }: { filter: TableFilter }) {
   earlier sort, filter or page, or the page you came from when the search was the table's first change. Sort links are real
   links: without JavaScript, or opened in a new tab, they work. `table.page.type` is `offset` or `cursor`, so a page knows which
   pagination to render.
+- **Page links.** `<Pagination meta={table.page} />` of `@marmeon/react` draws links to the pages of a table paged by number
+  (`table.page.type === 'offset'`; a cursor table has no page numbers, use `table.next()`). Its links come from the page's parsed
+  query, so they keep the table's sort, search, filters and page size. A table with a `prefix` keeps its page under a key of its
+  own: pass it as `param`, `<Pagination meta={table.page} param={members.query.page} />`, with `members` the table's prop.
+  The component renders nothing for a single page. [Pagination](pagination.md#links-to-the-pages) lists its other options.
 - **The selection** lives with the history entry, in memory, never in `history.state` or the browser's storage. A new sort, filter
   or page starts with nothing selected, and Back brings the old selection back. Leaving the document, by signing out or after a new
   build, forgets it. `table.selectMatching()` selects every matching row, not only those on screen.
