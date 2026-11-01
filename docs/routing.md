@@ -454,6 +454,21 @@ A hook decides nothing. What it returns is ignored, it does not extend the conte
 is still a route that does not say who may call it. It may throw an `HttpError`, which answers as it does from a check. A
 registrar that never registers a route fails at `load()` for its hooks as it does for its checks.
 
+A hook runs for every request to the route, and that includes the requests that only read: an [island](deferred-props.md#how-islands-load)
+of the page runs its own route with the hooks of its registrar, and so does a [live validation](validation.md#live-validation) of a form.
+Their session is read-only. A `session.put()` in a hook throws a `ReadOnlyError` in development and in tests, and is dropped and
+logged in production, so a page that remembers something (the workspace a user visited last) breaks on its islands. Keep session
+writes out of a hook: write the session in the controller of the page. That is safe from islands and live validations, but not
+from every read-only request: a page that is the base of a layer is read-only when a deep link opens the layer. See
+[requests that only read](lifecycle.md#requests-that-only-read) for all of them and [dialogs](dialogs.md#the-base) for the base.
+
+A hook cannot translate the way a page does. `resolve` builds classes only, so `resolve(Translator)` does not compile. Share the key
+or the code and translate in the page's controller, where a `Translator` is injected. A middleware class is no place for it: it runs
+before the bindings and the hooks, so it sees neither the bound record nor what the hook shares, and its `Translator` speaks the
+language from before a `RequestLocale.use()` in the hook. When the hook knows the language, such as the record's, translate in
+the hook with `resolve(Translators).for(locale)`, as [localization](localization.md#translators-any-language-anywhere) shows for
+the `Translators` service.
+
 ### Routes under a page
 
 `attach()` hangs the routes a package makes for a page under the page's path, such as an export
@@ -895,12 +910,15 @@ route needs it.
 ## When no route matches
 
 A request that matches no route still passes the global middleware, so it gets the security headers like any other response. It
-then ends in a 404. A browser gets the app's error page, `system/errors/Error`, and every other client gets JSON with the status text
-in the visitor's language:
+then ends in a 404. A browser gets the app's error page, `system/errors/Error`, and every other client gets JSON with the status text:
 
 ```json
 { "message": "Not Found" }
 ```
+
+The answer speaks `APP_LOCALE`, not the visitor's language: no route matched, so no group's middleware ran, and the `SetLocale`
+that reads `Accept-Language` belongs to the `web` group. A route of the `web` group answers in the visitor's language.
+To answer an unknown URL in another language, change `APP_LOCALE`.
 
 There is no fallback route. A controller answers 404 itself with `abort(404)`, and a binding does when it finds nothing. The
 [error handling](errors.md#your-own-error-page) page shows how to change the error page.
@@ -950,6 +968,11 @@ export default defineRoutes((Route) => {
   Route.middleware(DevelopmentOnly).authorize(everyone).get('/_playground', ShowPlaygroundController);
 });
 ```
+
+Register such a route always and let the guard shut it. A route that is registered only in some environments
+(`if (environment.isDevelopment()) Route.get(…)`) makes the file `bootstrap/routes.ts`, which `marmeon route:types` writes, depend on
+the environment of whoever ran the command: `marmeon build` writes it for production, `marmeon check` finds it out of date in
+development, and the two disagree about a committed file.
 
 The guard asks on every request. Unless `NODE_ENV` is `development` or `test`, it answers 404, so the route stays shut on a
 staging or production server even though it is registered there. In development it answers only requests for the loopback
