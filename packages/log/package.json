@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/log",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "description": "The logger of Marmeon apps: pino behind the framework contract, pretty in development, JSON in production.",
   "keywords": [
     "marmeon",

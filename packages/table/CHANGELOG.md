@@ -1,5 +1,48 @@
 # @marmeon/table
 
+## 1.0.0-rc.4
+
+### Breaking changes
+
+- Check a .when() against the fields of the .when()s before it by @maxeckel in https://github.com/marmeon/marmeon/pull/591
+- Type a form's number fields as numbers and its defaulted fields as present by @maxeckel in https://github.com/marmeon/marmeon/pull/601
+- Type a standalone describeAccess() check's context as HttpContext by @maxeckel in https://github.com/marmeon/marmeon/pull/614
+
+### Features
+
+- Export contentDisposition() to name a download your code makes by @maxeckel in https://github.com/marmeon/marmeon/pull/596
+- Send the headers of a credential only when the query carries it with credentialPage({ query }) by @maxeckel in https://github.com/marmeon/marmeon/pull/593
+- Write a CSV file of your own with writeCsv() by @maxeckel in https://github.com/marmeon/marmeon/pull/610
+
+### Fixes
+
+- Link the entry's stylesheets in the head of a development page by @maxeckel in https://github.com/marmeon/marmeon/pull/587
+- Let a table's query entries spread into r.query() when it has filters or a cursor by @maxeckel in https://github.com/marmeon/marmeon/pull/589
+- Read a table's sort in its query schema when no sortable column is everyone's by @maxeckel in https://github.com/marmeon/marmeon/pull/590
+- Leave a development page's Content-Security-Policy to the app's middleware in devOnly() by @maxeckel in https://github.com/marmeon/marmeon/pull/592
+- Find a list item, link, button or table content the browser would move in assertHydrates() by @maxeckel in https://github.com/marmeon/marmeon/pull/594
+- Put the framework's styles in the cascade layer marmeon and give the confirm dialog its own frame by @maxeckel in https://github.com/marmeon/marmeon/pull/595
+- Show a calendar day as that day in every time zone by @maxeckel in https://github.com/marmeon/marmeon/pull/598
+- Send the value of set() with a submit() in the same handler by @maxeckel in https://github.com/marmeon/marmeon/pull/599
+- Settle every lazy prop before a page fails and release a pinned test connection once by @maxeckel in https://github.com/marmeon/marmeon/pull/602
+- Name the cause when a module entry reaches a component or exposes changed by @maxeckel in https://github.com/marmeon/marmeon/pull/603
+- Keep the schedule:work loop from ticking the minute it started in by @maxeckel in https://github.com/marmeon/marmeon/pull/605
+- Refuse a JSON array where r.object() expects an object by @maxeckel in https://github.com/marmeon/marmeon/pull/606
+- Say what to do next when a view is not registered yet or a public parent binds a write by @maxeckel in https://github.com/marmeon/marmeon/pull/604
+- Put the starter kit's styles in the cascade layer kit by @maxeckel in https://github.com/marmeon/marmeon/pull/597
+- Type a form's error paths eight levels deep by @maxeckel in https://github.com/marmeon/marmeon/pull/600
+- Link a page's stylesheets in the head of its first production document by @maxeckel in https://github.com/marmeon/marmeon/pull/609
+- Limit each provider's shutdown() to APP_SHUTDOWN_TIMEOUT_SECONDS by @maxeckel in https://github.com/marmeon/marmeon/pull/611
+- Save what a submit sent as the form's baseline, not what is rendered when it succeeds by @maxeckel in https://github.com/marmeon/marmeon/pull/612
+- Restore a remembered form's nested fields that were not kept from its initial values by @maxeckel in https://github.com/marmeon/marmeon/pull/613
+
+### Documentation
+
+- Center the docs page and keep code clear of the copy button by @maxeckel in https://github.com/marmeon/marmeon/pull/584
+- Say that a table's URL for a kind it does not have is a 404 by @maxeckel in https://github.com/marmeon/marmeon/pull/588
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.3...v1.0.0-rc.4
+
 ## 1.0.0-rc.3
 
 ### Breaking changes

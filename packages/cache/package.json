@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/cache",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "description": "Cache, rate limits and locks for Marmeon apps — memory, file, database and Redis stores behind one injectable contract.",
   "keywords": [
     "marmeon",
