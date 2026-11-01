@@ -148,3 +148,51 @@ turns the size the way a browser shows it (an EXIF orientation of a JPEG, a rota
 that is no image or whose header is cut off or damaged. Call it before `store()`, which moves the file; after it, `dimensions()` throws. A page with a stored size
 passes it on as an `ImageSource`; without one, give `<Image>` a frame of fixed size and `object-fit` so the picture does not move
 the text around it.
+
+### Limiting the size in pixels
+
+The `upload()` rule limits bytes and types, not pixels. A small file can hold a picture of 30 000 by 30 000 pixels, which a
+browser needs gigabytes to decode. Read `dimensions()` in the controller and refuse what is too large. A refused upload is
+`discard()`ed first, or its file waits on the private disk until `uploads:prune` removes it. A file whose header cannot be read,
+`undefined`, is refused too: the rule has checked the type, so an image without a readable size is damaged.
+
+```ts title="modules/media/controllers/StoreImageController.ts"
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { Storage, upload } from '@marmeon/storage';
+import { rules as r } from '@marmeon/validation';
+import { MediaRepository } from '../MediaRepository.ts';
+
+const MAX_SIDE = 8000;
+
+export const StoreImageRequest = defineRequest({
+  schema: r.object({ file: upload({ maxBytes: 5_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
+});
+
+export class StoreImageController extends Controller {
+  static request = StoreImageRequest;
+
+  readonly #storage: Storage;
+  readonly #media: MediaRepository;
+
+  constructor(storage: Storage, media: MediaRepository) {
+    super();
+    this.#storage = storage;
+    this.#media = media;
+  }
+
+  async handle(ctx: ContextOf<typeof StoreImageRequest>) {
+    const { file } = ctx.body;
+    const size = await file.dimensions();
+    if (!size || size.width > MAX_SIDE || size.height > MAX_SIDE) {
+      await file.discard();
+      throw new ValidationError({ file: [`Choose an image of at most ${MAX_SIDE} by ${MAX_SIDE} pixels.`] });
+    }
+    const path = await file.store(this.#storage.disk('public'), 'media');
+    await this.#media.insert({ path, width: size.width, height: size.height });
+    return this.redirect().route('media.index');
+  }
+}
+```
+
+The error shows at the field like a message of the rule: a form redirects back with it, an action reports it as `invalid`. Put
+`throttle()` on the route of this controller, as the [storage](storage.md#uploads) page says.

@@ -127,6 +127,30 @@ memory: `put()`'s `contentType` counts there only.
 route of its own, outside every middleware group: no session, no cookies. A disk whose `url` is an absolute URL, a CDN, gets no
 route.
 
+`url()` gives the path or the CDN's address, whichever the disk has. A mail, a feed or a share card needs the whole address, and `new URL(path, base).href` writes it for both: a base in front of a path, nothing added to a URL that is absolute
+already. Take the base from the injected `AppConfig`, which is `APP_URL`, never from the request's `Host` header:
+
+```ts title="modules/notes/CoverUrls.ts"
+import { Storage } from '@marmeon/storage';
+import { AppConfig } from '../../config/app.ts';
+
+export class CoverUrls {
+  readonly #storage: Storage;
+  readonly #app: AppConfig;
+
+  constructor(storage: Storage, app: AppConfig) {
+    this.#storage = storage;
+    this.#app = app;
+  }
+
+  absolute(key: string): string {
+    return new URL(this.#storage.disk('public').url(key), this.#app.url).href; // https://example.com/storage/covers/q3k.webp
+  }
+}
+```
+
+A private disk has no `url()`: it throws. A private file in a mail gets a `temporaryUrl()` with `base`, which expires.
+
 `temporaryUrl()` works on every disk. For a local disk it is a path of the app,
 `/_marmeon/storage/<disk>/<key>?expires=…&signature=…`, signed with a key derived from `APP_KEY`, and the signature covers the
 path, the file name and the expiry. A changed or expired link answers 403. `base` makes it absolute, for a mail: pass the `url` of
@@ -219,6 +243,13 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
 - **A session.** An upload belongs to the session it was made in, and a request without one gets a 419. A guest's page keeps no
   session by itself, so a guest's page with an upload field calls `persist()` of the injected `Session` in its controller. The
   [session](session.md#when-a-session-is-kept) page explains why.
+- **A limit on the route.** The target is a request to the form's own route, so its `throttle()` counts it, and the submit counts
+  again: a file costs two requests of the limiter. `Limit.perMinute(60)` lets 30 files a minute through, and a limit of 30 lets 15.
+  Size the limit for that. It is also the only count of uploads. On a local `uploads` disk the bytes go to the framework's
+  `PUT /_marmeon/uploads/:id`, a route with no limiter of its own, but one that only a signed address from a target request
+  reaches, and the rule's `maxBytes` cuts off what it sends. On S3 the browser posts them straight to the bucket with a presigned
+  POST that its policy caps at the same size. Put `throttle()` on every route that has an upload field.
+  See [rate limiting](rate-limiting.md#applying-limits-to-routes).
 - **Never echoed.** A `TemporaryUpload` turns into nothing as JSON: old input after a failed submit, a log line and a JSON answer
   never hold the token or the file.
 - **HTML, SVG and XML** are never accepted, whatever the rule's `mime` list says.
@@ -260,6 +291,115 @@ the ETag like `store()`. A file that is gone, changed, shorter or longer than ch
 `text()` of bytes that are no UTF-8. For another encoding take `bytes()`, and for a CSV `readCsv()`
 ([importing a CSV file](tables.md#importing-a-csv-file)). The bytes sit in memory, so keep the rule's `maxBytes` as low as the
 use needs. Like `dimensions()`, both throw after `store()`, which moves the file.
+
+### An upload that answers with its record
+
+A form answers with a redirect, so the page reads the new record on the page it lands on. A picker that selects what it has just
+uploaded needs the record in the answer instead: its id and its URL. Send that request with `useAction()` rather than
+`form.submit()`. The route answers `this.json(…)`, and the component holds the result.
+
+The upload is the form's: a route form hosts the field and starts the upload when a file is chosen, with `<FileInput>` or
+`useUpload()`. The field then holds an `Upload`, which an action sends as its token like a form does. The token belongs to the
+route and the field it was made for, so the action must call the same route: `useForm('media.store', …)` for the field,
+`useAction('media.store')` for the answer. Throttle the route, as the [limit](#uploads) above says.
+
+```ts title="modules/media/MediaServiceProvider.ts"
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+
+export class MediaServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    // Two requests a file (target and submit): 60 a minute are 30 files.
+    app.container.make(RateLimiter).for('media.store', (ctx) => Limit.perMinute(60).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
+  }
+}
+```
+
+```ts title="modules/media/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { defineRoutes, everyone } from '@marmeon/http';
+import { StoreMediaController } from './controllers/StoreMediaController.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(authenticate()).middleware(throttle('media.store')).authorize(everyone).post('/media', StoreMediaController).name('media.store');
+});
+```
+
+The controller stores the file on the public disk, inserts the record (a `media` table with `path`, `width` and `height`) and
+returns what the picker needs:
+
+```ts title="modules/media/controllers/StoreMediaController.ts"
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Storage, upload } from '@marmeon/storage';
+import { rules as r } from '@marmeon/validation';
+import { MediaRepository } from '../MediaRepository.ts';
+
+export const StoreMediaRequest = defineRequest({
+  schema: r.object({ file: upload({ maxBytes: 5_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
+});
+
+export class StoreMediaController extends Controller {
+  static request = StoreMediaRequest;
+
+  readonly #storage: Storage;
+  readonly #media: MediaRepository;
+
+  constructor(storage: Storage, media: MediaRepository) {
+    super();
+    this.#storage = storage;
+    this.#media = media;
+  }
+
+  async handle(ctx: ContextOf<typeof StoreMediaRequest>) {
+    const disk = this.#storage.disk('public');
+    const size = await ctx.body.file.dimensions(); // before store(), which moves the file
+    const path = await ctx.body.file.store(disk, 'media');
+    const media = await this.#media.insert({ path, width: size?.width ?? null, height: size?.height ?? null });
+    return this.json({ id: media.id, url: disk.url(path) }, { status: 201 });
+  }
+}
+```
+
+The controller keeps any size in pixels, and `null` for a file whose size it cannot read. A picker that only takes images it can
+show refuses both before `store()`, as [limiting the size in pixels](images.md#limiting-the-size-in-pixels) shows.
+
+The component sends the action once the field says `uploaded`, and drops the used upload from the field when it is done:
+
+```tsx title="modules/media/views/MediaUploader.tsx"
+import { FileInput, useAction, useForm } from '@marmeon/react';
+
+export function MediaUploader({ onUploaded }: { onUploaded: (media: { id: number; url: string }) => void }) {
+  const form = useForm('media.store', { file: null });
+  const store = useAction('media.store');
+  const file = form.data.file;
+  return (
+    <div>
+      <FileInput field={form.field('file')} accept="image/png,image/jpeg,image/webp" />
+      {file?.uploading && <progress value={file.progress} max={1} />}
+      {(store.errors.file ?? file?.error) && <p role="alert">{store.errors.file ?? file?.error}</p>}
+      <button
+        type="button"
+        disabled={file?.status !== 'uploaded' || store.pending}
+        onClick={async () => {
+          if (file?.status !== 'uploaded') return;
+          const result = await store.submit({ data: { file } });
+          if (result.ok && result.kind === 'data') {
+            file.cancel(); // the token is used up: empty the field for the next file
+            onUploaded(result.data);
+          }
+        }}
+      >
+        Use this image
+      </button>
+    </div>
+  );
+}
+```
+
+A failed request leaves the field as it is. A 422 from the rule or the controller shows at `store.errors.file`, and the user
+chooses another file. The [actions](actions.md#the-result) page lists the other outcomes. A page that needs no record
+in the answer keeps the form and its redirect.
 
 ### An upload over several requests
 

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp } from './app.tsx';
 import { FileInput } from './file-input.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
+import { useAction } from './use-action.ts';
 import { useForm } from './use-form.ts';
 import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 
@@ -22,6 +23,7 @@ function Avatar() {
   // A route form (the route manifest below; untyped here — the web app's type tests check the typed one).
   const form = useForm('avatar', { avatar: null, name: 'Ada' });
   const avatar = form.data.avatar as Upload | null;
+  const action = useAction('avatar');
   return (
     <form
       onSubmit={(event) => {
@@ -36,6 +38,9 @@ function Avatar() {
         Cancel
       </button>
       <button data-testid="save">Save</button>
+      <button type="button" data-testid="act" onClick={() => void action.submit({ data: { avatar: form.data.avatar, name: 'Ada' } })}>
+        Act
+      </button>
     </form>
   );
 }
@@ -163,5 +168,16 @@ describe('<FileInput> — an upload field', () => {
     await wait();
     await act(async () => root.render(<p>gone</p>));
     expect(xhrs[0]!.aborted).toBe(true);
+  });
+
+  it('an action of the same route sends the token of the field the form holds', async () => {
+    await mount();
+    await choose(new File(['png!'], 'me.png', { type: 'image/png' }));
+    await wait();
+    await act(async () => xhrs[0]!.finish());
+    await wait();
+    await act(async () => $('act').click());
+    await wait();
+    expect(submitted).toEqual([{ avatar: TOKEN, name: 'Ada' }]);
   });
 });
