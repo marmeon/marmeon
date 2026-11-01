@@ -287,22 +287,34 @@ token for the row's id in the session and redirects, and the POST gets a check o
 see [every route decides](authorization.md#every-route-decides).
 
 ```ts title="modules/events/routes.ts"
-Route.middleware(credentialPage())
-  .middleware(throttle('tickets'))
-  .authorize(everyone)
-  .bind('ticket', TicketRepository, { public: true })
-  .get('/tickets/:ticket', OpenTicketController);
+import { throttle } from '@marmeon/cache';
+import { abort, credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
+import { OpenTicketController } from './controllers/OpenTicketController.ts';
+import { ShowTicketController } from './controllers/ShowTicketController.ts';
+import { UseTicketController } from './controllers/UseTicketController.ts';
+import { PendingTicket } from './PendingTicket.ts';
+import { TicketRepository } from './TicketRepository.ts';
 
-const pending = Route.middleware(credentialPage({ referrer: 'same-origin' })).authorize(
-  describeAccess(async (_ctx, resolve) => {
-    if ((await resolve(PendingTicket).find()) === undefined) abort(404);
-    return true;
-  }, 'pending ticket'),
-);
-pending.get('/ticket', ShowTicketController);
-pending.post('/ticket/use', UseTicketController);
+export default defineRoutes((Route) => {
+  Route.middleware(credentialPage())
+    .middleware(throttle('tickets'))
+    .authorize(everyone)
+    .bind('ticket', TicketRepository, { public: true })
+    .get('/tickets/:ticket', OpenTicketController);
+
+  const pending = Route.middleware(credentialPage({ referrer: 'same-origin' })).authorize(
+    describeAccess(async (_ctx, resolve) => {
+      if ((await resolve(PendingTicket).find()) === undefined) abort(404);
+      return true;
+    }, 'pending ticket'),
+  );
+  pending.get('/ticket', ShowTicketController);
+  // A guest can reach it, so it is limited like the trade.
+  pending.middleware(throttle('tickets.use')).post('/ticket/use', UseTicketController);
+});
 ```
 
+The limiters `tickets` and `tickets.use` are defined in a provider's `boot()` ([defining limiters](rate-limiting.md#defining-limiters)).
 `OpenTicketController` calls `session.regenerate()` and puts the ticket's id in the session, and `PendingTicket` finds the open
 row again from that id, as `PendingInvitation` does in the code of the page linked above.
 

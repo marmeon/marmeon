@@ -691,8 +691,28 @@ export class SetUpAccountController extends Controller {
 }
 ```
 
-Post the form to a route behind `pending` that is open to guests (`pending.post('/invitation/account', SetUpAccountController)`),
-next to the accept route. A signed-in visitor never sees the form: they accept the invitation as above.
+Post the form to a route behind `pending` that is open to guests, next to the accept route. Each request costs a password hash,
+and an address that has an account redeems nothing, so one link can be tried again and again: the route carries a limiter of
+its own. A signed-in visitor never sees the form: they accept the invitation as above.
+
+```ts title="modules/invitations/routes.ts"
+// Added to the routes above, where `pending` is the registrar with the check:
+pending.middleware(throttle('invitations.account')).post('/invitation/account', SetUpAccountController);
+```
+
+```ts title="modules/invitations/InvitationsServiceProvider.ts"
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+
+export class InvitationsServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    app.container.make(RateLimiter).for('invitations.account', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)));
+  }
+}
+```
+
+The route also needs `import { throttle } from '@marmeon/cache'` and the controller's import. The `invitations` limiter of the trade route is defined the
+same way ([defining limiters](rate-limiting.md#defining-limiters)). The accept route needs none of its own: `authenticate()` is in front of it.
 
 
 ### The report

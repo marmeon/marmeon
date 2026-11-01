@@ -175,7 +175,7 @@ export default defineRoutes((Route) => {
 ```
 
 The trade gives the session a new id before it stores anything, so an id that whoever sent the link planted carries nothing. The
-session then holds only the invitation's id, which is no secret and no right:
+old id stops working and the session keeps its data, so the flow adds only the invitation's id, which is no secret and no right:
 
 ```ts title="modules/invitations/controllers/OpenInvitationController.ts"
 import type { Row } from '@marmeon/database';
@@ -243,19 +243,31 @@ export class PendingInvitation {
 }
 ```
 
-The repository adds two methods to the one of [a link that is used once](urls.md#a-link-that-is-used-once), whose
-`resolveRouteBinding()` finds the row by the token's hash:
+The repository finds the row by the token's hash for the trade, as in [a link that is used once](urls.md#a-link-that-is-used-once),
+and by id for everything after it:
 
 ```ts title="modules/invitations/InvitationRepository.ts"
-/** An invitation that is not used up. A revoked one is a deleted row. */
-findOpen(id: Row<'invitations'>['id']): Promise<Row<'invitations'> | undefined> {
-  return this.query().selectAll().where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
-}
+import { hashLinkToken } from '@marmeon/encryption';
+import { Repository, secretEquals, type Row } from '@marmeon/database';
 
-/** True for exactly one caller, however many arrive at once: the update decides, not an earlier read. */
-async redeem(id: Row<'invitations'>['id']): Promise<boolean> {
-  const result = await this.db.updateTable('invitations').set({ used_at: new Date() }).where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
-  return Number(result.numUpdatedRows) === 1;
+export class InvitationRepository extends Repository<'invitations'> {
+  static table = 'invitations' as const;
+
+  /** `/invitations/:invitation` → the open row, or `undefined` for a 404. */
+  override resolveRouteBinding(token: string): Promise<Row<'invitations'> | undefined> {
+    return this.query().selectAll().where((eb) => secretEquals(eb, 'token_hash', hashLinkToken(token))).where('used_at', 'is', null).executeTakeFirst();
+  }
+
+  /** An invitation that is not used up. A revoked one is a deleted row. */
+  findOpen(id: Row<'invitations'>['id']): Promise<Row<'invitations'> | undefined> {
+    return this.query().selectAll().where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
+  }
+
+  /** True for exactly one caller, however many arrive at once: the update decides, not an earlier read. */
+  async redeem(id: Row<'invitations'>['id']): Promise<boolean> {
+    const result = await this.db.updateTable('invitations').set({ used_at: new Date() }).where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
 }
 ```
 
