@@ -433,10 +433,13 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
  * (their keys are gone, at any depth), so a key missing from the kept data comes back from `initial` — a nested
  * `account.password` is still there. Only plain objects merge; lists, dates and everything else are replaced as a whole.
  */
-function restoreKept(initial: Record<string, unknown>, kept: Record<string, unknown>): Record<string, unknown> {
+export function restoreKept(initial: Record<string, unknown>, kept: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...initial };
   for (const [key, value] of Object.entries(kept)) {
-    const base = initial[key];
+    // `__proto__` as an own key (JSON.parse makes one) would swap the result's prototype; and `initial['__proto__']` is
+    // Object.prototype, which must never count as a base to merge into.
+    if (key === '__proto__') continue;
+    const base = Object.hasOwn(initial, key) ? initial[key] : undefined;
     result[key] = isPlainRecord(base) && isPlainRecord(value) ? restoreKept(base, value) : value;
   }
   return result;
