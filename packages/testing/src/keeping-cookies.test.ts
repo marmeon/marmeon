@@ -166,6 +166,31 @@ describe('keepingCookies()', () => {
     expect(after).toBe('theme=dark');
   });
 
+  it('does not send the withCookie() value of a name the app deleted', async () => {
+    const app = await boot();
+    const browser = app.withCookie('remember', 'token').keepingCookies();
+    expect(await sent(browser, '/echo')).toContain('remember=');
+    await sent(browser, set('remember=; Path=/; Max-Age=0'));
+    expect(await sent(browser, '/echo')).toBe('');
+  });
+
+  it('does not send the withCookie() value of a name that expired by app.travel()', async () => {
+    const app = await boot();
+    const browser = app.withCookie('remember', 'token').keepingCookies();
+    await sent(browser, set('remember=new; Path=/; Max-Age=60'));
+    expect(await sent(browser, '/echo')).toBe('remember=new');
+    app.travel({ seconds: 61 });
+    expect(await sent(browser, '/echo')).toBe('');
+  });
+
+  it('keeps sending the withCookie() value where the deleted cookie did not reach', async () => {
+    const app = await boot();
+    const browser = app.withCookie('remember', 'token').keepingCookies();
+    await sent(browser, set('remember=; Path=/admin; Max-Age=0'));
+    expect(await sent(browser, '/echo')).toContain('remember=');
+    expect(await sent(browser, '/admin/echo')).toBe('');
+  });
+
   describe('as a browser keeps cookies', () => {
     it('sends a cookie only to the paths it belongs to', async () => {
       const app = await boot();

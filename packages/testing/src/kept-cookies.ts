@@ -26,6 +26,8 @@ export class KeptCookies {
   /** The session holders (`actingAs`, `withSession`) whose session this jar already carries. */
   readonly sessions = new WeakSet<object>();
   readonly #cookies = new Map<string, KeptCookie>();
+  /** Every cookie the app set or deleted, kept after it is gone: the name stays the app's, so a `withCookie()` value of it is not sent again. */
+  readonly #answered = new Map<string, KeptCookie>();
   #created = 0;
 
   /** Takes in one `Set-Cookie` header of a response to `url`. A cookie a browser would refuse is dropped. */
@@ -69,6 +71,7 @@ export class KeptCookies {
       created: this.#created++,
     };
     const key = keyOf(cookie);
+    this.#answered.set(key, cookie);
     const before = this.#cookies.get(key);
     // An expired cookie deletes the one it names.
     if (cookie.expires !== undefined && cookie.expires <= now) this.#cookies.delete(key);
@@ -79,24 +82,36 @@ export class KeptCookies {
   set(name: string, value: string, url: URL): void {
     const cookie: KeptCookie = { name, value, domain: url.hostname.toLowerCase(), hostOnly: true, path: '/', expires: undefined, secure: false, created: this.#created++ };
     this.#cookies.set(keyOf(cookie), cookie);
+    this.#answered.set(keyOf(cookie), cookie);
+  }
+
+  /** The names the app has set or deleted for a request to `url`, whether the cookie is still there or not. */
+  answered(url: URL): Set<string> {
+    const names = new Set<string>();
+    for (const cookie of this.#answered.values()) if (reaches(cookie, url)) names.add(cookie.name);
+    return names;
   }
 
   /** The cookies a browser would send with a request to `url`, longest path first, then oldest first. */
   matching(url: URL, now: number): { name: string; value: string }[] {
-    const host = url.hostname.toLowerCase();
     const sent: KeptCookie[] = [];
     for (const [key, cookie] of this.#cookies) {
       if (cookie.expires !== undefined && cookie.expires <= now) {
         this.#cookies.delete(key);
         continue;
       }
-      if (cookie.hostOnly ? cookie.domain !== host : !domainMatches(host, cookie.domain)) continue;
-      if (!pathMatches(url.pathname, cookie.path)) continue;
+      if (!reaches(cookie, url)) continue;
       if (cookie.secure && !isSecureOrigin(url)) continue;
       sent.push(cookie);
     }
     return sent.sort((a, b) => b.path.length - a.path.length || a.created - b.created);
   }
+}
+
+/** Whether the host and the path of `url` are the cookie's (not its scheme). */
+function reaches(cookie: KeptCookie, url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  return (cookie.hostOnly ? cookie.domain === host : domainMatches(host, cookie.domain)) && pathMatches(url.pathname, cookie.path);
 }
 
 /** `https:`, and the loopback hosts browsers also trust over `http:`. */

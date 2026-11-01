@@ -173,7 +173,7 @@ Await each request before the next; requests sent at once write their cookies in
 A view from `actingAs()` or `withSession()` writes its session before the first request only. After that the view holds the
 session cookie the responses set, also after a sign-in changed its id, and what a request put into the session is there for the
 next one, which a view without `keepingCookies()` does not have. A cookie from `withCookie()` goes with the requests until
-a response sets one of the same name.
+a response sets or deletes one of that name, and from then on not to the host and path that cookie reaches.
 
 ## CSRF protection in tests
 

@@ -1237,7 +1237,7 @@ export class TestApp {
       else testCookies.push({ name: session.cookie, value: id, encrypt: true });
     }
     const kept = jar?.matching(url, this.#shared.clock.now()) ?? [];
-    const held = new Set(kept.map((cookie) => cookie.name));
+    const held = new Set([...kept.map((cookie) => cookie.name), ...(jar?.answered(url) ?? [])]);
     const cookies = await Promise.all(
       testCookies.filter(({ name }) => !held.has(name)).map(
         async ({ name, value, encrypt }) => `${name}=${encodeURIComponent(encrypt ? await this.#crypto.encrypt(name, value) : value)}`,
