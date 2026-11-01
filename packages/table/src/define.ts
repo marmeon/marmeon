@@ -638,13 +638,18 @@ type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> =
 /** The names of the values the base query selects itself (`withCount(…, { as })`) — not columns of its tables. */
 type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColumns<DB, TB>>;
 
+/** A key that names a value the base query selects: not a column of a table of the query, so the query must be a derived table. */
+type KeyProblem<DB, TB extends keyof DB, K extends string, O> = K extends Selected<DB, TB, O>
+  ? `'${K}' is a value the query selects — a key is a column of a table of the query: select from the query as a derived table, db.selectFrom(query.as('rows')), and name 'rows.${K}'`
+  : ColumnProblem<DB, TB, K>;
+
 /** A column that reads a value the base query selects: under that name, and not searched (the search runs in WHERE). */
 type SelectedProblem<DB, TB extends keyof DB, O, A, C> =
   C extends ColumnDefinition<infer R extends string, boolean, infer Q>
     ? R extends Selected<DB, TB, O>
       ? A extends R
         ? Q extends true
-          ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE)`
+          ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE) — or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be searched`
           : never
         : `'${A & string}' reads '${R}', a value the query selects — name the column '${R}': ${R}: column('${R}')`
       : never
@@ -687,7 +692,7 @@ export type CheckFilters<DB, TB extends keyof DB, Filters, O = {}> = {
     ? HasProblem<DB, TB, R, C>
     : Filters[N] extends Filter<infer R extends string>
     ? R extends Selected<DB, TB, O>
-      ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE)`>
+      ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE) — or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be filtered by`>
       : [ColumnProblem<DB, TB, R>] extends [never]
         ? unknown
         : Problem<ColumnProblem<DB, TB, R>>
@@ -710,24 +715,24 @@ export type KeyInput = string | { readonly column: string; readonly type: KeyTyp
 export type KeyColumn<K> = K extends { readonly column: infer C extends string } ? C : K & string;
 
 /** The key by name only: a column of the query whose values are numbers (an integer key) — a text key names its type. */
-export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K
+export type CheckColumnKey<DB, TB extends keyof DB, K extends string, O = {}> = string extends K
   ? ColumnReference<DB, TB>
-  : [ColumnProblem<DB, TB, K>] extends [never]
+  : [KeyProblem<DB, TB, K, O>] extends [never]
     ? ReferencedType<DB, TB, K> extends number
       ? K
       : ReferencedType<DB, TB, K> extends ScalarKey
         ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')`
         : `the key '${K}' is no string or number column — rows are acted on by their key`
-    : ColumnProblem<DB, TB, K>;
+    : KeyProblem<DB, TB, K, O>;
 
 /** The key with its type: a string or number column of the query. */
-export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K
+export type CheckKeyColumn<DB, TB extends keyof DB, K extends string, O = {}> = string extends K
   ? ColumnReference<DB, TB>
-  : [ColumnProblem<DB, TB, K>] extends [never]
+  : [KeyProblem<DB, TB, K, O>] extends [never]
     ? ReferencedType<DB, TB, K> extends ScalarKey
       ? K
       : `the key '${K}' is no string or number column — rows are acted on by their key`
-    : ColumnProblem<DB, TB, K>;
+    : KeyProblem<DB, TB, K, O>;
 
 /** The sortable columns' names. */
 type SortableNames<Cols> = { [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, true> ? A : never }[keyof Cols] & string;
@@ -848,7 +853,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
    * The column that identifies a row — what actions send: a number column by name (`'users.id'`, read as an integer), or with its
    * type (`{ column: 'uuid', type: 'uuid' }`, see {@link KeyType}) — every key the browser sends is parsed by it first.
    */
-  readonly key: CheckColumnKey<DbOf<Q>, TbOf<Q>, K> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>; readonly type: KeyType };
+  readonly key: CheckColumnKey<DbOf<Q>, TbOf<Q>, K, OutOf<Q>> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K, OutOf<Q>>; readonly type: KeyType };
   readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols, OutOf<Q>>>;
   readonly filters?: Filters & NoInfer<CheckFilters<DbOf<Q>, TbOf<Q>, Filters, OutOf<Q>>>;
   /** The sort without `?sort=` — `'-joined'`; default: the first sortable column. The key is always the last order. */
