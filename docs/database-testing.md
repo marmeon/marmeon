@@ -47,7 +47,8 @@ Your app's code works as it does in production:
   SQLite: the next query runs. On Postgres it aborts the test's transaction, and every later query of the test fails with
   `current transaction is aborted, commands ignored until end of transaction block`, which names neither the refused statement nor
   the rule. In production each statement outside a transaction stands alone, so the same code goes on. A test of a constraint or
-  a trigger therefore refuses the statement inside a savepoint, or with `tryInsert()` (see [below](#a-statement-the-database-refuses)).
+  a trigger therefore refuses the statement inside a savepoint (see [below](#a-statement-the-database-refuses)). `tryInsert()` takes
+  one too, but hands back only a taken unique value as a result; a check or a trigger that refuses its insert still throws.
 - Work registered with `afterCommit()` runs when the app's own transaction commits, although nothing is committed for real.
 - Work after a response runs outside the app's transactions, as in production.
 - `outsideTransaction()` inside a transaction of the app cannot reach the database in a test: the pinned connection belongs to
@@ -84,7 +85,7 @@ it('refuses to delete an entry of the audit log', async () => {
   const connections = app.make(Connections);
   // A trigger fires for a row, so the log needs an entry for the delete to be refused.
   await connections.get().insertInto('audit_logs').values({ entry: 'created' }).execute();
-  // A transaction inside the test's is a savepoint: the refusal rolls back to it, and the test's transaction stays usable.
+  // A transaction inside the test's own is a savepoint: the refusal rolls back to it, and the test's transaction stays usable.
   await expect(connections.transaction(() => connections.get().deleteFrom('audit_logs').execute())).rejects.toThrow(/append-only/);
   // The test goes on: without the savepoint this query would fail with "current transaction is aborted". The entry is still there,
   // so the rollback took back the refused statement only.
@@ -112,9 +113,10 @@ rolls its transaction back right there, and the cleanup at the end of the test h
 
 A hook or test that times out while its app is still starting leaves nothing open: when the app is ready at last and the test is
 over, it is closed again and `createTestApp()` throws, so the next test does not fail with the message above. For the first app of a
-worker, which loads the app's modules (about a second) and on Postgres creates and migrates the worker's database, raise
-`testTimeout` and `hookTimeout` in the Vitest config, whose default of five seconds the first test of a slow run can exceed, or give
-the file a `beforeAll` of its own with a longer hook timeout and open and close one app there.
+worker, which loads the app's modules (about a second) and on Postgres creates and migrates the worker's database, raise the
+timeout of the step that opens it: `testTimeout` (five seconds by default) when a test opens the app, `hookTimeout` (ten seconds)
+when a `beforeEach` or `beforeAll` does. Or give the file a `beforeAll` of its own with a longer hook timeout and open and close one
+app there.
 
 ## Testing a lock
 
