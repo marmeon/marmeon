@@ -98,8 +98,13 @@ A field whose rule is `r.boolean()` or `r.accepted()` holds a `boolean` in the f
 ### Errors at nested and dynamic fields
 
 `errors` is keyed by every path into the form's data, with dots: `errors.title`, `errors['address.city']`,
-`errors['items.0.name']` for a list, and `` errors[`answers.${key}`] `` for a field of a record whose keys are not known beforehand.
+`errors['items.0.name']` for a list (a tuple of fixed length has only the positions it declares), and `` errors[`answers.${key}`] `` for a field of a record whose keys are not known beforehand.
 A path the data cannot have, `errors['adress.city']`, is a compile error. `clearErrors(...)` takes the same paths.
+
+The paths are typed up to eight levels deep: every name or index between the dots counts one level, so
+`` errors['sections.0.fields.1.guest_label.de'] `` is six levels. A path deeper than that is not known to the compiler; read
+the errors as plain strings: `(form.errors as Partial<Record<string, string>>)[path]`, which is `string | undefined`. A record that refers to itself (`parent`, `children`) is typed like any other data for five levels; past the fifth level, each
+step back into it counts three levels. So `` errors['children.0.children.0.children.0'] `` compiles, and a name after it does not.
 
 The key `_` holds a message that belongs to the form and to no field, such as a check over several fields that names none. Show
 it above the form: `form.errors._`. A check that can say where the fault lies reports at that field instead, see

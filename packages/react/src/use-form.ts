@@ -46,17 +46,51 @@ type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 
 type Primitive = string | number | boolean | bigint | symbol | null | undefined | Date | Blob;
 
+/** Whether `T` is, by identity and not by assignability, one of the types in `Seen`. */
+type Reenters<T, Seen> = Seen extends unknown ? ((<G>() => G extends T ? 1 : 2) extends <G>() => G extends Seen ? 1 : 2 ? true : never) : never;
+
+/** How many levels entering `T` costs: one, or three when it is past the fifth level and `T` is a type the path already went through. */
+type Step<T, Seen, Depth extends unknown[]> = Depth['length'] extends 0 | 1 | 2 | 3 | 4
+  ? [0]
+  : [Reenters<NonNullable<T>, Seen>] extends [never]
+    ? [0]
+    : [0, 0, 0];
+
 /**
- * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Five levels
- * deep at most.
+ * The paths into a form's data — `name`, `address.city`, `links.${number}.url` (a tuple of fixed length has the paths of its positions only) — what `isDirty(path)` takes. Eight levels
+ * deep at most: every name or index between the dots counts one level. A record that refers to itself (`parent`,
+ * `children`) is typed like any other data for five levels; past the fifth, each step back into it counts three levels, so
+ * `children.0.children.0.children.0` compiles and a name after it does not. A deeper path is not known to the compiler: read
+ * the errors as plain strings, `(form.errors as Partial<Record<string, string>>)[path]`. See docs/forms.md#errors-at-nested-and-dynamic-fields.
  */
-export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends 5
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10
   ? never
   : F extends Primitive
     ? never
     : F extends readonly (infer Item)[]
-      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, 0]>}`
-      : { [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, 0]> extends infer Deeper extends string ? `${K}.${Deeper}` : never) }[keyof F & string];
+      ? ArrayPath<F, Item, Seen, Depth>
+      : {
+          [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
+        }[keyof F & string];
+
+/** The paths into an array or tuple. An array that only fixes its length (`T[] & { length: 2 }`) has no position keys but still its items' paths; `[]` has none. */
+type ArrayPath<F extends readonly unknown[], Item, Seen, Depth extends unknown[]> = {
+  items: Items<Item, Seen, Depth>;
+  positions: PositionPath<F, Seen, Depth>;
+  none: never;
+}[ArrayShape<F>];
+
+/** Which paths an array has: those of any item, of its positions (a tuple), or none (`[]`). */
+type ArrayShape<F extends readonly unknown[]> = number extends F['length'] ? 'items' : '0' extends keyof F ? 'positions' : F extends readonly [] ? 'none' : 'items';
+
+type Items<Item, Seen, Depth extends unknown[]> = `${number}` | `${number}.${Enter<Item, Seen, Depth> & string}`;
+
+type PositionPath<F, Seen, Depth extends unknown[]> = {
+  [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth> & string}`;
+}[keyof F & `${number}`];
+
+/** The paths into a field's type, each branch of a union paying its own step (a `Node | { leaf: string }` re-enters `Node` like a plain `Node`). */
+type Enter<T, Seen, Depth extends unknown[]> = T extends unknown ? FieldPath<T, [...Depth, ...Step<T, Seen, Depth>], Seen> : never;
 
 /** What a remembered form may not keep — in `remember.include`, the message for a password field. */
 export type PasswordNeverRemembered = 'password fields are never remembered — they stay in the field until the page is left';
