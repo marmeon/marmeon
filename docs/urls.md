@@ -281,22 +281,37 @@ unless the old key stays in `APP_PREVIOUS_KEYS`.
 whole under a domain of its own, cut to 512 characters: it runs the same indexed query as a real token, matches no row and costs
 the same, so a request learns nothing from how long the answer takes. Answer every failure with the same 404: a link that does
 not exist, one that was used and one that was revoked must look alike. The GET is open to everyone, with the binder marked
-`{ public: true }`, since the token is the key. The POST changes data, so it gets a check of its own that names the link, and a
-plain binder: see [every route decides](authorization.md#every-route-decides).
+`{ public: true }`, since the token is the key. The POST changes data, so it never has the token in its path: with it, `back()`
+and the CSRF check break without a `Referer` ([a form behind a token](security.md#a-form-behind-a-token-in-code)). The GET trades the
+token for the row's id in the session and redirects, and the POST gets a check of its own that looks the row up again:
+see [every route decides](authorization.md#every-route-decides).
 
 ```ts title="modules/events/routes.ts"
-Route.authorize(everyone).bind('ticket', TicketRepository, { public: true }).get('/tickets/:ticket', ShowTicketController);
-Route.bind('ticket', TicketRepository)
-  .authorize(describeAccess((ctx) => ctx.params.ticket !== undefined, 'ticket link'))
-  .post('/tickets/:ticket', UseTicketController);
+Route.middleware(credentialPage())
+  .middleware(throttle('tickets'))
+  .authorize(everyone)
+  .bind('ticket', TicketRepository, { public: true })
+  .get('/tickets/:ticket', OpenTicketController);
+
+const pending = Route.middleware(credentialPage({ referrer: 'same-origin' })).authorize(
+  describeAccess(async (_ctx, resolve) => {
+    if ((await resolve(PendingTicket).find()) === undefined) abort(404);
+    return true;
+  }, 'pending ticket'),
+);
+pending.get('/ticket', ShowTicketController);
+pending.post('/ticket/use', UseTicketController);
 ```
+
+`OpenTicketController` calls `session.regenerate()` and puts the ticket's id in the session, and `PendingTicket` finds the open
+row again from that id, as `PendingInvitation` does in the code of the page linked above.
 
 Use a signed URL where reuse and passing on do no harm: a read-only link, such as the shared note above. A link that signs someone
 in or acts on an account is used once, and needs a row with a hashed token. So does a ticket, or an invitation into a team: it must
 not work twice, and its owner must be able to take it back.
 
 Use the link up in a POST, never in the GET that opens it: mail scanners and link previews fetch every link in a mail. The GET
-shows a page with a button, and the button's POST calls `redeem()`. A page whose URL holds the token must not stay in a shared cache or a search index, nor leave in a `Referer`, so the routes that carry the token take the `credentialPage()` middleware;
+redirects to a page that shows a button, and the button's POST calls `redeem()`. A page whose URL holds the token must not stay in a shared cache or a search index, nor leave in a `Referer`, so the routes that carry the token take the `credentialPage()` middleware;
 the [security](security.md#a-link-that-is-a-credential) page lists what it sends.
 
 ### Moving from a hash of your own

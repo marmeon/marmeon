@@ -241,16 +241,17 @@ of a workspace, refuses from its listener:
 
 ```ts title="modules/workspaces/listeners/KeepLastAdministrator.ts"
 import type { AccountDeleting } from '#modules/auth';
+import { MembershipRepository } from '../MembershipRepository.ts';
 
 export class KeepLastAdministrator {
-  readonly #workspaces: WorkspaceRepository;
+  readonly #memberships: MembershipRepository;
 
-  constructor(workspaces: WorkspaceRepository) {
-    this.#workspaces = workspaces;
+  constructor(memberships: MembershipRepository) {
+    this.#memberships = memberships;
   }
 
   async handle(event: AccountDeleting): Promise<void> {
-    const rows = await this.#workspaces.lockAdministrators(event.user.id);
+    const rows = await this.#memberships.lockAdministrators(event.user.id);
     const counts = new Map<number, number>();
     for (const row of rows) counts.set(row.workspace_id, (counts.get(row.workspace_id) ?? 0) + 1);
     if ([...counts.values()].some((count) => count === 1)) {
@@ -265,8 +266,8 @@ workspace in code. `FOR UPDATE` refuses `GROUP BY`, so a `count(*)` cannot carry
 hole. Postgres locks the rows in the sorted order, so two administrators sharing several workspaces wait for each other instead
 of deadlocking:
 
-```ts title="modules/workspaces/WorkspaceRepository.ts"
-export class WorkspaceRepository extends Repository<'memberships'> {
+```ts title="modules/workspaces/MembershipRepository.ts"
+export class MembershipRepository extends Repository<'memberships'> {
   /** The administrator rows of every workspace the account administers, locked in the order of (workspace_id, user_id). */
   lockAdministrators(userId: number) {
     return this.query()
@@ -288,7 +289,8 @@ the account's own membership. Locking only its own row separates nothing: both t
 both would pass. With the whole set locked, the second waits, finds the first one's row gone, counts one and refuses. For that the
 membership must go with the account: its foreign key cascades, or your module's `AccountDeleted` listener deletes it.
 
-Lock rows of your own module's table, the memberships, and never the `users` rows. `AccountDeletion` already holds the row of the
+Every other place that locks the same membership rows (a page that removes a member, say) takes them in the same order, or two
+of them can deadlock. Lock rows of your own module's table, the memberships, and never the `users` rows. `AccountDeletion` already holds the row of the
 account it deletes, so a listener that locks other accounts' `users` rows deadlocks two deletions at once. SQLite has one writer
 at a time and needs no lock. A reason is shown to the person whose deletion failed, so it must not name other tenants or a module's internals.
 

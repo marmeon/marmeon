@@ -135,8 +135,7 @@ it had thrown. `transaction()` returns the `err` unchanged instead of throwing i
 writes only, and after-commit work is dropped while [after-rollback work](#after-a-rollback) runs, just as after an exception.
 
 Some errors are a change of their own that must stay: a request that is dropped, or a failed attempt that is counted. Return
-those as `commitAnyway(err(…))`, and the transaction commits. The `tokenHash` below is what
-[`hashLinkToken()`](urls.md#a-link-that-is-used-once) gives for the token in the invitation's link:
+those as `commitAnyway(err(…))`, and the transaction commits:
 
 ```ts title="modules/teams/Invitations.ts"
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';
@@ -158,9 +157,9 @@ export class Invitations {
     this.#members = members;
   }
 
-  accept(tokenHash: string, userId: number): Promise<Result<Member, AcceptError>> {
+  accept(invitationId: number, userId: number): Promise<Result<Member, AcceptError>> {
     return this.#connections.transaction(async () => {
-      const invitation = await this.#invitations.claim(tokenHash, new Date());
+      const invitation = await this.#invitations.claim(invitationId, new Date());
       if (!invitation) return err({ kind: 'expired' }); // rolls back: nothing to keep
       await this.#invitations.delete(invitation.id);
       if (await this.#members.isMember(invitation.team_id, userId)) {
@@ -179,7 +178,7 @@ savepoint, so that rollback takes back the deleted invitation as well. To keep i
 
 ```ts
 return this.#connections.transaction(async () => {
-  const accepted = await this.#invitations.accept(tokenHash, userId);
+  const accepted = await this.#invitations.accept(invitationId, userId);
   if (!accepted.ok) return commitAnyway(accepted); // the invitation stays used up
   await this.#activity.insert({ team_id: accepted.value.team_id, user_id: userId, action: 'joined' });
   return accepted;
