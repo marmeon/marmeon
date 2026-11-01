@@ -82,6 +82,7 @@ its database and its fakes, so you can keep one per user:
 | `withIp(address)` | The client address the request comes from, as a socket's peer: `ctx.ip` holds it, and `SERVER_TRUSTED_PROXIES` applies. Without it `ctx.ip` is undefined. |
 | `withCookie(name, value)` | A cookie, encrypted as the app encrypts its own. |
 | `withUnencryptedCookie(name, value)` | A cookie exactly as given, to prove that a forged value is ignored. |
+| `keepingCookies()` | A browser's memory: each response's cookies go with the next request. See [Keeping cookies between requests](#keeping-cookies-between-requests). |
 | `withSession(data)` | A session that holds `data` before the request. |
 | `actingAs(user)` | A session signed in as `user`, as a sign-in leaves it. |
 | `actingAs(user, { guard: 'api', abilities })` | A real API token of `user` in the `Authorization` header. |
@@ -97,13 +98,12 @@ input a `422` with the errors instead of a redirect back.
 A view made by `actingAs()` or `withSession()` keeps one session id across its requests, so what binds to a session, such as an
 upload, carries over. It does not keep the session's data: before each request the view writes the session afresh with the data
 it was made with (and a new CSRF token). What the first request put into the session is gone for the second, and a login the
-first request made does not reach it. The session is stored as the app stores its own: under the hash of its id, and encrypted
-when the app encrypts its sessions. To go on with the session a response started, such as a real sign-in, send its cookie back
-from a view that has no session of its own (a view from `actingAs()` or `withSession()` would send its own session cookie as
-well):
+first request made does not reach it, unless the view keeps its cookies with
+[`keepingCookies()`](#keeping-cookies-between-requests). The session is stored as the app stores its own: under the hash of its
+id, and encrypted when the app encrypts its sessions. To go on with the session a response started, such as a real sign-in,
+use a view that keeps cookies and has no session of its own:
 
 ```ts title="modules/notes/sign-in.test.ts"
-import { SessionConfig, sessionCookieName } from '@marmeon/session';
 import { createTestApp } from '@marmeon/testing';
 import { it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -112,20 +112,68 @@ import { UserFactory } from '#modules/auth';
 it('signs in with the password and keeps the session', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
-  const login = await app
+  const browser = app.keepingCookies();
+  await browser
     .post('/login', { form: { email: ada.email, password: 'password' } })
     .assertRedirect('/dashboard')
     .assertAuthenticated(ada);
-  const session = sessionCookieName(app.container.make(SessionConfig)); // `__Host-…` when APP_URL is https
-  const browser = app.withCookie(session, login.cookie(session)!);
   await browser.get('/dashboard').assertOk();
   await browser.post('/logout').assertRedirect('/login').assertGuest();
 });
 ```
 
+To carry a single cookie by hand instead, `response.cookie(name)` gives what the browser holds after a response, and
+`app.withCookie(name, value)` sends it. The session cookie's name is `sessionCookieName(app.container.make(SessionConfig))` from
+`@marmeon/session`, with a `__Host-` prefix when `APP_URL` is https.
+
 `UserFactory` gives every user the password `password`. `actingAs(user, { guard: 'api', abilities: ['notes:read'] })` creates a
 real API token with those abilities and sends it as `Authorization: Bearer …`, without a session. Without `abilities` the token
 may do everything. The [API tokens](api-tokens.md#testing) page shows a test.
+
+### Keeping cookies between requests
+
+`keepingCookies()` makes a view hold the cookies its responses set and send them with its next requests, as a browser does. A
+flow of several requests as a guest, such as opening a link, posting a form and signing in, needs no cookie carried by hand:
+
+```ts title="modules/notes/sign-in-flow.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+
+it('signs in, reads a page and signs out as one browser', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const ada = await app.factory(UserFactory).create();
+  const browser = app.keepingCookies();
+  await browser.get('/dashboard').assertRedirect('/login');
+  await browser.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/dashboard');
+  await browser.get('/dashboard').assertOk();
+  await browser.post('/logout').assertRedirect('/login').assertGuest();
+});
+```
+
+The views made from it (`withHeaders()`, `navigating()`, `expectingJson()`) share its cookies; calling `keepingCookies()` on
+the app again starts another browser. A cookie is kept as the browser keeps it:
+
+- It goes back exactly as the app sent it, encrypted, and only to the host and the paths it belongs to. A cookie without
+  `Path` belongs to the directory of the request that set it, and one without `Domain` to that host alone.
+- `Max-Age=0`, a negative `Max-Age` or an `Expires` in the past deletes it. `Max-Age` and `Expires` count on the app's
+  clock, so `app.travel({ minutes: 30 })` ages a cookie.
+- A `Secure` cookie, and a `__Host-` or `__Secure-` one, is accepted and sent for an `https://` URL and for the hosts a
+  browser trusts over `http:`: `localhost`, `*.localhost`, `127.0.0.1` and `[::1]`, which includes the plain paths of a test
+  (they go to `http://localhost`). For any other `http:` host it is dropped, as a browser drops it.
+- A URL is a host: `http://one.example.test/…` and `http://two.example.test/…` keep their cookies apart, and a `Domain`
+  reaches only its own subdomains.
+
+It leaves out the public-suffix list and `HttpOnly`. `SameSite` always counts as satisfied, since every request comes from one
+site: a request marked cross-site (`sec-fetch-site: cross-site`) still carries every cookie, where a browser would drop a `Lax`
+or `Strict` one on a cross-site POST. Redirects are not followed, as everywhere in a test: send the next request yourself.
+Await each request before the next; requests sent at once write their cookies in the order they finish.
+
+A view from `actingAs()` or `withSession()` writes its session before the first request only. After that the view holds the
+session cookie the responses set, also after a sign-in changed its id, and what a request put into the session is there for the
+next one, which a view without `keepingCookies()` does not have. A cookie from `withCookie()` goes with the requests until
+a response sets one of the same name.
 
 ## CSRF protection in tests
 
