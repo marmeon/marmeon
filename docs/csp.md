@@ -52,7 +52,7 @@ Each response that renders a document gets its own nonce: 16 random bytes, made 
 it everywhere the framework writes a script or a style:
 
 - on the script, style and preload tags of `index.html`, through the `marmeon()` Vite plugin,
-- on the `modulepreload` tags the server adds for the page's chunks (a preload without the nonce is blocked),
+- on the `modulepreload` and stylesheet tags the server adds for the page's chunks (a preload without the nonce is blocked),
 - on the scripts and styles React streams into a page,
 - on the scripts and styles of `<Head>`, also those the browser adds to the head (it takes the nonce from the page),
 - on the scripts of the development document, such as the devtools' bar and Vite's error overlay.

@@ -104,7 +104,7 @@ describe('parseManifest', () => {
     expect(parseManifest(manifest, 'm.json')).toBe(manifest);
   });
 
-  it.each([[[]], [{ a: { file: 1 } }], [{ a: { file: 'x', imports: 'y' } }], [{ a: { file: 'x', isEntry: 'false' } }], [{ a: { file: '/x.js' } }], [{ a: { file: '//x/y.js' } }], [{ a: { file: '\t/evil.example/x.js' } }], [{ a: { file: '../x.js' } }], [{ a: { file: '%2e%2e/x.js' } }], [{ a: { file: 'assets\\..\\x.js' } }], [{ a: { file: 'assets/./x.js' } }], [{ a: { file: 'assets/a.js?x' } }], [{ a: { file: 'assets/a.js#x' } }], [{ a: { file: 'a%zz.js' } }], [{ a: { file: '\\x.js' } }], [null]])('rejects %j, naming the file', (json) => {
+  it.each([[[]], [{ a: { file: 1 } }], [{ a: { file: 'x', imports: 'y' } }], [{ a: { file: 'x', isEntry: 'false' } }], [{ a: { file: 'x.js', css: ['.//evil.com/x.css'] } }], [{ a: { file: 'x.js', css: ['//evil.com/x.css'] } }], [{ a: { file: 'x.js', css: 5 } }], [{ a: { file: 'x.js', css: [1] } }], [{ a: { file: '/x.js' } }], [{ a: { file: '//x/y.js' } }], [{ a: { file: '\t/evil.example/x.js' } }], [{ a: { file: '../x.js' } }], [{ a: { file: '%2e%2e/x.js' } }], [{ a: { file: 'assets\\..\\x.js' } }], [{ a: { file: 'assets/./x.js' } }], [{ a: { file: 'assets/a.js?x' } }], [{ a: { file: 'assets/a.js#x' } }], [{ a: { file: 'a%zz.js' } }], [{ a: { file: '\\x.js' } }], [null]])('rejects %j, naming the file', (json) => {
     expect(() => parseManifest(json, 'dist/client/.vite/manifest.json')).toThrow(/dist\/client\/\.vite\/manifest\.json is not a Vite manifest/);
   });
 });

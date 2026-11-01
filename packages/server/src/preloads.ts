@@ -63,11 +63,12 @@ export function parseManifest(json: unknown, where: string): ViteManifest {
   if (typeof json !== 'object' || json === null || Array.isArray(json)) throw invalid();
   for (const chunk of Object.values(json)) {
     if (typeof chunk !== 'object' || chunk === null || Array.isArray(chunk)) throw invalid();
-    const { file, imports, isEntry } = chunk as Record<string, unknown>;
-    // `file` becomes the href of a tag that carries the response's nonce: it must name exactly that path on this origin.
+    const { file, imports, isEntry, css } = chunk as Record<string, unknown>;
+    // `file` and every `css` entry become the href of a tag that carries the response's nonce: each must name exactly that path on this origin.
     if (typeof file !== 'string' || !staysOnOrigin(file)) throw invalid();
     if (isEntry !== undefined && typeof isEntry !== 'boolean') throw invalid();
     if (imports !== undefined && !(Array.isArray(imports) && imports.every((item) => typeof item === 'string'))) throw invalid();
+    if (css !== undefined && !(Array.isArray(css) && css.every((item) => typeof item === 'string' && staysOnOrigin(item)))) throw invalid();
   }
   return json as ViteManifest;
 }
@@ -94,7 +95,7 @@ function stylesOf(manifest: ViteManifest, keys: Iterable<string>, seen = new Set
     if (!chunk || seen.has(key)) continue;
     seen.add(key);
     stylesOf(manifest, chunk.imports ?? [], seen, found);
-    for (const file of chunk.css ?? []) if (!found.includes(file)) found.push(file);
+    found.push(...(chunk.css ?? []));
   }
   return found;
 }
