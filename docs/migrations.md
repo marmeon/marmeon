@@ -463,6 +463,10 @@ change to a helper that the migration imports is not seen, since the checksum co
 To undo it, put the file back as it was and write the change as a new migration. An app can ask for the same answer in code with
 `Migrator.changed()`.
 
+The checksum covers the contents of the file, with CRLF read as LF, so a comment counts as a change, a blank line too, even though the schema stays the
+same. Only a file that differs in its line endings alone (CRLF against LF) hashes the same. The warning does not tell a comment from a
+new column. Take the comment out again, or put the note in the commit message or in the next migration.
+
 ### Retiring a column
 
 ```ts title="modules/notes/migrations/2026_10_20_100000_retire_legacy_slug_of_notes_table.ts"
@@ -800,6 +804,37 @@ SQLite changes a table one step at a time. The order is fixed, whatever order yo
 checks, renamed columns, new columns, NOT NULL and nullable changes, new checks, new indexes, retired columns, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
+
+### A reference that comes later
+
+A foreign key belongs to the migration that adds its column, and that migration must run after the one that creates the referenced
+table. A column that already exists cannot be tied to a table afterwards: `alter()` has no method that adds a reference to it, and
+`foreignId()` with `constrained()` adds a new column. Order the migrations when you write them, as under
+[generating migrations](#generating-migrations), so that the referenced table comes first. That is only possible before the
+migrations have run. A column that has run as a plain `bigInteger()` and has to point at a table created later takes a detour through a
+new column. This copies the values on SQLite and on Postgres, and the new column is nullable because SQLite adds no `NOT NULL`
+column without a default:
+
+```ts title="modules/forms/migrations/2026_11_02_090000_tie_forms_to_layouts.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => {
+    schema.alter('forms', (table) => {
+      table.renameColumn('layout_id', 'old_layout_id');
+      table.foreignId('layout_id').constrained().nullOnDelete().nullable();
+    });
+    schema.data(async (db) => {
+      await db.updateTable('forms').set((eb) => ({ layout_id: eb.ref('old_layout_id') })).execute();
+    });
+    schema.alter('forms', (table) => table.dropColumn('old_layout_id'));
+  },
+  down: () => {},
+});
+```
+
+The old column is dropped in a second `alter()` because the copy must run before it goes, and a data step runs between two steps, not inside one. A value without a row in `layouts` stops the copy on both drivers, since both enforce the reference: create the rows first, or
+set those values to `NULL` in the data step. Because the columns are renamed and copied, this migration cannot be undone, and `down()` says so by doing nothing.
 
 ### Renaming a table
 

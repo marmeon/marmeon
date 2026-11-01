@@ -196,6 +196,102 @@ or a copy made with `{ ...result }`, commits like any other value.
 over a transaction bound with `using(trx)`. Kysely's own `db.transaction().execute()` knows no results and commits whatever its
 callback returns.
 
+## Refusing a save made from an old state
+
+Two people open the same record, and the second to save would overwrite what the first saved. A **version counter** refuses
+that: the record has a number that every save raises, the form sends the number it was opened with, and a save that arrives with
+an older one is refused.
+
+```ts title="modules/documents/migrations/2026_10_08_090000_create_documents_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) =>
+    schema.create('documents', (table) => {
+      table.id();
+      table.string('title');
+      table.integer('version').default(1);
+      table.timestamps();
+    }),
+  down: (schema) => schema.drop('documents'),
+});
+```
+
+The check and the write have to be one step. A save that reads the version, compares it in code and writes afterwards lets two
+requests both pass. So the save starts with an `update … where version = ?` that raises the counter. The statement locks the row,
+a second save waits for the first to commit, then finds the version changed and updates nothing. Everything else the save writes
+comes after it in the same transaction, under that lock. A refused save is an expected failure, so it is an `err`, not a throw:
+
+```ts title="modules/documents/DocumentRepository.ts"
+import { err, ok, type Result } from '@marmeon/core';
+import { Repository, type Row } from '@marmeon/database';
+
+export type SaveError = { kind: 'missing' } | { kind: 'stale' };
+
+export class DocumentRepository extends Repository<'documents'> {
+  static table = 'documents' as const;
+
+  /** Saves the title when the document still has the version the form was opened with. */
+  save(id: Row<'documents'>['id'], version: number, values: { title: string }): Promise<Result<Row<'documents'>, SaveError>> {
+    return this.transaction(async () => {
+      const claimed = await this.db.updateTable('documents').set({ version: version + 1 }).where('id', '=', id).where('version', '=', version).executeTakeFirst();
+      if (Number(claimed.numUpdatedRows) === 0) return (await this.find(id)) ? err({ kind: 'stale' }) : err({ kind: 'missing' });
+      // Other rows of the same save are written here too, under the lock the update took.
+      const saved = await this.update(id, values);
+      return saved ? ok(saved) : err({ kind: 'missing' });
+    });
+  }
+}
+```
+
+This works the same on Postgres and SQLite, and it needs no `select … for update` first. Postgres takes the row lock with the update,
+and SQLite takes the write lock when a transaction begins.
+
+Answer a refused save with **422, or with a redirect back that carries the error. Never with 409**: `409` is the code the page protocol uses for its own full loads
+([a new version of the app](navigation.md#a-new-version-of-the-app)), and it reaches a form as no error at all. A
+`ValidationError` keeps the form and shows the message: a page request goes back to the form with the errors and the input it was
+given, and a JSON client gets the 422:
+
+```ts title="modules/documents/controllers/UpdateDocumentController.ts"
+import { can } from '@marmeon/auth';
+import { abort, Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+import { DocumentRepository } from '../DocumentRepository.ts';
+import { DocumentPolicy } from '../policies/DocumentPolicy.ts';
+
+export const UpdateDocumentRequest = defineRequest({
+  schema: r.object({
+    title: r.string().trim().required().max(120),
+    version: r.integer().min(1),
+  }),
+  authorize: can(DocumentPolicy, 'update', 'document'),
+});
+
+/** Saves the changes to a document, unless someone saved it after the form was opened. */
+export class UpdateDocumentController extends Controller {
+  static request = UpdateDocumentRequest;
+
+  readonly #documents: DocumentRepository;
+
+  constructor(documents: DocumentRepository) {
+    super();
+    this.#documents = documents;
+  }
+
+  async handle(ctx: ContextOf<typeof UpdateDocumentRequest>) {
+    const saved = await this.#documents.save(ctx.params.document.id, ctx.body.version, { title: ctx.body.title });
+    if (saved.ok) return this.redirect().route('documents.show', { document: saved.value.id }).flash('toast', { kind: 'success', message: 'Document saved.' });
+    if (saved.error.kind === 'stale') throw new ValidationError({ version: ['Someone saved this document after you opened it. Reload it and make your change again.'] }, { title: ctx.body.title });
+    abort(404);
+  }
+}
+```
+
+The route binds the record with `bind('document', DocumentRepository)`, and `DocumentPolicy` is written as in the
+[resource recipe](recipe-resource.md#the-code); the version is no substitute for the policy. The page sends `version` from the record it
+was rendered with, as a hidden field of the form. That field shows no message by itself, so the page renders `errors.version` near the
+submit button (or the controller answers with a redirect and a flash message instead). A person who gets the error reloads the record, which has the new version, and makes the change again.
+
 ## Await everything
 
 Work that started inside the callback but runs after the transaction finished, such as a promise you did not await or a timer,
