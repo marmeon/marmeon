@@ -51,7 +51,9 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function Edit({ name }: { name: string }) {
   const [tab, setTab] = useRemember('tab', 'links');
-  const form = useForm('profile.update', { name, password: '', card_number: '' }, { remember: true, guard: 'Unsaved.' });
+  const form = useForm('profile.update', { name, password: '', card_number: '', account: { email: 'ada@example.test', password: '', avatar: null as File | null }, tags: ['a', 'b'], members: [{ name: 'Ada', password: '' }] }, { remember: true, guard: 'Unsaved.' });
+  const account = form.data.account as { email: string; password: string; avatar: File | null };
+  const members = form.data.members as { name: string; password?: string }[];
   return (
     <>
       <button data-testid="tab" onClick={() => setTab('activity')}>
@@ -60,6 +62,13 @@ function Edit({ name }: { name: string }) {
       <input data-testid="name" value={String(form.data.name)} onChange={(event) => form.set('name', event.target.value)} />
       <input data-testid="password" type="password" value={String(form.data.password)} onChange={(event) => form.set('password', event.target.value)} />
       <input data-testid="card" value={String(form.data.card_number)} onChange={(event) => form.set('card_number', event.target.value)} />
+      <input data-testid="email" value={account.email} onChange={(event) => form.set('account', { ...account, email: event.target.value })} />
+      <input data-testid="account-password" type="password" value={account.password} onChange={(event) => form.set('account', { ...account, password: event.target.value })} />
+      <button data-testid="avatar" onClick={() => form.set('account', { ...account, avatar: new File(['x'], 'a.png') })} />
+      <input data-testid="member" value={members[0]!.name} onChange={(event) => form.set('members', [{ ...members[0]!, name: event.target.value }])} />
+      <output data-testid="members">{JSON.stringify(members)}</output>
+      <button data-testid="tags" onClick={() => form.set('tags', ['c'])} />
+      <output data-testid="nested">{JSON.stringify({ length: account.password.length, avatar: account.avatar, tags: form.data.tags, dirty: form.dirty })}</output>
     </>
   );
 }
@@ -209,6 +218,39 @@ describe('useRemember and useForm({ remember })', () => {
     expect(($('name') as HTMLInputElement).value).toBe('Ada L.');
     expect(($('password') as HTMLInputElement).value).toBe('');
     expect(($('card') as HTMLInputElement).value).toBe('');
+  });
+
+  it('restores the fields a nested object lost in memory from the initial data, and replaces a list as a whole', async () => {
+    server = () => json(page('People', '/people'));
+    await mount(page('Edit', '/users/1', { name: 'Ada' }));
+    await type('email', 'grace@example.test');
+    await type('account-password', 'hunter2-MARKER');
+    await click('avatar');
+    await click('tags');
+    await click('to-people');
+    await until(() => expect($('people')).not.toBeNull());
+    await back();
+    await until(() => expect($('email')).not.toBeNull());
+    expect(($('email') as HTMLInputElement).value).toBe('grace@example.test');
+    expect(($('account-password') as HTMLInputElement).value).toBe('');
+    const shown = JSON.parse($('nested')!.textContent!);
+    expect(shown.length).toBe(0);
+    expect(shown.avatar).toBeNull();
+    expect(shown.tags).toEqual(['c']);
+    // The restored password equals its initial value, so it is not dirty; the list's item lost its password (see the list test below).
+    expect(shown.dirty).toEqual(['account.email', 'tags', 'tags.0', 'tags.1', 'members.0.password']);
+  });
+
+  it('brings a list back as it was kept: a left-out field of an item in it is missing', async () => {
+    server = () => json(page('People', '/people'));
+    await mount(page('Edit', '/users/1', { name: 'Ada' }));
+    await type('member', 'Grace');
+    await click('to-people');
+    await until(() => expect($('people')).not.toBeNull());
+    await back();
+    await until(() => expect($('member')).not.toBeNull());
+    expect(($('member') as HTMLInputElement).value).toBe('Grace');
+    expect(JSON.parse($('members')!.textContent!)).toEqual([{ name: 'Grace' }]);
   });
 
   it('forgotten when the document is left — signing out answers 409', async () => {

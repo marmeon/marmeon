@@ -396,7 +396,7 @@ export function useForm(...args: unknown[]): unknown {
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');
   const kept = remember && store?.has(rememberKey) ? (store.get(rememberKey) as KeptForm | undefined) : undefined;
   const [defaults, setDefaults] = useState(initial);
-  const [data, setState] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
+  const [data, setState] = useState(() => (kept ? restoreKept(initial, kept.data) : initial));
   // The newest data, written by `set()`, `setData()` and `reset()` as they run: a `submit()` in the same handler sends it before the next render.
   const dataRef = useRef(data);
   // `render` is a functional update for field changes, so React applies them by lane: an urgent `set()` must not render a field a pending transition set.
@@ -546,6 +546,29 @@ function savedBaseline(sent: Record<string, unknown>, atSuccess: Record<string, 
 
 const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+/**
+ * The initial data with the kept input laid over it. What is remembered has lost its passwords, sensitive fields and files
+ * (their keys are gone, at any depth), so a key missing from the kept data comes back from `initial` — a nested
+ * `account.password` is still there. Only plain objects merge; lists, dates and everything else are replaced as a whole.
+ */
+export function restoreKept(initial: Record<string, unknown>, kept: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...initial };
+  for (const [key, value] of Object.entries(kept)) {
+    // `__proto__` as an own key (JSON.parse makes one) would swap the result's prototype; and `initial['__proto__']` is
+    // Object.prototype, which must never count as a base to merge into.
+    if (key === '__proto__') continue;
+    const base = Object.hasOwn(initial, key) ? initial[key] : undefined;
+    result[key] = isPlainRecord(base) && isPlainRecord(value) ? restoreKept(base, value) : value;
+  }
+  return result;
+}
 
 /** What a remembered form keeps. */
 interface KeptForm {
