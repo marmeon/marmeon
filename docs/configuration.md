@@ -413,6 +413,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `APP_URL` | none, required | The app's address. `https://` makes the cookies `Secure`, unless `SESSION_SECURE_COOKIE` says otherwise. |
 | `APP_KEY` | none, required | The key that encrypts cookies and signs URLs: `base64:` and 32 random bytes. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys, comma-separated. What they encrypted or signed stays valid. |
+| `APP_SHUTDOWN_TIMEOUT_SECONDS` | `10` | Seconds each provider's `shutdown()` may take before the app logs a warning and stops the next provider. |
 | `PORT` | `3000` | The port the server listens on. `0` takes a free one. |
 | `HOST` | `127.0.0.1` | The interface the server listens on. `0.0.0.0` for other machines. |
 | `LOG_LEVEL` | `info` | The lowest level that is logged, or `silent`. |
@@ -459,6 +460,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `APP_LOCALES` | i18n | value | `[]` | [Localization](localization.md#configuration) |
 | `APP_NAME` | auth, redis | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `APP_PREVIOUS_KEYS` | encryption | value | `[]` | [Encryption](encryption.md#the-application-key) |
+| `APP_SHUTDOWN_TIMEOUT_SECONDS` | core | duration | `10` | [Providers](providers.md#shutting-down) |
 | `APP_URL` | auth, devtools, mail, server, session | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | auth | value | `100` | [Authentication](authentication.md#configuration) |
 | `AUTH_DEVICE_COOKIE_DAYS` | auth | duration | `90` | [Authentication](authentication.md#configuration) |

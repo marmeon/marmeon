@@ -1,6 +1,7 @@
 import cluster from 'node:cluster';
 import { ConfigError, invalidConfiguration, loadEnv, validateConfig, type ConfigDefinition } from './config/config.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
+import { ShutdownConfig } from './config/shutdown-config.ts';
 import { Container } from './container.ts';
 import { withCode } from './error-codes.ts';
 import { coreSolutions } from './core-solutions.ts';
@@ -115,6 +116,7 @@ export class Application {
   readonly phase: ApplicationPhase;
   readonly #providers: ServiceProvider[] = [];
   #shutdown: Promise<void> | undefined;
+  readonly #stuck: string[] = [];
 
   /** @internal `createApplication()` builds the app; nothing else does. */
   constructor(options: {
@@ -158,7 +160,9 @@ export class Application {
   /**
    * Stops the app: every provider's `shutdown`, in reverse order (a provider shuts down
    * before the ones it was booted after). Runs once — later calls return the same promise.
-   * Every provider gets its turn even if an earlier one fails; failures are thrown together.
+   * Every provider gets its turn even if an earlier one fails; failures are thrown together. A `shutdown()` that is still
+   * pending after `APP_SHUTDOWN_TIMEOUT_SECONDS` (default 10) is logged as a warning and left behind — not a failure — so
+   * one stuck provider does not keep the ones before it from stopping. See docs/providers.md#shutting-down.
    *
    * The CLI calls it after a command, the server on SIGINT/SIGTERM, tests via `await using`. An app in the build phase never booted and
    * opened nothing: no provider's `shutdown` runs.
@@ -166,11 +170,16 @@ export class Application {
   shutdown(): Promise<void> {
     this.#shutdown ??= (async () => {
       const errors: unknown[] = [];
+      const limit = this.shutdownTimeoutMs;
       // Reporters send what they buffer while the providers they may depend on are still up; waits at most 2 s, never throws.
       if (this.phase !== 'build') await this.container.make(ErrorReports).flush();
       for (const provider of this.phase === 'build' ? [] : this.#providers.toReversed()) {
         try {
-          await provider.shutdown?.(this);
+          if (!provider.shutdown) continue;
+          if (!(await this.#within(provider.shutdown(this), limit))) {
+            this.#stuck.push(provider.constructor.name);
+            this.container.make(Logger).warn(`${provider.constructor.name}.shutdown() did not finish within ${limit / 1000} s (APP_SHUTDOWN_TIMEOUT_SECONDS); going on with the next provider`);
+          }
         } catch (error) {
           errors.push(error);
         }
@@ -179,6 +188,32 @@ export class Application {
       if (errors.length > 1) throw new AggregateError(errors, `${errors.length} providers failed to shut down.`);
     })();
     return this.#shutdown;
+  }
+
+  /** Resolves `true` when `work` settled in time (rethrowing its failure), `false` when `limit` ms passed first. */
+  async #within(work: void | Promise<void>, limit: number): Promise<boolean> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), limit);
+    });
+    // A late rejection of a provider left behind must not become an unhandled rejection.
+    const settled = Promise.resolve(work).then(() => true as const);
+    settled.catch(() => {});
+    try {
+      return await Promise.race([settled, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** @internal The limit for one provider's `shutdown()`, in milliseconds — the CLI's own backstops add it to theirs. */
+  get shutdownTimeoutMs(): number {
+    return this.container.has(ShutdownConfig) ? this.container.make(ShutdownConfig).providerMs : 10_000;
+  }
+
+  /** @internal The providers whose `shutdown()` outlasted the limit, once the app has shut down: their work may still hold the process open. */
+  get stuckProviders(): readonly string[] {
+    return this.#stuck;
   }
 
   [Symbol.asyncDispose](): Promise<void> {
@@ -256,6 +291,7 @@ export async function createApplication(definition: ApplicationDefinition, optio
   // Configuration from the app, its modules and every provider (packages bring their own) — and the environment, every app's.
   const definitions = new Set([
     EnvironmentConfig,
+    ShutdownConfig,
     ...(definition.config ?? []),
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),

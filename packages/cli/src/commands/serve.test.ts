@@ -38,7 +38,7 @@ async function serve(nodeEnv: string, root = '/nowhere', warn: (text: string) =>
   server.startServer.mockImplementation(async () => ({ close: server.close }));
   server.startLastError.mockImplementation(async () => server.lastError);
   migrations.watch.mockImplementation(async () => ({ close: migrations.close }));
-  const app = { container: { has: () => false }, modules: [] } as unknown as Application;
+  const app = { container: { has: () => false }, modules: [], shutdownTimeoutMs: 10_000 } as unknown as Application;
   const logger = { info: () => {} } as unknown as Logger;
   const devProcesses = { all: () => [] } as unknown as DevProcesses;
   const command = new ServeCommand(app, logger, {} as RouteTypes, devProcesses);

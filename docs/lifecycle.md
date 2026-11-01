@@ -153,4 +153,5 @@ each task, and the `marmeon` command each command. Each of these processes boots
 
 On `SIGTERM`, the server leaves readiness, answers for the seconds in `SERVER_SHUTDOWN_DELAY_SECONDS`, finishes the requests in flight and the work
 after them, and then shuts the app down: every provider's `shutdown()` runs, in reverse order, and closes its pools and
-connections. The [deployment](deployment.md#stopping-without-dropped-requests) page explains the stages.
+connections. Each `shutdown()` has `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default): one that takes longer is logged as a warning and
+left behind, and the next provider stops regardless ([Shutting down](providers.md#shutting-down)). The [deployment](deployment.md#stopping-without-dropped-requests) page explains the stages.

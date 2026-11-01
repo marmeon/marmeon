@@ -152,7 +152,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     return EXIT_USAGE;
   }
   if (wantsHelp(rest, Command)) {
-    await app?.shutdown();
+    await shutDown(app);
     printCommandHelp({ output }, Command);
     return 0;
   }
@@ -163,11 +163,11 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     if (!(error instanceof CommandArgumentsError)) {
       printError(output, error);
       reportFailure(app, Command, error);
-      await app?.shutdown();
+      await shutDown(app);
       return 1;
     }
     output.error(error.message);
-    await app?.shutdown();
+    await shutDown(app);
     return EXIT_USAGE;
   }
 
@@ -201,7 +201,19 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     reportFailure(app, Command, error);
     return 1;
   } finally {
+    await shutDown(app);
+  }
+}
+
+/**
+ * Shuts the app down. A provider whose `shutdown()` outlasted its limit may still hold a handle (a socket, a timer) that
+ * keeps the process from ending on its own, so the exit is forced shortly after — with the code the command ended with.
+ */
+async function shutDown(app: Application | undefined): Promise<void> {
+  try {
     await app?.shutdown();
+  } finally {
+    if (app && app.stuckProviders.length > 0) setTimeout(() => process.exit(process.exitCode ?? 0), 2000).unref();
   }
 }
 

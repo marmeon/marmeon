@@ -106,9 +106,11 @@ export class ServeCommand {
     const signal = await signals.received;
     // Ctrl+C reaches this process twice (from the terminal and forwarded by the launcher or a cluster's primary): later
     // signals must not cut the shutdown short — the listeners of `signals` stay. A shutdown that hangs still ends after 10
-    // seconds (plus the shutdown delay).
+    // seconds (plus the shutdown delay) and the time one provider's `shutdown()` may take: a stuck provider must not end the process
+    // before the ones after it stopped.
     const delay = signal === 'SIGTERM' ? this.#shutdownDelayMs() : 0;
-    setTimeout(() => process.exit(1), 10_000 + delay).unref();
+    const providerLimit = this.#app.shutdownTimeoutMs;
+    setTimeout(() => process.exit(1), 10_000 + delay + providerLimit).unref();
     this.#logger.info(
       delay > 0
         ? `${signal} received, shutting down — not ready any more, still answering for ${delay / 1000} s (SERVER_SHUTDOWN_DELAY_SECONDS)`
@@ -147,7 +149,7 @@ export class ServeCommand {
       for (const worker of workers) worker.process.kill(signal);
       if (workers.size === 0) done();
       // Each worker ends by itself within 10 s (plus the shutdown delay); one that does not is ended here.
-      const limit = 12_000 + (signal === 'SIGTERM' ? this.#shutdownDelayMs() : 0);
+      const limit = 12_000 + this.#app.shutdownTimeoutMs + (signal === 'SIGTERM' ? this.#shutdownDelayMs() : 0);
       setTimeout(() => {
         for (const worker of workers) {
           logger.error(`Worker ${worker.process.pid} did not end within ${limit / 1000} s; killing it`);

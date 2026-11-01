@@ -84,6 +84,15 @@ provider stops before the providers it was booted after, and still has everythin
 after a command, and a test when its app is disposed. Each provider gets its turn even if an earlier one fails, and the errors
 are thrown together at the end.
 
+Each `shutdown()` has a time limit: `APP_SHUTDOWN_TIMEOUT_SECONDS`, 10 by default. One that is still pending then is
+logged as a warning naming the provider class, and `app.shutdown()` goes on with the next provider — in the same reverse
+order — so a provider that waits forever (a statement stuck behind a lock) does not keep the database pool or the queue
+from closing. The promise of the provider is not cancelled and the timeout is not an error: `app.shutdown()` does not throw for it.
+The limit applies to each provider, so several stuck ones add up; keep the sum below your supervisor's grace period. A
+`marmeon` command forces the exit two seconds after it ended if a provider timed out, since what it left open could keep
+the process alive. Bound the waits of your own `shutdown()` as well (a statement timeout, an abort signal): the limit is a backstop, and the work of a
+provider that was left behind is lost when the process ends.
+
 ```ts title="modules/search/SearchServiceProvider.ts"
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { SearchIndex } from './SearchIndex.ts';

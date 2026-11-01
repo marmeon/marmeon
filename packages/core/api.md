@@ -458,6 +458,11 @@ export interface ServiceProviderClass {
     readonly health?: readonly HealthCheckClass[];
     readonly errorReporters?: readonly ErrorReporterClass[];
 }
+// ShutdownConfig
+export declare const ShutdownConfig: import("./config.ts").ConfigDefinition<{
+    providerMs: number;
+}>;
+export type ShutdownConfig = ConfigOf<typeof ShutdownConfig>;
 // Solution
 export interface Solution {
     readonly code?: ErrorCode;
@@ -1321,6 +1326,8 @@ export interface Token<T> {
 ```ts
 // APP_ENV
 `APP_ENV` — optional
+// APP_SHUTDOWN_TIMEOUT_SECONDS
+`APP_SHUTDOWN_TIMEOUT_SECONDS` = `10`
 // NODE_ENV
 `NODE_ENV` — optional
 ```
