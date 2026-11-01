@@ -83,6 +83,19 @@ export function tuplePaths(state: FormState<Tuples>) {
   state.clearErrors('maybe.2');
 }
 
+interface Locked {
+  pair: { value: string }[] & { length: 2 };
+  none: [];
+}
+
+export function lockedPaths(state: FormState<Locked>) {
+  state.clearErrors('pair.0', 'pair.1.value');
+  // @ts-expect-error — not a field of the items
+  state.clearErrors('pair.0.missing');
+  // @ts-expect-error — an empty tuple has no positions
+  state.clearErrors('none.0');
+}
+
 interface Levels {
   a: { b: { c: { d: { e: { f: { g: { h: { i: string } } } } } } } };
 }

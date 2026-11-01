@@ -68,12 +68,26 @@ export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['le
   : F extends Primitive
     ? never
     : F extends readonly (infer Item)[]
-      ? number extends F['length']
-        ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}`
-        : { [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth>}` }[keyof F & `${number}`]
+      ? ArrayPath<F, Item, Seen, Depth>
       : {
           [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
         }[keyof F & string];
+
+/** The paths into an array or tuple. An array that only fixes its length (`T[] & { length: 2 }`) has no position keys but still its items' paths; `[]` has none. */
+type ArrayPath<F extends readonly unknown[], Item, Seen, Depth extends unknown[]> = {
+  items: Items<Item, Seen, Depth>;
+  positions: PositionPath<F, Seen, Depth>;
+  none: never;
+}[ArrayShape<F>];
+
+/** Which paths an array has: those of any item, of its positions (a tuple), or none (`[]`). */
+type ArrayShape<F extends readonly unknown[]> = number extends F['length'] ? 'items' : '0' extends keyof F ? 'positions' : F extends readonly [] ? 'none' : 'items';
+
+type Items<Item, Seen, Depth extends unknown[]> = `${number}` | `${number}.${Enter<Item, Seen, Depth> & string}`;
+
+type PositionPath<F, Seen, Depth extends unknown[]> = {
+  [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth> & string}`;
+}[keyof F & `${number}`];
 
 /** The paths into a field's type, each branch of a union paying its own step (a `Node | { leaf: string }` re-enters `Node` like a plain `Node`). */
 type Enter<T, Seen, Depth extends unknown[]> = T extends unknown ? FieldPath<T, [...Depth, ...Step<T, Seen, Depth>], Seen> : never;

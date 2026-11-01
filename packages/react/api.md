@@ -141,9 +141,7 @@ export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
 }[keyof F & string];
 // FieldPath
-export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? number extends F['length'] ? `${number}` | `${number}.${Enter<Item, Seen, Depth>}` : {
-    [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth>}`;
-}[keyof F & `${number}`] : {
+export type FieldPath<F, Depth extends unknown[] = [], Seen = never> = Depth['length'] extends 8 | 9 | 10 ? never : F extends Primitive ? never : F extends readonly (infer Item)[] ? ArrayPath<F, Item, Seen, Depth> : {
     [K in keyof F & string]: K | (Enter<F[K], Seen | F, Depth> extends infer Deeper extends string ? `${K}.${Deeper}` : never);
 }[keyof F & string];
 // FileInput
@@ -650,6 +648,14 @@ type AnswersLayer<C> = C extends {
 } ? unknown extends R ? true : [Extract<Awaited<R>, {
     readonly region: 'layer';
 }>] extends [never] ? false : true : false;
+// ArrayPath
+type ArrayPath<F extends readonly unknown[], Item, Seen, Depth extends unknown[]> = {
+    items: Items<Item, Seen, Depth>;
+    positions: PositionPath<F, Seen, Depth>;
+    none: never;
+}[ArrayShape<F>];
+// ArrayShape
+type ArrayShape<F extends readonly unknown[]> = number extends F['length'] ? 'items' : '0' extends keyof F ? 'positions' : F extends readonly [] ? 'none' : 'items';
 // BooleanFields
 export type BooleanFields<F> = {
     [K in keyof F]: FormValue<F[K]>;
@@ -733,6 +739,8 @@ type IslandAction = {
 };
 // IslandQueryPatch
 type IslandQueryPatch<C> = IslandAction extends C ? Readonly<Record<string, unknown>> : [QueryOf<C>] extends [never] ? 'this island has no query schema — give its controller `static request = defineRequest({ query })`' : QueryFields<QueryOf<C>>;
+// Items
+type Items<Item, Seen, Depth extends unknown[]> = `${number}` | `${number}.${Enter<Item, Seen, Depth> & string}`;
 // JsonLdValue
 type JsonLdValue = string | number | boolean | null | readonly JsonLdValue[] | {
     readonly [key: string]: JsonLdValue;
@@ -804,6 +812,10 @@ type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? {
 } : {
     params: BrowserParamsOf<N>;
 };
+// PositionPath
+type PositionPath<F, Seen, Depth extends unknown[]> = {
+    [I in keyof F & `${number}`]: I | `${I}.${Enter<F[I], Seen, Depth> & string}`;
+}[keyof F & `${number}`];
 // PrefetchProps
 interface PrefetchProps {
     prefetch?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
