@@ -102,6 +102,44 @@ it('has the mail previews in development only', async () => {
 });
 ```
 
+The `env` option reaches the definitions of the app's configuration, such as the mail previews' `previews` value, and the test
+app's own choice of CSRF: under a protected `NODE_ENV` it keeps the check on. Code that asks `environment.isProtected()` without an argument, and the `devOnly()` guard, read `process.env`, which the
+option does not set: a test of such code with `{ env: { NODE_ENV: 'production' } }` still runs as `test`, and a development route
+it guards answers 200 although the test claims production. (A route gated on `environment.isDevelopment()` is off in every test
+instead and answers 404.) Test a route of your own in one of two ways:
+
+- Put the question into a configuration definition, passing its argument on (`environment.isProtected(e)` in `resolve`, as
+  [configuration](configuration.md#the-environment-node_env) shows; `MailConfig.previews` does it for the mail previews), and
+  inject the config where the code decides. The `env` option reaches it. This comes in addition to `devOnly()`, never instead of
+  it: the guard's host check defends against DNS rebinding, and the guard ignores the `env` option.
+- Stub `NODE_ENV` for the process with `vi.stubEnv()`, and undo it after every test. A guard that asks on every request, such as
+  [`devOnly()`](routing.md#development-only-routes), sees the stub at once. A route that is registered only in some environments
+  decides when the app boots: stub before `createTestApp()` for it.
+
+```ts title="modules/playground/playground.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { afterEach, it, vi } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+it('answers outside production', async () => {
+  const test = await createTestApp(application);
+  await test.get('/_playground').assertOk();
+});
+
+it('is gone in production', async () => {
+  const test = await createTestApp(application);
+  vi.stubEnv('NODE_ENV', 'production');
+  await test.get('/_playground').assertNotFound();
+});
+```
+
+Keep both tests: the first proves the route exists, so the second cannot pass because the route was never there, and the second
+proves the gate, which a route that is open in production fails.
+
 With `NODE_ENV=development` the app turns on what only development has, such as the mail previews and the `Server-Timing`
 header. With `NODE_ENV=production` it applies every protection, as it does on a server. The devtools stay off in every test that
 does not pass `devtools: true`, also in one that runs as development. The
