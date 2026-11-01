@@ -292,12 +292,15 @@ export function useForm(...args: unknown[]): unknown {
     dataRef.current = next;
     setState(render);
   };
-  // Saved: the form starts over where it is once the submit's callbacks ran — what was sent, but what they `reset()` back at the
+  // Saved: the form starts over where the request left it once the submit's callbacks ran — what was sent, but what they `reset()` back at the
   // defaults it had before (a password field empty again). Taken in the next render, so a reset inside `onSuccess`/`onFinish` counts.
+  // What was sent, not what is rendered: an edit typed while the request was under way was never sent and stays dirty, and a sent
+  // edit a transition has not rendered yet is saved all the same.
   const [saved, setSaved] = useState(false);
+  const afterSave = useRef<{ sent: Record<string, unknown>; restored: Record<string, unknown> } | null>(null);
   if (saved) {
     setSaved(false);
-    setDefaults(data);
+    if (afterSave.current) setDefaults({ ...afterSave.current.sent, ...afterSave.current.restored });
   }
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
   // The navigation guard, while dirty — its own submit passes it. A remembered input that differs is dirty, too.
@@ -328,6 +331,8 @@ export function useForm(...args: unknown[]): unknown {
       live?.cancel();
       setProcessing(true);
       setWasSuccessful(false);
+      // One snapshot for the body and for the baseline: a `set()` after this point is not part of the request.
+      const sentData = dataRef.current;
       try {
         const page = await visit(url, {
           preserveScroll: true,
@@ -335,7 +340,7 @@ export function useForm(...args: unknown[]): unknown {
           // Its own guard does not stop it — the others (another form's unsaved changes) still ask.
           ignoreGuards: options.ignoreGuards === true ? true : [...(options.ignoreGuards ?? []), guard],
           method,
-          data: dataRef.current,
+          data: sentData,
           onProgress: (next, current) => {
             setProgress(next);
             onProgress?.(next, current);
@@ -348,6 +353,7 @@ export function useForm(...args: unknown[]): unknown {
           onError?.(failed);
         } else {
           // Saved: not dirty any more (the guard lets go) — see `saved`.
+          afterSave.current = { sent: sentData, restored: {} };
           setSaved(true);
           live?.reset();
           setWasSuccessful(true);
@@ -393,8 +399,12 @@ export function useForm(...args: unknown[]): unknown {
     isDirty: (path?: string) => isDirtyPath(dirty, path),
     dirty,
     reset: (...fields) => {
-      if (fields.length === 0) return setData(defaults);
+      if (fields.length === 0) {
+        if (afterSave.current) afterSave.current.restored = { ...defaults };
+        return setData(defaults);
+      }
       const restored = Object.fromEntries(fields.map((field) => [field, defaults[field]]));
+      if (afterSave.current) Object.assign(afterSave.current.restored, restored);
       setData({ ...dataRef.current, ...restored }, (current) => ({ ...current, ...restored }));
     },
     submit: submit as Form<Record<string, unknown>>['submit'],

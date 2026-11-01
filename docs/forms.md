@@ -131,7 +131,8 @@ so a button can decide a value and send it in one go (no `setTimeout` or `flushS
 (`form.set('a', 1); form.setData({ ...form.data, b: 2 })` drops `a`).
 
 `onError` gets the first message per field. `onFinish` runs after every submit, whether it succeeded, failed or was cancelled.
-After a successful submit, what was sent becomes where the form starts, so it is no longer dirty.
+After a successful submit, what was sent becomes where the form starts, so it is no longer dirty. An edit made while the request
+was under way was not sent: it stays dirty, and the guard still asks.
 
 A validation error on the server sends the browser back with the errors and the input, which the
 [validation](validation.md#from-schema-to-handler) page explains. The first message of each field lands in `form.errors`.
