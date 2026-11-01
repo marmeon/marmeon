@@ -279,7 +279,8 @@ On `SIGTERM`, the web server:
    opens a new connection, which the load balancer gives to another instance.
 3. **Drains.** Live streams end first, and their tabs connect to another server. No new connection is taken, the requests in
    flight finish, and then the work they deferred until after their response, such as a mail. The process exits at the latest
-   13 seconds plus `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default) after the delay ([Shutting down](providers.md#shutting-down)).
+   13 seconds plus `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default) after the delay ([Shutting down](providers.md#shutting-down)). The hard exit and the grace periods `make:docker` writes cover one provider that
+   hits its limit; several add up, so size your supervisor's grace period for the number your app can have stuck at once.
 
 `SIGINT`, such as Ctrl+C, skips the delay. Give the supervisor time for all of it:
 

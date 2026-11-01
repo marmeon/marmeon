@@ -210,7 +210,10 @@ export class Application {
     const settled = Promise.resolve(work).then(() => true as const);
     // A provider left behind may still fail later: said here, since nobody awaits it any more (and it must not turn into an unhandled rejection).
     settled.catch((error: unknown) => {
-      if (timedOut) this.container.make(Logger).warn(`${name}.shutdown() failed after its time limit: ${error instanceof Error ? error.message : String(error)}`);
+      if (!timedOut) return;
+      // Like a failing error reporter: the message through the redactor, the class name beside it — never the error object, its stack or its cause chain.
+      const redactor = this.container.has(Redactor) ? this.container.make(Redactor) : new Redactor();
+      this.container.make(Logger).warn(`${name}.shutdown() failed after its time limit: ${redactor.text(error instanceof Error ? error.message : String(error))}`, { exception: error instanceof Error && /^[A-Za-z_$][\w$]*$/.test(error.name) ? error.name : 'Error' });
     });
     try {
       return await Promise.race([settled, timeout]);
