@@ -279,8 +279,7 @@ On `SIGTERM`, the web server:
    opens a new connection, which the load balancer gives to another instance.
 3. **Drains.** Live streams end first, and their tabs connect to another server. No new connection is taken, the requests in
    flight finish, and then the work they deferred until after their response, such as a mail. The process exits at the latest
-   10 seconds after the delay, plus up to `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default) for each provider that does not stop in time
-   ([Shutting down](providers.md#shutting-down)).
+   13 seconds plus `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default) after the delay ([Shutting down](providers.md#shutting-down)).
 
 `SIGINT`, such as Ctrl+C, skips the delay. Give the supervisor time for all of it:
 
