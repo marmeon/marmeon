@@ -56,7 +56,7 @@ type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown exte
       : V extends Primitive | Upload | ((...args: never) => unknown)
         ? V
         : V extends readonly unknown[]
-          ? { [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly unknown[] ? (P extends keyof NonNullable<O> ? NonNullable<O>[P] : never) : never> }
+          ? { [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly unknown[] ? (P extends keyof NonNullable<O> ? NonNullable<O>[P] : NonNullable<O>[number]) : never> }
           : SchemaFields<V, NonNullable<O>>;
 
 /**

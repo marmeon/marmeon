@@ -13,6 +13,10 @@ Types from other packages: `react`, `react-dom`
 export type { ActionError } from '@marmeon/http/client';
 // ActionField
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
+// ActionFields
+export type ActionFields<F> = {
+    [K in keyof F]: FormValue<F[K], false>;
+};
 // ActionReload
 export type ActionReload = Reloading | readonly Reloading[];
 // ActionResultOf
@@ -640,10 +644,6 @@ export declare function useUpload(field: FormField): (file: File) => Promise<voi
 ### Referenced, not exported
 
 ```ts
-// ActionFields
-export type ActionFields<F> = {
-    [K in keyof F]: FormValue<F[K], false>;
-};
 // AnchorAttributes
 type AnchorAttributes = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>;
 // AnswersLayer
@@ -812,7 +812,7 @@ type NumberRuleInput = number | `${number}`;
 type PageModules = Record<string, () => Promise<unknown>>;
 // PairedValue
 type PairedValue<V, O, Missing extends boolean = TakesMissing<V>> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput | NumberRuleInput] ? FormValue<V, true, Missing> : V extends Primitive | Upload | ((...args: never) => unknown) ? V : V extends readonly unknown[] ? {
-    [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly unknown[] ? (P extends keyof NonNullable<O> ? NonNullable<O>[P] : never) : never>;
+    [P in keyof V]: PairedValue<V[P], NonNullable<O> extends readonly unknown[] ? (P extends keyof NonNullable<O> ? NonNullable<O>[P] : NonNullable<O>[number]) : never>;
 } : SchemaFields<V, NonNullable<O>>;
 // ParamsMissing
 type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
