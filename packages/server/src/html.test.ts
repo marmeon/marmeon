@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentOf, renderDocument, withLang, withPreloads } from './html.ts';
+import { documentOf, renderDocument, withLang, withPreloads, withStyles } from './html.ts';
 
 const template = '<html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>';
 const page = { component: 'x/Y', props: { bio: '</script><script>alert(1)</script>' }, url: '/' };
@@ -100,5 +100,16 @@ describe('withPreloads', () => {
 
   it('does not expand $& in the tags', () => {
     expect(withPreloads('<head></head>', '<link href="$&">')).toContain('<link href="$&">');
+  });
+});
+
+describe('withStyles', () => {
+  it('puts the tags last in the head, after what the build wrote there', () => {
+    expect(withStyles('<head><!--app-head--><link rel="stylesheet" href="/entry.css"></head>', '<link>')).toBe('<head><!--app-head--><link rel="stylesheet" href="/entry.css"><link>\n</head>');
+  });
+
+  it('falls back to the preloads\' place without a closing head, and leaves a template without a head alone', () => {
+    expect(withStyles('<head><!--app-head-->', '<link>')).toBe('<head><link>\n<!--app-head-->');
+    expect(withStyles('<body></body>', '<link>')).toBe('<body></body>');
   });
 });

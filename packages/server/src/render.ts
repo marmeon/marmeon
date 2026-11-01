@@ -67,8 +67,8 @@ import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory, type RouteLookup } from '@marmeon/router/internal';
-import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads } from './html.ts';
-import { preloadTags, type AssetPreloads } from './preloads.ts';
+import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads, withStyles } from './html.ts';
+import { preloadTags, stylesheetTags, type AssetPreloads } from './preloads.ts';
 
 export interface PageRenderOptions {
   /** Wait for the whole page before sending — for bots (see {@link isBot}). */
@@ -156,7 +156,10 @@ function appOriginTag(appUrl: string | undefined): string {
 export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version }: DocumentRendererOptions): PageRenderer {
   // After `withNonce`, so the tags carry the real nonce and never meet the placeholder.
   const documentFor = (document: string, page: PageObject, nonce: string | undefined, appUrl: string | undefined) =>
-    withPreloads(withNonce(document, nonce), (preloads ? preloadTags(preloads.forPage(page), nonce) : '') + appOriginTag(appUrl));
+    withStyles(
+      withPreloads(withNonce(document, nonce), (preloads ? preloadTags(preloads.forPage(page), nonce) : '') + appOriginTag(appUrl)),
+      preloads ? stylesheetTags(preloads.stylesFor(page), nonce) : '',
+    );
   const fixed = (error: unknown) => {
     if (error instanceof Error) fixStack?.(error);
     return error;

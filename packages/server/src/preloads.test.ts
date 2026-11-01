@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetPreloads, parseManifest, preloadTags, type ViteManifest } from './preloads.ts';
+import { assetPreloads, parseManifest, preloadTags, stylesheetTags, type ViteManifest } from './preloads.ts';
 
 const manifest: ViteManifest = {
   'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_vendor'] },
@@ -104,7 +104,46 @@ describe('parseManifest', () => {
     expect(parseManifest(manifest, 'm.json')).toBe(manifest);
   });
 
-  it.each([[[]], [{ a: { file: 1 } }], [{ a: { file: 'x', imports: 'y' } }], [{ a: { file: 'x', isEntry: 'false' } }], [{ a: { file: '/x.js' } }], [{ a: { file: '//x/y.js' } }], [{ a: { file: '\t/evil.example/x.js' } }], [{ a: { file: '../x.js' } }], [{ a: { file: '%2e%2e/x.js' } }], [{ a: { file: 'assets\\..\\x.js' } }], [{ a: { file: 'assets/./x.js' } }], [{ a: { file: 'assets/a.js?x' } }], [{ a: { file: 'assets/a.js#x' } }], [{ a: { file: 'a%zz.js' } }], [{ a: { file: '\\x.js' } }], [null]])('rejects %j, naming the file', (json) => {
+  it.each([[[]], [{ a: { file: 1 } }], [{ a: { file: 'x', imports: 'y' } }], [{ a: { file: 'x', isEntry: 'false' } }], [{ a: { file: 'x.js', css: ['.//evil.com/x.css'] } }], [{ a: { file: 'x.js', css: ['//evil.com/x.css'] } }], [{ a: { file: 'x.js', css: 5 } }], [{ a: { file: 'x.js', css: [1] } }], [{ a: { file: '/x.js' } }], [{ a: { file: '//x/y.js' } }], [{ a: { file: '\t/evil.example/x.js' } }], [{ a: { file: '../x.js' } }], [{ a: { file: '%2e%2e/x.js' } }], [{ a: { file: 'assets\\..\\x.js' } }], [{ a: { file: 'assets/./x.js' } }], [{ a: { file: 'assets/a.js?x' } }], [{ a: { file: 'assets/a.js#x' } }], [{ a: { file: 'a%zz.js' } }], [{ a: { file: '\\x.js' } }], [null]])('rejects %j, naming the file', (json) => {
     expect(() => parseManifest(json, 'dist/client/.vite/manifest.json')).toThrow(/dist\/client\/\.vite\/manifest\.json is not a Vite manifest/);
+  });
+});
+
+describe('stylesFor', () => {
+  const styled: ViteManifest = {
+    'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_vendor'], css: ['assets/index-a.css'] },
+    _vendor: { file: 'assets/vendor-a.js', css: ['assets/vendor-a.css'] },
+    _shared: { file: 'assets/shared-a.js', imports: ['_vendor'], css: ['assets/shared-a.css'] },
+    _nested: { file: 'assets/nested-a.js', imports: ['_shared'], css: ['assets/nested-a.css'] },
+    'modules/site/views/Home.tsx': { file: 'assets/Home-a.js', isDynamicEntry: true, imports: ['index.html', '_nested', '_shared'], css: ['assets/Home-a.css'] },
+    'modules/site/views/Docs.tsx': { file: 'assets/Docs-a.js', isDynamicEntry: true, imports: ['_shared'], css: ['assets/Docs-a.css'] },
+    'modules/site/views/Plain.tsx': { file: 'assets/Plain-a.js', isDynamicEntry: true },
+  };
+
+  it('lists the CSS of the page, of its nested imports and of a shared chunk once — imports first, never the entry\'s', () => {
+    expect(assetPreloads(styled).stylesFor({ component: 'site/Home' })).toEqual([
+      '/assets/shared-a.css',
+      '/assets/nested-a.css',
+      '/assets/Home-a.css',
+    ]);
+  });
+
+  it('adds the CSS of a layer without repeating what the page has, and nothing for a page without CSS or an unknown one', () => {
+    const preloads = assetPreloads(styled);
+    expect(preloads.stylesFor({ component: 'site/Docs', layers: [{ component: 'site/Home', props: {}, url: '/' }] })).toEqual([
+      '/assets/shared-a.css',
+      '/assets/Docs-a.css',
+      '/assets/nested-a.css',
+      '/assets/Home-a.css',
+    ]);
+    expect(preloads.stylesFor({ component: 'site/Plain' })).toEqual([]);
+    expect(preloads.stylesFor({ component: 'site/Nope' })).toEqual([]);
+  });
+
+  it('writes the tags with the nonce and an escaped href', () => {
+    expect(stylesheetTags(['/assets/a.css', '/assets/"b".css'], 'N')).toBe(
+      '<link rel="stylesheet" href="/assets/a.css" crossorigin nonce="N">\n<link rel="stylesheet" href="/assets/&quot;b&quot;.css" crossorigin nonce="N">',
+    );
+    expect(stylesheetTags([], 'N')).toBe('');
   });
 });

@@ -27,6 +27,7 @@ describe('preloads against a real build', { timeout: 60_000 }, () => {
       'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
       'index.html': '<!doctype html><html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>',
       'bootstrap/client.ts': [
+        "import './entry.css';",
         "import pages from 'virtual:marmeon/pages';",
         "import { loadHistoryFallback, loadTabSync } from '@marmeon/http/client/adapter';",
         'const navigation = (window as { navigation?: unknown }).navigation;',
@@ -34,10 +35,13 @@ describe('preloads against a real build', { timeout: 60_000 }, () => {
         'if (!navigation) void loadHistoryFallback();',
         'for (const load of Object.values(pages)) void load();',
       ].join('\n'),
+      'bootstrap/entry.css': '@layer base, marmeon;\n.entry-rule { color: rgb(7, 8, 9); }\n',
       'bootstrap/ssr.ts': 'export const render = async () => ({ html: "" });\n',
-      'modules/demo/components/Shared.tsx': "export const shared = 'shared chunk content';\n",
+      'modules/demo/components/Shared.tsx': "import './shared.css';\nexport const shared = 'shared chunk content';\n",
       'modules/demo/components/OnlyHome.tsx': "export const onlyHome = 'only on home';\n",
-      'modules/demo/views/Home.tsx': "import { onlyHome } from '../components/OnlyHome.tsx';\nimport { shared } from '../components/Shared.tsx';\nexport default `home ${shared} ${onlyHome}`;\n",
+      'modules/demo/components/shared.css': '.shared-rule { color: rgb(1, 2, 3); }\n',
+      'modules/demo/views/home.css': '.home-rule { color: rgb(4, 5, 6); }\n',
+      'modules/demo/views/Home.tsx': "import './home.css';\nimport { onlyHome } from '../components/OnlyHome.tsx';\nimport { shared } from '../components/Shared.tsx';\nexport default `home ${shared} ${onlyHome}`;\n",
       'modules/demo/views/Other.tsx': "import { shared } from '../components/Shared.tsx';\nexport default `other ${shared}`;\n",
       'vite.config.ts': [
         "import { marmeon } from '@marmeon/vite';",
@@ -78,6 +82,22 @@ describe('preloads against a real build', { timeout: 60_000 }, () => {
     for (const href of hrefs) expect(existsSync(join(root, 'dist/client', href))).toBe(true);
     // The entry and its vendor chunk are the template's; history-fallback loads only without the Navigation API.
     expect(found.some((name) => /^(index|vendor|rolldown-runtime|history-fallback)$/.test(name))).toBe(false);
+  });
+
+  it('links the stylesheets of a page and of the chunks it shares in the first document, after the entry\'s', async () => {
+    const html = await (await createProductionRenderer({ root })).shell(page('demo/Home'), new Request('http://h/'), 'N0NCE');
+    const links = (html.match(/<link rel="stylesheet"[^>]*>/g) ?? []).filter((link) => !link.includes('/assets/index-'));
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link).toContain('nonce="N0NCE"');
+    const css = links.map((link) => readFileSync(join(root, 'dist/client', /href="([^"]+)"/.exec(link)![1]!), 'utf8'));
+    expect(css[0]).toContain('.shared-rule');
+    expect(css[1]).toContain('.home-rule');
+    // The entry's stylesheet declares the layer order: it comes before every page stylesheet.
+    const entryLink = html.indexOf('<link rel="stylesheet" crossorigin href="/assets/index-');
+    expect(entryLink).toBeGreaterThan(-1);
+    expect(entryLink).toBeLessThan(html.indexOf(links[0]!));
+    const other = await (await createProductionRenderer({ root })).shell(page('demo/Other'), new Request('http://h/'));
+    expect(other.match(/<link rel="stylesheet"/g)).toHaveLength(2); // the entry's and the shared one
   });
 
   it('leaves out what another page owns', async () => {

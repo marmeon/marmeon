@@ -31,6 +31,11 @@ export interface AssetPreloads {
   readonly initial: readonly Preload[];
   /** The page's chunk, the chunks it imports, its layers' and tab sync — and the loading of deferred props, when it has some; without what `initial` has. */
   forPage(page: Pick<PageObject, 'component' | 'layers' | 'deferredProps' | 'streamedProps'>): readonly Preload[];
+  /**
+   * The stylesheets of the page's chunk, its layers' and everything they import statically — which `index.html` does not
+   * link, because it names only the entry's. Each once, in the order the modules would apply them, without the entry's own.
+   */
+  stylesFor(page: Pick<PageObject, 'component' | 'layers'>): readonly string[];
 }
 
 /**
@@ -58,11 +63,12 @@ export function parseManifest(json: unknown, where: string): ViteManifest {
   if (typeof json !== 'object' || json === null || Array.isArray(json)) throw invalid();
   for (const chunk of Object.values(json)) {
     if (typeof chunk !== 'object' || chunk === null || Array.isArray(chunk)) throw invalid();
-    const { file, imports, isEntry } = chunk as Record<string, unknown>;
-    // `file` becomes the href of a tag that carries the response's nonce: it must name exactly that path on this origin.
+    const { file, imports, isEntry, css } = chunk as Record<string, unknown>;
+    // `file` and every `css` entry become the href of a tag that carries the response's nonce: each must name exactly that path on this origin.
     if (typeof file !== 'string' || !staysOnOrigin(file)) throw invalid();
     if (isEntry !== undefined && typeof isEntry !== 'boolean') throw invalid();
     if (imports !== undefined && !(Array.isArray(imports) && imports.every((item) => typeof item === 'string'))) throw invalid();
+    if (css !== undefined && !(Array.isArray(css) && css.every((item) => typeof item === 'string' && staysOnOrigin(item)))) throw invalid();
   }
   return json as ViteManifest;
 }
@@ -79,6 +85,21 @@ function closure(manifest: ViteManifest, keys: Iterable<string>, seen = new Set<
   return seen;
 }
 
+/**
+ * The stylesheets of the chunks at `keys` and of what they import statically, each once, an import's before the
+ * importer's own: the order in which the modules evaluate, hence the order their CSS would apply if the chunk loaded.
+ */
+function stylesOf(manifest: ViteManifest, keys: Iterable<string>, seen = new Set<string>(), found: string[] = []): string[] {
+  for (const key of keys) {
+    const chunk = Object.hasOwn(manifest, key) ? manifest[key] : undefined;
+    if (!chunk || seen.has(key)) continue;
+    seen.add(key);
+    stylesOf(manifest, chunk.imports ?? [], seen, found);
+    found.push(...(chunk.css ?? []));
+  }
+  return found;
+}
+
 /** The preloads of every page and of tab sync in `manifest`, computed once. */
 export function assetPreloads(manifest: ViteManifest): AssetPreloads {
   const script = (key: string): Preload => ({ href: new URL(`/${manifest[key]!.file}`, 'http://h/').pathname, as: 'script' });
@@ -86,6 +107,9 @@ export function assetPreloads(manifest: ViteManifest): AssetPreloads {
   const initialKeys = new Set<string>();
   for (const entry of entries) closure(manifest, (manifest[entry]!.imports ?? []), initialKeys);
   const initial = [...closure(manifest, entries)].map(script);
+  // The built index.html links these already.
+  const entryStyles = new Set(stylesOf(manifest, entries));
+  const pageStyles = new Map<string, readonly string[]>();
   const withoutInitial = (keys: string[]) => keys.filter((key) => Object.hasOwn(manifest, key) && !initialKeys.has(key) && !manifest[key]!.isEntry).map(script);
 
   const pages = new Map<string, readonly Preload[]>();
@@ -93,6 +117,7 @@ export function assetPreloads(manifest: ViteManifest): AssetPreloads {
     const name = pageName(key);
     if (name === undefined || name.includes('::')) continue;
     pages.set(name, withoutInitial([...closure(manifest, [key])]));
+    pageStyles.set(name, stylesOf(manifest, [key]));
   }
   const tabSync = Object.keys(manifest).find((key) => TAB_SYNC.test(key));
   const boot = tabSync === undefined ? [] : withoutInitial([...closure(manifest, [tabSync])]);
@@ -112,6 +137,10 @@ export function assetPreloads(manifest: ViteManifest): AssetPreloads {
       }
       return result;
     },
+    stylesFor(page) {
+      const hrefs = [page.component, ...(page.layers ?? []).map((layer) => layer.component)].flatMap((component) => pageStyles.get(component) ?? []);
+      return [...new Set(hrefs)].filter((file) => !entryStyles.has(file)).map((file) => new URL(`/${file}`, 'http://h/').pathname);
+    },
   };
 }
 
@@ -124,4 +153,14 @@ export function preloadTags(preloads: readonly Preload[], nonce: string | undefi
       return `<link rel="preload" as="${as}" href="${url}" crossorigin>`;
     })
     .join('\n');
+}
+
+/**
+ * `<link rel="stylesheet">` tags for `hrefs` — a page's own CSS, which the document would otherwise get only after the
+ * page's chunk loads, so its first paint would be unstyled. They sit in the head after the template's own links, as the
+ * entry's stylesheets do, so the layer order the entry's CSS declares first still holds. They carry the nonce like the
+ * other tags the server writes.
+ */
+export function stylesheetTags(hrefs: readonly string[], nonce: string | undefined): string {
+  return hrefs.map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}" crossorigin${nonce ? ` nonce="${escapeHtml(nonce)}"` : ''}>`).join('\n');
 }
