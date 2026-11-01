@@ -149,6 +149,26 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
 }
 ```
 
+### One frame for several modules
+
+`make:mail` writes a `mail/layout.ts` into every module it makes a mail for, as long as that module has none. An app whose modules
+all send mail would have as many frames as modules, and a change of the brand colour would be made in each. To share one, keep it in
+a module the others may import, such as `ui`, and export it through that module's entry:
+
+```ts title="modules/ui/index.ts"
+export { layout as mailLayout } from './mail/layout.ts';
+```
+
+`modules/ui/mail/layout.ts` is the file shown above. The mail that `make:mail` wrote still imports `./layout.ts`. Delete the module's own
+`mail/layout.ts` and point the import at the shared one; the function has the same signature, so nothing else in the mail changes:
+
+```ts title="modules/notes/mail/NoteSharedMail.ts"
+import { mailLayout as layout } from '#modules/ui';
+```
+
+A mail class is found by its folder, so `modules/ui/mail/` is scanned for previews like any other, and a file with a function only
+adds none. Every later `make:mail` in a module without a `mail/layout.ts` writes one again; delete it and change the import each time.
+
 ## Sending mails
 
 | Method | What it does |
@@ -300,6 +320,10 @@ An `html` template escapes the mail's HTML for the `srcdoc` attribute, and `sand
 the page's origin away from it. A template with a mistake in it fails with an `MjmlError`. The preview under `/_marmeon/mail`
 shows only mail classes with a `static preview()`, not a stored template.
 
+The frame's document runs under the Content-Security-Policy of the page that holds it, because a `srcdoc` document inherits it, and
+`sandbox` does not change that. A mail brings its styles inline. A page with `styleSrc: ["'self'"]` and no `'unsafe-inline'` therefore shows the
+preview without them. Name no `styleSrc` and no `defaultSrc` there, or allow `'unsafe-inline'` in a `styleSrc` without `NONCE`; see [CSP](csp.md#frames-with-their-own-document).
+
 ## Previews
 
 In development, `/_marmeon/mail` lists every mail that has a `static preview()`, and `/_marmeon/mail/<module>/<Class>` shows one:
@@ -324,6 +348,49 @@ export class NoteSharedMail implements Mailable {
 
 A preview builds its mail from sample data: `make()` of a factory, never `create()`, so nothing is written. The previews find
 exported classes in `modules/<module>/mail/*.ts`.
+
+`make()` of a factory returns the [attributes](seeding.md#using-factories) it would insert, not a row: no `id`, none of the columns
+the database fills, a column with a default may be missing, and a related column may hold a pending factory. It does not satisfy `Row<'events'>`,
+so a mail that takes a whole row has no sample to preview. Let a mail take the few fields it prints:
+
+```ts title="modules/events/mail/EventReminderMail.ts"
+import { Factories } from '@marmeon/database';
+import { Translators, type Translator } from '@marmeon/i18n';
+import { mjml, type Address, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import { EventFactory } from '../factories/EventFactory.ts';
+import { layout } from './layout.ts';
+
+export class EventReminderMail implements Mailable {
+  readonly #to: Address;
+  readonly #event: { readonly name: string; readonly city: string };
+  readonly #t: Translator;
+
+  constructor(to: Address, event: { readonly name: string; readonly city: string }, t: Translator) {
+    this.#to = to;
+    this.#event = event;
+    this.#t = t;
+  }
+
+  static preview({ make, locale }: MailPreviewContext): EventReminderMail {
+    const event = make(Factories).for(EventFactory).make({ name: 'Summer party', city: 'Hamburg' });
+    return new EventReminderMail({ address: 'ada@example.com', name: 'Ada Lovelace' }, { name: event.name, city: event.city }, make(Translators).for(locale));
+  }
+
+  envelope() {
+    return { to: this.#to, subject: this.#event.name };
+  }
+
+  content() {
+    return layout(this.#t, {
+      preview: this.#event.name,
+      body: mjml`<mj-text>${this.#event.name} takes place in ${this.#event.city}.</mj-text>`,
+    });
+  }
+}
+```
+
+The same constructor serves the real mail, which passes `{ name: event.name, city: event.city }` from the row it has. Where the sample needs no factory,
+write the values in the preview.
 
 The previews exist only with `NODE_ENV=development`, the rule of every development tool. They answer only `localhost`,
 `127.0.0.1`, `[::1]` and the host of `APP_URL`, so a page on another site cannot reach them through DNS rebinding. The mail's HTML

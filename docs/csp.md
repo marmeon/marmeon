@@ -138,6 +138,12 @@ The framework renders no `style` attribute, so `styleSrc: ["'self'"]` blocks not
 becomes an attribute, which a nonce does not cover: write classes instead. The
 [styling](styling.md#a-strict-policy-for-styles) page shows how.
 
+## Frames with their own document
+
+An `<iframe srcdoc="…">` has no response of its own, so its document runs under the policy of the page that holds it. `sandbox` limits
+what the document may do but does not replace the policy. With `styleSrc: ["'self'"]`, the inline styles of a mail shown in such a
+frame ([mail previews](mail.md#lists-and-stored-templates)) are blocked, and the frame shows the mail without them. Either name neither `styleSrc` nor `defaultSrc` on that page, or allow inline styles with `'unsafe-inline'` in a `styleSrc` that has no `NONCE`, since a browser ignores `'unsafe-inline'` next to a nonce. For style attributes alone, `styleSrcAttr: ["'unsafe-inline'"]` is enough. A nonce does not help the mail, whose markup carries none.
+
 ## Which responses get the policy
 
 Only documents get the header: responses whose `Content-Type` is `text/html` or `application/xhtml+xml`. A response that brings a
