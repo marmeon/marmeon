@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { sep } from 'node:path';
 import { isControllerClass } from './router.ts';
 import type { RouteDefinition } from './route-definition.ts';
-import type { ClassResolver, RouteBinding } from './types.ts';
+import type { ClassResolver, HttpContext, RouteBinding } from './types.ts';
 
 /**
  * A decision about who may call a route: `true` lets the request on, `false` answers 403, and it may throw its own `HttpError`.
@@ -24,9 +24,14 @@ const labels = new WeakMap<object, string>();
 
 /**
  * Gives a check the name `route:list` shows for it. The label `everyone` is reserved for {@link everyone} itself and
- * {@link everyone} cannot carry another, so `route:list` never shows an open route as guarded or the other way round. See docs/authorization.md#every-route-decides.
+ * {@link everyone} cannot carry another, so `route:list` never shows an open route as guarded or the other way round.
+ * A check written apart from its route sees `HttpContext`; written inside `.authorize()` after the `.bind()` it reads, it sees the bound params.
+ * See docs/authorization.md#every-route-decides.
  */
-export function describeAccess<F extends (...args: any[]) => unknown>(check: F, label: string): F {
+export function describeAccess<TCtx = HttpContext, TResult extends boolean | Promise<boolean> = boolean | Promise<boolean>>(
+  check: (ctx: TCtx, resolve: ClassResolver) => TResult,
+  label: string,
+): (ctx: TCtx, resolve: ClassResolver) => TResult {
   if (isEveryone(check) !== (label === 'everyone')) {
     throw new TypeError("describeAccess(): the label 'everyone' belongs to everyone alone, and everyone keeps it — pick another label for another check.");
   }

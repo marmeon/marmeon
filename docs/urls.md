@@ -285,10 +285,10 @@ not exist, one that was used and one that was revoked must look alike. The GET i
 plain binder: see [every route decides](authorization.md#every-route-decides).
 
 ```ts title="modules/events/routes.ts"
-const holdsTicket = describeAccess((ctx) => ctx.params.ticket !== undefined, 'ticket link');
-
 Route.authorize(everyone).bind('ticket', TicketRepository, { public: true }).get('/tickets/:ticket', ShowTicketController);
-Route.authorize(holdsTicket).bind('ticket', TicketRepository).post('/tickets/:ticket', UseTicketController);
+Route.bind('ticket', TicketRepository)
+  .authorize(describeAccess((ctx) => ctx.params.ticket !== undefined, 'ticket link'))
+  .post('/tickets/:ticket', UseTicketController);
 ```
 
 Use a signed URL where reuse and passing on do no harm: a read-only link, such as the shared note above. A link that signs someone

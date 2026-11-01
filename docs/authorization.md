@@ -270,6 +270,8 @@ export default defineRoutes((Route) => {
 `marmeon route:list` shows `open event` in the `ACCESS` column of the `POST`. `describeAccess()` only names the check; the
 function is all that guards the `POST`, so it reads the event's state, and a closed or unknown event gets the same 404.
 
+A check written apart from its route sees only `HttpContext`; write it inside `.authorize()` after the `.bind()` it reads, or annotate `ctx`.
+
 A limit without `.by()` is one counter for the whole app, so one script could close registration for everyone. Count it per
 client in a provider's `boot()`, as in [defining limiters](rate-limiting.md#defining-limiters):
 `limiter.for('registrations', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)))`.
@@ -536,8 +538,11 @@ export default defineRoutes((Route) => {
   invitations.authorize(everyone).bind('invitation', InvitationRepository, { public: true }).get('/:invitation', ShowInvitationController);
 
   // Accepting changes data, so it names its credential, and only a signed-in user may accept.
-  const accept = describeAccess((ctx) => ctx.params.invitation !== undefined, 'invitation link');
-  invitations.middleware(authenticate()).authorize(accept).bind('invitation', InvitationRepository).post('/:invitation', AcceptInvitationController);
+  invitations
+    .middleware(authenticate())
+    .bind('invitation', InvitationRepository)
+    .authorize(describeAccess((ctx) => ctx.params.invitation !== undefined, 'invitation link'))
+    .post('/:invitation', AcceptInvitationController);
 });
 ```
 
@@ -545,7 +550,7 @@ export default defineRoutes((Route) => {
   with `hashLinkToken()`, `secretEquals()` and `used_at is null`, as `TicketRepository` does in
   [a link that is used once](urls.md#a-link-that-is-used-once). The default binding by id on a public GET would open every
   invitation. `{ public: true }` is allowed only on a route that reads. The route that changes data needs a
-  check of its own, and `describeAccess(check, 'invitation link')` is that check: it tells `marmeon route:list` that the
+  check of its own, and `describeAccess(check, 'invitation link')`, written inside `.authorize()` after the `.bind()` it reads, is that check: it tells `marmeon route:list` that the
   credential is the link (the `ACCESS` column shows `invitation link`), and the start does not refuse the route
   ([open routes and bindings](#open-routes-and-bindings)). It decides nothing more than "the binder found a row", so look
   the row up with the token's hash, and answer a missing, used and revoked token with the same 404.

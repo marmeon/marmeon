@@ -517,7 +517,7 @@ export declare function defineRequest<TSchema extends StandardSchemaV1 = never, 
 // defineRoutes
 export declare function defineRoutes(register: (Route: Route) => void): RouteDefinitions;
 // describeAccess
-export declare function describeAccess<F extends (...args: any[]) => unknown>(check: F, label: string): F;
+export declare function describeAccess<TCtx = HttpContext, TResult extends boolean | Promise<boolean> = boolean | Promise<boolean>>(check: (ctx: TCtx, resolve: ClassResolver) => TResult, label: string): (ctx: TCtx, resolve: ClassResolver) => TResult;
 // editableResponse
 export declare function editableResponse(response: Response): Response;
 // everyone
