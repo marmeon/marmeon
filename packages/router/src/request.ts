@@ -213,7 +213,35 @@ function mediaType(request: Request): string | undefined {
 }
 
 const limits = new WeakMap<Request, number>();
+
+/** A route's body limit, or the `TypeError` for what is none: a positive whole number of bytes. */
+export function checkedBodyLimit(bytes: unknown, where: string): number {
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes <= 0) {
+    throw new TypeError(`maxBodyBytes() takes a positive whole number of bytes — got ${String(bytes)} — ${where}.`);
+  }
+  return bytes;
+}
+
+/**
+ * Lowers the request's body limit to `bytes`; it never raises it. Gives a rejection when the request cannot fit the limit in force
+ * already: a declared `Content-Length` over it, or a body something read before the limit applied.
+ */
+export function lowerBodyLimit(request: Request, bytes: number): Promise<void> | undefined {
+  const limit = Math.min(bytes, limits.get(request) ?? DEFAULT_MAX_BODY_BYTES);
+  limits.set(request, limit);
+  const tooLarge = () => new HttpError(413, `The request body exceeds ${limit} bytes.`);
+  const declared = request.headers.get('content-length');
+  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > limit) return Promise.reject(tooLarge());
+  const read = sizes.get(request);
+  if (!read) return undefined;
+  return read.then((size) => {
+    if (size > limit) throw tooLarge();
+  });
+}
+
 const bodies = new WeakMap<Request, Promise<Uint8Array<ArrayBuffer>>>();
+// What was read, kept after a multipart body's bytes are let go: a limit that applies later still judges it.
+const sizes = new WeakMap<Request, Promise<number>>();
 
 /**
  * The request's body as bytes — read once, up to the request state's `maxBodyBytes`, and kept: `input()` parses these same bytes,
@@ -226,6 +254,8 @@ export function requestBytes(request: Request): Promise<Uint8Array<ArrayBuffer>>
   if (!bytes) {
     bytes = request.body === null ? Promise.resolve(new Uint8Array(0)) : readBody(request, limits.get(request) ?? DEFAULT_MAX_BODY_BYTES);
     bodies.set(request, bytes);
+    // Only the first read counts: a later one on a body already taken fails, and must not stand in for its size.
+    if (!sizes.has(request)) sizes.set(request, bytes.then((body) => body.byteLength, () => 0));
   }
   return bytes;
 }

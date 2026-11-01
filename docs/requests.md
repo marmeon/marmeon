@@ -63,11 +63,27 @@ or `HEAD` request has the input `{}`. The parsed body is kept, so call `ctx.inpu
 
 | Request | Answer |
 | --- | --- |
-| A body over `SERVER_MAX_BODY_MB` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
+| A body over `SERVER_MAX_BODY_MB`, or over the route's `maxBodyBytes()` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
 | Malformed JSON | 400, `Malformed JSON body.` |
 | JSON that is not an object | 400, `The JSON body must be an object.` |
 | A multipart body that cannot be parsed | 400, `Malformed multipart body.` |
 | Brackets nested more than 20 levels deep | 400 |
+
+#### A smaller limit on one route
+
+A public form needs far less than the server's limit, and an open route should not buffer more than it takes. `maxBodyBytes(bytes)` on a
+route, or on a group (`Route.maxBodyBytes(…).group(…)`), refuses a larger body with a 413. A body that declares its length (`Content-Length`) over the limit is refused before any middleware
+runs. One that does not, such as a chunked body, is cut off by the first read that crosses the limit, and in the `web` group that read
+is the CSRF check's, which reads a form's body. Files in a multipart body are counted as they arrive, like any other bytes.
+
+```ts title="modules/feedback/routes.ts"
+Route.authorize(everyone).post('/feedback', SendFeedbackController).maxBodyBytes(32 * 1024);
+```
+
+It only lowers: the limit that applies is the smallest of `SERVER_MAX_BODY_MB` and every `maxBodyBytes()` on the way, so a route cannot
+accept more than the server does. The value is a positive whole number of bytes; anything else throws a `TypeError` when the route is
+defined. Neither this limit nor `SERVER_MAX_BODY_MB` applies to a body a controller reads itself from `ctx.request` (`text()`,
+`arrayBuffer()`, the stream): only `ctx.input()`, request definitions and the webhook checks count the bytes. The file of an `upload()` field goes to its own route, so a small limit on the form does not limit the file.
 
 ### Validated input
 
@@ -280,7 +296,7 @@ from `index.html` carry it already, so you need it only for HTML your controller
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `SERVER_MAX_BODY_MB` | `8` | The largest request body in MB (1,024-based), a whole number from 1 to 1024, because the body is buffered in memory; larger files go through `upload()`. A larger body is a 413. Less than 1 MB: `createHttpKernel(application, { maxBodyBytes })`. Uploads through `upload()` have their own limit. |
+| `SERVER_MAX_BODY_MB` | `8` | The largest request body in MB (1,024-based), a whole number from 1 to 1024, because the body is buffered in memory; larger files go through `upload()`. A larger body is a 413. Less than 1 MB: `createHttpKernel(application, { maxBodyBytes })`. One route can lower it with [`maxBodyBytes()`](#a-smaller-limit-on-one-route). Uploads through `upload()` have their own limit. |
 | `SERVER_TRUSTED_PROXIES` | none | The proxies whose `X-Forwarded-*` headers count, as addresses or ranges, or `*`. |
 
 ## Testing

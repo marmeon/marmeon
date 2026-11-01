@@ -2,6 +2,7 @@ import { durationToSeconds, type Duration } from '@marmeon/core';
 import { registrationSite, type AccessCheck, type AfterAuthorizeHook } from './access.ts';
 import type { CheckAttachment, RouteAttachment } from './attach.ts';
 import { tokenizePattern } from './pattern.ts';
+import { checkedBodyLimit } from './request.ts';
 import type { Route } from './route.ts';
 import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
@@ -34,6 +35,7 @@ export class RouteDefinition<TContext extends object = any> {
   /** @internal Set by `Router.load` for a framework route under `/_marmeon/`, which the server registers before all others. */
   reserved = false;
   #internal: boolean;
+  #maxBodyBytes: number | undefined;
   #sitemap = false;
   #blocking: RouteBlocking | undefined;
   #sealed = false;
@@ -52,6 +54,7 @@ export class RouteDefinition<TContext extends object = any> {
     afterAuthorize?: readonly AfterAuthorizeHook[];
     site?: string | undefined;
     internal?: boolean;
+    maxBodyBytes?: number | undefined;
     localized?: boolean;
     /** @internal */
     generatedFrom?: RouteDefinition | undefined;
@@ -79,6 +82,7 @@ export class RouteDefinition<TContext extends object = any> {
     this.generatedFrom = options.generatedFrom;
     this.#namePrefix = options.namePrefix;
     this.#internal = options.internal ?? false;
+    this.#maxBodyBytes = options.maxBodyBytes;
     this.#attacher = options.attacher;
   }
 
@@ -108,6 +112,26 @@ export class RouteDefinition<TContext extends object = any> {
     this.#assertOpen('internal');
     this.#internal = true;
     return this;
+  }
+
+  /**
+   * Refuses a request body larger than `bytes` with a 413, before any middleware reads it. It only lowers the server's limit
+   * (`SERVER_MAX_BODY_MB`), never raises it; a group's limit and the route's, the smaller applies. See docs/requests.md#the-body.
+   *
+   * ```ts
+   * Route.post('/feedback', SendFeedbackController).maxBodyBytes(32 * 1024);
+   * ```
+   */
+  maxBodyBytes(bytes: number): this {
+    this.#assertOpen('maxBodyBytes');
+    const limit = checkedBodyLimit(bytes, this.path);
+    this.#maxBodyBytes = Math.min(limit, this.#maxBodyBytes ?? limit);
+    return this;
+  }
+
+  /** @internal The smaller body limit {@link maxBodyBytes} set, to the route or its group — undefined when the server's applies. */
+  get bodyLimit(): number | undefined {
+    return this.#maxBodyBytes;
   }
 
   /**

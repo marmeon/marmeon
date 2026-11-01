@@ -3,6 +3,7 @@ import { isScoped, registrationSite, routeAccess, siteOf, type AccessCheck, type
 import { assertMiddleware } from './middleware.ts';
 import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import { RouteDefinition } from './route-definition.ts';
+import { checkedBodyLimit } from './request.ts';
 import type { StandardSchemaV1 } from './request-definition.ts';
 import type {
   Action,
@@ -73,6 +74,8 @@ export interface GroupAttributes {
   readonly pending?: readonly RegistrarAudit[];
   /** Every route of the group is internal: never sent to the browser (`RouteDefinition.internal()`). */
   readonly internal?: boolean;
+  /** Smaller body limit of the group's routes in bytes (`Route.maxBodyBytes`). */
+  readonly maxBodyBytes?: number;
   /** Every route of the group lives under `/:locale` (`Route.localized()`). */
   readonly localized?: boolean;
   /** @internal Where the routes were registered, taken before the stack: `attach()` names the app's line, not the package's. */
@@ -278,6 +281,16 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return this.#with({ internal: true });
   }
 
+  /**
+   * Routes registered through the returned registrar refuse a body larger than `bytes` with a 413, before any middleware reads it
+   * (see `RouteDefinition.maxBodyBytes()`). It only lowers the server's limit, never raises it; the smaller of nested limits applies.
+   * See docs/requests.md#the-body.
+   */
+  maxBodyBytes(bytes: number): Route<TState, TParams, TBindings> {
+    const limit = checkedBodyLimit(bytes, `Route.prefix('${this.#attributes.prefix}')`);
+    return this.#with({ maxBodyBytes: Math.min(limit, this.#attributes.maxBodyBytes ?? limit) });
+  }
+
   group(callback: (Route: this) => void): void {
     // Calling group() is use, even with an empty callback.
     for (const entry of this.#attributes.pending ?? []) entry.used = true;
@@ -382,6 +395,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       afterAuthorize: this.#attributes.afterAuthorize ?? [],
       site: this.#attributes.site ?? registrationSite(caller),
       internal: this.#attributes.internal ?? false,
+      maxBodyBytes: this.#attributes.maxBodyBytes,
       localized: this.#attributes.localized ?? false,
       // Everything a request to the page passes — the registrar's attributes, the page's path and its whole access, the request's
       // `authorize` included — so no route attached to it answers a caller the page refuses.
