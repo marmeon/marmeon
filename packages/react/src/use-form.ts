@@ -343,7 +343,6 @@ export function useForm(...args: unknown[]): unknown {
         if (Object.keys(failed).length > 0) {
           onError?.(failed);
         } else {
-          // Saved: not dirty any more (the guard lets go) — see `saved`.
           atSuccess = dataRef.current;
           live?.reset();
           setWasSuccessful(true);

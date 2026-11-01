@@ -71,7 +71,6 @@ function Edit({ name }: { name: string }) {
 }
 Edit.layout = Layout;
 
-// A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent.
 // Create, then clear: a field `initial` lacks, set, and gone again after the submit.
 function Clearing() {
   const form = useForm('profile.update', { name: 'Ada' } as Record<string, unknown>, { guard: 'Unsaved changes.' });
@@ -88,6 +87,7 @@ function Clearing() {
 }
 Clearing.layout = Layout;
 
+// A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent.
 function Secret({ name }: { name: string }) {
   const form = useForm('profile.update', { name, password: '' }, { guard: 'Unsaved changes.' });
   return (
@@ -543,16 +543,14 @@ describe('what the success callbacks change', () => {
     await mount(page('Clearing', '/users/1/edit'));
     await click('bio-reset');
     await until(() => expect(requests).toEqual(['PUT /users/1']));
-    await act(async () => {});
-    clean();
+    await until(clean);
   });
 
   it('a setData() in onSuccess is clean', async () => {
     await mount(page('Clearing', '/users/1/edit'));
     await click('bio-setdata');
     await until(() => expect(requests).toEqual(['PUT /users/1']));
-    await act(async () => {});
-    clean();
+    await until(clean);
   });
 });
 
