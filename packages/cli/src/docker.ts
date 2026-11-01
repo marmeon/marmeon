@@ -145,8 +145,8 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
         : []),
     '      # Behind a load balancer that learns from /up/ready that a container stops: answer a few more seconds.',
     "      SERVER_SHUTDOWN_DELAY_SECONDS: '0'",
-    '    # SIGTERM → SERVER_SHUTDOWN_DELAY_SECONDS → drain (at most 10 s) — before Docker sends SIGKILL.',
-    '    stop_grace_period: 20s',
+    '    # SIGTERM → SERVER_SHUTDOWN_DELAY_SECONDS → drain (at most 10 s) → each provider (APP_SHUTDOWN_TIMEOUT_SECONDS, 10 s) — before Docker sends SIGKILL.',
+    '    stop_grace_period: 30s',
   ];
   const services = [
     ...web,
@@ -158,16 +158,16 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     "    command: ['queue:work']",
     '    healthcheck:',
     '      disable: true',
-    '    # SIGTERM: no new job; the running one gets --stop-timeout (10 s) to finish. Raise both together.',
-    '    stop_grace_period: 30s',
+    '    # SIGTERM: no new job; the running one gets --stop-timeout (10 s) to finish, then 10 s of slack and APP_SHUTDOWN_TIMEOUT_SECONDS (10 s). Raise both together.',
+    '    stop_grace_period: 45s',
     '',
     '  scheduler:',
     '    <<: *app',
     "    command: ['schedule:work']",
     '    healthcheck:',
     '      disable: true',
-    '    # SIGTERM: no new run; the running ones get --stop-timeout (30 s), then their locks are freed (a hung one ends 10 s later).',
-    '    stop_grace_period: 45s',
+    '    # SIGTERM: no new run; the running ones get --stop-timeout (30 s), then their locks are freed (a hung one ends 10 s plus APP_SHUTDOWN_TIMEOUT_SECONDS, 10 s, later).',
+    '    stop_grace_period: 60s',
   ];
   if (proxied && proxy === 'caddy') {
     services.push(
@@ -353,18 +353,18 @@ ReadWritePaths=/srv/${app.name}/storage
 WantedBy=multi-user.target
 `;
   return {
-    web: unit('web', 'web server', 'web server (marmeon start)', 'start', 30, [
+    web: unit('web', 'web server', 'web server (marmeon start)', 'start', 35, [
       '# Only the proxy on this machine connects: listen on loopback, trust its X-Forwarded-*.',
       'Environment=HOST=127.0.0.1 PORT=3000 SERVER_TRUSTED_PROXIES=127.0.0.1',
-      '# SIGTERM → SERVER_SHUTDOWN_DELAY_SECONDS → drain (at most 10 s): TimeoutStopSec covers both.',
+      '# SIGTERM → SERVER_SHUTDOWN_DELAY_SECONDS → drain (at most 10 s) → each provider (APP_SHUTDOWN_TIMEOUT_SECONDS, 10 s): TimeoutStopSec covers all.',
     ]),
-    worker: unit('worker', 'queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 30, [
+    worker: unit('worker', 'queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 45, [
       '# Every queue, fairly. For a priority, a second unit with --queue=mail.',
       '# A job past its timeout ends the worker with exit code 70: Restart=always brings a fresh one. On SIGTERM the running',
       '# job gets --stop-timeout (10 s): TimeoutStopSec must be longer — raise both together for long jobs.',
     ]),
-    scheduler: unit('scheduler', 'scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 45, [
-      '# On SIGTERM the running tasks get --stop-timeout (30 s), and a hung one ends the process 10 s later: TimeoutStopSec covers both.',
+    scheduler: unit('scheduler', 'scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 60, [
+      '# On SIGTERM the running tasks get --stop-timeout (30 s), and a hung one ends the process 10 s plus APP_SHUTDOWN_TIMEOUT_SECONDS (10 s) later: TimeoutStopSec covers both.',
     ]),
   };
 }

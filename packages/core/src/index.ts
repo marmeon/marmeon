@@ -54,6 +54,7 @@ export type { RedactableQuery, RedactionAdditions } from './redact.ts';
 export { ConfigError, defineConfig, resolveConfig } from './config/config.ts';
 export { env } from './config/env.ts';
 export { EnvironmentConfig } from './config/environment-config.ts';
+export { ShutdownConfig } from './config/shutdown-config.ts';
 export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable, RenamedOptions } from './config/env.ts';
 export { environment } from './environment.ts';
 export type { NodeEnvironment, NodeEnvironmentName } from './environment.ts';

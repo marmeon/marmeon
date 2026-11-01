@@ -8,6 +8,7 @@ export { messageBase, publishEnded, trace } from './channels.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export { coreSolutions } from './core-solutions.ts';
 export { environmentChecks } from './environment.ts';
+export { exitAfterShutdown } from './exit-after-shutdown.ts';
 export { withCode, withoutCode } from './error-codes.ts';
 export { describeError, maskUrlPasswords, REDACTED_KEYS, redactorFor } from './redact.ts';
 export { collectDrivers } from './drivers.ts';

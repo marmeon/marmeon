@@ -279,14 +279,15 @@ On `SIGTERM`, the web server:
    opens a new connection, which the load balancer gives to another instance.
 3. **Drains.** Live streams end first, and their tabs connect to another server. No new connection is taken, the requests in
    flight finish, and then the work they deferred until after their response, such as a mail. The process exits at the latest
-   10 seconds after the delay.
+   13 seconds plus `APP_SHUTDOWN_TIMEOUT_SECONDS` (10 by default) after the delay ([Shutting down](providers.md#shutting-down)). The hard exit and the grace periods `make:docker` writes cover one provider that
+   hits its limit; several add up, so size your supervisor's grace period for the number your app can have stuck at once.
 
 `SIGINT`, such as Ctrl+C, skips the delay. Give the supervisor time for all of it:
 
 | Supervisor | Setting | Its default | The templates |
 | --- | --- | --- | --- |
-| Docker and Compose | `stop_grace_period`, `docker stop -t` | 10 s | web 20 s, worker 30 s, scheduler 45 s |
-| systemd | `TimeoutStopSec` | 90 s | web and worker 30 s, scheduler 45 s |
+| Docker and Compose | `stop_grace_period`, `docker stop -t` | 10 s | web 30 s, worker 45 s, scheduler 60 s |
+| systemd | `TimeoutStopSec` | 90 s | web 35 s, worker 45 s, scheduler 60 s |
 | Kubernetes | `terminationGracePeriodSeconds` | 30 s | |
 
 The delay exists because a load balancer learns late that an instance stops. Kubernetes removes a terminating pod from its
@@ -299,7 +300,7 @@ livenessProbe:  { httpGet: { path: /up, port: 3000 }, periodSeconds: 10 }
 readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 5 }
 env:
   - { name: SERVER_SHUTDOWN_DELAY_SECONDS, value: '5' }
-terminationGracePeriodSeconds: 30   # more than SERVER_SHUTDOWN_DELAY_SECONDS + 10 s
+terminationGracePeriodSeconds: 35   # more than SERVER_SHUTDOWN_DELAY_SECONDS + 10 s + APP_SHUTDOWN_TIMEOUT_SECONDS + 3 s
 ```
 
 Use the delay or a `preStop` hook, not both.

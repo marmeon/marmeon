@@ -9,6 +9,7 @@ import { loadApplication } from './load.ts';
 import { appFrameOf } from './load-failure.ts';
 import { Output, printError, stdoutToStderr, style } from './output.ts';
 import { createPrompt, isPromptCancelled } from './prompt.ts';
+import { shutDown } from './shut-down.ts';
 import { spawnMarmeon } from './spawn.ts';
 
 /** Exit code of a call that is wrong (unknown command, unknown option, missing option value), apart from a command that ran and failed (1). */
@@ -152,7 +153,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     return EXIT_USAGE;
   }
   if (wantsHelp(rest, Command)) {
-    await app?.shutdown();
+    await shutDown(app);
     printCommandHelp({ output }, Command);
     return 0;
   }
@@ -163,11 +164,11 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     if (!(error instanceof CommandArgumentsError)) {
       printError(output, error);
       reportFailure(app, Command, error);
-      await app?.shutdown();
+      await shutDown(app);
       return 1;
     }
     output.error(error.message);
-    await app?.shutdown();
+    await shutDown(app);
     return EXIT_USAGE;
   }
 
@@ -201,7 +202,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     reportFailure(app, Command, error);
     return 1;
   } finally {
-    await app?.shutdown();
+    await shutDown(app);
   }
 }
 
