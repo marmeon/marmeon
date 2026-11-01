@@ -53,7 +53,8 @@ export default defineRoutes((Route) => {
   user.get('/:user/edit', EditUserProfileController).name('edit');
   user.put('/:user', UpdateUserProfileController).name('update');
   // The picture, from the edit layer: uploaded ahead — this route hands out the upload target for its `avatar` field.
-  user.put('/:user/avatar', UpdateAvatarController).name('avatar.update');
+  // The form carries a token, not the file (that goes to its own route), so the form needs 4 KB at most.
+  user.put('/:user/avatar', UpdateAvatarController).maxBodyBytes(4 * 1024).name('avatar.update');
 
   // A link is looked up *within* its user: another user's link id under this user is a 404 (no IDOR).
   user.post('/:user/links', AddProfileLinkController).name('links.store');

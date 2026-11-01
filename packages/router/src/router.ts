@@ -4,7 +4,7 @@ import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessEr
 import { HttpError } from './errors.ts';
 import { addsConflicts, addsOf, runPipeline, type AddsConflict } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
-import { createRequestState, type RequestState } from './request.ts';
+import { createRequestState, lowerBodyLimit, type RequestState } from './request.ts';
 import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
 import { authorizeRequest, nothingToValidate, unauthorized, validateRequest, ValidationError, type RequestDefinition, type ValidationHook } from './request-definition.ts';
 import { Route, type RegistrarAudit } from './route.ts';
@@ -385,10 +385,12 @@ export class Router {
     if (problems.length > 0) return Promise.reject(new RouteAccessError(formatAccessProblems(problems, { path: showPath })));
     // Frozen, flat: a layer extends the context with next({…}) and cannot assign to it (deep values stay as they are).
     const ctx: HttpContext = Object.freeze({ ...state, request: input.request, params: Object.freeze({ ...input.params }), route });
+    // Before any middleware: the CSRF check reads a form's body, so the limit has to hold already.
+    const tooLarge = route.bodyLimit === undefined ? undefined : lowerBodyLimit(input.request, route.bodyLimit);
     const toResponse = options.toResponse ?? defaultToResponse;
     const resolve = options.resolve ?? this.#resolve;
 
-    return runPipeline(
+    const run = () => runPipeline(
       ctx,
       this.middlewareFor(route),
       async (afterMiddleware) => {
@@ -456,6 +458,8 @@ export class Router {
       },
       { resolve, onTerminable: options.onTerminable, onError: options.onError },
     );
+    // A declared length over the limit, or a body read before the match that is over it, ends the request with the 413 before any middleware.
+    return tooLarge ? tooLarge.then(run, (error: unknown) => (options.onError ? options.onError(error, ctx) : Promise.reject(error))) : run();
   }
 
   /**

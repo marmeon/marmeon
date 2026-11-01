@@ -91,6 +91,12 @@ describe('the language switcher (POST /locale)', () => {
     expect(visit.headers.has('clear-site-data')).toBe(false);
   });
 
+  it('refuses a body over its 2 KB limit with a 413, before the CSRF check when the length is declared, and takes a small one', async () => {
+    const big = await app.post('/locale', { form: { locale: 'de', filler: 'x'.repeat(3000) }, headers: referer('/login') }).assertStatus(413);
+    expect(big.headers.getSetCookie()).toEqual([]);
+    await app.post('/locale', { form: { locale: 'de' }, headers: referer('/login') }).assertSessionHas('locale', 'de');
+  });
+
   it('takes only a supported locale — in its spelling; anything else is a validation error', async () => {
     await app.post('/locale', { form: { locale: 'DE' }, headers: referer('/login') }).assertSessionHas('locale', 'de');
     for (const locale of ['fr', '../../etc/passwd', 'de"><script>']) {
