@@ -72,6 +72,22 @@ function Edit({ name }: { name: string }) {
 Edit.layout = Layout;
 
 // A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent.
+// Create, then clear: a field `initial` lacks, set, and gone again after the submit.
+function Clearing() {
+  const form = useForm('profile.update', { name: 'Ada' } as Record<string, unknown>, { guard: 'Unsaved changes.' });
+  return (
+    <form data-testid="form" data-dirty={form.isDirty() || undefined} onSubmit={(event) => event.preventDefault()}>
+      <button type="button" data-testid="bio-reset" onClick={() => { form.set('bio', 'x'); void form.submit({ onSuccess: () => form.reset() }); }}>
+        Bio reset
+      </button>
+      <button type="button" data-testid="bio-setdata" onClick={() => { form.set('bio', 'x'); void form.submit({ onSuccess: () => form.setData({ name: '' }) }); }}>
+        Bio setData
+      </button>
+    </form>
+  );
+}
+Clearing.layout = Layout;
+
 function Secret({ name }: { name: string }) {
   const form = useForm('profile.update', { name, password: '' }, { guard: 'Unsaved changes.' });
   return (
@@ -173,7 +189,7 @@ function People() {
 }
 People.layout = Layout;
 
-const pages: Record<string, PageComponent> = { Edit, Secret, Publish, People };
+const pages: Record<string, PageComponent> = { Edit, Secret, Clearing, Publish, People };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'profile.edit': { method: 'get', path: '/users/1/edit' },
@@ -509,6 +525,34 @@ describe('what a successful submit saves', () => {
     } finally {
       slowRender = undefined;
     }
+  });
+});
+
+describe('what the success callbacks change', () => {
+  const clean = () => {
+    expect($('form').hasAttribute('data-dirty')).toBe(false);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  };
+  beforeEach(() => {
+    server = () => json(page('Clearing', '/users/1/edit'));
+  });
+
+  it('a reset() of the whole form in onSuccess is clean although the data held a field the defaults lack', async () => {
+    await mount(page('Clearing', '/users/1/edit'));
+    await click('bio-reset');
+    await until(() => expect(requests).toEqual(['PUT /users/1']));
+    await act(async () => {});
+    clean();
+  });
+
+  it('a setData() in onSuccess is clean', async () => {
+    await mount(page('Clearing', '/users/1/edit'));
+    await click('bio-setdata');
+    await until(() => expect(requests).toEqual(['PUT /users/1']));
+    await act(async () => {});
+    clean();
   });
 });
 

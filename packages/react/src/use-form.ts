@@ -292,16 +292,6 @@ export function useForm(...args: unknown[]): unknown {
     dataRef.current = next;
     setState(render);
   };
-  // Saved: the form starts over where the request left it once the submit's callbacks ran — what was sent, but what they `reset()` back at the
-  // defaults it had before (a password field empty again). Taken in the next render, so a reset inside `onSuccess`/`onFinish` counts.
-  // What was sent, not what is rendered: an edit typed while the request was under way was never sent and stays dirty, and a sent
-  // edit a transition has not rendered yet is saved all the same.
-  const [saved, setSaved] = useState(false);
-  const afterSave = useRef<{ sent: Record<string, unknown>; restored: Record<string, unknown> } | null>(null);
-  if (saved) {
-    setSaved(false);
-    if (afterSave.current) setDefaults({ ...afterSave.current.sent, ...afterSave.current.restored });
-  }
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
   // The navigation guard, while dirty — its own submit passes it. A remembered input that differs is dirty, too.
   const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
@@ -333,6 +323,7 @@ export function useForm(...args: unknown[]): unknown {
       setWasSuccessful(false);
       // One snapshot for the body and for the baseline: a `set()` after this point is not part of the request.
       const sentData = dataRef.current;
+      let atSuccess: Record<string, unknown> | undefined;
       try {
         const page = await visit(url, {
           preserveScroll: true,
@@ -353,8 +344,7 @@ export function useForm(...args: unknown[]): unknown {
           onError?.(failed);
         } else {
           // Saved: not dirty any more (the guard lets go) — see `saved`.
-          afterSave.current = { sent: sentData, restored: {} };
-          setSaved(true);
+          atSuccess = dataRef.current;
           live?.reset();
           setWasSuccessful(true);
           setRecentlySuccessful(true);
@@ -365,7 +355,14 @@ export function useForm(...args: unknown[]): unknown {
       } finally {
         setProcessing(false);
         setProgress(null);
-        onFinish?.();
+        try {
+          onFinish?.();
+        } finally {
+          // Saved: the form starts over where the request left it, not dirty any more (the guard lets go). That is what was sent — an
+          // edit typed while it was under way was never sent and stays dirty, and a sent edit a transition has not rendered yet is
+          // saved all the same — plus what the callbacks changed (a `reset()` of the password, a cleared form), so their result is clean.
+          if (atSuccess) setDefaults(savedBaseline(sentData, atSuccess, dataRef.current));
+        }
       }
     },
     [visit, guard, live],
@@ -399,12 +396,8 @@ export function useForm(...args: unknown[]): unknown {
     isDirty: (path?: string) => isDirtyPath(dirty, path),
     dirty,
     reset: (...fields) => {
-      if (fields.length === 0) {
-        if (afterSave.current) afterSave.current.restored = { ...defaults };
-        return setData(defaults);
-      }
+      if (fields.length === 0) return setData(defaults);
       const restored = Object.fromEntries(fields.map((field) => [field, defaults[field]]));
-      if (afterSave.current) Object.assign(afterSave.current.restored, restored);
       setData({ ...dataRef.current, ...restored }, (current) => ({ ...current, ...restored }));
     },
     submit: submit as Form<Record<string, unknown>>['submit'],
@@ -427,6 +420,17 @@ export function useForm(...args: unknown[]): unknown {
       : {}),
   };
   return form;
+}
+
+/** The baseline after a success: what was sent, with every top-level field the success callbacks changed (or removed) taken over. */
+function savedBaseline(sent: Record<string, unknown>, atSuccess: Record<string, unknown>, now: Record<string, unknown>): Record<string, unknown> {
+  const baseline = { ...sent };
+  for (const key in { ...atSuccess, ...now }) {
+    if (Object.is(atSuccess[key], now[key]) && key in atSuccess === key in now) continue;
+    if (key in now) baseline[key] = now[key];
+    else delete baseline[key];
+  }
+  return baseline;
 }
 
 const noSubscription = () => () => {};
