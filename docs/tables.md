@@ -520,6 +520,31 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
   without the outer quotes, and with `""` already turned into `"`. `=x`, `'=x` and `''=x` are written as `'=x`, `''=x` and `'''=x`,
   and each one reads back as it was; every other text stays as it is. The result is plain text; never run it as a formula.
 
+## A CSV file of your own
+
+An import template, a report that is no table: `writeCsv(rows, options?)` from `@marmeon/table` writes the rows as the text of a CSV
+file, with the quoting and the formula escape of an [export](#exports) — every cell quoted, lines ended by CRLF, a byte order mark
+first so spreadsheets read umlauts right. Never write the quoting yourself: a cell that starts with `=`, `+`, `-` or `@` runs as a
+formula in a spreadsheet unless it is escaped.
+
+```ts
+import { contentDisposition } from '@marmeon/storage';
+import { writeCsv } from '@marmeon/table';
+
+return new Response(writeCsv([['name', 'email'], ['Ada Lovelace', 'ada@example.com']]), {
+  headers: {
+    'content-type': 'text/csv; charset=utf-8',
+    'content-disposition': contentDisposition('attachment', 'members-template.csv'),
+    'cache-control': 'private, no-store',
+    'x-content-type-options': 'nosniff',
+  },
+});
+```
+
+`rows` is any iterable of arrays of cells (text, numbers, booleans, dates, `null`). `{ delimiter: ';' }` or `'\t'` separates by a
+semicolon or a tab, `{ bom: false }` leaves the byte order mark out; any other delimiter is a `TypeError`. `readCsv(bytes, { unescape: true })`
+reads the file back and gives every text as it was (see [Importing a CSV file](#importing-a-csv-file)).
+
 ## Importing a CSV file
 
 `readCsv(bytes, options?)` turns the bytes of a CSV file into text rows. It returns a `Result`: a file that breaks a limit, has a

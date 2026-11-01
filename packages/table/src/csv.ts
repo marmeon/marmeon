@@ -83,3 +83,18 @@ export function csvLine(values: readonly unknown[], delimiter: CsvDelimiter = ',
   if (!isCsvDelimiter(delimiter)) throw new TypeError(`csvLine(): the delimiter is "," ";" or a tab, not ${JSON.stringify(delimiter)}.`);
   return `${values.map(csvCell).join(delimiter)}\r\n`;
 }
+
+/**
+ * Writes a CSV file of your own — an import template, a report that is no table — as text: a byte order mark (so spreadsheets read
+ * umlauts right; `bom: false` leaves it out), then every row as one line of quoted cells ended by CRLF. The quoting and the
+ * formula escape are the ones of a table's export (see the module comment), so a text that starts like a formula arrives as text.
+ * `readCsv(…, { unescape: true })` gives every text back as it was. A delimiter other than `,`, `;` or a tab throws a `TypeError`.
+ * See docs/tables.md#a-csv-file-of-your-own.
+ */
+export function writeCsv(rows: Iterable<readonly unknown[]>, options: { delimiter?: CsvDelimiter; bom?: boolean } = {}): string {
+  const { delimiter = ',', bom = true } = options;
+  if (!isCsvDelimiter(delimiter)) throw new TypeError(`writeCsv(): the delimiter is "," ";" or a tab, not ${JSON.stringify(delimiter)}.`);
+  let text = bom ? CSV_BOM : '';
+  for (const row of rows) text += csvLine(row, delimiter);
+  return text;
+}
