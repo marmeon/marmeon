@@ -542,8 +542,9 @@ export class DataTables {
           `Table "${definition.name}": the column '${value[0]}' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be searched.`,
         );
       }
+      // Cast to text: a number column is searched as its digits (Postgres has no `lower(integer)`).
       const pattern = `%${state.search.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      query = query.where((eb) => eb.or(searched.map(([, col]) => sql<boolean>`lower(${sql.ref(col.ref)}) like ${pattern} escape '\\'`)));
+      query = query.where((eb) => eb.or(searched.map(([, col]) => sql<boolean>`lower(cast(${sql.ref(col.ref)} as text)) like ${pattern} escape '\\'`)));
     }
     return query;
   }

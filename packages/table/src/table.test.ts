@@ -167,6 +167,27 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       );
     });
 
+    it('searches a number column as text — also a computed one of a derived table (Postgres has no lower(integer))', async () => {
+      const application = await app(driver);
+      const tables = application.application.container.createScope().make(DataTables);
+      const on = (t: DataTable, search: string) =>
+        ({ request: new Request(`http://localhost/teams/1/teams?search=${search}`), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1, route: pageOf(t) }) as never;
+      const teams = defineTable({
+        name: 'teams',
+        query: (db: Database) => db.selectFrom(db.selectFrom('teams').selectAll().withCount('members', { as: 'size' }).as('rows')).selectAll(),
+        key: 'rows.id',
+        columns: { name: column('rows.name').searchable(), size: column('rows.size').searchable() },
+      } as never);
+      const found = async (search: string) => ((await tables.resolve(teams, on(teams, search))) as unknown as { rows: readonly { name: string }[] }).rows.map((row) => row.name);
+      expect(await found('4')).toHaveLength(1);
+      expect(await found('7')).toEqual([]);
+      expect(await found('NO-SUCH-TEAM')).toEqual([]);
+      const byName = (await found('')).length;
+      expect(byName).toBeGreaterThan(1);
+      const first = (await found('')).at(0)!;
+      expect(await found(first.slice(0, 3).toUpperCase())).toContain(first);
+    });
+
     it('stays within the base query — the tenant (another team\'s members never show)', async () => {
       const application = await app(driver);
       const { members } = await page(application, ADA, 'per_page=10');

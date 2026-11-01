@@ -102,6 +102,29 @@ A column can also show a value the base query computes under a name: `withCount(
 searched or filtered by, since `WHERE` cannot see a value the query computes; both are compile errors. Hidden by `.visible(…)`, the
 value is left out of the base query too, so it never reaches the SQL.
 
+To search or filter by a value the query computes, or to use it as the key, select from the query as a derived table: its columns
+are real ones, and a computed value that identifies a row can be the key (`key: 'rows.slot'`, say). A number column is searched
+as its digits.
+
+```ts title="modules/teams/tables/TeamsTable.ts"
+import { can, type Authenticated } from '@marmeon/auth';
+import { column, defineTable, filter, type TableContext } from '@marmeon/table';
+import { TeamPolicy } from '../policies/TeamPolicy.ts';
+
+export const TeamsTable = defineTable({
+  name: 'teams',
+  query: (db, _ctx: TableContext<Authenticated>) =>
+    db.selectFrom(db.selectFrom('teams').selectAll().withCount('members', { as: 'size' }).as('rows')).selectAll(),
+  key: 'rows.id',
+  columns: {
+    name: column('rows.name').sortable().searchable(),
+    size: column('rows.size').sortable().searchable(),
+  },
+  filters: { size: filter.select('rows.size', ['1', '2', '3']) },
+  authorize: can(TeamPolicy, 'viewAny'),
+});
+```
+
 ### Generating a table
 
 `marmeon make:table Members --module=members` writes `modules/members/tables/MembersTable.ts` (`--table` names the table; it is the plural of the name by default): the base query typed with the module's `Database`, the key, an `id` column and `authorize: () => false`. Nobody sees the table until you replace that with `can(Policy, 'viewAny')`. It registers nothing; `endpoints()` of the table does, when you [attach it to its page](#the-controller-and-the-routes).
