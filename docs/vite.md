@@ -81,6 +81,17 @@ after `index` has run: the page's chunk, the chunks it imports and the one for t
 The server reads them from `dist/client/.vite/manifest.json` when it starts. Without that file the documents preload nothing; a
 file that is no Vite manifest stops the start. Nothing is preloaded in development, and the manifest is never served.
 
+### The base
+
+The server serves `dist/client` under `/`, so Vite's `base` is `/` (the default) or an absolute URL where you put the assets
+yourself, such as `base: 'https://cdn.example/app/'`. With a URL, `index.html`, the preload tags and the page stylesheets all
+start with it. The server reads it from the built `index.html`. A path such as `/static/` or a relative `./` fails
+`marmeon build`, because the server would answer every asset with a 404; a build made earlier stops `marmeon start` with a message
+that names the value. Every tag is `crossorigin`, so the CDN must answer scripts, stylesheets and fonts with `Access-Control-Allow-Origin`. Under the
+default policy (`'nonce-…' 'strict-dynamic'`) the nonce admits the scripts and, with the [strict
+recipe](styling.md#a-strict-policy-for-styles), the stylesheets; a policy without the nonce needs the origin in `script-src` and
+`style-src`.
+
 Every script, stylesheet and preload tag of `index.html` gets a nonce placeholder. The server puts each response's nonce in its
 place, or removes the attribute when the response has no policy.
 
