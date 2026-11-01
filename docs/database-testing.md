@@ -43,6 +43,11 @@ Your app's code works as it does in production:
 - A transaction the app opens, with `connections.transaction()`, becomes a savepoint inside the test's transaction. A rollback of
   it undoes its own writes only.
   A savepoint has no isolation level, so an `isolationLevel` option has no effect in a test; it applies in production.
+- A statement the database refuses, such as a duplicate key, a failed check or a trigger that raises, does not end the test on
+  SQLite: the next query runs. On Postgres it aborts the test's transaction, and every later query of the test fails with
+  `current transaction is aborted, commands ignored until end of transaction block`, which names neither the refused statement nor
+  the rule. In production each statement outside a transaction stands alone, so the same code goes on. A test of a constraint or
+  a trigger therefore refuses the statement inside a savepoint, or with `tryInsert()` (see [below](#a-statement-the-database-refuses)).
 - Work registered with `afterCommit()` runs when the app's own transaction commits, although nothing is committed for real.
 - Work after a response runs outside the app's transactions, as in production.
 - `outsideTransaction()` inside a transaction of the app cannot reach the database in a test: the pinned connection belongs to
@@ -63,6 +68,35 @@ with a condition or a unique index, is as right or wrong here as in production.
 
 Two test runs of one app at the same time are not supported: on SQLite, a run in a container and one on the host that share the app's directory remove each other's files. The names of the workers' databases are not API.
 
+### A statement the database refuses
+
+Refuse the statement inside a savepoint: the rule fires, the savepoint rolls back, and the test's transaction stays usable.
+`connections.transaction()` inside a test is that savepoint:
+
+```ts title="modules/audit/auditLog.test.ts"
+import { Connections } from '@marmeon/database';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('refuses to delete an entry of the audit log', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const connections = app.make(Connections);
+  // A trigger fires for a row, so the log needs an entry for the delete to be refused.
+  await connections.get().insertInto('audit_logs').values({ entry: 'created' }).execute();
+  // A transaction inside the test's is a savepoint: the refusal rolls back to it, and the test's transaction stays usable.
+  await expect(connections.transaction(() => connections.get().deleteFrom('audit_logs').execute())).rejects.toThrow(/append-only/);
+  // The test goes on: without the savepoint this query would fail with "current transaction is aborted". The entry is still there,
+  // so the rollback took back the refused statement only.
+  await app.assertDatabaseCount('audit_logs', 1);
+});
+```
+
+On Postgres, catch the refusal outside the `transaction()`, as here; a catch inside it ends in a `TransactionError`. A
+repository's `tryInsert()` does the same for a taken unique value and hands it back as an `err` of kind `duplicate`, so the test
+checks the `ok` of the result. Under `database: 'isolated'` every statement commits for real and a refusal stands alone, as in production, but that
+mode is slower.
+
 ### One refreshed app at a time
 
 A test works on the worker's one database, so only one test app with a `database`, `'refresh'` or `'isolated'`, may be open at a time.
@@ -78,8 +112,9 @@ rolls its transaction back right there, and the cleanup at the end of the test h
 
 A hook or test that times out while its app is still starting leaves nothing open: when the app is ready at last and the test is
 over, it is closed again and `createTestApp()` throws, so the next test does not fail with the message above. For the first app of a
-worker, which creates and migrates the worker's database, give the file a `beforeAll` of its own with a longer hook timeout and
-open and close one app there.
+worker, which loads the app's modules (about a second) and on Postgres creates and migrates the worker's database, raise
+`testTimeout` and `hookTimeout` in the Vitest config, whose default of five seconds the first test of a slow run can exceed, or give
+the file a `beforeAll` of its own with a longer hook timeout and open and close one app there.
 
 ## Testing a lock
 
@@ -121,7 +156,8 @@ leaves nothing to look at after the app has closed.
 
 Prove that the test can fail. Remove the lock from the code, for example the `forUpdate()` of the query that reads the free seats,
 and run the test again: it must turn red, here with five bookings. The same test with `database: 'refresh'` stays green without
-the lock, which is what that mode cannot tell you. Put the lock back afterwards.
+the lock, which is what that mode cannot tell you. Put the lock back afterwards. A test of a lock that has never been seen red
+proves nothing.
 
 Row locks are checked on Postgres. SQLite has one writer at a time, so on SQLite the test runs, but the writes never overlap and
 it stays green without the lock: run such tests on Postgres ([Running the tests on Postgres](#running-the-tests-on-postgres)).
@@ -133,6 +169,187 @@ A refreshed test that sends requests together while Postgres makes them take tur
 ```
 
 It does not fail the test. If the requests need no lock, ignore it.
+
+### Make the overlap certain
+
+Requests sent together are not certain to overlap, even with `database: 'isolated'`. The pool opens its connections as they are
+needed, so right after the app started two short transactions can run one after the other, and the test stays green without the
+lock. The same happens with a service that two `Promise.all` calls enter when the work between the read and the write takes a
+fraction of a millisecond. Do not widen the window with a pause: it makes the test slow and still flaky. Hold the lock yourself
+instead, change what the decision depends on while it is held, and see the code under test refuse:
+
+1. A transaction of the test locks the row and stays open.
+2. The test sends the request. If the code takes the lock, its transaction waits for the row.
+3. The test polls until Postgres lists a backend that waits in a locking read (`for update`).
+4. While it waits, the first transaction writes what the decision reads, here two bookings for the last two seats, and ends.
+5. The request ends, and the test checks that it refused and that no third booking exists.
+
+Waiting alone proves too little: code that reads the free seats first and locks afterwards, or that locks the row with an
+`update` instead of `for update`, waits as well and still overbooks. Only a request that reads after the lock sees the two
+bookings the test wrote while it waited. Keep the hold and the wait in two functions of the test folder:
+
+```ts title="modules/workshops/lockTesting.ts"
+import { Connections, sql } from '@marmeon/database';
+import { expect, vi } from 'vitest';
+
+/**
+ * Locks a row in a transaction of its own and keeps it until the returned function is called. That function runs `whileHeld`
+ * inside the transaction, then ends it. `for no key update` makes the `for update` of the code under test wait, but not the
+ * key-share lock a foreign key takes when the code inserts a child row: a plain `for update` here would make an insert wait
+ * even where the code under test has no lock.
+ */
+export async function holdRow(
+  connections: Connections,
+  table: string,
+  id: number,
+  whileHeld?: () => Promise<void>,
+): Promise<() => Promise<void>> {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let locked!: () => void;
+  const hasLock = new Promise<void>((resolve) => (locked = resolve));
+  const holder = connections.transaction(async () => {
+    await sql`select id from ${sql.table(table)} where id = ${id} for no key update`.execute(connections.get());
+    locked();
+    await gate;
+    await whileHeld?.();
+  });
+  await Promise.race([hasLock, holder]);
+  return async () => {
+    release();
+    await holder;
+  };
+}
+
+/** Passes once a backend of the test database waits in a `for update` read, and fails after five seconds. */
+export async function untilSomeoneWaits(connections: Connections): Promise<void> {
+  await vi.waitFor(
+    async () => {
+      const { rows } = await sql<{ waiting: number }>`
+        select count(*)::int as waiting from pg_stat_activity
+        where datname = current_database() and wait_event_type = 'Lock' and query ilike '%for update%'
+      `.execute(connections.get());
+      expect(rows[0]?.waiting).toBe(1);
+    },
+    { timeout: 5000 },
+  );
+}
+```
+
+The test that uses them:
+
+```ts title="modules/workshops/booking.test.ts"
+import { Connections } from '@marmeon/database';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { WorkshopFactory } from './factories/WorkshopFactory.ts';
+import { holdRow, untilSomeoneWaits } from './lockTesting.ts';
+
+it.skipIf(process.env.DB_DRIVER !== 'pgsql')('counts the seats after it has locked the workshop', async () => {
+  const app = await createTestApp(application, { database: 'isolated' });
+  const connections = app.make(Connections);
+  const workshop = await app.factory(WorkshopFactory).create({ capacity: 2 });
+
+  const release = await holdRow(connections, 'workshops', workshop.id, async () => {
+    await connections.get().insertInto('bookings').values([{ workshop_id: workshop.id, guest: 'Grace' }, { workshop_id: workshop.id, guest: 'Alan' }]).execute();
+  });
+  const booking = app.post(`/workshops/${workshop.id}/bookings`, { json: { guest: 'Ada' } });
+  try {
+    await untilSomeoneWaits(connections);
+  } finally {
+    await release();
+  }
+
+  expect((await booking).status).toBe(409);
+  await app.assertDatabaseCount('bookings', 2);
+});
+```
+
+The code that locks first and then counts waits, finds the two seats gone and refuses. Remove the `forUpdate()` and the test
+fails in `untilSomeoneWaits()`, or on the status if the code locks after it counted: the booking is the third. The `finally`
+releases the row, so a failing test does not leave a transaction open. `holdRow()` and the request use one connection each and
+the poll a third, so the pool of ten has room.
+
+### Several locks
+
+Code that locks several rows, such as a booking that takes every resource it names, locks them in one order, by key, so that
+two bookings naming the same resources in opposite orders wait for each other instead of deadlocking. The order is a property of
+the code, and a test of two bookings that run together shows it only when the unlucky interleaving happens to occur. Test it
+with the same hold. Hold the middle row, send a booking that names the rows in the wrong order, wait until it waits, and probe
+the other rows with `nowait`: a row the booking holds refuses at once (error code `55P03`), a free one does not.
+
+```ts title="modules/resources/booking.test.ts"
+import { Connections, sql } from '@marmeon/database';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { ResourceFactory } from './factories/ResourceFactory.ts';
+import { holdRow, untilSomeoneWaits } from '../workshops/lockTesting.ts';
+
+it.skipIf(process.env.DB_DRIVER !== 'pgsql')('locks the resources in the order of their ids', async () => {
+  const app = await createTestApp(application, { database: 'isolated' });
+  const connections = app.make(Connections);
+  const [low, middle, high] = await app.factory(ResourceFactory).count(3).create();
+
+  const release = await holdRow(connections, 'resources', middle!.id);
+  const booking = app.post('/bookings', { json: { resources: [high!.id, middle!.id, low!.id] } });
+  const isHeld = (id: number) =>
+    sql`select id from resources where id = ${id} for update nowait`.execute(connections.get()).then(
+      () => false,
+      (error: unknown) => {
+        if ((error as { code?: string }).code === '55P03') return true; // lock_not_available
+        throw error;
+      },
+    );
+  try {
+    await untilSomeoneWaits(connections);
+    // The booking waits for the middle row, so it holds the rows before it in its order and none after it.
+    expect(await isHeld(low!.id), 'the lowest id is locked first').toBe(true);
+    expect(await isHeld(high!.id), 'the highest id is still free').toBe(false);
+  } finally {
+    await release();
+  }
+  expect((await booking).status).toBe(201);
+});
+```
+
+This checks the order of a loop that locks one row after the other; the code puts the lowest id first with an `orderBy('id')` or
+a sort before the loop. A single `where id in (…) for update` locks the rows in the order Postgres reads them, which for rows a
+factory just created is the order of their ids, so this test passes for it with or without an `orderBy('id')` in the code and says
+nothing about the order. Keep that `orderBy('id')` in code you review. If two code paths lock the same rows, they need the same
+order, and a test of each is cheap with this hold.
+
+## Counting statements
+
+A test that asks how often the code asks the database, such as a list that must not run one query per row, listens to the
+connections. `connections.onQuery(listener)` hears every statement with its SQL and returns the function that stops it
+([observability](observability.md#queries-and-secret-columns)):
+
+```ts title="modules/workshops/workshops.test.ts"
+import { Connections } from '@marmeon/database';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { WorkshopFactory } from './factories/WorkshopFactory.ts';
+
+it('asks for the bookings of all workshops at once', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  await app.factory(WorkshopFactory).count(5).create();
+  const statements: string[] = [];
+  const stop = app.make(Connections).onQuery((query) => void statements.push(query.sql));
+  try {
+    await app.get('/workshops').assertOk();
+  } finally {
+    stop();
+  }
+  expect(statements.filter((statement) => statement.includes('"bookings"'))).toHaveLength(1);
+});
+```
+
+Count the statements that mention a table rather than all of them: `begin`, `commit`, `savepoint` and the queries of the
+session and of the authenticated user arrive at the listener too. Five workshops show a query per row, which one workshop would
+hide.
 
 ## Factories
 
@@ -233,7 +450,7 @@ explains infrastructure connections.
 ## Running the tests on Postgres
 
 With `DB_DRIVER=pgsql` and the server in the environment, refreshed test apps use Postgres instead of SQLite. Name the
-database in the shell too, since the start refuses the `DB_DATABASE=:memory:` of `.env.test` (K6):
+database in the shell too, since the start refuses the `DB_DATABASE=:memory:` of `.env.test` (`[marmeon:K6]`):
 
 ```sh
 DB_DRIVER=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWORD=secret pnpm test
