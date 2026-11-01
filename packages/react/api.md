@@ -60,7 +60,7 @@ export type CheckedPatch<R, P> = (props: P) => {
 export interface ClientAction<N extends string, RequiresParams extends boolean = false> {
     submit(...args: SubmitArgs<N, RequiresParams>): Promise<ActionResultOf<N>>;
     readonly pending: boolean;
-    readonly submissions: readonly PendingSubmission<N>[];
+    readonly submissions: readonly PendingSubmission<N, ActionFields<ActionBodyOf<N>>>[];
     readonly result: ActionResultOf<N> | undefined;
     readonly data: ([ActionDataOf<N>] extends [never] ? never : ActionDataOf<N>) | undefined;
     readonly errors: Partial<Record<ActionField<N>, string>>;
@@ -437,9 +437,9 @@ export type PasswordNeverRemembered = 'password fields are never remembered — 
 // PatchedProps
 export type PatchedProps<T> = unknown extends T ? Readonly<Record<string, unknown>> : PropsOf<T>;
 // PendingSubmission
-export interface PendingSubmission<N extends string> {
+export interface PendingSubmission<N extends string, Input = ActionFields<ActionBodyOf<N>> | RouteFormFields<N>> {
     readonly id: number;
-    readonly input: ActionFields<ActionBodyOf<N>> | RouteFormFields<N>;
+    readonly input: Input;
     readonly method: ActionMethod;
     readonly url: string;
 }

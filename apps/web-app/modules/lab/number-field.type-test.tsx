@@ -1,7 +1,7 @@
 /** Type guarantees of a number rule's form field and of a defaulted field — checked by `tsc` (`pnpm typecheck`), never run. */
 import { defineRequest, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
-import { useForm, type FormHandle, type FormPart } from '@marmeon/react';
+import { useAction, useForm, type FormHandle, type FormPart } from '@marmeon/react';
 import { LabController } from './controllers/ShowLabPageController.ts';
 
 const Request = defineRequest({
@@ -159,4 +159,18 @@ export function unions(
   useForm<Variants>({ kind: 'mail', address: '', copies: 1 });
   useForm<Variants>({ kind: 'post', street: '' });
   return checked;
+}
+
+declare module '@marmeon/router' {
+  interface Routes {
+    'lab.resources.store': { method: 'post'; path: '/lab/resources'; controller: typeof Resources };
+  }
+}
+
+/** The calls of an action go back into `submit()` as its data — also with an optional number, which a route form's row holds as `''`. */
+export function resubmit() {
+  const save = useAction('lab.resources.store');
+  const first = save.submissions[0];
+  if (first) void save.submit({ data: first.input });
+  return null;
 }

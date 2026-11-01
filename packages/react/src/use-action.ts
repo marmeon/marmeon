@@ -83,10 +83,10 @@ type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends A
   : [options: ActionSubmitOptions<N, RequiresParams>];
 
 /** A call of an action under way, as `usePendingSubmissions` and `action.submissions` list it — a ghost row's data. */
-export interface PendingSubmission<N extends string> {
+export interface PendingSubmission<N extends string, Input = ActionFields<ActionBodyOf<N>> | RouteFormFields<N>> {
   readonly id: number;
   /** What it sends: an action's data as it was passed, or a route form's fields. */
-  readonly input: ActionFields<ActionBodyOf<N>> | RouteFormFields<N>;
+  readonly input: Input;
   readonly method: ActionMethod;
   readonly url: string;
 }
@@ -100,8 +100,8 @@ export interface ClientAction<N extends string, RequiresParams extends boolean =
   submit(...args: SubmitArgs<N, RequiresParams>): Promise<ActionResultOf<N>>;
   /** A call is under way. */
   readonly pending: boolean;
-  /** This component's calls under way, oldest first. */
-  readonly submissions: readonly PendingSubmission<N>[];
+  /** This component's calls under way, oldest first — their `input` is the `data` they were passed, so it goes back into `submit()`. */
+  readonly submissions: readonly PendingSubmission<N, ActionFields<ActionBodyOf<N>>>[];
   /** How the last call that finished ended. */
   readonly result: ActionResultOf<N> | undefined;
   /** The data of the last call that succeeded with data. */
