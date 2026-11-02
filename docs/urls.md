@@ -148,7 +148,7 @@ route names sent to the browser must be written out: `notes.${tab}` (route()) is
 
 The message names the routes that fit and suggests the literals. Write each name out: `tab === 'show' ? 'notes.show' :
 'notes.edit'`. Route names never come from props either: when the server decides the target, it sends the URL, built with
-`router.url()`.
+`router.url()`, and the page passes it as `href` to a `<Link>` or, for a panel the server chose, to an [`<Island href>`](deferred-props.md#islands-the-server-chooses).
 
 A list of links, such as a menu, holds the link itself instead of a route name. Each entry writes its `<Link route>` out, and
 the list only decides which entries show and in which order:

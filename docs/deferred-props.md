@@ -247,6 +247,7 @@ export default function Dashboard(_props: PageProps<ShowDashboardController>) {
 | Prop | Effect |
 | --- | --- |
 | `route`, `params`, `query` | The island's route, its parameters and its first query, typed by its query schema. Only an island's route is accepted. |
+| `href` | Instead of `route`: the URL of an island route the server chose, a path of this site with its query. See [islands the server chooses](#islands-the-server-chooses). |
 | `fallback` | Shown until the island is there. |
 | `unauthorized` | Shown when its route turns the user away: a redirect, such as to the sign-in page, a 401 or a 403. |
 | `error` | Shown when it failed. A function gets `retry`. Default: a short notice. |
@@ -257,43 +258,48 @@ export default function Dashboard(_props: PageProps<ShowDashboardController>) {
 
 ### Islands the server chooses
 
-`<Island route>` takes a name the build can read from the code, such as a literal, so a page cannot take the route from its props. When the server decides
-which panels a page shows, say because other modules offer them, send the panels' keys and map each key to a component that
-writes its own `<Island route>`. The owner of an island writes that component in its module:
+`<Island route>` takes a name the build can read from the code, such as a literal, so a page cannot take the route from its props. When the
+server decides which panels a page shows, say because other modules offer them, it sends each panel's URL, built with `router.url()`,
+and the page embeds it with `<Island href>`:
 
-```tsx title="modules/notes/panels/recent.tsx"
+```ts title="modules/dashboard/controllers/ShowDashboardController.ts"
+handle() {
+  return this.view('dashboard/Show', {
+    panels: this.#panels.all().map((panel) => ({ title: panel.title, url: this.#router.url(panel.route, {}, panel.query) })),
+  });
+}
+```
+
+```tsx title="modules/dashboard/views/Show.tsx"
 import { Island } from '@marmeon/react';
 
-export default function RecentPanel() {
-  return <Island route="notes.recent" query={{ limit: 3 }} fallback={<p aria-busy="true">Loading…</p>} />;
-}
+{panels.map((panel) => (
+  <section key={panel.url}>
+    <h2>{panel.title}</h2>
+    <Island href={panel.url} fallback={<p aria-busy="true">Loading…</p>} unauthorized={<p>Not for you.</p>} />
+  </section>
+))}
 ```
 
-The page collects every `panels/*.tsx` of every module with `import.meta.glob`, so the mapping is fixed in the code and a new
-panel needs no list to edit. The key is the module and the file, `notes.recent`, so two modules can each have a `recent.tsx`.
-An eager glob puts the code of every module's panels, and the route names of their islands, into the page for every visitor;
-who may load an island's data stays with that island's route. The lint rule `--boundaries` does not see `import.meta.glob`, so
-it does not check that a panel stays inside its module.
+The query belongs in the `href`. `useIsland().reload({ query })` still works, because it changes the query of the island's own URL. The other
+props are the same as with `route`, except that `params` and `query` are not props of an `href` island.
 
-```tsx title="modules/dashboard/components/Panel.tsx"
-import type { ComponentType } from 'react';
+The `href` must be a path of your app, such as `/dashboard/islands/members?limit=3`. The page checks it before anything is
+requested, both while rendering on the server and in the browser. These are all refused: another origin (`https://other.example/…`), a
+URL that starts with `//` or `/\`, a scheme such as `javascript:`, a path without its leading `/`, spaces and control characters, and a
+path that dot segments fold into `//host`. In development and in tests a refused `href` throws `[marmeon:R21]` while rendering; in
+production the island shows its `error` and sends no request.
 
-const found = import.meta.glob<{ default: ComponentType }>('../../*/panels/*.tsx', { eager: true });
+That check only keeps the request on your site. It cannot tell an island's route from any other `GET` route, because only the
+route's controller knows that it answers with `this.island()`. Build the `href` with `router.url()` from a route name the server picks, such as one
+a module registered. Never build it from the request (its query, parameters or body) or from content a user stored, since whoever controls the
+`href` chooses which `GET` route of your app runs for the visitor, with the visitor's cookies. The route's middleware and controller run first;
+only then does the server see that the route is no island. The island shows its `error`. Only the route's outcome reaches the page: `unauthorized` for a redirect or a 401, `forbidden` for a 403, or an error with its status and, for a JSON error, its `message`. A success that is no island becomes a 404 with nothing of its body.
+Who may see an island is decided by the island's own route, and its `unauthorized` prop shows what a refusal leaves.
 
-const key = (path: string) => /\/([^/]+)\/panels\/([^/]+)\.tsx$/.exec(path)!.slice(1).join('.');
-
-const panels = new Map<string, ComponentType>(Object.entries(found).map(([path, module]) => [key(path), module.default]));
-
-/** The panel the server chose by key. A key without a component renders nothing. */
-export function Panel({ name }: { name: string }) {
-  const Component = panels.get(name);
-  return Component ? <Component /> : null;
-}
-```
-
-The controller sends `panels: ['notes.recent']` and the view renders `<Panel key={name} name={name} />` for each. The keys only choose what
-is shown. Who may see the panel is decided by the island's own route, and its `unauthorized` prop shows what a refusal
-leaves.
+An island embedded by `href` has no route name in the browser's route manifest, so the build cannot preload its view before the response
+arrives. The code loads after the island's data, as it does for a `<Link href>`. When a page can choose among a fixed set of islands you
+would rather ship with the page, keep writing `<Island route>` in a component for each and choose the component by key.
 
 ### Inside an island
 

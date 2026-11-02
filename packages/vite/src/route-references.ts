@@ -408,7 +408,7 @@ function dynamicMessage(code: string, node: Node, sink: string, names: readonly 
   } else {
     lines.push(
       "Write the name as a literal — a conditional of literals works too (isOwn ? 'a.edit' : 'a.show'). " +
-        'A route that comes from props or the server: send its URL instead (router.url() on the server), not its name.',
+        'A route that comes from props or the server: send its URL instead (router.url() on the server) as href, not its name.',
     );
   }
   return lines.join(' ');

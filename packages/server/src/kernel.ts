@@ -47,7 +47,7 @@ import {
   SESSION_PATH,
   type PropOrigins,
 } from '@marmeon/http/internal';
-import { UPLOAD_HEADER } from '@marmeon/http/protocol';
+import { sitePath, UPLOAD_HEADER } from '@marmeon/http/protocol';
 import {
   CookieJar,
   editableResponse,
@@ -324,6 +324,11 @@ export function createHttpKernel(
     const target = new URL(url, base);
     if (target.origin !== base.origin) {
       logger.error(`An island comes from this site, not from ${target.origin} (${redactor.text(url)})`);
+      return { status: 'exception', failure: {} };
+    }
+    // A path, as the page names it (`router.url()`): not a full URL, and not a path the parser folds into another host.
+    if (sitePath(url) === undefined) {
+      logger.error(`An island is the path of a route of this site (${redactor.text(url)})`);
       return { status: 'exception', failure: {} };
     }
     const headers = new Headers(protocolHeaders());
@@ -962,6 +967,11 @@ async function regionResultOf(response: Response): Promise<RegionResult> {
   if (outcome === 'unauthorized' || outcome === 'forbidden') {
     await response.body?.cancel();
     return { status: outcome };
+  }
+  // A success that is no island (a page or a JSON endpoint an `href` named): it is no island, and nothing of its body is relayed.
+  if (response.ok) {
+    await response.body?.cancel();
+    return { status: 'exception', failure: { status: 404 } };
   }
   let message: string | undefined;
   try {
