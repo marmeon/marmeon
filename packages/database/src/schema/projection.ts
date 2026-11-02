@@ -1,8 +1,8 @@
 import { withCode } from '@marmeon/core/internal';
 import { byCodePoint, type ForeignKey, type Introspected, type SchemaMarker } from '../introspection.ts';
 import { loadMigration, type MigrationSource } from '../migrations/load.ts';
-import { blueprintParts, oneOfName, type Blueprint, type ColumnSpec, type Driver, type TableMarker } from './blueprint.ts';
-import { planOf, type PlanStep } from './plan.ts';
+import { blueprintParts, isStringType, oneOfName, type Blueprint, type ColumnSpec, type Driver, type TableMarker } from './blueprint.ts';
+import { planOf, type ListCheck, type PlanStep } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
 // What the migrations say about the schema, computed from their plans alone: no database, nothing executed. The one place that knows
@@ -101,6 +101,23 @@ function conflict(message: string): SchemaError {
 /** The columns of a table that Marmeon knows: all but the retired ones. */
 export function knownColumns(table: ProjectedTable): ProjectedColumn[] {
   return table.columns.filter((column) => !column.retired);
+}
+
+/**
+ * For {@link executePlan}: what the plan needs to replace the list of a column at the step with this index — the name of the constraint after the step
+ * (the one the column's list was made with, also after a rename in the same `alter()`, or the one the step makes) and whether the column had a list before it.
+ * The column is not found when the migrations do not know it.
+ */
+export function listCheckOf(before: SchemaProjection, steps: readonly PlanStep[], file: Pick<MigrationSource, 'name' | 'module'>): ListCheck {
+  return (index, table, column) => {
+    const name = applyPlan(before, steps.slice(0, index + 1), file).tables.get(table)?.columns.find((c) => c.name === column)?.valuesCheck;
+    if (name === undefined) return undefined;
+    // A dropCheck() of the same alter() has dropped it by then.
+    const step = steps[index];
+    const dropped = step?.kind === 'alter' && blueprintParts(step.blueprint).dropChecks.includes(name);
+    const had = !dropped && (applyPlan(before, steps.slice(0, index), file).tables.get(table)?.columns.some((c) => c.valuesCheck === name) ?? false);
+    return { name, had };
+  };
 }
 
 export const emptyProjection: SchemaProjection = { migrations: [], tables: new Map() };
@@ -358,6 +375,20 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
 
   for (const { column } of parts.nullability) live(column, '');
   for (const { column, nullable } of parts.nullability) columns = columns.map((c) => (c.name === column ? { ...c, nullable: nullable && !c.primary } : c));
+
+  for (const { column, values } of parts.oneOfChanges) {
+    live(column, '');
+    const found = columns.find((c) => c.name === column)!;
+    if (!isStringType(found.type.sqlite)) throw conflict(`${where} gives "${name}.${column}" a list with oneOf(), but it is no string() or text() column.`);
+    if (found.valuesCheck === undefined) {
+      const made = oneOfName(name, column);
+      if (checks.some((check) => check.name === made) || columns.some((c) => c.valuesCheck === made)) {
+        throw conflict(`${where} gives "${name}.${column}" a list with oneOf(), which makes the check constraint "${made}", but the table has one of that name. Drop it with dropCheck() or name the other one differently.`);
+      }
+    }
+    // The constraint keeps the name it was made with, also after the column was renamed.
+    columns = columns.map((c) => (c === found ? { ...c, values: [...values], valuesCheck: c.valuesCheck ?? oneOfName(name, column) } : c));
+  }
 
   for (const { column, references } of parts.foreignKeys) {
     live(column, '');

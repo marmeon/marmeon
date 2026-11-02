@@ -38,6 +38,12 @@ interface ForeignKeySpec {
   references?: ReferenceSpec;
 }
 
+/** A new list for an existing column. */
+interface OneOfChange {
+  readonly column: string;
+  readonly values: readonly string[];
+}
+
 /** The column descriptions and foreign keys of blueprints that are closed. */
 const closedSpecs = new WeakSet<ColumnSpec | ForeignKeySpec>();
 
@@ -51,6 +57,20 @@ export function closedPlan(): Error {
 
 /** What a migration declares about a table beyond its columns — kept by the migrator, read by the connection. */
 export type TableMarker = 'soft_deletes' | 'timestamps';
+
+/** `varchar` and `text` columns are the ones a list of strings can hold. */
+export const isStringType = (type: unknown): boolean => /^(varchar|text)\b/.test(String(type));
+
+/** The rules for the values of a list, shared by `Column.oneOf()` and `Blueprint.oneOf()`. */
+function checkOneOfValues(column: string, values: readonly unknown[]): void {
+  if (!values.length) throw new Error(`oneOf() on "${column}" needs at least one value.`);
+  for (const value of values) {
+    if (typeof value !== 'string' || value === '' || value.length > 255 || value.includes('\0') || value.includes('\\')) {
+      throw new Error(`oneOf() on "${column}" takes strings of 1 to 255 characters without a NUL character or a backslash; got ${JSON.stringify(value)}.`);
+    }
+  }
+  if (new Set(values).size !== values.length) throw new Error(`oneOf() on "${column}" lists a value twice.`);
+}
 
 /**
  * One column, fluently: `table.string('email').unique()`. Columns are NOT NULL unless marked
@@ -79,20 +99,14 @@ export class Column<T> {
   /**
    * Holds the column to a list: a check constraint named `{table}_{column}_check` in the database, and the union of the values as the
    * column's type in `Row<…>`. Only for a `string()` or `text()` column. Every value is a string of 1 to 255 characters without a backslash, none twice. A NULL passes (the column is
-   * `nullable()` or it is not). Changing the list later: a new `oneOf()` column that replaces the old one keeps the union in `Row<…>` on both drivers; `dropCheck()` + `check()` (Postgres only) lose it.
+   * `nullable()` or it is not). Changing the list later: `table.oneOf(column, values)` in `alter()` (Postgres only), or on SQLite a new `oneOf()` column that replaces the old one.
    * See `docs/migrations.md#check-constraints`.
    */
   oneOf<const V extends T & string>(...values: V[]): Column<V | Extract<T, null>> {
     const name = this.#spec.name;
-    if (!/^(varchar|text)\b/.test(String(this.#spec.type.sqlite))) throw new Error(`oneOf() on "${name}" works on a string() or text() column only.`);
-    if (!values.length) throw new Error(`oneOf() on "${name}" needs at least one value.`);
+    if (!isStringType(this.#spec.type.sqlite)) throw new Error(`oneOf() on "${name}" works on a string() or text() column only.`);
     if (this.#spec.oneOf) throw new Error(`oneOf() on "${name}" is called twice.`);
-    for (const value of values) {
-      if (typeof value !== 'string' || value === '' || value.length > 255 || value.includes('\0') || value.includes('\\')) {
-        throw new Error(`oneOf() on "${name}" takes strings of 1 to 255 characters without a NUL character or a backslash; got ${JSON.stringify(value)}.`);
-      }
-    }
-    if (new Set(values).size !== values.length) throw new Error(`oneOf() on "${name}" lists a value twice.`);
+    checkOneOfValues(name, values);
     this.spec.oneOf = Object.freeze([...values]);
     return this as unknown as Column<V | Extract<T, null>>;
   }
@@ -279,6 +293,8 @@ interface BlueprintParts {
   readonly retirements: string[];
   /** Foreign keys to add to existing columns (`foreign()`). */
   readonly foreignKeys: ForeignKeySpec[];
+  /** New lists for existing columns (`oneOf(column, values)`). */
+  readonly oneOfChanges: OneOfChange[];
   /** Named check constraints to add (`check()`). */
   readonly checks: { name: string; sql: string }[];
   /** Check constraints to drop by name (`dropCheck()`). */
@@ -313,6 +329,7 @@ export class Blueprint {
     nullability: [],
     retirements: [],
     foreignKeys: [],
+    oneOfChanges: [],
     checks: [],
     dropChecks: [],
     markers: new Set(),
@@ -447,6 +464,19 @@ export class Blueprint {
     return new ForeignKeyReference(spec);
   }
 
+  /**
+   * Changing a table only, on Postgres only: replaces the list an existing `string()` or `text()` column is held to, in one statement — the constraint of the
+   * column is dropped and made again under its own name — and `db:types` writes the new union. A column that has no list gets one. The values follow the rules of
+   * `Column.oneOf()`. A row that holds a value the new list lacks fails the migration, which is rolled back: rewrite those rows first with `schema.data()`. SQLite
+   * changes no constraint in place: `migrate` refuses the plan. In `create()` use `table.string(…).oneOf(…)`. See `docs/migrations.md#check-constraints`.
+   */
+  oneOf(column: string, values: readonly string[]): void {
+    this.#open();
+    if (this.#parts.oneOfChanges.some((change) => change.column === column)) throw new Error(`oneOf() on "${column}" is called twice on table "${this.table}".`);
+    checkOneOfValues(column, values);
+    this.#parts.oneOfChanges.push({ column, values: Object.freeze([...values]) });
+  }
+
   index(columns: string | readonly string[], name?: string): void {
     this.#index(columns, false, name);
   }
@@ -534,8 +564,8 @@ export class Blueprint {
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, checks, dropChecks } = this.#parts;
-    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, checks, dropChecks]) Object.freeze(list);
+    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, oneOfChanges, checks, dropChecks } = this.#parts;
+    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, oneOfChanges, checks, dropChecks]) Object.freeze(list);
   }
 
   /** @internal — every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
@@ -596,9 +626,14 @@ export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpres
 /** The name of the constraint `oneOf()` makes. */
 export const oneOfName = (table: string, column: string): string => `${table}_${column}_check`;
 
-/** `constraint "t_c_check" check ("c" in ('a', 'b'))`; the values are written as literals with their quotes doubled. */
+/** `check ("c" in ('a', 'b'))`; the values are written as literals with their quotes doubled. */
+export function oneOfCondition(column: string, values: readonly string[]): RawBuilder<unknown> {
+  return sql`check (${sql.id(column)} in (${sql.join(values.map((value) => sql.lit(value)))}))`;
+}
+
+/** `constraint "t_c_check" check ("c" in ('a', 'b'))` */
 function oneOfCheck(spec: ColumnSpec): RawBuilder<unknown> {
-  return sql`constraint ${sql.id(oneOfName(spec.table, spec.name))} check (${sql.id(spec.name)} in (${sql.join(spec.oneOf!.map((value) => sql.lit(value)))}))`;
+  return sql`constraint ${sql.id(oneOfName(spec.table, spec.name))} ${oneOfCondition(spec.name, spec.oneOf!)}`;
 }
 
 function defaultOf(value: NonNullable<ColumnSpec['default']>, driver: Driver): unknown {
@@ -621,4 +656,4 @@ function literal(value: unknown): unknown {
 /** The name Postgres gives the constraint of a foreign key on one column. */
 export const foreignKeyName = (table: string, column: string): string => `${table}_${column}_fkey`;
 
-export type { ColumnSpec, ForeignKeySpec, IndexSpec };
+export type { ColumnSpec, ForeignKeySpec, IndexSpec, OneOfChange };

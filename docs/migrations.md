@@ -674,24 +674,31 @@ schema.create('events', (table) => {
 });
 ```
 
-`table.dropCheck(name)` drops a constraint by its name, in `alter()` and on Postgres. To change a list on Postgres, drop the check of the column and
-add one with the new condition in the same `alter()`; dropped checks run first:
-
-```ts
-schema.alter('memberships', (table) => {
-  table.dropCheck('memberships_role_check');
-  table.check('memberships_role_check', "role in ('admin', 'member', 'owner')");
-});
-```
+`table.dropCheck(name)` drops a constraint by its name, in `alter()` and on Postgres; dropped checks run first. It also drops the constraint of a `oneOf()` list (see below to change a list instead).
 
 A check name is used once per table: `check()` with the name of another check, or of the constraint a `oneOf()` column makes, is error D19. A `check()` that mentions a column
 stops that column from being dropped on SQLite, and on Postgres `dropColumn()` drops the constraint without a word while Marmeon still describes it: drop the check first with `dropCheck()` on Postgres, and rebuild the table with raw SQL on SQLite.
 
 After `dropCheck()` the column is a plain `string` in `Row<…>` again. Marmeon does not read the condition that `check()` puts in its place, so cast the lines that read the column to the union only when that condition allows exactly the union.
 
-#### Adding a value to a `oneOf()` list
+#### Changing the list of a column
 
-To keep the union in `db:types`, put the new list on a new column, copy the values, drop the old column and give the new one the old name. Each step is
+On Postgres, `table.oneOf(column, values)` in `alter()` replaces the list of an existing `string()` or `text()` column, and `db:types` writes the new union:
+
+```ts title="modules/teams/migrations/2026_11_02_090000_add_owner_to_membership_roles.ts"
+export default defineMigration({
+  up: (schema) => schema.alter('memberships', (table) => table.oneOf('role', ['admin', 'member', 'owner'])),
+});
+```
+
+The values follow the rules of the column's `oneOf()`. The constraint is dropped and made again under its own name in one statement, so no row goes unchecked in between. That name is the one the
+column's constraint was made with: after the recipe below renamed a column, it is still `memberships_role_with_owner_check`, and `oneOf()` finds it. A column that has no list (it never had one, or `dropCheck()` took it)
+gets one under the name `{table}_{column}_check`. If a row holds a value the new list lacks, Postgres refuses the statement and the migration is rolled back with the old list in place: rewrite those rows first in a
+[`schema.data()`](#changing-the-data) step before the `alter()`. A `NULL` passes, as for `oneOf()` in `create()`. On SQLite `migrate` refuses the plan with error D18 before the first step: use the way below.
+
+#### Adding a value to a `oneOf()` list on SQLite
+
+This is the way for SQLite, which changes no constraint in place (and works on Postgres too). To keep the union in `db:types`, put the new list on a new column, copy the values, drop the old column and give the new one the old name. Each step is
 an `alter()` of its own, because a rename runs before new columns and a drop runs last within one `alter()`:
 
 ```ts title="modules/teams/migrations/2026_11_02_090000_add_owner_to_membership_roles.ts"
@@ -716,9 +723,9 @@ The migration has no `down`: taking a role out of the list would refuse the rows
 `Row<'memberships'>['role']` is `'admin' | 'member' | 'owner'` after `db:types`, and a row with another value is refused as before. Renaming a column does not
 rename its constraint: the constraint keeps the name of the column it was made for, here `memberships_role_with_owner_check`, and the database names it in the
 error for a refused value. So the next change of the list needs a column name the table has not used before (`role_with_guest`, not `role_with_owner` again): the old
-constraint still has its name, and a second one of that name is error D19. The way works on SQLite too, where `check()` and `dropCheck()` do not.
+constraint still has its name, and a second one of that name is error D19. The way works on SQLite, where `oneOf(column, values)`, `check()` and `dropCheck()` do not.
 
-SQLite cannot add or drop a constraint of a table in place. `check()` and `dropCheck()` in `alter()` are refused with error D18 before
+SQLite cannot add or drop a constraint of a table in place. `oneOf(column, values)`, `check()` and `dropCheck()` in `alter()` are refused with error D18 before
 the first step of the migration runs. Create the table with the constraint, or rebuild the table with [raw SQL](#raw-sql) in a
 `schema.raw({ sqlite: … })` step, keeping the foreign keys that point at it in mind.
 
@@ -825,6 +832,7 @@ export default defineMigration({
 | `table.dropUnique(name)` | Drops a unique index by its name. |
 | `table.check(name, sql)` | Adds a named [check constraint](#check-constraints); in `alter()` on Postgres only, error D18 on SQLite. Works in `create()` too. |
 | `table.dropCheck(name)` | Drops a check constraint by its name. Postgres only, error D18 on SQLite. |
+| `table.oneOf(column, values)` | Replaces the [list of an existing column](#changing-the-list-of-a-column); `db:types` writes the new union. Postgres only, error D18 on SQLite. |
 | `table.foreign(column).constrained(table)` | Ties an existing column to a table, [after the fact](#a-reference-that-comes-later). Postgres only, error D18 on SQLite. |
 | `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite. |
 | `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite. |

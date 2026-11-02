@@ -102,13 +102,14 @@ export class Schema {
       throw new Error('dropColumn(), renameColumn(), dropIndex(), dropCheck(), notNull(), nullable() and retire() only work when changing a table (schema.alter).');
     }
     if (parts.foreignKeys.length) throw new Error(`foreign('${parts.foreignKeys[0]!.column}') only works when changing a table (schema.alter): use foreignId(…).constrained() in create().`);
+    if (parts.oneOfChanges.length) throw new Error(`oneOf('${parts.oneOfChanges[0]!.column}', …) only works when changing a table (schema.alter): use table.string('${parts.oneOfChanges[0]!.column}').oneOf(…) in create().`);
     this.#add({ kind: 'create', table, blueprint });
   }
 
   /**
    * Adds a change of a table. Every change runs as its own statement, because
    * SQLite's ALTER TABLE takes one change at a time. On SQLite a new NOT NULL column needs a default and cannot get a generated UUID
-   * (`useUuidv7()`), and no column becomes NOT NULL or nullable (`notNull()`, `nullable()`) or gets a foreign key (`foreign()`): `migrate` refuses such a plan before running any of its steps (error D18). See `docs/migrations.md#uuid-keys`, `docs/migrations.md#changing-the-data` and `docs/migrations.md#a-reference-that-comes-later`.
+   * (`useUuidv7()`), and no column becomes NOT NULL or nullable (`notNull()`, `nullable()`) or gets a foreign key (`foreign()`) or a new list (`oneOf(column, values)`): `migrate` refuses such a plan before running any of its steps (error D18). See `docs/migrations.md#uuid-keys`, `docs/migrations.md#changing-the-data` and `docs/migrations.md#a-reference-that-comes-later` and `docs/migrations.md#check-constraints`.
    */
   alter(table: string, build: (table: Blueprint) => void): void {
     this.#allowed(table, 'alter the table');

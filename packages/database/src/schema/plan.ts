@@ -2,7 +2,7 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
-import { Blueprint, blueprintParts, compileColumn, foreignKeyName, oneOfName, type Driver } from './blueprint.ts';
+import { Blueprint, blueprintParts, compileColumn, foreignKeyName, oneOfCondition, oneOfName, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -65,13 +65,18 @@ export async function executePlan(
   steps: readonly PlanStep[],
   /** Wraps each `data` step, given its position in the plan: the migrator tells the connection what the plan has changed up to there. */
   aroundData?: (index: number, run: () => Promise<void>) => Promise<void>,
+  /** Names the constraint of a `oneOf(column, values)` change; a plan that has one cannot run without it. */
+  listCheck?: ListCheck,
 ): Promise<void> {
   check(driver, steps);
   for (const [index, step] of steps.entries()) {
     if (step.kind === 'data' && aroundData) await aroundData(index, () => run(db, driver, step));
-    else await run(db, driver, step);
+    else await run(db, driver, step, listCheck && ((table, column) => listCheck(index, table, column)));
   }
 }
+
+/** The constraint behind a column's `oneOf()` list after the step with this index, and whether the column had a list before it; undefined for a column the migrations do not know. */
+export type ListCheck = (index: number, table: string, column: string) => { readonly name: string; readonly had: boolean } | undefined;
 
 /** Postgres cuts an identifier at 63 bytes without a word. */
 function fits(driver: Driver, name: string, what: string, hint = "Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead)."): void {
@@ -88,6 +93,15 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
     const parts = blueprintParts(step.blueprint);
     for (const spec of parts.columns) if (spec.oneOf) fits(driver, oneOfName(step.table, spec.name), 'check constraint name');
     for (const { name } of parts.checks) fits(driver, name, 'check constraint name');
+    if (step.kind === 'alter' && driver === 'sqlite' && parts.oneOfChanges.length) {
+      throw new SchemaError(
+        withCode(
+          'D18',
+          `schema.alter('${step.table}') cannot use oneOf('${parts.oneOfChanges[0]!.column}', …) on SQLite: SQLite cannot change a constraint of a table in place. ` +
+            'Add a new column with oneOf(), copy the values in a schema.data() step, drop the old column and rename the new one; or rebuild the table in raw SQL (schema.raw()). See docs/migrations.md#check-constraints.',
+        ),
+      );
+    }
     for (const { column } of parts.foreignKeys) fits(driver, foreignKeyName(step.table, column), 'foreign key name', 'Use a shorter table or column name.');
     if (step.kind === 'alter' && driver === 'sqlite' && parts.foreignKeys.length) {
       throw new SchemaError(
@@ -134,12 +148,12 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
   }
 }
 
-async function run(db: Kysely<any>, driver: Driver, step: PlanStep): Promise<void> {
+async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: (table: string, column: string) => { readonly name: string; readonly had: boolean } | undefined): Promise<void> {
   switch (step.kind) {
     case 'create':
       return create(db, driver, step.blueprint);
     case 'alter':
-      return alter(db, driver, step.blueprint);
+      return alter(db, driver, step.blueprint, listCheck);
     case 'drop':
       await (step.ifExists ? db.schema.dropTable(step.table).ifExists() : db.schema.dropTable(step.table)).execute();
       return;
@@ -169,7 +183,7 @@ async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pr
 }
 
 /** Every change runs as its own statement, because SQLite's ALTER TABLE takes one change at a time. */
-async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Promise<void> {
+async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, listCheck?: (table: string, column: string) => { readonly name: string; readonly had: boolean } | undefined): Promise<void> {
   const parts = blueprintParts(blueprint);
   const table = blueprint.table;
   for (const name of parts.dropIndexes) await db.schema.dropIndex(name).execute();
@@ -187,6 +201,18 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pro
       .alterTable(table)
       .addForeignKeyConstraint(foreignKeyName(table, column), [column], target, [referenced], (key) => (onDelete ? key.onDelete(onDelete) : key))
       .execute();
+  }
+  for (const { column, values } of parts.oneOfChanges) {
+    const found = listCheck?.(table, column);
+    if (!found) {
+      throw new SchemaError(withCode('D19', `schema.alter('${table}') gives "${column}" a list with oneOf(), but the migrations do not know which constraint holds it now. Run it through migrate, or name the constraint with dropCheck() and check().`));
+    }
+    // A column that gets its list in this very alter() has the constraint already.
+    const had = found.had || parts.columns.some((spec) => spec.name === column && spec.oneOf);
+    if (!had) fits(driver, found.name, 'check constraint name');
+    // One statement: no row is unchecked between the old list and the new one.
+    const drop = had ? sql`drop constraint ${sql.id(found.name)}, ` : sql``;
+    await sql`alter table ${sql.table(table)} ${drop}add constraint ${sql.id(found.name)} ${oneOfCondition(column, values)}`.execute(db);
   }
   for (const { name, sql: condition } of parts.checks) await db.schema.alterTable(table).addCheckConstraint(name, sql.raw(condition)).execute();
   await createIndexes(db, blueprint);

@@ -15,3 +15,14 @@ defineMigration({
       table.string('level').oneOf(1, 2);
     }),
 });
+
+defineMigration({
+  up: (schema) =>
+    schema.alter('memberships', (table) => {
+      table.oneOf('role', ['admin', 'member', 'owner']);
+      // @ts-expect-error — a value is a string
+      table.oneOf('level', [1, 2]);
+      // @ts-expect-error — the list is an array
+      table.oneOf('kind', 'a', 'b');
+    }),
+});
