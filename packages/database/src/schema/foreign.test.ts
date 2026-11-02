@@ -79,6 +79,7 @@ describe.each(drivers)('foreign() on %s', (driver: TestDriver) => {
     expect(() => refuse((t) => t.foreign('form_id').constrained('nowhere'))).toThrow(/D19.*nowhere/s);
     expect(() => refuse((t) => t.foreign('name').constrained('forms'))).toThrow(/D19.*different kinds/s);
     expect(() => refuse((t) => { t.foreign('form_id').constrained('forms'); t.dropColumn('form_id'); })).toThrow(/D19.*drops the column/s);
+    expect(() => refuse((t) => { t.foreign('form_id').constrained('forms'); t.retire('form_id'); })).toThrow(/D19.*retires the column/s);
     expect(() => refuse((t) => t.foreign('form_id').constrained('forms'))).not.toThrow();
   });
 });

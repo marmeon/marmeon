@@ -125,11 +125,55 @@ describe('collectRouteReferences', () => {
     expect(problems[0]).toContain('Did you mean one of user-profile.edit, user-profile.me, user-profile.show, user-profile.update?');
     expect(problems[1]).toContain('...args (route()) is not known at build time');
     expect(problems[2]).toContain('toast.action.route (<Link route>) is not known at build time');
-    expect(problems[2]).toContain('send its URL instead (router.url() on the server), not its name');
+    expect(problems[2]).toContain('send its URL instead (router.url() on the server) as href, not its name');
     expect(problems[3]).toBe(
       "<Link {...rest}> may carry a route name the build cannot see, so the browser's route manifest would lack it. " +
         'Write route="…" on the <Link> itself (after the spread), or pass a URL as href.',
     );
+  });
+
+  it('<Island href> is no sink: the server’s URL passes, and names no route to the browser', () => {
+    const { names, problems } = collect(`
+      import { Island } from '@marmeon/react';
+      export default function Panels({ panels, rest }: Props) {
+        return <>{panels.map((panel) => <Island key={panel.url} href={panel.url} fallback={null} />)}<Island {...rest} href="/dashboard/islands/members" /></>;
+      }
+    `);
+    expect(problems).toEqual([]);
+    expect(names).toEqual([]);
+  });
+
+  it('refuses a route name for <Island> that comes from props, and points to href', () => {
+    const { problems } = collect(`
+      import { Island } from '@marmeon/react';
+      export default function Panels({ panel }: Props) {
+        return <Island route={panel.route} />;
+      }
+    `);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('panel.route (<Island route>) is not known at build time');
+    expect(problems[0]).toContain('send its URL instead (router.url() on the server) as href, not its name');
+  });
+
+  it('suggests an href only where the element takes one: <Island> and <Link>, not <Form> or useAction()', () => {
+    const { problems } = collect(`
+      import { Form, Island, Link, useAction } from '@marmeon/react';
+      export default function Page({ panel }: Props) {
+        useAction(panel.action);
+        return <><Island route={panel.route} /><Link route={panel.route} /><Form route={panel.route} /></>;
+      }
+    `);
+    expect(problems).toHaveLength(4);
+    const withHref = 'send its URL instead (router.url() on the server) as href, not its name';
+    const withoutHref = 'send its URL instead (router.url() on the server), not its name';
+    expect(problems[0]).toContain('(useAction())');
+    expect(problems[0]).toContain(withoutHref);
+    expect(problems[1]).toContain('<Island route>');
+    expect(problems[1]).toContain(withHref);
+    expect(problems[2]).toContain('<Link route>');
+    expect(problems[2]).toContain(withHref);
+    expect(problems[3]).toContain('<Form route>');
+    expect(problems[3]).toContain(withoutHref);
   });
 
   it('reports where: each reference and problem has its offset', () => {

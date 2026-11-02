@@ -129,6 +129,7 @@ describe('islands resolved in-process while the page streams', async () => {
       return island('islands/Echo', {});
     });
     Route.get('/not-an-island', () => view('pages/Show', {}));
+    Route.get('/api/status', () => Response.json({ message: 'internal status text', users: 12 }));
   });
   /** Gives the deferred thunk of `/page/deferred` the request's lifecycle (to see when it runs). */
   class ExposesLifecycle {
@@ -186,6 +187,34 @@ describe('islands resolved in-process while the page streams', async () => {
     expect(results['/not-an-island']).toMatchObject({ status: 'exception', failure: { status: 404 } });
     expect(results['/islands/missing']).toMatchObject({ status: 'exception', failure: { status: 404 } });
     expect(html).not.toContain('/login');
+  });
+
+  it.each([
+    'https://evil.example/islands/echo',
+    '//evil.example/islands/echo',
+    '/\\evil.example/islands/echo',
+    '/\t/evil.example',
+    '/a/..//evil.example/islands/echo',
+    'javascript:alert(1)',
+    'islands/echo',
+    // Of this very site, but not a path: an island is named by its path.
+    'http://localhost/islands/echo',
+  ])('never runs a route for the island URL %j — its error, and no middleware', async (url) => {
+    passed.length = 0;
+    logged.length = 0;
+    const response = await app.request(`/page?islands=${encodeURIComponent(url)}`);
+    expect(response.status).toBe(200);
+    expect(islandsOf(await response.text())[url]).toEqual({ status: 'exception', failure: {} });
+    expect(passed).toEqual([]);
+    expect(logged.some((message) => /^An island (comes from this site|is the path of a route of this site)/.test(message))).toBe(true);
+  });
+
+  it('an href naming a page or a JSON endpoint is no island: its error, with nothing of what the route answered', async () => {
+    const html = await (await page(['/not-an-island', '/api/status'])).text();
+    expect(islandsOf(html)['/not-an-island']).toEqual({ status: 'exception', failure: { status: 404, message: expect.any(String) } });
+    expect(islandsOf(html)['/api/status']).toEqual({ status: 'exception', failure: { status: 404 } });
+    expect(html).not.toContain('internal status text');
+    expect(html).not.toContain('"users"');
   });
 
   it('leaves an island that answers 409 (the document is out of date) to the browser — its request reloads the page', async () => {

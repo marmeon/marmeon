@@ -64,6 +64,7 @@ import type { ShowLoginController } from '../modules/auth/controllers/ShowLoginC
 import type { ShowMemberStatsController } from '../modules/dashboard/controllers/ShowMemberStatsController.ts';
 import type { ShowMyActivityController } from '../modules/dashboard/controllers/ShowMyActivityController.ts';
 import type { ShowNotificationsController } from '../modules/notifications/controllers/ShowNotificationsController.ts';
+import type { ShowPanelsController } from '../modules/dashboard/controllers/ShowPanelsController.ts';
 import type { ShowPasskeysController } from '../modules/auth/controllers/ShowPasskeysController.ts';
 import type { ShowRecentSignInsController } from '../modules/dashboard/controllers/ShowRecentSignInsController.ts';
 import type { ShowRegisterController } from '../modules/auth/controllers/ShowRegisterController.ts';
@@ -152,6 +153,7 @@ declare module '@marmeon/router' {
     'bookmarks.update': { method: 'put'; path: '/bookmarks/:bookmark'; controller: typeof UpdateBookmarkController };
     'dashboard.activity': { method: 'get'; path: '/dashboard/islands/activity'; controller: typeof ShowMyActivityController };
     'dashboard.members': { method: 'get'; path: '/dashboard/islands/members'; controller: typeof ShowMemberStatsController };
+    'dashboard.panels': { method: 'get'; path: '/dashboard/panels'; controller: typeof ShowPanelsController };
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
@@ -208,6 +210,7 @@ declare module '@marmeon/http/page' {
     'bookmarks/ListBookmarks': true;
     'dashboard/MemberStats': true;
     'dashboard/MyActivity': true;
+    'dashboard/Panels': true;
     'dashboard/RecentSignIns': true;
     'dashboard/Show': true;
     'lab/BrowserOnly': true;

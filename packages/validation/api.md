@@ -121,6 +121,7 @@ export type ShapeOutput<S extends Shape> = Fields<{
 // StringRule
 export declare class StringRule extends Rule<string, string> {
     trim(): this;
+    normalize(clean: (value: string) => string): this;
     lowercase(): this;
     required(): this;
     min(min: number): this;

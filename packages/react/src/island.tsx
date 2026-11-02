@@ -16,6 +16,7 @@ import type {
   RegionObject,
 } from '@marmeon/http/protocol';
 import { scriptJson } from '@marmeon/http/client/adapter';
+import { sitePath } from '@marmeon/http/protocol';
 import {
   createContext,
   createElement,
@@ -44,15 +45,8 @@ import { IslandScopeContext } from './island-scope.ts';
 /** The path parameters of the island's route: required when its path has required ones. */
 type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: BrowserParamsOf<N> } : { params: BrowserParamsOf<N> };
 
-/**
- * `<Island>`'s props for route `N` — checked against `bootstrap/routes.ts`. (The props of the island's *view* are
- * `IslandProps<Controller>` of @marmeon/http, like `PageProps`.)
- */
-export type IslandElementProps<N extends string = string> = {
-  /** An island route (its controller answers `this.island(…)`) — a page route is a compile error. */
-  route: CheckIslandRouteName<N>;
-  /** Its first query, typed by its query schema — `useIsland().reload({ query })` changes it later. */
-  query?: QueryParams<N>;
+/** What every `<Island>` takes, whether the route is written out or its URL comes from the server. */
+interface IslandOptions {
   /** Shown until the island is there. */
   fallback?: ReactNode;
   /**
@@ -74,7 +68,33 @@ export type IslandElementProps<N extends string = string> = {
   as?: string;
   className?: string;
   id?: string;
-} & ParamsProp<N>;
+}
+
+/**
+ * `<Island>`'s props: a checked `route` for route `N` (against `bootstrap/routes.ts`), or the `href` of an island route the
+ * server chose. (The props of the island's *view* are `IslandProps<Controller>` of @marmeon/http, like `PageProps`.)
+ */
+export type IslandElementProps<N extends string = string> =
+  | (IslandOptions & {
+      /** An island route (its controller answers `this.island(…)`) — a page route is a compile error. */
+      route: CheckIslandRouteName<N>;
+      /** Its first query, typed by its query schema — `useIsland().reload({ query })` changes it later. */
+      query?: QueryParams<N>;
+      href?: never;
+    } & ParamsProp<N>)
+  | (IslandOptions & {
+      /**
+       * The URL of an island route the server chose: a path of this site, query included, built with `router.url()` from a
+       * route name the server picks — never from the request or from stored user content, since the route behind it runs for
+       * the visitor before the server finds out it is no island (a 404). A URL that is no path of this site is an error in
+       * development and an island in its error state in production, before any request.
+       * See docs/deferred-props.md#islands-the-server-chooses.
+       */
+      href: string;
+      route?: never;
+      params?: never;
+      query?: never;
+    });
 
 /** The data of the island around a component — what `useIsland` reads. */
 interface IslandValue {
@@ -101,23 +121,53 @@ const noReload = () => Promise.resolve();
 export function Island<const N extends BrowserRouteNameInput>(props: IslandElementProps<N>) {
   const manifest = useContext(RoutesContext);
   const page = useContext(RouterContext)?.page;
-  const { route, params, query, fallback = null, load = 'eager', as = 'div', className, id } = props as IslandElementProps & {
+  const { route, href, params, query, ...options } = props as IslandOptions & {
+    route?: string;
+    href?: string;
     params?: Record<string, string | number>;
+    query?: QueryParams<string>;
   };
-  const url = resolveRoute(manifest, route, { params, query, pageLocale: page?.locale }).url;
+  if (route !== undefined) {
+    return <LoadedIsland {...options} name={route} url={resolveRoute(manifest, route, { params, query, pageLocale: page?.locale }).url} />;
+  }
+  // From the server's data: a path of this site or nothing — before a request or `ssr.island()` can exist.
+  const path = sitePath(href);
+  if (path === undefined) {
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+      throw new Error(`[marmeon:R21] <Island href=${JSON.stringify(href)}> takes the URL of an island route of this site, a path such as "/dashboard/islands/members" built with router.url() on the server.`);
+    }
+    return <RefusedIsland {...options} />;
+  }
+  return <LoadedIsland {...options} name={path.split('?')[0]!} url={path} />;
+}
+
+type NamedIslandProps = IslandOptions & { name: string; url: string };
+
+/** An `href` that was no path of this site (production): the island's error state, and no request. */
+function RefusedIsland({ error, as = 'div', className, id }: IslandOptions) {
+  const content = typeof error === 'function' ? error(noReload) : (error ?? <p role="alert" data-marmeon-failure="island">This part could not be loaded.</p>);
+  return (
+    <IslandFrame as={as} name="refused" className={className} id={id} snapshot={{ status: 'exception', region: undefined, pending: false, failure: { status: undefined, message: undefined } }}>
+      {content}
+    </IslandFrame>
+  );
+}
+
+function LoadedIsland({ name, url, ...props }: NamedIslandProps) {
+  const { fallback = null, load = 'eager', as = 'div', className, id } = props;
   const scriptId = `marmeon-island-${useId()}`;
   // Until its part has rendered in the browser (hydrated), the element stays the same: a page update reaching a boundary
   // that is still streaming would make React render it in the browser instead — and load the island again.
   const [shown, setShown] = useState(false);
   const onShown = useCallback(() => setShown(true), []);
-  const body = <IslandBody {...(props as IslandElementProps)} url={url} scriptId={scriptId} streamed={load !== 'visible'} onShown={onShown} />;
+  const body = <IslandBody {...props} name={name} url={url} scriptId={scriptId} streamed={load !== 'visible'} onShown={onShown} />;
   const boundary =
     load === 'visible' ? (
       body
     ) : (
       <Suspense
         fallback={
-          <IslandFrame as={as} route={route} className={className} id={id} snapshot={LOADING}>
+          <IslandFrame as={as} name={name} className={className} id={id} snapshot={LOADING}>
             {fallback}
           </IslandFrame>
         }
@@ -130,7 +180,7 @@ export function Island<const N extends BrowserRouteNameInput>(props: IslandEleme
   return shown ? boundary : pinned;
 }
 
-type BodyProps = IslandElementProps & { url: string; scriptId: string; streamed: boolean; onShown: () => void };
+type BodyProps = NamedIslandProps & { scriptId: string; streamed: boolean; onShown: () => void };
 
 /** On the server: the island as the page's request resolved it. In the browser: its region. */
 function IslandBody(props: BodyProps) {
@@ -243,10 +293,10 @@ function parseResult(text: string | undefined): RegionResult | undefined {
   return typeof result?.status === 'string' ? result : undefined;
 }
 
-type ContentProps = IslandElementProps & { snapshot: RegionSnapshot; value: IslandValue | null; frameRef?: RefObject<HTMLElement | null> };
+type ContentProps = IslandOptions & { name: string; snapshot: RegionSnapshot; value: IslandValue | null; frameRef?: RefObject<HTMLElement | null> };
 
 /** What an island shows for its snapshot — the same on the server and in the browser, so it hydrates. */
-function IslandContent({ route, fallback = null, unauthorized = null, error, as = 'div', className, id, snapshot, value, frameRef }: ContentProps) {
+function IslandContent({ name, fallback = null, unauthorized = null, error, as = 'div', className, id, snapshot, value, frameRef }: ContentProps) {
   const { resolve } = useRouterContext();
   const retry = () => void value?.reload();
   const failed = typeof error === 'function' ? error(retry) : (error ?? <IslandFailure failure={snapshot.failure} retry={retry} />);
@@ -273,7 +323,7 @@ function IslandContent({ route, fallback = null, unauthorized = null, error, as 
     content = fallback;
   }
   return (
-    <IslandFrame as={as} route={route} className={className} id={id} snapshot={snapshot} frameRef={frameRef}>
+    <IslandFrame as={as} name={name} className={className} id={id} snapshot={snapshot} frameRef={frameRef}>
       {content}
     </IslandFrame>
   );
@@ -281,7 +331,7 @@ function IslandContent({ route, fallback = null, unauthorized = null, error, as 
 
 interface FrameProps {
   as: string;
-  route: string;
+  name: string;
   className: string | undefined;
   id: string | undefined;
   snapshot: RegionSnapshot;
@@ -290,14 +340,14 @@ interface FrameProps {
 }
 
 /** The element around an island — `data-island`, `data-status`, and `aria-busy` while it loads. */
-function IslandFrame({ as, route, className, id, snapshot, frameRef, children }: FrameProps) {
+function IslandFrame({ as, name, className, id, snapshot, frameRef, children }: FrameProps) {
   return createElement(
     as,
     {
       ref: frameRef,
       className,
       id,
-      'data-island': route,
+      'data-island': name,
       'data-status': snapshot.status,
       'aria-busy': snapshot.pending || snapshot.status === 'loading' ? true : undefined,
     },

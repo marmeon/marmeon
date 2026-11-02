@@ -11,6 +11,8 @@ export interface RuleStep {
   readonly async: boolean;
   /** It depends on the validation's request or on whether it is live: never built once for all. */
   readonly contextual: boolean;
+  /** It only cleans the text (`trim()`, `lowercase()`, `normalize()`): `normalize()` may still follow it, never a check. */
+  readonly cleans?: boolean;
 }
 
 /** How a rule is built (internal — the shape of a rule, not its API). */
@@ -198,6 +200,11 @@ export function step(item: () => Engine): RuleStep {
   return { build: () => (built ??= item()), async: false, contextual: false };
 }
 
+/** A step that only cleans the text — the one kind `normalize()` may follow. */
+function cleaning(item: RuleStep): RuleStep {
+  return { ...item, cleans: true };
+}
+
 /** What `.custom()` hands a check besides the value. */
 export interface CustomContext {
   /** The request's `resolve`, `ctx` and whether it is live — undefined outside a request (a config, a job). */
@@ -336,12 +343,32 @@ function sizeGate(rule: 'min' | 'max' | 'between', min: number | undefined, max:
 export class StringRule extends Rule<string, string> {
   /** Takes the whitespace off both ends first — before the checks after it. */
   trim(): this {
-    return this.with(step(engine.trim));
+    return this.with(cleaning(step(engine.trim)));
+  }
+
+  /**
+   * Cleans the text with `clean` (a synchronous function, string in and string out) before the checks after it: they, the output
+   * and the database rules see the cleaned text. `r.string().normalize(clean).trim().required().max(120)`. Unlike `transform()`, the rule
+   * stays a string rule. It is refused after a check (a `TypeError`; `r.email()` and `r.url()` carry one): only `trim()`, `lowercase()`
+   * and another `normalize()` may come before it, so no check, `unique()` and `exists()` included, ever judges text that is
+   * not the text stored. A result with a NUL character is refused like one that came in. A function that returns no string is a
+   * `TypeError` of the app. A name of a normalization form (`'NFC'`) is no function: `normalize((value) => value.normalize('NFC'))`.
+   * An `async` function belongs in `transform()`. See `docs/validation.md#cleaning-a-string-before-its-checks`.
+   */
+  normalize(clean: (value: string) => string): this {
+    if (typeof clean !== 'function') {
+      throw new TypeError(`normalize() takes a function (value: string) => string, got ${typeof clean === 'string' ? `the string '${clean}'` : typeof clean}. For a Unicode form: normalize((value) => value.normalize('NFC')).`);
+    }
+    if (isAsyncFunction(clean)) throw new TypeError('normalize() takes a synchronous function; an async one belongs in transform().');
+    if (this['~rule'].steps.some((item) => item.cleans !== true)) {
+      throw new TypeError('normalize() goes before the checks, since they must see the cleaned text: r.string().normalize(fn).email(), not r.email().normalize(fn). Only trim(), lowercase() and another normalize() may come before it.');
+    }
+    return this.with(cleaning(step(() => engine.normalize(clean)))).with(cleaning(step(engine.withoutNul)));
   }
 
   /** Lower case — for what is compared case-insensitively, like an e-mail address. */
   lowercase(): this {
-    return this.with(step(engine.toLowerCase));
+    return this.with(cleaning(step(engine.toLowerCase)));
   }
 
   /** Not empty (put it after `.trim()`: whitespace is no text). */

@@ -16,8 +16,9 @@ import { MemberPolicy } from '../policies/MemberPolicy.ts';
  */
 export const MembersTable = defineTable({
   name: 'members',
-  query: (db, _ctx: TableContext<Authenticated>) =>
-    db.selectFrom('users').withCount('profile_links', { as: 'links' }).where('users.email_verified_at', 'is not', null),
+  // `resolve` is the request's, as in the checks: the app's clock says now, so a test that travels in time moves the table.
+  query: (db, _ctx: TableContext<Authenticated>, resolve) =>
+    db.selectFrom('users').withCount('profile_links', { as: 'links' }).where('users.email_verified_at', '<=', new Date(resolve(Clock).now()).toISOString()),
   key: 'users.id',
   columns: {
     // Headings in the request's language, in the props and in the export.

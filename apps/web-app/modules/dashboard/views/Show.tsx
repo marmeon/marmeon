@@ -36,6 +36,8 @@ export default function Show(_props: Props) {
       <p>
         <Link route="user-profile.people">{t('people')}</Link>
         {' · '}
+        <Link route="dashboard.panels">{t('panels.title')}</Link>
+        {' · '}
         {/* By URL, not by route name: a name client code writes goes into the route manifest of the first download. */}
         <Link href="/members">{t('members_table')}</Link>
       </p>

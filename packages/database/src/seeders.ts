@@ -5,11 +5,26 @@ import { Connections } from './connections.ts';
 import { Factories, type FactoryDefinition, type PendingFactory } from './factories.ts';
 import type { Tables } from './types.ts';
 
+/** The lines a seeder can print: a subset of the console's `Output`, declared here because this package does not depend on the CLI. */
+export interface SeedOutput {
+  line(text?: string): void;
+  info(text: string): void;
+  warn(text: string): void;
+  table(header: readonly string[], rows: readonly (readonly string[])[]): void;
+}
+
+const silent: SeedOutput = Object.freeze({ line() {}, info() {}, warn() {}, table() {} });
+
 /** What a seeder's `handle` gets. */
 export interface SeedContext {
   /** Rows from a factory: `await factory(UserFactory).count(10).create()`. */
   factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
   readonly db: Connection<Tables>;
+  /**
+   * Lines for the console of `marmeon db:seed` and `migrate:fresh --seed`; silent everywhere else. Absent when a test builds the context itself, so write `output?.info(…)`.
+   * See docs/seeding.md#writing-seeders.
+   */
+  readonly output?: SeedOutput;
 }
 
 /**
@@ -55,10 +70,11 @@ export class Seeding {
     return selected;
   }
 
-  async run(filter: { module?: string; seeder?: string } = {}, onRun?: (run: { module: string; seeder: string; ms: number }) => void): Promise<void> {
+  async run(filter: { module?: string; seeder?: string } = {}, onRun?: (run: { module: string; seeder: string; ms: number }) => void, output: SeedOutput = silent): Promise<void> {
     const context: SeedContext = {
       factory: (definition) => this.#factories.for(definition),
       db: this.#connections.get(),
+      output,
     };
     for (const { module, seeder } of this.seeders(filter)) {
       const started = performance.now();

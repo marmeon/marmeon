@@ -585,6 +585,14 @@ export type SecretReference<DB, TB extends keyof DB> = {
 export interface SeedContext {
     factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
     readonly db: Connection<Tables>;
+    readonly output?: SeedOutput;
+}
+// SeedOutput
+export interface SeedOutput {
+    line(text?: string): void;
+    info(text: string): void;
+    warn(text: string): void;
+    table(header: readonly string[], rows: readonly (readonly string[])[]): void;
 }
 // Seeder
 export interface Seeder {

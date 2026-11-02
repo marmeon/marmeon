@@ -392,6 +392,9 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
 
   for (const { column, references } of parts.foreignKeys) {
     live(column, '');
+    if (parts.retirements.includes(column)) {
+      throw conflict(`${where} ties "${name}.${column}" to a table with foreign() and retires the column in the same alter(): the constraint would exist in the database, and Marmeon would not know the relation. Tie the column in an alter() of its own, or do not retire it.`);
+    }
     if (foreignKeys.some((key) => key.column === column)) {
       throw conflict(`${where} ties "${name}.${column}" to a table with foreign(), but a foreign key of an earlier migration holds it already.`);
     }

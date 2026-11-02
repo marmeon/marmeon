@@ -37,9 +37,15 @@ export class ShowValidationLabController extends LabController {
   }
 }
 
+/** The characters that change the direction of the text around them. */
+function withoutBidiControls(text: string): string {
+  return text.replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+}
+
 /** What both of the lab's forms take — the rules of a value; the database's ones come per form. */
 const fields = {
-  name: r.string().trim().required().max(40),
+  // Bidirectional control characters (they reorder the text on screen) come off first: a name of nothing else is "required", and `max()` counts what is left.
+  name: r.string().normalize(withoutBidiControls).trim().required().max(40),
   email: r.string().trim().lowercase().required().email().max(255),
   website: r.url().nullable(),
   age: r.integer().between(1, 150).optional(),

@@ -22,6 +22,10 @@ const en = {
     newest: 'Newest:',
     hidden: 'Only administrators with a confirmed address see the member numbers.',
   },
+  panels: {
+    title: 'Panels',
+    intro: 'The server chose these panels and sent the URL of each. The page loads them with Island href, and the route of each island decides who sees it.',
+  },
   people: 'All people',
   members_table: 'Members table',
 } as const;
