@@ -363,9 +363,10 @@ queue name that ends in `:delayed` or `:reserved` (`a:delayed` would be the dela
 `queue:size` fail with an error that names the queue. Pick another name, such as `a-delayed`.
 
 Jobs that already wait under such a name (`x:delayed`) are no longer taken, and the queue is no longer listed. To move them, stop the
-workers, then in Redis rename `<prefix>queues:x:delayed` to `<prefix>queues:x-delayed` (and its `:delayed` and `:reserved` keys,
-`<prefix>queues:x:delayed:delayed` and `…:reserved`, if they exist), run `SREM <prefix>queues x:delayed` and `SADD <prefix>queues x-delayed`, and
-start the workers. A connection whose default queue (`QUEUE_REDIS_QUEUE`) has such a name stops the app at its start.
+workers and pick a name no queue uses yet, such as `x-delayed`. Then in Redis move `<prefix>queues:x:delayed` to `<prefix>queues:x-delayed`
+with `RENAMENX` (and its `:delayed` and `:reserved` keys, `<prefix>queues:x:delayed:delayed` and `…:reserved`, if they exist): `RENAMENX`
+refuses when the target exists, where `RENAME` would overwrite it and lose its jobs. Run `SREM <prefix>queues x:delayed` and
+`SADD <prefix>queues x-delayed`, and start the workers. A connection whose default queue (`QUEUE_REDIS_QUEUE`) has such a name stops the app at its start.
 
 The `database` driver needs its tables, `jobs` and `failed_jobs`. A new app has them. Otherwise write the migration and run it:
 
