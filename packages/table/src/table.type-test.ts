@@ -817,3 +817,19 @@ void (async () => {
   const wrong: 'pdf' = listed[0]!.name;
   void wrong;
 })();
+
+// The base query gets the request's `resolve` as its third argument: a token gives its service, a wrong token is refused.
+const Resolving = defineTable({
+  name: 'resolving',
+  query: (db, ctx: TableContext<Authenticated>, resolve) => db.selectFrom('members').where('team_id', '=', Number(ctx.user.id) + resolve(Clock).now()),
+  key: 'id',
+  columns: { name: column('name') },
+});
+expectTypeOf<ContextOfTable<typeof Resolving>>().toEqualTypeOf<TableContext<Authenticated>>();
+defineTable({
+  name: 'wrong-token',
+  // @ts-expect-error — a token is no name: `'Clock'` is not a class.
+  query: (db, _ctx: TableContext, resolve) => db.selectFrom('members').where('team_id', '=', resolve('Clock')),
+  key: 'id',
+  columns: { name: column('name') },
+});
