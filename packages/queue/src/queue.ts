@@ -43,7 +43,10 @@ export interface Queue {
    * process at once); a rollback of a transaction around the dispatch frees it again.
    */
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
-  /** Queues several jobs at once: `bulk([[SendWelcomeMailJob, { userId: 1 }], [SendWelcomeMailJob, { userId: 2 }]])`. Returns their ids. */
+  /**
+   * Queues several jobs one after the other, after checking every payload, and returns their ids: no batch write and no unit.
+   * See `docs/queues.md#dispatching-jobs` for the cost per driver, transactions and a failure midway.
+   */
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
    * Queues jobs to run one after the other: the first now, each next one only once the one before succeeded —

@@ -107,6 +107,11 @@ and Compose's `init: true` are not needed.
 | worker | `marmeon queue:work` | Takes no new job. The running one gets `--stop-timeout` seconds, 10 by default, then it goes back to the queue. |
 | scheduler | `marmeon schedule:work` | Starts no new run. Runs still going get `--stop-timeout` seconds, 30 by default. |
 
+All three processes read `NODE_ENV`, but only `start` (and `serve`) refuses a `development` or `test` that comes from `.env` alone. `queue:work` and
+`schedule:work` run with it, and warn only about `development`. Outside the image, which sets `NODE_ENV=production`, set
+`NODE_ENV=production` in the environment of the worker and the scheduler too, not only of the web process. The
+[configuration](configuration.md#where-node_env-comes-from) page explains where it comes from.
+
 Run one role per container, or per systemd unit: the same image, another command. The supervisor restarts each of them when it
 ends. A worker ends with
 exit code 70 on purpose when a job ignores its timeout, because Node cannot cancel a running promise, and the supervisor brings
@@ -167,8 +172,8 @@ the server. TypeScript, Vite and pnpm stay in the build stage.
 
 > [!WARNING]
 > Never deploy a developer's `.env`. Its `NODE_ENV=development` would turn on the error page with source code, the devtools and
-> the other development tools. `marmeon start` refuses to run when `development` or `test` comes from `.env` alone; the
-> worker and the scheduler log a loud warning but still start.
+> the other development tools. `marmeon start` refuses to run when `development` or `test` comes from `.env` alone. The
+> worker and the scheduler still start: they log a loud warning for `development` and none for `test`.
 
 ### Storage and a read-only file system
 
