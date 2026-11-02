@@ -1,5 +1,6 @@
 // The one Standard Schema interface of the framework lives in @marmeon/core (types only — the router loads no code of it).
 import type { InferInput, InferOutput, StandardIssue, StandardSchemaV1 } from '@marmeon/core';
+import { buildWithNew } from './default-resolver.ts';
 import { HttpError, type TextKey } from './errors.ts';
 import { issueOfFields } from './live-validation.ts';
 import type { ClassResolver, EmptyObject, HttpContext, Merge } from './types.ts';
@@ -408,7 +409,7 @@ export function unauthorized(): HttpError {
 }
 
 /** The request's `authorize` — a 403 when it says no. (What {@link validateRequest} runs first.) */
-export async function authorizeRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<void> {
+export async function authorizeRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = buildWithNew): Promise<void> {
   // Only `true` lets a request on: a policy response, a Result or any other truthy value is a refusal.
   if (definition.authorize && (await definition.authorize(ctx, resolve)) !== true) {
     throw unauthorized();
@@ -431,7 +432,7 @@ export async function buildSchema(definition: RequestDefinition, ctx: HttpContex
 export async function validateRequest(
   definition: RequestDefinition,
   ctx: HttpContext,
-  resolve: ClassResolver = (Class) => new Class(),
+  resolve: ClassResolver = buildWithNew,
   { only, hooks = [], authorized = false }: ValidateOptions = {},
 ): Promise<ValidatedRequest> {
   if (!authorized) await authorizeRequest(definition, ctx, resolve);

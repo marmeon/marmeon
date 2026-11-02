@@ -204,7 +204,8 @@ Queue a mail whenever a request sends it:
 `mailer.queue()` resolves with the composed message only: no job id, no `messageId`, and no word when the mail is sent or fails for good.
 A mail whose outcome the app keeps, such as a delivery log, is sent by a job of its own that calls `mailer.send()`. Its payload is the id of a log row that is
 written with the request's change, so a rollback takes the row with it. The job sets the row to `sent` with the `messageId`, and its
-`failed()` closes the log (`failed`). A job runs at least once, so it skips the send when the row is already `sent`; a crash between the send and the update can still send twice, as [When a job fails for good](queues.md#when-a-job-fails-for-good) shows.
+`failed()` tries to close the log (`failed`). A worker that dies first, or a `failed()` that throws or times out, leaves the row open,
+so look for rows that stay unsent. A job runs at least once, so it skips the send when the row is already `sent`; a crash between the send and the update can still send twice, as [When a job fails for good](queues.md#when-a-job-fails-for-good) shows.
 
 A token that must stay the same over the mail's retries, such as a password reset token, is made before the mail is queued. The
 starter kit queues a job that makes the token and then queues the mail, so the request's answer takes the same time whether the

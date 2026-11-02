@@ -280,6 +280,8 @@ counting every row. The [pagination](pagination.md) page explains both.
 authorize: can(MemberPolicy, 'viewAny'),
 ```
 
+Only `true` lets the user in. Any other value, a truthy one such as `1` or an object included, is a 403.
+
 The table's endpoints hang on the page's route, so they carry everything the page checks: its middleware, the registrar's
 `authorize`, and the `authorize` of the page controller's request. A user the page refuses is refused on every endpoint, too. This
 `authorize` is for what the table itself requires, on every page that shows it.
@@ -432,6 +434,9 @@ names) stop the start with an error that names both paths. A page's own paramete
 - `search` is `null` when no visible column is searchable.
 - `state` is the table's state in the URL, without defaults.
 - Actions, bulk actions and exports the user may not use are not in the props at all.
+- `filters` stays an array in the definition's order, and each entry carries the kind its definition gave it: the entry named
+  `locale` is a `select` with `options`, the one named `joined` a `dateRange` without. Read one by name with `table.filter('locale')`
+  (see [In the browser](#in-the-browser)).
 
 **The kinds are open.** `filters[].type` (now `select`, `has` and `dateRange`), `page.type` (`offset` and `cursor`) and `exports[].format`
 (`csv`) grow: a new kind is a minor release, never a breaking change. Code that branches on one of them needs a `default` branch
@@ -643,6 +648,12 @@ A category of another event is a 422, and nothing is written. An action can also
 An action request, the kind `useTable()` sends, and an API client get JSON: `{ done, skipped, missing }`, and `data` with what the
 handler returned. The answer is never cached. A form posted without JavaScript, or a page visit, goes back to the page with a 303.
 A handler that returns a redirect, a JSON result or a `Response` answers for itself.
+
+In the browser `data` has the type of what the action's handler returns, as JSON: a `Date` in it is a `string`, a promise is awaited.
+`outcome.data.data` of `table.run('removeLinks', row)` is `{ removed: number } | undefined`, with no cast. A handler that returns nothing
+gives no `data`. An app that cast the answer can delete the cast.
+A handler that answers for itself is typed as what the browser gets: for `json({ … })` `outcome.data` is that body, as JSON and without
+`done`, `skipped` or `missing`; for a `Response` it is `unknown`; a redirect arrives as `kind: 'redirect'` and has no data.
 
 ## Exports
 
@@ -900,6 +911,10 @@ function FilterField({ filter }: { filter: TableFilter }) {
 }
 ```
 
+- **A filter by name.** `table.filter('locale')` returns the entry of that filter, with the fields of the kind its definition gave
+  it, so `table.filter('locale')?.options` needs no check of `type`. It returns `undefined` for a filter the user may not use,
+  since that filter is not in the props. A name the table does not have is a compile error. `table.filters` is still the whole
+  array, each entry told apart by `name`, and `table.filter('locale', 'de')` with a value filters.
 - **Sorting, filtering, searching and paging** are visits of the page's URL with the props' keys and the columns' aliases:
   `table.sort('joined')`, `table.filter('locale', 'de')`, `table.filterBy({ … })`, `table.setSearch('ada')`, `table.goTo(2)`,
   `table.perPage(25)` and `table.next()` for a cursor. Only the table's prop reloads, and the server parses the state again.

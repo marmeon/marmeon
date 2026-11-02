@@ -127,7 +127,7 @@ export interface CursorPage {
     readonly nextCursor: string | null;
 }
 // DataTable
-export interface DataTable<Row extends object = any, Ctx = any, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, QV extends object = TableQueryValues, S extends string = C, AI extends object = {}, BI extends object = {}> {
+export interface DataTable<Row extends object = any, Ctx = any, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, QV extends object = TableQueryValues, S extends string = C, AI extends object = {}, BI extends object = {}, FK extends object = {}, AR extends object = {}, BR extends object = {}> {
     readonly [TABLE_TYPES]?: {
         readonly row: Row;
         readonly ctx: Ctx;
@@ -139,6 +139,9 @@ export interface DataTable<Row extends object = any, Ctx = any, C extends string
         readonly exports: E;
         readonly actionInputs: AI;
         readonly bulkInputs: BI;
+        readonly filterKinds: FK;
+        readonly actionResults: AR;
+        readonly bulkResults: BR;
     };
     readonly query: TableQuerySchema<QV>;
     endpoints<const O extends TableEndpointsOptions = {}>(options?: O & KnownOptions<O>): TableEndpoints<Ctx, O>;
@@ -240,10 +243,14 @@ export interface TableColumn<C extends string = string> {
 // TableContext
 export type TableContext<TState extends object = {}, TParams extends object = {}> = Omit<HttpContext<TState, TParams>, 'query'>;
 // TableData
-export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C, AI extends object = {}, BI extends object = {}> {
+export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C, AI extends object = {}, BI extends object = {}, FK extends object = {}, AR extends object = {}, BR extends object = {}> {
     readonly '~inputs'?: {
         readonly actions: AI;
         readonly bulk: BI;
+    };
+    readonly '~results'?: {
+        readonly actions: AR;
+        readonly bulk: BR;
     };
     readonly name: string;
     readonly key: string;
@@ -260,7 +267,7 @@ export interface TableData<R extends object = Record<string, unknown>, C extends
     readonly search: {
         readonly value: string;
     } | null;
-    readonly filters: readonly TableFilter<F>[];
+    readonly filters: readonly TableFilter<F, FK>[];
     readonly page: OffsetPage | CursorPage;
     readonly query: TableQueryKeys;
     readonly state: Readonly<Record<string, string>>;
@@ -312,26 +319,9 @@ export interface TableExportInfo {
     };
 }
 // TableFilter
-export type TableFilter<F extends string = string> = {
-    readonly name: F;
-    readonly type: 'select';
-    readonly key: string;
-    readonly options: readonly string[];
-    readonly labels: readonly string[];
-    readonly value: string | null;
-} | {
-    readonly name: F;
-    readonly type: 'has';
-    readonly key: string;
-    readonly options: readonly string[];
-    readonly labels: readonly string[];
-    readonly value: string | null;
-} | {
-    readonly name: F;
-    readonly type: 'dateRange';
-    readonly key: string;
-    readonly value: string | null;
-};
+export type TableFilter<F extends string = string, FK extends object = {}> = string extends F ? SelectFilter<F> | HasFilter<F> | DateRangeFilter<F> : {
+    [N in F]: FilterEntry<N, N extends keyof FK ? FK[N] : TableFilterKind>;
+}[F];
 // TableInput
 export interface TableInput<Q extends TableQuery, Cols, K extends string, Filters, Sort extends string, Actions, Bulk, Exports, P extends string = string, Pg extends TablePagination = TablePagination> {
     readonly name: string;
@@ -358,7 +348,7 @@ export interface TablePagination {
     readonly cursor?: boolean;
 }
 // TableProps
-export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI> ? TableData<Row, C, F, A, B, E, S, AI, BI> : never;
+export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI, infer FK, infer AR, infer BR> ? TableData<Row, C, F, A, B, E, S, AI, BI, FK, AR, BR> : never;
 // TableQuery
 export type TableQuery = {
     bivariance(db: never, ctx: any): SelectQuery<any, any, any>;
@@ -427,20 +417,52 @@ export declare function writeCsv(rows: Iterable<readonly unknown[]>, options?: {
 ```ts
 // ActionInputSource
 export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S | ((resolve: ClassResolver, ctx: any) => S | Promise<S>);
+// AnswerOf
+type AnswerOf<H> = H extends abstract new (...args: any[]) => {
+    handle(...args: any[]): infer R;
+} ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult> extends infer Rest ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true> : never : unknown;
+// AnswersOf
+type AnswersOf<Actions> = {
+    [N in keyof Actions & string]: Actions[N] extends {
+        readonly handler: infer H;
+    } ? AnswerOf<H> : unknown;
+};
 // CheckKeyColumn
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string, O = {}> = string extends K ? ColumnReference<DB, TB> : [KeyProblem<DB, TB, K, O>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : KeyProblem<DB, TB, K, O>;
 // ColumnProblem
 type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends ColumnReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
 // CtxOf
 type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
+// DateRangeFilter
+interface DateRangeFilter<N extends string = string> {
+    readonly name: N;
+    readonly type: 'dateRange';
+    readonly key: string;
+    readonly value: string | null;
+}
 // DbOf
 type DbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, any, any> ? DB : never;
+// FilterEntry
+type FilterEntry<N extends string, K> = K extends 'select' ? SelectFilter<N> : K extends 'has' ? HasFilter<N> : K extends 'dateRange' ? DateRangeFilter<N> : never;
+// FilterKinds
+type FilterKinds<Filters> = {
+    [N in keyof Filters & string]: Filters[N] extends Filter<string, infer T> ? T : 'select' | 'has' | 'dateRange';
+};
 // FilterValue
 type FilterValue<F> = F extends Filter<string, 'select' | 'has', infer O> ? O : string;
 // HandlerProblem
 type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
     handle(first: infer First, ...rest: any[]): unknown;
 } ? (Bulk extends true ? readonly Row[] : Row) extends First ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}` : never;
+// HasFilter
+interface HasFilter<N extends string = string> {
+    readonly name: N;
+    readonly type: 'has';
+    readonly key: string;
+    readonly options: readonly string[];
+    readonly labels: readonly string[];
+    readonly value: string | null;
+}
 // HasProblem
 type HasProblem<DB, TB extends keyof DB, R extends string, C extends string> = R extends RelationName<DB, TB> ? C extends keyof DB[RelatedTable<DB, TB, R>] & string ? C extends SecretReference<DB, RelatedTable<DB, TB, R>> ? Problem<`'${C}' is a secret column of '${RelatedTable<DB, TB, R> & string}' — a table never reads it (its migration marked it .secret())`> : unknown : Problem<`'${C}' is no column of the table '${RelatedTable<DB, TB, R> & string}' that '${R}' leads to — name one: filter.has('${R}', options, { column: … })`> : Problem<`'${R}' is no relation of the query's tables — it has ${RelationName<DB, TB>}`>;
 // InputProblem
@@ -489,6 +511,8 @@ type ListedMiddleware<O> = (O extends {
 type MiddlewareRequires<M> = M extends MiddlewareLike<infer R, any> ? R : never;
 // OutOf
 type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
+// OwnOf
+type OwnOf<R> = R extends JsonResult<infer J> ? Serialize<Exclude<J, undefined>> | (undefined extends J ? undefined : never) : R extends Response ? unknown : never;
 // PlainColumns
 type PlainColumns<DB, TB extends keyof DB> = Extract<ColumnReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 // PolicyProblem
@@ -537,6 +561,15 @@ type ScalarKey = string | number;
 type SearchableNames<Cols> = {
     [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, boolean, true> ? A : never;
 }[keyof Cols];
+// SelectFilter
+interface SelectFilter<N extends string = string> {
+    readonly name: N;
+    readonly type: 'select';
+    readonly key: string;
+    readonly options: readonly string[];
+    readonly labels: readonly string[];
+    readonly value: string | null;
+}
 // Selected
 type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColumns<DB, TB>>;
 // SelectedProblem
@@ -559,12 +592,20 @@ type SortableNames<Cols> = {
 }[keyof Cols] & string;
 // TABLE_TYPES
 declare const TABLE_TYPES: unique symbol;
+// TableAnswer
+export interface TableAnswer<D = unknown, O = never, W extends boolean = true> {
+    readonly data: D;
+    readonly own: O;
+    readonly wrapped: W;
+}
+// TableFilterKind
+export type TableFilterKind = 'select' | 'has' | 'dateRange';
 // TableNeeds
 type TableNeeds<Ctx, O> = (unknown extends Ctx ? {} : Ctx) & (unknown extends RequiresOf<O> ? {} : RequiresOf<O>) & object;
 // TableOf
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof Cols & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
     [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0;
-} & string, InputsOf<Actions>, InputsOf<Bulk>>;
+} & string, InputsOf<Actions>, InputsOf<Bulk>, FilterKinds<Filters>, AnswersOf<Actions>, AnswersOf<Bulk>>;
 // TableQueryValues
 export type TableQueryValues = {
     readonly [key: string]: string | number | undefined;
@@ -607,7 +648,7 @@ export type ActionRunArgs<T extends AnyTableData, N> = 0 extends 1 & ActionInput
     input?: never;
 }];
 // AnyTableData
-export type AnyTableData = TableData<any, string, string, string, string, string, string, any, any>;
+export type AnyTableData = TableData<any, string, string, string, string, string, string, any, any, any, any, any>;
 // BulkOf
 export type BulkOf<T extends AnyTableData> = T['bulk'][number]['name'];
 // BulkRunArgs
@@ -629,6 +670,10 @@ export interface CursorPage {
 }
 // ExportOf
 export type ExportOf<T extends AnyTableData> = T['exports'][number]['name'];
+// FilterEntryOf
+export type FilterEntryOf<T extends AnyTableData, N extends FilterOf<T>> = T['filters'][number] & {
+    readonly name: N;
+};
 // FilterOf
 export type FilterOf<T extends AnyTableData> = T['filters'][number]['name'];
 // OffsetPage
@@ -652,12 +697,20 @@ export interface TableActionEntry<A extends string = string> {
     readonly url: string;
     readonly confirm: boolean;
 }
+// TableActionOutcomeOf
+export type TableActionOutcomeOf<T extends AnyTableData, N> = OutcomeOf<NonNullable<T['~results']>['actions'], N>;
 // TableActionResult
 export interface TableActionResult<D = unknown> {
     readonly done: number;
     readonly skipped: number;
     readonly missing: number;
     readonly data?: D;
+}
+// TableAnswer
+export interface TableAnswer<D = unknown, O = never, W extends boolean = true> {
+    readonly data: D;
+    readonly own: O;
+    readonly wrapped: W;
 }
 // TableBulkEntry
 export interface TableBulkEntry<B extends string = string> {
@@ -666,6 +719,8 @@ export interface TableBulkEntry<B extends string = string> {
     readonly confirm: boolean;
     readonly max: number;
 }
+// TableBulkOutcomeOf
+export type TableBulkOutcomeOf<T extends AnyTableData, N> = OutcomeOf<NonNullable<T['~results']>['bulk'], N>;
 // TableColumn
 export interface TableColumn<C extends string = string> {
     readonly name: C;
@@ -684,6 +739,7 @@ export declare class TableController<T extends AnyTableData = AnyTableData> {
     get selection(): Selection;
     sort(column: SortableOf<T>, direction?: SortDirection): void;
     sortUrl(column: SortableOf<T>, page: Pick<PageObject, 'url' | 'query' | 'queryDefaults'>): string;
+    filter<N extends FilterOf<T>>(name: N): FilterEntryOf<T, N> | undefined;
     filter(name: FilterOf<T>, value: string | null): void;
     filterBy(values: {
         readonly [N in FilterOf<T>]?: string | null;
@@ -701,8 +757,8 @@ export declare class TableController<T extends AnyTableData = AnyTableData> {
     get allSelected(): boolean;
     get selectedCount(): number;
     confirmText: (action: string, rows: number) => string;
-    run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableRunOutcome>;
-    runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableRunOutcome>;
+    run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>>;
+    runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>>;
     exportUrl(name: ExportOf<T>): string;
     dispose(): void;
 }
@@ -713,10 +769,14 @@ export interface TableControllerOptions {
     searchDebounceMs?: number;
 }
 // TableData
-export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C, AI extends object = {}, BI extends object = {}> {
+export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C, AI extends object = {}, BI extends object = {}, FK extends object = {}, AR extends object = {}, BR extends object = {}> {
     readonly '~inputs'?: {
         readonly actions: AI;
         readonly bulk: BI;
+    };
+    readonly '~results'?: {
+        readonly actions: AR;
+        readonly bulk: BR;
     };
     readonly name: string;
     readonly key: string;
@@ -733,7 +793,7 @@ export interface TableData<R extends object = Record<string, unknown>, C extends
     readonly search: {
         readonly value: string;
     } | null;
-    readonly filters: readonly TableFilter<F>[];
+    readonly filters: readonly TableFilter<F, FK>[];
     readonly page: OffsetPage | CursorPage;
     readonly query: TableQueryKeys;
     readonly state: Readonly<Record<string, string>>;
@@ -749,26 +809,11 @@ export interface TableExportEntry<E extends string = string> {
     readonly max: number;
 }
 // TableFilter
-export type TableFilter<F extends string = string> = {
-    readonly name: F;
-    readonly type: 'select';
-    readonly key: string;
-    readonly options: readonly string[];
-    readonly labels: readonly string[];
-    readonly value: string | null;
-} | {
-    readonly name: F;
-    readonly type: 'has';
-    readonly key: string;
-    readonly options: readonly string[];
-    readonly labels: readonly string[];
-    readonly value: string | null;
-} | {
-    readonly name: F;
-    readonly type: 'dateRange';
-    readonly key: string;
-    readonly value: string | null;
-};
+export type TableFilter<F extends string = string, FK extends object = {}> = string extends F ? SelectFilter<F> | HasFilter<F> | DateRangeFilter<F> : {
+    [N in F]: FilterEntry<N, N extends keyof FK ? FK[N] : TableFilterKind>;
+}[F];
+// TableFilterKind
+export type TableFilterKind = 'select' | 'has' | 'dateRange';
 // TableQueryKeys
 export interface TableQueryKeys {
     readonly sort: string;
@@ -785,12 +830,17 @@ export interface TableRunOptions {
     signal?: AbortSignal;
 }
 // TableRunOutcome
-export type TableRunOutcome = {
+export type TableRunOutcome<D = unknown, O = never, W extends boolean = true> = (W extends true ? {
     readonly ok: true;
     readonly kind: 'data';
     readonly status: number;
-    readonly data: TableActionResult;
-} | Exclude<ActionOutcome, {
+    readonly data: TableActionResult<D>;
+} : never) | ([O] extends [never] ? never : {
+    readonly ok: true;
+    readonly kind: 'data';
+    readonly status: number;
+    readonly data: O;
+}) | Exclude<ActionOutcome, {
     readonly ok: true;
     readonly kind: 'data';
 }>;
@@ -825,4 +875,33 @@ export declare function tableStatus(info: TableStatusInfo): string;
 type ActionInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['actions'];
 // BulkInputs
 type BulkInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['bulk'];
+// DateRangeFilter
+interface DateRangeFilter<N extends string = string> {
+    readonly name: N;
+    readonly type: 'dateRange';
+    readonly key: string;
+    readonly value: string | null;
+}
+// FilterEntry
+type FilterEntry<N extends string, K> = K extends 'select' ? SelectFilter<N> : K extends 'has' ? HasFilter<N> : K extends 'dateRange' ? DateRangeFilter<N> : never;
+// HasFilter
+interface HasFilter<N extends string = string> {
+    readonly name: N;
+    readonly type: 'has';
+    readonly key: string;
+    readonly options: readonly string[];
+    readonly labels: readonly string[];
+    readonly value: string | null;
+}
+// OutcomeOf
+type OutcomeOf<R, N> = 0 extends 1 & R ? TableRunOutcome : N extends keyof R ? (R[N] extends TableAnswer<infer D, infer O, infer W> ? TableRunOutcome<D, O, W> : TableRunOutcome) : TableRunOutcome;
+// SelectFilter
+interface SelectFilter<N extends string = string> {
+    readonly name: N;
+    readonly type: 'select';
+    readonly key: string;
+    readonly options: readonly string[];
+    readonly labels: readonly string[];
+    readonly value: string | null;
+}
 ```

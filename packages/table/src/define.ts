@@ -3,7 +3,8 @@ import type { ColumnReference, Database, ReferencedType, RelationName, Relations
 import type { ClassResolver, HttpContext, InferInput, InferOutput, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { Rule } from '@marmeon/validation';
 import type { Translator } from '@marmeon/core';
-import type { TableData } from './client/index.ts';
+import type { JsonResult, RedirectResult, Serialize } from '@marmeon/http';
+import type { TableAnswer, TableData } from './client/index.ts';
 import { isCsvDelimiter } from './csv.ts';
 import type { CsvDelimiter } from './csv-read.ts';
 import { tableAttachment, type KnownOptions, type TableEndpoints, type TableEndpointsOptions } from './routes.ts';
@@ -554,6 +555,9 @@ export interface DataTable<
   S extends string = C,
   AI extends object = {},
   BI extends object = {},
+  FK extends object = {},
+  AR extends object = {},
+  BR extends object = {},
 > {
   readonly [TABLE_TYPES]?: {
     readonly row: Row;
@@ -566,6 +570,9 @@ export interface DataTable<
     readonly exports: E;
     readonly actionInputs: AI;
     readonly bulkInputs: BI;
+    readonly filterKinds: FK;
+    readonly actionResults: AR;
+    readonly bulkResults: BR;
   };
   /** @internal */
   readonly definition: TableDefinition;
@@ -616,7 +623,8 @@ export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<
 >;
 
 /** What the browser gets for table `T`: the page prop `tables.resolve(T, ctx)` resolves to. */
-export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI> ? TableData<Row, C, F, A, B, E, S, AI, BI> : never;
+export type TableProps<T> =
+  T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI, infer FK, infer AR, infer BR> ? TableData<Row, C, F, A, B, E, S, AI, BI, FK, AR, BR> : never;
 
 /** A row of table `T` as the server hands it to actions and policies: the key and the visible columns (by name). */
 export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
@@ -871,6 +879,25 @@ type InputsOf<Actions> = {
     : never;
 };
 
+/** The kind of each filter, by name — what makes `table.filter('status')` an entry with its kind's fields. */
+type FilterKinds<Filters> = { [N in keyof Filters & string]: Filters[N] extends Filter<string, infer T> ? T : 'select' | 'has' | 'dateRange' };
+
+/** What a handler that answers for itself sends, as the browser reads it: a `json()` body; a `Response` could be anything; a redirect is no data. */
+type OwnOf<R> = R extends JsonResult<infer J> ? Serialize<Exclude<J, undefined>> | (undefined extends J ? undefined : never) : R extends Response ? unknown : never;
+
+/**
+ * What a handler answers, as the browser reads it. The table adds its counts and the handler's value as JSON (`Response`, redirect and
+ * JSON result left out: those the handler answers for itself); a handler that only answers for itself gets no counts at all.
+ */
+type AnswerOf<H> = H extends abstract new (...args: any[]) => { handle(...args: any[]): infer R }
+  ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult> extends infer Rest
+    ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true>
+    : never
+  : unknown;
+
+/** What the handler of each action answers, by name. */
+type AnswersOf<Actions> = { [N in keyof Actions & string]: Actions[N] extends { readonly handler: infer H } ? AnswerOf<H> : unknown };
+
 /** The table `defineTable` makes of its input. */
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<
   RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>,
@@ -884,7 +911,10 @@ type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P exten
   // The names spelled out (a key-remapped type, no alias): a wrong sort in the browser reads "… not assignable to '"name" | "joined"'".
   keyof { [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0 } & string,
   InputsOf<Actions>,
-  InputsOf<Bulk>
+  InputsOf<Bulk>,
+  FilterKinds<Filters>,
+  AnswersOf<Actions>,
+  AnswersOf<Bulk>
 >;
 
 /**

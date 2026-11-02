@@ -172,8 +172,8 @@ the server. TypeScript, Vite and pnpm stay in the build stage.
 
 > [!WARNING]
 > Never deploy a developer's `.env`. Its `NODE_ENV=development` would turn on the error page with source code, the devtools and
-> the other development tools. `marmeon start` refuses to run when `development` or `test` comes from `.env` alone; the
-> worker and the scheduler log a loud warning but still start.
+> the other development tools. `marmeon start` refuses to run when `development` or `test` comes from `.env` alone. The
+> worker and the scheduler still start: they log a loud warning for `development` and none for `test`.
 
 ### Storage and a read-only file system
 

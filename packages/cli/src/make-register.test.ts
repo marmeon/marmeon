@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
 import { CommandArgumentsError, CommandRegistry, type CommandClass } from './command.ts';
-import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand, MakeCommandCommand, MakeSeederCommand } from './commands/make.ts';
+import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand, MakeCommandCommand, MakeControllerCommand, MakeSeederCommand } from './commands/make.ts';
 
 const MODULE = `import { defineModule } from '@marmeon/core';
 
@@ -390,6 +390,60 @@ describe('make:module registers the module in bootstrap/app.ts', () => {
   });
 });
 
+describe('make:module --no-routes', () => {
+  it('writes an index.ts without routes and no routes.ts', () => {
+    const { root } = bootstrapApp();
+    const { code, lines } = makeModule(root, 'billing', { 'no-routes': true });
+    expect(code).toBe(0);
+    const index = readFileSync(join(root, 'modules/billing/index.ts'), 'utf8');
+    expect(index).toContain("name: 'billing',");
+    expect(index).not.toContain('routes');
+    expect(existsSync(join(root, 'modules/billing/routes.ts'))).toBe(false);
+    expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
+  });
+
+  it('refuses --no-routes --force over a module that has a routes.ts, and changes nothing', () => {
+    const { root } = bootstrapApp();
+    makeModule(root, 'billing');
+    const before = readFileSync(join(root, 'modules/billing/index.ts'), 'utf8');
+    const { code, lines } = makeModule(root, 'billing', { 'no-routes': true, force: true });
+    expect(code).toBe(1);
+    expect(lines.join('\n')).toContain('modules/billing/routes.ts exists');
+    expect(readFileSync(join(root, 'modules/billing/index.ts'), 'utf8')).toBe(before);
+  });
+
+  it('still writes routes.ts and lists it without the option', () => {
+    const { root } = bootstrapApp();
+    makeModule(root, 'billing');
+    expect(readFileSync(join(root, 'modules/billing/index.ts'), 'utf8')).toContain("import routes from './routes.ts';");
+    expect(existsSync(join(root, 'modules/billing/routes.ts'))).toBe(true);
+  });
+
+  it('combines with --no-register: the module is written, bootstrap/app.ts is not touched', () => {
+    const { root, file } = bootstrapApp();
+    const { code } = makeModule(root, 'billing', { 'no-routes': true, 'no-register': true });
+    expect(code).toBe(0);
+    expect(readFileSync(file, 'utf8')).toBe(APP);
+    expect(existsSync(join(root, 'modules/billing/routes.ts'))).toBe(false);
+  });
+
+  it('makes make:controller print the routes.ts to create instead of writing it', () => {
+    const { root } = bootstrapApp();
+    makeModule(root, 'billing', { 'no-routes': true });
+    const made = run(new MakeControllerCommand(), root, ['ShowInvoice'], { module: 'billing' });
+    const text = made.lines.join('\n');
+    expect(made.code).toBe(0);
+    expect(text).toContain('modules/billing/index.ts lists no routes yet. Create modules/billing/routes.ts:');
+    expect(text).toContain('export default defineRoutes((Route) => {');
+    expect(text).toContain("Route.get('/…', ShowInvoiceController).name('billing.…');");
+    expect(text).toContain("import { ShowInvoiceController } from './controllers/ShowInvoiceController.ts';");
+    expect(text).toContain('defineModule({ …, routes })');
+    expect(text).not.toContain('Add a route in');
+    expect(existsSync(join(root, 'modules/billing/routes.ts'))).toBe(false);
+    expect(existsSync(join(root, 'modules/billing/controllers/ShowInvoiceController.ts'))).toBe(true);
+  });
+});
+
 describe('make:command and make:seeder register themselves', () => {
   const registry = () => new CommandRegistry().add(BUILT_IN, 'marmeon');
   const command = (root: string, args = ['PruneInvoices'], options: Record<string, unknown> = {}, commands = registry()) =>
@@ -409,6 +463,31 @@ describe('make:command and make:seeder register themselves', () => {
     const file = readFileSync(join(root, 'modules/billing/commands/PruneInvoicesCommand.ts'), 'utf8');
     expect(file).toContain("static command = 'billing:prune-invoices';");
     expect(file).toContain("import type { CommandInput } from 'marmeon';");
+  });
+
+  it('names the command as asked with --command, and lists it', () => {
+    const { root } = app();
+    const { code, lines } = command(root, ['PruneInvoices'], { command: 'invoices:prune' });
+    expect(code).toBe(0);
+    expect(lines).toContain('✓ Registered PruneInvoicesCommand in modules/billing/index.ts (commands)');
+    expect(readFileSync(join(root, 'modules/billing/commands/PruneInvoicesCommand.ts'), 'utf8')).toContain("static command = 'invoices:prune';");
+    expect(readFileSync(join(root, 'modules/billing/commands/PruneInvoicesCommand.ts'), 'utf8')).not.toContain('billing:prune-invoices');
+  });
+
+  it.each(['Prune', 'a b', "x';y", 'a::b', ':a', 'a:', 'list', 'help', 'dev', 'start', '../x'])('refuses --command=%s and writes nothing', (name) => {
+    const { root, index } = app();
+    expect(() => command(root, ['PruneInvoices'], { command: name })).toThrow(CommandArgumentsError);
+    expect(existsSync(join(root, 'modules/billing/commands'))).toBe(false);
+    expect(readFileSync(index, 'utf8')).toBe(MODULE);
+  });
+
+  it('refuses a --command that another command has, and writes nothing', () => {
+    const { root } = app();
+    const commands = registry().add([named('invoices:prune', 'Other')], 'module shop');
+    const { code, lines } = command(root, ['PruneInvoices'], { command: 'invoices:prune' }, commands);
+    expect(code).toBe(1);
+    expect(lines.some((line) => line.startsWith('✗ invoices:prune is already the name of Other (module shop)'))).toBe(true);
+    expect(existsSync(join(root, 'modules/billing/commands'))).toBe(false);
   });
 
   it('writes a seeder, lists it last and says the order is the list', () => {

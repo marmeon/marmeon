@@ -165,6 +165,10 @@ export class StoreNoteController extends Controller {
 - **`has(key)`** says whether a key exists, `locale` is the translator's locale, `locales` the supported ones with the default
   first, and `format` formats numbers and dates, as [formatting](#formatting) shows.
 
+A route's `authorize` check and `afterAuthorize` hook take it from `resolve`: `resolve(Translator)` gives the request's translator, and
+a `RequestLocale.use()` before it in the same hook or an earlier one changes the language it speaks (see
+[after the checks](routing.md#after-the-checks)).
+
 Outside a request, in a job or a command, each of which has a scope of its own, the `Translator` speaks `APP_LOCALE`. It cannot be
 resolved from the root container, since it is scoped. Use `Translators` there.
 

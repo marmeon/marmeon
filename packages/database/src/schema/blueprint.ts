@@ -65,7 +65,7 @@ export class Column<T> {
   /**
    * Holds the column to a list: a check constraint named `{table}_{column}_check` in the database, and the union of the values as the
    * column's type in `Row<…>`. Only for a `string()` or `text()` column. Every value is a string of 1 to 255 characters without a backslash, none twice. A NULL passes (the column is
-   * `nullable()` or it is not). Changing the list later is `dropCheck()` and `check()` on Postgres; SQLite needs raw SQL.
+   * `nullable()` or it is not). Changing the list later: a new `oneOf()` column that replaces the old one keeps the union in `Row<…>` on both drivers; `dropCheck()` + `check()` (Postgres only) lose it.
    * See `docs/migrations.md#check-constraints`.
    */
   oneOf<const V extends T & string>(...values: V[]): Column<V | Extract<T, null>> {

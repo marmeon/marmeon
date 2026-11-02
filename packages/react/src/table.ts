@@ -4,14 +4,17 @@
  */
 import { exportUrl, keyOf, sortUrl, tableStatus, TableController } from '@marmeon/table/client';
 import type {
+  TableActionOutcomeOf,
   ActionOf,
   ActionRunArgs,
   AnyTableData,
+  TableBulkOutcomeOf,
   BulkRunArgs,
   TableStatusInfo,
   BulkOf,
   ColumnOf,
   ExportOf,
+  FilterEntryOf,
   FilterOf,
   TableRowOf,
   SortableOf,
@@ -23,7 +26,7 @@ import type { SelectionKey } from '@marmeon/http/client';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type MouseEvent } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 
-export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterOf, TableRowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@marmeon/table/client';
+export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterEntryOf, FilterOf, TableRowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@marmeon/table/client';
 
 /**
  * The words of a table — English by default, the app's through its translations: `labels: { column: (name) => t(`column.${name}`),
@@ -108,7 +111,9 @@ export interface Table<T extends AnyTableData> {
   /** Sorts by a column's name in the props — toggled without a direction. A visit of the page's URL (`?sort=`), back to page 1. */
   sort(column: SortableOf<T>, direction?: SortDirection): void;
   readonly filters: T['filters'];
-  /** `null` takes the filter off. Back to page 1. */
+  /** The filter called `name`, of the kind the table's definition gave it — `undefined` when the user may not use it. */
+  filter<N extends FilterOf<T>>(name: N): FilterEntryOf<T, N> | undefined;
+  /** Filters by `name`; `null` takes the filter off. Back to page 1. */
   filter(name: FilterOf<T>, value: string | null): void;
   /** Several filters in one visit (a form's "Apply"). */
   filterBy(values: { readonly [N in FilterOf<T>]?: string | null }): void;
@@ -148,9 +153,9 @@ export interface Table<T extends AnyTableData> {
   /** Whether row action `action` is offered for `row` (its policy said yes). */
   can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
   /** Runs a row action; then the table reloads (replacing what it showed). An action defined with `.input()` takes `{ input }`. */
-  run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome>;
+  run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>>;
   /** Runs a bulk action for what is selected; then the selection is cleared and the table reloads. A bulk action defined with `.input()` takes `{ input }`. */
-  runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome>;
+  runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>>;
   /** The name of a row action's button for `row` ({@link TableLabels.action}). */
   actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
   /** An action of this table is under way. */
@@ -250,7 +255,9 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
       label: rowLabel,
       sort: (column, direction) => browser().sort(column, direction),
       filters: data.filters,
-      filter: (name, value) => browser().filter(name, value),
+      // Reading a filter works while rendering on the server too; setting one is a visit, in the browser only.
+      filter: ((name: FilterOf<T>, ...rest: [value?: string | null]) =>
+        rest.length === 0 ? data.filters.find((entry) => entry.name === name) : (browser().filter as (name: FilterOf<T>, value: string | null) => void)(name, rest[0] ?? null)) as Table<T>['filter'],
       filterBy: (values) => browser().filterBy(values),
       search: data.search,
       setSearch: (value) => browser().search(value),
@@ -297,7 +304,7 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
     };
     return table;
 
-    async function track(run: Promise<TableRunOutcome>): Promise<TableRunOutcome> {
+    async function track<O extends TableRunOutcome<any, any, any>>(run: Promise<O>): Promise<O> {
       setRunning((count) => count + 1);
       try {
         return await run;

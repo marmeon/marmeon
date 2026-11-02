@@ -50,7 +50,7 @@ function gateFor(user: AuthUser | undefined, { admin = false } = {}) {
   const calls: Calls = { built: 0, before: [], update: 0, publish: 0, view: 0, create: 0 };
   const Policy = counting(calls, { admin });
   const auth = { user: async () => user } as unknown as Auth;
-  const gate = new Gate(auth, (Class) => new Class());
+  const gate = new Gate(auth, (Class) => new (Class as new () => never)());
   return { gate, Policy, calls };
 }
 

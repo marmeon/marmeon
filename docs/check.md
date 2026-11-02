@@ -229,6 +229,84 @@ It is a warning, so the exit code stays `0`. It does not find:
 - a method taken out of its object (`const { insertAdjacentHTML } = el`), or one called through `Reflect` or `Object.assign(el, { innerHTML })`,
 - a setter of another name that parses HTML (`DOMParser`, `setAttribute('srcdoc', …)`, a library's `html()`), or a file it cannot parse.
 
+### Markup you build yourself
+
+Some values are markup on purpose: a guest's note with bold text and a link, kept as a tree the app's editor wrote. The check cannot call a
+sanitizer safe, so do not hand it HTML to clean. Build the markup from nodes instead: the tags and attributes you allow are the only ones that
+can come out, and React escapes every string, so no `dangerouslySetInnerHTML` is involved.
+
+```tsx title="modules/notes/Markup.tsx"
+import { createElement, Fragment, type ReactNode } from 'react';
+
+const TAGS = new Set(['p', 'strong', 'em', 'ul', 'ol', 'li', 'br', 'a']);
+const SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+const DEEPEST = 16;
+
+/** The address to link to, or `undefined` for anything that is not an absolute `http:`, `https:` or `mailto:` address. */
+function safeHref(value: unknown): string | undefined {
+  const url = typeof value === 'string' ? URL.parse(value) : null;
+  return url && SCHEMES.has(url.protocol) ? url.href : undefined;
+}
+
+/** A stored tree as elements. Whatever is not on the allowlist is left out: an unknown tag keeps its text, an attribute other than a safe `href` is gone. */
+export function toElements(node: unknown, depth = 0): ReactNode {
+  if (typeof node === 'string') return node;
+  if (depth >= DEEPEST || typeof node !== 'object' || node === null) return null;
+  const { tag, href, children } = node as { tag?: unknown; href?: unknown; children?: unknown };
+  const inner = Array.isArray(children) ? children.map((child, index) => <Fragment key={index}>{toElements(child, depth + 1)}</Fragment>) : null;
+  if (typeof tag !== 'string' || !TAGS.has(tag)) return inner;
+  if (tag === 'br') return <br />;
+  if (tag === 'a') {
+    const safe = safeHref(href);
+    return safe ? <a href={safe} rel="noopener noreferrer">{inner}</a> : inner;
+  }
+  return createElement(tag, null, inner);
+}
+```
+
+Render `{toElements(note.body)}` in a view. A tree deeper than `DEEPEST` levels is cut off, so a stored value cannot exhaust the stack. Where a string is needed, in a mail or a feed, use `renderToStaticMarkup()` of
+`react-dom/server` on the same elements: there is one allowlist, not a second writer of HTML. The link keeps `url.href`, the parsed
+address, not the text that came in: the parser removes the tabs and line breaks a browser would also ignore, and encodes a quote.
+
+Four tests show that the allowlist holds. Each one goes red when you take away the line it covers: make `safeHref()` return `value`, drop
+the `TAGS` check, let the `href` through unparsed, or remove the `DEEPEST` check.
+
+```tsx title="modules/notes/Markup.test.tsx"
+import { renderToStaticMarkup } from 'react-dom/server';
+import { expect, it } from 'vitest';
+import { toElements } from './Markup.tsx';
+
+const html = (node: unknown) => renderToStaticMarkup(<>{toElements(node)}</>);
+
+it('shows a script as text', () => {
+  expect(html('<script>alert(1)</script>')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
+  expect(html({ tag: 'script', children: ['alert(1)'] })).toBe('alert(1)');
+  expect(html({ tag: 'img', onerror: 'alert(1)', children: ['x'] })).toBe('x');
+});
+
+it('drops a link with another scheme', () => {
+  for (const href of ['javascript:alert(1)', ' JavaScript:alert(1)', 'java\tscript:alert(1)', 'data:text/html,x', '//evil.example', '/relative', 42, undefined]) {
+    expect(html({ tag: 'a', href, children: ['x'] })).toBe('x');
+  }
+});
+
+it('cuts a tree that is too deep', () => {
+  let node: unknown = 'deep';
+  for (let level = 0; level < 10_000; level++) node = { tag: 'em', children: [node] };
+  const out = html(node);
+  expect(out).not.toContain('deep');
+  expect(out.length).toBeLessThan(200);
+});
+
+it('keeps a value from leaving its attribute', () => {
+  const out = html({ tag: 'a', href: 'https://example.com/" onmouseover="alert(1)', onclick: 'alert(1)', children: ['x'] });
+  expect(out).toBe('<a href="https://example.com/%22%20onmouseover=%22alert(1)" rel="noopener noreferrer">x</a>');
+});
+```
+
+A relative link is dropped too. To allow one, resolve it against your own origin first with `new URL(value, origin)` and compare
+the origin of the result with yours.
+
 ## Routes without a limit
 
 A route that anyone may call without signing in and that changes something is open to spam, to guessing (a password, a code) and to

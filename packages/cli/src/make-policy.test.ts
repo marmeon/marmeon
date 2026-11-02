@@ -54,6 +54,28 @@ describe('make:policy', () => {
     expect(lines.join('\n')).toContain('docs/authorization.md#writing-policies');
   });
 
+  it('writes one ability without a record that answers false, with --ability', () => {
+    const root = app();
+    const { code, lines } = run(root, ['Report'], { module: 'notes', ability: 'exportAll' });
+    expect(code).toBe(0);
+    const source = readFileSync(join(root, 'modules/notes/policies/ReportPolicy.ts'), 'utf8');
+    expect(source).toContain("import type { AuthUser } from '@marmeon/auth';");
+    expect(source).toContain('export class ReportPolicy {');
+    expect(source).toContain('  exportAll(user: AuthUser) {');
+    expect(source).toContain('Decide from the user alone: a column of the user, a value of the module\'s config.');
+    expect(source.match(/return /g)).toEqual(['return ']);
+    expect(source).toContain('return false;');
+    expect(source).not.toContain('denyAsNotFound');
+    expect(source).not.toMatch(/user_id|\brole|tenant|member/i);
+    expect(lines.join('\n')).toContain("authorize: can(ReportPolicy, 'exportAll')");
+  });
+
+  it.each(['before', 'then', 'constructor', 'toString', 'hasOwnProperty', 'valueOf', 'foo-bar', 'Foo', 'a b', '1a', '__proto__', "x'; evil(); ('", ''])('refuses --ability=%j and writes nothing', (ability) => {
+    const root = app();
+    expect(run(root, ['Report'], { module: 'notes', ability }).code).toBe(2);
+    expect(existsSync(join(root, 'modules/notes/policies'))).toBe(false);
+  });
+
   it('keeps the Policy suffix once', () => {
     const root = app();
     expect(run(root, ['NotePolicy']).code).toBe(0);
