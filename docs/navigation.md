@@ -111,6 +111,10 @@ current for more pages:
 `activeMatch` takes a route name, a prefix with `*`, `*` alone, or a list of them, checked against your routes. A link whose visit
 is under way gets `data-pending`.
 
+Tabs are links too: make each one a route of its own when it is a page with its own address and checks, marked by `activeMatch`.
+Make them a field of the page's query, declared in the route's request as `query: r.query({ tab: r.in(['summary', 'activity']).default('summary') })`,
+when they show one record in different views; then `<Link route="notes.show" params={{ note: note.id }} query={{ tab: 'activity' }} preserveState>` or [`useQueryState()`](pagination.md#searching-and-sorting) switches them.
+
 ### Link options
 
 | Prop | Effect |

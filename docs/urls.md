@@ -150,6 +150,32 @@ The message names the routes that fit and suggests the literals. Write each name
 'notes.edit'`. Route names never come from props either: when the server decides the target, it sends the URL, built with
 `router.url()`.
 
+A list of links, such as a menu, holds the link itself instead of a route name. Each entry writes its `<Link route>` out, and
+the list only decides which entries show and in which order:
+
+```tsx title="modules/notes/components/Menu.tsx"
+import { Link, usePage, useTranslation } from '@marmeon/react';
+
+export function Menu() {
+  const t = useTranslation('notes');
+  const user = usePage().props.auth?.user ?? null;
+  const entries = [
+    { key: 'notes', show: user !== null, link: <Link route="notes.index" activeMatch="notes.*">{t('menu.notes')}</Link> },
+    { key: 'about', show: true, link: <Link route="about.index">{t('menu.about')}</Link> },
+  ];
+  return (
+    <ul>
+      {entries.filter((entry) => entry.show).map((entry) => (
+        <li key={entry.key}>{entry.link}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+`<Link route={entry.route}>` with a name the build cannot work out from the code fails it: a prop, a parameter, a field of an object built
+at run time. Literals, conditionals of literals and `const` bindings, including the members of an `as const` object or array, are read.
+
 A route the manifest lacks at run time throws `[marmeon:C2]`, followed in development by the reason. The
 [error handling](errors.md#error-codes) page lists these codes.
 

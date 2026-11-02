@@ -255,6 +255,46 @@ export default function Dashboard(_props: PageProps<ShowDashboardController>) {
 | `pollMs`, `keepAlive` | Reloads it every `pollMs` milliseconds once it is loaded, paused in a hidden tab unless `keepAlive`. |
 | `as`, `className`, `id` | The element around it, a `div` by default. It carries `data-island` and `data-status`. |
 
+### Islands the server chooses
+
+`<Island route>` takes a name the build can read from the code, such as a literal, so a page cannot take the route from its props. When the server decides
+which panels a page shows, say because other modules offer them, send the panels' keys and map each key to a component that
+writes its own `<Island route>`. The owner of an island writes that component in its module:
+
+```tsx title="modules/notes/panels/recent.tsx"
+import { Island } from '@marmeon/react';
+
+export default function RecentPanel() {
+  return <Island route="notes.recent" query={{ limit: 3 }} fallback={<p aria-busy="true">Loading…</p>} />;
+}
+```
+
+The page collects every `panels/*.tsx` of every module with `import.meta.glob`, so the mapping is fixed in the code and a new
+panel needs no list to edit. The key is the module and the file, `notes.recent`, so two modules can each have a `recent.tsx`.
+An eager glob puts the code of every module's panels, and the route names of their islands, into the page for every visitor;
+who may load an island's data stays with that island's route. The lint rule `--boundaries` does not see `import.meta.glob`, so
+it does not check that a panel stays inside its module.
+
+```tsx title="modules/dashboard/components/Panel.tsx"
+import type { ComponentType } from 'react';
+
+const found = import.meta.glob<{ default: ComponentType }>('../../*/panels/*.tsx', { eager: true });
+
+const key = (path: string) => /\/([^/]+)\/panels\/([^/]+)\.tsx$/.exec(path)!.slice(1).join('.');
+
+const panels = new Map<string, ComponentType>(Object.entries(found).map(([path, module]) => [key(path), module.default]));
+
+/** The panel the server chose by key. A key without a component renders nothing. */
+export function Panel({ name }: { name: string }) {
+  const Component = panels.get(name);
+  return Component ? <Component /> : null;
+}
+```
+
+The controller sends `panels: ['notes.recent']` and the view renders `<Panel key={name} name={name} />` for each. The keys only choose what
+is shown. Who may see the panel is decided by the island's own route, and its `unauthorized` prop shows what a refusal
+leaves.
+
 ### Inside an island
 
 The island's view takes its props from the controller with `IslandProps`, and `useIsland()` reloads it:
