@@ -15,7 +15,7 @@ import type { TableVisibility } from './index.ts';
 import { rules as r } from '@marmeon/validation';
 import type { AnyTableData, BulkOf, FilterEntryOf, FilterOf, TableController } from './client/index.ts';
 import { json, RedirectResult } from '@marmeon/http';
-import { action, bulk, column, type CheckColumnKey, type CheckFilters, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableProps } from './index.ts';
+import { action, bulk, column, type CheckColumnKey, type CheckFilters, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableExportEntry, type TableProps, DataTables } from './index.ts';
 
 class Deactivate {
   handle(_row: { readonly id: number }, _ctx: TableContext<Authenticated>) {}
@@ -795,3 +795,25 @@ const takesAny = (_data: AnyTableData) => {};
 column('email').visible((_ctx, resolve) => resolve(Clock).now() > 0);
 // @ts-expect-error — a token is no name: `'Clock'` is not a key.
 column('email').visible((_ctx, resolve) => resolve('Clock') !== undefined);
+
+// An export's file name: a string, or a function of the request that may await and resolve a token.
+exportCsv().filename('members');
+exportCsv().filename((ctx, resolve, translator) => `${ctx.params.team}-${resolve(Clock).now()}-${translator?.locale}`);
+exportCsv().filename(async () => 'members');
+// @ts-expect-error — a number is no name.
+exportCsv().filename(42);
+// @ts-expect-error — the function answers a string.
+exportCsv().filename(() => 42);
+
+// `tables.exports()` lists the entries of the table's props, typed with the table's export names.
+declare const tables: DataTables;
+declare const membersContext: ContextOfTable<typeof Members>;
+void (async () => {
+  const listed = await tables.exports(Members, membersContext);
+  expectTypeOf(listed).toEqualTypeOf<TableProps<typeof Members>['exports']>();
+  expectTypeOf(listed).toEqualTypeOf<readonly TableExportEntry<'csv'>[]>();
+  expectTypeOf(listed[0]!.name).toEqualTypeOf<'csv'>();
+  // @ts-expect-error — the table has no export 'pdf'.
+  const wrong: 'pdf' = listed[0]!.name;
+  void wrong;
+})();

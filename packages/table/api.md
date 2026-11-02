@@ -152,6 +152,7 @@ export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
 export declare class DataTables {
     #private;
     resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
+    exports<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>['exports']>;
 }
 // EndpointOptions
 export interface EndpointOptions {
@@ -295,6 +296,7 @@ export declare class TableExport {
     authorize(check: TableVisibilityCheck): TableExport;
     onExport(Recorder: ExportRecorderClass): TableExport;
     delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport;
+    filename(choice: string | TableFilenameChoice): TableExport;
 }
 // TableExportEntry
 export interface TableExportEntry<E extends string = string> {
@@ -318,6 +320,8 @@ export interface TableExportInfo {
         readonly filters: Readonly<Record<string, string>>;
     };
 }
+// TableFilenameChoice
+export type TableFilenameChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => string | Promise<string>;
 // TableFilter
 export type TableFilter<F extends string = string, FK extends object = {}> = string extends F ? SelectFilter<F> | HasFilter<F> | DateRangeFilter<F> : {
     [N in F]: FilterEntry<N, N extends keyof FK ? FK[N] : TableFilterKind>;

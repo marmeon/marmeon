@@ -1,4 +1,6 @@
 import { TestClock } from '@marmeon/core/testing';
+import * as http from '@marmeon/http';
+import * as router from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { contentDisposition } from './index.ts';
 import { serveFile } from './serve.ts';
@@ -68,5 +70,10 @@ describe('contentDisposition()', () => {
     await disk.put('k.csv', 'x');
     const response = await serveFile(disk, 'k.csv', new Request('http://localhost/'), { cacheControl: 'no-store', filename: name });
     expect(response.headers.get('content-disposition')).toBe(contentDisposition('attachment', name));
+  });
+
+  it('is the function the router and http export: one implementation, three ways to import it', () => {
+    expect(contentDisposition).toBe(router.contentDisposition);
+    expect(http.contentDisposition).toBe(router.contentDisposition);
   });
 });

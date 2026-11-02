@@ -506,6 +506,8 @@ export declare function abort(status: number, message?: string, headers?: Record
 export declare function addVary(headers: Readonly<Record<string, string>> | undefined, names: readonly string[]): Record<string, string> & {
     vary: string;
 };
+// contentDisposition
+export declare function contentDisposition(type: 'attachment' | 'inline', filename: string): string;
 // defineMiddleware
 export declare function defineMiddleware<TAdds extends object & NoReservedKeys = EmptyObject, TRequires extends object = EmptyObject>(name: string, handle: Middleware<TRequires, TAdds>['handle'], options?: DefineMiddlewareOptions<TAdds>): Middleware<TRequires, TAdds>;
 // defineRequest

@@ -1,5 +1,8 @@
 import { basename } from './keys.ts';
 
+// The encoder lives in the router (the table package needs it too); this is the same function.
+export { contentDisposition } from '@marmeon/router';
+
 /** Content types by extension — what a disk reports and serves (the bytes are not inspected here; uploads check them). */
 const TYPES: Readonly<Record<string, string>> = {
   avif: 'image/avif',
@@ -56,16 +59,4 @@ export const INLINE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jp
 /** Whether a content type may be shown inline (parameters like `; charset` ignored). */
 export function isInlineType(contentType: string): boolean {
   return INLINE_TYPES.has(contentType.split(';')[0]!.trim().toLowerCase());
-}
-
-/**
- * The `Content-Disposition` value that names a download, safe for any filename: an ASCII fallback in which quotes, backslashes,
- * slashes, percent signs, control characters (CR and LF cannot break the header) and non-ASCII characters become `_`, plus the
- * real name as `filename*` (RFC 8187; a lone surrogate becomes U+FFFD). `serveFile()` uses the same encoder. See docs/responses.md#downloads.
- */
-export function contentDisposition(type: 'attachment' | 'inline', filename: string): string {
-  // encodeURIComponent throws on a lone surrogate (a slice() through an emoji).
-  filename = filename.toWellFormed();
-  const fallback = filename.replace(/[^\x20-\x7e]|["\\/%]/g, '_');
-  return `${type}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 }

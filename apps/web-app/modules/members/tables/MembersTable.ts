@@ -1,4 +1,5 @@
 import type { Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { rules as r } from '@marmeon/validation';
 import { action, bulk, column, defineTable, exportCsv, filter, type DataTableRow, type TableContext } from '@marmeon/table';
@@ -47,8 +48,9 @@ export const MembersTable = defineTable({
     // One action for every value: the language comes with the request and is checked before any member is read.
     setLocale: bulk(SetMembersLocale).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'setLocale').input(r.object({ locale: r.in(['en', 'de']) })).max(100),
   },
-  // A German spreadsheet reads a semicolon as the column break (its decimal sign is the comma).
-  export: { csv: exportCsv().authorize(MemberPolicy, 'export').delimiter((_ctx, _resolve, translator) => (translator?.locale === 'de' ? ';' : ',')).onExport(RecordMembersExport) },
+  // A German spreadsheet reads a semicolon as the column break (its decimal sign is the comma). The file is named after the app's
+  // day and the request's language (Mitglieder-2026-11-18.csv): the framework cleans the name and adds .csv.
+  export: { csv: exportCsv().authorize(MemberPolicy, 'export').filename((_ctx, resolve, translator) => `${translator?.text('members.export_file') ?? 'members'}-${new Date(resolve(Clock).now()).toISOString().slice(0, 10)}`).delimiter((_ctx, _resolve, translator) => (translator?.locale === 'de' ? ';' : ',')).onExport(RecordMembersExport) },
 });
 
 /** A row of the table as actions and policies get it: the key and the visible columns. */

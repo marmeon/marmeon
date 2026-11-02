@@ -3,6 +3,7 @@ import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
 import { DownloadMemberTemplateController } from './controllers/DownloadMemberTemplateController.ts';
 import { ConfirmMemberImportController, ImportMembersController } from './controllers/ImportMembersController.ts';
+import { ExportMembersController } from './controllers/ExportMembersController.ts';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
 
@@ -22,6 +23,8 @@ export default defineRoutes((Route) => {
   // The same table on a second page: its endpoints hang under this page's own path too (/members/directory/_tables/members/…),
   // and each page's props link its own.
   readers.get('/directory', ListMembersController).name('directory').attach(endpoints());
+  // A page that links the export and shows no table: its links come from tables.exports(), the table's endpoints hang under it.
+  readers.get('/exports', ExportMembersController).name('exports').attach(endpoints());
   // The file import: uploaded ahead, this route hands out the upload target for its `file` field, and its request authorizes
   // (administrators only, MemberPolicy) — which is why it is on `members`, not `readers`. Throttled like the table's endpoints.
   members.middleware(throttle('members-table')).post('/import', ImportMembersController).name('import');

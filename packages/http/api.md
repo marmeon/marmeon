@@ -646,6 +646,8 @@ export { addVary } from '@marmeon/router';
 export declare function always<V>(value: V): AlwaysProp<Unlazy<V>>;
 // cacheControl
 export declare function cacheControl(value: string): MiddlewareClass<{}, {}>;
+// contentDisposition
+export { contentDisposition } from '@marmeon/router';
 // contentSecurityPolicy
 export declare function contentSecurityPolicy(options?: ContentSecurityPolicyOptions): MiddlewareClass<{}, {}>;
 // credentialPage

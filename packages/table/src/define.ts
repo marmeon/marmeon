@@ -432,6 +432,12 @@ export const DEFAULT_EXPORT_MAX = 10_000;
  */
 export type TableDelimiterChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => CsvDelimiter | Promise<CsvDelimiter>;
 
+/**
+ * What an export's `filename(…)` function decides from: the request's `ctx`, the resolver (`resolve(Clock)` for the app's day) and the
+ * request's translator (`undefined` without `@marmeon/i18n`) — the name without its extension.
+ */
+export type TableFilenameChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => string | Promise<string>;
+
 /** An export — built by {@link exportCsv}. */
 export class TableExport {
   readonly format = 'csv' as const;
@@ -443,14 +449,17 @@ export class TableExport {
   readonly recorder: ExportRecorderClass | undefined;
   /** @internal */
   readonly separator: CsvDelimiter | TableDelimiterChoice;
+  /** @internal */
+  readonly stem: string | TableFilenameChoice | undefined;
 
   /** @internal */
-  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass, separator: CsvDelimiter | TableDelimiterChoice = ',') {
+  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass, separator: CsvDelimiter | TableDelimiterChoice = ',', stem?: string | TableFilenameChoice) {
     if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;
     this.limit = max;
     this.recorder = recorder;
     this.separator = separator;
+    this.stem = stem;
   }
 
   /**
@@ -458,7 +467,7 @@ export class TableExport {
    * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @marmeon/cache).
    */
   max(rows: number): TableExport {
-    return new TableExport(this.visibility, rows, this.recorder, this.separator);
+    return new TableExport(this.visibility, rows, this.recorder, this.separator, this.stem);
   }
 
   /**
@@ -468,7 +477,7 @@ export class TableExport {
   authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
   authorize(check: TableVisibilityCheck): TableExport;
   authorize(...args: unknown[]): TableExport {
-    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder, this.separator);
+    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder, this.separator, this.stem);
   }
 
   /**
@@ -479,7 +488,7 @@ export class TableExport {
    */
   onExport(Recorder: ExportRecorderClass): TableExport {
     if (typeof Recorder !== 'function' || typeof Recorder.prototype?.handle !== 'function') throw new TypeError('exportCsv().onExport(Recorder): a class with handle(info, ctx).');
-    return new TableExport(this.visibility, this.limit, Recorder, this.separator);
+    return new TableExport(this.visibility, this.limit, Recorder, this.separator, this.stem);
   }
 
   /**
@@ -490,7 +499,18 @@ export class TableExport {
    */
   delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport {
     if (typeof choice !== 'function' && !isCsvDelimiter(choice)) throw new TypeError(`exportCsv().delimiter(${JSON.stringify(choice)}): "," ";" or a tab, or a function of the request.`);
-    return new TableExport(this.visibility, this.limit, this.recorder, choice);
+    return new TableExport(this.visibility, this.limit, this.recorder, choice, this.stem);
+  }
+
+  /**
+   * The name of the file, without `.csv`: a string, or a function `(ctx, resolve, translator)` that answers per request — a value of
+   * the route, the day by `resolve(Clock)`. Without it the file is `<table>-<day>.csv`. The framework cleans what you give it
+   * (control and direction-changing characters go, `/` and `\` become `-`, dots and spaces at the ends go, at most 100 characters;
+   * nothing left means the default), appends `.csv` and encodes the header. See [exports](docs/tables.md#exports).
+   */
+  filename(choice: string | TableFilenameChoice): TableExport {
+    if (typeof choice !== 'string' && typeof choice !== 'function') throw new TypeError('exportCsv().filename(name): a string, or a function of the request.');
+    return new TableExport(this.visibility, this.limit, this.recorder, this.separator, choice);
   }
 }
 

@@ -714,8 +714,31 @@ A handler that answers for itself is typed as what the browser gets: for `json({
   keeps rows without a value last), so each batch reads every row before its position, whatever index exists, and the time of a
   file grows with the square of its rows. Keep a sorted export small with filters and the table's `max`, and export a large file
   from a table of its own in key order.
-- **Headers.** `Content-Disposition: attachment` with a safe file name, the table's name and a day (`members-<day>.csv`, the UTC
-  day of the app's `Clock`, so `app.freeze()` fixes it), `Cache-Control: no-store`,
+- **The name of the file.** By default the table's name and a day (`members-<day>.csv`, the UTC day of the app's `Clock`, so
+  `app.freeze()` fixes it). `exportCsv().filename(…)` names the file after what it holds: a string, or a function that answers per
+  request with the same arguments as `delimiter()`. Give the name without the extension; the day comes from `resolve(Clock)`:
+
+  ```ts
+  import type { Authenticated } from '@marmeon/auth';
+  import { Clock } from '@marmeon/core';
+  import type { Row } from '@marmeon/database';
+  import type { TableContext } from '@marmeon/table';
+
+  export: {
+    csv: exportCsv()
+      .authorize(GuestPolicy, 'export')
+      // GET /events/:event/guests/_tables/guests/export/csv, where `:event` is bound to a row → "sommerfest-guests-2026-11-18.csv"
+      .filename((ctx: TableContext<Authenticated, { event: Row<'events'> }>, resolve) => `${ctx.params.event.name}-guests-${new Date(resolve(Clock).now()).toISOString().slice(0, 10)}`),
+  },
+  ```
+
+  The name may come from a record someone else named, so the framework cleans it before it is used: control characters and the
+  characters that reorder text (such as U+202E) are removed, `/` and `\` become `-`, dots and spaces at the ends go, and at most
+  100 characters stay. If nothing is left, the default name is used. Then `.csv` is appended (`invoice.exe` is sent as
+  `invoice.exe.csv`) and the header is built with `contentDisposition()`: an ASCII form and the real name as `filename*` (UTF-8).
+  Like the delimiter, the name is decided before the count and the record: a function that throws, or answers no string, sends no
+  file and writes no entry.
+- **Headers.** `Content-Disposition: attachment` with the name above, `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`, and a byte order mark, so spreadsheets read umlauts right.
 - **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed, also
   after spaces or invisible characters such as a byte order mark or a zero-width space, or with a full-width `＝`, `＋`, `－` or `＠`, or a minus sign (U+2212),
@@ -726,6 +749,32 @@ A handler that answers for itself is typed as what the browser gets: for `json({
   without the outer quotes, and with `""` already turned into `"`. `=x`, `'=x` and `''=x` are written as `'=x`, `''=x` and `'''=x`,
   and each one reads back as it was; every other text stays as it is. The result is plain text; never run it as a formula.
 
+### A table only for its export
+
+A page that only links a file, a report page or a dashboard, does not show the table. `tables.exports(table, ctx)` returns the
+table's exports the user may download, as the entries of the `exports` prop (`name`, `format`, `url`, `max`), typed with the names of
+the table's exports. It runs no query on the table's rows, not the base query and no count, and the URL carries the table's
+default state (no sort, search or filter), because the page shows no table.
+
+```ts title="modules/guests/controllers/ShowReportsController.ts"
+export class ShowReportsController extends Controller {
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: TableContext<Authenticated>) {
+    return this.view('reports/Show', { exports: await this.#tables.exports(GuestsTable, ctx) });
+  }
+}
+```
+
+The table must be attached to the page's route (`.attach(GuestsTable.endpoints())`), as for `resolve()`. The list asks what the download
+asks: the table's `authorize` (only an exact `true` counts) and the export's own authorization. A user who may not see the table gets `[]`, not a 403,
+because the page is not the table's; an export the user may not use is left out. Middleware given to `endpoints()` runs only on the download, not when the page lists, so an access check belongs in `authorize`, where the list asks it too. The list is a convenience, not a permission: the endpoint checks everything again.
+
 ## A CSV file of your own
 
 An import template, a report that is no table: `writeCsv(rows, options?)` from `@marmeon/table` writes the rows as the text of a CSV
@@ -734,7 +783,7 @@ first so spreadsheets read umlauts right. Never write the quoting yourself: a ce
 formula in a spreadsheet unless it is escaped.
 
 ```ts
-import { contentDisposition } from '@marmeon/storage';
+import { contentDisposition } from '@marmeon/http';
 import { writeCsv } from '@marmeon/table';
 
 return new Response(writeCsv([['name', 'email'], ['Ada Lovelace', 'ada@example.com']]), {

@@ -26,3 +26,15 @@ export function editableResponse(response: Response): Response {
   owned.add(copy);
   return copy;
 }
+
+/**
+ * The `Content-Disposition` value that names a download, safe for any filename: an ASCII fallback in which quotes, backslashes,
+ * slashes, percent signs, control characters (CR and LF cannot break the header) and non-ASCII characters become `_`, plus the
+ * real name as `filename*` (RFC 8187; a lone surrogate becomes U+FFFD). `serveFile()` uses the same encoder. See docs/responses.md#downloads.
+ */
+export function contentDisposition(type: 'attachment' | 'inline', filename: string): string {
+  // encodeURIComponent throws on a lone surrogate (a slice() through an emoji).
+  filename = filename.toWellFormed();
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\/%]/g, '_');
+  return `${type}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
+}

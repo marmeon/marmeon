@@ -1,5 +1,5 @@
 import { can, Gate, type Auth, type Authenticated } from '@marmeon/auth';
-import { createApplication, defineModule, Logger, Translator, type Application } from '@marmeon/core';
+import { Clock, createApplication, defineModule, Logger, Translator, type Application } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Repository, sql, type QueryEvent } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -336,6 +336,56 @@ export const ActiveTable = defineTable({
   columns: { name: column('members.name').sortable().searchable(), active: column('members.active').sortable() },
   export: { csv: exportCsv().authorize(() => true) },
 });
+
+/**
+ * Exports that name their files: from the `x-test-name` header (percent-encoded — a header carries no raw U+202E), from the route
+ * and the app's day, as a string, by a function that throws.
+ */
+export const NamedTable = defineTable({
+  name: 'named',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable() },
+  export: {
+    given: exportCsv().authorize(() => true).filename((ctx) => decodeURIComponent(ctx.request.headers.get('x-test-name') ?? '')),
+    day: exportCsv().authorize(() => true).filename((ctx, resolve) => `team-${ctx.params.team}-${new Date(resolve(Clock).now()).toISOString().slice(0, 10)}`),
+    fixed: exportCsv().authorize(() => true).filename('summer party'),
+    broken: exportCsv().authorize(() => true).filename(() => { throw new Error('no name for you'); }).onExport(RecordExport),
+    number: exportCsv().authorize(() => true).filename((() => 42) as never),
+  },
+});
+
+/** A table a page links the exports of: one for everyone who sees the table, one by policy, one by a check, one for nobody. */
+export const ExportsOnlyTable = defineTable({
+  name: 'exports-only',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name') },
+  export: {
+    open: exportCsv().authorize(() => true),
+    audit: exportCsv().authorize(MemberPolicy, 'export').max(50),
+    admins: exportCsv().authorize((ctx) => (ctx as unknown as { user: TestUser }).user.admin === true),
+    nobody: exportCsv().authorize(() => false),
+  },
+});
+
+/** A page that only links exports: no table, no rows. */
+export class ExportLinksPage extends Controller {
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: HttpContext & Authenticated & { team: number }) {
+    const which = new URL(ctx.request.url).searchParams.get('which');
+    if (which === 'unattached') return this.json({ exports: await this.#tables.exports(LedgerTable, ctx as never) });
+    // Two tables on one page need their own prefixes: the guarded one has its page.
+    const table = ctx.route?.path.endsWith('/guarded-links') ? GuardedTable : ExportsOnlyTable;
+    return this.json({ exports: await this.#tables.exports(table, ctx as never) });
+  }
+}
 
 /** A test sets this to make `GuardedTable`'s `authorize` answer something else than its policy; reset it to `undefined`. */
 export const guardedOverride: { check?: () => unknown } = {};
@@ -727,6 +777,8 @@ const PAGE_PATHS: Readonly<Record<string, string>> = {
   'team-filter': '/team-filter',
   'role-options': '/role-options',
   ledger: '/ledger',
+  named: '/named',
+  'exports-only': '/export-links',
   small: '/small',
   audited: '/audited',
   'by-email': '/by-email',
@@ -762,6 +814,9 @@ const routes = openRoutes((Route) => {
   team.get('/no-schema', NoSchemaPage).attach(MembersTable.endpoints());
   team.get('/export-in-transaction', ExportInTransaction);
   team.get('/ledger', StubPage).attach(LedgerTable.endpoints());
+  team.get('/named', StubPage).attach(NamedTable.endpoints());
+  team.get('/export-links', ExportLinksPage).attach(ExportsOnlyTable.endpoints());
+  team.get('/guarded-links', ExportLinksPage).attach(GuardedTable.endpoints());
   team.get('/small', StubPage).attach(SmallExportTable.endpoints());
   team.get('/audited', StubPage).attach(AuditedTable.endpoints());
   team.get('/by-email', StubPage).attach(ByEmailTable.endpoints());

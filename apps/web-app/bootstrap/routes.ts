@@ -20,6 +20,7 @@ import type { DownloadMemberTemplateController } from '../modules/members/contro
 import type { EditBookmarkController } from '../modules/bookmarks/controllers/EditBookmarkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
 import type { EndSignInController } from '../modules/auth/controllers/EndSignInController.ts';
+import type { ExportMembersController } from '../modules/members/controllers/ExportMembersController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
 import type { ImportMembersController } from '../modules/members/controllers/ImportMembersController.ts';
 import type { ListBookmarksController } from '../modules/bookmarks/controllers/ListBookmarksController.ts';
@@ -155,6 +156,7 @@ declare module '@marmeon/router' {
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'members.directory': { method: 'get'; path: '/members/directory'; controller: typeof ListMembersController };
+    'members.exports': { method: 'get'; path: '/members/exports'; controller: typeof ExportMembersController };
     'members.import': { method: 'post'; path: '/members/import'; controller: typeof ImportMembersController };
     'members.import.confirm': { method: 'post'; path: '/members/import/:import'; controller: typeof ConfirmMemberImportController };
     'members.import.template': { method: 'get'; path: '/members/import-template'; controller: typeof DownloadMemberTemplateController };
@@ -221,6 +223,7 @@ declare module '@marmeon/http/page' {
     'lab/Streaming': true;
     'lab/Survey': true;
     'lab/Validation': true;
+    'members/Exports': true;
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;
     'notifications/Index': true;
