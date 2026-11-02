@@ -9,11 +9,11 @@ import { pageQueryOf } from '@marmeon/http/client/adapter';
 import { queryState, selection, type Selection } from '@marmeon/http/client/adapter';
 import { queryUrl, type Navigator, type QueryState } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
-import type { SortDirection, TableActionResult, TableData } from './index.ts';
+import type { SortDirection, TableActionResult, TableAnswer, TableData } from './index.ts';
 
 /** Any table's props. */
 // oxlint-disable-next-line typescript/no-explicit-any -- the type parameters of the props, whatever they are
-export type AnyTableData = TableData<any, string, string, string, string, string, string, any, any>;
+export type AnyTableData = TableData<any, string, string, string, string, string, string, any, any, any, any, any>;
 
 /** A row of table `T`, with its `can`. */
 export type TableRowOf<T extends AnyTableData> = T['rows'][number];
@@ -23,6 +23,8 @@ export type ColumnOf<T extends AnyTableData> = T['columns'][number]['name'];
 export type SortableOf<T extends AnyTableData> = T extends TableData<infer _R, infer _C, infer _F, infer _A, infer _B, infer _E, infer S> ? S : string;
 /** The names of `T`'s filters. */
 export type FilterOf<T extends AnyTableData> = T['filters'][number]['name'];
+/** The entry of `T`'s filter called `N` — of the kind the table's definition gave it. */
+export type FilterEntryOf<T extends AnyTableData, N extends FilterOf<T>> = T['filters'][number] & { readonly name: N };
 /** The names of `T`'s row actions. */
 export type ActionOf<T extends AnyTableData> = T['actions'][number]['name'];
 /** The names of `T`'s bulk actions. */
@@ -30,9 +32,13 @@ export type BulkOf<T extends AnyTableData> = T['bulk'][number]['name'];
 /** The names of `T`'s exports. */
 export type ExportOf<T extends AnyTableData> = T['exports'][number]['name'];
 
-/** How a row or bulk action ended — an action's outcome, its data what the table's endpoint answers. */
-export type TableRunOutcome =
-  | { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: TableActionResult }
+/**
+ * How a row or bulk action ended — an action's outcome, its data what the table's endpoint answers. `D` is what the action's handler
+ * returned, as JSON (`unknown` for a table the types do not know).
+ */
+export type TableRunOutcome<D = unknown, O = never, W extends boolean = true> =
+  | (W extends true ? { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: TableActionResult<D> } : never)
+  | ([O] extends [never] ? never : { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: O })
   | Exclude<ActionOutcome, { readonly ok: true; readonly kind: 'data' }>;
 
 /** What one run of an action does besides sending. */
@@ -42,6 +48,13 @@ export interface TableRunOptions {
   /** Aborts the run (it ends `cancelled`). */
   signal?: AbortSignal;
 }
+
+/** What the handler of `N` answers (`R` maps names to it): `unknown` when the types do not know. */
+type OutcomeOf<R, N> = 0 extends 1 & R ? TableRunOutcome : N extends keyof R ? (R[N] extends TableAnswer<infer D, infer O, infer W> ? TableRunOutcome<D, O, W> : TableRunOutcome) : TableRunOutcome;
+/** What the handler of `T`'s row action `N` answered, as JSON (`unknown` when the types do not know it). */
+export type TableActionOutcomeOf<T extends AnyTableData, N> = OutcomeOf<NonNullable<T['~results']>['actions'], N>;
+/** What the handler of `T`'s bulk action `N` answered, as JSON (`unknown` when the types do not know it). */
+export type TableBulkOutcomeOf<T extends AnyTableData, N> = OutcomeOf<NonNullable<T['~results']>['bulk'], N>;
 
 type ActionInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['actions'];
 type BulkInputs<T extends AnyTableData> = NonNullable<T['~inputs']>['bulk'];
@@ -181,10 +194,19 @@ export class TableController<T extends AnyTableData = AnyTableData> {
     return sortUrl(this.#data, column, page);
   }
 
-  /** Filters by `name` — `null` takes the filter off. A select filter takes one of its options, a date range `from..to`. */
-  filter(name: FilterOf<T>, value: string | null): void {
+  /**
+   * The filter called `name` — of the kind the table's definition gave it (`filter('status')?.options`) — or `undefined` when the
+   * user may not use it (it is not in the props). With a `value`: filters by `name`, `null` takes the filter off. A select filter
+   * takes one of its options, a date range `from..to`.
+   */
+  filter<N extends FilterOf<T>>(name: N): FilterEntryOf<T, N> | undefined;
+  filter(name: FilterOf<T>, value: string | null): void;
+  filter(name: FilterOf<T>, ...rest: [value?: string | null]): unknown {
+    if (rest.length === 0) return this.#data.filters.find((entry) => entry.name === name);
+    const value = rest[0] ?? null;
     const found = this.#checkFilter(name, value);
     this.#set({ [found.key]: value === null || value === '' ? undefined : value, ...this.#firstPage() });
+    return undefined;
   }
 
   /** Sets several filters in one visit (a form's "Apply") — `null` takes one off; none changed, no visit. Back to page 1. */
@@ -319,12 +341,12 @@ export class TableController<T extends AnyTableData = AnyTableData> {
    * Runs row action `name` for `row` — then the table reloads (replacing what it showed). An action defined with `.input()` takes
    * its values as `{ input }`; the server validates them (a 422 under `input.<field>`).
    */
-  run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableRunOutcome> {
+  run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>> {
     const options: TableRunOptions & { input?: unknown } = given ?? {};
     const data = this.#data;
     const entry = data.actions.find((action) => action.name === name);
     if (!entry) refuse('[marmeon:C12]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" offers no row action "${String(name)}" to this user — it offers ${list(data.actions.map((action) => action.name))}.`);
-    return this.#run(entry.url, { key: keyOf(data, row), ...(options.input !== undefined ? { input: options.input } : {}) }, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, 1)) : options.confirm, options.signal, false);
+    return this.#run(entry.url, { key: keyOf(data, row), ...(options.input !== undefined ? { input: options.input } : {}) }, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, 1)) : options.confirm, options.signal, false) as Promise<TableActionOutcomeOf<T, N>>;
   }
 
   /**
@@ -332,14 +354,14 @@ export class TableController<T extends AnyTableData = AnyTableData> {
    * query }`), never a list of keys. Then the selection is cleared and the table reloads. A bulk action defined with `.input()` takes
    * its values as `{ input }`, for "all matching" too.
    */
-  runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableRunOutcome> {
+  runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>> {
     const options: TableRunOptions & { input?: unknown } = given ?? {};
     const data = this.#data;
     const entry = data.bulk.find((action) => action.name === name);
     if (!entry) refuse('[marmeon:C12]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" offers no bulk action "${String(name)}" to this user — it offers ${list(data.bulk.map((action) => action.name))}.`);
     const selected = this.selection;
     const body = { ...(selected.matching ? { all: true, query: data.state } : { keys: selected.keys }), ...(options.input !== undefined ? { input: options.input } : {}) };
-    return this.#run(entry.url, body, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, this.selectedCount)) : options.confirm, options.signal, true);
+    return this.#run(entry.url, body, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, this.selectedCount)) : options.confirm, options.signal, true) as Promise<TableBulkOutcomeOf<T, N>>;
   }
 
   async #run(url: string, body: Record<string, unknown>, confirm: Confirm | undefined, signal: AbortSignal | undefined, bulk: boolean): Promise<TableRunOutcome> {

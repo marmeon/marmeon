@@ -180,6 +180,27 @@ describe('the headless table on the client core alone', () => {
     expect(requests.at(-1)!.url).toBe('/members');
   });
 
+  it('takes a filter off with null: its key leaves the URL', async () => {
+    const table = app.table();
+    table.filter('locale', 'de');
+    await settle();
+    expect(requests.at(-1)!.url).toBe('/members?filter%5Blocale%5D=de');
+    new TableController(app.navigator, app.navigator.page.props.members as Members).filter('locale', null);
+    await settle();
+    expect(requests.at(-1)!.url).toBe('/members');
+  });
+
+  it('gives the filter called by name as the props hold it, and undefined for one the props do not have', () => {
+    const table = app.table();
+    const data = app.navigator.page.props.members as Members;
+    expect(table.filter('locale')).toBe(data.filters[0]);
+    expect(table.filter('locale')).toMatchObject({ type: 'select', options: ['en', 'de'] });
+    expect(table.filter('joined')).toMatchObject({ type: 'dateRange', key: 'filter[joined]' });
+    // @ts-expect-error — no such filter in the props
+    expect(table.filter('role')).toBeUndefined();
+    expect(requests, 'reading a filter sends nothing').toEqual([]);
+  });
+
   it('checks the value of a has filter against its options, whatever their labels', async () => {
     const data = app.navigator.page.props.members as Members;
     const labelled = { ...data, filters: [{ name: 'team', type: 'has', key: 'filter[team]', options: ['7'], labels: ['Seven'], value: null }] as never } as Members;

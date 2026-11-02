@@ -53,9 +53,11 @@ export default function Index({ members }: Props) {
   const removeMany = table.bulk.find((entry) => entry.name === 'removeLinks');
   const setLocale = table.bulk.find((entry) => entry.name === 'setLocale');
   const csv = table.exports.find((entry) => entry.name === 'csv');
-  const filters = Object.fromEntries(table.filters.map((entry) => [entry.name, entry]));
-  const link = filters.link;
-  const [joinedFrom = '', joinedTo = ''] = (filters.joined?.value ?? '').split('..');
+  // Each filter by name, with the fields of its kind — undefined for one the user may not use.
+  const locale = table.filter('locale');
+  const link = table.filter('link');
+  const joined = table.filter('joined');
+  const [joinedFrom = '', joinedTo = ''] = (joined?.value ?? '').split('..');
   // The form's fields are the page's state: after "Reset" or Back (the page stays mounted) they show it again. The others are new
   // fields per state (their `key`); the search field follows unless it is being typed into — its own visits bring what was typed.
   const searchValue = table.search?.value ?? '';
@@ -73,14 +75,15 @@ export default function Index({ members }: Props) {
     if (size !== table.page.perPage) table.perPage(size);
     const from = String(form.get('joined_from') ?? '');
     const to = String(form.get('joined_to') ?? '');
-    table.filterBy({ locale: String(form.get(filters.locale?.key ?? '') ?? '') || null, link: String(form.get(filters.link?.key ?? '') ?? '') || null, joined: from || to ? `${from}..${to}` : null });
+    table.filterBy({ locale: String(form.get(locale?.key ?? '') ?? '') || null, link: String(form.get(link?.key ?? '') ?? '') || null, joined: from || to ? `${from}..${to}` : null });
   };
 
-  const report = (outcome: TableRunOutcome) => {
+  // The outcome is typed by the handlers: `data.data` is what they returned, as JSON.
+  const report = (outcome: TableRunOutcome<{ removed: number }>) => {
     if (outcome.kind === 'cancelled') return;
     setNotice(outcome.kind === 'data' ? t('removed', { done: outcome.data.done, skipped: outcome.data.skipped + outcome.data.missing }) : t('remove_failed'));
   };
-  const reportLocale = (outcome: TableRunOutcome) => {
+  const reportLocale = (outcome: TableRunOutcome<{ updated: number }>) => {
     if (outcome.kind === 'cancelled') return;
     setNotice(outcome.kind === 'data' ? t('locale_set', { done: outcome.data.done, skipped: outcome.data.skipped + outcome.data.missing }) : t('locale_set_failed'));
   };
@@ -104,12 +107,12 @@ export default function Index({ members }: Props) {
             <input ref={searchField} type="search" name={members.query.search} defaultValue={table.search.value} maxLength={100} onChange={(event) => table.setSearch(event.target.value.trim())} />
           </label>
         )}
-        {filters.locale?.type === 'select' && (
+        {locale && (
           <label>
             {t('locale')}{' '}
-            <select key={filters.locale.value ?? ''} name={filters.locale.key} defaultValue={filters.locale.value ?? ''}>
+            <select key={locale.value ?? ''} name={locale.key} defaultValue={locale.value ?? ''}>
               <option value="">{t('locale_option', { locale: 'any' })}</option>
-              {filters.locale.options.map((option) => (
+              {locale.options.map((option) => (
                 <option key={option} value={option}>
                   {t('locale_option', { locale: option })}
                 </option>
@@ -117,7 +120,7 @@ export default function Index({ members }: Props) {
             </select>
           </label>
         )}
-        {link?.type === 'has' && link.options.length > 0 && (
+        {link && link.options.length > 0 && (
           <label>
             {t('link')}{' '}
             <select key={link.value ?? ''} name={link.key} defaultValue={link.value ?? ''}>
@@ -130,7 +133,7 @@ export default function Index({ members }: Props) {
             </select>
           </label>
         )}
-        {filters.joined && (
+        {joined && (
           <>
             <label>
               {t('joined_from')} <input key={joinedFrom} type="date" name="joined_from" defaultValue={joinedFrom} />
