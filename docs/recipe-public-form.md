@@ -63,8 +63,8 @@ sections below show them as the pages on [routing](routing.md#a-binding-everyone
 ## The code
 
 The routes come first. The comment on `authorize(everyone)` says why no check is needed: nothing in the module acts on a user.
-The route that saves has `throttle('guestbook')` in front of it, and the route that shows one entry says
-`{ public: true }` on its binding.
+The route that saves has `throttle('guestbook')` in front of it and takes no body over 32 KB, and the route that shows one entry says
+`{ public: true }` on its binding. A larger form is refused with a 413, before any middleware when it declares its length and at the CSRF check's read when it does not; see [the body](requests.md#a-smaller-limit-on-one-route).
 
 ```ts title="modules/guestbook/routes.ts"
 import { throttle } from '@marmeon/cache';
@@ -78,7 +78,7 @@ export default defineRoutes((Route) => {
   // Guests read approved entries and leave one; nothing here acts on a user.
   const guests = Route.prefix('/guestbook').authorize(everyone).name('guestbook.');
   guests.get('/', ListGuestbookEntriesController).name('index');
-  guests.middleware(throttle('guestbook')).post('/', StoreGuestbookEntryController).name('store');
+  guests.middleware(throttle('guestbook')).post('/', StoreGuestbookEntryController).maxBodyBytes(32 * 1024).name('store');
   // ApprovedEntries finds approved entries only, so every visitor may read what it finds.
   guests.bind('entry', ApprovedEntries, { public: true }).get('/:entry', ShowGuestbookEntryController).name('show');
 });

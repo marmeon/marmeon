@@ -62,6 +62,16 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     app.storage.disk('public').assertMissing(path).assertExists(replaced).assertCount(1);
   });
 
+  it('a picture larger than the form route’s 4 KB body limit still uploads and saves: the file goes to its own route, and a larger form is refused', async () => {
+    const { ada, as } = await setUp();
+    const large = new Uint8Array(20 * 1024);
+    large.set(PNG);
+    const token = await as.upload(ROUTE, 'avatar', new File([large], 'big.png', { type: 'image/png' }), { user: ada.public_id });
+    await send(as, ada, token).assertRedirect(`/users/${ada.public_id}`);
+    expect((await app.make(UserRepository).find(ada.id))!.avatar_path).toMatch(KEY);
+    await send(as, ada, 'x'.repeat(5 * 1024)).assertStatus(413);
+  });
+
   it('the picture’s width and height are read from its bytes at store() and kept with the user — the profile hands them to <Image>', async () => {
     const { ada, as } = await setUp();
     const sized = new Uint8Array([...PNG.subarray(0, 16), 0, 0, 1, 0x2c, 0, 0, 0, 0xc8, 8, 6, 0, 0, 0]); // 300 × 200

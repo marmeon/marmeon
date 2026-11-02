@@ -9,8 +9,9 @@ import { TalkCatalog } from './TalkCatalog.ts';
 export default defineRoutes((Route) => {
   // A POST (with the CSRF token), never a GET: a link on another site must not switch the language.
   // Open to everyone, and limited per client: it writes the language into the session and, for a signed-in user, into that user's own
-  // `locale`; it takes a supported language only.
-  Route.middleware(throttle('locale')).authorize(everyone).post('/locale', UpdateLocaleController).name('locale.update');
+  // `locale`; it takes a supported language only. Its body is a language code and a token, so a larger one is refused: before any middleware
+  // when it declares its length, at the CSRF check's read when it does not.
+  Route.middleware(throttle('locale')).authorize(everyone).post('/locale', UpdateLocaleController).maxBodyBytes(2 * 1024).name('locale.update');
 
   // A talk is held in one language, and its page speaks it without the language in the URL. The hook runs once the record is
   // bound and the checks have passed, so the 404 or 403 of a talk is still in the visitor's language. A language the app does

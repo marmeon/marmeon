@@ -322,6 +322,7 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     authorize(check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>): Route<TState, TParams, TBindings>;
     afterAuthorize(hook: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => void | Promise<void>): Route<TState, TParams, TBindings>;
     internal(): Route<TState, TParams, TBindings>;
+    maxBodyBytes(bytes: number): Route<TState, TParams, TBindings>;
     group(callback: (Route: this) => void): void;
     get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(path: TPath, action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>): RouteDefinition<RouteContext<TState, TParams, TBindings, TPath>>;
     post<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
@@ -389,6 +390,7 @@ export declare class RouteDefinition<TContext extends object = any> {
     readonly localized: boolean;
     name(name: string): this;
     internal(): this;
+    maxBodyBytes(bytes: number): this;
     sitemap(): this;
     block(options?: {
         lock?: Duration;
