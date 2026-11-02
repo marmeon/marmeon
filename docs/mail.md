@@ -156,18 +156,30 @@ all send mail would have as many frames as modules, and a change of the brand co
 a module the others may import, such as `ui`, and export it through that module's entry:
 
 ```ts title="modules/ui/index.ts"
-export { layout as mailLayout } from './mail/layout.ts';
+export { layout } from './mail/layout.ts';
 ```
 
-`modules/ui/mail/layout.ts` is the file shown above. The mail that `make:mail` wrote still imports `./layout.ts`. Delete the module's own
-`mail/layout.ts` and point the import at the shared one; the function has the same signature, so nothing else in the mail changes:
+`modules/ui/mail/layout.ts` is the file shown above; `marmeon make:mail <Name> --module=ui` writes it. Then name that module when you
+make the mails of the others:
+
+```sh
+pnpm marmeon make:mail NoteShared --module=notes --layout=ui
+```
+
+It writes only the mail, and the mail imports the frame from the other module; `notes` gets no `mail/layout.ts`. The function has the
+same signature as the module's own, so nothing else in the mail changes:
 
 ```ts title="modules/notes/mail/NoteSharedMail.ts"
-import { mailLayout as layout } from '#modules/ui';
+import { layout } from '#modules/ui';
 ```
 
+`--layout` takes the name of a module that exists; naming the mail's own module is the same as leaving the option out. The command
+does not search for "the" frame and remembers none: every mail names it. If `modules/ui/index.ts` does not export `layout`, the mail is
+written anyway and the command prints the line above for you to add; it never edits another module's entry. If `ui` has no
+`mail/layout.ts` either, nothing is written and the command says to make a mail in `ui` first.
+
 A mail class is found by its folder, so `modules/ui/mail/` is scanned for previews like any other, and a file with a function only
-adds none. Every later `make:mail` in a module without a `mail/layout.ts` writes one again; delete it and change the import each time.
+adds none.
 
 ## Sending mails
 

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
-import { bindingNameOf } from '@marmeon/core/internal';
+import { bindingNameOf, parseSync } from '@marmeon/core/internal';
 import { CommandArgumentsError, CommandRegistry, isReservedCommand, RESERVED_COMMANDS, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import { leavesProject } from '../write-guard.ts';
@@ -419,14 +419,16 @@ export class MakeNotificationCommand {
 export class MakeMailCommand {
   static command = 'make:mail';
   static description = 'Create a mail (envelope(), content() in the app\'s layout and a static preview()); the layout too, once';
-  static usage = '<Name> --module=<module>';
-  static options = moduleOption;
+  static usage = '<Name> --module=<module> [--layout=<module>]';
+  static options = { ...moduleOption, layout: { type: 'string' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
     const dir = moduleDir(input);
     const name = className(input, 'Mail');
     if (!dir || !name) return 1;
+    const shared = sharedLayoutModule(input);
+    if (shared === null) return 1;
     for (const [name, why] of [['@marmeon/mail', 'A mail is sent by the Mailer of'], ['@marmeon/i18n', 'A mail speaks the language of its recipient with the Translators of']] as const) {
       if (!dependsOn(input.root, name)) {
         input.output.error(`${why} ${name}: pnpm add -E ${name}@<version of your app>`);
@@ -435,16 +437,66 @@ export class MakeMailCommand {
     }
     const module = input.options.module as string;
     // The mail goes first: when it exists and is not overwritten, nothing else is written either.
-    if (!write(input, join(dir, 'mail', `${name}.ts`), MAIL(name))) return 1;
-    // The layout belongs to the app, not to the mail: a layout that is there stays, even with --force.
-    const layout = join(dir, 'mail', 'layout.ts');
-    if (existsSync(layout)) input.output.line(style('dim', `Using ${relative(input.root, layout)}`));
-    else if (!write(input, layout, MAIL_LAYOUT)) return 1;
+    if (!write(input, join(dir, 'mail', `${name}.ts`), MAIL(name, shared === undefined ? './layout.ts' : `#modules/${shared}`))) return 1;
+    if (shared !== undefined) {
+      const exported = exportsName(join(input.root, 'modules', shared, 'index.ts'), 'layout');
+      if (exported === 'unparsable') {
+        input.output.line();
+        input.output.warn(`modules/${shared}/index.ts does not parse; check that it exports layout:`);
+        input.output.line(style('dim', "  export { layout } from './mail/layout.ts';"));
+      } else if (exported === 'missing') {
+        input.output.line();
+        input.output.warn(`modules/${shared}/index.ts does not export layout. Add it yourself:`);
+        input.output.line(style('dim', "  export { layout } from './mail/layout.ts';"));
+      }
+    } else {
+      // The layout belongs to the app, not to the mail: a layout that is there stays, even with --force.
+      const layout = join(dir, 'mail', 'layout.ts');
+      if (existsSync(layout)) input.output.line(style('dim', `Using ${relative(input.root, layout)}`));
+      else if (!write(input, layout, MAIL_LAYOUT)) return 1;
+    }
     input.output.line(style('dim', `Preview it in development: /_marmeon/mail/${module}/${name}`));
     input.output.line(style('dim', `Send it: await mailer.send(new ${name}({ address: user.email, name: user.name }, translators.for(user.locale)));   (Mailer from @marmeon/mail, Translators from @marmeon/i18n)`));
-    input.output.line(style('dim', 'See docs/mail.md#writing-mails'));
+    input.output.line(style('dim', `See docs/mail.md#${shared === undefined ? 'writing-mails' : 'one-frame-for-several-modules'}`));
     return 0;
   }
+}
+
+/**
+ * The module named by `--layout` whose frame the mail imports, `undefined` without the option (or when it names the mail's own
+ * module), `null` after an error — checked before anything is written.
+ */
+function sharedLayoutModule(input: CommandInput): string | undefined | null {
+  const shared = input.options.layout;
+  if (shared === undefined) return undefined;
+  if (typeof shared !== 'string' || !KEBAB.test(shared)) throw new CommandArgumentsError('Pass the module of the frame: --layout=<kebab-case-name>');
+  if (shared === input.options.module) return undefined;
+  const dir = join(input.root, 'modules', shared);
+  if (!existsSync(dir)) {
+    input.output.error(`Module "${shared}" does not exist, so there is no frame to import. Create it first: marmeon make:module ${shared}`);
+    return null;
+  }
+  if (!existsSync(join(dir, 'mail', 'layout.ts')) && exportsName(join(dir, 'index.ts'), 'layout') !== 'exported') {
+    input.output.error(`Module "${shared}" has no frame: marmeon make:mail <Mail> --module=${shared} writes the frame there first.`);
+    return null;
+  }
+  return shared;
+}
+
+/** Whether a file exports `name` by name. `export *` is not followed: it counts as missing, and the generator prints the line to add. */
+function exportsName(file: string, name: string): 'exported' | 'missing' | 'unparsable' {
+  if (!existsSync(file)) return 'missing';
+  const { program, errors } = parseSync(file, readFileSync(file, 'utf8'));
+  if (errors.length > 0) return 'unparsable';
+  const named = (node: { type: string; name?: string; value?: unknown }) => (node.type === 'Literal' ? node.value === name : node.name === name);
+  for (const declaration of program.body as Array<Record<string, any>>) {
+    if (declaration.type !== 'ExportNamedDeclaration') continue;
+    if ((declaration.specifiers as Array<Record<string, any>>).some((specifier) => named(specifier.exported))) return 'exported';
+    const inner = declaration.declaration as Record<string, any> | null;
+    if (inner?.id !== undefined && inner.id !== null && inner.id.name === name) return 'exported';
+    if (inner?.type === 'VariableDeclaration' && inner.declarations.some((d: Record<string, any>) => d.id.name === name)) return 'exported';
+  }
+  return 'missing';
 }
 
 /** `notes:prune`, `prune`: kebab-case words joined by colons. Goes into a string literal of the template. */
@@ -863,9 +915,9 @@ export class ${name} {
 }
 `;
 
-const MAIL = (name: string) => `import { Translators, type Translator } from '@marmeon/i18n';
+const MAIL = (name: string, layoutFrom: string) => `import { Translators, type Translator } from '@marmeon/i18n';
 import { mjml, type Address, type Mailable, type MailPreviewContext } from '@marmeon/mail';
-import { layout } from './layout.ts';
+import { layout } from '${layoutFrom}';
 
 /**
  * A mail: \`envelope()\` says to whom and about what, \`content()\` is the body inside the app's layout. \`t\` speaks the
