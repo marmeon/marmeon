@@ -686,7 +686,7 @@ schema.alter('memberships', (table) => {
 A check name is used once per table: `check()` with the name of another check, or of the constraint a `oneOf()` column makes, is error D19. A `check()` that mentions a column
 stops that column from being dropped on SQLite, and on Postgres `dropColumn()` drops the constraint without a word while Marmeon still describes it: drop the check first with `dropCheck()` on Postgres, and rebuild the table with raw SQL on SQLite.
 
-After `dropCheck()` the column is a plain `string` in `Row<…>` again, whatever condition `check()` puts in its place, and the lines that read it need a cast to the union.
+After `dropCheck()` the column is a plain `string` in `Row<…>` again. Marmeon does not read the condition that `check()` puts in its place, so cast the lines that read the column to the union only when that condition allows exactly the union.
 
 #### Adding a value to a `oneOf()` list
 
@@ -707,6 +707,8 @@ export default defineMigration({
   },
 });
 ```
+
+Give the new column every modifier of the old one, such as `nullable()` and `unique()`: a NULL does not copy into a column that is not nullable, and `dropColumn()` takes the old column's unique index with it.
 
 The migration has no `down`: taking a role out of the list would refuse the rows that use it, and a rollback that reaches it stops there with error D16, which names it.
 

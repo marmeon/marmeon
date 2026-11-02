@@ -299,7 +299,7 @@ export class RecordNoteShared {
 }
 ```
 
-The listener is registered with `listen(NoteShared, RecordNoteShared)` like any other. A `json()` column is a `JsonColumn`: the repository writes it as text, so `meta` is `JSON.stringify(…)`, and reads it back as the parsed value ([table types](queries.md#table-types)). Three details of the table matter:
+Register the listener with `listen(NoteShared, RecordNoteShared)` like any other. A `json()` column is a `JsonColumn`: write it as text with `JSON.stringify(…)`, and the repository reads it back as the parsed value ([table types](queries.md#table-types)). Three details of the table matter:
 
 - **No foreign key on the subject or the actor.** An entry about a deleted note or a deleted account must outlive both. Store
   the subject as a table name and a key, and the actor as a plain key column, in a table of its own:
