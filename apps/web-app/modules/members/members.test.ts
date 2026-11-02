@@ -69,6 +69,17 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(answer.json()).toEqual({ done: 0, skipped: 0, missing: 1 });
   });
 
+  it('the base query resolves the app\'s clock: a confirmation still ahead of it is no member on the page, in "all matching" or in the export — until the clock gets there', async () => {
+    const later = (await app.factory(UserFactory).create({ name: 'Later Person', email_verified_at: new Date(app.clock.now() + 3_600_000) }))!;
+    expect((await members(ada)).rows.map((row) => row.name)).not.toContain('Later Person');
+    const many = await app.actingAs(ada).acting().post('/members/_tables/members/bulk/removeLinks', { json: { keys: [later.id] } }).assertOk();
+    expect(many.json()).toEqual({ done: 0, skipped: 0, missing: 1 });
+    const download = await app.actingAs(ada).get('/members/_tables/members/export/csv').assertOk();
+    expect(download.body, 'a row outside the scope was exported').not.toContain('Later Person');
+    app.travel({ hours: 2 });
+    expect((await members(ada)).rows.map((row) => row.name)).toContain('Later Person');
+  });
+
   it('a guest never reaches the page or the table\'s endpoints — the page\'s middleware runs for them (401, the login)', async () => {
     await app.get('/members', { headers: { accept: 'text/html' } }).assertRedirect('/login');
     const action = await app.acting().post('/members/_tables/members/actions/removeLinks', { json: { key: alan.id } });

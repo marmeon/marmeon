@@ -57,6 +57,8 @@ export class Recorder {
   readonly exports: [TableExportInfo, unknown][] = [];
   /** Makes the export recorder throw. */
   failExport = false;
+  /** How often `TeamScope` was asked for the team — the base query of `ScopedTable` asks it for each query it builds. */
+  scoped = 0;
 }
 
 /** A row action: records the row's key. */
@@ -170,6 +172,77 @@ export class DeactivateByEmail {
     this.#recorder.deactivated.push(row.email);
     // A handler's own response reaches the client as it is.
     if (row.email === 'edsger@example.com') return new Response('teapot', { status: 418 });
+  }
+}
+
+/** The tenant scope, a service of the container: a base query gets it from its `resolve`, not from the request. */
+export class TeamScope {
+  static inject = [Recorder, IncomingRequest] as const;
+  readonly #recorder: Recorder;
+  readonly #request: Request;
+
+  constructor(recorder: Recorder, request: Request) {
+    this.#recorder = recorder;
+    this.#request = request;
+  }
+
+  /** The team of the request's user, read from the request itself: only a resolver of this request knows it. */
+  teamOf(): number {
+    this.#recorder.scoped += 1;
+    return USERS[Number(this.#request.headers.get('x-test-user'))]!.team;
+  }
+}
+
+/** The team's members, scoped by a service the base query resolves — on the page and on every endpoint. */
+export const ScopedTable = defineTable({
+  name: 'scoped',
+  query: (db, _ctx: TeamContext, resolve) => db.selectFrom('members').where('members.team_id', '=', resolve(TeamScope).teamOf()),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable().searchable() },
+  filters: { role: filter.select('members.role', ['admin', 'member']) },
+  actions: { deactivate: action(Deactivate).authorize(MemberPolicy, 'deactivate') },
+  bulk: { deactivate: bulk(DeactivateMany).authorize(MemberPolicy, 'deactivate').max(5) },
+  export: { csv: exportCsv().authorize(() => true).onExport(RecordExport) },
+});
+
+/** A table with a `filter.has()`: its first request checks the filter against the base query, which resolves its scope, too. */
+export const ScopedTeamsTable = defineTable({
+  name: 'scoped-teams',
+  query: (db, _ctx: TeamContext, resolve) => db.selectFrom('teams').where('teams.id', '=', resolve(TeamScope).teamOf()),
+  key: 'teams.id',
+  columns: { name: column('teams.name') },
+  filters: { member: filter.has('members', () => ['admin'], { column: 'role' }) },
+});
+
+export const ScopedTeamsRequest = defineRequest({ query: ScopedTeamsTable.query });
+
+export class ScopedTeamsPage extends Controller {
+  static request = ScopedTeamsRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof ScopedTeamsRequest> & Authenticated & { team: number }) {
+    return this.json({ teams: await this.#tables.resolve(ScopedTeamsTable, ctx) });
+  }
+}
+
+export const ScopedRequest = defineRequest({ query: ScopedTable.query });
+
+export class ScopedPage extends Controller {
+  static request = ScopedRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof ScopedRequest> & Authenticated & { team: number }) {
+    return this.json({ members: await this.#tables.resolve(ScopedTable, ctx) });
   }
 }
 
@@ -383,7 +456,7 @@ export class ExportLinksPage extends Controller {
     const which = new URL(ctx.request.url).searchParams.get('which');
     if (which === 'unattached') return this.json({ exports: await this.#tables.exports(LedgerTable, ctx as never) });
     // Two tables on one page need their own prefixes: the guarded one has its page.
-    const table = ctx.route?.path.endsWith('/guarded-links') ? GuardedTable : ExportsOnlyTable;
+    const table = ctx.route?.path.endsWith('/guarded-links') ? GuardedTable : ctx.route?.path.endsWith('/scoped-links') ? ScopedTable : ExportsOnlyTable;
     return this.json({ exports: await this.#tables.exports(table, ctx as never) });
   }
 }
@@ -770,6 +843,8 @@ export class StubPage extends Controller {
 /** The pages the tables are attached to in the app, by the table's name — the endpoints are under them. */
 const PAGE_PATHS: Readonly<Record<string, string>> = {
   members: '/members',
+  scoped: '/scoped',
+  'scoped-teams': '/scoped-teams',
   feed: '/feed',
   'feed-copy': '/feed-copy',
   leaky: '/leaky',
@@ -804,6 +879,9 @@ const routes = openRoutes((Route) => {
   team.get('/members', MembersPage).attach(MembersTable.endpoints());
   // The same table on a second page, whose request decides who may see it: its endpoints answer only an admin of the team.
   team.prefix('/in/:role').get('/members', AdminMembersPage).attach(MembersTable.endpoints());
+  team.get('/scoped', ScopedPage).attach(ScopedTable.endpoints());
+  team.get('/scoped-teams', ScopedTeamsPage).attach(ScopedTeamsTable.endpoints());
+  team.get('/scoped-links', ExportLinksPage).attach(ScopedTable.endpoints());
   team.get('/feed', FeedPage).attach(FeedTable.endpoints());
   team.get('/feed-copy', FeedCopyPage).attach(FeedCopyTable.endpoints());
   team.get('/leaky', LeakyPage).attach(LeakyTable.endpoints());

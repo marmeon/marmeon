@@ -54,7 +54,7 @@ the policy lacks is a compile error.
 
 ### The base query
 
-`query(db, ctx)` returns every row the table may ever show in this request. Pages, actions, bulk actions and exports all start
+`query(db, ctx, resolve)` returns every row the table may ever show in this request. Pages, actions, bulk actions and exports all start
 from it, so it is the boundary: put the tenant here, `.where('users.team_id', '=', ctx.user.team_id)`, and nothing of another
 tenant can be shown, changed or downloaded. The base query selects nothing but values it computes, such as a
 [count](queries.md#counting-related-rows). The table selects the visible columns and the key itself. Type its `ctx` as
@@ -78,50 +78,34 @@ query: (db: Database<'members'>, ctx: TableContext<Authenticated, { team: Row<'t
 
 The restriction is a type, as everywhere else: at runtime the table passes the app's connection.
 
-The base query is a function of the connection and the request's context, nothing else. It has no `resolve`, so it cannot ask the
-container for a service, and the `Clock` is one. Its `ctx` has no `query`, because the page and the table's endpoints have
-different URLs and the query string of one is not the other's. A parameter of the table is therefore one of three things:
+The base query gets the connection, the request's context and the request's `resolve`, the same one the table's checks get. A
+service of the container, such as the `Clock` or a class that knows the tenant, is therefore one call away, and the page and every
+endpoint (rows, actions, bulk actions, exports and their counts) build the query with it. Only `tables.exports()` never runs the
+query: it lists what the download offers. Its `ctx` has no `query`, because the page and the table's endpoints have different URLs
+and the query string of one is not the other's. A parameter of the table is therefore one of three things:
 
 - **A filter**, when the value narrows the rows: the URL chooses it, and the table checks it against the filter's options.
-- **A value of the request's state**, when the rows depend on something the request knows, such as the day. A middleware of the
-  page's route sets it. The table's endpoints hang on that route, so their `ctx` carries it too
-  (see [Middleware per endpoint](#middleware-per-endpoint)).
+- **A value of the request or of a service**, when the rows depend on something the request knows, such as the day. Read it from
+  `resolve(...)`, or let a middleware of the page's route set it: the table's endpoints hang on that route, so their `ctx` carries
+  it too (see [Middleware per endpoint](#middleware-per-endpoint)).
 - **A table of its own**, when the value changes which rows exist rather than which are shown: the window of a time series
   (daily or weekly buckets, from another start) is one table for each window, built from one function and each with its own
   `prefix`. The window is then the address of the page and of its file.
 
-The clock is state like any other. A middleware reads it and passes the instant on, so `app.travel()` in a test moves the
-table with the services:
-
-```ts title="modules/members/middleware/MonthAgo.ts"
-import { Clock } from '@marmeon/core';
-import type { HttpContext, Next } from '@marmeon/http';
-
-/** Adds `ctx.monthAgo`: the instant 30 days before the app's clock says now, as the ISO string a timestamp column compares with. */
-export class MonthAgo {
-  static inject = [Clock] as const;
-  static readonly adds = ['monthAgo'] as const;
-
-  readonly #clock: Clock;
-
-  constructor(clock: Clock) {
-    this.#clock = clock;
-  }
-
-  handle(_ctx: HttpContext, next: Next<{ monthAgo: string }>) {
-    return next({ monthAgo: new Date(this.#clock.now() - 30 * 24 * 60 * 60 * 1000).toISOString() });
-  }
-}
-```
+The clock is a service like any other, so `app.travel()` in a test moves the table with the rest:
 
 ```ts title="modules/members/tables/RecentMembersTable.ts"
 import { can, type Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
 import { column, defineTable, type TableContext } from '@marmeon/table';
 import { MemberPolicy } from '../policies/MemberPolicy.ts';
 
+const MONTH = 30 * 24 * 60 * 60 * 1000;
+
 export const RecentMembersTable = defineTable({
   name: 'recent-members',
-  query: (db, ctx: TableContext<Authenticated & { monthAgo: string }>) => db.selectFrom('users').where('users.created_at', '>=', ctx.monthAgo),
+  query: (db, _ctx: TableContext<Authenticated>, resolve) =>
+    db.selectFrom('users').where('users.created_at', '>=', new Date(resolve(Clock).now() - MONTH).toISOString()),
   key: 'users.id',
   columns: {
     name: column('users.name').sortable().searchable(),
@@ -132,8 +116,8 @@ export const RecentMembersTable = defineTable({
 });
 ```
 
-Put the middleware on the page's route, `members.middleware(MonthAgo).get('/recent', ListRecentMembersController).name('recent').attach(RecentMembersTable.endpoints())`.
-A page whose route lacks `MonthAgo` does not compile, and its controller types its `ctx` with `& { monthAgo: string }`.
+Scope by a service the same way: `.where('users.team_id', '=', resolve(TenantScope).teamOf(ctx))` applies to the page and to every
+endpoint alike, so a row outside the scope is invisible to each of them.
 
 ### Columns
 
