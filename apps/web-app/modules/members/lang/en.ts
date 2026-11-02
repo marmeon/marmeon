@@ -51,6 +51,7 @@ const en = {
   template_download: 'Download a template',
   import_columns: 'The first row needs the columns name and email.',
   imported: '{rows, plural, one {# row} other {# rows}} read, {invalid, number} to correct.',
+  import_first: 'The first is in line {line}.',
   import_confirmed: '{rows, plural, one {# row} other {# rows}} taken over.',
   import_confirm: 'Take over the rows that passed',
 } as const;

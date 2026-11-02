@@ -30,6 +30,7 @@ describe('readCsv(): fixtures', () => {
     expect(value(utf8('name,city\nAda,Köln\nGrace,"Berlin"\n'))).toEqual({
       headers: ['name', 'city'],
       rows: [['Ada', 'Köln'], ['Grace', 'Berlin']],
+      lines: [2, 3],
       delimiter: ',',
       encoding: 'utf-8',
     });
@@ -41,6 +42,7 @@ describe('readCsv(): fixtures', () => {
     expect(value(bytes)).toEqual({
       headers: ['Name', 'Straße'],
       rows: [['Müller', 'Grüne Gasse']],
+      lines: [2],
       delimiter: ';',
       encoding: 'windows-1252',
     });
@@ -60,6 +62,7 @@ describe('readCsv(): fixtures', () => {
       expect(value(utf16('id\tname\r\n1\tZoë\r\n', order))).toEqual({
         headers: ['id', 'name'],
         rows: [['1', 'Zoë']],
+        lines: [2],
         delimiter: '\t',
         encoding: order === 'le' ? 'utf-16le' : 'utf-16be',
       });
@@ -76,6 +79,34 @@ describe('readCsv(): fixtures', () => {
       expect(value(utf8(`a,b${end}1,2${end}${end}3,4${end}`)).rows, JSON.stringify(end)).toEqual([['1', '2'], ['3', '4']]);
     }
     expect(value(utf8('a,b\n1,2')).rows).toEqual([['1', '2']]);
+  });
+
+  it('gives each row the physical line it starts in: blank lines, Excel\'s bare-separator rows and line breaks in cells count', () => {
+    const csv = 'a,b\n\n1,2\n"x\ny\nz",3\n,\n4,5\n';
+    expect(value(utf8(csv))).toMatchObject({ rows: [['1', '2'], ['x\ny\nz', '3'], ['4', '5']], lines: [3, 4, 8] });
+    expect(value(utf8('\n\na;b\n\n\n1;2\n;\n3;4')).lines, 'blank lines before the header').toEqual([6, 8]);
+  });
+
+  it('counts lines the same for CRLF, LF, CR, a byte order mark and UTF-16, and a break inside quotes once', () => {
+    for (const end of ['\r\n', '\n', '\r']) {
+      const csv = `a,b${end}${end}"p${end}q",1${end}2,3`;
+      const expected = { rows: [[`p${end}q`, '1'], ['2', '3']], lines: [3, 5] };
+      expect(value(utf8(csv)), JSON.stringify(end)).toMatchObject(expected);
+      expect(value(Uint8Array.from([...BOM, ...utf8(csv)])), `${JSON.stringify(end)} with a byte order mark`).toMatchObject(expected);
+      expect(value(utf16(csv, 'le')), `${JSON.stringify(end)} in UTF-16`).toMatchObject(expected);
+    }
+    expect(value(utf8('a\r\n1\n2\r3\r\n4')).lines, 'mixed line ends').toEqual([2, 3, 4, 5]);
+  });
+
+  it('agrees with the line of an error', () => {
+    const csv = 'a,b\n\n1,2\n"x\ny",3\n\n4\n';
+    expect(errorOf(utf8(csv))).toMatchObject({ kind: 'row-length', line: 7 });
+    expect(value(utf8('a,b\n\n1,2\n"x\ny",3\n')).lines).toEqual([3, 4]);
+  });
+
+  it('has no lines for a file without rows', () => {
+    expect(value(new Uint8Array()).lines).toEqual([]);
+    expect(value(utf8('a,b\n')).lines).toEqual([]);
   });
 
   it('keeps empty cells in a row, and skips a row whose cells are all empty', () => {

@@ -818,7 +818,7 @@ import { readCsv } from '@marmeon/table';
 
 const csv = readCsv(await readFile(path), { unescape: true });
 if (!csv.ok) return this.redirect().back().withErrors({ file: [csv.error.message] });
-const { headers, rows, delimiter, encoding } = csv.value;
+const { headers, rows, lines, delimiter, encoding } = csv.value;
 ```
 
 The bytes of an uploaded file come from [`await upload.bytes()`](storage.md#reading-an-upload) of a `TemporaryUpload`, which reads the
@@ -827,11 +827,15 @@ file without storing it. Check each row with `validate()` ([validation](validati
 ```ts
 const csv = readCsv(await ctx.body.file.bytes(), { unescape: true });
 if (!csv.ok) return this.redirect().back().withErrors({ file: [csv.error.message] });
-for (const row of csv.value.rows) {
+for (const [index, row] of csv.value.rows.entries()) {
   const member = await validate(MemberRow, { name: row[0], email: row[1] }, { translator });
-  if (!member.ok) problems.push(member.error.errors);
+  if (!member.ok) problems.push({ line: csv.value.lines[index]!, errors: member.error.errors });
 }
 ```
+
+`lines[i]` is the line of the file where `rows[i]` starts, counted from 1: the line in a text editor, and the row number in a
+spreadsheet as long as no cell holds a line break. The header, blank lines, skipped rows of empty cells and line breaks inside
+quotes are counted, so an error names the line a person finds in the file. It is the same count as the `line` of a `CsvReadError`.
 
 - **Encoding.** A byte order mark decides (UTF-8, UTF-16LE, UTF-16BE) and is removed; one that contradicts a named `encoding` is
   `not-text`. Without one, bytes that are valid UTF-8 are UTF-8, and anything else is read as `windows-1252`, the encoding of a
