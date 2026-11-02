@@ -3,10 +3,13 @@
 import { PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
 import { createMessageLoader } from '@marmeon/i18n/messages';
 import { act } from 'react';
+import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loadLayerStack, MarmeonApp } from './app.tsx';
 import { createMarmeonApp } from './client.tsx';
 import { useLocale } from './i18n.tsx';
 import { resolveModulePages } from './pages.ts';
+import { loadView } from './views.ts';
 import { createSsrRenderer } from './server.tsx';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -19,7 +22,10 @@ function Opening() {
   return <time>{format.date(instant, { dateStyle: 'medium', timeStyle: 'short' })}</time>;
 }
 
-const resolve = resolveModulePages({ '/modules/shop/views/Opening.tsx': async () => ({ default: Opening }) });
+const resolve = resolveModulePages({
+  '/modules/shop/views/Opening.tsx': async () => ({ default: Opening }),
+  '/modules/shop/views/Door.tsx': async () => ({ default: Opening }),
+});
 const messages = createMessageLoader({});
 
 const page = (timeZone?: string): PageObject => ({ component: 'shop/Opening', props: {}, url: '/', version: null, locale: 'en', ...(timeZone ? { timeZone } : {}) });
@@ -69,5 +75,18 @@ describe('the app time zone in the page', () => {
   it('shows the visitor’s own zone when the page names none — as before', async () => {
     const markup = await inProcessZone('Asia/Tokyo', () => serverMarkup(page()));
     expect(markup.replaceAll(' ', ' ')).toContain('Oct 14, 2026, 2:00 PM');
+  });
+});
+
+describe('the app time zone in a layer', () => {
+  it('is the zone of the layer’s own page, the messages and locale those of the page beneath', async () => {
+    const catalog = await createMessageLoader({}).load('en');
+    const layer: PageObject = { ...page('Asia/Tokyo'), component: 'shop/Door', url: '/door', layer: { key: 'shop/Door', base: '/' } };
+    const document: PageObject = { ...page('America/Los_Angeles'), layers: [layer] };
+    await Promise.all([loadLayerStack(), loadView(resolve, 'shop/Door')]);
+    const Base = (await resolve('shop/Opening')) as never;
+    const html = renderToString(<MarmeonApp initialPage={document} initialComponent={Base} resolve={resolve} messages={messages} initialCatalog={catalog} />).replaceAll('\u202f', ' ');
+    expect(html).toContain('Oct 13, 2026, 10:00 PM'); // the page: Los Angeles
+    expect(html).toContain('Oct 14, 2026, 2:00 PM'); // its layer: Tokyo
   });
 });

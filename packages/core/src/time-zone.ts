@@ -13,6 +13,8 @@ export function isTimeZone(value: string): boolean {
  * zone — a UTC offset (`+01:00`) is no zone a browser formats with. The name `APP_TIMEZONE` sends to the browser.
  */
 export function canonicalTimeZone(value: string): string | undefined {
-  if (/^[+-]/.test(value) || !isTimeZone(value)) return undefined;
-  return Temporal.Now.zonedDateTimeISO(value).timeZoneId;
+  // The shape of an identifier first: Temporal also reads a timestamp (`…T05:00:00+01:00`) as a zone argument, and takes its offset.
+  if (!/^[A-Za-z][A-Za-z0-9_+\-/]*$/.test(value) || !isTimeZone(value)) return undefined;
+  const id = Temporal.Now.zonedDateTimeISO(value).timeZoneId;
+  return /^[+-]/.test(id) ? undefined : id;
 }

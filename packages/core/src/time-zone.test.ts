@@ -13,5 +13,13 @@ describe('time zones', () => {
     expect(canonicalTimeZone('Europe/Berlin')).toBe('Europe/Berlin');
     expect(canonicalTimeZone('+01:00')).toBeUndefined();
     expect(canonicalTimeZone('Mars/Olympus')).toBeUndefined();
+    expect(canonicalTimeZone('Etc/GMT+1')).toBe('Etc/GMT+1');
+    expect(canonicalTimeZone('UTC')).toBe('UTC');
+  });
+
+  it('refuses a timestamp or an annotated one, which Temporal would read as an offset or a zone', () => {
+    for (const value of ['2026-10-14T05:00:00+01:00', '2026-10-14T05:00:00Z', '2026-10-14T05:00:00[Europe/Berlin]', '2026-10-14T05:00:00+01:00[Europe/Berlin]', '', '1']) {
+      expect(canonicalTimeZone(value), value).toBeUndefined();
+    }
   });
 });
