@@ -54,6 +54,8 @@ describe.each([
       for (const text of compiled) expect(/ for (?:no key )?(?:update|share|key share)/.test(text)).toBe(driver === 'pgsql');
       const modifiers = connections.get<Tables>().selectFrom('seats').select('id').forUpdate().skipLocked().compile().sql;
       expect(modifiers.endsWith(driver === 'pgsql' ? 'for update skip locked' : 'from "seats"')).toBe(true);
+      const noWait = connections.get<Tables>().selectFrom('seats').select('id').forUpdate().noWait().compile().sql;
+      expect(noWait.endsWith(driver === 'pgsql' ? 'for update nowait' : 'from "seats"')).toBe(true);
     });
 
     it('runs through Repository.query(), the repository connection and connections.get()', async () => {
