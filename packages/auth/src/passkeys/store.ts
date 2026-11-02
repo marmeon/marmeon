@@ -217,14 +217,14 @@ export class PasskeyStore extends TwoFactorState {
    * @internal
    * Removes the account's passkey, or refuses: `not-found` when it has none with this id, `last-factor` when it is the account's last
    * factor — no other passkey, no confirmed authenticator — and `lastFactorAllowed` is false (the caller has not seen a fresh password).
-   * The decision is made here, inside the transaction, after the account's passkey rows are locked (Postgres): two removals at once
+   * The decision is made here, inside the transaction, after the account's passkey rows are locked: two removals at once
    * cannot both see another factor still there. The recovery codes go with the last factor in the same transaction (they belong to
    * the account's factors, not to this one); a refusal changes nothing.
    */
   async remove(userId: AuthUserId, id: number, { lastFactorAllowed }: { lastFactorAllowed: boolean }): Promise<Result<{ lastFactor: boolean }, { kind: 'not-found' } | { kind: 'last-factor' }>> {
     return this.#connections.transaction(async () => {
       const db = this.#db();
-      if (this.#connections.options().driver === 'pgsql') await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
+      await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
       const result = await db.deleteFrom(PASSKEYS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
       if (result.numDeletedRows === 0n) return err({ kind: 'not-found' as const });
       const otherPasskey = await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).executeTakeFirst();

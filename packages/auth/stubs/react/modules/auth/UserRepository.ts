@@ -76,18 +76,16 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * Reads the accounts `ids` that `deleteAccounts` would delete (same `only`), locking their rows with `lock` (Postgres; SQLite
-   * has one writer at a time) so nothing changes them between the question `AccountDeleting` asks and the delete. A listener of
+   * Reads the accounts `ids` that `deleteAccounts` would delete (same `only`), locking their rows so nothing changes them between the question `AccountDeleting` asks and the delete. A listener of
    * `AccountDeleting` must not lock other accounts' rows here: lock your own table's rows (see `docs/verification.md#unconfirmed-accounts`).
    */
-  async lockAccounts(ids: readonly number[], only?: { unconfirmedSince: Date }, lock = false): Promise<User[]> {
+  async lockAccounts(ids: readonly number[], only?: { unconfirmedSince: Date }): Promise<User[]> {
     let query = this.db.selectFrom('users').selectAll().where('id', 'in', [...ids]).orderBy('id');
     if (only) {
       const at = only.unconfirmedSince.toISOString();
       query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where('created_at', '<=', at);
     }
-    if (lock) query = query.forUpdate();
-    return (await query.execute()) as User[];
+    return (await query.forUpdate().execute()) as User[];
   }
 
   /**

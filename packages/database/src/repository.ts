@@ -367,12 +367,11 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       run: (work) =>
         this.transaction(async (repository) => {
           const metadata = await repository.#schema(`relation('${name}')`);
-          // The row's key, locked on Postgres: a concurrent soft delete of it waits until the links are written.
+          // The row's key, locked (SQLite leaves the clause out): a concurrent soft delete of it waits until the links are written.
           const key = async (column: string) => {
             const idKey = await repository.#lookup(id);
             if (idKey === undefined) return undefined;
-            let query = repository.query().select(column as never).where(idKey.column as never, '=', idKey.value as never);
-            if (metadata.driver === 'pgsql') query = query.forUpdate();
+            const query = repository.query().select(column as never).where(idKey.column as never, '=', idKey.value as never).forUpdate();
             const row = (await query.executeTakeFirst()) as Record<string, unknown> | undefined;
             return row && { value: row[column] };
           };

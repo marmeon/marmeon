@@ -63,7 +63,7 @@ Postgres applies an isolation level. SQLite has one writer at a time and ignores
 callback runs. "Check, then insert" is not safe on Postgres at the default isolation level: two transactions can both pass the
 check. A rule such as "no two bookings overlap" belongs in a constraint, as the [bookings recipe](recipe-bookings.md) shows, with
 a row lock or `isolationLevel: 'serializable'` as the other ways; the latter makes Postgres abort one transaction, and running it
-again is up to you. There is no transaction per request, and none that you begin without a callback joins by itself: those are
+again is up to you. A row lock is `forUpdate()` and its siblings (`forShare()`, `skipLocked()`, `noWait()`): Postgres locks the rows, while SQLite runs the query without the clause, because a write transaction there begins holding the database's only write lock (a read-only one begins deferred and needs none). Write it once for both drivers; a raw end modifier, `` modifyEnd(sql`for update`) ``, is passed on as written. There is no transaction per request, and none that you begin without a callback joins by itself: those are
 [transactions you control yourself](#transactions-you-control-yourself).
 
 ## What joins a transaction

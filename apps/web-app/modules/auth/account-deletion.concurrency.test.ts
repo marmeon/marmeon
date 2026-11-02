@@ -31,9 +31,7 @@ describe('two deletions of the last two administrators at once', () => {
       for (const id of ids) await sql`insert into workspace_administrators (workspace_id, user_id) values (1, ${id})`.execute(db);
       app.make(EventRegistry).listen(AccountDeleting, async (event: AccountDeleting) => {
         // All the workspace's administrators, locked in the order of their ids — not only the row of the account being deleted.
-        let query = connections.get<any>().selectFrom('workspace_administrators').select('user_id').where('workspace_id', '=', 1).orderBy('user_id');
-        if (connections.options().driver === 'pgsql') query = query.forUpdate();
-        const rows = await query.execute();
+        const rows = await connections.get<any>().selectFrom('workspace_administrators').select('user_id').where('workspace_id', '=', 1).orderBy('user_id').forUpdate().execute();
         if (rows.length === 1 && rows[0]?.user_id === event.user.id) event.refuse('This account is the last administrator of a workspace.');
       });
 

@@ -1,5 +1,5 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import { SqliteDialect, type SqliteDatabase, type SqliteStatement } from 'kysely';
+import { SqliteDialect, SqliteQueryCompiler, type QueryCompiler, type SelectQueryNode, type SqliteDatabase, type SqliteStatement } from 'kysely';
 
 type Bindable = null | number | bigint | string | Uint8Array;
 type Row = Record<string, unknown>;
@@ -8,10 +8,15 @@ type Row = Record<string, unknown>;
  * Kysely's `SqliteDialect` on Node's built-in `node:sqlite` — no native addon.
  *
  * Opened lazily on the first query. File databases use WAL (the dev server and a CLI command
- * can work at the same time) and wait up to 5 s for a lock instead of failing at once.
+ * can work at the same time) and wait up to 5 s for a lock instead of failing at once. Row-lock clauses (`forUpdate()` and
+ * its siblings) are left out of the SQL: SQLite has no row locks, and a transaction already holds the database's one write lock.
  */
 export function createSqliteDialect(path: string): SqliteDialect {
-  return new SqliteDialect({
+  return new (class extends SqliteDialect {
+    override createQueryCompiler(): QueryCompiler {
+      return new RowLockFreeCompiler();
+    }
+  })({
     database: async () => {
       const db = new DatabaseSync(path, { timeout: 5000 });
       // Enforced, not assumed (node:sqlite's default): a relation typed non-null relies on its foreign key.
@@ -20,6 +25,15 @@ export function createSqliteDialect(path: string): SqliteDialect {
       return adaptNodeSqlite(db);
     },
   });
+}
+
+const ROW_LOCKS = new Set(['ForUpdate', 'ForNoKeyUpdate', 'ForShare', 'ForKeyShare', 'NoWait', 'SkipLocked']);
+
+class RowLockFreeCompiler extends SqliteQueryCompiler {
+  protected override visitSelectQuery(node: SelectQueryNode): void {
+    const modifiers = node.endModifiers?.filter((modifier) => modifier.modifier === undefined || !ROW_LOCKS.has(modifier.modifier));
+    super.visitSelectQuery(modifiers?.length === node.endModifiers?.length ? node : { ...node, endModifiers: modifiers });
+  }
 }
 
 /**

@@ -22,10 +22,7 @@ export class LabLinks {
   add(userId: number): Promise<boolean> {
     return this.#connections.transaction(async () => {
       const db = this.#connections.get();
-      let account = db.selectFrom('users').select('id').where('id', '=', userId);
-      // SQLite has one writer at a time and no row locks.
-      if (this.#connections.options().driver === 'pgsql') account = account.forUpdate();
-      await account.executeTakeFirstOrThrow();
+      await db.selectFrom('users').select('id').where('id', '=', userId).forUpdate().executeTakeFirstOrThrow();
       const held = await db.selectFrom('profile_links').select('id').where('user_id', '=', userId).execute();
       if (held.length >= LAB_LINK_LIMIT) return false;
       await this.#links.insert({ user_id: userId, label: `Link ${held.length + 1}`, url: `https://example.com/${held.length + 1}` });
