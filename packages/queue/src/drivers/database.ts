@@ -24,6 +24,10 @@ export interface DatabaseQueueConnection {
   readonly transaction?: <R>(work: () => Promise<R>) => Promise<R>;
 }
 
+/** The most values one statement binds. */
+const SQLITE_PARAMETERS = 32_766;
+const PGSQL_PARAMETERS = 65_535;
+
 type Sql = (typeof import('@marmeon/database'))['sql'];
 
 async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { sql?: Promise<Sql> }): Promise<DatabaseQueueConnection & { sql: Sql }> {
@@ -98,6 +102,30 @@ export class DatabaseQueueDriver implements QueueDriver {
   async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
     const { db, sql } = await use(this.#connection, this.#cache);
     return this.#insert(db, sql, { queue, payload, delaySeconds });
+  }
+
+  /**
+   * The jobs in multi-row inserts, as many rows each as the database's limit of bound parameters allows. Inside a transaction (the
+   * app's, or `using(trx)`) the chunks are part of it; otherwise they run in one of their own — all jobs or none. One chunk is one
+   * statement and needs none.
+   */
+  async pushMany(entries: readonly QueuedPush[]): Promise<void> {
+    if (entries.length === 0) return;
+    const connection = await use(this.#connection, this.#cache);
+    const now = this.#clock.now();
+    // Four bound values per row; the attempts and the claim are literals.
+    const size = Math.floor((connection.driver === 'pgsql' ? PGSQL_PARAMETERS : SQLITE_PARAMETERS) / 4);
+    const insert = async (db: Connection<any>) => {
+      for (let at = 0; at < entries.length; at += size) {
+        const rows = entries.slice(at, at + size).map(
+          ({ queue, payload, delaySeconds }) => connection.sql`(${queue}, ${payload}, 0, null, cast(${now + Math.round(delaySeconds * 1000)} as bigint), cast(${now} as bigint))`,
+        );
+        await connection.sql`insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at) values ${connection.sql.join(rows)}`.execute(db);
+      }
+    };
+    if (connection.inTransaction?.() || entries.length <= size) return insert(connection.db);
+    if (connection.transaction) return connection.transaction(() => insert(connection.db));
+    return connection.db.transaction().execute(insert);
   }
 
   async #insert(db: Connection<any>, sql: Sql, { queue, payload, delaySeconds }: QueuedPush): Promise<string> {

@@ -256,6 +256,7 @@ export interface QueueCounts {
 // QueueDriver
 export interface QueueDriver {
     push(queue: string, payload: string, delaySeconds: number): Promise<string>;
+    pushMany?(entries: readonly QueuedPush[]): Promise<void>;
     reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
     reserveAny?(except?: readonly string[]): Promise<ReservedJob | undefined>;
     ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;

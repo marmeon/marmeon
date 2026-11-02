@@ -68,12 +68,19 @@ export interface QueueCounts {
  * job twice while the first worker still holds it. The payload arrives as the queue stores it, already encrypted for an
  * encrypted job. Packages and apps bring their own: see `docs/drivers.md#queue-drivers-and-failed-job-stores`.
  *
- * Optional members: `reserveAny` and `counts` are conveniences (the worker goes round `queues()` itself, the devtools show less); `using` and `joinsTransaction`
+ * Optional members: `reserveAny`, `counts` and `pushMany` are conveniences (the worker goes round `queues()` itself, the devtools show less, `bulk()` pushes one by one); `using` and `joinsTransaction`
  * decide what a dispatch inside a database transaction does — without them the job is held until the outermost commit and dropped on a rollback, and `queue.using(trx)` refuses.
  */
 export interface QueueDriver {
   /** Queues `payload` on `queue`, to be claimed no earlier than `delaySeconds` from now. Returns the entry's id. */
   push(queue: string, payload: string, delaySeconds: number): Promise<string>;
+  /**
+   * Queues several jobs in one go, in the order given — what `queue.bulk()` calls for more than one job. A driver writes them as
+   * one unit where its store allows: the `database` driver in a few multi-row inserts (all or none, unless it writes into a transaction of
+   * the app, which then decides), `redis` in one atomic script call (no other client sees part of the batch). Optional: without it the queue calls `push` for each job in turn, and a
+   * failure midway leaves the earlier jobs queued. Delays and the `using` and `joinsTransaction` rules are those of `push`.
+   */
+  pushMany?(entries: readonly QueuedPush[]): Promise<void>;
   /**
    * Claims the next available job of the first queue (in order) that has one — also a job whose claim is older than
    * `retryAfterSeconds` (its worker died). Increments `attempts`. `undefined` when there is none.

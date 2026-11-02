@@ -5,7 +5,7 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { silent } from './__fixtures__/targets.ts';
 import { QueueConnections } from './connections.ts';
-import type { FailedJobStoreFactory, QueueDriverFactory } from './driver.ts';
+import type { FailedJobStoreFactory, QueueDriver, QueueDriverFactory, QueuedPush, ReservedJob } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { QueueRetryCommand } from './commands/failed.ts';
 import { Queue, QueueConfig, QueueServiceProvider, type JobPayload } from './index.ts';
@@ -108,6 +108,48 @@ describe('a queue driver of a provider', () => {
     expect(JSON.parse(spy.pushed[0]!).encrypted).toBe(true);
     await app.container.make(QueueConnections).worker('spy-x', 10).run({ queues: ['default'], stopWhenEmpty: true });
     expect(handled).toEqual(['plaintext-marker-1234']);
+  });
+
+  it('bulk() hands a driver with pushMany all jobs at once, and one without it pushes them one by one', async () => {
+    class Batching extends SpyDriver {
+      readonly batches: number[] = [];
+      override async pushMany(entries: readonly QueuedPush[]): Promise<void> {
+        this.batches.push(entries.length);
+        for (const { queue, payload, delaySeconds } of entries) await super.push(queue, payload, delaySeconds);
+      }
+    }
+    // A driver written before pushMany existed: it has no such member.
+    class Plain implements QueueDriver {
+      readonly pushed: string[] = [];
+      readonly #inner = new MemoryQueueDriver();
+      push = async (queue: string, payload: string, delaySeconds: number) => (this.pushed.push(payload), this.#inner.push(queue, payload, delaySeconds));
+      reserve = (queues: readonly string[]) => this.#inner.reserve(queues);
+      ack = (job: ReservedJob, next?: readonly QueuedPush[]) => this.#inner.ack(job, next);
+      release = (job: ReservedJob, delaySeconds: number) => this.#inner.release(job, delaySeconds);
+      fail = (job: ReservedJob) => this.#inner.fail(job);
+      size = (queue: string) => this.#inner.size(queue);
+      queues = () => this.#inner.queues();
+    }
+    const batching = new Batching();
+    const plain = new Plain();
+    expect('pushMany' in plain).toBe(false);
+    const connection = (driver: QueueDriver): QueueDriverFactory => () => ({ driver, queue: 'default', retryAfterSeconds: 90 });
+    await using app = await boot([pluginProvider('BatchPackage', { queueDrivers: { 'batch-x': connection(batching), 'plain-x': connection(plain) } })]);
+    const queue = app.container.make(Queue);
+    const jobs = [[NoteJob, { text: 'a' }], [NoteJob, { text: 'b' }], [NoteJob, { text: 'c' }]] as const;
+    expect(await queue.bulk(jobs, { connection: 'batch-x' })).toHaveLength(3);
+    expect(batching.batches).toEqual([3]);
+    expect(batching.pushed).toHaveLength(3);
+    // One job is a plain push.
+    await queue.bulk([jobs[0]], { connection: 'batch-x' });
+    expect(batching.batches).toEqual([3]);
+    expect(batching.pushed).toHaveLength(4);
+    expect(await queue.bulk(jobs, { connection: 'plain-x' })).toHaveLength(3);
+    expect(plain.pushed).toHaveLength(3);
+    expect(await plain.size('default')).toBe(3);
+    // A wrong payload still queues none, before any push.
+    await expect(queue.bulk([jobs[0], [NoteJob, { text: 1 } as never]], { connection: 'batch-x' })).rejects.toThrow();
+    expect(batching.batches).toEqual([3]);
   });
 
   it('holds a dispatch inside a transaction until the commit — it cannot join one, and queue.using(trx) refuses', async () => {

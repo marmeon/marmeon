@@ -365,6 +365,24 @@ describe('dispatching', () => {
     expect(await queue.size()).toBe(2);
   });
 
+  it('bulk() writes the jobs of the database connection in one insert, each with its delay', async () => {
+    await using application = await app();
+    const queue = application.container.make(Queue);
+    const inserts: string[] = [];
+    application.container.make(Connections).onQuery((query) => {
+      if (/^insert into "?jobs"?/i.test(query.sql)) inserts.push(query.sql);
+    });
+    const ids = await queue.bulk([[WelcomeJob, { userId: 1 }], [WelcomeJob, { userId: 2 }], [FlakyJob, { failUntil: 1 }]], { delay: 60 });
+    expect(ids).toHaveLength(3);
+    expect(inserts).toHaveLength(1);
+    expect(await queue.size()).toBe(3);
+    const { QueueConnections } = await import('./connections.ts');
+    const worker = () => application.container.make(QueueConnections).worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true });
+    expect(await worker()).toMatchObject({ processed: 0 });
+    application.clock.travel({ seconds: 61 });
+    expect(await worker()).toMatchObject({ processed: 3 });
+  });
+
   it('writes through a transaction: a rollback leaves no job', async () => {
     await using application = await app();
     const queue = application.container.make(Queue);

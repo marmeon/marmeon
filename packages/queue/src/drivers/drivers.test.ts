@@ -1,4 +1,4 @@
-import { sql } from '@marmeon/database';
+import { sql, type Connection } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { connectionOptions, databaseConnections, databaseKinds, queueKinds, queueUnderTest, type QueueUnderTest } from '../__fixtures__/targets.ts';
 import type { ReservedJob } from '../driver.ts';
@@ -10,6 +10,19 @@ async function withQueue(kind: (typeof queueKinds)[number], test: (queue: QueueU
     await test(queue);
   } finally {
     await queue.close();
+  }
+}
+
+/** The most values a statement binds, per database (the driver packs four to a row). */
+const PARAMETER_LIMIT = { sqlite: 32_766, pgsql: 65_535 } as const;
+
+/** A trigger that refuses a job with the payload `explode`. */
+async function refuseExplode(db: Connection<any>, kind: 'sqlite' | 'pgsql'): Promise<void> {
+  if (kind === 'sqlite') {
+    await sql`create trigger refuse before insert on jobs when new.payload = 'explode' begin select raise(abort, 'refused'); end`.execute(db);
+  } else {
+    await sql.raw(`create function refuse() returns trigger language plpgsql as $$ begin if new.payload = 'explode' then raise exception 'refused'; end if; return new; end $$`).execute(db);
+    await sql`create trigger refuse before insert on jobs for each row execute function refuse()`.execute(db);
   }
 }
 
@@ -224,6 +237,29 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
+  it('pushMany queues every job in order, the delayed ones when they are due', async () => {
+    await withQueue(kind, async ({ driver, clock }) => {
+      clock.freeze();
+      await driver.pushMany!([
+        { queue: 'default', payload: 'a', delaySeconds: 0 },
+        { queue: 'mail', payload: 'b', delaySeconds: 0 },
+        { queue: 'default', payload: 'later', delaySeconds: 60 },
+        { queue: 'default', payload: 'c', delaySeconds: 0 },
+      ]);
+      expect(await driver.queues()).toEqual(['default', 'mail']);
+      expect(await driver.size('default')).toBe(3);
+      expect(await driver.size('mail')).toBe(1);
+      if (driver.counts) expect(await driver.counts('default')).toEqual({ ready: 2, delayed: 1, reserved: 0 });
+      expect((await driver.reserve(['default']))?.payload).toBe('a');
+      expect((await driver.reserve(['default']))?.payload).toBe('c');
+      expect(await driver.reserve(['default'])).toBeUndefined();
+      clock.travel({ seconds: 61 });
+      expect((await driver.reserve(['default']))?.payload).toBe('later');
+      expect((await driver.reserve(['mail']))?.payload).toBe('b');
+      await driver.pushMany!([]);
+    });
+  });
+
   it('keeps failed jobs, newest first; prunes, forgets and flushes them', async () => {
     await withQueue(kind, async ({ failed }) => {
       const base = { connection: 'database', queue: 'default', job: 'test.job', payload: '{}', exception: 'Error: boom' };
@@ -292,6 +328,74 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
       expect(rows).toHaveLength(1);
       expect(rows[0]!.payload).toBe('first');
       expect(rows[0]!.reserved_at).not.toBeNull();
+    });
+  });
+
+  it('pushMany writes a thousand jobs in as few statements as the parameter limit allows, and each can be claimed', async () => {
+    await withQueue(kind, async ({ connections, clock }) => {
+      let statements = 0;
+      const counting = connections!.get().withPlugin({
+        transformQuery: ({ node }) => (statements++, node),
+        transformResult: async ({ result }) => result,
+      });
+      const driver = new DatabaseQueueDriver({ db: counting, driver: kind }, { retryAfterSeconds: 90, clock });
+      const entries = Array.from({ length: 1200 }, (_, n) => ({ queue: 'default', payload: `job ${n}`, delaySeconds: 0 }));
+      statements = 0;
+      await driver.pushMany(entries);
+      expect(statements, 'statements of pushMany(1200)').toBe(Math.ceil(1200 / Math.floor(PARAMETER_LIMIT[kind] / 4)));
+      expect(await driver.size('default')).toBe(1200);
+      const seen = new Set<string>();
+      for (let job = await driver.reserve(['default']); job; job = await driver.reserve(['default'])) seen.add(job.payload);
+      expect(seen.size).toBe(1200);
+    });
+  });
+
+  describe('pushMany over more rows than one statement binds', () => {
+    // Four values a row: enough rows for a second statement.
+    const rows = Math.floor(PARAMETER_LIMIT[kind] / 4) + 10;
+    const entries = (last = `job ${rows - 1}`) => Array.from({ length: rows }, (_, n) => ({ queue: 'default', payload: n === rows - 1 ? last : `job ${n}`, delaySeconds: 0 }));
+
+    it('uses a second statement and leaves no job when the second fails — without a transaction', async () => {
+      await withQueue(kind, async ({ connections, clock }) => {
+        const db = connections!.get();
+        await refuseExplode(db, kind);
+        const driver = new DatabaseQueueDriver({ db, driver: kind }, { retryAfterSeconds: 90, clock });
+        await expect(driver.pushMany(entries('explode'))).rejects.toThrow(/refused/);
+        expect(await driver.size('default')).toBe(0);
+        await driver.pushMany(entries());
+        expect(await driver.size('default')).toBe(rows);
+      });
+    });
+
+    it('leaves no job when the second statement fails, through the connection an app hands the driver (its own transaction())', async () => {
+      await withQueue(kind, async ({ connections, clock }) => {
+        const db = connections!.get();
+        await refuseExplode(db, kind);
+        const driver = new DatabaseQueueDriver(
+          { db, driver: kind, transaction: (work) => connections!.transaction(() => work()), inTransaction: () => connections!.inTransaction() },
+          { retryAfterSeconds: 90, clock },
+        );
+        await expect(driver.pushMany(entries('explode'))).rejects.toThrow(/refused/);
+        expect(await driver.size('default')).toBe(0);
+      });
+    });
+
+    it('is part of the transaction it writes into: a rollback leaves none', async () => {
+      await withQueue(kind, async ({ driver, connections }) => {
+        const db = connections!.get();
+        const database = driver as DatabaseQueueDriver;
+        await db
+          .transaction()
+          .execute(async (trx) => {
+            await database.using(trx).pushMany(entries());
+            expect(await database.using(trx).size('default')).toBe(rows);
+            throw new Error('rollback');
+          })
+          .catch(() => {});
+        expect(await database.size('default')).toBe(0);
+        await db.transaction().execute((trx) => database.using(trx).pushMany(entries()));
+        expect(await database.size('default')).toBe(rows);
+      });
     });
   });
 
