@@ -11,7 +11,7 @@ import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableExportEntry, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
 import { isSchema, normalizeOptions } from './helpers.ts';
-import type { ActionInputSource, AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, DataTable, TableDefinition, TableExport, TableExportInfo, TableProps, TableVisibility } from './define.ts';
+import type { ActionInputSource, AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, AnyExport, DataTable, TableDefinition, TableExportInfo, TableProps, TableVisibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
@@ -54,11 +54,14 @@ export function endpointOf(route: RouteDefinition): { readonly definition: Table
 
 /** What one request may see of a table. */
 interface View {
+  /** The columns of the page the request may see — not the ones only the files have. */
   readonly columns: readonly (readonly [string, AnyColumn])[];
+  /** Every column the request may see, the `exportOnly()` ones too, in the definition's order — what a file draws its columns from. */
+  readonly fileColumns: readonly (readonly [string, AnyColumn])[];
   readonly filters: readonly (readonly [string, AnyFilter])[];
   readonly actions: readonly (readonly [string, AnyRowAction])[];
   readonly bulk: readonly (readonly [string, AnyBulkAction])[];
-  readonly exports: readonly (readonly [string, TableExport])[];
+  readonly exports: readonly (readonly [string, AnyExport])[];
   /** A column's label for this request: its text, or its function asked once with the request's translator; `null` without one. */
   readonly label: (column: AnyColumn) => string | null;
   /** The options a select or `has` filter allows for this request — computed once, on first ask; `undefined` for a filter without options. */
@@ -134,7 +137,7 @@ export class DataTables {
     const state = parseState(definition, new URL(context.request.url).searchParams);
     await checkState(definition, state, view);
     const filtered = this.#filtered(definition, context, state, view);
-    const projected = project(definition, filtered, view);
+    const projected = project(definition, filtered, view.columns);
     const keyName = keyNameOf(definition);
     let rows: Row[];
     let page: TableData['page'];
@@ -217,7 +220,7 @@ export class DataTables {
     const entries: TableExportEntry[] = [];
     // One after another, as `#view()` does: a policy that queries must not open a connection per export at once.
     for (const [name, entry] of Object.entries(definition.exports)) {
-      if (await this.#visible(entry.visibility, context)) entries.push({ name, format: 'csv', url: urls.export(name, {}), max: entry.limit });
+      if ((await this.#visible(entry.visibility, context)) && (await this.#namesAny(definition, entry, context))) entries.push({ name, format: 'csv', url: urls.export(name, {}), max: entry.limit });
     }
     return entries as unknown as TableProps<T>['exports'];
   }
@@ -238,7 +241,7 @@ export class DataTables {
     const key = parseKey(definition.keyType, body.key);
     if (key === undefined) throw new HttpError(404);
     const keyName = keyNameOf(definition);
-    const found = await project(definition, this.#base(definition, ctx, view), view).where(definition.key, '=', key).limit(1).executeTakeFirst();
+    const found = await project(definition, this.#base(definition, ctx, view.columns), view.columns).where(definition.key, '=', key).limit(1).executeTakeFirst();
     // Not a row of this table for this user — another tenant's, gone, made up: the same 404 either way.
     if (!found) throw new HttpError(404);
     const row = pick(found as Row, view, keyName);
@@ -273,7 +276,7 @@ export class DataTables {
       const keys = [...new Set(body.keys.map(String))];
       // Keys that do not parse by the key's type are no rows of the table: counted as missing, never sent to the database.
       const usable = [...new Set(keys.map((key) => parseKey(definition.keyType, key)).filter((key) => key !== undefined))];
-      const found = usable.length === 0 ? [] : await project(definition, this.#base(definition, ctx, view), view).where(definition.key, 'in', usable).execute();
+      const found = usable.length === 0 ? [] : await project(definition, this.#base(definition, ctx, view.columns), view.columns).where(definition.key, 'in', usable).execute();
       rows = (found as Row[]).map((row) => pick(row, view, keyName));
       missing = keys.length - rows.length;
     } else {
@@ -282,7 +285,7 @@ export class DataTables {
       await checkState(definition, state, view);
       const filtered = this.#filtered(definition, ctx, state, view);
       // At most max + 1: one more than allowed says "too many" without counting them all.
-      const found = await ordered(definition, project(definition, filtered, view), state).limit(entry.limit + 1).execute();
+      const found = await ordered(definition, project(definition, filtered, view.columns), state).limit(entry.limit + 1).execute();
       if (found.length > entry.limit) {
         throw new ValidationError({ all: [`More than ${entry.limit} rows match — narrow the filter (this action takes at most ${entry.limit}).`] });
       }
@@ -327,10 +330,18 @@ export class DataTables {
     const entry = Object.hasOwn(definition.exports, name) ? definition.exports[name]! : undefined;
     if (!entry) throw new HttpError(404);
     if (!(await this.#visible(entry.visibility, ctx))) throw forbidden(); // the export's own authorization
-    const view = await this.#view(definition, ctx); // the export's columns: the visible ones
+    const view = await this.#view(definition, ctx);
+    const fileColumns = fileColumnsOf(entry, view.fileColumns);
+    // An export whose named columns are all hidden from this user is refused first: before the URL's state (whose options may query)
+    // and before the count and the record.
+    if (entry.chosen !== undefined && fileColumns.length === 0) throw forbidden();
     const state = parseState(definition, new URL(ctx.request.url).searchParams);
     await checkState(definition, state, view);
-    const filtered = this.#filtered(definition, ctx, state, view);
+    // The file's columns: those of its definition (or all) that this request may see; the sort column too when the file has none of it —
+    // the keyset needs it — selected and never written.
+    const names = fileColumns.map(([alias]) => alias);
+    const selecting = state.sort && !names.includes(state.sort.column) ? [...fileColumns, [state.sort.column, definition.columns[state.sort.column]!] as const] : fileColumns;
+    const filtered = this.#filtered(definition, ctx, state, view, selecting);
     // Before the count and the record: an answer that is no delimiter fails the export with nothing written down.
     const delimiter = await this.#delimiter(entry, ctx);
     const filename = await this.#filename(definition, name, entry, ctx);
@@ -342,17 +353,16 @@ export class DataTables {
     if (Number(count) > entry.limit) {
       throw new HttpError(422, `More than ${entry.limit} rows match — narrow the filter (an export takes at most ${entry.limit}).`);
     }
-    const names = view.columns.map(([alias]) => alias);
     // The record before the first batch, from the count of the query the file is read from: a throw is an error page, no file.
     if (entry.recorder) {
       const info: TableExportInfo = { table: definition.name, export: name, rows: Number(count), columns: names, state: { sort: state.sort && { ...state.sort }, search: state.search, filters: { ...state.filters } } };
       await (this.#resolve(entry.recorder) as { handle(info: TableExportInfo, ctx: unknown): unknown }).handle(info, ctx);
     }
-    const header = csvLine(view.columns.map(([alias, col]) => view.label(col) ?? alias), delimiter);
+    const header = csvLine(fileColumns.map(([alias, col]) => view.label(col) ?? alias), delimiter);
     // Batch after batch by the key (keyset), never by OFFSET: each goes on after the last row written — in the table's order, then
     // the key — so a row deleted or added meanwhile shifts no later row out of the file or into it twice.
     const keyName = keyNameOf(definition);
-    const rows = this.#db.selectFrom(project(definition, filtered, view).as('table_rows')).selectAll() as SelectQuery<any, any, Row>;
+    const rows = this.#db.selectFrom(project(definition, filtered, selecting).as('table_rows')).selectAll() as SelectQuery<any, any, Row>;
     const encrypter = this.#encrypter();
     const batch = (cursor: string | null) =>
       cursorPaginate(rows, {
@@ -414,8 +424,15 @@ export class DataTables {
     }
   }
 
+  /** Whether the export has a column this request may see — one that names its columns and none of them is visible is refused. Asks the columns' visibility only, no query. */
+  async #namesAny(definition: TableDefinition, entry: AnyExport, ctx: HttpContext): Promise<boolean> {
+    if (entry.chosen === undefined) return true;
+    for (const name of entry.chosen) if (await this.#visible(definition.columns[name]!.visibility, ctx)) return true;
+    return false;
+  }
+
   /** The separator of this request's file: the export's own, or the answer of its function — checked, a refusal is an error before any byte. */
-  async #delimiter(entry: TableExport, ctx: HttpContext) {
+  async #delimiter(entry: AnyExport, ctx: HttpContext) {
     const chosen = typeof entry.separator === 'function' ? await entry.separator(ctx, this.#resolve, this.#translator()) : entry.separator;
     if (!isCsvDelimiter(chosen)) throw new TypeError(`exportCsv().delimiter(…) answered ${JSON.stringify(chosen)}: "," ";" or a tab.`);
     return chosen;
@@ -426,7 +443,7 @@ export class DataTables {
    * count, like the delimiter: a function that throws sends no file. Whatever the app answers is cleaned — it may be the title of a
    * record someone else named.
    */
-  async #filename(definition: TableDefinition, name: string, entry: TableExport, ctx: HttpContext): Promise<string> {
+  async #filename(definition: TableDefinition, name: string, entry: AnyExport, ctx: HttpContext): Promise<string> {
     // Only an export without `filename()` takes the default: a function that answers `undefined` is a mistake, not "no name".
     const chosen = typeof entry.stem === 'function' ? await entry.stem(ctx, this.#resolve, this.#translator()) : entry.stem;
     if (entry.stem !== undefined && typeof chosen !== 'string') {
@@ -452,10 +469,11 @@ export class DataTables {
       for (const [name, entry] of Object.entries(record)) if (await ask(entry.visibility)) out.push([name, entry]);
       return out;
     };
-    const columns = await keep(definition.columns);
+    const fileColumns = await keep(definition.columns);
+    const columns = fileColumns.filter(([, col]) => !col.isExportOnly);
     // A filter reads its column: on a column this request may not see it is hidden too — whatever its own visibility says (a filter
     // on a hidden column would answer, by its counts, what the column hides).
-    const shown = new Set(columns.map(([, col]) => col));
+    const shown = new Set(fileColumns.map(([, col]) => col));
     const hidden = Object.values(definition.columns).filter((col) => !shown.has(col));
     // (`has` reads a related row's column, not one of the table's.)
     const filters = (await keep(definition.filters)).filter(([, filter]) => filter.type === 'has' || !hidden.some((col) => sameColumn(col.ref, filter.ref)));
@@ -473,6 +491,7 @@ export class DataTables {
     return {
       label,
       columns,
+      fileColumns,
       filters,
       options: (name) => {
         let found = options.get(name);
@@ -481,7 +500,7 @@ export class DataTables {
       },
       actions: await keep(definition.actions),
       bulk: await keep(definition.bulk),
-      exports: await keep(definition.exports),
+      exports: (await keep(definition.exports)).filter(([, entry]) => entry.chosen === undefined || fileColumnsOf(entry, fileColumns).length > 0),
     };
   }
 
@@ -531,8 +550,8 @@ export class DataTables {
     return { values, labels, allowed: new Set(values) };
   }
 
-  /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column). */
-  #base(definition: TableDefinition, ctx: HttpContext, view: View): SelectQuery<any, any, any> {
+  /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column) or does not use. */
+  #base(definition: TableDefinition, ctx: HttpContext, used: View['columns']): SelectQuery<any, any, any> {
     const query = definition.query(this.#db, ctx, this.#resolve);
     const { selected, secret } = selectionsOf(query);
     const asked = Object.entries(definition.columns).find(([, col]) => secret.has(col.ref));
@@ -545,14 +564,14 @@ export class DataTables {
       const [alias, { ref }] = renamed;
       throw new Error(`Table "${definition.name}": the column '${alias}' reads ${ref}, a value its query selects — name the column ${ref}: ${ref}: column('${ref}').`);
     }
-    const shown = new Set(view.columns.map(([, col]) => col));
+    const shown = new Set(used.map(([, col]) => col));
     const hidden = new Set(Object.values(definition.columns).flatMap((col) => (selected.has(col.ref) && !shown.has(col) ? [col.ref] : [])));
     return leaveOutSelections(query, hidden);
   }
 
   /** The base query with the state's filters and search — on visible columns and filters only (checked before). */
-  #filtered(definition: TableDefinition, ctx: HttpContext, state: TableState, view: View): SelectQuery<any, any, any> {
-    let query = this.#base(definition, ctx, view);
+  #filtered(definition: TableDefinition, ctx: HttpContext, state: TableState, view: View, used: View['columns'] = view.columns): SelectQuery<any, any, any> {
+    let query = this.#base(definition, ctx, used);
     const selected = selectedBy(query);
     for (const [name, value] of Object.entries(state.filters)) {
       const entry = definition.filters[name]!;
@@ -709,19 +728,29 @@ export function keyNameOf(definition: TableDefinition): string {
 }
 
 /**
- * The query with the visible columns (by name) and the key selected — nothing else: a hidden column never reaches the SQL. A value the
+ * The query with the columns `used` (the visible ones, by name) and the key selected — nothing else: a hidden column never reaches the SQL. A value the
  * base query selects itself (`withCount(…, { as })`) is in its rows already, under its name ({@link DataTables.#base} left out the hidden ones).
  */
-function project(definition: TableDefinition, query: SelectQuery<any, any, any>, view: View): SelectQuery<any, any, Row> {
+function project(definition: TableDefinition, query: SelectQuery<any, any, any>, used: View['columns']): SelectQuery<any, any, Row> {
   const keyName = keyNameOf(definition);
-  const keyCovered = view.columns.some(([alias, col]) => alias === keyName && (col.ref === definition.key || col.ref.endsWith(`.${keyName}`) || col.ref === keyName));
+  const keyCovered = used.some(([alias, col]) => alias === keyName && (col.ref === definition.key || col.ref.endsWith(`.${keyName}`) || col.ref === keyName));
   const selected = selectedBy(query);
-  const columns = view.columns.filter(([, col]) => !selected.has(col.ref));
+  const columns = used.filter(([, col]) => !selected.has(col.ref));
   return query.select((eb) => [...columns.map(([alias, col]) => eb.ref(col.ref).as(alias)), ...(keyCovered ? [] : [eb.ref(definition.key).as(keyName)])]);
 }
 
 function selectedBy(query: SelectQuery<any, any, any>): ReadonlySet<string> {
   return selectionsOf(query).selected;
+}
+
+/**
+ * The columns a file holds: the ones its definition names, or all the request sees (the page's and the `exportOnly()` ones), in either
+ * case only those the request may see — `seen` holds nothing else, so a named column that is hidden for the user is not in the file.
+ */
+function fileColumnsOf(entry: AnyExport, seen: View['columns']): View['columns'] {
+  if (entry.chosen === undefined) return seen;
+  const visible = new Map(seen);
+  return entry.chosen.flatMap((name) => (visible.has(name) ? [[name, visible.get(name)!] as const] : []));
 }
 
 /** Ordered by the state's sort (NULLs last, either way — the same on SQLite and Postgres), then by the key. */

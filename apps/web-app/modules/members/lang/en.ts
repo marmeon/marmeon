@@ -28,6 +28,7 @@ const en = {
     email: 'E-mail',
     joined: 'Joined',
     links: 'Links',
+    locale: 'Language',
   },
   actions: 'Actions',
   remove_links: 'Remove links',
