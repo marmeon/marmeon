@@ -55,6 +55,33 @@ export interface RepositoryStatics {
   readonly routeKeyPattern?: RegExp;
 }
 
+/** A column `returning` may name: one of the row as it is read, so never a secret one. */
+type ReturnableColumn<Table> = keyof RowOf<Table> & string;
+
+/** The driver's refusal of an `ON CONFLICT` target no unique index backs: Postgres `42P10`, SQLite's message. */
+function noMatchingIndex(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return code === '42P10' || /ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint/.test(String(message));
+}
+
+/** One text per value, equal for `1`, `'1'` and `1n`, so rows sort the same whichever type a caller hands in. */
+function keyText(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Uint8Array) return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return String(value);
+}
+
+/** Orders the `on` values of two rows by their text: total and transitive, whatever the types. */
+export function compareKeys(a: readonly unknown[], b: readonly unknown[]): number {
+  for (let at = 0; at < a.length; at++) {
+    const [left, right] = [keyText(a[at]), keyText(b[at])];
+    if (left < right) return -1;
+    if (left > right) return 1;
+  }
+  return 0;
+}
+
 let savepoints = 0;
 
 /** What a UUID looks like (any version, either case); anything else on a uuid column would make Postgres throw `22P02`. */
@@ -291,29 +318,80 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   /**
    * Inserts many rows in chunks the driver accepts (a statement takes at most 65 535 parameters on Postgres and 32 766 on SQLite), in
    * one transaction — a savepoint inside an open one: all rows or none. Resolves with the number of rows inserted, `0` for none without
-   * a statement; no rows come back, as they would be one result the size of the whole import. Every row must have the same columns, and at least one,
+   * a statement. With `returning`, the rows come back instead, holding only the columns you name (never a secret one: a `TypeError`),
+   * in no promised order — match them by a column you wrote, such as a unique one. Every row must have the same columns, and at least one,
    * else a `TypeError`. Throws on a unique violation like {@link insert}, with every chunk rolled back; {@link tryInsertMany} returns
    * it instead. See `docs/queries.md#writing`.
    */
-  async insertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<number> {
-    return this.#insertChunks('insertMany', rows as readonly Record<string, unknown>[]);
+  insertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<number>;
+  insertMany<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(
+    rows: readonly Exact<V, NewRowOf<DB[T]>>[],
+    options: { readonly returning: C },
+  ): Promise<Pick<RowOf<DB[T]>, C[number]>[]>;
+  async insertMany(rows: readonly Record<string, unknown>[], options?: { readonly returning?: readonly string[] }): Promise<number | Record<string, unknown>[]> {
+    const written = await this.#insertChunks('insertMany', rows, { returning: options?.returning });
+    return options?.returning ? written.rows : written.count;
   }
 
   /**
    * {@link insertMany}, except that a unique index which already holds a value of any chunk is an `err` of kind `duplicate`, with
-   * `columns` like {@link tryInsert} — every chunk rolled back, a transaction around it still usable. See `docs/queries.md#writing`.
+   * `columns` like {@link tryInsert} — every chunk rolled back, a transaction around it still usable. With `returning`, `ok` holds the rows
+   * as {@link insertMany} returns them. See `docs/queries.md#writing`.
    */
-  async tryInsertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<Result<number, DuplicateError>> {
+  tryInsertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<Result<number, DuplicateError>>;
+  tryInsertMany<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(
+    rows: readonly Exact<V, NewRowOf<DB[T]>>[],
+    options: { readonly returning: C },
+  ): Promise<Result<Pick<RowOf<DB[T]>, C[number]>[], DuplicateError>>;
+  async tryInsertMany(
+    rows: readonly Record<string, unknown>[],
+    options?: { readonly returning?: readonly string[] },
+  ): Promise<Result<number | Record<string, unknown>[], DuplicateError>> {
     try {
-      return ok(await this.#insertChunks('tryInsertMany', rows as readonly Record<string, unknown>[]));
+      const written = await this.#insertChunks('tryInsertMany', rows, { returning: options?.returning });
+      return ok(options?.returning ? written.rows : written.count);
     } catch (error) {
       if (isUniqueViolation(error)) return err({ kind: 'duplicate', columns: await this.#duplicateColumns(error) });
       throw error;
     }
   }
 
-  async #insertChunks(method: string, rows: readonly Record<string, unknown>[]): Promise<number> {
-    if (rows.length === 0) return 0;
+  /**
+   * Inserts the rows whose `on` values the table does not hold yet and leaves the others alone. `on` names the columns of exactly
+   * one unique index, none of them secret, and every row needs a value in each (never null: a NULL never conflicts), else a
+   * `TypeError`. A unique violation on any other index throws, with every chunk rolled back. A soft-deleted row counts as present.
+   * Resolves with the number of rows inserted; with `returning`, those rows, as {@link insertMany} returns them. Lock order and
+   * concurrency: `docs/queries.md#writing`.
+   */
+  insertMissing<V extends NewRowOf<DB[T]>>(
+    rows: readonly Exact<V, NewRowOf<DB[T]>>[],
+    options: { readonly on: readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]] },
+  ): Promise<number>;
+  insertMissing<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(
+    rows: readonly Exact<V, NewRowOf<DB[T]>>[],
+    options: { readonly on: readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]; readonly returning: C },
+  ): Promise<Pick<RowOf<DB[T]>, C[number]>[]>;
+  async insertMissing(
+    rows: readonly Record<string, unknown>[],
+    options: { readonly on: readonly string[]; readonly returning?: readonly string[] },
+  ): Promise<number | Record<string, unknown>[]> {
+    const on = options?.on;
+    if (!Array.isArray(on) || on.length === 0) {
+      throw new TypeError(`insertMissing() needs { on: [...] }, the columns of the unique index that decides which rows are there — it was given none.`);
+    }
+    const written = await this.#insertChunks('insertMissing', rows, { on, returning: options.returning });
+    return options.returning ? written.rows : written.count;
+  }
+
+  async #insertChunks(
+    method: string,
+    rows: readonly Record<string, unknown>[],
+    options: { readonly on?: readonly string[]; readonly returning?: readonly string[] } = {},
+  ): Promise<{ count: number; rows: Record<string, unknown>[] }> {
+    const { on, returning } = options;
+    if (on !== undefined) await this.#checkColumns(method, 'matches', on);
+    if (returning !== undefined) await this.#checkReturning(method, returning);
+    if (rows.length === 0) return { count: 0, rows: [] };
     const columnsOf = (row: object) => Object.entries(row).filter(([, value]) => value !== undefined).map(([column]) => column).sort();
     const columns = columnsOf(rows[0]!);
     if (columns.length === 0) throw new TypeError(`${method}() needs at least one column to write — the first row has none.`);
@@ -325,15 +403,60 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     });
     // Without Marmeon's plugins the driver is unknown: the smaller limit is right for both.
     const limit = metadataOf(this.#db)?.driver === 'pgsql' ? 65_535 : 32_766;
+    if (on) {
+      rows.forEach((row, index) => {
+        const missing = on.find((column) => row[column] === null || row[column] === undefined);
+        if (missing !== undefined) throw new TypeError(`${method}() matches on ${missing}, but row ${index} has no value for it (${row[missing] === null ? 'null' : 'undefined'}) — a NULL never conflicts, so the row would be written again on every run.`);
+      });
+    }
     // Stamped once: the rows of one call share their time, whatever chunk they are written in.
     const stamped = await stampTimestamps(this.#untyped, this.#name, rows);
+    // In the order of the `on` values, so two calls with the same keys lock them in the same order and cannot deadlock on Postgres.
+    if (on) stamped.sort((a, b) => compareKeys(on.map((column) => a[column]), on.map((column) => b[column])));
     const size = Math.floor(limit / columnsOf(stamped[0]!).length);
-    return this.transaction(async (repository) => {
-      for (let at = 0; at < stamped.length; at += size) {
-        await repository.#untyped.insertInto(repository.#name).values(stamped.slice(at, at + size)).execute();
+    try {
+      return await this.transaction(async (repository) => {
+        let count = 0;
+        const written: Record<string, unknown>[] = [];
+        for (let at = 0; at < stamped.length; at += size) {
+          let insert = repository.#untyped.insertInto(repository.#name).values(stamped.slice(at, at + size));
+          if (on) insert = insert.onConflict((conflict) => conflict.columns(on as string[]).doNothing());
+          if (returning) {
+            written.push(...((await insert.returning(returning as string[]).execute()) as Record<string, unknown>[]));
+          } else {
+            count += Number((await insert.executeTakeFirst()).numInsertedOrUpdatedRows ?? 0);
+          }
+        }
+        return returning ? { count: written.length, rows: written } : { count: on ? count : rows.length, rows: written };
+      });
+    } catch (error) {
+      if (on && noMatchingIndex(error)) {
+        throw new TypeError(
+          `${method}() found no unique index on ${this.#name} (${on.join(', ')}) — add table.unique([${on.map((column) => `'${column}'`).join(', ')}]) in a migration, or name the columns of an index that exists.`,
+          { cause: error },
+        );
       }
-      return rows.length;
-    });
+      throw error;
+    }
+  }
+
+  async #checkReturning(method: string, returning: readonly string[]): Promise<void> {
+    if (!Array.isArray(returning) || returning.length === 0) {
+      throw new TypeError(`${method}() needs at least one column in returning — it was given none.`);
+    }
+    await this.#checkColumns(method, 'returns', returning);
+  }
+
+  /** The columns a write names are columns of the table and none is secret — checked before a statement runs, for a cast or a list a request made. */
+  async #checkColumns(method: string, verb: string, columns: readonly string[]): Promise<void> {
+    const metadata = await this.#schema(`${method}()`);
+    for (const column of columns) {
+      const secret = metadata.secrets.get(this.#name)?.has(column) === true;
+      if (secret || metadata.kinds.get(this.#name)?.has(column) !== true) {
+        const message = `${method}() ${verb} columns of ${this.#name} that are not secret — ${column} is ${secret ? 'a secret column' : 'not a column of it'}.`;
+        throw new TypeError(secret ? withCode('D9', message) : message);
+      }
+    }
   }
 
   /**

@@ -197,7 +197,7 @@ Everything that reads the time through the app's `Clock` follows the test clock:
 - the delays and backoffs of queued jobs, which `app.queue.work()` runs once they are due;
 - the scheduler, through `app.schedule`;
 - the cached answer of the readiness check;
-- `created_at` and `updated_at` of a table with `timestamps()`, which a repository's `insert()`, `insertMany()`, `update()`, `relation().create()` and `attach()`, a
+- `created_at` and `updated_at` of a table with `timestamps()`, which a repository's `insert()`, `insertMany()`, `insertMissing()`, `update()`, `relation().create()` and `attach()`, a
   factory and `credentialWriter()` stamp, and `deleted_at` of a soft delete (a raw query does not: see below);
 - the `now()` a factory definition reads.
 
