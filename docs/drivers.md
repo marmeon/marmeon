@@ -109,6 +109,7 @@ What happens without an optional member:
 | Member | Without it |
 | --- | --- |
 | `reserveAny` | A worker without `--queue` goes round `queues()` and reserves from each queue itself. |
+| `pushMany` | `queue.bulk()` calls `push` for each job in turn; a failure midway leaves the earlier jobs queued. With it, the driver queues the jobs of one `bulk()` in one go, in the order given, as a unit where its store can (a database transaction; a Redis script runs without interleaving). |
 | `counts` | The devtools show the size of a queue, not its split into ready, delayed and reserved jobs. |
 | `using` | `queue.using(trx)` refuses with an error: the driver cannot write into a database transaction. |
 | `joinsTransaction` | A dispatch inside a transaction waits for the outermost commit, and is dropped on a rollback. The job never exists before the data it depends on does. |
