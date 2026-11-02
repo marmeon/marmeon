@@ -116,6 +116,7 @@ export type CsvReadError = {
 export interface CsvTable {
     readonly headers: string[];
     readonly rows: string[][];
+    readonly lines: number[];
     readonly delimiter: CsvDelimiter;
     readonly encoding: CsvEncoding;
 }

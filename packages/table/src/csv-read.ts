@@ -29,6 +29,11 @@ export interface ReadCsvOptions {
 export interface CsvTable {
   readonly headers: string[];
   readonly rows: string[][];
+  /**
+   * For each entry of `rows` the physical line of the file it starts in, counted from 1: `rows[i]` starts in `lines[i]`. Blank
+   * lines, the header and line breaks inside quotes are counted, so the number is the line in a text editor.
+   */
+  readonly lines: number[];
   /** The separator that was used. */
   readonly delimiter: CsvDelimiter;
   /** The encoding that was used. */
@@ -81,6 +86,7 @@ export function readCsv(bytes: Uint8Array, options: ReadCsvOptions = {}): Result
   const unescape = options.unescape === true;
   const length = text.length;
   const records: string[][] = [];
+  const starts: number[] = []; // starts[i] is the line records[i] begins in
 
   let i = 0;
   let line = 1;
@@ -162,11 +168,12 @@ export function readCsv(bytes: Uint8Array, options: ReadCsvOptions = {}): Result
       }
     }
     records.push(record);
+    starts.push(recordLine);
   }
 
   const [first = [], ...rest] = records;
   const clean = (row: string[]): string[] => (unescape ? row.map(unescapeCsvCell) : row);
-  return ok({ headers: clean(first), rows: rest.map(clean), delimiter, encoding });
+  return ok({ headers: clean(first), rows: rest.map(clean), lines: starts.slice(1), delimiter, encoding });
 }
 
 function tooLong(limit: number, line: number) {

@@ -25,20 +25,23 @@ const CONFIRM_WITHIN_MINUTES = 30;
 /** What one row of the file has to be — the same rules as a form's. */
 const ROW = r.object({ name: r.string().trim().required().max(255), email: r.string().trim().lowercase().required().max(255).email() });
 
-/** The file's rows checked like a form's: how many were read and how many need correcting, or the message for the file's field. */
-async function checkRows(file: TemporaryUpload, translator: Translator): Promise<{ rows: number; invalid: number } | { message: string }> {
+/** The file's rows checked like a form's: how many were read, how many need correcting and the line of the first of them, or the message for the file's field. */
+async function checkRows(file: TemporaryUpload, translator: Translator): Promise<{ rows: number; invalid: number; firstInvalid: number | null } | { message: string }> {
   // bytes() reads the file without using the upload up: nothing is stored, and a failed import can be sent again.
   const csv = readCsv(await file.bytes(), { unescape: true });
   if (!csv.ok) return { message: csv.error.message };
-  const { headers, rows } = csv.value;
+  const { headers, rows, lines } = csv.value;
   const columns = ['name', 'email'].map((name) => headers.findIndex((header) => header.trim().toLowerCase() === name));
   if (columns.includes(-1)) return { message: translator.get('members.import_columns') };
   let invalid = 0;
-  for (const row of rows) {
+  let firstInvalid: number | null = null;
+  for (const [index, row] of rows.entries()) {
     const member = await validate(ROW, { name: row[columns[0]!], email: row[columns[1]!] }, { translator });
-    if (!member.ok) invalid++;
+    if (member.ok) continue;
+    invalid++;
+    firstInvalid ??= lines[index]!; // the line in the file, not the row's position: blank lines and cells with a line break count
   }
-  return { rows: rows.length, invalid };
+  return { rows: rows.length, invalid, firstInvalid };
 }
 
 /**
@@ -61,8 +64,14 @@ export class ImportMembersController extends Controller {
     const id = await ctx.body.file.keep({ scope: IMPORT_SCOPE, minutes: CONFIRM_WITHIN_MINUTES });
     return this.redirect()
       .route('members.index')
-      .flash('toast', { kind: checked.invalid === 0 ? 'success' : 'info', message: this.#translator.get('members.imported', checked) })
+      .flash('toast', { kind: checked.invalid === 0 ? 'success' : 'info', message: this.#importedMessage(checked) })
       .flash('memberImport', { id, rows: checked.rows });
+  }
+
+  /** The count, and when a row needs correcting, the line of the first. */
+  #importedMessage({ rows, invalid, firstInvalid }: { rows: number; invalid: number; firstInvalid: number | null }): string {
+    const counted = this.#translator.get('members.imported', { rows, invalid });
+    return firstInvalid === null ? counted : `${counted} ${this.#translator.get('members.import_first', { line: firstInvalid })}`;
   }
 }
 

@@ -33,9 +33,18 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
     const file = 'name;email\nÄnne;anne@example.com\nBen;not-an-address\n;empty@example.com\n';
     for (const bytes of [windows1252(file), utf16le(file)]) {
       const token = await as.upload(ROUTE, 'file', new File([bytes], 'members.csv', { type: 'text/csv' }));
-      await send(as, token).assertRedirect('/members').assertFlashed('toast', { kind: 'info', message: '3 rows read, 2 to correct.' });
+      await send(as, token).assertRedirect('/members').assertFlashed('toast', { kind: 'info', message: '3 rows read, 2 to correct. The first is in line 3.' });
     }
     expect(app.storage.disk('uploads').files().filter((key) => key.startsWith('imports/'))).toEqual([]);
+  });
+
+  it('names the line of the first row to correct as the file has it: blank lines and a cell with a line break count', async () => {
+    const as = app.actingAs(ada);
+    const file = 'name;email\n\nAnne;anne@example.com\n;\n"Ben\nB";not-an-address\n';
+    const token = await as.upload(ROUTE, 'file', new File([windows1252(file)], 'members.csv', { type: 'text/csv' }));
+    await send(as, token).assertRedirect('/members').assertFlashed('toast', { kind: 'info', message: '2 rows read, 1 to correct. The first is in line 5.' });
+    const clean = await as.upload(ROUTE, 'file', new File([windows1252('name;email\n\nAnne;anne@example.com\n')], 'members.csv', { type: 'text/csv' }));
+    await send(as, clean).assertFlashed('toast', { kind: 'success', message: '1 row read, 0 to correct.' });
   });
 
   it('answers a file without the columns, or one that breaks a limit of readCsv, with the error at its field — and the token stays usable', async () => {
@@ -101,10 +110,10 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
     it('shows the count, keeps the file for the session, and the confirmation takes it over once and drops the file', async () => {
       const as = app.actingAs(ada);
       const { response, id } = await preview(as);
-      response.assertRedirect('/members').assertFlashed('toast', { message: '2 rows read, 1 to correct.' });
+      response.assertRedirect('/members').assertFlashed('toast', { message: '2 rows read, 1 to correct. The first is in line 3.' });
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
       response.assertFlashed('memberImport', { id, rows: 2 });
-      expect(response.flashed().find((message) => message.key === 'toast')!.data, 'the toast carries only what it shows').toEqual({ kind: 'info', message: '2 rows read, 1 to correct.' });
+      expect(response.flashed().find((message) => message.key === 'toast')!.data, 'the toast carries only what it shows').toEqual({ kind: 'info', message: '2 rows read, 1 to correct. The first is in line 3.' });
       (await confirm(as, id)).assertRedirect('/members').assertFlashed('toast', { kind: 'success', message: '1 row taken over.' });
       expect(app.storage.disk('uploads').files()).toEqual([]);
       (await confirm(as, id)).assertNotFound();
