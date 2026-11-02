@@ -198,17 +198,17 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 
 | Command | Writes |
 | --- | --- |
-| `make:module <name> [--no-register]` | `modules/<name>/index.ts` and `routes.ts`; adds the module last in `modules` of `bootstrap/app.ts`, then runs `db:types` in an app with `@marmeon/database`. |
+| `make:module <name> [--no-routes] [--no-register]` | `modules/<name>/index.ts` and `routes.ts` (`--no-routes` writes `index.ts` without `routes`, for a module that has none); adds the module last in `modules` of `bootstrap/app.ts`, then runs `db:types` in an app with `@marmeon/database`. |
 | `make:controller <Name> --module=<m> [--view] [--request]` | A controller. `--view` adds its page, `--request` a query or body schema. See [controllers](controllers.md#creating-a-controller). |
 | `make:event <Name> --module=<m>` | An event class in `events/`. See [events](events.md#defining-events). |
 | `make:listener <Name> --event=<Event> --module=<m> [--queued] [--no-register]` | A listener in `listeners/`, added to the module's `listeners` with its event. It writes nothing and exits with 1 when the event is neither in the module's `events/` nor imported by its `index.ts`. `--queued` writes a [queued listener](events.md#queued-listeners) with `static queue` and a stable `static listener` (`<m>.<name>`). See [events](events.md#registering-listeners). |
 | `make:job <Name> --module=<m> [--no-register]` | A queued job in `jobs/`, added to the module's `jobs`. See [queues](queues.md#generating-a-job). |
 | `make:notification <Name> --module=<m> [--no-register]` | A notification in `notifications/`, added to the module's `notifications`. See [notifications](notifications.md#defining-notifications). |
 | `make:mail <Name> --module=<m>` | A mail in `mail/` (`Mail` is added to the name) with `envelope()`, `content()` inside the app's layout and a `static preview()`, and `mail/layout.ts` when the module has none. A mail is found by its folder, so nothing is registered. Needs `@marmeon/mail` and `@marmeon/i18n` in the app's dependencies. See [writing mails](mail.md#writing-mails). |
-| `make:command <Name> --module=<m> [--no-register]` | A console command in `commands/` named `<m>:<name>`, added to the module's `commands`. See [writing commands](#writing-commands). |
+| `make:command <Name> --module=<m> [--command=<name>] [--no-register]` | A console command in `commands/` named `<m>:<name>`, or `--command` when you pass the name to type (kebab-case, a colon before a group; checked against the same registry), added to the module's `commands`. See [writing commands](#writing-commands). |
 | `make:seeder <Name> --module=<m> [--no-register]` | A seeder in `seeders/`, added last to the module's `seeders`. See [seeding](seeding.md#generating-a-seeder). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
-| `make:policy <Name> --module=<m>` | A policy in `policies/` that allows the owner of a record (`user_id`) and answers everyone else with a 404. Needs `@marmeon/auth` in the app's dependencies. See [generating a policy](authorization.md#generating-a-policy). |
+| `make:policy <Name> --module=<m> [--ability=<name>]` | A policy in `policies/` that allows the owner of a record (`user_id`) and answers everyone else with a 404, or with `--ability` one ability without a record that answers `false` until you decide. Needs `@marmeon/auth` in the app's dependencies. See [generating a policy](authorization.md#generating-a-policy). |
 | `make:test <name> --module=<m> [--path=/…]` | `modules/<m>/<name>.test.ts`: a test that boots the app and expects `--path` (default `/<m>`) to answer 200. It fails until the route exists — change it to what you test. See [creating the test app](testing.md#creating-the-test-app). |
 | `make:resource <Name> [--module=<m>] [--no-register]` | A new module for a record of the signed-in user: migration, repository, [policy](authorization.md#generating-a-policy), the six controllers with their requests, two pages and a test, added to `bootstrap/app.ts`. Needs the auth module of the starter kit. It never changes an existing module. See [adding a resource](starter-kit.md#adding-a-resource). |
 | `make:repository <Name> --module=<m> [--table=<t>]` | `modules/<m>/<Name>Repository.ts`: a `Repository<'<t>'>` with its `static table`, the table being the plural of the name in snake case (`InvoiceLine` is `invoice_lines`) unless `--table` names it. Registers nothing: the container builds the class. Needs `@marmeon/database`. See [defining a repository](queries.md#defining-a-repository). |
@@ -221,7 +221,11 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 
-`make:controller` decides nothing about who may call the controller: say it in the request's `authorize`, or with `Route.authorize(…)` on the registrar (`everyone` if anyone may). The command prints that reminder after the route line.
+`make:controller` decides nothing about who may call the controller: say it in the request's `authorize`, or with `Route.authorize(…)` on the registrar (`everyone` if anyone may). The command prints that reminder after the route line. In a module made with `--no-routes` it prints the `routes.ts` to create and the `routes` entry for `defineModule` instead, and writes neither.
+
+Several modules at once: run `make:module <name> --no-register` for each, list them in `bootstrap/app.ts` in the order you want (routes match in module order), and run `marmeon db:types` once.
+
+`make:controller --request` writes a request with an empty schema (`r.object({})`, or `r.query({})` for a reading name) with an example field as a commented line: add your own fields there.
 
 ### Commands of the packages
 
@@ -292,7 +296,7 @@ export default defineModule({
 });
 ```
 
-- **`static command`** is the name you type. A part before a colon groups it in the list. A name used twice by different commands — two modules, a module and a package, or a module and a built-in — fails `marmeon build` and the start with an error naming both classes and where they come from (a built-in that runs without booting, such as `make:*` or `key:generate`, still runs, but `marmeon build`, `marmeon list` and every command that loads the app report the clash); the same class listed twice is fine. `list`, `help`, `dev` and `start` are marmeon's own (the last two are handled by the launcher before any command is looked up) and refused as command names with K8.
+- **`static command`** is the name you type. `make:command --command=notes:prune` sets it instead of `<module>:<class name>`, with the same check against the commands the app has. A part before a colon groups it in the list. A name used twice by different commands — two modules, a module and a package, or a module and a built-in — fails `marmeon build` and the start with an error naming both classes and where they come from (a built-in that runs without booting, such as `make:*` or `key:generate`, still runs, but `marmeon build`, `marmeon list` and every command that loads the app report the clash); the same class listed twice is fine. `list`, `help`, `dev` and `start` are marmeon's own (the last two are handled by the launcher before any command is looked up) and refused as command names with K8.
 - **`static usage`** is shown in errors, after the name: `Usage: marmeon notes:prune-archived [--days=30]`.
 - **`static options`** declares the options in the format of Node's `parseArgs`: `{ type: 'string' }` or `{ type: 'boolean' }`,
   with `short: 'd'` for a one-letter form. An option the command does not declare is an error before the command runs.

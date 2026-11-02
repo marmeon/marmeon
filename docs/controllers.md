@@ -37,10 +37,10 @@ The name gets `Controller` appended when it does not end with it. The options ch
 | Option | What it adds |
 | --- | --- |
 | `--view` | A page in the module's `views/` folder, and a controller that renders it. |
-| `--request` | A request definition next to the controller. A name that starts with `Show`, `List`, `Index`, `Search`, `Get`, `Find`, `Browse`, `Create` or `New` gets a query schema (`Create…` is the page of a form, `Store…` sends it), any other name a body schema and a redirect back, so `--view` with it is refused. |
+| `--request` | A request definition next to the controller. The schema starts empty, with an example field commented out. A name that starts with `Show`, `List`, `Index`, `Search`, `Get`, `Find`, `Browse`, `Create` or `New` gets a query schema (`Create…` is the page of a form, `Store…` sends it), any other name a body schema and a redirect back, so `--view` with it is refused. |
 | `--force` | Overwrites a file that exists. |
 
-The module must exist, and `make:module` creates it.
+The module must exist, and `make:module` creates it. In a module made with `make:module --no-routes` the command prints the `routes.ts` to create and the `routes` entry to add instead of the line for an existing file.
 
 ### Dependency injection
 

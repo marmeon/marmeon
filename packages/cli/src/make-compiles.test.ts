@@ -145,7 +145,8 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(withQuery).toContain('  query: r.query({');
     expect(withQuery).not.toContain('schema:');
     expect(withQuery).not.toContain('authorize');
-    expect(withQuery).toContain('return this.json({ q: ctx.query.q, page: ctx.query.page });');
+    expect(withQuery).toContain('return this.json({ query: ctx.query });');
+    expect(withQuery).toContain('    // q: r.string().trim().max(100).default(\'\'),');
 
     // Generated in quick succession, they still sort in the order they were made.
     const migrations = readdirSync(join(app, 'modules/billing/migrations')).sort();
@@ -238,6 +239,48 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       expect([orphan.allowed, orphan.status]).toEqual([false, 404]);
     }
   });
+
+  it('generates a module without routes, a policy with one ability and a command with its own name that compile and lint', async () => {
+    writeFileSync(join(app, '.gitignore'), 'node_modules\n'); // oxlint would walk pnpm's links without it
+    mkdirSync(join(app, 'bootstrap'));
+    writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\nexport default defineApplication({ root: import.meta.dirname + '/..' });\n");
+    expect(marmeon(app, ['make:module', 'reports', '--no-routes', '--no-register']).code).toBe(0);
+    expect(existsSync(join(app, 'modules/reports/routes.ts'))).toBe(false);
+    const hint = marmeon(app, ['make:controller', 'ListReports', '--module=reports', '--request', '--view']).stdout;
+    expect(hint).toContain('modules/reports/index.ts lists no routes yet');
+    expect(existsSync(join(app, 'modules/reports/routes.ts'))).toBe(false);
+    expect(marmeon(app, ['make:controller', 'StoreReport', '--module=reports', '--request']).code).toBe(0);
+    expect(marmeon(app, ['make:policy', 'Report', '--module=reports', '--ability=exportAll']).stdout).toContain("authorize: can(ReportPolicy, 'exportAll')");
+    expect(marmeon(app, ['make:command', 'PruneReports', '--module=reports', '--command=reports:prune']).code).toBe(0);
+    // The ability takes no record, so `can()` accepts it without a resource and rejects the hook.
+    writeFileSync(
+      join(app, 'modules/reports/uses.ts'),
+      [
+        "import { can } from '@marmeon/auth';",
+        "import { ReportPolicy } from './policies/ReportPolicy.ts';",
+        "export const allowed = can(ReportPolicy, 'exportAll');",
+        "// @ts-expect-error not an ability of the policy",
+        "export const missing = can(ReportPolicy, 'update');",
+        '',
+      ].join('\n'),
+    );
+    expect(marmeon(app, ['make:lint-config']).code).toBe(0);
+    const oxlint = spawnSync(join(repo, 'node_modules/.bin/oxlint'), ['--deny-warnings', '-f', 'unix', 'modules/reports'], { cwd: app, encoding: 'utf8' });
+    expect([oxlint.status, oxlint.stdout]).toEqual([0, expect.not.stringContaining('[Error/')]);
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+    // Closed until the app decides: the ability answers false.
+    writeFileSync(join(app, 'modules/reports/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
+    const { Gate } = (await import(join(app, 'modules/reports/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record?: never): Promise<{ allowed: boolean; status: number }> } };
+    const { ReportPolicy } = (await import(join(app, 'modules/reports/policies/ReportPolicy.ts'))) as { ReportPolicy: new () => object };
+    const answer = await new Gate({ user: async () => ({ id: 1 }) } as never, (policy) => new policy()).inspect(ReportPolicy as never, 'exportAll' as never);
+    expect([answer.allowed, answer.status]).toEqual([false, 403]);
+    rmSync(join(app, 'modules/reports'), { recursive: true });
+    rmSync(join(app, 'bootstrap'), { recursive: true });
+    rmSync(join(app, '.oxlintrc.json'));
+    rmSync(join(app, '.gitignore'));
+  }, 30_000);
 
   it('generates a test that compiles against the app and passes the lint preset', () => {
     mkdirSync(join(app, 'bootstrap'));

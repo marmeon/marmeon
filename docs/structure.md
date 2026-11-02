@@ -218,7 +218,7 @@ A new feature starts as a module. This walk-through adds a page at `/notes` for 
 
 ### Create the module
 
-`make:module` writes `index.ts` and an empty `routes.ts`, and `make:controller` writes a controller and its page:
+`make:module` writes `index.ts` and an empty `routes.ts` (`--no-routes` leaves `routes.ts` out, for a module without pages or endpoints), and `make:controller` writes a controller and its page:
 
 ```sh
 pnpm marmeon make:module notes
