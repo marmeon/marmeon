@@ -1,3 +1,4 @@
+import type { Constructor, Token } from '@marmeon/core';
 import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import type { BodyOf, RequestDefinition, StandardSchemaV1, WithQuery } from './request-definition.ts';
 import type { RequestState } from './request.ts';
@@ -244,8 +245,11 @@ export interface RouteBinding {
   readonly public?: true;
 }
 
-/** Builds controller and middleware classes — per request, from the container. */
-export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
+/**
+ * Builds a class from the request's container, or gives what a token is bound to (`resolve(Translator)`, `resolve(Clock)`).
+ * Without a container (a router built on its own) a class is built with `new` and a token throws.
+ */
+export type ClassResolver = <T>(key: Constructor<T> | Token<T>) => T;
 
 /**
  * A closure or a controller class. `TSchema` and `TQuery` are inferred from the controller's `request` (`never` without

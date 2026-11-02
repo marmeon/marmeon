@@ -62,7 +62,7 @@ export type CheckQuery<TQuery extends StandardSchemaV1> = InferOutput<TQuery> ex
 // CheckRouteName
 export type CheckRouteName<N extends string> = string extends N ? RouteName : N extends RouteName ? N : `'${N}' is not a route name${Suggest<N, RouteName>}`;
 // ClassResolver
-export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
+export type ClassResolver = <T>(key: Constructor<T> | Token<T>) => T;
 // ConsistentBinder
 export type ConsistentBinder<B> = B extends {
     readonly table: infer S;

@@ -1,9 +1,9 @@
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
-import { RequestLocale } from '@marmeon/i18n';
 import { AskQuestionController } from './controllers/AskQuestionController.ts';
 import { ShowTalkController } from './controllers/ShowTalkController.ts';
 import { UpdateLocaleController } from './controllers/UpdateLocaleController.ts';
+import { rememberTalk } from './rememberTalk.ts';
 import { TalkCatalog } from './TalkCatalog.ts';
 
 export default defineRoutes((Route) => {
@@ -15,20 +15,16 @@ export default defineRoutes((Route) => {
 
   // A talk is held in one language, and its page speaks it without the language in the URL. The hook runs once the record is
   // bound and the checks have passed, so the 404 or 403 of a talk is still in the visitor's language. A language the app does
-  // not support leaves the visitor's.
+  // not support leaves the visitor's. The hook also remembers the talk in the session, unless the request is read-only (an island).
   // Every talk is public to read; questions go to the talks that take them.
   Route.authorize(everyone)
     .bind('talk', TalkCatalog, { public: true })
-    .afterAuthorize((ctx, resolve) => {
-      resolve(RequestLocale).use(ctx.params.talk.language);
-    })
+    .afterAuthorize(rememberTalk)
     .get('/talks/:talk', ShowTalkController)
     .name('talks.show');
   Route.bind('talk', TalkCatalog)
     .authorize((ctx) => ctx.params.talk.takesQuestions)
-    .afterAuthorize((ctx, resolve) => {
-      resolve(RequestLocale).use(ctx.params.talk.language);
-    })
+    .afterAuthorize(rememberTalk)
     .middleware(throttle('talks'))
     .post('/talks/:talk/questions', AskQuestionController)
     .name('talks.ask');

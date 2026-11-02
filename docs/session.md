@@ -309,9 +309,17 @@ framework close the streams of an ended session this way, in every process.
 
 ## Requests that only read
 
-An island, a live stream and an upload read the session but never write it. Nothing they do is saved, they set no cookie, and flash
+An island, a live validation, an upload, an event stream, the session's epoch check and a page rendered as the base of a layer for its
+deep link read the session but never write it. Nothing they do is saved, they set no cookie, and flash
 data stays for the page. A write there throws in development and in tests, and is logged and dropped everywhere else. The
 [request lifecycle](lifecycle.md#requests-that-only-read) page lists every such request.
+
+Code that runs for those requests too, such as a route's [`afterAuthorize` hook](routing.md#after-the-checks), asks `session.readOnly`
+before it writes. It is `true` in each of those requests, and `false` on an ordinary page:
+
+```ts
+if (!session.readOnly) session.put('last_workspace', workspace.id);
+```
 
 ## A store of your own
 

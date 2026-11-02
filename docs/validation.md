@@ -560,8 +560,9 @@ for (const [line, row] of rows.entries()) {
 
 - **`translator`** shows the messages in its language, such as `Translators.for('de')` ([localization](localization.md#translators-any-language-anywhere)). Without it, the
   messages are English. `messages` and `attributes` work as in `defineRequest()`.
-- **`resolve`** builds the repositories of `unique` and `exists`: `(Class) => container.make(Class)`. Without it, such a rule
-  throws with a message that says so, since it cannot ask the database.
+- **`resolve`** builds the repositories of `unique` and `exists`: `(key) => container.make(key)`. It gets a class or a token (the
+  same `ClassResolver` as a route's checks), so a resolver that calls `new Class()` must test `typeof key === 'function'` first, and one typed
+  `(Class: new (...) => T) => T` does not compile. Without it, such a rule throws with a message that says so, since it cannot ask the database.
 - **`ctx`** does not exist. A `where` or `ignore` of a database rule that reads it, even to test `ctx ? … : …`, fails with an
   error that says so, so a filter by the user never falls away silently. Keep such rules to a request.
 - **Any Standard Schema** works, not only `rules`, but `messages` and `attributes` are for `rules`.

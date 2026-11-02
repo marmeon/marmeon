@@ -1,3 +1,4 @@
+import { token } from '@marmeon/core';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { everyone } from './access.ts';
@@ -98,6 +99,35 @@ describe('Route.afterAuthorize()', () => {
     await call(router, '/teams/:team', {}, { team: '1' });
     expect(seen).toEqual({ id: 1, name: 'Red' });
     expect(resolved).toBeInstanceOf(Teams);
+  });
+
+  it('hands the hook what a token is bound to when the resolver has a container', async () => {
+    const Label = token<{ text: string }>('Label');
+    let seen: unknown;
+    const router = new Router({ resolve: ((key: unknown) => (key === Label ? { text: 'from the container' } : new (key as new () => unknown)())) as never }).load(
+      defineRoutes((Route) => {
+        Route.authorize(everyone)
+          .afterAuthorize((_ctx, resolve) => {
+            seen = resolve(Label);
+          })
+          .get('/label', () => 'x');
+      }),
+    );
+    expect(await call(router, '/label')).toMatchObject({ status: 200 });
+    expect(seen).toEqual({ text: 'from the container' });
+  });
+
+  it('refuses a token with a TypeError that names it when there is no container', async () => {
+    const Label = token<{ text: string }>('Label');
+    const router = load((Route) => {
+      Route.authorize(everyone)
+        .afterAuthorize((_ctx, resolve) => void resolve(Label))
+        .get('/label', () => 'x');
+    });
+    const route = router.routes.find((candidate) => candidate.path === '/label')!;
+    await expect(router.dispatch(route, { request: new Request('http://app.test/label'), params: {} })).rejects.toThrow(
+      new TypeError('resolve(Label): a token resolves only inside an app — there is no container here.'),
+    );
   });
 
   it('never runs for a binder that finds nothing', async () => {

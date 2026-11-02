@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, HttpServiceProvider, view, type HttpContext } from '@marmeon/http';
+import { Controller, HttpServiceProvider, island, view, type HttpContext } from '@marmeon/http';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { defineRequest, defineRoutes, everyone, type RouteBinder } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
-import { SessionServiceProvider } from '@marmeon/session';
+import { Session, SessionServiceProvider } from '@marmeon/session';
 import { rules as r } from '@marmeon/validation';
 import { describe, expect, it } from 'vitest';
 import { I18nServiceProvider, Locales, RequestLocale, Translator } from './index.ts';
@@ -50,6 +50,9 @@ class RegisterController extends Controller {
   }
 }
 
+/** What the hook of `/events/:event/…` saw, per request: its greeting and whether it could write the session. */
+const hooked: { greeting?: string; readOnly?: boolean } = {};
+
 const routes = defineRoutes((Root) => {
   const open = Root.authorize(everyone);
   const event = open
@@ -60,6 +63,16 @@ const routes = defineRoutes((Root) => {
     });
   event.get('/events/:event', ShowEventController).name('events.show');
   event.post('/events/:event/register', RegisterController).name('events.register');
+  // A hook that translates through `resolve(Translator)` and writes the session only when the request may.
+  const noted = open.bind('event', Events, { public: true }).afterAuthorize((ctx, resolve) => {
+    resolve(RequestLocale).use(ctx.params.event.locale);
+    hooked.greeting = resolve(Translator).get('shop.greeting', { name: ctx.params.event.id });
+    const session = resolve(Session);
+    hooked.readOnly = session.readOnly;
+    if (!session.readOnly) session.put('last_event', ctx.params.event.id);
+  });
+  noted.get('/notes/:event', ShowEventController).name('notes.show');
+  noted.get('/notes/:event/panel', () => island('shop/Panel', {})).name('notes.panel');
   open.localized().bind('event', Events, { public: true }).afterAuthorize((ctx, resolve) => {
       resolve(RequestLocale).use(ctx.params.event.locale);
     }).get('/guide/:event', ShowEventController).name('events.guide');
@@ -99,6 +112,17 @@ describe('RequestLocale', () => {
     const english = await kernel.request('/events/english/register', { method: 'POST', headers: { ...json, 'accept-language': 'de' }, body: '{}' });
     expect(english.status).toBe(422);
     expect(await english.text()).toContain('required');
+  });
+
+  it('translates in the language of the record from a hook with resolve(Translator), and tells a hook whether the session may change', async () => {
+    const kernel = await boot();
+    const page = await kernel.request('/notes/german', { headers: { ...visit, 'accept-language': 'en' } });
+    expect(page.status).toBe(200);
+    expect(hooked).toEqual({ greeting: 'Hallo german', readOnly: false });
+    // The island of that page runs the same hook with a read-only session: the hook skips its write and the island answers.
+    const panel = await kernel.request('/notes/english/panel', { headers: { ...visit, 'x-marmeon-region': 'island', 'accept-language': 'de' } });
+    expect(panel.status).toBe(200);
+    expect(hooked).toEqual({ greeting: 'Hello english', readOnly: true });
   });
 
   it('keeps the visitor’s locale when the record’s is not supported or missing', async () => {

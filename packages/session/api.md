@@ -25,6 +25,7 @@ export declare const SESSION_USER_KEY = "_auth_id";
 // Session
 export declare class Session {
     #private;
+    get readOnly(): boolean;
     get<K extends string>(key: K): Value<K> | undefined;
     has(key: string): boolean;
     put<K extends string>(key: K, value: Value<K>): void;

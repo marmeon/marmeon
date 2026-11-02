@@ -457,17 +457,30 @@ registrar that never registers a route fails at `load()` for its hooks as it doe
 A hook runs for every request to the route, and that includes the requests that only read: an [island](deferred-props.md#how-islands-load)
 of the page runs its own route with the hooks of its registrar, and so does a [live validation](validation.md#live-validation) of a form.
 Their session is read-only. A `session.put()` in a hook throws a `ReadOnlyError` in development and in tests, and is dropped and
-logged in production, so a page that remembers something (the workspace a user visited last) breaks on its islands. Keep session
-writes out of a hook: write the session in the controller of the page. That is safe from islands and live validations, but not
+logged in production, so a page that remembers something (the workspace a user visited last) breaks on its islands. A hook that
+writes checks `session.readOnly` first, and writes only when it is `false`:
+
+```ts
+.afterAuthorize((ctx, resolve) => {
+  const session = resolve(Session);
+  if (!session.readOnly) session.put('last_workspace', ctx.params.workspace.id);
+})
+```
+
+Better still, write the session in the controller of the page. That is safe from islands and live validations, but not
 from every read-only request: a page that is the base of a layer is read-only when a deep link opens the layer. See
 [requests that only read](lifecycle.md#requests-that-only-read) for all of them and [dialogs](dialogs.md#the-base) for the base.
 
-A hook cannot translate the way a page does. `resolve` builds classes only, so `resolve(Translator)` does not compile. Share the key
-or the code and translate in the page's controller, where a `Translator` is injected. A middleware class is no place for it: it runs
-before the bindings and the hooks, so it sees neither the bound record nor what the hook shares, and its `Translator` speaks the
-language from before a `RequestLocale.use()` in the hook. When the hook knows the language, such as the record's, translate in
-the hook with `resolve(Translators).for(locale)`, as [localization](localization.md#translators-any-language-anywhere) shows for
-the `Translators` service.
+`resolve` takes a class or a token, in a hook as in a check, so `resolve(Translator)` and `resolve(Clock)` work. A hook that runs
+after a `RequestLocale.use()` gets a `Translator` that speaks the language it set, and so does a hook declared after it; the
+`Translator` is the request's, which `SetLocale` has already given the visitor's language before the bindings. A middleware class
+is no place to translate what a hook knows: it runs before the bindings and the hooks, so it sees neither the bound record nor
+what the hook shares, and its `Translator` speaks the language from before a `RequestLocale.use()` in the hook. Without an app (a
+`Router` built on its own for a test) `resolve` builds classes with `new` and refuses a token with a `TypeError` that names it.
+
+A resolver you pass yourself (`new Router({ resolve })`, `dispatch(…, { resolve })`, `validate(…, { resolve })`) gets a class or a
+token: `(key) => container.make(key)`, or check `typeof key === 'function'` before `new key()`. A resolver typed as taking only a class
+does not compile.
 
 ### Routes under a page
 
