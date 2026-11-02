@@ -97,6 +97,20 @@ const ada = await factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ad
 const notes = await factory(NoteFactory).count(3).state('shared').create({ user_id: ada.id });
 ```
 
+Every `factory(Other)` of a definition creates a row of its own, so a factory with two foreign keys makes two parent rows. When the keys
+have to agree, as a resource's `event_id` and the event of its `resource_group_id`, the definition cannot see the overrides of the call and
+derive one from the other, and the database does not link the two columns unless a key does. Create the shared parent once and
+pass every column that points to it:
+
+```ts
+const event = await factory(EventFactory).create();
+const group = await factory(ResourceGroupFactory).create({ event_id: event.id });
+const resource = await factory(ResourceFactory).create({ event_id: event.id, resource_group_id: group.id });
+```
+
+Without the two overrides, `ResourceFactory.create()` makes an event for the resource and another for its group. A column an override
+sets creates no parent. Say in the factory's JSDoc which columns a caller has to name together.
+
 Each call returns a new pending factory, so you can keep one and use it twice. A state the definition does not have throws, with
 the states it knows. `create()` inserts the rows one after the other, each related row first.
 
