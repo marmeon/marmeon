@@ -126,6 +126,7 @@ export function applyPlan(projection: SchemaProjection, steps: readonly PlanStep
         if (!tables.has(step.table)) throw unknown(where, `table "${step.table}"`);
         alter(tables, step.blueprint, where);
         referencesLive(tables, step.blueprint, where);
+        tiedColumns(tables, step.blueprint, where);
         break;
       }
       case 'drop':
@@ -236,6 +237,32 @@ function referencesLive(tables: ReadonlyMap<string, ProjectedTable>, blueprint: 
   }
 }
 
+/** The kind of value a column holds, for telling whether a foreign key can join two columns. */
+function family(type: string): string {
+  if (/^(integer|bigint)$/.test(type)) return 'integer';
+  if (/^(varchar|text)\b/.test(type)) return 'string';
+  return type;
+}
+
+/** A column that `foreign()` ties to a table must find its target there, of a type that fits; this is known before the first statement runs. */
+function tiedColumns(tables: ReadonlyMap<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
+  const source = tables.get(blueprint.table)!;
+  for (const { column, references } of blueprintParts(blueprint).foreignKeys) {
+    const { table, column: referenced } = references!;
+    const target = tables.get(table);
+    if (!target) throw conflict(`${where} ties "${blueprint.table}.${column}" to table "${table}", which no migration created.`);
+    const to = target.columns.find((c) => c.name === referenced && !c.retired);
+    if (!to) throw conflict(`${where} ties "${blueprint.table}.${column}" to "${table}.${referenced}", which is not a column of that table (or an earlier migration retired it).`);
+    const from = source.columns.find((c) => c.name === column);
+    if (!from) throw conflict(`${where} ties "${blueprint.table}.${column}" to "${table}.${referenced}", but the same alter() drops the column.`);
+    for (const driver of ['sqlite', 'pgsql'] as const) {
+      if (family(from.type[driver]) !== family(to.type[driver])) {
+        throw conflict(`${where} ties "${blueprint.table}.${column}" (${from.type[driver]}) to "${table}.${referenced}" (${to.type[driver]}), which hold different kinds of values. A foreign key joins an integer to an integer and a uuid to a uuid.`);
+      }
+    }
+  }
+}
+
 /** Changes a known table; the foreign keys that point at a column it renames follow, as the database makes them. */
 function alter(tables: Map<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
   const parts = blueprintParts(blueprint);
@@ -331,6 +358,18 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
 
   for (const { column } of parts.nullability) live(column, '');
   for (const { column, nullable } of parts.nullability) columns = columns.map((c) => (c.name === column ? { ...c, nullable: nullable && !c.primary } : c));
+
+  for (const { column, references } of parts.foreignKeys) {
+    live(column, '');
+    if (parts.retirements.includes(column)) {
+      throw conflict(`${where} ties "${name}.${column}" to a table with foreign() and retires the column in the same alter(): the constraint would exist in the database, and Marmeon would not know the relation. Tie the column in an alter() of its own, or do not retire it.`);
+    }
+    if (foreignKeys.some((key) => key.column === column)) {
+      throw conflict(`${where} ties "${name}.${column}" to a table with foreign(), but a foreign key of an earlier migration holds it already.`);
+    }
+    const { table: target, column: referenced, onDelete, inverse } = references!;
+    foreignKeys = [...foreignKeys, { column, references: target, referenced, ...(onDelete ? { onDelete } : {}), ...(inverse ? { inverse } : {}) }];
+  }
 
   for (const index of blueprint.allIndexes()) {
     for (const column of index.columns) live(column, ` (in index "${index.name}")`);

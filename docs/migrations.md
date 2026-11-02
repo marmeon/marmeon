@@ -622,7 +622,8 @@ export default defineMigration({
 (`person_id` → `constrained('people')`), and the column when it is not `id`: `constrained('accounts', 'uuid')`. Then `cascadeOnDelete()` deletes the row along with the referenced one, `nullOnDelete()`
 sets the column to `NULL`, and `restrictOnDelete()` refuses to delete the referenced row while this one points at it. Without any
 of them, the database's default applies and refuses the delete as well. The compiler only offers the three after
-`constrained()`, and `.nullable()` goes last, as in `uploaded_by_id` above. Both SQLite and Postgres enforce the reference.
+`constrained()`, and `.nullable()` goes last, as in `uploaded_by_id` above. Both SQLite and Postgres enforce the reference. A column that exists already is tied with
+[`foreign()`](#a-reference-that-comes-later) in `alter()`, on Postgres.
 
 Every foreign key also describes two relations, one for each table. The
 [relations from foreign keys](#relations-from-foreign-keys) section shows how they are named.
@@ -824,24 +825,45 @@ export default defineMigration({
 | `table.dropUnique(name)` | Drops a unique index by its name. |
 | `table.check(name, sql)` | Adds a named [check constraint](#check-constraints); in `alter()` on Postgres only, error D18 on SQLite. Works in `create()` too. |
 | `table.dropCheck(name)` | Drops a check constraint by its name. Postgres only, error D18 on SQLite. |
+| `table.foreign(column).constrained(table)` | Ties an existing column to a table, [after the fact](#a-reference-that-comes-later). Postgres only, error D18 on SQLite. |
 | `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite. |
 | `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite. |
 | `table.retire(column)` | Takes a column out of use, one release before it is dropped. Changes no statement; see [retiring a column](#retiring-a-column). |
 
 All but `check()` work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
 SQLite changes a table one step at a time. The order is fixed, whatever order you write them in: dropped indexes first, then dropped
-checks, renamed columns, new columns, NOT NULL and nullable changes, new checks, new indexes, retired columns, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
+checks, renamed columns, new columns, NOT NULL and nullable changes, new foreign keys, new checks, new indexes, retired columns, and dropped columns last. A column in `notNull()`, `nullable()` or `foreign()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
 
 ### A reference that comes later
 
 A foreign key belongs to the migration that adds its column, and that migration must run after the one that creates the referenced
-table. A column that already exists cannot be tied to a table afterwards: `alter()` has no method that adds a reference to it, and
-`foreignId()` with `constrained()` adds a new column. Order the migrations when you write them, as under
-[generating migrations](#generating-migrations), so that the referenced table comes first. That is only possible before the
-migrations have run. A column that has run as a plain `bigInteger()` and has to point at a table created later takes a detour through a
-new column. This copies the values on SQLite and on Postgres, and the new column is nullable because SQLite adds no `NOT NULL`
+table. Order the migrations when you write them, as under [generating migrations](#generating-migrations), so that the referenced
+table comes first. That is only possible before the migrations have run.
+
+A column that has run as a plain `bigInteger()` and has to point at a table created later is tied to it on Postgres with `foreign()`:
+
+```ts title="modules/forms/migrations/2026_11_02_080000_tie_guest_categories_to_forms.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => schema.alter('guest_categories', (table) => table.foreign('form_id').constrained('forms').nullOnDelete()),
+});
+```
+
+The migration has no `down`: no migration can drop the constraint again, and a rollback that forgot the key while Postgres kept it would make the next `migrate` fail on the same constraint. A rollback that reaches it stops there with error D16, which names it.
+
+`foreign(column)` takes the same `constrained()`, `cascadeOnDelete()`, `nullOnDelete()`, `restrictOnDelete()` and `inverse()` as
+[a foreign key](#foreign-keys), with the same defaults, and gives the column the constraint `{table}_{column}_fkey`; `db:types`
+knows the relation afterwards. It works in `alter()` only (`create()` throws: use `foreignId()` there). Before the first statement
+runs, `migrate` checks that the column exists and has no foreign key yet, that the table and the column it references exist, and that both hold the same kind of value
+(an integer to an integer, a uuid to a uuid); any of them stops the migration with error D19. A row of the column that has no match in
+the referenced table makes Postgres refuse the constraint, and the migration is rolled back: set those values to `NULL` or create the
+rows in a `schema.data()` step first. A `nullOnDelete()` key on a `NOT NULL` column is accepted, as in `foreignId()`; deleting the referenced row then fails.
+
+SQLite cannot add a foreign key to a table in place, and Marmeon does not rebuild the table behind your back: `foreign()` in `alter()`
+is refused with error D18 before the first step. There the detour through a new column does it. It copies the values on SQLite and on Postgres, and the new column is nullable because SQLite adds no `NOT NULL`
 column without a default:
 
 ```ts title="modules/forms/migrations/2026_11_02_090000_tie_forms_to_layouts.ts"

@@ -34,6 +34,7 @@ export declare class Blueprint {
     notPivot(): void;
     foreignId(name: string): ForeignIdColumn<number>;
     foreignUuid(name: string): ForeignIdColumn<string>;
+    foreign(column: string): ForeignKeyReference;
     index(columns: string | readonly string[], name?: string): void;
     unique(columns: string | readonly string[], name?: string): void;
     dropColumn(name: string): void;
@@ -106,6 +107,14 @@ export declare class Connections {
 }
 // ConstrainedColumn
 export declare class ConstrainedColumn<T> extends Column<T> {
+    #private;
+    cascadeOnDelete(): this;
+    nullOnDelete(): this;
+    restrictOnDelete(): this;
+    inverse(name: string): this;
+}
+// ConstrainedForeignKey
+export declare class ConstrainedForeignKey {
     #private;
     cascadeOnDelete(): this;
     nullOnDelete(): this;
@@ -199,6 +208,11 @@ export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S e
 // ForeignIdColumn
 export declare class ForeignIdColumn<T> extends Column<T> {
     constrained(table?: string, column?: string): ConstrainedColumn<T>;
+}
+// ForeignKeyReference
+export declare class ForeignKeyReference {
+    #private;
+    constrained(table?: string, column?: string): ConstrainedForeignKey;
 }
 // Generated
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U> ? ColumnType<S, I | undefined, U> : ColumnType<T, T | undefined, T>;
