@@ -1,5 +1,64 @@
 # @marmeon/i18n
 
+## 1.0.0-rc.5
+
+### Breaking changes
+
+- Link a page's chunks and stylesheets under Vite's base by @maxeckel in https://github.com/marmeon/marmeon/pull/620
+- Resolve a token in a route's checks and hooks, and tell a hook whether the session may change by @maxeckel in https://github.com/marmeon/marmeon/pull/631
+- Type a table's filters by name and its actions' answers by their handlers by @maxeckel in https://github.com/marmeon/marmeon/pull/633
+- Embed an island the server chooses with &lt;Island href> by @maxeckel in https://github.com/marmeon/marmeon/pull/651
+- Refuse a Redis queue name whose keys would collide with another queue's by @maxeckel in https://github.com/marmeon/marmeon/pull/653
+- Give a JSON column the type of its value with JsonTypes by @maxeckel in https://github.com/marmeon/marmeon/pull/655
+
+### Features
+
+- Refuse a large body on one route with maxBodyBytes() by @maxeckel in https://github.com/marmeon/marmeon/pull/618
+- Carry cookies from one test request to the next with keepingCookies() by @maxeckel in https://github.com/marmeon/marmeon/pull/624
+- Generate a module without routes, a policy with one ability and a command with its own name by @maxeckel in https://github.com/marmeon/marmeon/pull/636
+- Show an instant in the app's time zone with APP_TIMEZONE by @maxeckel in https://github.com/marmeon/marmeon/pull/639
+- Name an export per request and list a table's exports without its rows by @maxeckel in https://github.com/marmeon/marmeon/pull/642
+- Report a custom check's message at a path below its field by @maxeckel in https://github.com/marmeon/marmeon/pull/643
+- Write a mail into the frame another module exports with make:mail --layout by @maxeckel in https://github.com/marmeon/marmeon/pull/644
+- Insert only the missing rows with insertMissing() and return what insertMany() wrote by @maxeckel in https://github.com/marmeon/marmeon/pull/646
+- Queue many jobs in a few statements with the driver's pushMany() by @maxeckel in https://github.com/marmeon/marmeon/pull/647
+- Derive a factory's column from the row it makes by @maxeckel in https://github.com/marmeon/marmeon/pull/648
+- Give each row of readCsv() the line it starts in by @maxeckel in https://github.com/marmeon/marmeon/pull/649
+- Clean a string before its checks with normalize() by @maxeckel in https://github.com/marmeon/marmeon/pull/650
+- Give a table's base query the request's resolver by @maxeckel in https://github.com/marmeon/marmeon/pull/652
+- Let a seeder report what it made through output by @maxeckel in https://github.com/marmeon/marmeon/pull/654
+- Choose an export's columns and keep a column for the file only by @maxeckel in https://github.com/marmeon/marmeon/pull/656
+- Tie an existing column to another table in alter() with foreign() by @maxeckel in https://github.com/marmeon/marmeon/pull/657
+- Change the list of an existing oneOf() column in alter() by @maxeckel in https://github.com/marmeon/marmeon/pull/658
+
+### Fixes
+
+- Refuse to seed the starter kit's test account outside development and tests by @maxeckel in https://github.com/marmeon/marmeon/pull/616
+- Keep the type of a field an object spreads in only sometimes by @maxeckel in https://github.com/marmeon/marmeon/pull/619
+- Name the derived table where a table or query refuses a computed value, and date an export by the app's clock by @maxeckel in https://github.com/marmeon/marmeon/pull/622
+- Leave row-lock clauses out of SQLite queries by @maxeckel in https://github.com/marmeon/marmeon/pull/628
+- Allow a table only when its authorize returns exactly true by @maxeckel in https://github.com/marmeon/marmeon/pull/630
+- Let the queue fake drop a job dispatched through using(trx) when that transaction rolls back by @maxeckel in https://github.com/marmeon/marmeon/pull/637
+- Mark the Settings link on every settings page of the kit and the web-app by @maxeckel in https://github.com/marmeon/marmeon/pull/640
+- Build a request's error map and old input from own keys only by @maxeckel in https://github.com/marmeon/marmeon/pull/645
+
+### Documentation
+
+- Show invitations that keep the token out of the session, with and without an account by @maxeckel in https://github.com/marmeon/marmeon/pull/617
+- Show how a lock test proves the lock and test lock order, refused statements and statement counts by @maxeckel in https://github.com/marmeon/marmeon/pull/621
+- Show absolute public URLs, an upload that answers with its record, a pixel limit and throttled uploads by @maxeckel in https://github.com/marmeon/marmeon/pull/623
+- Say what a hook after the checks may do, the locale of a missing route and how to test a development route by @maxeckel in https://github.com/marmeon/marmeon/pull/625
+- Show optimistic locking, comment-only migration changes, mail previews and one mail frame by @maxeckel in https://github.com/marmeon/marmeon/pull/626
+- Say what assertSee() searches and keep browser test output out of the dev server's folder by @maxeckel in https://github.com/marmeon/marmeon/pull/627
+- Say what a table's query, key, pagination, tie-break, export, abilities and bulk actions do by @maxeckel in https://github.com/marmeon/marmeon/pull/629
+- Say how a string is cleaned and checked, how a JSON column is written, where factories come from and how a oneOf list grows by @maxeckel in https://github.com/marmeon/marmeon/pull/632
+- Show a keyed hash for a short code, markup built from an allowlist and rows the database makes up by @maxeckel in https://github.com/marmeon/marmeon/pull/634
+- Say what a queued mail reports, what bulk() costs, what a recorded dispatch carries and that every process needs NODE_ENV by @maxeckel in https://github.com/marmeon/marmeon/pull/635
+- Show where an app's shared pieces and the kit's switches live by @maxeckel in https://github.com/marmeon/marmeon/pull/638
+- Say what the first day after a release installs by @maxeckel in https://github.com/marmeon/marmeon/pull/641
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.4...v1.0.0-rc.5
+
 ## 1.0.0-rc.4
 
 ### Breaking changes
