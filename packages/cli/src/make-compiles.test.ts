@@ -224,6 +224,31 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     rmSync(join(app, 'modules/kitmail'), { recursive: true });
   }, 30_000);
 
+  it('generates a mail that compiles against the frame another module exports', () => {
+    mkdirSync(join(app, 'modules/ui'), { recursive: true });
+    writeFileSync(join(app, 'modules/ui/index.ts'), "import { defineModule } from '@marmeon/core';\nexport { layout } from './mail/layout.ts';\nexport default defineModule({ name: 'ui' });\n");
+    mkdirSync(join(app, 'modules/shared'), { recursive: true });
+    writeFileSync(join(app, 'modules/shared/index.ts'), "import { defineModule } from '@marmeon/core';\nexport default defineModule({ name: 'shared' });\n");
+    expect(marmeon(app, ['make:mail', 'Frame', '--module=ui']).code).toBe(0);
+    const manifest = readFileSync(join(app, 'package.json'), 'utf8');
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ ...JSON.parse(manifest), imports: { '#modules/*': './modules/*/index.ts' } }));
+    const made = marmeon(app, ['make:mail', 'Receipt', '--module=shared', '--layout=ui']);
+    expect([made.code, made.stderr]).toEqual([0, '']);
+    expect(made.stdout).not.toContain('layout.ts');
+    expect(existsSync(join(app, 'modules/shared/mail/layout.ts'))).toBe(false);
+    expect(readFileSync(join(app, 'modules/shared/mail/ReceiptMail.ts'), 'utf8')).toContain("import { layout } from '#modules/ui';");
+    expect(marmeon(app, ['make:lint-config']).code).toBe(0);
+    const oxlint = spawnSync(join(repo, 'node_modules/.bin/oxlint'), ['--deny-warnings', '-f', 'unix', 'modules/shared'], { cwd: app, encoding: 'utf8' });
+    expect([oxlint.status, oxlint.stdout]).toEqual([0, expect.not.stringContaining('[Error/')]);
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+    writeFileSync(join(app, 'package.json'), manifest);
+    rmSync(join(app, '.oxlintrc.json'));
+    rmSync(join(app, 'modules/ui'), { recursive: true });
+    rmSync(join(app, 'modules/shared'), { recursive: true });
+  }, 30_000);
+
   it('generates a policy that lets the owner in and answers everyone else with a 404', async () => {
     // The Gate comes through the app's own resolution, so it is the module instance the policy's answers belong to.
     writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
