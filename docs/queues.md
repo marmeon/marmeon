@@ -231,13 +231,22 @@ export class SendRemindersController extends Controller {
 `bulk([[Job, payload], [Job, payload]])` queues several jobs and resolves with their ids. Every payload is checked before the
 first is queued, so one bad payload queues none. `size(queue?, { connection? })` counts the jobs that wait or run on a queue.
 
-`bulk()` is a convenience, not a batch write: it queues the jobs one after the other, and the `database` driver runs one `insert`
-statement for each, the `redis` driver one script call for each. Inside `connections.transaction()` on the same database
-connection, those inserts are part of the transaction, so it stays open for one round trip per job, and every row lock it already
-holds (a `forUpdate()` read, say) is held that long. Do the locking work last, or queue the jobs from an `afterCommit()` callback when a thousand jobs would make
-the transaction long. That gives up the guarantee that the jobs commit with the data: a crash between the commit and the queueing loses them, and a push error is thrown by `transaction()` although the data is committed ([after the commit](transactions.md#after-the-commit)). A set of jobs of unknown size needs its bound: take the list from a
-validated input with a limit (`r.array(…).max(100)`), or cut it in slices. `bulk()` is no unit: if a push fails midway, the
-jobs before it stay queued, unless they are rows of a transaction that rolls back. That holds for the `database` driver on the transaction's own connection only; with `redis` or another database connection the pushes run after the commit, and a failure midway leaves the earlier jobs queued; with `sync` the earlier jobs have already run.
+`bulk()` is a convenience, not a batch write. It queues the jobs one after the other. The `database` driver runs one `insert`
+statement for each job, and the `redis` driver one script call for each.
+
+Inside `connections.transaction()` on the same database connection, those inserts are part of the transaction. The transaction
+stays open for one round trip per job, and every row lock it already holds (a `forUpdate()` read, say) is held that long. Do the
+locking work last.
+
+When a thousand jobs would make the transaction long, you can queue them from an `afterCommit()` callback instead. Then the jobs no
+longer commit with the data. A crash between the commit and the queueing loses them. A push error is thrown by `transaction()`
+although the data is committed ([after the commit](transactions.md#after-the-commit)).
+
+Bound a set of jobs of unknown size. Take the list from a validated input with a limit (`r.array(…).max(100)`), or cut it in slices.
+
+`bulk()` is no unit. If a push fails midway, the jobs before it stay queued, unless they are rows of a transaction that rolls back.
+That holds only for the `database` driver on the transaction's own connection. With `redis` or another database connection, the
+pushes run after the commit, and a failure midway leaves the earlier jobs queued. With `sync`, the earlier jobs have already run.
 
 ## Running workers
 
