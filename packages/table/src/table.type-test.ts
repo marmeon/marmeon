@@ -12,7 +12,7 @@ import type { TableDefinition } from './index.ts';
 // @ts-expect-error — `TableVisibility` is not exported
 import type { TableVisibility } from './index.ts';
 import { rules as r } from '@marmeon/validation';
-import type { AnyTableData, FilterEntryOf, FilterOf, TableController } from './client/index.ts';
+import type { AnyTableData, BulkOf, FilterEntryOf, FilterOf, TableController } from './client/index.ts';
 import { json, RedirectResult } from '@marmeon/http';
 import { action, bulk, column, type CheckColumnKey, type CheckFilters, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableProps } from './index.ts';
 
@@ -649,6 +649,16 @@ class AnswersJson {
     return json({ x: 1 });
   }
 }
+class MaybeJson {
+  handle(_row: { readonly id: number }) {
+    return json(Math.random() > 0.5 ? { x: 1 } : undefined);
+  }
+}
+class NothingJson {
+  handle(_row: { readonly id: number }) {
+    return json(undefined);
+  }
+}
 class Redirects {
   handle(_rows: readonly { readonly id: number }[]) {
     return new RedirectResult().back('/');
@@ -666,7 +676,7 @@ const Typed = defineTable({
   key: 'id',
   columns: { name: column('name').sortable() },
   filters: { role: filter.select('role', ['admin', 'member']), team: filter.has('team', ['a', 'b']), joined: filter.dateRange('created_at') },
-  actions: { archive: action(Archive), download: action(Download), plain: action(Deactivate), json: action(AnswersJson) },
+  actions: { archive: action(Archive), download: action(Download), plain: action(Deactivate), json: action(AnswersJson), maybeJson: action(MaybeJson), nothingJson: action(NothingJson) },
   bulk: { archive: bulk(ArchiveMany), maybe: bulk(MaybeAnswer), plain: bulk(DeactivateMany), redirect: bulk(Redirects) },
 });
 
@@ -729,15 +739,44 @@ describe('filters by name and the answers of actions', () => {
     if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<{ archivedAt: string; ids: number[] } | undefined>();
   });
 
-  it('leaves out undefined from the answer, and has none for a handler that returns nothing or a Response', async () => {
+  it('leaves out undefined from the answer, and has none for a handler that returns nothing', async () => {
     const maybe = await table.runBulk('maybe');
     if (maybe.ok && maybe.kind === 'data') expectTypeOf(maybe.data.data).toEqualTypeOf<{ note: string } | undefined>();
-    const json = await table.run('json', row);
-    const redirect = await table.runBulk('redirect');
-    for (const outcome of [json, redirect]) if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<undefined>();
-    for (const outcome of [await table.run('plain', row), await table.run('download', row), await table.runBulk('plain')]) {
+    for (const outcome of [await table.run('plain', row), await table.runBulk('plain')]) {
       if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<undefined>();
     }
+  });
+
+  it('types the outcome of a handler that answers for itself as that answer, without the counts', async () => {
+    const json = await table.run('json', row);
+    if (json.ok && json.kind === 'data') {
+      expectTypeOf(json.data).toEqualTypeOf<{ x: number }>();
+      // @ts-expect-error — the body is the handler's own: no counts
+      void json.data.done;
+    }
+    // `json(undefined)` is a 204: the browser reads undefined.
+    const maybeJson = await table.run('maybeJson', row);
+    if (maybeJson.ok && maybeJson.kind === 'data') expectTypeOf(maybeJson.data).toEqualTypeOf<{ x: number } | undefined>();
+    const nothingJson = await table.run('nothingJson', row);
+    if (nothingJson.ok && nothingJson.kind === 'data') expectTypeOf(nothingJson.data).toEqualTypeOf<undefined>();
+    const download = await table.run('download', row);
+    if (download.ok && download.kind === 'data') {
+      expectTypeOf(download.data).toEqualTypeOf<unknown>();
+    }
+    // A redirect arrives as a redirect: there is no data outcome to read.
+    const redirect = await table.runBulk('redirect');
+    expectTypeOf(redirect.kind).toEqualTypeOf<'redirect' | 'invalid' | 'exception' | 'cancelled'>();
+    // The table's own answer keeps its counts.
+    const plain = await table.run('plain', row);
+    if (plain.ok && plain.kind === 'data') expectTypeOf(plain.data.done).toEqualTypeOf<number>();
+  });
+
+  it('types a generic controller\'s outcome', async () => {
+    const run = async <T extends AnyTableData>(controller: TableController<T>, name: BulkOf<T>) => {
+      const outcome = await controller.runBulk(name, ...(undefined as never));
+      return outcome.kind;
+    };
+    void run;
   });
 
   it('keeps an untyped controller at unknown', async () => {

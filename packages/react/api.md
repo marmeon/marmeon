@@ -1062,8 +1062,8 @@ export interface Table<T extends AnyTableData> {
     readonly bulk: T['bulk'];
     readonly exports: T['exports'];
     can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
-    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome<TableActionDataOf<T, N>>>;
-    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome<TableBulkDataOf<T, N>>>;
+    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>>;
+    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>>;
     actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
     readonly pending: boolean;
     exportUrl(name: ExportOf<T>): string;
@@ -1181,8 +1181,8 @@ export interface Table<T extends AnyTableData> {
     readonly bulk: T['bulk'];
     readonly exports: T['exports'];
     can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
-    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome<TableActionDataOf<T, N>>>;
-    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome<TableBulkDataOf<T, N>>>;
+    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>>;
+    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>>;
     actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
     readonly pending: boolean;
     exportUrl(name: ExportOf<T>): string;

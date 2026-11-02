@@ -176,6 +176,16 @@ export interface TableData<
   readonly exports: readonly TableExportEntry<E>[];
 }
 
+/**
+ * What the handler of a row or bulk action answers, as the types keep it: `data` is what the table adds to its counts (JSON), `own`
+ * what a handler that answers for itself (`json()`, a `Response`) sends instead, `wrapped` whether the table's own answer can occur.
+ */
+export interface TableAnswer<D = unknown, O = never, W extends boolean = true> {
+  readonly data: D;
+  readonly own: O;
+  readonly wrapped: W;
+}
+
 /** What a row or bulk action answers (unless its handler answered for itself): how many rows it ran for, and how many it did not. */
 export interface TableActionResult<D = unknown> {
   /** Rows the action ran for. */
@@ -190,11 +200,11 @@ export interface TableActionResult<D = unknown> {
 
 export { exportUrl, keyOf, sortUrl, TableController, tableStatus } from './table.ts';
 export type {
-  TableActionDataOf,
+  TableActionOutcomeOf,
   ActionOf,
   ActionRunArgs,
   AnyTableData,
-  TableBulkDataOf,
+  TableBulkOutcomeOf,
   BulkRunArgs,
   BulkOf,
   ColumnOf,

@@ -420,7 +420,7 @@ export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S
 // AnswerOf
 type AnswerOf<H> = H extends abstract new (...args: any[]) => {
     handle(...args: any[]): infer R;
-} ? Serialize<Exclude<Awaited<R>, Response | RedirectResult | JsonResult | void | undefined>> : unknown;
+} ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult> extends infer Rest ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true> : never : unknown;
 // AnswersOf
 type AnswersOf<Actions> = {
     [N in keyof Actions & string]: Actions[N] extends {
@@ -511,6 +511,8 @@ type ListedMiddleware<O> = (O extends {
 type MiddlewareRequires<M> = M extends MiddlewareLike<infer R, any> ? R : never;
 // OutOf
 type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
+// OwnOf
+type OwnOf<R> = R extends JsonResult<infer J> ? Serialize<Exclude<J, undefined>> | (undefined extends J ? undefined : never) : R extends Response ? unknown : never;
 // PlainColumns
 type PlainColumns<DB, TB extends keyof DB> = Extract<ColumnReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 // PolicyProblem
@@ -590,6 +592,12 @@ type SortableNames<Cols> = {
 }[keyof Cols] & string;
 // TABLE_TYPES
 declare const TABLE_TYPES: unique symbol;
+// TableAnswer
+export interface TableAnswer<D = unknown, O = never, W extends boolean = true> {
+    readonly data: D;
+    readonly own: O;
+    readonly wrapped: W;
+}
 // TableFilterKind
 export type TableFilterKind = 'select' | 'has' | 'dateRange';
 // TableNeeds
@@ -683,14 +691,14 @@ export interface OffsetPage {
 export type SortDirection = 'asc' | 'desc';
 // SortableOf
 export type SortableOf<T extends AnyTableData> = T extends TableData<infer _R, infer _C, infer _F, infer _A, infer _B, infer _E, infer S> ? S : string;
-// TableActionDataOf
-export type TableActionDataOf<T extends AnyTableData, N> = ResultOf<NonNullable<T['~results']>['actions'], N>;
 // TableActionEntry
 export interface TableActionEntry<A extends string = string> {
     readonly name: A;
     readonly url: string;
     readonly confirm: boolean;
 }
+// TableActionOutcomeOf
+export type TableActionOutcomeOf<T extends AnyTableData, N> = OutcomeOf<NonNullable<T['~results']>['actions'], N>;
 // TableActionResult
 export interface TableActionResult<D = unknown> {
     readonly done: number;
@@ -698,8 +706,12 @@ export interface TableActionResult<D = unknown> {
     readonly missing: number;
     readonly data?: D;
 }
-// TableBulkDataOf
-export type TableBulkDataOf<T extends AnyTableData, N> = ResultOf<NonNullable<T['~results']>['bulk'], N>;
+// TableAnswer
+export interface TableAnswer<D = unknown, O = never, W extends boolean = true> {
+    readonly data: D;
+    readonly own: O;
+    readonly wrapped: W;
+}
 // TableBulkEntry
 export interface TableBulkEntry<B extends string = string> {
     readonly name: B;
@@ -707,6 +719,8 @@ export interface TableBulkEntry<B extends string = string> {
     readonly confirm: boolean;
     readonly max: number;
 }
+// TableBulkOutcomeOf
+export type TableBulkOutcomeOf<T extends AnyTableData, N> = OutcomeOf<NonNullable<T['~results']>['bulk'], N>;
 // TableColumn
 export interface TableColumn<C extends string = string> {
     readonly name: C;
@@ -743,8 +757,8 @@ export declare class TableController<T extends AnyTableData = AnyTableData> {
     get allSelected(): boolean;
     get selectedCount(): number;
     confirmText: (action: string, rows: number) => string;
-    run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableRunOutcome<TableActionDataOf<T, N>>>;
-    runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableRunOutcome<TableBulkDataOf<T, N>>>;
+    run<N extends ActionOf<T>>(name: N, row: TableRowOf<T>, ...[given]: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>>;
+    runBulk<N extends BulkOf<T>>(name: N, ...[given]: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>>;
     exportUrl(name: ExportOf<T>): string;
     dispose(): void;
 }
@@ -816,12 +830,17 @@ export interface TableRunOptions {
     signal?: AbortSignal;
 }
 // TableRunOutcome
-export type TableRunOutcome<D = unknown> = {
+export type TableRunOutcome<D = unknown, O = never, W extends boolean = true> = (W extends true ? {
     readonly ok: true;
     readonly kind: 'data';
     readonly status: number;
     readonly data: TableActionResult<D>;
-} | Exclude<ActionOutcome, {
+} : never) | ([O] extends [never] ? never : {
+    readonly ok: true;
+    readonly kind: 'data';
+    readonly status: number;
+    readonly data: O;
+}) | Exclude<ActionOutcome, {
     readonly ok: true;
     readonly kind: 'data';
 }>;
@@ -874,8 +893,8 @@ interface HasFilter<N extends string = string> {
     readonly labels: readonly string[];
     readonly value: string | null;
 }
-// ResultOf
-type ResultOf<R, N> = 0 extends 1 & R ? unknown : N extends keyof R ? R[N] : unknown;
+// OutcomeOf
+type OutcomeOf<R, N> = 0 extends 1 & R ? TableRunOutcome : N extends keyof R ? (R[N] extends TableAnswer<infer D, infer O, infer W> ? TableRunOutcome<D, O, W> : TableRunOutcome) : TableRunOutcome;
 // SelectFilter
 interface SelectFilter<N extends string = string> {
     readonly name: N;

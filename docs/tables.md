@@ -645,11 +645,13 @@ A category of another event is a 422, and nothing is written. An action can also
 
 An action request, the kind `useTable()` sends, and an API client get JSON: `{ done, skipped, missing }`, and `data` with what the
 handler returned. The answer is never cached. A form posted without JavaScript, or a page visit, goes back to the page with a 303.
-A handler that returns a redirect, a JSON result or a `Response` answers for itself. For a handler that answers with `json()`, `outcome.data` in the browser is that body, not the counts.
+A handler that returns a redirect, a JSON result or a `Response` answers for itself.
 
 In the browser `data` has the type of what the action's handler returns, as JSON: a `Date` in it is a `string`, a promise is awaited.
 `outcome.data.data` of `table.run('removeLinks', row)` is `{ removed: number } | undefined`, with no cast. A handler that returns nothing
 gives no `data`. An app that cast the answer can delete the cast.
+A handler that answers for itself is typed as what the browser gets: for `json({ … })` `outcome.data` is that body, as JSON and without
+`done`, `skipped` or `missing`; for a `Response` it is `unknown`; a redirect arrives as `kind: 'redirect'` and has no data.
 
 ## Exports
 

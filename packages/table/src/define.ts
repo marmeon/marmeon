@@ -4,7 +4,7 @@ import type { ClassResolver, HttpContext, InferInput, InferOutput, JoinNames, St
 import type { Rule } from '@marmeon/validation';
 import type { Translator } from '@marmeon/core';
 import type { JsonResult, RedirectResult, Serialize } from '@marmeon/http';
-import type { TableData } from './client/index.ts';
+import type { TableAnswer, TableData } from './client/index.ts';
 import { isCsvDelimiter } from './csv.ts';
 import type { CsvDelimiter } from './csv-read.ts';
 import { tableAttachment, type KnownOptions, type TableEndpoints, type TableEndpointsOptions } from './routes.ts';
@@ -882,8 +882,18 @@ type InputsOf<Actions> = {
 /** The kind of each filter, by name — what makes `table.filter('status')` an entry with its kind's fields. */
 type FilterKinds<Filters> = { [N in keyof Filters & string]: Filters[N] extends Filter<string, infer T> ? T : 'select' | 'has' | 'dateRange' };
 
-/** What a handler answers, as the browser reads it: JSON, without a `Response`, redirect or JSON result (the handler answered for itself, so the table adds no `data`) or nothing. */
-type AnswerOf<H> = H extends abstract new (...args: any[]) => { handle(...args: any[]): infer R } ? Serialize<Exclude<Awaited<R>, Response | RedirectResult | JsonResult | void | undefined>> : unknown;
+/** What a handler that answers for itself sends, as the browser reads it: a `json()` body; a `Response` could be anything; a redirect is no data. */
+type OwnOf<R> = R extends JsonResult<infer J> ? Serialize<Exclude<J, undefined>> | (undefined extends J ? undefined : never) : R extends Response ? unknown : never;
+
+/**
+ * What a handler answers, as the browser reads it. The table adds its counts and the handler's value as JSON (`Response`, redirect and
+ * JSON result left out: those the handler answers for itself); a handler that only answers for itself gets no counts at all.
+ */
+type AnswerOf<H> = H extends abstract new (...args: any[]) => { handle(...args: any[]): infer R }
+  ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult> extends infer Rest
+    ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true>
+    : never
+  : unknown;
 
 /** What the handler of each action answers, by name. */
 type AnswersOf<Actions> = { [N in keyof Actions & string]: Actions[N] extends { readonly handler: infer H } ? AnswerOf<H> : unknown };

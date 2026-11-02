@@ -4,11 +4,11 @@
  */
 import { exportUrl, keyOf, sortUrl, tableStatus, TableController } from '@marmeon/table/client';
 import type {
-  TableActionDataOf,
+  TableActionOutcomeOf,
   ActionOf,
   ActionRunArgs,
   AnyTableData,
-  TableBulkDataOf,
+  TableBulkOutcomeOf,
   BulkRunArgs,
   TableStatusInfo,
   BulkOf,
@@ -153,9 +153,9 @@ export interface Table<T extends AnyTableData> {
   /** Whether row action `action` is offered for `row` (its policy said yes). */
   can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
   /** Runs a row action; then the table reloads (replacing what it showed). An action defined with `.input()` takes `{ input }`. */
-  run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome<TableActionDataOf<T, N>>>;
+  run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableActionOutcomeOf<T, N>>;
   /** Runs a bulk action for what is selected; then the selection is cleared and the table reloads. A bulk action defined with `.input()` takes `{ input }`. */
-  runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome<TableBulkDataOf<T, N>>>;
+  runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableBulkOutcomeOf<T, N>>;
   /** The name of a row action's button for `row` ({@link TableLabels.action}). */
   actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
   /** An action of this table is under way. */
@@ -304,7 +304,7 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
     };
     return table;
 
-    async function track<D>(run: Promise<TableRunOutcome<D>>): Promise<TableRunOutcome<D>> {
+    async function track<O extends TableRunOutcome<any, any, any>>(run: Promise<O>): Promise<O> {
       setRunning((count) => count + 1);
       try {
         return await run;
