@@ -122,6 +122,8 @@ The paths are typed up to eight levels deep: every name or index between the dot
 the errors as plain strings: `(form.errors as Partial<Record<string, string>>)[path]`, which is `string | undefined`. A record that refers to itself (`parent`, `children`) is typed like any other data for five levels; past the fifth level, each
 step back into it counts three levels. So `` errors['children.0.children.0.children.0'] `` compiles, and a name after it does not.
 
+A [custom check that reports below its field](validation.md#custom) uses the same keys: its message for `content.1.marks.0` of the field `body` is `errors['body.content.1.marks.0']`.
+
 The key `_` holds a message that belongs to the form and to no field, such as a check over several fields that names none. Show
 it above the form: `form.errors._`. A check that can say where the fault lies reports at that field instead, see
 [`custom()` of an object](validation.md#objects). In `<Form>`, `error(name)` takes the names of the inputs (`items[0][name]`)

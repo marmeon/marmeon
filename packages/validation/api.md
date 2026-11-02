@@ -23,13 +23,20 @@ export declare class ArrayRule<Item, ItemInput, In = ItemInput[]> extends Rule<I
 // BooleanInput
 export type BooleanInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
 // CheckAnswer
-export type CheckAnswer = boolean | string | void | undefined;
+export type CheckAnswer<Path extends readonly PathSegment[] = readonly []> = boolean | string | void | undefined | CheckIssue<Path> | readonly CheckIssue<Path>[];
+// CheckIssue
+export interface CheckIssue<Path extends readonly PathSegment[] = readonly []> {
+    readonly path: Path;
+    readonly message: RuleMessage;
+}
+// CheckPath
+export type CheckPath<T> = Unmeasured<T> extends infer _ ? (unknown extends T ? readonly (string | number)[] : PathOf<NonNullable<T>, []>) : never;
 // CheckQueryFields
 export type CheckQueryFields<S extends Shape> = {
     [K in keyof S]: undefined extends InputOf<S[K]> ? [Extract<Exclude<InputOf<S[K]>, undefined>, string | readonly string[]>] extends [never] ? `Query field '${K & string}' is read from the URL as text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.in([…]), r.array(…)` : S[K] : `Query field '${K & string}' needs .default(…) — a query is parsed field by field and never answers 422; .optional() leaves it undefined`;
 };
 // CustomCheck
-export type CustomCheck<T> = (value: T, context: CustomContext) => MaybePromise<CheckAnswer>;
+export type CustomCheck<T> = (value: T, context: CustomContext) => MaybePromise<CheckAnswer<CheckPath<T>>>;
 // CustomContext
 export interface CustomContext {
     readonly request: ValidationContext | undefined;
@@ -68,6 +75,8 @@ export declare class ObjectRule<S extends Shape, When extends Shape = {}> extend
     when<const W extends Shape>(condition: (data: WithWhens<ShapeOutput<S>, ShapeOutput<When>>) => boolean, fields: W): ObjectRule<S, MergeWhens<When, W>>;
     confirmed(field: keyof S & string, confirmation?: string): this;
 }
+// PathSegment
+export type PathSegment = string | number;
 // QueryOfRepository
 export type QueryOfRepository<R> = R extends {
     query(): infer Q;
@@ -200,12 +209,24 @@ type MissingKeys<T> = {
 }[keyof T];
 // OutputOf
 type OutputOf<R> = R extends Rule<any, any> ? InferOutput<R> : never;
+// PathBelow
+type PathBelow<T, Seen extends 0[]> = Seen['length'] extends PathDepth['length'] ? readonly (string | number)[] : T extends readonly (infer Item)[] ? readonly [number, ...PathOf<Item, [...Seen, 0]>] : T extends object ? {
+    [K in keyof T & string]-?: readonly [K, ...PathOf<NonNullable<T[K]>, [...Seen, 0]>];
+}[keyof T & string] : never;
+// PathDepth
+type PathDepth = [0, 0, 0, 0, 0, 0, 0, 0];
+// PathOf
+type PathOf<T, Seen extends 0[]> = readonly [] | PathBelow<T, Seen>;
 // Simplify
 type Simplify<T> = {
     [K in keyof T]: T[K];
 } & {};
 // Spelled
 type Spelled<T> = T extends number ? `${T}` : never;
+// Unmeasured
+type Unmeasured<T> = {
+    [K in keyof T]: T[K];
+};
 // WithWhens
 type WithWhens<Own, Conditional> = Simplify<{
     [K in keyof Own]: K extends keyof Conditional ? Own[K] | Conditional[K] : Own[K];

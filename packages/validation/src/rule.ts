@@ -122,7 +122,8 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
    * A check of your own: return `false` (its message: `message`, else "The … field is invalid."),
    * a message (a translation key or a text), or nothing when the value is valid. `context.request` is the request's `resolve`,
    * `ctx` and whether it is live. An `async` check makes the rule async, and — like the database rules — it does not run in a live
-   * validation unless the rule says `.live()`.
+   * validation unless the rule says `.live()`. To report inside the value, answer `{ path, message }` (or a list of them): `path` is typed
+   * against the value, and the message lands at that place below the field (`docs/validation.md#custom`).
    *
    * ```ts
    * code: r.string().custom(async (code, { request }) => (await request!.resolve(Invites).valid(code)) || 'invites.validation.unknown')
@@ -203,7 +204,30 @@ export interface CustomContext {
   readonly request: ValidationContext | undefined;
 }
 
-export type CustomCheck<T> = (value: T, context: CustomContext) => MaybePromise<CheckAnswer>;
+/** How deep {@link CheckPath} looks into a value (a recursive type would never end). */
+type PathDepth = [0, 0, 0, 0, 0, 0, 0, 0];
+
+type PathBelow<T, Seen extends 0[]> = Seen['length'] extends PathDepth['length']
+  ? readonly (string | number)[]
+  : T extends readonly (infer Item)[]
+    ? readonly [number, ...PathOf<Item, [...Seen, 0]>]
+    : T extends object
+      ? { [K in keyof T & string]-?: readonly [K, ...PathOf<NonNullable<T[K]>, [...Seen, 0]>] }[keyof T & string]
+      : never;
+
+type PathOf<T, Seen extends 0[]> = readonly [] | PathBelow<T, Seen>;
+
+/**
+ * The paths into a value of type `T` that a check may report at: `[]` is the value itself, `['content', 1]` the second item of its
+ * `content` (eight levels deep; below that, any path). A value of type `unknown` or `any` takes any path.
+ */
+export type CheckPath<T> = Unmeasured<T> extends infer _ ? (unknown extends T ? readonly (string | number)[] : PathOf<NonNullable<T>, []>) : never;
+
+// Why: a mapped type of `T` tells the compiler that how `Rule<Output>` relates to `Rule<Wider>` cannot be read off `CheckPath<Output>`;
+// without it a rule of a narrower output would stop being assignable to one of a wider output (`Rule<number>` to `Rule<string | number>`).
+type Unmeasured<T> = { [K in keyof T]: T[K] };
+
+export type CustomCheck<T> = (value: T, context: CustomContext) => MaybePromise<CheckAnswer<CheckPath<T>>>;
 
 /** What `unique` and `exists` need of a repository (`Repository` of @marmeon/database): its query. */
 export interface RepositoryLike {
