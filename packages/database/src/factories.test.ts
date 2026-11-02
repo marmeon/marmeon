@@ -1,5 +1,5 @@
 import { Application, Container, type ModuleDefinition } from '@marmeon/core';
-import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { ApiKeyFactory, ArticleFactory, define, SluggedArticleFactory, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -162,7 +162,17 @@ describe.each(drivers)('factories and seeders on %s', (driver) => {
     });
 
     it('is silent without an output, and the context still has one', async () => {
-      await expect(seedingOf([LoudSeeder, ReportingSeeder]).run()).resolves.toBeUndefined();
+      const written: unknown[] = [];
+      const spies = (['log', 'info', 'warn', 'error'] as const).map((method) => vi.spyOn(console, method).mockImplementation((...args) => void written.push(args)));
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => (written.push(chunk), true));
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => (written.push(chunk), true));
+      try {
+        await seedingOf([LoudSeeder, ReportingSeeder]).run();
+      } finally {
+        for (const spy of [...spies, stdout, stderr]) spy.mockRestore();
+      }
+      // The connection's own debug lines about its queries are not the seeders' output.
+      expect(JSON.stringify(written.filter((entry) => !JSON.stringify(entry).includes('Query')))).toBe('[]');
     });
 
     it('prints a seeder\'s lines through db:seed — the table as a table, ahead of the Seeded line', async () => {

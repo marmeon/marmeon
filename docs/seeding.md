@@ -177,9 +177,9 @@ What a seeder returns from `handle()` is dropped. To tell the person running `ma
 
 ```ts
 async handle({ factory, output }: SeedContext) {
-  const links = await factory(LinkFactory).count(5).create();
-  output?.info(`Made ${links.length} links.`);
-  output?.table(['Title'], links.map((link) => [link.title]));
+  const notes = await factory(NoteFactory).count(5).create();
+  output?.info(`Made ${notes.length} notes.`);
+  output?.table(['Title'], notes.map((note) => [note.title]));
 }
 ```
 
