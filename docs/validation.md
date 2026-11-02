@@ -431,7 +431,7 @@ const clean = (text: string): string => text.normalize('NFC').replace(/[\u061C\u
 const name = r.string().normalize(clean).trim().required().max(80);
 ```
 
-`'  Ada   Lovelace '` becomes `'Ada Lovelace'`, a text of control characters only is "required" and a missing field is still "required". A field that may stay empty ends in `.optional()`.
+`'  Ada   Lovelace '` becomes `'Ada Lovelace'`, a text of control characters only is "required" and a missing field is still "required". A field that may stay empty leaves out `.required()`; `.optional()` lets it be missing as well.
 The same function runs in a live validation. The form name is `normalize((text) => text.normalize('NFC'))`, not `normalize('NFC')`: it takes a function, and anything else (also
 an `async` function or one that returns no string) is a `TypeError`, a mistake in the app, never a message to the user.
 
