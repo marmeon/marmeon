@@ -173,7 +173,8 @@ export function Menu() {
 }
 ```
 
-`<Link route={entry.route}>` with the name stored in the list fails the build, as every name that is not written out does.
+`<Link route={entry.route}>` with a name the build cannot work out from the code fails it: a prop, a parameter, a field of an object built
+at run time. Literals, conditionals of literals and `const` bindings, including the members of an `as const` object or array, are read.
 
 A route the manifest lacks at run time throws `[marmeon:C2]`, followed in development by the reason. The
 [error handling](errors.md#error-codes) page lists these codes.

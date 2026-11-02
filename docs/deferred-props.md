@@ -257,7 +257,7 @@ export default function Dashboard(_props: PageProps<ShowDashboardController>) {
 
 ### Islands the server chooses
 
-`<Island route>` takes a name that is written out, so a page cannot take the route from its props. When the server decides
+`<Island route>` takes a name the build can read from the code, such as a literal, so a page cannot take the route from its props. When the server decides
 which panels a page shows, say because other modules offer them, send the panels' keys and map each key to a component that
 writes its own `<Island route>`. The owner of an island writes that component in its module:
 

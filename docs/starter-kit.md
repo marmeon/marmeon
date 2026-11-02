@@ -120,7 +120,7 @@ module's own copy of the file back and points the kit's views at `../layouts/App
 ### The settings navigation
 
 The links beside the settings pages are a file of your app too: `modules/auth/layouts/SettingsLayout.tsx` holds one `<li>`
-with a `<Link route>` for the security page, two-factor authentication, passkeys and API tokens. A settings page of your own
+with a `<Link route>` per page: the security page, two-factor authentication, passkeys and API tokens. A settings page of your own
 joins them in three places. The page names both layouts, the file gets an entry, and the "Settings" link in the header of
 `AppLayout.tsx` lists the page's route in its `activeMatch`, so that the header stays marked on your page:
 
@@ -141,8 +141,9 @@ The texts are typed: add `settings.profile` to the `settings` block of every `la
 refuses the key.
 
 The same file is where a feature leaves the navigation. When you switch two-factor authentication, passkeys or API tokens off,
-delete their entries: a link to a route that is gone is a compile error once `marmeon route:types` has run. The dashboard and
-the security page link to the token page as well.
+delete their entries, and their route names from the `activeMatch` of the header's "Settings" link in `AppLayout.tsx` (`auth.two-factor`,
+`auth.two-factor.*`, `auth.tokens`, and `auth.passkeys` where your kit lists it). A link to a route that is gone, and an `activeMatch` that
+names one, are compile errors once `marmeon route:types` has run. The dashboard and the security page link to the token page as well.
 
 ## The look
 
@@ -335,7 +336,7 @@ pages that make accounts, and make accounts in code of your own.
 | --- | --- |
 | `modules/auth/routes.ts` | The routes `auth.register`, `auth.register.store` and `auth.register.sent` in the `guests` block, and the imports of their controllers. |
 | `modules/auth/controllers/`, `modules/auth/views/` | `ShowRegisterController`, `RegisterController`, `ShowRegistrationSentController`, `Register.tsx` and `RegistrationSent.tsx`. |
-| `layouts/AppLayout.tsx`, `views/Login.tsx` of the auth module, `modules/home/views/Home.tsx` | The three links to `auth.register`: the button in the header, the "New here?" line under the login form, and the button on the home page. |
+| `modules/auth/layouts/AppLayout.tsx` (or `layouts/AppLayout.tsx` after the move above), `modules/auth/views/Login.tsx`, `modules/home/views/Home.tsx` | The three links to `auth.register`: the button in the header, the "New here?" line under the login form, and the button on the home page. |
 | `modules/auth/index.ts` | `SendAccountExistsMailJob` in `jobs`, with `jobs/SendAccountExistsMailJob.ts` and `mail/AccountExistsMail.ts`. Only a sign-up with a taken address queued it. |
 | `modules/auth/registration.test.ts` | The whole file. |
 
