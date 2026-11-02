@@ -90,6 +90,60 @@ module leaves it free.
 The routes are an ordinary route file, so you change a path, add a page or remove one in `modules/auth/routes.ts`. The
 [routing](routing.md#route-files) page explains route files.
 
+## Pages of your own in the kit's layout
+
+`modules/auth/layouts/AppLayout.tsx` is the app's layout: the header with the app's name and the account links, and the
+messages that pop up. The pages of the kit set it with `Login.layout = AppLayout`, and a page of your own does the same
+([Your First App](first-app.md) shows it):
+
+```tsx title="modules/notes/views/ListNotes.tsx"
+import { AppLayout } from '../../auth/layouts/AppLayout.tsx';
+
+ListNotes.layout = AppLayout;
+```
+
+The file is yours: put the links of your app into its `<nav>`. A navigation list in it needs each link written out with its
+route name, as [names written out](urls.md#names-written-out) shows. A page that sets no layout gets none; to give every page
+one, make it the [default layout](pages.md#the-default-layout).
+
+Where the layout lives is your choice. When several modules share it, it can sit in `layouts/` at the root of the app, next to
+`Confirm.tsx`, so that no module imports from the folder of another. Move the file there and change its import in every page
+that has one: the views of `modules/auth/views/` and `modules/home/views/Home.tsx`, and the pages of your own modules.
+
+```tsx title="modules/auth/views/Dashboard.tsx"
+import { AppLayout } from '../../../layouts/AppLayout.tsx';
+```
+
+The layout keeps reading the `auth` texts and the classes of `auth.css` wherever it stands. `make:auth --force` writes the
+module's own copy of the file back and points the kit's views at `../layouts/AppLayout.tsx` again, so take a newer module by hand after the move.
+
+### The settings navigation
+
+The links beside the settings pages are a file of your app too: `modules/auth/layouts/SettingsLayout.tsx` holds one `<li>`
+with a `<Link route>` for the security page, two-factor authentication, passkeys and API tokens. A settings page of your own
+joins them in three places. The page names both layouts, the file gets an entry, and the "Settings" link in the header of
+`AppLayout.tsx` lists the page's route in its `activeMatch`, so that the header stays marked on your page:
+
+```tsx title="modules/profile/views/Edit.tsx"
+import { AppLayout } from '../../auth/layouts/AppLayout.tsx';
+import { SettingsLayout } from '../../auth/layouts/SettingsLayout.tsx';
+
+Edit.layout = [AppLayout, SettingsLayout];
+```
+
+```tsx title="modules/auth/layouts/SettingsLayout.tsx"
+<li>
+  <Link route="profile.edit">{t('settings.profile')}</Link>
+</li>
+```
+
+The texts are typed: add `settings.profile` to the `settings` block of every `lang/*.ts` of the auth module, or the compiler
+refuses the key.
+
+The same file is where a feature leaves the navigation. When you switch two-factor authentication, passkeys or API tokens off,
+delete their entries: a link to a route that is gone is a compile error once `marmeon route:types` has run. The dashboard and
+the security page link to the token page as well.
+
 ## The look
 
 A new starter kit app has two stylesheets, both yours to change. They are plain CSS, no preprocessor and no `style` attributes
@@ -176,7 +230,7 @@ A user who lost the phone and the recovery codes is let in by an operator with `
 The kit does not require it anywhere: the `twoFactor()` middleware is provided and not installed. It comes with the page it
 needs, `/settings/two-factor/verify`; [Two-Factor Authentication](two-factor-authentication.md#in-the-starter-kit) shows the line
 that turns it on. To switch the feature off for every account, remove the `TwoFactorState` binding in `AuthServiceProvider.ts`, and the routes,
-pages and listeners that use it.
+pages and listeners that use it, and its entry in the [settings navigation](#the-settings-navigation).
 
 ## Passkeys
 
@@ -198,7 +252,7 @@ account was ended, and the mail names the time, the address and a parsed browser
 Passkeys need the relying party from `APP_URL`: open the app as exactly that address, `http://localhost:3000` while developing (not
 `127.0.0.1`). [Passkeys](passkeys.md#in-the-starter-kit) explains the rest. To switch passkeys off, remove `PasskeyServiceProvider` from `index.ts`, `PasskeyStore` from the
 binding in `AuthServiceProvider.ts`, and the routes, pages, listeners and imports of `@marmeon/auth/passkeys` that use them. The five
-views that run a ceremony also import `@marmeon/auth/passkeys/browser`; remove those calls with the buttons that start them.
+views that run a ceremony also import `@marmeon/auth/passkeys/browser`; remove those calls with the buttons that start them. The page's entry leaves the [settings navigation](#the-settings-navigation) too.
 
 ## Private registration
 
@@ -268,6 +322,86 @@ demand a confirmed address in either mode, as does creating an API token, and th
 again. The owner's password reset removes whatever an account with an unconfirmed address holds (factors and tokens). Set
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` as well for the other accounts, as the
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
+
+## An app without sign-up
+
+Some apps never let a stranger make an account: an internal tool, a club with a member list, an app people join by
+invitation. The kit ships the sign-up and does not ask which you want, so leaving it out is a subtraction. Take out the
+pages that make accounts, and make accounts in code of your own.
+
+### What to remove
+
+| Where | What goes |
+| --- | --- |
+| `modules/auth/routes.ts` | The routes `auth.register`, `auth.register.store` and `auth.register.sent` in the `guests` block, and the imports of their controllers. |
+| `modules/auth/controllers/`, `modules/auth/views/` | `ShowRegisterController`, `RegisterController`, `ShowRegistrationSentController`, `Register.tsx` and `RegistrationSent.tsx`. |
+| `layouts/AppLayout.tsx`, `views/Login.tsx` of the auth module, `modules/home/views/Home.tsx` | The three links to `auth.register`: the button in the header, the "New here?" line under the login form, and the button on the home page. |
+| `modules/auth/index.ts` | `SendAccountExistsMailJob` in `jobs`, with `jobs/SendAccountExistsMailJob.ts` and `mail/AccountExistsMail.ts`. Only a sign-up with a taken address queued it. |
+| `modules/auth/registration.test.ts` | The whole file. |
+
+`make:auth --force` copies the whole template back, sign-up included, so remove it again after you take a newer module.
+
+Then run `pnpm marmeon route:types`. A link to a route that is gone is a compile error, so the compiler lists any link you
+missed. Four test files open or post to `/register` and fail in eight cases: `auth.test.ts`, `home.test.ts`,
+`prune-unverified.test.ts` and `route-limits.test.ts`. Point each case at a page that is left, such as `/login`, make its
+account with `UserFactory` instead, or remove it. Everything else stays: sign-in, the password reset, the dashboard, the
+settings and the tests of them. The texts under `register` in the language files do no harm, and you can delete them.
+
+`AUTH_PRIVATE_REGISTRATION` no longer matters for a form that is gone, but `ConfirmedAddress` still reads it. While it is
+`true`, an account whose address is not confirmed sees only the notice, so the accounts you make must be confirmed. Adding a
+second factor, a passkey or an API token asks for a confirmed address in either mode.
+
+### How accounts arise
+
+Three calls make an account, in one transaction: `register()` of `UserRepository`, `markEmailVerified()`, and the event
+`Registered`, so the listeners of a new account run. The kit's own listener sees the confirmed address and sends no mail.
+`markEmailVerified()` also sets `first_verified_at`, so `auth:prune-unverified` never takes the account. A class of your own
+holds them, and every way in calls it:
+
+```ts title="modules/accounts/CreateAccount.ts"
+import { randomBytes } from 'node:crypto';
+import { Hasher, Registered } from '@marmeon/auth';
+import { Clock, err, EventDispatcher, ok, type Result } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { UserRepository, type User } from '#modules/auth';
+
+export class CreateAccount {
+  readonly #connections: Connections;
+  readonly #users: UserRepository;
+  readonly #hasher: Hasher;
+  readonly #events: EventDispatcher;
+  readonly #clock: Clock;
+
+  constructor(connections: Connections, users: UserRepository, hasher: Hasher, events: EventDispatcher, clock: Clock) {
+    this.#connections = connections;
+    this.#users = users;
+    this.#hasher = hasher;
+    this.#events = events;
+    this.#clock = clock;
+  }
+
+  async run(details: { name: string; email: string; locale: string }): Promise<Result<User, { kind: 'duplicate' }>> {
+    // The address is stored trimmed and in lower case, as sign-in and the password reset look it up; the unique index is case-sensitive,
+    // so `Ada@Example.com` would otherwise be an account nobody can sign in to.
+    // A password nobody knows: the person asks for a reset link on the sign-in page, and only the owner of the address gets it.
+    const password = await this.#hasher.make(randomBytes(32).toString('base64url'));
+    return this.#connections.transaction(async () => {
+      const created = await this.#users.register({ ...details, email: details.email.trim().toLowerCase(), password });
+      if (!created.ok) return err(created.error);
+      await this.#users.markEmailVerified(created.value.id, new Date(this.#clock.now()));
+      await this.#events.dispatch(new Registered(created.value));
+      return ok(created.value);
+    });
+  }
+}
+```
+
+An address that has an account comes back as `duplicate`, and the transaction rolls back. Whoever calls `run()` vouches for
+the address: it is marked confirmed without a link. Call it from a page only an administrator may open, or from a
+[command](console.md#writing-commands) for the first account. An invitation makes its account with the same three calls, but with the
+invitee's own password and inside the transaction that redeems it ([an invitation for someone without an account](authorization.md#an-invitation-for-someone-without-an-account)), so it does not call this class. Never call
+it from a form that a stranger fills in. In development, `UserSeeder` makes `test@example.com` with the password `password`
+([the seeder](#what-the-auth-module-holds)), which is the way in while you build.
 
 ## Mail, the queue and the scheduler
 
