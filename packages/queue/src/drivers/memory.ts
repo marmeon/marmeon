@@ -32,6 +32,10 @@ export class MemoryQueueDriver implements QueueDriver {
     return id;
   }
 
+  async pushMany(entries: readonly QueuedPush[]): Promise<void> {
+    for (const { queue, payload, delaySeconds } of entries) await this.push(queue, payload, delaySeconds);
+  }
+
   async reserve(queues: readonly string[]): Promise<ReservedJob | undefined> {
     const now = this.#clock.now();
     for (const queue of queues) {

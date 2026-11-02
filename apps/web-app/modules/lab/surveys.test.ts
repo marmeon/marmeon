@@ -62,6 +62,21 @@ describe('a form built from rows', () => {
   });
 });
 
+describe('adding the questions a survey misses', () => {
+  it('writes each (survey, name) once and names what it added', async () => {
+    const questions = app.make(SurveyRepository);
+    const added = await questions.addMissing([
+      { survey: 'dinner', name: 'diet', label: 'Changed', required: false, position: 9 },
+      { survey: 'dinner', name: 'drink', label: 'Drink', required: false, position: 3 },
+      { survey: 'lunch', name: 'diet', label: 'Diet', required: false, position: 1 },
+    ]);
+    expect(added.map((question) => `${question.survey}/${question.name}`).sort()).toEqual(['dinner/drink', 'lunch/diet']);
+    expect(await questions.addMissing([{ survey: 'dinner', name: 'drink', label: 'Again', required: false, position: 4 }])).toEqual([]);
+    const dinner = await questions.questionsOf('dinner');
+    expect(dinner.map((question) => [question.name, question.label])).toEqual([['diet', 'Diet'], ['allergies', 'Allergies'], ['drink', 'Drink']]);
+  });
+});
+
 describe('the kind of a question', () => {
   it('is held to its list by the database, and its type is the union', async () => {
     const db = app.make(Database);

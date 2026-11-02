@@ -478,7 +478,20 @@ export declare abstract class Repository<T extends keyof DB & string, DB = Table
     insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>>;
     tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError>>;
     insertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<number>;
+    insertMany<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(rows: readonly Exact<V, NewRowOf<DB[T]>>[], options: {
+        readonly returning: C;
+    }): Promise<Pick<RowOf<DB[T]>, C[number]>[]>;
     tryInsertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<Result<number, DuplicateError>>;
+    tryInsertMany<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(rows: readonly Exact<V, NewRowOf<DB[T]>>[], options: {
+        readonly returning: C;
+    }): Promise<Result<Pick<RowOf<DB[T]>, C[number]>[], DuplicateError>>;
+    insertMissing<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[], options: {
+        readonly on: readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]];
+    }): Promise<number>;
+    insertMissing<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(rows: readonly Exact<V, NewRowOf<DB[T]>>[], options: {
+        readonly on: readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]];
+        readonly returning: C;
+    }): Promise<Pick<RowOf<DB[T]>, C[number]>[]>;
     tryUpdate<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, DuplicateError | {
         kind: 'missing';
     }>>;
@@ -726,6 +739,8 @@ type RelationOf<TB, N> = {
 type RelationOf<T, N> = T extends keyof Relations ? (N extends keyof Relations[T] ? Relations[T][N] : never) : never;
 // RelationQuery
 type RelationQuery<DB, T extends keyof DB> = SelectQuery<DB, T, {}>;
+// ReturnableColumn
+type ReturnableColumn<Table> = keyof RowOf<Table> & string;
 // SecretName
 type SecretName<R extends string> = R extends `${string}.${infer C}` ? C : R;
 // SecretValue

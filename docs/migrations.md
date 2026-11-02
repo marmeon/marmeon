@@ -952,7 +952,7 @@ a table with secret columns are marked as such for whatever records queries, whi
 `timestamps()` and `softDeletes()` do more than add columns. The migrator records them as marks of the table, next to the
 secret columns, and the connection reads them:
 
-- **`timestamps()`**: a repository's `insert()`, `insertMany()`, `relation().create()` and `attach()` set `created_at` and `updated_at`, and `update()` sets `updated_at`, to
+- **`timestamps()`**: a repository's `insert()`, `insertMany()`, `insertMissing()`, `relation().create()` and `attach()` set `created_at` and `updated_at`, and `update()` sets `updated_at`, to
   the app's [clock](time.md#what-follows-the-clock) — each unless the values set it themselves. The columns' default only applies to a row
   written some other way.
 - **`softDeletes()`**: a repository's `delete()` sets `deleted_at` instead of deleting the row, and its `query()`, `find()`,

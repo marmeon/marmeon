@@ -41,7 +41,13 @@ function Register({ on }: { on?: 'blur' | 'change' }) {
   );
 }
 
-const pages: Record<string, PageComponent> = { Register };
+/** A field named like an Object member has no error, so typing in it checks nothing until it is left. */
+function Members() {
+  const form = useForm('register', { constructor: '' }, { validate: true });
+  return <input data-testid="member" value={String(form.data['constructor'])} onChange={(event) => form.set('constructor', event.target.value)} />;
+}
+
+const pages: Record<string, PageComponent> = { Register, Members };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = { register: { method: 'post', path: '/register' } };
 const page = (props: Record<string, unknown> = {}, extra: Partial<PageObject> = {}): PageObject => ({ component: 'app/Register', props, url: '/register', version: null, ...extra });
@@ -119,6 +125,14 @@ describe('useForm(…, { validate }) — live validation', () => {
     expect(sent.at(-1)).toEqual({ fields: 'email', body: { name: '', email: 'grace@example.com' } });
     expect($('email-error').textContent).toBe('');
     expect(JSON.stringify(sent)).not.toContain('hunter2');
+  });
+
+  it('a field named like an Object member has no error: typing in it asks nothing', async () => {
+    server = validator;
+    await mount(page({}, { component: 'app/Members' }));
+    await type('member', 'a');
+    await wait(400);
+    expect(sent).toEqual([]);
   });
 
   it('pending per field while a check is under way (`validating`, aria-busy)', async () => {

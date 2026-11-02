@@ -89,6 +89,7 @@ function Tokens() {
             <input type="checkbox" data-testid="read" name="abilities[]" value="users:read" />
             <input type="checkbox" data-testid="write" name="abilities[]" value="users:write" />
             <small data-testid="token-error">{(form as never as { error(name: string): string | undefined }).error('name') ?? ''}</small>
+            <span data-testid="proto-probe" {...(form as never as { field(name: string): object }).field('toString')} data-error={(form as never as { error(name: string): string | undefined }).error('constructor') ?? 'none'} />
             <button data-testid="token-submit">Create</button>
           </>
         )}
@@ -291,6 +292,9 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     await act(async () => open(json(page('Tokens', '/tokens', { errors: { name: ['Taken.'] } }))));
     await until(() => expect($('token-error')?.textContent).toBe('Taken.'));
     expect($('token-name')!.getAttribute('aria-invalid')).toBe('true');
+    // Field names that are Object members are no errors until the server names them.
+    expect($('proto-probe')!.getAttribute('aria-invalid')).toBeNull();
+    expect($('proto-probe')!.getAttribute('data-error')).toBe('none');
     expect($('token-form')!.hasAttribute('data-pending')).toBe(false);
   });
 

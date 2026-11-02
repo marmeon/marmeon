@@ -1,6 +1,6 @@
 import type { Submission } from '@marmeon/http/client/adapter';
 import { resolveRoute, type ActionError, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading } from '@marmeon/http/client';
-import { actions } from '@marmeon/http/client/adapter';
+import { actions, errorRecord } from '@marmeon/http/client/adapter';
 import type {
   ActionBodyOf,
   ActionDataOf,
@@ -117,9 +117,7 @@ export interface ClientAction<N extends string, RequiresParams extends boolean =
 }
 
 function firstMessages(errors: Readonly<Record<string, readonly string[]>>): Record<string, string> {
-  const first: Record<string, string> = {};
-  for (const [field, messages] of Object.entries(errors)) if (typeof messages[0] === 'string') first[field] = messages[0];
-  return first;
+  return errorRecord(Object.entries(errors).flatMap(([field, messages]) => (typeof messages[0] === 'string' ? [[field, messages[0]] as const] : [])));
 }
 
 function flatten<T>(value: T | readonly T[] | readonly (T | readonly T[])[] | undefined): T[] {
@@ -141,7 +139,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
   const [calls, setCalls] = useState<readonly PendingSubmission<string>[]>([]);
   const [result, setResult] = useState<ActionResultOf<string> | undefined>(undefined);
   const [data, setData] = useState<unknown>(undefined);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>(errorRecord);
   const controller = useRef(new AbortController());
   const boundParams = useRef(params);
   boundParams.current = params;
@@ -159,7 +157,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       const id = ++nextCall.current;
       const pending: PendingSubmission<string> = { id, input: (body ?? {}) as PendingSubmission<string>['input'], method, url: target.url };
       setCalls((current) => [...current, pending]);
-      setErrors({});
+      setErrors(errorRecord());
       let outcome: ActionOutcome;
       try {
         // The feature attaches on first use: an app without actions carries none of it.
@@ -191,7 +189,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
     controller.current = new AbortController();
   }, []);
   const clearErrors = useCallback(
-    (...fields: string[]) => setErrors((current) => (fields.length === 0 ? {} : Object.fromEntries(Object.entries(current).filter(([field]) => !fields.includes(field))))),
+    (...fields: string[]) => setErrors((current) => errorRecord(fields.length === 0 ? [] : Object.entries(current).filter(([field]) => !fields.includes(field)))),
     [],
   );
 

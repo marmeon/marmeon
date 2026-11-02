@@ -231,22 +231,25 @@ export class SendRemindersController extends Controller {
 `bulk([[Job, payload], [Job, payload]])` queues several jobs and resolves with their ids. Every payload is checked before the
 first is queued, so one bad payload queues none. `size(queue?, { connection? })` counts the jobs that wait or run on a queue.
 
-`bulk()` is a convenience, not a batch write. It queues the jobs one after the other. The `database` driver runs one `insert`
-statement for each job, and the `redis` driver one script call for each.
+`bulk()` hands the jobs to the driver in one call. The `database` driver writes them in a few multi-row `insert` statements,
+as many rows each as the database binds in one statement (about 8,000 on SQLite, 16,000 on Postgres), so 2,000 jobs take one. The
+`redis` driver pushes them in one script call. A driver of your own without `pushMany` ([drivers](drivers.md#queue-drivers-and-failed-job-stores))
+gets one `push` per job.
 
-Inside `connections.transaction()` on the same database connection, those inserts are part of the transaction. The transaction
-stays open for one round trip per job, and every row lock it already holds (a `forUpdate()` read, say) is held that long. Do the
+Inside `connections.transaction()` on the same database connection, the inserts are part of the transaction. The transaction
+stays open for the few statements, and every row lock it already holds (a `forUpdate()` read, say) is held that long. Do the
 locking work last.
 
-When a thousand jobs would make the transaction long, you can queue them from an `afterCommit()` callback instead. Then the jobs no
-longer commit with the data. A crash between the commit and the queueing loses them. A push error is thrown by `transaction()`
-although the data is committed ([after the commit](transactions.md#after-the-commit)).
+Outside a transaction the `database` driver writes a batch that needs more than one statement in a transaction of its own, so
+`bulk()` queues all of the jobs or none. On `redis` the script is one call and nothing else runs between the jobs.
+
+The jobs still go to the driver one after the other when it has no `pushMany`. Then a failure midway leaves the earlier jobs queued,
+unless they are rows of a transaction that rolls back. With `sync`, `bulk()` runs the jobs one after the other, so the earlier ones have
+already run when a later one throws. Where the push waits for the commit (`redis`, another database connection, a custom driver), a failure
+is thrown by `transaction()` although the data is committed ([after the commit](transactions.md#after-the-commit)); a crash between the
+commit and the push loses the jobs.
 
 Bound a set of jobs of unknown size. Take the list from a validated input with a limit (`r.array(…).max(100)`), or cut it in slices.
-
-`bulk()` is no unit. If a push fails midway, the jobs before it stay queued, unless they are rows of a transaction that rolls back.
-That holds only for the `database` driver on the transaction's own connection. With `redis` or another database connection, the
-pushes run after the commit, and a failure midway leaves the earlier jobs queued. With `sync`, the earlier jobs have already run.
 
 ## Running workers
 

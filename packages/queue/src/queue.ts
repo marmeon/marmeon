@@ -44,8 +44,8 @@ export interface Queue {
    */
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
   /**
-   * Queues several jobs one after the other, after checking every payload, and returns their ids: no batch write and no unit.
-   * See `docs/queues.md#dispatching-jobs` for the cost per driver, transactions and a failure midway.
+   * Queues several jobs after checking every payload, and returns their ids: a few statements on `database`, one script call on `redis`.
+   * Written as a unit only where the driver can; see `docs/queues.md#dispatching-jobs` for transactions, `sync` and a failure midway.
    */
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
@@ -281,7 +281,9 @@ export class QueueManager implements Queue {
     const driver = this.#driver(name);
     const availableAt = this.#deps.clock.now() + Math.round(delay * 1000);
     const push = async () => {
-      for (const { record } of prepared) await driver.push(queue, JSON.stringify({ ...record, availableAt }), delay);
+      const entries = prepared.map(({ record }) => ({ queue, payload: JSON.stringify({ ...record, availableAt }), delaySeconds: delay }));
+      if (entries.length > 1 && driver.pushMany) await driver.pushMany(entries);
+      else for (const entry of entries) await driver.push(entry.queue, entry.payload, entry.delaySeconds);
     };
     // Explicitly through a transaction (`using(trx)`), or joining the ambient one: part of it. Inside a transaction the
     // driver cannot join (another database connection, redis): after the commit.

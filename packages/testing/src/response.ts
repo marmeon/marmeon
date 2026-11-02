@@ -301,7 +301,7 @@ export class TestResponse {
       ? fields.map((field: string) => [field, undefined])
       : Object.entries(fields as Record<string, string | RegExp>);
     for (const [field, message] of expected) {
-      const messages = errors[field];
+      const messages = Object.hasOwn(errors, field) ? errors[field] : undefined;
       if (!messages?.length) this.#fail(`Expected a validation error for "${field}", got errors for: ${Object.keys(errors).join(', ')}`);
       if (message !== undefined && !messages.some((text) => (typeof message === 'string' ? text === message : message.test(text)))) {
         this.#fail(`Expected "${field}" to fail with ${String(message)}, got: ${messages.join(' | ')}`);

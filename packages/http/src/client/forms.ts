@@ -1,18 +1,27 @@
 import type { PageObject } from '../protocol.ts';
 
 /**
+ * A form's errors by field, without a prototype: a field named `toString` or `constructor` reads as no error, and `__proto__` is
+ * a key, not the prototype. What `form.errors` and `action.errors` hand to an app; adapters build theirs the same way, see
+ * docs/package-development.md#writing-a-ui-adapter.
+ */
+export function errorRecord(entries: Iterable<readonly [string, string | undefined]> = []): Record<string, string> {
+  return Object.assign(Object.create(null) as Record<string, string>, Object.fromEntries([...entries].filter((entry): entry is [string, string] => entry[1] !== undefined)));
+}
+
+/**
  * The first validation message per field of a page — the server sends a list per field (the shared `errors` prop,
  * after it redirected back to the form); forms show the first. Empty when the page has none.
  */
 export function firstErrors(page: PageObject): Record<string, string> {
   const errors = (page.props as { errors?: unknown }).errors;
-  if (typeof errors !== 'object' || errors === null) return {};
-  const result: Record<string, string> = {};
-  for (const [field, messages] of Object.entries(errors)) {
-    const first = Array.isArray(messages) ? messages[0] : messages;
-    if (typeof first === 'string') result[field] = first;
-  }
-  return result;
+  if (typeof errors !== 'object' || errors === null) return errorRecord();
+  return errorRecord(
+    Object.entries(errors).flatMap(([field, messages]) => {
+      const first = Array.isArray(messages) ? messages[0] : messages;
+      return typeof first === 'string' ? [[field, first] as const] : [];
+    }),
+  );
 }
 
 /**

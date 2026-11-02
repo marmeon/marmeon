@@ -116,6 +116,8 @@ A field whose rule is `r.boolean()` or `r.accepted()` holds a `boolean` in the f
 `errors` is keyed by every path into the form's data, with dots: `errors.title`, `errors['address.city']`,
 `errors['items.0.name']` for a list (a tuple of fixed length has only the positions it declares), and `` errors[`answers.${key}`] `` for a field of a record whose keys are not known beforehand.
 A path the data cannot have, `errors['adress.city']`, is a compile error. `clearErrors(...)` takes the same paths.
+`errors` is an object without a prototype: a field named `toString` or `constructor` reads as no error, and `Object.hasOwn(form.errors, path)`
+asks whether a path has one.
 
 The paths are typed up to eight levels deep: every name or index between the dots counts one level, so
 `` errors['sections.0.fields.1.guest_label.de'] `` is six levels. A path deeper than that is not known to the compiler; read

@@ -2154,6 +2154,8 @@ export declare function defaultFormEntries(form: {
 export declare const defaultTitle: TitleTemplate;
 // dirtyPaths
 export declare function dirtyPaths(initial: unknown, current: unknown, prefix?: string): string[];
+// errorRecord
+export declare function errorRecord(entries?: Iterable<readonly [string, string | undefined]>): Record<string, string>;
 // fieldPath
 export declare function fieldPath(name: string): string;
 // firstErrors

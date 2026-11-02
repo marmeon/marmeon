@@ -6,6 +6,9 @@ export interface Survey {
   readonly slug: string;
 }
 
+/** A question to add: the table's columns without the ones the database fills in. */
+export type NewQuestion = { survey: string; name: string; label: string; required?: boolean; position?: number };
+
 /** The questions of the lab's surveys, kept as rows: a survey's form has the fields its rows say. */
 export class SurveyRepository extends Repository<'lab_survey_questions'> {
   static table = 'lab_survey_questions' as const;
@@ -13,6 +16,14 @@ export class SurveyRepository extends Repository<'lab_survey_questions'> {
   /** Whether a survey has any question. */
   async has(survey: string): Promise<boolean> {
     return (await this.query().select('id').where('survey', '=', survey).limit(1).executeTakeFirst()) !== undefined;
+  }
+
+  /**
+   * Adds the questions a survey does not have yet, by `(survey, name)`; a question that is there keeps its label and position.
+   * Safe to run again, also at the same moment. Resolves with the questions it added.
+   */
+  async addMissing(questions: readonly NewQuestion[]): Promise<Pick<Row<'lab_survey_questions'>, 'survey' | 'name'>[]> {
+    return this.insertMissing(questions, { on: ['survey', 'name'], returning: ['survey', 'name'] });
   }
 
   /** A survey's questions in the order the form shows them. */

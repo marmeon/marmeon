@@ -227,17 +227,17 @@ const jsonBytes = (value: unknown): number => new TextEncoder().encode(JSON.stri
  */
 function boundedErrors(errors: Record<string, readonly string[]>): Record<string, readonly string[]> {
   if (jsonBytes(errors) <= MAX_FLASHED_INPUT_BYTES) return errors;
-  const result: Record<string, readonly string[]> = {};
+  const kept: [string, readonly string[]][] = [];
   let size = 2;
   for (const [field, messages] of Object.entries(errors)) {
     const first = messages.slice(0, 1);
     // Key, value, quotes, colon and comma.
     const entry = jsonBytes(field) + jsonBytes(first) + 2;
     if (size + entry > MAX_FLASHED_INPUT_BYTES) break;
-    result[field] = first;
+    kept.push([field, first]);
     size += entry;
   }
-  return result;
+  return Object.fromEntries(kept); // not `result[field] =`: a field named `__proto__` is a key, not the prototype
 }
 
 function stripInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -254,13 +254,13 @@ function stripInput(input: Record<string, unknown>): Record<string, unknown> {
     }
     return value instanceof File ? undefined : value;
   };
-  const result: Record<string, unknown> = {};
+  const kept: [string, unknown][] = [];
   for (const [key, value] of Object.entries(input)) {
-    if (isSensitiveField(key) || key === '_token') continue;
+    if (isSensitiveField(key) || key === '_token' || key === '__proto__') continue; // `__proto__` is dropped like the form parser does
     const cleaned = clean(value);
-    if (cleaned !== undefined) result[key] = cleaned;
+    if (cleaned !== undefined) kept.push([key, cleaned]);
   }
-  return result;
+  return Object.fromEntries(kept);
 }
 
 export function isRedirectResult(value: unknown): value is RedirectResult {

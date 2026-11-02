@@ -1,4 +1,4 @@
-import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
+import { dirtyPaths, errorRecord, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { resolveRoute, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
 import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, FormOutputOf, Routes, SensitiveNeverLive, Upload } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -407,7 +407,7 @@ export function useForm(...args: unknown[]): unknown {
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
   // The navigation guard, while dirty — its own submit passes it. A remembered input that differs is dirty, too.
   const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
-  const [errors, setErrors] = useState<Partial<Record<string, string>>>(() => kept?.errors ?? {});
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>(() => errorRecord(Object.entries(kept?.errors ?? {})));
   const include = remember?.include.join(',');
   useEffect(() => {
     if (!remember || !store) return;
@@ -499,7 +499,7 @@ export function useForm(...args: unknown[]): unknown {
     errors,
     hasErrors: Object.keys(errors).length > 0,
     clearErrors: (...fields) =>
-      setErrors((current) => Object.fromEntries(fields.length === 0 ? [] : Object.entries(current).filter(([key]) => !fields.includes(key)))),
+      setErrors((current) => errorRecord(fields.length === 0 ? [] : Object.entries(current).filter(([key]) => !fields.includes(key)))),
     processing,
     progress,
     wasSuccessful,
@@ -615,16 +615,16 @@ function useLiveValidation(
     return liveValidationOnFirstUse(navigator, target.url, {
       method: method as 'post' | 'put' | 'patch' | 'delete',
       data: () => dataRef.current,
-      hasError: (field) => errorsRef.current[field] !== undefined,
+      hasError: (field) => Object.hasOwn(errorsRef.current, field),
       on: config.on ?? 'blur',
       // Unset ones stay undefined: the live validation's defaults apply.
       debounceMs: config.debounceMs as number,
       fields: config.fields as readonly string[],
       onResult: (outcome) =>
         setErrors((current) => {
-          const next = Object.fromEntries(Object.entries(current).filter(([field]) => !outcome.fields.some((name) => under(field, name))));
-          if (outcome.kind === 'invalid') for (const [field, messages] of Object.entries(outcome.errors)) if (typeof messages[0] === 'string') next[field] = messages[0];
-          return next;
+          const kept = Object.entries(current).filter(([field]) => !outcome.fields.some((name) => under(field, name)));
+          const added = outcome.kind === 'invalid' ? Object.entries(outcome.errors).flatMap(([field, messages]) => (typeof messages[0] === 'string' ? [[field, messages[0]] as const] : [])) : [];
+          return errorRecord([...kept, ...added]);
         }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `config` is a new object each render: the memo follows its URL, method, trigger, debounce and field list

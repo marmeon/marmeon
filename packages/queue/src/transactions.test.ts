@@ -171,6 +171,69 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     expect(await queue.size()).toBe(0);
   });
 
+  it('database queue: bulk() in the transaction inserts in one statement, and its jobs are part of it', async () => {
+    await using application = await app();
+    const queue = application.container.make(Queue);
+    const connections = application.container.make(Connections);
+    const inserts: string[] = [];
+    connections.onQuery((query) => {
+      if (/^insert into "?jobs"?/i.test(query.sql)) inserts.push(query.sql);
+    });
+    const batch = Array.from({ length: 50 }, (_, n) => [LookJob, { n }] as const);
+    await expect(
+      connections.transaction(async () => {
+        await queue.bulk(batch);
+        expect(await queue.size()).toBe(50);
+        throw new Rollback();
+      }),
+    ).rejects.toBeInstanceOf(Rollback);
+    expect(await queue.size()).toBe(0);
+    expect(inserts).toHaveLength(1);
+    await connections.transaction(() => queue.bulk(batch));
+    expect(await queue.size()).toBe(50);
+    expect(inserts).toHaveLength(2);
+  });
+
+  it('holds the jobs of bulk() for a queue that cannot join the transaction until the commit, and pushes them in one call', async () => {
+    await using application = await app();
+    const container = application.container;
+    class Counting extends MemoryQueueDriver {
+      readonly calls: number[] = [];
+      override async pushMany(entries: Parameters<MemoryQueueDriver['pushMany']>[0]): Promise<void> {
+        this.calls.push(entries.length);
+        return super.pushMany(entries);
+      }
+    }
+    const memory = new Counting({ clock: container.make(Clock) });
+    const queue = new QueueManager({
+      connection: (name) => (name === 'outside' ? { driver: 'database', queue: 'default', connection: 'default', retryAfterSeconds: 90 } : undefined),
+      connectionNames: () => ['outside'],
+      default: 'outside',
+      registry: container.make(JobRegistry),
+      driver: () => memory,
+      runner: () => new JobRunner(container, container.make(JobRegistry), () => Promise.reject(new Error('no cipher'))),
+      cipher: () => Promise.reject(new Error('no cipher')),
+      clock: container.make(Clock),
+      logger: silent,
+    });
+    const connections = container.make(Connections);
+    const batch = [[LookJob, { n: 1 }], [LookJob, { n: 2 }], [LookJob, { n: 3 }]] as const;
+    await expect(
+      connections.transaction(async () => {
+        await queue.bulk(batch);
+        expect(await memory.size('default')).toBe(0);
+        throw new Rollback();
+      }),
+    ).rejects.toBeInstanceOf(Rollback);
+    expect(memory.calls).toEqual([]);
+    await connections.transaction(async () => {
+      await queue.bulk(batch);
+      expect(await memory.size('default')).toBe(0);
+    });
+    expect(memory.calls).toEqual([3]);
+    expect(await memory.size('default')).toBe(3);
+  });
+
   it('holds a job for a queue that cannot join the transaction (redis, another connection) until the commit', async () => {
     await using application = await app();
     const container = application.container;

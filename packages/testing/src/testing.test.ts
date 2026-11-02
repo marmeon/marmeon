@@ -6,7 +6,7 @@ import { PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { DevtoolsServiceProvider } from '@marmeon/devtools';
 import { ServerServiceProvider } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
-import { createTestApp } from './index.ts';
+import { createTestApp, TestResponse } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 export class Greeting {
@@ -204,5 +204,16 @@ describe('the devtools in tests', () => {
 
   it('says when the app does not register the devtools', async () => {
     await expect(createTestApp(definition, { env, devtools: true })).rejects.toThrow(/does not register @marmeon\/devtools — add it to the app's package\.json/);
+  });
+});
+
+describe('assertInvalid', () => {
+  const invalid = (errors: object) => new TestResponse(new Response(null, { status: 422 }), JSON.stringify({ errors }), new Uint8Array(), 'POST /x');
+
+  it('does not take a field named like an Object member for an error it was not given', () => {
+    const response = invalid({ name: ['Too short.'] });
+    expect(() => response.assertInvalid(['toString'])).toThrow(/Expected a validation error for "toString"/);
+    expect(() => response.assertInvalid(['constructor'])).toThrow(/Expected a validation error for "constructor"/);
+    expect(() => invalid({ toString: ['Bad.'] }).assertInvalid({ toString: 'Bad.' })).not.toThrow();
   });
 });

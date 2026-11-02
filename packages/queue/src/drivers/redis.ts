@@ -48,6 +48,7 @@ end
  */
 interface Scripts {
   readonly push: RedisScript;
+  readonly pushMany: RedisScript;
   readonly reserve: RedisScript;
   readonly reserveAny: RedisScript;
   readonly ack: RedisScript;
@@ -63,6 +64,15 @@ function loadScripts(): Promise<Scripts> {
       'queue.push',
       `${PUSH_ONE}push(KEYS[1], KEYS[2], KEYS[3], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
 return 1`,
+    ),
+    // KEYS: queue index, then per job: its list and delayed set. ARGV: now (ms), then per job: queue name, member, available at (ms).
+    pushMany: defineRedisScript(
+      'queue.push-many',
+      `${PUSH_ONE}local count = (#KEYS - 1) / 2
+for i = 1, count do
+  push(KEYS[2 * i], KEYS[2 * i + 1], KEYS[1], ARGV[3 * i - 1], ARGV[3 * i], ARGV[3 * i + 1], ARGV[1])
+end
+return count`,
     ),
     // KEYS: list, delayed, reserved. ARGV: now (ms), claim expiry (ms). The claim — migrate, pop, count the attempt,
     // record the claim — is one atomic step: two workers never pop the same member.
@@ -167,6 +177,21 @@ export class RedisQueueDriver implements QueueDriver {
     const keys = this.#keys(redis, queue);
     await redis.run(push, [keys.list, keys.delayed, redis.key('queues')], [queue, `${id}:0:${payload}`, now + Math.round(delaySeconds * 1000), now]);
     return id;
+  }
+
+  /** All jobs in ONE script call: every member is queued, or none (a script is atomic). */
+  async pushMany(entries: readonly QueuedPush[]): Promise<void> {
+    if (entries.length === 0) return;
+    const [redis, { pushMany }] = await Promise.all([this.#connection(), loadScripts()]);
+    const now = this.#clock.now();
+    const keys = [redis.key('queues')];
+    const args: (string | number)[] = [now];
+    for (const { queue, payload, delaySeconds } of entries) {
+      const target = this.#keys(redis, queue);
+      keys.push(target.list, target.delayed);
+      args.push(queue, `${crypto.randomUUID()}:0:${payload}`, now + Math.round(delaySeconds * 1000));
+    }
+    await redis.run(pushMany, keys, args);
   }
 
   async reserve(queues: readonly string[]): Promise<ReservedJob | undefined> {

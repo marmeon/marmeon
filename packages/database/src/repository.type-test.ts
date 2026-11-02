@@ -50,6 +50,21 @@ export async function finderTypes() {
   void keys.pluck('token');
   expectTypeOf(await keys.pluck('name')).toEqualTypeOf<string[]>();
 
+  expectTypeOf(await posts.insertMany([{ title: 'A', author_id: 1 }])).toEqualTypeOf<number>();
+  expectTypeOf(await posts.insertMany([{ title: 'A', author_id: 1 }], { returning: ['id', 'title'] })).toEqualTypeOf<{ id: number; title: string }[]>();
+  expectTypeOf(await posts.insertMissing([{ title: 'A', author_id: 1 }], { on: ['title'] })).toEqualTypeOf<number>();
+  expectTypeOf(await posts.insertMissing([{ title: 'A', author_id: 1 }], { on: ['title'], returning: ['id'] })).toEqualTypeOf<{ id: number }[]>();
+  // @ts-expect-error — a secret column is not one insertMany() returns (refused when it runs, too)
+  void keys.insertMany([], { returning: ['token'] });
+  // @ts-expect-error — nor one tryInsertMany() returns
+  void keys.tryInsertMany([], { returning: ['token'] });
+  // @ts-expect-error — returning names at least one column
+  void posts.insertMany([], { returning: [] });
+  // @ts-expect-error — insertMissing() needs the columns of the unique index
+  void posts.insertMissing([]);
+  // @ts-expect-error — and they are columns of the table
+  void posts.insertMissing([], { on: ['titel'] });
+
   expectTypeOf(await posts.firstWhere({ author_id: 1, featured: true })).toEqualTypeOf<Awaited<ReturnType<Posts['find']>>>();
   // Object literal may only specify known properties, but 'autor_id' does not exist in type 'Exact<Partial<{ author_id: number; …; }>, { …; }>'.
   // Did you mean to write 'author_id'?
