@@ -299,7 +299,7 @@ export class RecordNoteShared {
 }
 ```
 
-Register the listener with `listen(NoteShared, RecordNoteShared)` like any other. A `json()` column is a `JsonColumn`: write it as text with `JSON.stringify(…)`, and the repository reads it back as the parsed value, typed as you declare it: `'audit_entries.meta': { email?: string }` in a `JsonTypes` interface gives `entry.meta.email` without narrowing ([a JSON column's type](queries.md#a-json-columns-type)). That type is a promise, not a check; `meta` is written from a value you build, so it holds. Three details of the table matter:
+Register the listener with `listen(NoteShared, RecordNoteShared)` like any other. A `json()` column is a `JsonColumn`: write it as text with `JSON.stringify(…)`, and the repository reads it back as the parsed value, typed as you declare it: `'audit_entries.meta': { email?: string }` in a `JsonTypes` interface gives `entry.meta?.email` without narrowing (the column is nullable, so `meta` may be `null`) ([a JSON column's type](queries.md#a-json-columns-type)). That type is a promise, not a check; `meta` is written from a value you build, so it holds. Three details of the table matter:
 
 - **No foreign key on the subject or the actor.** An entry about a deleted note or a deleted account must outlive both. Store
   the subject as a table name and a key, and the actor as a plain key column, in a table of its own:
