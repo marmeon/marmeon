@@ -47,7 +47,7 @@ fixes](#which-versions-get-fixes) is a separate question.
 
 A release candidate, `x.y.z-rc.N`, is a preview of the release `x.y.z`. It comes under the npm dist-tag `next` and never moves `latest`,
 so an app only gets one when it asks: `pnpm add -E @marmeon/core@next`, and the same for every other framework package, all in the same version.
-To start an app from a candidate, run `pnpm create marmeon@next my-app`. A package added later takes the version of the app (`pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
+To start an app from a candidate, run `pnpm create marmeon@next my-app`; on the day a candidate appears, [pnpm installs an older version](installation.md#the-first-day-after-a-release) unless you let the framework through. A package added later takes the version of the app (`pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
 [`marmeon check`](check.md#the-packages-check) finds a package that is not.
 
 From the first candidate to its release, only bug fixes, documentation and internals change; the public API is the one the release
@@ -299,9 +299,13 @@ published by hand, before trusted publishing can be set up for it. The
 
 ## The first day after a release
 
-pnpm 11 and newer hold back any package version younger than their `minimumReleaseAge`, one day by default. This protects you
-from a package that is pulled again soon after it appears. For a day after a Marmeon release, an upgrade to the new exact
-versions therefore fails to install, and `pnpm create marmeon` falls back to an older release or stops.
+pnpm 12 holds back any package version younger than its `minimumReleaseAge`, one day by default. This protects you
+from a package that is pulled again soon after it appears. For a day after a Marmeon release, `pnpm up --latest` and
+`pnpm create marmeon` install the previous release without a message. A new exact version you wrote into `package.json` yourself
+installs all the same under the default setting: pnpm prints that it added the package to `minimumReleaseAgeExclude` in
+`pnpm-workspace.yaml` and writes it there. Only where `minimumReleaseAge` is set explicitly (the app's `pnpm-workspace.yaml`, your global config or a variable) is the install asked in a terminal, and
+without one the install fails with "within the minimumReleaseAge cutoff". Check the versions in `package.json` (`marmeon` and the `@marmeon/*` packages) after an upgrade; a mix of two
+releases is what [`marmeon check`](check.md#the-packages-check) reports.
 
 Wait a day, or let only the framework through for this one command:
 
@@ -315,7 +319,8 @@ The variable changes nothing else, and only this command sees it. npm has no suc
 
 1. Read the section of the new version in the [upgrade guide](../UPGRADING.md). Its entries are sorted by impact, and each says
    how likely it touches your app.
-2. Move every framework package to the new version at once, install, and run `pnpm marmeon build` and your tests. Type errors
+2. Move every framework package to the new version at once ([the first day after a release](#the-first-day-after-a-release) has a
+   catch), install, and run `pnpm marmeon build` and your tests. Type errors
    point to most of what changed.
 3. Deploy as usual. An entry says so when a change needs a migration or signs users out. The [deployment](deployment.md) page
    covers the rest.

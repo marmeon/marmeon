@@ -227,14 +227,19 @@ once per app.
 ## The first day after a release
 
 pnpm installs no package version younger than its `minimumReleaseAge`, one day by default. This protects you from a package that
-is pulled again soon after it appears. For a day after a Marmeon release, `pnpm create marmeon` therefore falls back to an older
-version of the creator, or stops when there is none, and the install of the new framework versions fails.
+is pulled again soon after it appears. For a day after a Marmeon release, `pnpm create marmeon` therefore does not stop: it
+takes the previous release of the creator, and the install succeeds without a message. The creator writes its own version, exactly,
+for every `@marmeon/*` package and `marmeon`, so the new app is on the previous release. `marmeon` and the `@marmeon/*` entries in
+its `package.json` show which one. `pnpm create marmeon@next` falls back to an older version the same way.
 
 Wait a day, or let only the framework through for this one command:
 
 ```sh
-pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon"]' pnpm create marmeon my-app
+pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon"]' pnpm create marmeon@<version> my-app
 ```
+
+Name the version of the release (for a candidate its own version, `@x.y.z-rc.N`) in the command. pnpm keeps the creator it fetched for a spec as written, so after
+a `pnpm create marmeon` earlier that day, a plain `pnpm create marmeon` serves the old creator again.
 
 The variable reaches the install the creator runs and changes nothing else. The creator never changes your pnpm settings. npm
 has no such delay.
