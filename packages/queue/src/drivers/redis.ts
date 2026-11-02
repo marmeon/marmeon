@@ -104,6 +104,33 @@ return 1`,
   return scripts;
 }
 
+const COLLIDING_SUFFIXES = [':delayed', ':reserved'];
+
+function collidingSuffix(queue: string): string | undefined {
+  return COLLIDING_SUFFIXES.find((ending) => queue.endsWith(ending));
+}
+
+function isReservedName(queue: string): boolean {
+  return collidingSuffix(queue) !== undefined;
+}
+
+/**
+ * What is wrong with a queue name for the redis driver, or `undefined`. The keys of queue `a` are `queues:a`,
+ * `queues:a:delayed` and `queues:a:reserved`, so a queue named `a:delayed` would use the delayed set of `a` as its list.
+ * Such names are refused rather than the layout changed, which would orphan the jobs already in an app's Redis.
+ * @internal
+ */
+export function queueNameProblem(queue: string): string | undefined {
+  const suffix = collidingSuffix(queue);
+  if (suffix === undefined) return undefined;
+  return `The queue "${queue}" cannot be used with the redis driver: its name ends in "${suffix}", which the driver's keys for the queue "${queue.slice(0, -suffix.length)}" use.`;
+}
+
+function assertQueueName(queue: string): void {
+  const problem = queueNameProblem(queue);
+  if (problem !== undefined) throw new Error(`${problem} Rename the queue.`);
+}
+
 /** The connection, now or on first use (the driver is built before the Redis package's provider boots). */
 export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnection>);
 
@@ -115,7 +142,7 @@ export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnect
  * A job is the member `<id>:<attempts>:<payload>`. **The claim is one Lua script**, atomic, so two workers never hold the
  * same job. Acknowledging removes exactly the claimed member: once another worker took the job (`attempts` counted up),
  * a late ack, release or fail changes nothing. Times come from the queue's {@link Clock} (passed to the scripts), not
- * from Redis. A dispatch inside `connections.transaction()` is pushed after the commit, dropped on a rollback.
+ * from Redis. A queue name ending in `:delayed` or `:reserved` is refused, as those are the keys of another queue. A dispatch inside `connections.transaction()` is pushed after the commit, dropped on a rollback.
  */
 export class RedisQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<RedisConnection>;
@@ -133,6 +160,7 @@ export class RedisQueueDriver implements QueueDriver {
   }
 
   async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
+    assertQueueName(queue);
     const [redis, { push }] = await Promise.all([this.#connection(), loadScripts()]);
     const id = crypto.randomUUID();
     const now = this.#clock.now();
@@ -142,6 +170,7 @@ export class RedisQueueDriver implements QueueDriver {
   }
 
   async reserve(queues: readonly string[]): Promise<ReservedJob | undefined> {
+    for (const queue of queues) assertQueueName(queue);
     const [redis, { reserve }] = await Promise.all([this.#connection(), loadScripts()]);
     for (const queue of queues) {
       const now = this.#clock.now();
@@ -180,10 +209,10 @@ export class RedisQueueDriver implements QueueDriver {
     return { id, queue, payload, attempts, reservedAt: now };
   }
 
-  /** The registry's queues, at most a second old (sorted, like `queues()`). */
+  /** The registry's queues, at most a second old (sorted, like `queues()`, without the names the driver refuses). */
   async #registry(redis: RedisConnection): Promise<string[]> {
     if (this.#known && performance.now() - this.#known.at < 1000) return this.#known.queues;
-    const queues = (await redis.command<string[]>(['SMEMBERS', redis.key('queues')])).sort();
+    const queues = (await redis.command<string[]>(['SMEMBERS', redis.key('queues')])).filter((queue) => !isReservedName(queue)).sort();
     this.#known = { queues, at: performance.now() };
     return queues;
   }
@@ -195,6 +224,8 @@ export class RedisQueueDriver implements QueueDriver {
   }
 
   async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
+    assertQueueName(job.queue);
+    for (const push of next) assertQueueName(push.queue);
     const [redis, { ack }] = await Promise.all([this.#connection(), loadScripts()]);
     const now = this.#clock.now();
     const keys = [this.#keys(redis, job.queue).reserved, redis.key('queues')];
@@ -208,6 +239,7 @@ export class RedisQueueDriver implements QueueDriver {
   }
 
   async release(job: ReservedJob, delaySeconds: number, options: ReleaseOptions = {}): Promise<boolean> {
+    assertQueueName(job.queue);
     const [redis, { release }] = await Promise.all([this.#connection(), loadScripts()]);
     const keys = this.#keys(redis, job.queue);
     const payload = options.availableAt === undefined ? job.payload : withAvailableAt(job.payload, options.availableAt);
@@ -216,17 +248,20 @@ export class RedisQueueDriver implements QueueDriver {
   }
 
   async fail(job: ReservedJob): Promise<boolean> {
+    assertQueueName(job.queue);
     const redis = await this.#connection();
     return Number(await redis.command(['ZREM', this.#keys(redis, job.queue).reserved, member(job)])) === 1;
   }
 
   async size(queue: string): Promise<number> {
+    assertQueueName(queue);
     const [redis, { size }] = await Promise.all([this.#connection(), loadScripts()]);
     const keys = this.#keys(redis, queue);
     return Number(await redis.run(size, [keys.list, keys.delayed, keys.reserved]));
   }
 
   async counts(queue: string): Promise<QueueCounts> {
+    assertQueueName(queue);
     const redis = await this.#connection();
     const keys = this.#keys(redis, queue);
     const [ready, delayed, reserved] = await Promise.all([
@@ -239,7 +274,7 @@ export class RedisQueueDriver implements QueueDriver {
 
   async queues(): Promise<string[]> {
     const redis = await this.#connection();
-    return (await redis.command<string[]>(['SMEMBERS', redis.key('queues')])).sort();
+    return (await redis.command<string[]>(['SMEMBERS', redis.key('queues')])).filter((queue) => !isReservedName(queue)).sort();
   }
 
   #keys(redis: RedisConnection, queue: string) {

@@ -355,6 +355,15 @@ package stops the app at its start, with what to do.
 Exactly one worker claims a job, also with many workers on Postgres or Redis. The `redis` driver needs `@marmeon/redis`, which
 brings the Redis client. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
+The `redis` driver keeps the queue `a` in the keys `queues:a`, `queues:a:delayed` and `queues:a:reserved`. It therefore refuses a
+queue name that ends in `:delayed` or `:reserved` (`a:delayed` would be the delayed set of `a`): the dispatch, the worker and
+`queue:size` fail with an error that names the queue. Pick another name, such as `a-delayed`.
+
+Jobs that already wait under such a name (`x:delayed`) are no longer taken, and the queue is no longer listed. To move them, stop the
+workers, then in Redis rename `<prefix>queues:x:delayed` to `<prefix>queues:x-delayed` (and its `:delayed` and `:reserved` keys,
+`<prefix>queues:x:delayed:delayed` and `…:reserved`, if they exist), run `SREM <prefix>queues x:delayed` and `SADD <prefix>queues x-delayed`, and
+start the workers. A connection whose default queue (`QUEUE_REDIS_QUEUE`) has such a name stops the app at its start.
+
 The `database` driver needs its tables, `jobs` and `failed_jobs`. A new app has them. Otherwise write the migration and run it:
 
 ```sh
