@@ -1,10 +1,11 @@
 import { Application, Container, type ModuleDefinition } from '@marmeon/core';
-import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { ApiKeyFactory, ArticleFactory, define, SluggedArticleFactory, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Connections, Factories, Migrator, PendingFactory, Repository, secret, type SeedContext } from './index.ts';
-import { Seeding } from './seeders.ts';
+import { seed } from './commands/db-seed.ts';
+import { Seeding, type SeedOutput } from './seeders.ts';
 
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
@@ -24,6 +25,20 @@ class DemoUsersSeeder {
 class ArticlesSeeder {
   async handle({ factory }: SeedContext) {
     await factory(ArticleFactory).create({ title: 'Seeded' });
+  }
+}
+
+/** Reports through `output`, then fails when asked to: its lines still show. */
+class ReportingSeeder {
+  async handle({ factory, output }: SeedContext) {
+    await factory(ArticleFactory).create({ title: 'Reported' });
+    output?.info('Made 1 article');
+    output?.table(['Title'], [['Reported']]);
+  }
+}
+class LoudSeeder {
+  handle({ output }: SeedContext) {
+    output!.info('never shown');
   }
 }
 
@@ -121,6 +136,55 @@ describe.each(drivers)('factories and seeders on %s', (driver) => {
     expect(seeding.seeders({ seeder: 'DemoUsersSeeder' }).map((s) => s.module)).toEqual(['auth']);
     expect(() => seeding.seeders({ module: 'shop' })).toThrow('[marmeon:D13] There is no module "shop".');
     expect(() => seeding.seeders({ seeder: 'Nope' })).toThrow('[marmeon:D13] There is no seeder "Nope".');
+  });
+
+  describe('output', () => {
+    const recording = () => {
+      const calls: string[] = [];
+      const output: SeedOutput = {
+        line: (text = '') => void calls.push(`line ${text}`),
+        info: (text) => void calls.push(`info ${text}`),
+        warn: (text) => void calls.push(`warn ${text}`),
+        table: (header, rows) => void calls.push(`table ${header.join(',')} | ${rows.map((r) => r.join(',')).join(';')}`),
+      };
+      return { calls, output };
+    };
+    const seedingOf = (seeders: ModuleDefinition['seeders']) => {
+      const container = new Container();
+      container.instance(Connections, connections);
+      return new Seeding({ modules: [{ name: 'blog', seeders }] } as unknown as Application, container, connections, factories);
+    };
+
+    it('hands the run\'s output to the seeder, before the line the command writes for it', async () => {
+      const { calls, output } = recording();
+      await seedingOf([ReportingSeeder]).run({}, (run) => calls.push(`ran ${run.seeder}`), output);
+      expect(calls).toEqual(['info Made 1 article', 'table Title | Reported', 'ran ReportingSeeder']);
+    });
+
+    it('is silent without an output, and the context still has one', async () => {
+      const written: unknown[] = [];
+      const spies = (['log', 'info', 'warn', 'error'] as const).map((method) => vi.spyOn(console, method).mockImplementation((...args) => void written.push(args)));
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => (written.push(chunk), true));
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => (written.push(chunk), true));
+      try {
+        await seedingOf([LoudSeeder, ReportingSeeder]).run();
+      } finally {
+        for (const spy of [...spies, stdout, stderr]) spy.mockRestore();
+      }
+      // The connection's own debug lines about its queries are not the seeders' output.
+      expect(JSON.stringify(written.filter((entry) => !JSON.stringify(entry).includes('Query')))).toBe('[]');
+    });
+
+    it('prints a seeder\'s lines through db:seed — the table as a table, ahead of the Seeded line', async () => {
+      const { Output } = await import('marmeon');
+      const written: string[] = [];
+      const output = new Output((text) => void written.push(text));
+      expect(await seed(seedingOf([ReportingSeeder]), { options: {}, output } as never)).toBe(0);
+      const text = written.join('');
+      expect(text).toContain('Made 1 article');
+      expect(text).toMatch(/Title\s*\n.*Reported/s);
+      expect(text.indexOf('Reported')).toBeLessThan(text.indexOf('Seeded ReportingSeeder'));
+    });
   });
 
   describe('derived columns', () => {

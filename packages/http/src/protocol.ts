@@ -355,3 +355,31 @@ export const APP_ORIGIN_META = 'marmeon-app-origin';
 export function isPageObject(value: unknown): value is PageObject {
   return typeof value === 'object' && value !== null && 'component' in value && 'props' in value && 'url' in value;
 }
+
+/**
+ * The path and query of `url` when it is a path of this site, else `undefined`: one leading `/`, no second `/`, no backslash,
+ * space or control character, and no `//` left once dot segments are folded (`/a/..//host`). Decided by how the URL parser
+ * reads it, never by the first characters alone, and the same on the server and in the browser. An island's `href` and the
+ * URL the server resolves for it pass through here.
+ *
+ * @internal
+ */
+export function sitePath(url: unknown): string | undefined {
+  if (typeof url !== 'string' || !url.startsWith('/') || url[1] === '/' || [...url].some(unsafeCharacter)) return undefined;
+  try {
+    // Both special schemes: a path keeps the placeholder's host and scheme on either.
+    const paths = (['http:', 'https:'] as const).map((protocol) => {
+      const parsed = new URL(url, `${protocol}//local.invalid`);
+      return parsed.host === 'local.invalid' && parsed.protocol === protocol && !parsed.pathname.startsWith('//') ? parsed.pathname + parsed.search : undefined;
+    });
+    return paths[0] !== undefined && paths[0] === paths[1] ? paths[0] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A backslash (read as `/`), a space or a control character (the parser drops some of them). */
+function unsafeCharacter(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return character === '\\' || code <= 0x20 || code === 0x7f;
+}

@@ -34,6 +34,11 @@ export function TheDashboard() {
       {/* Type '"dashbaord.sign-ins"' is not assignable to type '"'dashbaord.sign-ins' is not a route name"'. */}
       {/* @ts-expect-error */}
       <Island route="dashbaord.sign-ins" />
+      {/* A URL the server built: the route is not checked, the server answers 404 for a page. */}
+      <Island href="/dashboard/islands/members" unauthorized={<p>Administrators only.</p>} />
+      {/* An href and a route name together: Type 'string' is not assignable to type 'undefined'. */}
+      {/* @ts-expect-error */}
+      <Island href="/dashboard/islands/members" route="dashboard.members" />
     </>
   );
 }

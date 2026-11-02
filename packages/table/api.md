@@ -356,7 +356,7 @@ export interface TablePagination {
 export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S, infer AI, infer BI, infer FK, infer AR, infer BR> ? TableData<Row, C, F, A, B, E, S, AI, BI, FK, AR, BR> : never;
 // TableQuery
 export type TableQuery = {
-    bivariance(db: never, ctx: any): SelectQuery<any, any, any>;
+    bivariance(db: never, ctx: any, resolve: ClassResolver): SelectQuery<any, any, any>;
 }['bivariance'];
 // TableQueryError
 export declare class TableQueryError extends HttpError {
@@ -397,7 +397,7 @@ export declare function column<const R extends string>(ref: R): ColumnDefinition
 // defineTable
 export declare function defineTable<const Cols extends Record<string, AnyColumn>, const K extends string, const Filters extends Record<string, AnyFilter> = {}, const Sort extends string = never, Actions extends Record<string, AnyRowAction> = {}, Bulk extends Record<string, AnyBulkAction> = {}, Exports extends Record<string, TableExport> = {}, const P extends string = '', const Pg extends TablePagination = {}, D extends {
     readonly selectFrom: (...args: never) => unknown;
-} = Database, C extends TableContext = TableContext, R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>>(input: TableInput<(db: D, ctx: C) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
+} = Database, C extends TableContext = TableContext, R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>>(input: TableInput<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 // exportCsv
 export declare function exportCsv(): TableExport;
 // filter
@@ -437,7 +437,7 @@ export type CheckKeyColumn<DB, TB extends keyof DB, K extends string, O = {}> = 
 // ColumnProblem
 type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends ColumnReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
 // CtxOf
-type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
+type CtxOf<Q> = Q extends (db: any, ctx: infer C, resolve: ClassResolver) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 // DateRangeFilter
 interface DateRangeFilter<N extends string = string> {
     readonly name: N;

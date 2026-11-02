@@ -543,7 +543,7 @@ export interface TableDefinition {
   readonly name: string;
   readonly prefix: string | undefined;
   readonly authorize: ((ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
-  readonly query: (db: any, ctx: any) => SelectQuery<any, any, any>;
+  readonly query: (db: any, ctx: any, resolve: ClassResolver) => SelectQuery<any, any, any>;
   readonly key: string;
   /** How keys from the browser are parsed (`integer` for a key given by name). */
   readonly keyType: KeyType;
@@ -851,13 +851,13 @@ export type TableContext<TState extends object = {}, TParams extends object = {}
  * parameters instead — `ctx` as `TableContext<Authenticated>`, `db` as `Database<'module'>` to keep it inside its module; unannotated,
  * `db` sees every table. See `docs/tables.md#the-base-query`.
  */
-export type TableQuery = { bivariance(db: never, ctx: any): SelectQuery<any, any, any> }['bivariance'];
+export type TableQuery = { bivariance(db: never, ctx: any, resolve: ClassResolver): SelectQuery<any, any, any> }['bivariance'];
 
 /** The tables of a base query's result, its tables in scope, and the context it needs. */
 type DbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, any, any> ? DB : never;
 type TbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
 type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
-type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
+type CtxOf<Q> = Q extends (db: any, ctx: infer C, resolve: ClassResolver) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 
 /** The input of {@link defineTable}. */
 export interface TableInput<Q extends TableQuery, Cols, K extends string, Filters, Sort extends string, Actions, Bulk, Exports, P extends string = string, Pg extends TablePagination = TablePagination> {
@@ -954,9 +954,9 @@ export function defineTable<
   D extends { readonly selectFrom: (...args: never) => unknown } = Database,
   C extends TableContext = TableContext,
   R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>,
->(input: TableInput<(db: D, ctx: C) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg> {
+>(input: TableInput<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg> {
   const definition = normalize(input as unknown as RawInput);
-  return { definition, query: querySchema(definition), endpoints: (options?: TableEndpointsOptions) => tableAttachment(definition, options) } as unknown as TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
+  return { definition, query: querySchema(definition), endpoints: (options?: TableEndpointsOptions) => tableAttachment(definition, options) } as unknown as TableOf<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 }
 
 interface RawInput {

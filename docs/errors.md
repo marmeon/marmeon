@@ -566,6 +566,7 @@ included, gets the code alone.
 | R18 | `useTable` | A table changed while rendering on the server. |
 | R19 | layouts | A layout's `error` that is no component. |
 | R20 | `<Image priority>` | A warning in development: `priority` in an island cannot preload, because an island cannot reach the document head. |
+| R21 | `<Island href>` | An `href` that is no path of this site: another origin, `//host`, a scheme, a backslash or a control character. In production the island shows its error and sends no request. |
 
 Texts a user sees are never codes: the error pages, the questions before leaving a page. Neither are refusals a production log
 needs to read, such as a request that would go to another site.

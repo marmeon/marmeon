@@ -498,7 +498,7 @@ export class DataTables {
       const metadata = this.#metadata?.();
       if (!metadata) throw new Error(`Table "${definition.name}": filter.has() needs the schema's metadata, which this DataTables was built without.`);
       if (!metadata.fresh) await sql`select 1`.execute(this.#db);
-      const node = (definition.query(this.#db, ctx) as unknown as { toOperationNode(): any }).toOperationNode();
+      const node = (definition.query(this.#db, ctx, this.#resolve) as unknown as { toOperationNode(): any }).toOperationNode();
       const tables = [...(node.from?.froms ?? []), ...(node.joins ?? []).map((join: any) => join.table)].flatMap((item: any): string[] => {
         const table = item?.table ?? item?.node?.table;
         return typeof table?.identifier?.name === 'string' ? [table.identifier.name] : [];
@@ -533,7 +533,7 @@ export class DataTables {
 
   /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column). */
   #base(definition: TableDefinition, ctx: HttpContext, view: View): SelectQuery<any, any, any> {
-    const query = definition.query(this.#db, ctx);
+    const query = definition.query(this.#db, ctx, this.#resolve);
     const { selected, secret } = selectionsOf(query);
     const asked = Object.entries(definition.columns).find(([, col]) => secret.has(col.ref));
     if (asked) {

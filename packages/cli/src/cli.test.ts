@@ -201,7 +201,7 @@ describe('marmeon (in the web app)', () => {
   it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {
     const fresh = marmeon(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
     expect(fresh.code).toBe(0);
-    expect(fresh.stdout).toMatch(/✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\n✓ Seeded DemoLinksSeeder \(user-profile\) [\d.]+ ms\n$/);
+    expect(fresh.stdout).toMatch(/✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\nℹ Made 2 profile links for ada@example.com\.\n✓ Seeded DemoLinksSeeder \(user-profile\) [\d.]+ ms\n$/);
     const unknown = marmeon(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toBe('✗ [marmeon:D13] There is no seeder "Nope".\n');
