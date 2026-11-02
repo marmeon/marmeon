@@ -518,6 +518,9 @@ third parties to write features would need a deliberately narrow host, and it co
 entry. `@marmeon/http/client` keeps what an app uses (the `hooks` and `tabSync` handles for `useFeature()`,
 `xsrfToken`, the types an adapter re-exports).
 
+An adapter that keeps a form's errors builds the record with `errorRecord(entries)`: an object without a prototype, so a field named
+`constructor` or `__proto__` is a key and not an inherited member. `firstErrors(page)` returns one.
+
 Browser code of a package imports the core only from these two entries, and never from `@marmeon/http/internal`: that one is server
 code. The contract of an adapter, what it has to provide and the test that proves it, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#the-client-core-and-its-adapters).

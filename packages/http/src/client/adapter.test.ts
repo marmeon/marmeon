@@ -682,6 +682,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(visitUrlOf(click, '/users/2', '_blank', location)).toBeUndefined();
     expect(visitUrlOf(click, 'https://example.com/', undefined, location)).toBeUndefined();
     expect(visitUrlOf({ ...click, defaultPrevented: true }, '/users/2', undefined, location)).toBeUndefined();
+    expect(Object.keys(firstErrors(page('users/Edit', '/users/1/edit', { errors: JSON.parse('{"__proto__":["Bad."],"toString":["Bad."]}') })))).toEqual(['__proto__', 'toString']);
     expect(firstErrors(page('users/Edit', '/users/1/edit', { errors: { name: ['Too short.', 'Taken.'], bio: 'Too long.' } }))).toEqual({ name: 'Too short.', bio: 'Too long.' });
   });
 

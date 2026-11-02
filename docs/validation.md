@@ -63,7 +63,8 @@ A body that fails answers in one of two ways:
 { "message": "The title field is required. (and 1 more error)", "errors": { "title": ["The title field is required."], "link": ["The link field must be a valid URL."] } }
 ```
 
-A nested field carries its full path: `address.city`, `links.0.url`.
+A nested field carries its full path: `address.city`, `links.0.url`. `ValidationError.errors` is an object without a prototype, so a
+field named `toString` or `constructor` is an ordinary key: read one with `Object.hasOwn(error.errors, field)`.
 
 The same rules serve every other place that takes a schema: `query` of a request, `static schema` of a job, and `parseQuery()` by
 hand. The rules are server code. A view imports the request's types, never a rule, so no code of

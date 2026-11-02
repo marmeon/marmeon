@@ -157,7 +157,7 @@ A missing record that a user can run into is an expected answer, not a failure: 
 | `submissions` | This component's calls under way, oldest first. |
 | `result` | How the last finished call ended. |
 | `data` | The data of the last call that answered with data. |
-| `errors`, `hasErrors`, `clearErrors(...fields)` | The validation errors of the last call. |
+| `errors`, `hasErrors`, `clearErrors(...fields)` | The validation errors of the last call. `errors` has no prototype: ask `Object.hasOwn(errors, field)`. |
 | `exception` | Why the last call failed, until the next one. |
 | `cancel()` | Aborts this component's calls under way and rolls back their patches. |
 

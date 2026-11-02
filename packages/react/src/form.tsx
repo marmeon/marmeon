@@ -1,4 +1,4 @@
-import { defaultFormEntries, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, linkQuery, liveValidationOnFirstUse, restoreFormEntries, sameEntries, sensitiveControl, type FormLiveValidation } from '@marmeon/http/client/adapter';
+import { defaultFormEntries, errorRecord, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, linkQuery, liveValidationOnFirstUse, restoreFormEntries, sameEntries, sensitiveControl, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { isSensitiveRememberField, resolveRoute, type Confirm, type LooksLikePassword, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
 import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, RouteQueryOf, Routes } from '@marmeon/http/page';
 import {
@@ -199,7 +199,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     if (!form || !remember || !store?.has(rememberKey)) return;
     const kept = store.get(rememberKey) as KeptEntries;
     restoreFormEntries(form, kept.entries, kept.names);
-    setErrors(kept.errors);
+    setErrors(errorRecord(Object.entries(kept.errors)));
     measure();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the form mounts in its entry: `remember` and `measure` are read then, not followed
   }, [store, rememberKey]);
@@ -318,20 +318,20 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     wasSuccessful,
     recentlySuccessful,
     isDirty: (name?: string) => (name === undefined ? dirty : dirtyNames.includes(name)),
-    field: (name: string) => ({ name, ...(errors[fieldPath(name)] !== undefined ? { 'aria-invalid': true as const } : {}) }),
-    error: (name: string) => errors[fieldPath(name)],
+    field: (name: string) => ({ name, ...(Object.hasOwn(errors, fieldPath(name)) ? { 'aria-invalid': true as const } : {}) }),
+    error: (name: string) => (Object.hasOwn(errors, fieldPath(name)) ? errors[fieldPath(name)] : undefined),
     validating: (name?: string) => (live ? live.pending.some((path) => name === undefined || path === fieldPath(name) || path.startsWith(`${fieldPath(name)}.`)) : false),
     submit: () => void send(),
     reset: () => {
       element.current?.reset();
       baseline.current = undefined;
-      setErrors({});
+      setErrors(errorRecord());
       live?.reset();
       queueMicrotask(measure);
     },
     clearErrors: (...names: string[]) => {
       const paths = names.map(fieldPath);
-      setErrors((current) => (paths.length === 0 ? {} : Object.fromEntries(Object.entries(current).filter(([path]) => !paths.includes(path)))));
+      setErrors((current) => errorRecord(paths.length === 0 ? [] : Object.entries(current).filter(([path]) => !paths.includes(path))));
     },
   } as unknown as FormRenderState<Record<string, unknown>>;
 
@@ -404,15 +404,15 @@ function useFormLiveValidation(
     return liveValidationOnFirstUse(navigator, url, {
       method,
       data: () => (element.current ? formObject(formEntries(element.current)) : {}),
-      hasError: (field) => errorsRef.current[field] !== undefined,
+      hasError: (field) => Object.hasOwn(errorsRef.current, field),
       on: config.on ?? 'blur',
       ...(config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs }),
       ...(config.fields ? { fields: config.fields.map(fieldPath) } : {}),
       onResult: (outcome) =>
         setErrors((current) => {
-          const next = Object.fromEntries(Object.entries(current).filter(([field]) => !outcome.fields.some((name) => field === name || field.startsWith(`${name}.`))));
-          if (outcome.kind === 'invalid') for (const [field, messages] of Object.entries(outcome.errors)) if (typeof messages[0] === 'string') next[field] = messages[0];
-          return next;
+          const kept = Object.entries(current).filter(([field]) => !outcome.fields.some((name) => field === name || field.startsWith(`${name}.`)));
+          const added = outcome.kind === 'invalid' ? Object.entries(outcome.errors).flatMap(([field, messages]) => (typeof messages[0] === 'string' ? [[field, messages[0]] as const] : [])) : [];
+          return errorRecord([...kept, ...added]);
         }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `config` is a new object each render: the memo follows its URL, method, trigger, debounce and field list
