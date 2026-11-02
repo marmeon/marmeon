@@ -2,7 +2,8 @@ import type { PageObject } from '../protocol.ts';
 
 /**
  * A form's errors by field, without a prototype: a field named `toString` or `constructor` reads as no error, and `__proto__` is
- * a key, not the prototype. What `form.errors` and `action.errors` hand to an app.
+ * a key, not the prototype. What `form.errors` and `action.errors` hand to an app; adapters build theirs the same way, see
+ * docs/package-development.md#writing-a-ui-adapter.
  */
 export function errorRecord(entries: Iterable<readonly [string, string | undefined]> = []): Record<string, string> {
   return Object.assign(Object.create(null) as Record<string, string>, Object.fromEntries([...entries].filter((entry): entry is [string, string] => entry[1] !== undefined)));

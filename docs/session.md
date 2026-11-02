@@ -76,7 +76,8 @@ returns the flashed input. The failed form, `redirect().withInput(input)` and `s
 field whose name looks like a secret (a password, a token, a card number, a one-time code, an API key; the same names that keep
 them out of [remembered input](forms.md#remembering-input)), the `_token` and every file, also inside nested objects and lists,
 and every field whose name your app added with `redact.keys` (or a package with `addKeys()`), matched exactly at any depth,
-ignoring case. So a password never reaches the session store through flashed input.
+ignoring case. So a password never reaches the session store through flashed input. A field named `__proto__` is left out at any
+depth, whatever way the input is flashed, and `old(key)` reads own keys only: `old('constructor')` is `undefined` unless the form sent one.
 A failed form keeps at most 64 KiB of input (as JSON) in the session, and the same for its errors: it refills forms, it does not
 keep documents. Input over the cap is not flashed at all, and a single string that alone cannot fit is left out, so a form shows its
 default, never a cut-off value. Errors over the cap shrink to the first message of every field, then to the first fields in order.

@@ -20,13 +20,13 @@ export interface SessionData {
 
 type Value<K extends string> = K extends keyof SessionData ? SessionData[K] : unknown;
 
-/** `value` without any field, at any depth, whose name `redactor` was given (exact, case-insensitive); arrays are walked. */
-function withoutAddedKeys(given: unknown, redactor: Redactor): unknown {
+/** `value` without any field, at any depth, named `__proto__` or whose name `redactor` was given (exact, case-insensitive); arrays are walked. */
+function withoutAddedKeys(given: unknown, redactor: Redactor | undefined): unknown {
   // Like the JSON the store writes: a `Date` is its string, not an object without entries.
   const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;
   if (Array.isArray(value)) return value.map((item) => withoutAddedKeys(item, redactor));
   if (typeof value !== 'object' || value === null) return value;
-  return Object.fromEntries(Object.entries(value).filter(([name]) => !redactor.isAddedKey(name)).map(([name, item]) => [name, withoutAddedKeys(item, redactor)]));
+  return Object.fromEntries(Object.entries(value).filter(([name]) => name !== '__proto__' && !redactor?.isAddedKey(name)).map(([name, item]) => [name, withoutAddedKeys(item, redactor)]));
 }
 
 const FLASH = '_flash';
@@ -228,10 +228,10 @@ export class Session {
   flashData<K extends string>(key: K, value: Value<K>): void {
     const data = this.#ensureStarted();
     if (!this.#may(`session.flashData('${key}')`)) return;
-    // Here, where every way of flashing input arrives: a field whose name the app (or a package) added to the redactor never
+    // Here, where every way of flashing input arrives: a `__proto__` field never stays, and a field whose name the app (or a package) added to the redactor never
     // reaches the store, `old()` or the next page's props. The core's own list is for the browser's and the log's sake, not this.
     const redactor = this.#redactor;
-    data[key] = key === OLD_INPUT && redactor?.hasAddedKeys ? withoutAddedKeys(value, redactor) : value;
+    data[key] = key === OLD_INPUT ? withoutAddedKeys(value, redactor?.hasAddedKeys ? redactor : undefined) : value;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, key])];
     flash.old = flash.old.filter((old) => old !== key);

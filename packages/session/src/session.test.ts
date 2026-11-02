@@ -128,6 +128,9 @@ describe('Session', () => {
       expect(session.old('name')).toBe('Ada');
       expect(session.old()).toEqual({ name: 'Ada', email: 'x' });
       expect([session.old('toString'), session.old('constructor'), session.old('__proto__')]).toEqual([undefined, undefined, undefined]);
+      session.flashData('_old_input', JSON.parse('{"__proto__":"x","a":{"__proto__":"y","b":1},"list":[{"__proto__":"z"}]}'));
+      expect(session.old('__proto__')).toBeUndefined();
+      expect(JSON.stringify(session.old())).toBe('{"a":{"b":1},"list":[{}]}');
       session.keep('a');
     });
     await request(store, id, (session) => {

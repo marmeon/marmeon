@@ -107,6 +107,14 @@ describe('request validation (REPR)', () => {
     expect(error.errors['constructor']).toEqual(['Too short.']);
   });
 
+  it('gives errors from the constructor the same prototype-free map', () => {
+    const error = new ValidationError({ title: ['Invalid'] });
+    expect(error.errors['constructor']).toBeUndefined();
+    expect(Object.getPrototypeOf(error.errors)).toBeNull();
+    expect(error.errors).toEqual({ title: ['Invalid'] });
+    expect(new ValidationError(JSON.parse('{"__proto__":["x"]}')).errors['__proto__']).toEqual(['x']);
+  });
+
   it('keys errors by field names that are Object members', () => {
     const issues = ['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__'].map((key) => ({ message: `Bad ${key}.`, path: [key] }));
     const error = ValidationError.fromIssues([...issues, { message: 'Again.', path: ['toString'] }], {});

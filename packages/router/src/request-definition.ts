@@ -327,6 +327,7 @@ function addError(errors: ValidationErrors, field: string, message: string): voi
  */
 export class ValidationError extends HttpError {
   override name = 'ValidationError';
+  /** The messages by field, in an object without a prototype: read a field with `Object.hasOwn`. */
   readonly errors: ValidationErrors;
   /** The input that failed, for `old()`. */
   readonly input: Record<string, unknown>;
@@ -340,7 +341,7 @@ export class ValidationError extends HttpError {
     const messages = Object.values(errors).flat();
     const more = messages.length - 1;
     super(422, more > 0 ? `${messages[0]} (and ${more} more error${more === 1 ? '' : 's'})` : (messages[0] ?? 'The given data was invalid.'));
-    this.errors = errors;
+    this.errors = Object.getPrototypeOf(errors) === null ? errors : Object.assign(errorMap(), errors);
     this.input = input;
     this.issues = issues;
     this.labels = labels;
