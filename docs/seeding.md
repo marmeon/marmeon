@@ -77,6 +77,10 @@ A column's value can be a function of the row. It runs after the definition, the
 is worked out, so it sees what the call sets, and a column the call names replaces the function, which then does not run:
 
 ```ts title="modules/events/factories/ResourceFactory.ts"
+import { defineFactory } from '@marmeon/database';
+import { EventFactory } from './EventFactory.ts';
+import { ResourceGroupFactory } from './ResourceGroupFactory.ts';
+
 export const ResourceFactory = defineFactory('resources', ({ sequence, factory }) => ({
   event_id: factory(EventFactory),
   resource_group_id: (row) => factory(ResourceGroupFactory).state({ event_id: row.event_id }),
@@ -94,7 +98,8 @@ event, and the group lies in the one you name. `count(3)` gives each row an even
   the derived columns before it. Reading one that comes later, or itself, throws an error that names both columns. It throws before
   the row is inserted, but the related rows of the plain columns (`event_id: factory(EventFactory)`) may exist by then.
 - **A secret column** may be set by a factory, but is not in `row`: the type refuses a read, so a derived value cannot copy it into a
-  column that is not secret. `create()` also throws, naming the derived and the secret column, when a function reads one anyway;
+  column that is not secret. `create()` also throws, naming the derived and the secret column, when a function reads one anyway,
+  and refuses a derived column on a connection that does not know the schema, such as an infrastructure connection;
   `make()` checks the type only.
 - A derived column returns a value or a factory, never a function or a promise: it is synchronous. A state may hold a derived column too.
 

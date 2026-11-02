@@ -204,6 +204,12 @@ describe.each(drivers)('factories and seeders on %s', (driver) => {
       expect(await db().selectFrom('api_keys').select('id').execute()).toEqual([]);
     });
 
+    it('refuses a derived column on a connection that does not know the schema', async () => {
+      const Leaky = define('api_keys', ({ factory }) => ({ user_id: factory(UserFactory), token: 'secret-token', name: (row) => String((row as never as { token: string }).token) }));
+      await expect(factories.for(Leaky).using(connections.infrastructure() as never).create()).rejects.toThrow('Factory for "api_keys": derived columns need a connection that knows the schema');
+      expect(await db().selectFrom('api_keys').select('id').execute()).toEqual([]);
+    });
+
     it('lets a factory set a secret column, and a derived value never receives it', async () => {
       const key = await factories.for(ApiKeyFactory).create();
       expect(key).not.toHaveProperty('token');

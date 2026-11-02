@@ -164,6 +164,10 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
         if (typeof value === 'function') derived.push([column, value as never]);
         else values[column] = await settle(value);
       }
+      if (derived.length > 0 && !metadata) {
+        // Without the schema a secret column cannot be told from another one, so a derived column could copy it.
+        throw new Error(`Factory for "${this.#definition.table}": derived columns need a connection that knows the schema, and this one does not (an infrastructure connection, or one built without Marmeon's plugins). Use the app's connection.`);
+      }
       // Derived columns last, in the definition's order: each sees the related rows' ids and the derived columns before it.
       const waiting = new Set(derived.map(([column]) => column));
       for (const [column, derive] of derived) {

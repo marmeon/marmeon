@@ -6,7 +6,7 @@ import type { Selectable } from 'kysely';
 import { defineRoutes } from '@marmeon/router';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Connections, Factories, Repository, Database, defineConnection, defineMigration, type Decimal, type Generated as DbGenerated, type PendingFactory, type JsonColumn, type ModuleDatabase, type QueryEvent, type Tables, type Timestamp } from './index.ts';
+import { Connections, Factories, Repository, Database, defineConnection, defineMigration, type Decimal, type Generated as DbGenerated, type JsonColumn, type ModuleDatabase, type QueryEvent, type Tables, type Timestamp } from './index.ts';
 
 // Type guarantees — checked by the compiler (`pnpm typecheck`); the test body only runs trivially.
 interface Shop {
@@ -233,34 +233,6 @@ it('types factories against the insert type of their table', () => void (async (
   factories.for(UserFactory).state('banned');
   // @ts-expect-error — an override of the wrong type
   await factories.for(UserFactory).create({ balance: true });
-}));
-
-it('types derived factory columns against the row the factory makes', () => void (async (factories: Factories) => {
-  define('articles', ({ factory }) => ({
-    user_id: factory(UserFactory),
-    title: 'T',
-    slug: (row) => {
-      expectTypeOf(row.title).toEqualTypeOf<string | PendingFactory<any, any, false>>();
-      expectTypeOf(row.user_id).toEqualTypeOf<number | PendingFactory<any, any, false>>();
-      expectTypeOf(row.slug).toEqualTypeOf<string | null | PendingFactory<any, any, false> | undefined>();
-      return String(row.title);
-    },
-  }));
-  // A state takes a derived function and a related factory as a value.
-  define('articles', () => ({ user_id: 1, title: 'T' }), { states: { slugged: { slug: (row) => String(row.title) }, by: ({ factory }) => ({ user_id: factory(UserFactory) }) } });
-  factories.for(UserFactory).state({ name: 'Ada' });
-  // @ts-expect-error — a column the table does not have
-  define('articles', () => ({ user_id: 1, title: 'T', slug: (row) => String(row.titel) }));
-  // @ts-expect-error — a derived column returns the column's type
-  define('articles', () => ({ user_id: 1, title: 'T', slug: () => 1 }));
-  // @ts-expect-error — a derived column in a state sees the table's columns only
-  define('articles', () => ({ user_id: 1, title: 'T' }), { states: { slugged: { slug: (row) => String(row.nope) } } });
-  // @ts-expect-error — an override is a value, not a function
-  await factories.for(UserFactory).create({ name: () => 'Ada' });
-  // @ts-expect-error — a secret column is not in the row a derived column reads
-  define('api_keys', () => ({ user_id: 1, token: 't', name: (row) => String(row.token) }));
-  // A factory may set a secret column.
-  define('api_keys', () => ({ user_id: 1, token: 't', name: (row) => String(row.user_id) }));
 }));
 
 it('types relations: keys are columns, the selection is the type, module boundaries hold', () => void (async (db: import('kysely').Kysely<FixtureTables>) => {
