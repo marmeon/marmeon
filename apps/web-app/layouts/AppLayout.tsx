@@ -76,8 +76,8 @@ export function AppLayout({ children }: LayoutProps) {
                   <Link route="user-profile.me">{t('profile')}</Link>
                 </li>
                 <li>
-                  {/* Current on every settings page — the security page and the tokens (a section, `activeMatch`). */}
-                  <Link route="auth.security" activeMatch={['auth.security', 'auth.tokens', 'auth.tokens.create']}>
+                  {/* Current on every settings page — security, the second factor, passkeys and the tokens (sections, `activeMatch`). */}
+                  <Link route="auth.security" activeMatch={['auth.security', 'auth.two-factor', 'auth.two-factor.*', 'auth.passkeys', 'auth.tokens', 'auth.tokens.create']}>
                     {t('settings')}
                   </Link>
                 </li>
