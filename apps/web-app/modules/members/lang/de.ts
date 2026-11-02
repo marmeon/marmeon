@@ -29,6 +29,7 @@ export default {
     email: 'E-Mail',
     joined: 'Beigetreten',
     links: 'Links',
+    locale: 'Sprache',
   },
   actions: 'Aktionen',
   remove_links: 'Links entfernen',

@@ -131,6 +131,7 @@ says `created_at`.
 | `.searchable()` | The search looks into it while the user can see it: case-insensitive, with `LIKE`'s wildcards taken literally. |
 | `.label(text)` | Its heading in the props and in the CSV. Without it, the props carry `label: null`, the page labels the column through `useTable()`'s `labels`, and the CSV heading is the alias. |
 | `.label((t) => t('members.column.name'))` | The heading in the request's language: the function runs once per request with `t(key, params?)` of the request's translator (`@marmeon/i18n`), and `t` gives the key itself where none is bound. The props and the CSV carry the same text. |
+| `.exportOnly()` | A column for the files only, see [Exports](#exports): not in the props, the rows or the row's type, and neither sortable nor searchable. |
 | `.visible(Policy, 'ability')` | Only users the policy allows see it. Asked once per request, without a row. |
 | `.visible((ctx, resolve) => …)` | The same with a function of your own. It must return exactly `true`; anything else hides the column. |
 | `.visible(can(Policy, 'ability', 'param'))` | The same with an ability that takes a resource of the path, such as the tenant the route binds: see [A capability of the path](#a-capability-of-the-path). A 403 or 404 of the check means hidden. |
@@ -641,34 +642,36 @@ A handler that answers for itself is typed as what the browser gets: for `json({
 
 ## Exports
 
-`exportCsv()` downloads the visible columns, filtered and sorted as the URL says:
+`exportCsv()` downloads the visible columns (or the ones you choose), filtered and sorted as the URL says:
 
 - **Its own `authorize`.** Without one, whoever sees the table may download what they see. For an ability that needs a resource
   of the path, such as the tenant, use `can(Policy, 'ability', 'param')`, see [A capability of the path](#a-capability-of-the-path).
-- **The columns of the file.** Page and file use the same column definitions; the file has the columns that are visible for its
-  request, and a heading for every one. Columns that mean nothing in a file, such as a helper column of the page, and columns
-  only a file wants have no switch of their own. What tells
-  the page from the file is the route: an export is served by `/_tables/<name>/export/:tableExport`, so `ctx.params.tableExport` is
-  the name of the export in the file's request and `undefined` on the page. `.visible()` runs for the export request, with that
-  parameter, as it does for the page:
+- **The columns of the file.** By default the file has the columns of the page that are visible for its request, then the
+  columns marked `.exportOnly()`, and a heading for every one. `.exportOnly()` is for a column the page does not want: it is not
+  in the props, the rows or the row's type, and it is neither `.sortable()` nor `.searchable()` (a compile error, and a `TypeError`
+  when the table is defined). `.label()` and `.visible()` work as for any column. `exportCsv().columns([…])` chooses the file's
+  columns and their order from the table's `columns`, the page's and the export-only ones; a column it leaves out stays on the page
+  only:
 
   ```ts
-  const onThePage = (ctx: { params: { tableExport?: string } }) => ctx.params.tableExport === undefined;
-  const inTheFile = (ctx: { params: { tableExport?: string } }) => ctx.params.tableExport !== undefined;
-
   columns: {
     name: column('users.name').sortable(),
-    links: column('links').visible(onThePage),
-    locale: column('users.locale').visible(inTheFile),
+    email: column('users.email').visible(MemberPolicy, 'viewEmails').sortable(),
+    links: column('links'),
+    host: column('hosts.email').label('Host').exportOnly(),
   },
+  export: { csv: exportCsv().columns(['name', 'email', 'host']) },
   ```
 
-  These checks decide the layout, not who may see what. A column that needs a permission combines its check with the policy in
-  its one `.visible()` check.
-
-  A column made conditional by `.visible()` is optional in the row's type. A sort by a column that only the page shows is a 400
-  for the export, and so is the export link of a page sorted by it: leave such a column out of `.sortable()`, or show it in the
-  file too. A file whose columns depend on the request, not on the route, is a [file of your own](#a-csv-file-of-your-own).
+  `.exportOnly()` decides the layout, not who may read the column: whoever may download the file gets it, so guard a sensitive one
+  with `.visible()` or the export's `authorize`. The names are yours: the request cannot add a column or change the list. A name
+  that is no column of the table is a compile error, and a `TypeError` when the table is defined. An empty list or a name twice
+  type-checks and is a `TypeError` when `columns()` runs. Visibility still decides: a column the user may not see
+  (`.visible()`) is missing from a file that names it, in the heading and in every row, and it is not selected. The sort of the
+  request works on the page's columns whether or not the file holds the sort column; that column is read for the order and not
+  written. A filter on a file-only column is hidden with it from whoever may not see the column, as for any column.
+  An export whose named columns are all hidden from the user is refused (a 403, before the count and the record) and is
+  left out of the props and of `tables.exports()`. A file whose columns depend on the request, not on the table, is a [file of your own](#a-csv-file-of-your-own).
 - **A record.** `exportCsv().onExport(Recorder)` runs `handle(info, ctx)` of the class once the export is authorized, its URL checked
   and its rows counted within the limit, and before the first byte. `info` holds the `table`, the `export`, the number of `rows`
   that matched when the export started, its `columns` and the `state` (`sort`, `search`, `filters`); `ctx` is the request's, with

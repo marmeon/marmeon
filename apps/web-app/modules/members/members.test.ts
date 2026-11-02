@@ -210,11 +210,24 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     response.assertHeader('cache-control', 'no-store');
     expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="members-(\d{4}-\d{2}-\d{2})\.csv"; filename\*=UTF-8''members-\1\.csv$/);
     const lines = response.body.replace(/^﻿/, '').split('\r\n');
-    expect(lines[0]).toBe('"Name","E-mail","Joined","Links"');
+    expect(lines[0]).toBe('"Name","E-mail","Joined","Language"');
     expect(lines[1], 'a formula reached the CSV').toMatch(/^"'=HYPERLINK\(""https:\/\/evil\.example"",""Grace""\)","grace@example\.com",/);
     expect(lines).toHaveLength(5);
     await app.actingAs(alan).get('/members/_tables/members/export/csv').assertForbidden();
     expect((await members(alan)).exports).toEqual([]);
+  });
+
+  it('chooses the file\'s columns: the language is for the file only, the links count for the page only — and a sort by the page\'s column still works', async () => {
+    await app.make(UserRepository).update(grace.id, { locale: 'de' });
+    const props = await members(ada);
+    expect(props.columns.map((column) => column.name), 'a file-only column reached the page').toEqual(['name', 'email', 'joined', 'links']);
+    expect(JSON.stringify(props.rows), 'a file-only column reached the rows').not.toContain('locale');
+    const response = await app.actingAs(ada).get('/members/_tables/members/export/csv?sort=-links').assertOk();
+    const lines = response.body.replace(/^﻿/, '').split('\r\n').filter(Boolean);
+    expect(lines[0]).toBe('"Name","E-mail","Joined","Language"');
+    // Ada has two links, Alan and Grace one each (the key breaks the tie, descending): the order follows the links, which the file does not hold.
+    expect(lines.slice(1).map((line) => line.slice(1, line.indexOf('"', 1)))).toEqual([ada.name, grace.name, alan.name]);
+    expect(lines.find((line) => line.includes('grace@')), 'the language of a member is missing from the file').toMatch(/,"de"$/);
   });
 
   it("names the file after the request's language and the day of the app clock", async () => {
@@ -239,10 +252,10 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     await app.make(UserRepository).update(grace.id, { name: 'Grace; Hopper, "RADM"' });
     const german = await app.actingAs(ada).withHeaders({ 'accept-language': 'de' }).get('/members/_tables/members/export/csv?sort=name').assertOk();
     const lines = german.body.replace(/^﻿/, '').split('\r\n');
-    expect(lines[0]).toBe('"Name";"E-Mail";"Beigetreten";"Links"');
+    expect(lines[0]).toBe('"Name";"E-Mail";"Beigetreten";"Sprache"');
     expect(lines.find((line) => line.includes('Hopper')), 'a separator or quote in a cell broke the quoting').toMatch(/^"Grace; Hopper, ""RADM""";"grace@example\.com";/);
     const english = await app.actingAs(ada).withHeaders({ 'accept-language': 'en' }).get('/members/_tables/members/export/csv?sort=name').assertOk();
-    expect(english.body.replace(/^﻿/, '').split('\r\n')[0]).toBe('"Name","E-mail","Joined","Links"');
+    expect(english.body.replace(/^﻿/, '').split('\r\n')[0]).toBe('"Name","E-mail","Joined","Language"');
     const props = (await app.actingAs(ada).withHeaders({ 'accept-language': 'de' }).navigating().get('/members').assertOk()).page()!.props.members as Members;
     expect(props.columns.map((column) => column.label)).toEqual(['Name', 'E-Mail', 'Beigetreten', 'Links']);
   });
@@ -297,7 +310,7 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
         table: 'members',
         export: 'csv',
         rows: 1,
-        columns: ['name', 'email', 'joined', 'links'],
+        columns: ['name', 'email', 'joined', 'locale'],
         state: { sort: { column: 'joined', direction: 'desc' }, search: 'grace', filters: {} },
       },
       // The second page's registration records too.

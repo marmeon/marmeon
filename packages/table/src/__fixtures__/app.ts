@@ -379,6 +379,44 @@ export class HiddenSortPage extends Controller {
   }
 }
 
+/** Columns of the page, columns only the files have (one of them only for admins), and exports that choose their columns. */
+export const FileColumnsTable = defineTable({
+  name: 'file-columns',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: {
+    name: column('members.name').sortable(),
+    email: column('members.email').visible(MemberPolicy, 'viewEmails'),
+    active: column('members.active').label('Active').exportOnly(),
+    role: column('members.role').sortable(),
+    seen: column('members.last_seen_at').visible(MemberPolicy, 'viewEmails').exportOnly(),
+  },
+  // A filter on a file-only column: hidden from whoever may not see the column, as for any column.
+  filters: { seen: filter.dateRange('members.last_seen_at') },
+  defaultSort: 'name',
+  export: {
+    all: exportCsv().authorize(() => true),
+    chosen: exportCsv().authorize(() => true).columns(['active', 'name', 'email', 'seen']).onExport(RecordExport),
+    admins: exportCsv().authorize(() => true).columns(['email', 'seen']).onExport(RecordExport),
+  },
+});
+
+export const FileColumnsRequest = defineRequest({ query: FileColumnsTable.query });
+
+export class FileColumnsPage extends Controller {
+  static request = FileColumnsRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof FileColumnsRequest> & Authenticated & { team: number }) {
+    return this.json({ table: await this.#tables.resolve(FileColumnsTable, ctx), listed: await this.#tables.exports(FileColumnsTable, ctx) });
+  }
+}
+
 /** Exports of at most three rows — the limit refuses, it never cuts. */
 export const SmallExportTable = defineTable({
   name: 'small',
@@ -859,6 +897,7 @@ const PAGE_PATHS: Readonly<Record<string, string>> = {
   audited: '/audited',
   'by-email': '/by-email',
   localized: '/localized',
+  'file-columns': '/file-columns',
   guarded: '/guarded',
   active: '/active',
   input: '/input',
@@ -900,6 +939,7 @@ const routes = openRoutes((Route) => {
   team.get('/audited', StubPage).attach(AuditedTable.endpoints());
   team.get('/by-email', StubPage).attach(ByEmailTable.endpoints());
   team.get('/localized', LocalizedPage).attach(LocalizedTable.endpoints());
+  team.get('/file-columns', FileColumnsPage).attach(FileColumnsTable.endpoints());
   team.get('/hidden-sort', HiddenSortPage).attach(HiddenSortTable.endpoints());
   team.get('/guarded', GuardedPage).attach(GuardedTable.endpoints());
   team.get('/active', StubPage).attach(ActiveTable.endpoints());

@@ -12,7 +12,7 @@ Types from other packages: none
 // AnyBulkAction
 export type AnyBulkAction = BulkAction<BulkActionClass, any, string, any>;
 // AnyColumn
-export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
+export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean, boolean>;
 // AnyFilter
 export type AnyFilter = Filter<string, 'select' | 'dateRange' | 'has', string, string>;
 // AnyRowAction
@@ -60,17 +60,19 @@ export type CheckRowAbility<P, K extends string> = string extends K ? AbilityOf<
 // CheckSort
 export type CheckSort<Cols, S extends string> = string extends S ? SortableNames<Cols> | `-${SortableNames<Cols>}` : S extends SortableForEveryone<Cols> | `-${SortableForEveryone<Cols>}` ? S : S extends SortableNames<Cols> | `-${SortableNames<Cols>}` ? `'${S}' is a column with .visible() — whoever may not see it would get a 400; the default sort is a column everyone sees` : [SortableNames<Cols>] extends [never] ? `'${S}' is not a sortable column — mark one with .sortable()` : `'${S}' is not a sortable column — it sorts by ${JoinNames<SortableNames<Cols> | `-${SortableNames<Cols>}`>}`;
 // ColumnDefinition
-export declare class ColumnDefinition<R extends string = string, S extends boolean = boolean, Q extends boolean = boolean, V extends boolean = boolean> {
+export declare class ColumnDefinition<R extends string = string, S extends boolean = boolean, Q extends boolean = boolean, V extends boolean = boolean, E extends boolean = boolean> {
     #private;
     readonly '~sortable': S;
     readonly '~searchable': Q;
     readonly '~conditional': V;
+    readonly '~exportOnly': E;
     readonly ref: R;
-    sortable(): ColumnDefinition<R, true, Q, V>;
-    searchable(): ColumnDefinition<R, S, true, V>;
-    label(text: string | ((t: TableText) => string)): ColumnDefinition<R, S, Q, V>;
-    visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): ColumnDefinition<R, S, Q, true>;
-    visible(check: TableVisibilityCheck): ColumnDefinition<R, S, Q, true>;
+    sortable(this: ColumnDefinition<R, S, Q, V, false>): ColumnDefinition<R, true, Q, V, false>;
+    searchable(this: ColumnDefinition<R, S, Q, V, false>): ColumnDefinition<R, S, true, V, false>;
+    exportOnly(this: ColumnDefinition<R, false, false, V, E>): ColumnDefinition<R, false, false, V, true>;
+    label(text: string | ((t: TableText) => string)): ColumnDefinition<R, S, Q, V, E>;
+    visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): ColumnDefinition<R, S, Q, true, E>;
+    visible(check: TableVisibilityCheck): ColumnDefinition<R, S, Q, true, E>;
 }
 // ContextOfTable
 export type ContextOfTable<T> = T extends DataTable<any, infer Ctx> ? Ctx : never;
@@ -290,14 +292,16 @@ export interface TableEndpointsOptions {
     readonly action?: EndpointOptions;
 }
 // TableExport
-export declare class TableExport {
+export declare class TableExport<N extends string = never> {
     readonly format: 'csv';
-    max(rows: number): TableExport;
-    authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
-    authorize(check: TableVisibilityCheck): TableExport;
-    onExport(Recorder: ExportRecorderClass): TableExport;
-    delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport;
-    filename(choice: string | TableFilenameChoice): TableExport;
+    readonly '~columns': N;
+    max(rows: number): TableExport<N>;
+    authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport<N>;
+    authorize(check: TableVisibilityCheck): TableExport<N>;
+    onExport(Recorder: ExportRecorderClass): TableExport<N>;
+    delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport<N>;
+    filename(choice: string | TableFilenameChoice): TableExport<N>;
+    columns<const C extends string>(names: readonly C[]): TableExport<C>;
 }
 // TableExportEntry
 export interface TableExportEntry<E extends string = string> {
@@ -345,7 +349,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
     readonly pagination?: Pg;
     readonly actions?: Actions & NoInfer<CheckActions<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, Actions>>;
     readonly bulk?: Bulk & NoInfer<CheckBulk<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, Bulk>>;
-    readonly export?: Exports;
+    readonly export?: Exports & NoInfer<CheckExports<Cols, Exports>>;
 }
 // TablePagination
 export interface TablePagination {
@@ -393,9 +397,9 @@ export declare function action<H extends RowActionClass>(handler: H): RowAction<
 // bulk
 export declare function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unknown, never, never>;
 // column
-export declare function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false>;
+export declare function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false, false>;
 // defineTable
-export declare function defineTable<const Cols extends Record<string, AnyColumn>, const K extends string, const Filters extends Record<string, AnyFilter> = {}, const Sort extends string = never, Actions extends Record<string, AnyRowAction> = {}, Bulk extends Record<string, AnyBulkAction> = {}, Exports extends Record<string, TableExport> = {}, const P extends string = '', const Pg extends TablePagination = {}, D extends {
+export declare function defineTable<const Cols extends Record<string, AnyColumn>, const K extends string, const Filters extends Record<string, AnyFilter> = {}, const Sort extends string = never, Actions extends Record<string, AnyRowAction> = {}, Bulk extends Record<string, AnyBulkAction> = {}, Exports extends Record<string, AnyExport> = {}, const P extends string = '', const Pg extends TablePagination = {}, D extends {
     readonly selectFrom: (...args: never) => unknown;
 } = Database, C extends TableContext = TableContext, R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>>(input: TableInput<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C, resolve: ClassResolver) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 // exportCsv
@@ -431,6 +435,12 @@ type AnswersOf<Actions> = {
     [N in keyof Actions & string]: Actions[N] extends {
         readonly handler: infer H;
     } ? AnswerOf<H> : unknown;
+};
+// AnyExport
+export type AnyExport = TableExport<string>;
+// CheckExports
+export type CheckExports<Cols, Exports> = {
+    [N in keyof Exports]: Exports[N] extends TableExport<infer Named> ? [Exclude<Named, keyof Cols & string>] extends [never] ? unknown : Problem<`'${N & string}' names ${JoinNames<Exclude<Named, keyof Cols & string>>}, no column of the table — it has ${JoinNames<keyof Cols & string>}`> : unknown;
 };
 // CheckKeyColumn
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string, O = {}> = string extends K ? ColumnReference<DB, TB> : [KeyProblem<DB, TB, K, O>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : KeyProblem<DB, TB, K, O>;
@@ -518,6 +528,10 @@ type MiddlewareRequires<M> = M extends MiddlewareLike<infer R, any> ? R : never;
 type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
 // OwnOf
 type OwnOf<R> = R extends JsonResult<infer J> ? Serialize<Exclude<J, undefined>> | (undefined extends J ? undefined : never) : R extends Response ? unknown : never;
+// PageColumns
+type PageColumns<Cols> = {
+    [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, boolean, true> ? never : A]: Cols[A];
+};
 // PlainColumns
 type PlainColumns<DB, TB extends keyof DB> = Extract<ColumnReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 // PolicyProblem
@@ -554,9 +568,9 @@ type RelatedTable<DB, TB extends keyof DB, R extends string> = {
 type RequiresOf<O> = UnionToIntersection<MiddlewareRequires<ListedMiddleware<O>>>;
 // RowOf
 type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<{
-    readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]>;
+    readonly [A in keyof PageColumns<Cols> as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]>;
 } & {
-    readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
+    readonly [A in keyof PageColumns<Cols> as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
 } & {
     readonly [P in KeyName<K>]: ReferencedType<DB, TB, K>;
 }>;
@@ -608,7 +622,7 @@ export type TableFilterKind = 'select' | 'has' | 'dateRange';
 // TableNeeds
 type TableNeeds<Ctx, O> = (unknown extends Ctx ? {} : Ctx) & (unknown extends RequiresOf<O> ? {} : RequiresOf<O>) & object;
 // TableOf
-type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof Cols & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
+type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof PageColumns<Cols> & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
     [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0;
 } & string, InputsOf<Actions>, InputsOf<Bulk>, FilterKinds<Filters>, AnswersOf<Actions>, AnswersOf<Bulk>>;
 // TableQueryValues

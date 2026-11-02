@@ -833,3 +833,38 @@ defineTable({
   key: 'id',
   columns: { name: column('name') },
 });
+
+// A column only the file has is no column of the page: not in the row, the props or the sortable names; it cannot be sorted or searched.
+const FileColumns = defineTable({
+  name: 'file-columns',
+  query: (db, _ctx: TableContext) => db.selectFrom('members'),
+  key: 'id',
+  columns: { name: column('name').sortable(), email: column('email').exportOnly(), role: column('role').visible(MemberPolicy, 'viewEmails').exportOnly() },
+  export: { csv: exportCsv().columns(['email', 'name', 'role']), plain: exportCsv() },
+});
+expectTypeOf<DataTableRow<typeof FileColumns>>().toEqualTypeOf<{ readonly name: string; readonly id: number }>();
+expectTypeOf<TableProps<typeof FileColumns>['columns'][number]['name']>().toEqualTypeOf<'name'>();
+expectTypeOf<TableProps<typeof FileColumns>['exports'][number]['name']>().toEqualTypeOf<'csv' | 'plain'>();
+// @ts-expect-error — a column only the file has is not sortable.
+column('email').exportOnly().sortable();
+// @ts-expect-error — and not searchable.
+column('email').exportOnly().searchable();
+// @ts-expect-error — a sortable column is on the page.
+column('email').sortable().exportOnly();
+// @ts-expect-error — a searchable column is on the page.
+column('email').searchable().exportOnly();
+column('email').exportOnly().label('E-mail').visible(MemberPolicy, 'viewEmails');
+column('email').label('E-mail').visible(MemberPolicy, 'viewEmails').exportOnly();
+
+// An export names the table's columns only.
+defineTable({
+  name: 'file-columns-wrong',
+  query: (db, _ctx: TableContext) => db.selectFrom('members'),
+  key: 'id',
+  columns: { name: column('name') },
+  // @ts-expect-error — 'emial' is no column of the table.
+  export: { csv: exportCsv().columns(['name', 'emial']) },
+});
+// @ts-expect-error — the names are a list.
+exportCsv().columns('name');
+exportCsv().columns(['name']).max(5).authorize(() => true).delimiter(';').filename('members');
