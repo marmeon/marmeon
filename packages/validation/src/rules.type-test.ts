@@ -330,3 +330,18 @@ const mergedWhens = r
 type MergedTypes = NonNullable<(typeof mergedWhens)['~standard']['types']>;
 same<MergedTypes['output'], { kind: 'a' | 'b'; note?: string | undefined; extra?: string | number | undefined; size?: number | string | undefined }>(true);
 same<MergedTypes['input'], { kind: 'a' | 'b'; note?: string | undefined; extra?: string | number | undefined; size?: number | string | undefined }>(true);
+
+// ——— normalize() keeps the string's rules ———
+
+const cleaned = r.string().normalize((text) => text.trim()).trim().lowercase().required().min(1).max(120).email().regex(/./).optional();
+same<typeof cleaned, Rule<string | undefined, string | undefined>>(true);
+same<ReturnType<ReturnType<typeof r.string>['normalize']>, ReturnType<typeof r.string>>(true);
+// @ts-expect-error normalize() takes a function, not the name of a form
+r.string().normalize('NFC');
+// @ts-expect-error normalize() returns a string: a number is no cleaned text
+r.string().normalize((text) => text.length);
+// @ts-expect-error a number rule has no normalize()
+r.integer().normalize((text: string) => text);
+// A rule after transform() is no string rule any more — which normalize() is for.
+// @ts-expect-error
+r.string().transform((text) => text.trim()).normalize((text: string) => text);

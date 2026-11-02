@@ -119,6 +119,65 @@ describe('the rules of a type', () => {
     expect(await errors(form, { email: 'ada', name: '   ' })).toEqual({ email: ['The email field must be a valid email address.'], name: ['The name field is required.'] });
   });
 
+  describe('normalize()', () => {
+    const bidi = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+    const strip = (text: string): string => text.replace(bidi, '');
+
+    it('the checks after it see the cleaned text: a text of controls only is "required", max() counts the rest, the output is the cleaned text', async () => {
+      const form = r.object({ name: r.string().normalize(strip).trim().required().max(3) });
+      expect(await errors(form, { name: '\u202E\u200F\u061C' })).toEqual({ name: ['The name field is required.'] });
+      expect(await check(form, { name: 'A\u202Eda\u200F' })).toEqual({ value: { name: 'Ada' } });
+      expect(await errors(form, { name: 'A\u202Edam' })).toEqual({ name: ['The name field must not be longer than 3 characters.'] });
+      expect(await errors(form, {})).toEqual({ name: ['The name field is required.'] });
+      expect(await errors(form, { name: 42 })).toEqual({ name: ['The name field must be a string.'] });
+    });
+
+    it('is refused after a check — it would be judged on text that is not the stored one — but follows trim() and lowercase()', () => {
+      const f = (text: string): string => text;
+      expect(() => r.string().required().normalize(f)).toThrow('normalize() goes before the checks');
+      expect(() => r.email().normalize(f)).toThrow(TypeError);
+      expect(() => r.url().normalize(f)).toThrow(TypeError);
+      expect(() => r.string().max(3).normalize(f)).toThrow(TypeError);
+      expect(() => r.string().regex(/a/).normalize(f)).toThrow(TypeError);
+      expect(() => r.string().custom(() => true).normalize(f)).toThrow(TypeError);
+      expect(() => r.string().unique(class { query(): never { throw new Error('never'); } } as never, 'name').normalize(f)).toThrow(TypeError);
+      expect(() => r.string().trim().lowercase().normalize(f).normalize(f).trim()).not.toThrow();
+    });
+
+    it('stays a string rule: email() follows, and an NFKC lookalike is judged as what it becomes', async () => {
+      const form = r.object({ email: r.string().normalize((text) => text.normalize('NFKC')).email() });
+      expect(await check(form, { email: 'ada＠example.com' })).toEqual({ value: { email: 'ada@example.com' } });
+      expect(await errors(form, { email: 'ada' })).toEqual({ email: ['The email field must be a valid email address.'] });
+    });
+
+    it('a NUL character that normalize() makes is refused like one that came in', async () => {
+      const form = r.object({ name: r.string().normalize((text) => text.replace('x', '\0')).max(5) });
+      expect(await errors(form, { name: 'axb' })).toEqual({ name: ['The name field must be a string.'] });
+      expect(await errors(r.object({ name: r.string().normalize(strip) }), { name: 'a\0b' })).toEqual({ name: ['The name field must be a string.'] });
+    });
+
+    it('a custom() check (as unique() and exists() are) after it gets the cleaned text, never the raw one', async () => {
+      const seen: unknown[] = [];
+      const form = r.object({ name: r.string().normalize((text) => text.normalize('NFKC')).custom((text) => (seen.push(text), true)) });
+      await check(form, { name: 'ＡＤＡ' });
+      expect(seen).toEqual(['ADA']);
+    });
+
+    it('runs in a live validation too (it needs no context)', async () => {
+      const form = r.object({ name: r.string().normalize(strip).required() });
+      const live = await form['~standard'].validate({ name: '\u202E' }, { libraryOptions: { marmeon: { resolve: (C: any) => new C(), ctx: {} as never, live: true } } } as never);
+      expect((live as Result).issues?.[0]?.message).toBe('The name field is required.');
+    });
+
+    it('a program error is a TypeError, not a message: no function, a string, an async function, a result that is no string', async () => {
+      expect(() => r.string().normalize('NFC' as never)).toThrow("normalize((value) => value.normalize('NFC'))");
+      expect(() => r.string().normalize(undefined as never)).toThrow(TypeError);
+      expect(() => r.string().normalize((async (text: string) => text) as never)).toThrow('transform()');
+      await expect(check(r.object({ name: r.string().normalize((() => 1) as never) }), { name: 'a' })).rejects.toThrow(TypeError);
+      await expect(check(r.object({ name: r.string().normalize((() => null) as never) }), { name: 'a' })).rejects.toThrow('returns a string');
+    });
+  });
+
   it('bail: the first problem of a field only — what a form shows next to it', async () => {
     const form = r.object({ name: r.string().trim().required().min(2).max(3).email() });
     expect(await errors(form, { name: ' ' })).toEqual({ name: ['The name field is required.'] });

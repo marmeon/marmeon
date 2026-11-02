@@ -98,7 +98,7 @@ In a [form](forms.md#fields-and-errors) a field of `r.boolean()` or `r.accepted(
 
 Each type then has its checks, which run **in the order you write them**: `trim()` before `required()` makes `' '` missing.
 
-- **Strings:** `trim()`, `lowercase()`, `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, `email()`,
+- **Strings:** `normalize(fn)` ([below](#cleaning-a-string-before-its-checks)), `trim()`, `lowercase()`, `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, `email()`,
   `url({ protocols })`, `uuid()`, `regex(pattern, message?)`, `date()` (a day that exists, `2026-10-07`), `isoTimestamp()`, `timeZone()`. Lengths
   count characters as code points, the way Postgres counts them.
 - **Numbers:** `integer()` (a safe integer), `min(n)`, `max(n)`, `between(min, max)`.
@@ -421,23 +421,29 @@ const slug = r.value<string>((value) => (typeof value === 'string' && /^[a-z0-9-
 
 ### Cleaning a string before its checks
 
-`transform()` ends the string's own checks: the rule it returns is a plain rule of the new output, so `required()`, `max()` and `trim()` are gone after it
-(they do not compile). To clean a string in a way `trim()` and `lowercase()` do not, such as Unicode normalization and one space between words,
-`transform()` first and check with `custom()` after it. Empty and too long are then checks of your own, with messages of your own, and a
-length counts code points with `[...text].length`, the way `max()` does:
+`normalize()` runs a function of yours on the text, and the rule stays a string rule: `trim()`, `required()`, `max()`, `email()` and the rest still chain after
+it. The checks after `normalize()` see the cleaned text, and so does the output. It takes a synchronous function from
+string to string, such as removing the bidirectional control characters, a Unicode normalization form or one space between words. Empty and too long keep the framework's
+messages, and a length counts code points, the way `max()` does:
 
 ```ts
-const clean = (text: string): string => text.normalize('NFC').replace(/\s+/g, ' ').trim();
+const clean = (text: string): string => text.normalize('NFC').replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '').replace(/\s+/g, ' ');
 
-const name = r.string()
-  .transform(clean)
-  .custom((text) => text !== '' || 'Enter a name.')
-  .custom((text) => [...text].length <= 80 || 'Use at most 80 characters.');
+const name = r.string().normalize(clean).trim().required().max(80);
 ```
 
-`'  Ada   Lovelace '` becomes `'Ada Lovelace'`, `'   '` is "Enter a name." and a missing field is still "required", because `transform()` runs only on a
-string. The `r.string()` in front still refuses a NUL character. A field that may stay empty drops the first `custom()` and ends in `.optional()`. The message is a text or a
-translation key, as in [messages](#messages).
+`'  Ada   Lovelace '` becomes `'Ada Lovelace'`, a text of control characters only is "required" and a missing field is still "required". A field that may stay empty leaves out `.required()`; `.optional()` lets it be missing as well.
+The same function runs in a live validation. The form name is `normalize((text) => text.normalize('NFC'))`, not `normalize('NFC')`: it takes a function, and anything else (also
+an `async` function or one that returns no string) is a `TypeError`, a mistake in the app, never a message to the user.
+
+`normalize()` is refused after a check: `r.string().required().normalize(clean)` and `r.email().normalize(clean)` (`r.email()` and `r.url()` already hold a check) throw a `TypeError`
+when the schema is defined. Only `trim()`, `lowercase()` and another `normalize()` may come before it, so the checks that decide what a value may be (`unique()`, `exists()`,
+`regex()`, an allowlist in `custom()`) always judge the cleaned text, the text that is stored. A normalization such as `'NFKC'` turns lookalikes (a full-width `ＡＤＡ`) into other
+characters; a check that ran before it would have judged the lookalike and let the other text through. Write `r.string().normalize(clean).email()`. A NUL character is refused
+after `normalize()` just as `r.string()` refuses it in front.
+
+`transform()` is still the way to change the type, or to wait for something (`async`), such as splitting a string into a list. It ends the string's own checks: the rule it returns is a
+plain rule of the new output, so `required()`, `max()` and `trim()` are gone after it, and the checks that follow are `custom()` checks of your own.
 
 ## Uploads
 
