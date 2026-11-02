@@ -167,6 +167,7 @@ required`.
 - A field the schema rejects is taken out, and the rest is checked again, so the field gets its default.
 - A key that appears twice is a list: `?tag=a&tag=b`. A single value where the schema wants a list is a list of one: `?tag=a`.
 - Keys the schema does not know are ignored, and `__proto__` is no key.
+- A value with a NUL character (`?q=a%00b`) is no string, so a field of `r.string()` takes its default.
 - An empty field such as `?q=` follows the field's type: `''` for `r.string()`, missing for `r.integer()`.
 
 A `GET` with an invalid or unknown field can go to its clean URL instead. `queryOptions: { onInvalid: 'redirect' }` answers it with

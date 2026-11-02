@@ -293,13 +293,13 @@ export class RecordNoteShared {
       actor_id: event.actorId === null ? null : String(event.actorId),
       ip: this.#client.ip ?? null,
       user_agent: this.#client.userAgent?.slice(0, 512) ?? null, // the client chose it: cut it to the column
-      meta: { email: event.share.email },
+      meta: JSON.stringify({ email: event.share.email }), // a `json()` column is written as text
     });
   }
 }
 ```
 
-The listener is registered with `listen(NoteShared, RecordNoteShared)` like any other. Three details of the table matter:
+The listener is registered with `listen(NoteShared, RecordNoteShared)` like any other. A `json()` column is a `JsonColumn`: the repository writes it as text, so `meta` is `JSON.stringify(…)`, and reads it back as the parsed value ([table types](queries.md#table-types)). Three details of the table matter:
 
 - **No foreign key on the subject or the actor.** An entry about a deleted note or a deleted account must outlive both. Store
   the subject as a table name and a key, and the actor as a plain key column, in a table of its own:
@@ -328,8 +328,7 @@ The listener is registered with `listen(NoteShared, RecordNoteShared)` like any 
   any client could then block it.
 - **Never a secret in `meta`.** The log redacts what it writes, a table does not. `meta` holds what the entry needs to read
   later (an email, a role, the old and the new value of a field), never a password, a token or a one-time code. When `meta` is
-  built from input you do not control, pass it through the app's `Redactor` of `@marmeon/core`, `redactor.value(meta)`, which returns `unknown` (cast it to what the
-  column takes) and masks every key
+  built from input you do not control, pass it through the app's `Redactor` of `@marmeon/core`, `JSON.stringify(redactor.value(meta))`, which masks every key
   the log masks (see [keeping secrets out of the log](logging.md#keeping-secrets-out-of-the-log)).
 
 ### Why not `afterCommit()`

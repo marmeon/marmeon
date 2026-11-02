@@ -79,7 +79,9 @@ the app's configured costs instead, as the next section shows. The [hashing](has
 
 ## Using factories
 
-A factory is used through `factory(Definition)`, which a seeder gets in its context and a test from its app:
+A factory is used through `factory(Definition)`, which a seeder gets in its context and a test from its app.
+
+Behind `factory` is the `Factories` service of `@marmeon/database`, which the container builds like any other: a class that is no seeder takes it in its constructor, or asks `make(Factories)`, and `factories.for(Definition)` is the same call as `factory(Definition)`. A [mail preview](mail.md#previews) does exactly that.
 
 | Call | Effect |
 | --- | --- |
@@ -139,6 +141,8 @@ export class UserSeeder {
   }
 }
 ```
+
+A seeder has no output of its own: what `handle()` returns is dropped, and `db:seed` only reports which seeders ran. What the person running it should be told, such as the demo accounts and their password, is printed by a [command](console.md#writing-commands) that calls the same class, with a method of the seeder that both `handle()` and the command call. The seeder takes `Factories` in its constructor, since the command has no `SeedContext`, and the method creates the accounts and returns what to print.
 
 A module lists its seeders in its definition, and they run in that order:
 
