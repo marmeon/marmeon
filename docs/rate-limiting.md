@@ -119,6 +119,9 @@ export default defineRoutes((Route) => {
   group stops first, such as a missing CSRF token, never reach the limit.
 - **Counting and deciding are one atomic step.** A hundred requests at once against a limit of ten let exactly ten through, across
   processes when they share the cache.
+- **A form with an upload field counts twice per file.** The browser asks the form's route for an upload target, then sends the
+  form, and both requests pass the route's `throttle()`. `Limit.perMinute(60)` lets 30 files a minute through. See
+  [uploads](storage.md#uploads).
 - **Routes that use the same limiter share its counters.** The members table puts one limiter on its actions, bulk actions and
   export, so all three count together.
 - **A limiter that is not defined** stops the server when it starts, once every provider has booted: `Rate limiter [members-table] is not defined,
