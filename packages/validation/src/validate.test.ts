@@ -1,4 +1,4 @@
-import type { MessageTranslator } from '@marmeon/router';
+import type { ClassResolver, MessageTranslator } from '@marmeon/router';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { rules as r, validate } from './index.ts';
@@ -63,7 +63,7 @@ describe('validate()', () => {
 
   it('exists() asks the repository resolve builds; without resolve it throws and names validate()', async () => {
     const schema = r.object({ email: r.string().required().exists(UserRepository, 'email' as never) });
-    const resolve = <T>(Class: new (...args: any[]) => T): T => new Class();
+    const resolve: ClassResolver = (Class) => new (Class as new () => never)();
     expect(await validate(schema, { email: 'ada@example.com' }, { resolve })).toMatchObject({ ok: true });
     const missing = await validate(schema, { email: 'none@example.com' }, { resolve });
     expect(missing.ok).toBe(false);
@@ -71,7 +71,7 @@ describe('validate()', () => {
   });
 
   it('a rule that reads ctx fails closed: a fallback for a missing ctx never drops its filter', async () => {
-    const resolve = <T>(Class: new (...args: any[]) => T): T => new Class();
+    const resolve: ClassResolver = (Class) => new (Class as new () => never)();
     const strict = r.object({ email: r.string().required().exists(UserRepository, 'email' as never, { where: (query, ctx: any) => query.where('team_id', '=', ctx.user.team_id) }) });
     const fallback = r.object({ email: r.string().required().exists(UserRepository, 'email' as never, { where: (query, ctx: any) => (ctx ? query.where('team_id', '=', ctx.user.team_id) : query) }) });
     for (const schema of [strict, fallback]) {

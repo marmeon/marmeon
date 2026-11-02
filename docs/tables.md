@@ -280,6 +280,8 @@ counting every row. The [pagination](pagination.md) page explains both.
 authorize: can(MemberPolicy, 'viewAny'),
 ```
 
+Only `true` lets the user in. Any other value, a truthy one such as `1` or an object included, is a 403.
+
 The table's endpoints hang on the page's route, so they carry everything the page checks: its middleware, the registrar's
 `authorize`, and the `authorize` of the page controller's request. A user the page refuses is refused on every endpoint, too. This
 `authorize` is for what the table itself requires, on every page that shows it.

@@ -1,6 +1,7 @@
 import { Html, Redactor } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
+import { buildWithNew } from './default-resolver.ts';
 import { HttpError } from './errors.ts';
 import { addsConflicts, addsOf, runPipeline, type AddsConflict } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
@@ -41,7 +42,7 @@ export interface RouteInterceptor {
 }
 
 interface RouterOptions {
-  /** Default class resolution when `dispatch` gets none. Defaults to `new Class()`. */
+  /** Default class resolution when `dispatch` gets none. Defaults to building with `new`. */
   resolve?: ClassResolver;
 }
 
@@ -160,7 +161,7 @@ export class Router {
 
   /** @internal Built by the container. */
   constructor(options: RouterOptions = {}) {
-    this.#resolve = options.resolve ?? ((Class) => new Class());
+    this.#resolve = options.resolve ?? buildWithNew;
   }
 
   /** A frozen snapshot: pushing a route into it cannot get one past the checks made at load. */

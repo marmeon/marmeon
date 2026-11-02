@@ -1,4 +1,5 @@
 import { can, type Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
 import type { Database, Row, Tables } from '@marmeon/database';
 import type { Serialize } from '@marmeon/http';
 import { describe, expectTypeOf, it } from 'vitest';
@@ -789,3 +790,8 @@ describe('filters by name and the answers of actions', () => {
 });
 
 const takesAny = (_data: AnyTableData) => {};
+
+// A table's own check resolves a token as well as a class.
+column('email').visible((_ctx, resolve) => resolve(Clock).now() > 0);
+// @ts-expect-error — a token is no name: `'Clock'` is not a key.
+column('email').visible((_ctx, resolve) => resolve('Clock') !== undefined);

@@ -109,9 +109,10 @@ export class Session {
   }
 
   /**
-   * @internal Whether this request may not change the session — an island's (`StartSession` locks it). Writes then throw in
-   * development and are dropped in production; the session is never saved. Framework code that would write as a side
-   * effect (a remember-me sign-in, the page a guest wanted) skips that instead.
+   * Whether this request may not change the session — an island, a live validation, an upload, an event stream, the session's
+   * epoch check or a page rendered as a layer's base, which run beside the page, and work a page does after its session is saved. Code that runs for those too, such as a route's `afterAuthorize` hook, checks it before a write: a write then throws in
+   * development and is dropped in production, and the session is never saved.
+   * See docs/session.md#requests-that-only-read.
    */
   get readOnly(): boolean {
     return this.#permit !== undefined;

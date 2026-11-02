@@ -2,7 +2,7 @@ import { CacheServiceProvider } from '@marmeon/cache';
 import { createApplication, defineModule, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
-import type { RouteBinder } from '@marmeon/router';
+import type { ClassResolver, RouteBinder } from '@marmeon/router';
 import { accessLabel } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
@@ -327,7 +327,7 @@ describe('Gate in code', () => {
         return true;
       }
     }
-    const resolve = <T>(Class: new (...args: any[]) => T) => (Class === (PostPolicy as unknown) ? (new PostPolicy(new Admins()) as T) : new Class());
+    const resolve: ClassResolver = (Class) => (Class === (PostPolicy as unknown) ? (new PostPolicy(new Admins()) as never) : new (Class as new () => never)());
     const guest = new Gate({ user: async () => undefined } as unknown as Auth, resolve);
     expect(await guest.allows(CountingPolicy, 'edit')).toBe(false);
     expect(asked).toBe(0);

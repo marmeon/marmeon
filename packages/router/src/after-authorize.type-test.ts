@@ -1,4 +1,5 @@
-import { everyone } from './access.ts';
+import { Clock, token } from '@marmeon/core';
+import { describeAccess, everyone } from './access.ts';
 import { defineRoutes } from './router.ts';
 import type { RouteBinder } from './types.ts';
 
@@ -26,3 +27,20 @@ export default defineRoutes((Route) => {
   // @ts-expect-error — a hook takes a function.
   Route.authorize(everyone).afterAuthorize('hook');
 });
+
+// A token is resolved in every place that takes `resolve`, and comes out as what it is bound to.
+const Label = token<{ text: string }>('Label');
+export const resolvesTokens = defineRoutes((Route) => {
+  Route.authorize((_ctx, resolve) => resolve(Clock).now() > 0 && resolve(Label).text.length > 0)
+    .afterAuthorize((_ctx, resolve) => {
+      const now: number = resolve(Clock).now();
+      const text: string = resolve(Label).text;
+      // @ts-expect-error — the token gives a `{ text }`, not a number.
+      const wrong: number = resolve(Label);
+      // @ts-expect-error — a token is an object, not a name: `'Clock'` is no key.
+      const byName = resolve('Clock');
+      void [now, text, wrong, byName];
+    })
+    .get('/tokens', () => 'x');
+});
+export const checkOfAStandaloneDescription = describeAccess((_ctx, resolve) => resolve(Clock).now() > 0, 'clock');

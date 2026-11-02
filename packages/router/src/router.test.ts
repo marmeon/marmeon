@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineMiddleware, defineRoutes, everyone, Router, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
+import { defineMiddleware, defineRoutes, everyone, Router, type ClassResolver, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
 import { FRAMEWORK_ROUTES } from './internal.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
@@ -141,7 +141,7 @@ describe('Dispatching', () => {
     const withContainer = new Router({
       resolve: (Class) => {
         resolved.push(Class.name);
-        return new Class();
+        return new (Class as new () => never)();
       },
     }).load(routes);
 
@@ -157,9 +157,9 @@ describe('Dispatching', () => {
     const router = new Router().load(
       openRoutes((Route) => Route.middleware(ClassAuthenticate).get('/me', (ctx) => ctx.user.id).name('me')),
     );
-    const resolve = <T>(Class: new () => T) => {
+    const resolve: ClassResolver = (Class) => {
       built.push(Class.name);
-      return new Class();
+      return new (Class as new () => never)();
     };
 
     const first = await router.dispatch(router.findByName('me')!, { request: request('42'), params: {} }, { resolve });

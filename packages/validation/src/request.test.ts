@@ -183,7 +183,7 @@ function app() {
   const router = new Router({
     resolve: (Class) => {
       resolved.push(Class.name);
-      return (Class === (UserRepository as never) ? users : new Class()) as never;
+      return (Class === (UserRepository as never) ? users : new (Class as new () => never)()) as never;
     },
   }).load(
     openRoutes((Route) => {
