@@ -164,7 +164,8 @@ marmeon key:generate [--show] [--force]
 --force (boolean)
 --show (boolean)
 // make:command
-marmeon make:command <Name> --module=<module> [--no-register]
+marmeon make:command <Name> --module=<module> [--command=<name>] [--no-register]
+--command (string)
 --force (boolean)
 --module (string, short m)
 --no-register (boolean)
@@ -219,16 +220,18 @@ marmeon make:migration <snake_case_name> --module=<module> [--no-register]
 --module (string, short m)
 --no-register (boolean)
 // make:module
-marmeon make:module <name> [--no-register]
+marmeon make:module <name> [--no-routes] [--no-register]
 --force (boolean)
 --no-register (boolean)
+--no-routes (boolean)
 // make:notification
 marmeon make:notification <Name> --module=<module> [--no-register]
 --force (boolean)
 --module (string, short m)
 --no-register (boolean)
 // make:policy
-marmeon make:policy <Name> --module=<module>
+marmeon make:policy <Name> --module=<module> [--ability=<name>]
+--ability (string)
 --force (boolean)
 --module (string, short m)
 // make:repository

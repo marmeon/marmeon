@@ -62,6 +62,11 @@ export interface CommandClass {
 const LAUNCHED = new Set(['dev', 'start']);
 const RESERVED = new Set(['list', 'help', ...LAUNCHED]);
 
+/** The names marmeon answers itself — a command cannot take them. */
+export const RESERVED_COMMANDS: readonly string[] = [...RESERVED];
+
+export const isReservedCommand = (name: string): boolean => RESERVED.has(name);
+
 /** A command name is taken twice, or is one marmeon answers itself (`list`, `help`, `dev`, `start`) — the app cannot tell which command `marmeon <name>` means. */
 export class CommandSetupError extends Error {
   override name = 'CommandSetupError';
@@ -79,7 +84,7 @@ export class CommandRegistry {
    */
   add(commands: readonly CommandClass[], source = 'a package'): this {
     for (const command of commands) {
-      if (RESERVED.has(command.command)) {
+      if (isReservedCommand(command.command)) {
         const who = LAUNCHED.has(command.command) ? 'is handled by the launcher' : "is marmeon's own command";
         throw new CommandSetupError(withCode('K8', `"${command.command}" ${who} — ${command.name} (${source}) cannot use it. Rename it.`));
       }

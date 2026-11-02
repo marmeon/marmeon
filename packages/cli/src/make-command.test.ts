@@ -37,6 +37,21 @@ describe('marmeon make:command (checks every registered command)', { timeout: 30
     expect(readFileSync(join(app, 'modules/auth/index.ts'), 'utf8')).toContain('commands: [RotateKeysCommand]');
   });
 
+  it('refuses --command with the name of an installed package command and writes nothing', () => {
+    const app = appWithFiles(authModule);
+    const { code, stderr } = marmeon(app, ['make:command', 'Rotate', '--module=auth', '--command=auth:prune-tokens']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('auth:prune-tokens is already the name of PruneTokensCommand (AuthServiceProvider)');
+    expect(existsSync(join(app, 'modules/auth/commands'))).toBe(false);
+  });
+
+  it('writes the name passed with --command and lists it', () => {
+    const app = appWithFiles(authModule);
+    const { code } = marmeon(app, ['make:command', 'RotateKeys', '--module=auth', '--command=keys:rotate']);
+    expect(code).toBe(0);
+    expect(readFileSync(join(app, 'modules/auth/commands/RotateKeysCommand.ts'), 'utf8')).toContain("static command = 'keys:rotate';");
+  });
+
   it('stops with the load error instead of falling back, and writes nothing', () => {
     const app = appWithFiles({ 'modules/system/index.ts': "export default (() => {\n  throw new Error('broken');\n})();\n" });
     const { code, stderr } = marmeon(app, ['make:command', 'X', '--module=system']);

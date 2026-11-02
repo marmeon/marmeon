@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative } from 'node:path';
 import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
 import { bindingNameOf } from '@marmeon/core/internal';
-import { CommandArgumentsError, CommandRegistry, type CommandInput } from '../command.ts';
+import { CommandArgumentsError, CommandRegistry, isReservedCommand, RESERVED_COMMANDS, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import { leavesProject } from '../write-guard.ts';
 
@@ -129,8 +129,8 @@ export function registerModule(input: CommandInput, name: string, dir: string): 
 export class MakeModuleCommand {
   static command = 'make:module';
   static description = 'Create a feature module';
-  static usage = '<name> [--no-register]';
-  static options = { force: { type: 'boolean' }, 'no-register': { type: 'boolean' } } as const;
+  static usage = '<name> [--no-routes] [--no-register]';
+  static options = { force: { type: 'boolean' }, 'no-routes': { type: 'boolean' }, 'no-register': { type: 'boolean' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number | Promise<number> {
@@ -140,8 +140,12 @@ export class MakeModuleCommand {
     }
     const dir = join(input.root, 'modules', name);
     if (input.options['no-register'] !== true && leavesProject(input, [join(input.root, 'bootstrap', 'app.ts')])) return 1;
-    const ok =
-      write(input, join(dir, 'index.ts'), MODULE(name)) && write(input, join(dir, 'routes.ts'), ROUTES);
+    const routes = input.options['no-routes'] !== true;
+    if (!routes && existsSync(join(dir, 'routes.ts'))) {
+      input.output.error(`${relative(input.root, join(dir, 'routes.ts'))} exists, and a module without routes would leave it unlisted. Remove it first, or leave out --no-routes.`);
+      return 1;
+    }
+    const ok = write(input, join(dir, 'index.ts'), MODULE(name, routes)) && (!routes || write(input, join(dir, 'routes.ts'), ROUTES));
     if (!ok) return 1;
 
     const registered = registerModule(input, name, dir);
@@ -195,9 +199,28 @@ export class MakeControllerCommand {
     if (withView && !write(input, join(dir, 'views', `${page}.tsx`), VIEW(name, page))) return 1;
 
     input.output.line();
-    input.output.line(`Add a route in modules/${module}/routes.ts:`);
     const method = input.options.request === true && !reads ? 'post' : 'get';
-    input.output.line(style('dim', `  Route.${method}('/…', ${name}).name('${module}.…');`));
+    const route = `Route.${method}('/…', ${name}).name('${module}.…');`;
+    if (existsSync(join(dir, 'routes.ts'))) {
+      input.output.line(`Add a route in modules/${module}/routes.ts:`);
+      input.output.line(style('dim', `  ${route}`));
+    } else {
+      // The module was made with --no-routes: nothing is written for it, the lines are the module's to add.
+      input.output.line(`${indexOf(module)} lists no routes yet. Create modules/${module}/routes.ts:`);
+      for (const line of [
+        "import { defineRoutes } from '@marmeon/http';",
+        `import { ${name} } from './controllers/${name}.ts';`,
+        '',
+        'export default defineRoutes((Route) => {',
+        `  ${route}`,
+        '});',
+      ]) {
+        input.output.line(style('dim', `  ${line}`));
+      }
+      input.output.line(`Then list it in ${indexOf(module)}:`);
+      input.output.line(style('dim', "  import routes from './routes.ts';"));
+      input.output.line(style('dim', '  defineModule({ …, routes })'));
+    }
     input.output.line(
       style('dim', 'Say who may call it: `authorize: can(Policy, …)` in its request, or `Route.authorize(…)` on its registrar; `everyone` if anyone may.'),
     );
@@ -424,11 +447,14 @@ export class MakeMailCommand {
   }
 }
 
+/** `notes:prune`, `prune`: kebab-case words joined by colons. Goes into a string literal of the template. */
+const COMMAND_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*(:[a-z][a-z0-9]*(-[a-z0-9]+)*)*$/;
+
 export class MakeCommandCommand {
   static command = 'make:command';
   static description = 'Create a console command (listed by marmeon list)';
-  static usage = '<Name> --module=<module> [--no-register]';
-  static options = registeringOption;
+  static usage = '<Name> --module=<module> [--command=<name>] [--no-register]';
+  static options = { ...registeringOption, command: { type: 'string' } } as const;
   // The app as `marmeon build` has it — every provider registered, none booted — so the name is checked against the
   // packages' commands too, and no `.env` is needed.
   static boots = 'build' as const;
@@ -444,15 +470,21 @@ export class MakeCommandCommand {
     const name = className(input, 'Command');
     if (!dir || !name) return 1;
     const module = input.options.module as string;
-    // The name typed on the command line — from the class name once; renaming the class later keeps it.
-    const command = `${module}:${stableName(name, 'Command') || 'command'}`;
+    // The name typed on the command line — from the class name once (renaming the class later keeps it), or the one passed.
+    const chosen = input.options.command;
+    if (chosen !== undefined && (typeof chosen !== 'string' || !COMMAND_NAME.test(chosen) || isReservedCommand(chosen))) {
+      throw new CommandArgumentsError(
+        `--command is the name typed on the command line: kebab-case words, with a colon before a group, e.g. --command=${module}:prune. ${RESERVED_COMMANDS.map((name) => `"${name}"`).join(', ')} are marmeon's own.`,
+      );
+    }
+    const command = chosen ?? `${module}:${stableName(name, 'Command') || 'command'}`;
     const file = join(dir, 'commands', `${name}.ts`);
     // The registry is what the start checks: a file no module lists is not a command yet. The same class in this module
     // is a regeneration (`--force` over the file this writes), not a clash.
     const taken = this.#commands.owner(command);
     const regeneration = existsSync(file) && taken?.source === `module ${module}` && taken.command.name === name;
     if (taken && !regeneration) {
-      input.output.error(`${command} is already the name of ${taken.command.name} (${taken.source}): two commands cannot share a name. Rename the class or choose another module.`);
+      input.output.error(`${command} is already the name of ${taken.command.name} (${taken.source}): two commands cannot share a name. Rename the class, choose another module or pass another --command.`);
       return 1;
     }
     if (!write(input, file, COMMAND(name, command))) return 1;
@@ -530,23 +562,35 @@ export class MakeMiddlewareCommand {
   }
 }
 
+/** An ability name: one camelCase identifier. */
+const ABILITY = /^[a-z][A-Za-z0-9]*$/;
+// `before` is a hook, `then` makes the policy a thenable that never settles when awaited, and the names of Object.prototype are not abilities.
+const ABILITY_NOT_A_METHOD = new Set(['before', 'then', ...Object.getOwnPropertyNames(Object.prototype)]);
+
 export class MakePolicyCommand {
   static command = 'make:policy';
-  static description = 'Create a policy that allows the owner of a record only';
-  static usage = '<Name> --module=<module>';
-  static options = moduleOption;
+  static description = 'Create a policy that allows the owner of a record only, or has one ability decided by the user alone';
+  static usage = '<Name> --module=<module> [--ability=<name>]';
+  static options = { ...moduleOption, ability: { type: 'string' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
     const dir = moduleDir(input);
     const name = className(input, 'Policy');
     if (!dir || !name) return 1;
+    const ability = input.options.ability;
+    if (ability !== undefined && (typeof ability !== 'string' || !ABILITY.test(ability) || ABILITY_NOT_A_METHOD.has(ability))) {
+      throw new CommandArgumentsError(
+        '--ability is the name of one method: camelCase, e.g. --ability=exportReports. `before` is a hook, `then` would make the policy a thenable, and `constructor` and the other names every object has are not abilities.',
+      );
+    }
     if (!dependsOn(input.root, '@marmeon/auth')) {
       input.output.error('A policy answers with `deny…` of @marmeon/auth: pnpm add -E @marmeon/auth@<version of your app>');
       return 1;
     }
-    if (!write(input, join(dir, 'policies', `${name}.ts`), POLICY(name, 'Owned', OWNED))) return 1;
-    input.output.line(style('dim', `Use it in a request: authorize: can(${name}, 'update', '<param>')`));
+    const source = ability === undefined ? POLICY(name, 'Owned', OWNED) : USER_POLICY(name, ability);
+    if (!write(input, join(dir, 'policies', `${name}.ts`), source)) return 1;
+    input.output.line(style('dim', `Use it in a request: authorize: can(${name}, ${ability === undefined ? "'update', '<param>'" : `'${ability}'`})`));
     input.output.line(style('dim', 'See docs/authorization.md#writing-policies'));
     return 0;
   }
@@ -644,13 +688,11 @@ export class MakeMigrationCommand {
   }
 }
 
-const MODULE = (name: string) => `import { defineModule } from '@marmeon/core';
-import routes from './routes.ts';
-
+const MODULE = (name: string, routes: boolean) => `import { defineModule } from '@marmeon/core';
+${routes ? "import routes from './routes.ts';\n" : ''}
 export default defineModule({
   name: '${name}',
-  routes,
-});
+${routes ? '  routes,\n' : ''}});
 `;
 
 const ROUTES = `import { defineRoutes } from '@marmeon/http';
@@ -682,8 +724,8 @@ export const ${subject}Request = defineRequest({
   // The URL's query, parsed: \`ctx.query\` is typed, and so are \`<Link query>\` and \`useQueryState\`. The URL has strings —
   // r.integer() takes their spelling; every field needs a default (an invalid one falls back to it) or must be optional.
   query: r.query({
-    q: r.string().trim().max(100).default(''),
-    page: r.integer().min(1).default(1),
+    // q: r.string().trim().max(100).default(''),
+    // page: r.integer().min(1).default(1),
   }),
 });
 
@@ -692,7 +734,7 @@ export class ${name} extends Controller {
   static request = ${subject}Request;
 
   handle(ctx: ContextOf<typeof ${subject}Request>) {
-${page ? `    return this.view('${page}', { q: ctx.query.q, page: ctx.query.page });` : `    return this.json({ q: ctx.query.q, page: ctx.query.page });`}
+${page ? `    return this.view('${page}', { query: ctx.query });` : `    return this.json({ query: ctx.query });`}
   }
 }
 `;
@@ -704,7 +746,7 @@ import { rules as r } from '@marmeon/validation';
 export const ${subject}Request = defineRequest({
   // The rules of @marmeon/validation, typed — messages in the request's language.
   schema: r.object({
-    name: r.string().trim().required().max(255),
+    // name: r.string().trim().required().max(255),
   }),
 });
 
@@ -713,8 +755,9 @@ export class ${name} extends Controller {
   static request = ${subject}Request;
 
   handle(ctx: ContextOf<typeof ${subject}Request>) {
+    void ctx;
     // A flash message: shown once by the page the user sees next — \`useFlash('toast', …)\` in the layout.
-    return this.back().flash('toast', { kind: 'success', message: \`Saved \${ctx.body.name}.\` });
+    return this.back().flash('toast', { kind: 'success', message: 'Saved.' });
   }
 }
 `;
@@ -943,6 +986,22 @@ export class ${name} {
 
   delete(user: AuthUser, record: ${recordType}) {
     return record.user_id === user.id || denyAsNotFound();
+  }
+}
+`;
+
+/** Fail-closed: the ability answers `false` until you say who may. */
+const USER_POLICY = (name: string, ability: string) => `import type { AuthUser } from '@marmeon/auth';
+
+/**
+ * One ability that needs no record. Use it in a request: \`authorize: can(${name}, '${ability}')\`.
+ * See docs/authorization.md#writing-policies.
+ */
+export class ${name} {
+  ${ability}(user: AuthUser) {
+    // Decide from the user alone: a column of the user, a value of the module's config. Closed until you do.
+    void user;
+    return false;
   }
 }
 `;

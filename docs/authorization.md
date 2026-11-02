@@ -103,6 +103,14 @@ record type is structural (`{ readonly user_id: … }`); give it your table's `R
 authorize: can(NotePolicy, 'update', 'note')
 ```
 
+`--ability=<name>` writes a policy with that one ability instead, for a decision that needs no record: `marmeon make:policy Report --module=reports --ability=exportAll` writes `exportAll(user: AuthUser)`, which answers `false` until you say who may. Decide from the user alone, such as a column of the user or a value of the module's config. The command prints the line for it:
+
+```ts
+authorize: can(ReportPolicy, 'exportAll')
+```
+
+The name is one method in camelCase. `before` is a hook, `then` would make the policy a thenable that never settles when awaited, and `constructor` and the other names every object has (`toString`, `hasOwnProperty`, …) are not abilities, so all are refused.
+
 An existing file is kept unless you pass `--force`. [`marmeon make:resource`](starter-kit.md#adding-a-resource) writes this policy with the
 table's `Row<'…'>`, together with the routes and requests that use it.
 
