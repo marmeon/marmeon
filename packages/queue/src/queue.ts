@@ -43,7 +43,12 @@ export interface Queue {
    * process at once); a rollback of a transaction around the dispatch frees it again.
    */
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
-  /** Queues several jobs at once: `bulk([[SendWelcomeMailJob, { userId: 1 }], [SendWelcomeMailJob, { userId: 2 }]])`. Returns their ids. */
+  /**
+   * Queues several jobs: `bulk([[SendWelcomeMailJob, { userId: 1 }], [SendWelcomeMailJob, { userId: 2 }]])`. Returns their ids.
+   * Every payload is checked first; then the jobs are pushed one after the other — a statement each on the database driver, as
+   * part of an open transaction only on the transaction's own connection (with redis or another connection the pushes run after
+   * the commit, and a failure midway leaves the earlier jobs queued; with `sync` they have already run). Bound the list. See `docs/queues.md#dispatching-jobs`.
+   */
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
    * Queues jobs to run one after the other: the first now, each next one only once the one before succeeded —

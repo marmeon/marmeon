@@ -107,6 +107,11 @@ and Compose's `init: true` are not needed.
 | worker | `marmeon queue:work` | Takes no new job. The running one gets `--stop-timeout` seconds, 10 by default, then it goes back to the queue. |
 | scheduler | `marmeon schedule:work` | Starts no new run. Runs still going get `--stop-timeout` seconds, 30 by default. |
 
+All three processes read `NODE_ENV`, but only `start` (and `serve`) refuses a `development` or `test` that comes from `.env` alone. `queue:work` and
+`schedule:work` run with it, and warn only about `development`. Outside the image, which sets `NODE_ENV=production`, set
+`NODE_ENV=production` in the environment of the worker and the scheduler too, not only of the web process. The
+[configuration](configuration.md#where-node_env-comes-from) page explains where it comes from.
+
 Run one role per container, or per systemd unit: the same image, another command. The supervisor restarts each of them when it
 ends. A worker ends with
 exit code 70 on purpose when a job ignores its timeout, because Node cannot cancel a running promise, and the supervisor brings
