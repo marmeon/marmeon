@@ -35,7 +35,10 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
   readonly connection: string | undefined;
   /** Seconds before it may run. */
   readonly delaySeconds: number;
-  /** Dispatched inside a transaction — `connections.transaction()` (recorded with its commit) or `queue.using(trx)`. */
+  /**
+   * Dispatched inside a transaction — `connections.transaction()`, or `queue.using(trx)` (also of that transaction): recorded
+   * with its commit. Only a transaction the app began itself (Kysely's `db.transaction()`) records at once, whatever its end.
+   */
   readonly inTransaction: boolean;
   /** The unique key it was dispatched with (`{ unique: 'stats:7' }`), with how long and until when its lock holds. */
   readonly unique: DispatchedUnique | undefined;
@@ -325,18 +328,25 @@ export class QueueFake implements Queue {
   ): Promise<string[]> {
     const owner = this.#owner;
     const delay = delaySeconds(options.delay);
+    // In the frame of `connections.transaction()`: ambient, or through `using(trx)` of that very transaction.
     const ambient = !this.#inTransaction && inTransaction();
+    const followed = this.#transaction !== undefined && followsTransaction(this.#transaction);
+    // Like the database queue, whose row is inserted at the dispatch: the delay runs from then, not from the commit.
+    const clock = this.#container.make(Clock);
+    const availableAt = clock.now() + Math.round(delay * 1000);
     const record = async () => {
       for (const { job, payload, prepared, chain } of entries) {
         const { record } = prepared;
         const unique = record.unique ? { key: record.unique.key, forSeconds: record.unique.for, until: record.unique.until } : undefined;
         owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delaySeconds: delay, inTransaction: this.#inTransaction || ambient, unique, chain });
         // Stamped like the real queue's push: the time it can first be claimed.
-        await owner.#memory().push(options.queue ?? 'default', JSON.stringify({ ...record, availableAt: this.#container.make(Clock).now() + Math.round(delay * 1000) }), delay);
+        await owner.#memory().push(options.queue ?? 'default', JSON.stringify({ ...record, availableAt }), Math.max(0, availableAt - clock.now()) / 1000);
       }
     };
-    // Like the database queue: a job dispatched inside a transaction exists once it commits, never after a rollback.
-    if (ambient) await afterCommit(record);
+    // Like the database queue: a job dispatched inside a transaction exists once it commits, never after a rollback. A
+    // transaction nothing reports on (one the app began itself with Kysely, or one of another connection) has no end to wait
+    // for, so a dispatch through it is recorded at once.
+    if (ambient || followed) await afterCommit(record);
     else await record();
     return entries.map(({ prepared }) => prepared.record.uuid);
   }

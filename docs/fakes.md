@@ -113,7 +113,7 @@ it('queues a job for every address, and mails only the known one', async () => {
 events, and jobs that jobs dispatch. It resolves with what it did: `processed`, `failed`, `released`, and the `reason` it stopped.
 `work({ queues: ['mail'], maxJobs: 1 })` runs only some queues, or only so many jobs. A job dispatched with a `delay`, or released
 with a backoff, waits until the test's clock reaches it: `app.travel({ minutes: 5 })`, then `work()` again. Inside `connections.transaction()`,
-a dispatch is recorded with the commit, and a rollback records nothing. Through `queue.using(trx)` it is different: the fake records the job at once and keeps it after a rollback of that `trx`, unlike the real queue, whose row goes with the rollback. Test a rollback with a dispatch inside `connections.transaction()` and without `using()`.
+a dispatch is recorded with the commit, and a rollback records nothing. That holds for `queue.using(trx)` of that transaction too. Only a transaction nothing reports on is different (one your code began itself with Kysely, or one of a second connection, see [queues](queues.md#inside-a-transaction)): nothing reports its end, so the fake records the job at once and keeps it after a rollback, unlike the real queue, whose row goes with the rollback. Test a rollback through `connections.transaction()`.
 
 | Assertion | Passes when |
 | --- | --- |
@@ -124,7 +124,7 @@ a dispatch is recorded with the commit, and a rollback records nothing. Through 
 | `assertListenerQueued(Listener, match)` | A [queued listener](events.md#queued-listeners) was queued. |
 | `assertListenerNotQueued(Listener, match)` | It was not. |
 
-`dispatched(Job, match)` returns the dispatches themselves, with their payload, id, queue, connection, `delaySeconds`, `inTransaction`, unique key (`unique.key`, `unique.forSeconds`, `unique.until`) and the `chain` of jobs after it. `inTransaction` is `true` for a job dispatched inside `connections.transaction()` or through `queue.using(trx)`. The first is recorded with the commit, so a job whose transaction rolls back is never recorded. A job dispatched through `queue.using(trx)` is recorded at once and stays after a rollback of that `trx` (see above). `pending()` lists
+`dispatched(Job, match)` returns the dispatches themselves, with their payload, id, queue, connection, `delaySeconds`, `inTransaction`, unique key (`unique.key`, `unique.forSeconds`, `unique.until`) and the `chain` of jobs after it. `inTransaction` is `true` for a job dispatched inside `connections.transaction()` or through `queue.using(trx)`. Both are recorded with the commit, so a job whose transaction rolls back is never recorded; only a transaction nothing reports on records at once (see above). `pending()` lists
 the jobs still waiting, `failed()` the jobs `work()` recorded as failed, and `size(queue)` counts a queue. A unique job takes its
 lock in the app's cache as on a real queue, so a second dispatch with the same key is not recorded until `work()` ran the first.
 The [queues](queues.md) page covers jobs.
