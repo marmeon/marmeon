@@ -535,7 +535,7 @@ A condition may compare a secret column, in the callback of `with()`, `withCount
 value stays in the database. The answer does not: every row, count or yes the condition gives says something about the secret, so
 never let a request choose the column or send a `like` pattern for it. A comparison in SQL does not take constant time either,
 so a secret that can be guessed (a PIN, a password, a short code) is never looked up by its value: look the row up by its key and
-compare the secret in code. A token with at least 128 random bits is different, see below.
+compare the secret in code. A keyed MAC of it may be looked up, see [a short code a person types](encryption.md#a-short-code-a-person-types). A token with at least 128 random bits is different, see below.
 
 ### Finding a row by a hashed secret
 
@@ -558,8 +558,38 @@ for a value under 32 characters (a hex SHA-256 has 64) without naming it. It ref
 a guessable one: hash only what is random, as [`linkToken()`](urls.md#a-link-that-is-used-once) and an
 [API token](api-tokens.md#the-token-format) do.
 
+A keyed MAC of a short code goes through `secretEquals()` the same way, as a [short code a person types](encryption.md#a-short-code-a-person-types) shows: the column holds
+the MAC, which a request cannot work towards bit by bit, never the code.
+
 The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice. Neither is a view: it
 is raw SQL of a migration, so a view over a table with secret columns returns what its own SQL selects.
+
+### Rows the database makes up
+
+A list of days, a run of numbers or a calendar has no table. Raw SQL in `FROM` is refused with error D10, because the connection cannot see which columns it
+passes on; a set-returning function belongs in the select list of a query of its own, and the query becomes a derived table. That works on
+`Database<'notes'>` as well, which has `selectNoFrom()` and no `with()`:
+
+```ts
+import { sql, type Database } from '@marmeon/database';
+
+// Postgres: seven rows, 1 to 7, that no table holds.
+export function dayNumbers(db: Database<'notes'>) {
+  const days = db.selectNoFrom(sql<number>`generate_series(1, 7)`.as('day')).as('days');
+  return db.selectFrom(days).select('day');
+}
+```
+
+For a [table](tables.md#the-base-query), `db.selectFrom(days)` without the `select('day')` is the base query: it selects nothing itself, and the
+table names the column and its key as `days.day` (`key: 'days.day'`, `column('days.day')`). SQLite has no `generate_series()` without an
+extension, so a test of such a query runs on Postgres.
+
+On the app's `Database`, a common table expression does the same:
+
+```ts
+const days = sql<number>`generate_series(1, 7)`.as('day');
+const rows = await db.with('days', (q) => q.selectNoFrom(days)).selectFrom('days').select('day').execute();
+```
 
 ### The app's connection
 

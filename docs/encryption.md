@@ -160,6 +160,166 @@ every signed link, and an encrypted job still waiting finds no worker that can r
 `The encrypted payload of … cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS`. The
 [deployment](deployment.md#rotating-app_key) page has the short version for a server.
 
+## A short code a person types
+
+A code a person types, such as a six-digit check-in code, has a million values: whoever reads the table can try them all against a
+plain or unkeyed hash in a second. So the table keeps a keyed hash of the code, an HMAC-SHA256 under a key derived from `APP_KEY`.
+A copy of the table without the key tells nothing about a code, and the app finds a row by the MAC of what the request brought.
+
+The key is the only defence: whoever has the table and `APP_KEY`, or a key in `APP_PREVIOUS_KEYS`, computes all million MACs in under a
+second. After a leaked key, do not keep it as a previous key: drop it and issue new codes.
+
+```ts title="modules/events/CheckInCodes.ts"
+import { createHmac, hkdfSync, randomInt } from 'node:crypto';
+import { EncryptionConfig } from '@marmeon/encryption';
+
+export class CheckInCodes {
+  // The current key first, then the previous ones.
+  readonly #keys: readonly Uint8Array[];
+
+  constructor(config: EncryptionConfig) {
+    this.#keys = [config.key, ...config.previousKeys].map(
+      (key) => new Uint8Array(hkdfSync('sha256', key, new Uint8Array(0), 'events:check-in-code:v1', 32)),
+    );
+  }
+
+  /** A new code to hand to a guest. */
+  issue(): string {
+    return String(randomInt(0, 1_000_000)).padStart(6, '0');
+  }
+
+  /** The MAC of a code under each key, the current key's first. The event is part of the input, so two events can hold the same code. */
+  macs(eventId: number, code: string): [string, ...string[]] {
+    const input = `${eventId}:${code.trim().toUpperCase()}`;
+    return this.#keys.map((key) => createHmac('sha256', key).update(input).digest('hex')) as [string, ...string[]];
+  }
+}
+```
+
+- **A key of its own.** HKDF turns `APP_KEY` into a key for this use alone. The `info` string names the use and starts with
+  anything but `marmeon:`, which the framework's own derived keys use. Change the version at the end only when you want every
+  stored MAC to stop matching.
+- **Random codes.** `randomInt()` draws from the system's random source. A code from `Math.random()` or a counter can be predicted.
+- **The column.** The MAC goes into a [secret column](migrations.md#secret-columns) with a unique index:
+  `table.string('code_mac', 64).secret().unique()`. The MAC is 64 hex characters. The code itself is stored nowhere.
+
+The lookup compares the MAC with [`secretEquals()`](queries.md#finding-a-row-by-a-hashed-secret). It takes a keyed MAC, since a
+request cannot work its way towards a stored MAC bit by bit without the key, so the time of the comparison in SQL tells it nothing. A
+code compared in your own code, such as one held in memory, is compared with `timingSafeEqual()` from `node:crypto`, never with
+`===`.
+
+```ts title="modules/events/GuestRepository.ts"
+import { Repository, secretEquals } from '@marmeon/database';
+
+export class GuestRepository extends Repository<'guests'> {
+  static table = 'guests' as const;
+
+  /** The guest one of these MACs belongs to. The MAC does not come back: it is a secret column. */
+  findByCodeMac(macs: readonly string[]) {
+    return this.query().selectAll().where((eb) => eb.or(macs.map((mac) => secretEquals(eb, 'code_mac', mac)))).executeTakeFirst();
+  }
+}
+```
+
+```ts title="modules/events/CheckIns.ts"
+import { CheckInCodes } from './CheckInCodes.ts';
+import { GuestRepository } from './GuestRepository.ts';
+
+export class CheckIns {
+  readonly #guests: GuestRepository;
+  readonly #codes: CheckInCodes;
+
+  constructor(guests: GuestRepository, codes: CheckInCodes) {
+    this.#guests = guests;
+    this.#codes = codes;
+  }
+
+  /** Stores a new guest with a code no other guest of the event holds, under any key, and returns the code once. */
+  async issue(eventId: number, values: { name: string }) {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = this.#codes.issue();
+      const [current, ...previous] = this.#codes.macs(eventId, code);
+      // A row from before a rotation holds this code under a previous key: the unique index cannot see that, so look for it.
+      if (await this.#guests.findByCodeMac([current, ...previous])) continue;
+      const result = await this.#guests.tryInsert({ ...values, event_id: eventId, code_mac: current });
+      if (result.ok) return { guest: result.value, code };
+      // The only error is `duplicate`: another request took the code in the meantime, so draw again.
+    }
+    throw new Error(`No free check-in code for event ${eventId}`);
+  }
+
+  async find(eventId: number, code: string) {
+    const [current, ...previous] = this.#codes.macs(eventId, code);
+    const guest = await this.#guests.findByCodeMac([current]);
+    if (guest || previous.length === 0) return guest;
+
+    // Not found under the current key: a row from before a rotation. Look under the previous keys and move its MAC to the current key.
+    const stale = await this.#guests.findByCodeMac(previous);
+    // A taken MAC is an `err`, not a throw. The guest is the right one either way, and the next check-in tries again.
+    if (stale) await this.#guests.tryUpdate(stale.id, { code_mac: current });
+    return stale;
+  }
+}
+```
+
+`issue()` is what keeps `find()` unambiguous. Six digits collide sooner than it seems: with a thousand guests at one event, two of them
+share a code in about four cases of ten. The unique index refuses a repeat under the same key, and the look under every key refuses
+a code that a row holds from before a rotation, where a new code could otherwise equal an old one and `find()` would return the wrong
+guest. A longer code makes this rarer, not unnecessary.
+
+A MAC cannot be turned into the MAC under a new key, because the code is not in the table. So a [rotation](#rotating-the-key) moves a
+row to the new key when its guest checks in, and a guest who never does stays under the old one. Keep the old key in
+`APP_PREVIOUS_KEYS` until the codes are used or expired. Once it is removed, a code that was never used under the new key no
+longer matches: issue it again.
+
+> [!WARNING]
+> The MAC protects the table, not the route. A request that brings a code tests it against every live code of the event: with a
+> thousand guests, one guess in a thousand hits, and a million guesses are enough for every code. The route that checks a code needs a
+> [limit](rate-limiting.md) per client and one per event, and a short life for the codes. Where only staff check guests in, key the limit
+> by the signed-in user as well, behind `authenticate()` and an `authorize()` that lets staff only.
+
+The limiter reads the event from the URL, where `ctx.params` holds raw strings, as the [rate limiting](rate-limiting.md#defining-limiters)
+page says. A limiter runs before the route binding, and the binding takes `1`, `01` and `001` for the same event: a counter keyed on the
+raw text would give each spelling its own budget. So the route accepts only the canonical spelling, and the key is made canonical too:
+
+```ts title="modules/events/EventsServiceProvider.ts"
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+import type { HttpContext } from '@marmeon/http';
+
+export class EventsServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    app.container.make(RateLimiter).for('check-in', (ctx: HttpContext<{}, Readonly<Record<string, string>>>) => [
+      Limit.perMinute(10).by(clientKey(ctx.ip)),
+      Limit.perMinute(60).by(`event:${Number(ctx.params.event)}`),
+    ]);
+
+    // For a route behind authenticate(): one counter per member of staff, the client's address when there is none.
+    app.container.make(RateLimiter).for('check-in.staff', (ctx) => [Limit.perMinute(60).by(String(ctx.user?.id ?? clientKey(ctx.ip)))]);
+  }
+}
+```
+
+```ts title="modules/events/routes.ts"
+import { throttle } from '@marmeon/cache';
+import { defineRoutes, everyone } from '@marmeon/http';
+import { CheckInController } from './controllers/CheckInController.ts';
+
+export default defineRoutes((Route) => {
+  // No leading zero: `/events/01/check-in` is a 404, so one event has one address. `everyone` is for a kiosk a guest types the code at;
+  // a route for staff takes `authenticate()` and a policy instead.
+  Route.middleware(throttle('check-in')).authorize(everyone).post('/events/:event{[1-9][0-9]{0,14}}/check-in', CheckInController);
+});
+```
+
+An event with a UUID key is made canonical with `ctx.params.event?.toLowerCase()`, since the binding also finds a UUID in capitals. A route
+without the `event` parameter would put every request on one counter (`event:NaN`), so give `check-in` only to routes that have it.
+
+The per-event limit is shared by everyone at the event: it holds back a script that spreads over many addresses, and it also lets one
+script use up the door's budget. On a route behind `authenticate()` that only staff reach, use `check-in.staff` instead: its counter
+belongs to one member of staff, so nobody else can use it up. Put `throttle('check-in')` or `throttle('check-in.staff')` on the route,
+as the rate limiting page shows.
+
 ## Testing
 
 Tests need a key like any other environment. A new app keeps a fixed one in `.env.test`. The test client encrypts and decrypts
