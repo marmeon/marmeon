@@ -2,7 +2,7 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
-import { Blueprint, blueprintParts, compileColumn, oneOfName, type Driver } from './blueprint.ts';
+import { Blueprint, blueprintParts, compileColumn, foreignKeyName, oneOfName, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -74,10 +74,10 @@ export async function executePlan(
 }
 
 /** Postgres cuts an identifier at 63 bytes without a word. */
-function fits(driver: Driver, name: string, what: string): void {
+function fits(driver: Driver, name: string, what: string, hint = "Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead)."): void {
   if (driver !== 'pgsql' || Buffer.byteLength(name) <= 63) return;
   throw new SchemaError(
-    withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead).`),
+    withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. ${hint}`),
   );
 }
 
@@ -88,6 +88,16 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
     const parts = blueprintParts(step.blueprint);
     for (const spec of parts.columns) if (spec.oneOf) fits(driver, oneOfName(step.table, spec.name), 'check constraint name');
     for (const { name } of parts.checks) fits(driver, name, 'check constraint name');
+    for (const { column } of parts.foreignKeys) fits(driver, foreignKeyName(step.table, column), 'foreign key name', 'Use a shorter table or column name.');
+    if (step.kind === 'alter' && driver === 'sqlite' && parts.foreignKeys.length) {
+      throw new SchemaError(
+        withCode(
+          'D18',
+          `schema.alter('${step.table}') cannot use foreign('${parts.foreignKeys[0]!.column}') on SQLite: SQLite cannot add a foreign key to an existing column. ` +
+            'Add a new column with foreignId(…).constrained(), copy the values in a schema.data() step and drop the old column. See docs/migrations.md#a-reference-that-comes-later.',
+        ),
+      );
+    }
     if (step.kind === 'alter' && driver === 'sqlite' && (parts.checks.length || parts.dropChecks.length)) {
       const call = parts.checks.length ? `check('${parts.checks[0]!.name}', …)` : `dropCheck('${parts.dropChecks[0]}')`;
       throw new SchemaError(
@@ -170,6 +180,13 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pro
   for (const spec of parts.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver)).execute();
   for (const { column, nullable } of parts.nullability) {
     await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
+  }
+  for (const { column, references } of parts.foreignKeys) {
+    const { table: target, column: referenced, onDelete } = references!;
+    await db.schema
+      .alterTable(table)
+      .addForeignKeyConstraint(foreignKeyName(table, column), [column], target, [referenced], (key) => (onDelete ? key.onDelete(onDelete) : key))
+      .execute();
   }
   for (const { name, sql: condition } of parts.checks) await db.schema.alterTable(table).addCheckConstraint(name, sql.raw(condition)).execute();
   await createIndexes(db, blueprint);

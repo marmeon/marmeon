@@ -21,11 +21,25 @@ interface ColumnSpec {
   default?: { value: unknown } | { now: true } | { uuidv7: true };
   /** The list `oneOf()` holds the column to. */
   oneOf?: readonly string[];
-  references?: { table: string; column: string; onDelete?: OnDelete; inverse?: string };
+  references?: ReferenceSpec;
 }
 
-/** The column descriptions of blueprints that are closed. */
-const closedSpecs = new WeakSet<ColumnSpec>();
+/** What a foreign key points at, and what it does and is called. */
+interface ReferenceSpec {
+  table: string;
+  column: string;
+  onDelete?: OnDelete;
+  inverse?: string;
+}
+
+/** The foreign key `foreign()` gives an existing column; `references` is set by `constrained()`. */
+interface ForeignKeySpec {
+  readonly column: string;
+  references?: ReferenceSpec;
+}
+
+/** The column descriptions and foreign keys of blueprints that are closed. */
+const closedSpecs = new WeakSet<ColumnSpec | ForeignKeySpec>();
 
 /** The error of a change to a plan after `up()` or `down()` returned. */
 export function closedPlan(): Error {
@@ -162,6 +176,10 @@ export class ForeignIdColumn<T> extends Column<T> {
   }
 }
 
+function checkInverse(column: string, name: string): void {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error(`inverse('${name}') on "${column}": a relation name is snake_case, like a table's.`);
+}
+
 /** A foreign key with its reference — now it can say what happens when the referenced row is deleted. */
 export class ConstrainedColumn<T> extends Column<T> {
   cascadeOnDelete(): this {
@@ -178,13 +196,70 @@ export class ConstrainedColumn<T> extends Column<T> {
    * to the same table: `.inverse('edited_posts')`. See `docs/migrations.md#relations-from-foreign-keys`.
    */
   inverse(name: string): this {
-    if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error(`inverse('${name}') on "${this.spec.name}": a relation name is snake_case, like a table's.`);
+    checkInverse(this.spec.name, name);
     this.spec.references!.inverse = name;
     return this;
   }
   #onDelete(action: OnDelete): this {
     this.spec.references!.onDelete = action;
     return this;
+  }
+}
+
+/**
+ * The foreign key of an existing column (`table.foreign('form_id')` in `alter()`); `constrained()` names the table it references.
+ * See `docs/migrations.md#a-reference-that-comes-later`.
+ */
+export class ForeignKeyReference {
+  readonly #spec: ForeignKeySpec;
+
+  /** @internal — references come from {@link Blueprint.foreign}. */
+  constructor(spec: ForeignKeySpec) {
+    this.#spec = spec;
+  }
+
+  /**
+   * References `table.column` — by default the table named after the column, in the English plural (`form_id` → `forms`), and its `id`,
+   * as `foreignId().constrained()` does.
+   */
+  constrained(table = pluralTable(this.#spec.column.replace(/_id$/, '')), column = 'id'): ConstrainedForeignKey {
+    if (closedSpecs.has(this.#spec)) throw closedPlan();
+    this.#spec.references = { table, column };
+    return new ConstrainedForeignKey(this.#spec);
+  }
+}
+
+/** A foreign key on an existing column with its reference — now it can say what happens when the referenced row is deleted. */
+export class ConstrainedForeignKey {
+  readonly #spec: ForeignKeySpec;
+
+  /** @internal — from {@link ForeignKeyReference.constrained}. */
+  constructor(spec: ForeignKeySpec) {
+    this.#spec = spec;
+  }
+
+  cascadeOnDelete(): this {
+    return this.#onDelete('cascade');
+  }
+  nullOnDelete(): this {
+    return this.#onDelete('set null');
+  }
+  restrictOnDelete(): this {
+    return this.#onDelete('restrict');
+  }
+  /** Names the relation the referenced table gets back, as {@link ConstrainedColumn.inverse} does. */
+  inverse(name: string): this {
+    checkInverse(this.#spec.column, name);
+    this.#open().inverse = name;
+    return this;
+  }
+  #onDelete(action: OnDelete): this {
+    this.#open().onDelete = action;
+    return this;
+  }
+  #open(): ReferenceSpec {
+    if (closedSpecs.has(this.#spec)) throw closedPlan();
+    return this.#spec.references!;
   }
 }
 
@@ -202,6 +277,8 @@ interface BlueprintParts {
   readonly nullability: { column: string; nullable: boolean }[];
   /** Columns taken out of use (`retire()`): the projection forgets them, the database keeps them. */
   readonly retirements: string[];
+  /** Foreign keys to add to existing columns (`foreign()`). */
+  readonly foreignKeys: ForeignKeySpec[];
   /** Named check constraints to add (`check()`). */
   readonly checks: { name: string; sql: string }[];
   /** Check constraints to drop by name (`dropCheck()`). */
@@ -235,6 +312,7 @@ export class Blueprint {
     renames: [],
     nullability: [],
     retirements: [],
+    foreignKeys: [],
     checks: [],
     dropChecks: [],
     markers: new Set(),
@@ -355,6 +433,20 @@ export class Blueprint {
     return new ForeignIdColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
   }
 
+  /**
+   * Changing a table only, on Postgres only: ties an existing column to another table — `table.foreign('form_id').constrained('forms').nullOnDelete()` —
+   * so it gets the constraint `{table}_{column}_fkey` and `db:types` the relation. A row that has no match fails the migration, which is rolled back:
+   * clean the column first with `schema.data()`. SQLite adds no constraint in place: `migrate` refuses the plan. In `create()` use
+   * `foreignId(…).constrained()`. See `docs/migrations.md#a-reference-that-comes-later`.
+   */
+  foreign(column: string): ForeignKeyReference {
+    this.#open();
+    if (this.#parts.foreignKeys.some((key) => key.column === column)) throw new Error(`foreign('${column}') is called twice on table "${this.table}".`);
+    const spec: ForeignKeySpec = { column };
+    this.#parts.foreignKeys.push(spec);
+    return new ForeignKeyReference(spec);
+  }
+
   index(columns: string | readonly string[], name?: string): void {
     this.#index(columns, false, name);
   }
@@ -431,13 +523,19 @@ export class Blueprint {
   seal(): void {
     this.#sealed = true;
     for (const spec of this.#parts.columns) closedSpecs.add(spec);
+    for (const key of this.#parts.foreignKeys) {
+      if (!key.references) throw new Error(`foreign('${key.column}') on table "${this.table}" needs constrained(): table.foreign('${key.column}').constrained('…').`);
+      closedSpecs.add(key);
+      Object.freeze(key.references);
+      Object.freeze(key);
+    }
     for (const spec of this.#parts.columns) {
       if (spec.references) Object.freeze(spec.references);
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements, checks, dropChecks } = this.#parts;
-    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements, checks, dropChecks]) Object.freeze(list);
+    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, checks, dropChecks } = this.#parts;
+    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, checks, dropChecks]) Object.freeze(list);
   }
 
   /** @internal — every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
@@ -520,4 +618,7 @@ function literal(value: unknown): unknown {
   return value;
 }
 
-export type { ColumnSpec, IndexSpec };
+/** The name Postgres gives the constraint of a foreign key on one column. */
+export const foreignKeyName = (table: string, column: string): string => `${table}_${column}_fkey`;
+
+export type { ColumnSpec, ForeignKeySpec, IndexSpec };
