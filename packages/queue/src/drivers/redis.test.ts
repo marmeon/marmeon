@@ -28,6 +28,7 @@ describe('the names of redis queues', () => {
     const job = { id: 'x', queue, payload: 'p', attempts: 1, reservedAt: 0 };
     const message = new RegExp(`queue "${queue}".*ends in "${ending}".*queue "a"`);
     await expect(driver.push(queue, 'p', 0)).rejects.toThrow(message);
+    await expect(driver.pushMany([{ queue: 'a', payload: 'p', delaySeconds: 0 }, { queue, payload: 'p', delaySeconds: 0 }])).rejects.toThrow(message);
     await expect(driver.reserve(['default', queue])).rejects.toThrow(message);
     await expect(driver.size(queue)).rejects.toThrow(message);
     await expect(driver.counts(queue)).rejects.toThrow(message);

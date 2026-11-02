@@ -182,6 +182,7 @@ export class RedisQueueDriver implements QueueDriver {
   /** All jobs in ONE script call: every member is queued, or none (a script is atomic). */
   async pushMany(entries: readonly QueuedPush[]): Promise<void> {
     if (entries.length === 0) return;
+    for (const { queue } of entries) assertQueueName(queue);
     const [redis, { pushMany }] = await Promise.all([this.#connection(), loadScripts()]);
     const now = this.#clock.now();
     const keys = [redis.key('queues')];
