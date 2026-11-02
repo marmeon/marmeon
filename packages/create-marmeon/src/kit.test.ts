@@ -173,6 +173,8 @@ it(
     expect(ran('end-sessions', 'marmeon auth:end-sessions')).toBe(3);
     expect(ran('end-all-sessions', 'UserRepository.updateEverySessionKey()')).toBe(3);
     expect(ran('end-all-sessions', "AccountSessions.endEveryone() with the app's repository")).toBe(1);
+    // The seeder's account has a known password: it refuses where the app is protected.
+    expect(ran('seeders', 'UserSeeder')).toBe(2);
     expect(tests.code).toBe(0);
 
     // HOME is the one place that names where people land: with another route in it the kit still compiles, and its sign-ins and guest

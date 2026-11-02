@@ -33,7 +33,7 @@ framework bring them.
 | `jobs/`, `listeners/`, `commands/` | The work that runs on the queue, the listeners that react to events, and the command `auth:prune-unverified`. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
 | `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys`, `sign_ins`, which also holds the remember-me tokens, and `email_changes`, where a change of address waits for its link. |
-| `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
+| `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`, and refuses outside development and tests: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `*.test.ts` | The module's own tests, next to the code. |
 
