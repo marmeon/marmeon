@@ -225,7 +225,10 @@ export type Json = null | boolean | number | string | Json[] | {
     [key: string]: Json;
 };
 // JsonColumn
-export type JsonColumn = ColumnType<Json, string, string>;
+export type JsonColumn<K extends string = never> = ColumnType<JsonValue<K>, string, string>;
+// JsonTypes
+export interface JsonTypes {
+}
 // LinkWriter
 export interface LinkWriter<K> {
     sync(ids: readonly K[]): Promise<{
@@ -706,6 +709,8 @@ export type ForeignTables<Foreign> = 0 extends 1 & Foreign ? {} : [Foreign] exte
 };
 // IsSecret
 type IsSecret<C> = [C] extends [ColumnType<infer S, any, infer U>] ? ([S] extends [never] ? ([U] extends [never] ? false : true) : false) : false;
+// JsonValue
+type JsonValue<K extends string> = [K] extends [never] ? Json : K extends keyof JsonTypes ? [NotJson<JsonTypes[K]>] extends [never] ? JsonTypes[K] : `'${K}' in JsonTypes is not JSON: a Date, class, function, bigint, unknown or undefined field cannot be stored` : Json;
 // KnownColumns
 type KnownColumns<O, Row> = {
     [K in Exclude<keyof O, keyof Row>]: never;
@@ -726,6 +731,10 @@ type NamesOf<DB, T> = T extends keyof Relations ? {
 }[keyof Relations[T]] & string : never;
 // NewRelated
 type NewRelated<DB, X extends keyof DB, F> = Omit<NewRowOf<DB[X]>, F & string>;
+// NotJson
+type NotJson<T, Depth extends unknown[] = []> = Depth['length'] extends 8 ? never : T extends null | boolean | number | string ? never : T extends bigint | symbol | undefined | Date | ((...args: never[]) => unknown) ? T : T extends readonly (infer Item)[] ? NotJson<Item, [...Depth, 0]> : T extends object ? {
+    [P in keyof T]-?: {} extends Pick<T, P> ? NotJson<Exclude<T[P], undefined>, [...Depth, 0]> : undefined extends T[P] ? T[P] : NotJson<T[P], [...Depth, 0]>;
+}[keyof T] : T;
 // OwnedTables
 export type OwnedTables<All, Owners, M extends string> = {
     [T in keyof All as T extends keyof Owners ? (Owners[T] extends M ? T : never) : never]: All[T];

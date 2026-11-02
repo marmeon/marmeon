@@ -1,6 +1,6 @@
 import { Database, type Row } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 import { SurveyRepository } from './SurveyRepository.ts';
@@ -89,5 +89,63 @@ describe('the kind of a question', () => {
     // @ts-expect-error — 'essay' is not one of the kinds
     const refused = db.insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'story', label: 'Story', kind: 'essay' }).execute();
     await expect(refused).rejects.toThrow(/lab_survey_questions_kind_check|CHECK constraint/i);
+  });
+});
+
+describe('the options of a choice', () => {
+  it('are read as the list the column declares, with no narrowing', async () => {
+    expectTypeOf<Row<'lab_survey_questions'>['options']>().toEqualTypeOf<readonly string[] | null>();
+    const questions = app.make(SurveyRepository);
+    await questions.addMissing([{ survey: 'dinner', name: 'drink', label: 'Drink', options: ['water', 'wine'] }]);
+    const drink = (await questions.questionsOf('dinner')).find((question) => question.name === 'drink')!;
+    expect(drink.options?.map((option) => option.toUpperCase())).toEqual(['WATER', 'WINE']);
+    expect((await questions.questionsOf('dinner')).find((question) => question.name === 'diet')!.options).toBeNull();
+    const page = await app.navigating().get('/lab/surveys/dinner').assertOk().assertPage('lab/Survey');
+    const shown = (page.page()!.props as { questions: { name: string; options: string[] }[] }).questions;
+    expect(shown.find((question) => question.name === 'drink')!.options).toEqual(['water', 'wine']);
+    expect(shown.find((question) => question.name === 'diet')!.options).toEqual([]);
+  });
+
+  it('are checked by the route’s schema before they are written, since the type checks nothing', async () => {
+    const add = (options: unknown) => app.post('/lab/surveys/dinner/questions', { json: { name: 'drink', label: 'Drink', options }, headers: json });
+    for (const options of [[], 'water', ['water', ''], [1, 2], Array.from({ length: 21 }, (_, i) => `w${i}`), ['x'.repeat(101)]]) {
+      const response = await add(options).assertUnprocessable();
+      expect(Object.keys(((await response.json()) as { errors: object }).errors).some((field) => field.startsWith('options'))).toBe(true);
+    }
+    expect((await app.make(SurveyRepository).questionsOf('dinner')).map((question) => question.name)).toEqual(['diet', 'allergies']);
+    await add([' water ', 'wine']).assertRedirect('/lab/surveys/dinner');
+    const drink = (await app.make(SurveyRepository).questionsOf('dinner')).find((question) => question.name === 'drink')!;
+    expect(drink.options).toEqual(['water', 'wine']);
+  });
+
+  it('make the question a choice whose answer is one of them', async () => {
+    await app.make(SurveyRepository).addMissing([{ survey: 'dinner', name: 'drink', label: 'Drink', required: true, position: 3, options: ['water', 'wine'] }]);
+    const drink = (await app.make(SurveyRepository).questionsOf('dinner')).find((question) => question.name === 'drink')!;
+    expect(drink.kind).toBe('choice');
+    const answers = (drink: string) => ({ json: { answers: { diet: 'vegan', allergies: '', drink } }, headers: json });
+    await app.post('/lab/surveys/dinner', answers('wine')).assertRedirect('/lab/surveys/dinner');
+    const response = await app.post('/lab/surveys/dinner', answers('beer')).assertUnprocessable();
+    expect(Object.keys(((await response.json()) as { errors: object }).errors)).toEqual(['answers.drink']);
+    await app.make(SurveyRepository).addMissing([{ survey: 'lunch', name: 'side', label: 'Side', required: false, options: ['rice'] }]);
+    await app.post('/lab/surveys/lunch', { json: { answers: { seat: '1', side: '' } }, headers: json }).assertRedirect('/lab/surveys/lunch');
+  });
+
+  it('come with a name that is a plain word, since the name becomes a key of the answers', async () => {
+    for (const name of ['a.b', '__proto__', 'Upper', '1st', 'a b', '']) {
+      const response = await app.post('/lab/surveys/dinner/questions', { json: { name, label: 'L', options: ['x'] }, headers: json }).assertUnprocessable();
+      expect(Object.keys(((await response.json()) as { errors: object }).errors)).toContain('name');
+    }
+    expect((await app.make(SurveyRepository).questionsOf('dinner')).map((question) => question.name)).toEqual(['diet', 'allergies']);
+  });
+
+  it('are checked by the repository too, for a caller that is no request', async () => {
+    const refused = app.make(SurveyRepository).addMissing([{ survey: 'dinner', name: 'drink', label: 'Drink', options: [''] }]);
+    await expect(refused).rejects.toThrow('not a list of words');
+  });
+
+  it('are not checked when read: a row written by raw SQL reads as it is', async () => {
+    await app.make(Database).insertInto('lab_survey_questions').values({ survey: 'dinner', name: 'odd', label: 'Odd', options: JSON.stringify({ not: 'a list' }) }).execute();
+    const odd = (await app.make(SurveyRepository).questionsOf('dinner')).find((question) => question.name === 'odd')!;
+    expect(odd.options).toEqual({ not: 'a list' });
   });
 });

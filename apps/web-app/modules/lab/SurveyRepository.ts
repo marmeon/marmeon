@@ -1,5 +1,7 @@
 import { Repository, type Row } from '@marmeon/database';
 import type { RouteBinder } from '@marmeon/http';
+import { rules as r, validate } from '@marmeon/validation';
+import './database.ts';
 
 /** The path's survey: the slug of the questions that make its form. */
 export interface Survey {
@@ -7,7 +9,10 @@ export interface Survey {
 }
 
 /** A question to add: the table's columns without the ones the database fills in. */
-export type NewQuestion = { survey: string; name: string; label: string; required?: boolean; position?: number };
+export type NewQuestion = { survey: string; name: string; label: string; required?: boolean; position?: number; kind?: 'text' | 'choice'; options?: readonly string[] };
+
+/** The words a choice offers: the type of the column is a promise, so the words are checked here, before `JSON.stringify` writes them. */
+export const OptionsRule = r.array(r.string().trim().required().max(100)).min(1).max(20);
 
 /** The questions of the lab's surveys, kept as rows: a survey's form has the fields its rows say. */
 export class SurveyRepository extends Repository<'lab_survey_questions'> {
@@ -23,7 +28,14 @@ export class SurveyRepository extends Repository<'lab_survey_questions'> {
    * Safe to run again, also at the same moment. Resolves with the questions it added.
    */
   async addMissing(questions: readonly NewQuestion[]): Promise<Pick<Row<'lab_survey_questions'>, 'survey' | 'name'>[]> {
-    return this.insertMissing(questions, { on: ['survey', 'name'], returning: ['survey', 'name'] });
+    const rows = await Promise.all(questions.map(async ({ options, ...question }) => ({ ...question, ...(options && { kind: 'choice' as const, options: JSON.stringify(await this.#checked(options)) }) })));
+    return this.insertMissing(rows, { on: ['survey', 'name'], returning: ['survey', 'name'] });
+  }
+
+  async #checked(options: readonly string[]): Promise<string[]> {
+    const checked = await validate(OptionsRule, options);
+    if (!checked.ok) throw new TypeError(`The options of a question are not a list of words: ${JSON.stringify(checked.error.errors)}`);
+    return checked.value;
   }
 
   /** A survey's questions in the order the form shows them. */

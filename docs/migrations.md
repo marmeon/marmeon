@@ -562,7 +562,7 @@ message with its code is on stderr, the exit code is 1.
 | `float(name)` | `double precision` | `real` | `number` |
 | `decimal(name, precision = 8, scale = 2)` | `numeric(8, 2)` | `numeric(8, 2)` | a string, such as `'12.50'` |
 | `boolean(name)` | `boolean` | `boolean` | `true` or `false` |
-| `json(name)` | `jsonb` | `json` | the parsed value |
+| `json(name)` | `jsonb` | `json` | the parsed value, `Json` unless [you declare its type](queries.md#a-json-columns-type) |
 | `uuid(name)` | `uuid` | `uuid` | `string` |
 | `binary(name)` | `bytea` | `blob` | `Uint8Array` |
 | `date(name)` | `date` | `date` | `'YYYY-MM-DD'` |

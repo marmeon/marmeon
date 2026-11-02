@@ -28,13 +28,30 @@ export default function Survey({ survey, questions }: PageProps<ShowSurveyLabCon
                 {question.required ? ' *' : ''}
               </label>
               <br />
-              <input
-                id={question.name}
-                name={question.name}
-                value={form.data.answers[question.name] ?? ''}
-                onChange={(event) => form.set('answers', { ...form.data.answers, [question.name]: event.target.value })}
-                aria-invalid={!!error}
-              />
+              {question.options.length ? (
+                <select
+                  id={question.name}
+                  name={question.name}
+                  value={form.data.answers[question.name] ?? ''}
+                  onChange={(event) => form.set('answers', { ...form.data.answers, [question.name]: event.target.value })}
+                  aria-invalid={!!error}
+                >
+                  <option value="">—</option>
+                  {question.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={question.name}
+                  name={question.name}
+                  value={form.data.answers[question.name] ?? ''}
+                  onChange={(event) => form.set('answers', { ...form.data.answers, [question.name]: event.target.value })}
+                  aria-invalid={!!error}
+                />
+              )}
               {error && (
                 <small role="alert" data-error={question.name}>
                   {' '}
