@@ -238,7 +238,7 @@ Wait a day, or let only the framework through for this one command:
 pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon"]' pnpm create marmeon@<version> my-app
 ```
 
-Name the version of the release (for a candidate its own version, `@x.y.z-rc.N`) in the command. pnpm keeps the creator it fetched for a spec as written, so after
+Name the version of the release (for a candidate its own version, `x.y.z-rc.N`) in the command. pnpm keeps the creator it fetched for a spec as written, so after
 a `pnpm create marmeon` earlier that day, a plain `pnpm create marmeon` serves the old creator again.
 
 The variable reaches the install the creator runs and changes nothing else. The creator never changes your pnpm settings. npm
