@@ -650,8 +650,9 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 
 - **Its own `authorize`.** Without one, whoever sees the table may download what they see. For an ability that needs a resource
   of the path, such as the tenant, use `can(Policy, 'ability', 'param')`, see [A capability of the path](#a-capability-of-the-path).
-- **The columns of the file.** The file has the columns of the page and no others, and a heading for every one. Columns that mean
-  nothing in a file, such as a helper column of the page, and columns only a file wants have no switch of their own. What tells
+- **The columns of the file.** Page and file use the same column definitions; the file has the columns that are visible for its
+  request, and a heading for every one. Columns that mean nothing in a file, such as a helper column of the page, and columns
+  only a file wants have no switch of their own. What tells
   the page from the file is the route: an export is served by `/_tables/<name>/export/:tableExport`, so `ctx.params.tableExport` is
   the name of the export in the file's request and `undefined` on the page. `.visible()` runs for the export request, with that
   parameter, as it does for the page:
