@@ -1,5 +1,5 @@
 import { can, type Authenticated } from '@marmeon/auth';
-import type { Database, Row } from '@marmeon/database';
+import type { Database, Row, Tables } from '@marmeon/database';
 import type { Serialize } from '@marmeon/http';
 import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
@@ -13,7 +13,7 @@ import type { TableDefinition } from './index.ts';
 import type { TableVisibility } from './index.ts';
 import { rules as r } from '@marmeon/validation';
 import type { AnyTableData, TableController } from './client/index.ts';
-import { action, bulk, column, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableProps } from './index.ts';
+import { action, bulk, column, type CheckColumnKey, type CheckFilters, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
   handle(_row: { readonly id: number }, _ctx: TableContext<Authenticated>) {}
@@ -226,6 +226,29 @@ describe('defineTable — typed from the query', () => {
       columns: { size: column('size') },
       // @ts-expect-error — a filter runs in WHERE, which cannot see a value the query selects
       filters: { size: filter.select('size', ['1']) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams').withCount('members', { as: 'size' }),
+      // @ts-expect-error — a key is a column of a table of the query, not a value it selects
+      key: { column: 'size', type: 'integer' },
+      columns: { size: column('size') },
+    });
+    // The messages name the way out, with the call to write.
+    type Teams = Tables;
+    const bySize = filter.select('size', ['1']);
+    type Size = { id: number; name: string; size: number };
+    expectTypeOf<CheckColumnKey<Teams, 'teams', 'size', Size>>().toEqualTypeOf<"'size' is a value the query selects — a key is a column of a table of the query: select from the query as a derived table, db.selectFrom(query.as('rows')), and name 'rows.size'">();
+    expectTypeOf<CheckFilters<Teams, 'teams', { size: typeof bySize }, Size>['size']>().toEqualTypeOf<{
+      readonly "'size' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE) — or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be filtered by": true;
+    }>();
+    // The recipe: the query as a derived table, whose computed column is a real one — key, search and filter.
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom(db.selectFrom('teams').withCount('members', { as: 'size' }).as('rows')).selectAll(),
+      key: 'rows.size',
+      columns: { size: column('rows.size').searchable() },
+      filters: { size: filter.select('rows.size', ['1']) },
     });
   });
 });

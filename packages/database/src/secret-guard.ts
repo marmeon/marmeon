@@ -667,7 +667,9 @@ class Guard {
   #untyped(source: Source): never {
     throw new Error(
       withCode('D10', `${this.#relation ?? 'This query'} reads ${source.ref ? `"${source.ref}", ` : ''}raw SQL or a function in FROM, whose columns cannot be ` +
-        'checked for secret ones. Select from a table, a subquery or a common table expression instead. See docs/queries.md#relations-and-secret-columns.'),
+        'checked for secret ones. Select from a table or a subquery instead. On Postgres, a set-returning function goes into a subquery\'s select list: ' +
+        "db.selectFrom(db.selectNoFrom(sql`generate_series(1, 7)`.as('day')).as('days')). A common table expression works on the app's Database, not on a module's. " +
+        'See docs/queries.md#relations-and-secret-columns.'),
     );
   }
 }

@@ -138,7 +138,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       );
       const searched = table({ size: column('size').searchable() });
       await expect(tables.resolve(searched, on(searched, { request: new Request('http://localhost/teams/1/teams?search=x') }))).rejects.toThrow(
-        `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
+        `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be searched.`,
       );
       const filtered = defineTable({
         name: 'teams',
@@ -148,7 +148,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
         filters: { size: filter.select('size', ['1']) },
       } as never);
       await expect(tables.resolve(filtered, on(filtered, { request: new Request('http://localhost/teams/1/teams?filter%5Bsize%5D=1') }))).rejects.toThrow(
-        `Table "teams": the filter 'size' reads size, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`,
+        `Table "teams": the filter 'size' reads size, a value its query selects — a filter runs in the query's WHERE, which cannot see it. Or select from the query as a derived table, db.selectFrom(query.as('rows')), whose columns can be filtered by.`,
       );
     });
 
@@ -165,6 +165,27 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       await expect(tables.resolve(table, { ...ctx, route: pageOf(table) } as never)).rejects.toThrow(
         `Table "members": the column 'password' reads password, a secret column its query asks for with secret() — a table never shows one.`,
       );
+    });
+
+    it('searches a number column as text — also a computed one of a derived table (Postgres has no lower(integer))', async () => {
+      const application = await app(driver);
+      const tables = application.application.container.createScope().make(DataTables);
+      const on = (t: DataTable, search: string) =>
+        ({ request: new Request(`http://localhost/teams/1/teams?search=${search}`), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1, route: pageOf(t) }) as never;
+      const teams = defineTable({
+        name: 'teams',
+        query: (db: Database) => db.selectFrom(db.selectFrom('teams').selectAll().withCount('members', { as: 'size' }).as('rows')).selectAll(),
+        key: 'rows.id',
+        columns: { name: column('rows.name').searchable(), size: column('rows.size').searchable() },
+      } as never);
+      const found = async (search: string) => ((await tables.resolve(teams, on(teams, search))) as unknown as { rows: readonly { name: string }[] }).rows.map((row) => row.name);
+      expect(await found('4')).toHaveLength(1);
+      expect(await found('7')).toEqual([]);
+      expect(await found('NO-SUCH-TEAM')).toEqual([]);
+      const byName = (await found('')).length;
+      expect(byName).toBeGreaterThan(1);
+      const first = (await found('')).at(0)!;
+      expect(await found(first.slice(0, 3).toUpperCase())).toContain(first);
     });
 
     it('stays within the base query — the tenant (another team\'s members never show)', async () => {

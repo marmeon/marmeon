@@ -1,5 +1,5 @@
 import { Gate } from '@marmeon/auth';
-import { Translator, type Application, type Container, type ServiceProvider } from '@marmeon/core';
+import { Clock, Translator, type Application, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections, Database } from '@marmeon/database';
 import { Encrypter } from '@marmeon/encryption';
 import { Router } from '@marmeon/router';
@@ -26,6 +26,8 @@ export class TableServiceProvider implements ServiceProvider {
           () => scope.make(Connections).metadata(),
           // The request's language for labels and the delimiter: none without `@marmeon/i18n`.
           () => (container.has(Translator) ? scope.make(Translator) : undefined),
+          // The app's time, for the day in an export's file name.
+          () => scope.make(Clock),
         ),
     );
   }
