@@ -457,7 +457,7 @@ export class MakeMailCommand {
     }
     input.output.line(style('dim', `Preview it in development: /_marmeon/mail/${module}/${name}`));
     input.output.line(style('dim', `Send it: await mailer.send(new ${name}({ address: user.email, name: user.name }, translators.for(user.locale)));   (Mailer from @marmeon/mail, Translators from @marmeon/i18n)`));
-    input.output.line(style('dim', `See docs/mail.md#${shared === undefined ? 'writing-mails' : 'one-frame-for-several-modules'}`));
+    input.output.line(style('dim', shared === undefined ? 'See docs/mail.md#writing-mails' : 'See docs/mail.md#one-frame-for-several-modules'));
     return 0;
   }
 }
