@@ -135,6 +135,24 @@ describe('make:mail', () => {
       }
     });
 
+    it.each(['export type layout = 1;', 'export interface layout {}', 'export type { layout };', 'export { type layout };', "export type { layout } from './mail/layout.ts';"])(
+      'treats the type-only %s as no export',
+      (index) => {
+        const root = withUi(index);
+        const { code, lines } = run(root, ['NoteShared'], { module: 'notes', layout: 'ui' });
+        expect(code).toBe(0);
+        expect(files(root)).toEqual(['NoteSharedMail.ts']);
+        expect(lines).toContain('! modules/ui/index.ts does not export layout. Add it yourself:');
+      },
+    );
+
+    it('counts a value export next to a type-only one of the same name', () => {
+      const { lines } = run(withUi('export type { layout };\nexport function layout() {}\n'), ['NoteShared'], { module: 'notes', layout: 'ui' });
+      expect(lines.join('\n')).not.toContain('does not export');
+      const mixed = run(withUi("export { type layout, layout as frame };\nexport { layout } from './mail/layout.ts';\n"), ['NoteShared'], { module: 'notes', layout: 'ui' });
+      expect(mixed.lines.join('\n')).not.toContain('does not export');
+    });
+
     it('says the entry does not parse instead of asking for an export that may be there', () => {
       const root = withUi("export { layout } from './mail/layout.ts'; export {{\n");
       const { code, lines } = run(root, ['NoteShared'], { module: 'notes', layout: 'ui' });

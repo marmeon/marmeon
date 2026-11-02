@@ -483,15 +483,16 @@ function sharedLayoutModule(input: CommandInput): string | undefined | null {
   return shared;
 }
 
-/** Whether a file exports `name` by name. `export *` is not followed: it counts as missing, and the generator prints the line to add. */
+/** Whether a file exports `name` as a value. Type-only exports do not count, and `export *` is not followed: it counts as missing, and the generator prints the line to add. */
 function exportsName(file: string, name: string): 'exported' | 'missing' | 'unparsable' {
   if (!existsSync(file)) return 'missing';
   const { program, errors } = parseSync(file, readFileSync(file, 'utf8'));
   if (errors.length > 0) return 'unparsable';
   const named = (node: { type: string; name?: string; value?: unknown }) => (node.type === 'Literal' ? node.value === name : node.name === name);
   for (const declaration of program.body as Array<Record<string, any>>) {
-    if (declaration.type !== 'ExportNamedDeclaration') continue;
-    if ((declaration.specifiers as Array<Record<string, any>>).some((specifier) => named(specifier.exported))) return 'exported';
+    // A type-only export cannot be imported as the value the mail calls.
+    if (declaration.type !== 'ExportNamedDeclaration' || declaration.exportKind === 'type') continue;
+    if ((declaration.specifiers as Array<Record<string, any>>).some((specifier) => specifier.exportKind !== 'type' && named(specifier.exported))) return 'exported';
     const inner = declaration.declaration as Record<string, any> | null;
     if (inner?.id !== undefined && inner.id !== null && inner.id.name === name) return 'exported';
     if (inner?.type === 'VariableDeclaration' && inner.declarations.some((d: Record<string, any>) => d.id.name === name)) return 'exported';
