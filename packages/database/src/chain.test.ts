@@ -632,6 +632,9 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       const days = driver === 'sqlite' ? sql<number>`1` : sql<number>`generate_series(1, 7)`;
       const rows = await db.selectFrom(db.selectNoFrom(days.as('day')).as('days')).select('day').execute();
       expect(rows.map((r) => Number(r.day))).toEqual(driver === 'sqlite' ? [1] : [1, 2, 3, 4, 5, 6, 7]);
+      // The same on the app's Database as a common table expression, the variant docs/queries.md shows.
+      const withCte = await db.with('days', (q) => q.selectNoFrom(days.as('day'))).selectFrom('days').select('day').execute();
+      expect(withCte.map((r) => Number(r.day))).toEqual(driver === 'sqlite' ? [1] : [1, 2, 3, 4, 5, 6, 7]);
     });
 
     it('are refused when an insert copies one — also on the first query of a process', async () => {
