@@ -12,7 +12,7 @@ import { MemberPolicy } from '../policies/MemberPolicy.ts';
 /**
  * The members: everyone with a confirmed address — an unconfirmed account is no member yet, and with private registration
  * its address must not show anywhere. Every page, action, bulk action ("all matching" too) and export starts from this query.
- * The e-mail column exists for administrators only: for everyone else it is not selected, not in the props, not in the export.
+ * The e-mail column exists for administrators only: for everyone else it is not selected, not in the props, not in the export (which names it, and the visibility still decides).
  */
 export const MembersTable = defineTable({
   name: 'members',
@@ -26,6 +26,8 @@ export const MembersTable = defineTable({
     email: column('users.email').label((t) => t('members.column.email')).visible(MemberPolicy, 'viewEmails').sortable().searchable(),
     joined: column('users.created_at').label((t) => t('members.column.joined')).sortable(),
     links: column('links').label((t) => t('members.column.links')).sortable(),
+    // Only for the files: the page has no language column (it filters by it), the spreadsheet wants one.
+    locale: column('users.locale').label((t) => t('members.column.locale')).exportOnly(),
   },
   filters: {
     joined: filter.dateRange('users.created_at'),
@@ -50,8 +52,9 @@ export const MembersTable = defineTable({
     setLocale: bulk(SetMembersLocale).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'setLocale').input(r.object({ locale: r.in(['en', 'de']) })).max(100),
   },
   // A German spreadsheet reads a semicolon as the column break (its decimal sign is the comma). The file is named after the app's
-  // day and the request's language (Mitglieder-2026-11-18.csv): the framework cleans the name and adds .csv.
-  export: { csv: exportCsv().authorize(MemberPolicy, 'export').filename((_ctx, resolve, translator) => `${translator?.text('members.export_file') ?? 'members'}-${new Date(resolve(Clock).now()).toISOString().slice(0, 10)}`).delimiter((_ctx, _resolve, translator) => (translator?.locale === 'de' ? ';' : ',')).onExport(RecordMembersExport) },
+  // day and the request's language (Mitglieder-2026-11-18.csv): the framework cleans the name and adds .csv. The file chooses its
+  // columns: the links count is for the page, the language for the file.
+  export: { csv: exportCsv().authorize(MemberPolicy, 'export').columns(['name', 'email', 'joined', 'locale']).filename((_ctx, resolve, translator) => `${translator?.text('members.export_file') ?? 'members'}-${new Date(resolve(Clock).now()).toISOString().slice(0, 10)}`).delimiter((_ctx, _resolve, translator) => (translator?.locale === 'de' ? ';' : ',')).onExport(RecordMembersExport) },
 });
 
 /** A row of the table as actions and policies get it: the key and the visible columns. */

@@ -64,11 +64,13 @@ function visibility(args: readonly unknown[], where: string): TableVisibility {
  * A column of a table — built by {@link column}. `R` is the column it reads (`'name'`, `'users.created_at'`); its name in URLs and
  * props is its key in `columns` (an alias — the database column never leaves the server).
  */
-export class ColumnDefinition<R extends string = string, S extends boolean = boolean, Q extends boolean = boolean, V extends boolean = boolean> {
+export class ColumnDefinition<R extends string = string, S extends boolean = boolean, Q extends boolean = boolean, V extends boolean = boolean, E extends boolean = boolean> {
   declare readonly '~sortable': S;
   declare readonly '~searchable': Q;
   /** `true` once `visible(…)` decides: the column may be missing — optional in the row's type. */
   declare readonly '~conditional': V;
+  /** `true` once `exportOnly()` decides: the column is not in the page's row type. */
+  declare readonly '~exportOnly': E;
   readonly ref: R;
   /** @internal */
   readonly isSortable: boolean;
@@ -78,9 +80,11 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
   readonly text: string | ((t: TableText) => string) | null;
   /** @internal */
   readonly visibility: TableVisibility | undefined;
+  /** @internal */
+  readonly isExportOnly: boolean;
 
   /** @internal */
-  constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | ((t: TableText) => string) | null; visibility?: TableVisibility | undefined } = {}) {
+  constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | ((t: TableText) => string) | null; visibility?: TableVisibility | undefined; exportOnly?: boolean } = {}) {
     if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) {
       throw new TypeError(`column(${JSON.stringify(ref)}): a column of the query, as "name" or "table.name".`);
     }
@@ -89,16 +93,30 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
     this.isSearchable = options.searchable ?? false;
     this.text = options.label ?? null;
     this.visibility = options.visibility;
+    this.isExportOnly = options.exportOnly ?? false;
+    if (this.isExportOnly && (this.isSortable || this.isSearchable)) {
+      throw new TypeError(`column('${ref}').exportOnly(): a column only the file has is on no page — it cannot be sortable() or searchable().`);
+    }
   }
 
-  /** Sortable by the URL (`?sort=joined`, `?sort=-joined`) — the key always breaks ties. */
-  sortable(): ColumnDefinition<R, true, Q, V> {
+  /** Sortable by the URL (`?sort=joined`, `?sort=-joined`) — the key always breaks ties. Not for an `exportOnly()` column. */
+  sortable(this: ColumnDefinition<R, S, Q, V, false>): ColumnDefinition<R, true, Q, V, false> {
     return new ColumnDefinition(this.ref, { ...this.#options(), sortable: true });
   }
 
-  /** Looked into by the table's search (`?search=`, case-insensitive, `LIKE` wildcards taken literally) — only while visible. */
-  searchable(): ColumnDefinition<R, S, true, V> {
+  /** Looked into by the table's search (`?search=`, case-insensitive, `LIKE` wildcards taken literally) — only while visible. Not for an `exportOnly()` column. */
+  searchable(this: ColumnDefinition<R, S, Q, V, false>): ColumnDefinition<R, S, true, V, false> {
     return new ColumnDefinition(this.ref, { ...this.#options(), searchable: true });
+  }
+
+  /**
+   * A column for the files only: the table's exports have it (all of them, or the ones that name it in `exportCsv().columns([…])`),
+   * the page does not — not in its props, its rows or its row type, and it cannot be sorted or searched by. `label()` and `visible()`
+   * apply as for any column. It decides the layout, not who may read it: whoever may download the file gets the column — guard it
+   * with `visible()` or the export's `authorize()`. See [exports](docs/tables.md#exports).
+   */
+  exportOnly(this: ColumnDefinition<R, false, false, V, E>): ColumnDefinition<R, false, false, V, true> {
+    return new ColumnDefinition(this.ref, { ...this.#options(), exportOnly: true });
   }
 
   /**
@@ -106,7 +124,7 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
    * function gets `t(key, params?)` of the request's translator once per request (`(t) => t('members.column.name')`), the key itself
    * without one. See [columns](docs/tables.md#columns).
    */
-  label(text: string | ((t: TableText) => string)): ColumnDefinition<R, S, Q, V> {
+  label(text: string | ((t: TableText) => string)): ColumnDefinition<R, S, Q, V, E> {
     if (typeof text !== 'string' && typeof text !== 'function') throw new TypeError(`column('${this.ref}').label(…): a text, or a function of the translator.`);
     return new ColumnDefinition(this.ref, { ...this.#options(), label: text });
   }
@@ -115,19 +133,19 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
    * Shows the column only when the policy says so — or the check: otherwise it is not selected (not in the SQL), not in the props, the
    * devtools, a cursor or an export, and sorting or searching by it is refused (400). In the row's type it becomes optional.
    */
-  visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): ColumnDefinition<R, S, Q, true>;
-  visible(check: TableVisibilityCheck): ColumnDefinition<R, S, Q, true>;
-  visible(...args: unknown[]): ColumnDefinition<R, S, Q, true> {
+  visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): ColumnDefinition<R, S, Q, true, E>;
+  visible(check: TableVisibilityCheck): ColumnDefinition<R, S, Q, true, E>;
+  visible(...args: unknown[]): ColumnDefinition<R, S, Q, true, E> {
     return new ColumnDefinition(this.ref, { ...this.#options(), visibility: visibility(args, `column('${this.ref}')`) });
   }
 
   #options() {
-    return { sortable: this.isSortable, searchable: this.isSearchable, label: this.text, visibility: this.visibility };
+    return { sortable: this.isSortable, searchable: this.isSearchable, label: this.text, visibility: this.visibility, exportOnly: this.isExportOnly };
   }
 }
 
 /** A column of the table's query: `column('name')`, `column('users.created_at').sortable()`. Checked against the query's tables. */
-export function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false> {
+export function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false, false> {
   return new ColumnDefinition(ref);
 }
 
@@ -410,7 +428,7 @@ export interface TableExportInfo {
   readonly export: string;
   /** The rows that matched when the export started: the count of the filtered query the file is read from. */
   readonly rows: number;
-  /** The visible columns the file holds, by name. */
+  /** The columns the file holds, by name, in its order: the ones of `exportCsv().columns()` this request may see, or all it may see. */
   readonly columns: readonly string[];
   /** The sort, search and filters of the request, as the table parsed and checked them. */
   readonly state: {
@@ -438,9 +456,10 @@ export type TableDelimiterChoice = (ctx: any, resolve: ClassResolver, translator
  */
 export type TableFilenameChoice = (ctx: any, resolve: ClassResolver, translator: Translator | undefined) => string | Promise<string>;
 
-/** An export — built by {@link exportCsv}. */
-export class TableExport {
+/** An export — built by {@link exportCsv}. `N` is the column names its `columns()` chose (`never` without). */
+export class TableExport<N extends string = never> {
   readonly format = 'csv' as const;
+  declare readonly '~columns': N;
   /** @internal */
   readonly visibility: TableVisibility | undefined;
   /** @internal */
@@ -451,33 +470,36 @@ export class TableExport {
   readonly separator: CsvDelimiter | TableDelimiterChoice;
   /** @internal */
   readonly stem: string | TableFilenameChoice | undefined;
+  /** @internal */
+  readonly chosen: readonly string[] | undefined;
 
   /** @internal */
-  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass, separator: CsvDelimiter | TableDelimiterChoice = ',', stem?: string | TableFilenameChoice) {
+  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass, separator: CsvDelimiter | TableDelimiterChoice = ',', stem?: string | TableFilenameChoice, chosen?: readonly string[]) {
     if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;
     this.limit = max;
     this.recorder = recorder;
     this.separator = separator;
     this.stem = stem;
+    this.chosen = chosen;
   }
 
   /**
    * At most `rows` rows per export (default 10 000): an export over more is refused with a 422 before a byte is streamed — narrow
    * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @marmeon/cache).
    */
-  max(rows: number): TableExport {
-    return new TableExport(this.visibility, rows, this.recorder, this.separator, this.stem);
+  max(rows: number): TableExport<N> {
+    return new TableExport(this.visibility, rows, this.recorder, this.separator, this.stem, this.chosen);
   }
 
   /**
    * Who may export: an ability without a resource (`export(user)`) — or a check. Without it, everyone who sees the table may
    * export what they see (the visible columns, every page). A refused export is a 403 and is not in the props.
    */
-  authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
-  authorize(check: TableVisibilityCheck): TableExport;
-  authorize(...args: unknown[]): TableExport {
-    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder, this.separator, this.stem);
+  authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport<N>;
+  authorize(check: TableVisibilityCheck): TableExport<N>;
+  authorize(...args: unknown[]): TableExport<N> {
+    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder, this.separator, this.stem, this.chosen);
   }
 
   /**
@@ -486,9 +508,9 @@ export class TableExport {
    * download fails with that error. The entry records an export that started: if its first query fails or the stream breaks, the
    * entry stays though the file was not delivered in full. See [exports](docs/tables.md#exports).
    */
-  onExport(Recorder: ExportRecorderClass): TableExport {
+  onExport(Recorder: ExportRecorderClass): TableExport<N> {
     if (typeof Recorder !== 'function' || typeof Recorder.prototype?.handle !== 'function') throw new TypeError('exportCsv().onExport(Recorder): a class with handle(info, ctx).');
-    return new TableExport(this.visibility, this.limit, Recorder, this.separator, this.stem);
+    return new TableExport(this.visibility, this.limit, Recorder, this.separator, this.stem, this.chosen);
   }
 
   /**
@@ -497,9 +519,9 @@ export class TableExport {
    * else is a delimiter (a `TypeError` when the table is defined, or on the request when a function answers it): not a quote, a line
    * break, a formula sign or more than one character. Every cell stays quoted and escaped. See [exports](docs/tables.md#exports).
    */
-  delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport {
+  delimiter(choice: CsvDelimiter | TableDelimiterChoice): TableExport<N> {
     if (typeof choice !== 'function' && !isCsvDelimiter(choice)) throw new TypeError(`exportCsv().delimiter(${JSON.stringify(choice)}): "," ";" or a tab, or a function of the request.`);
-    return new TableExport(this.visibility, this.limit, this.recorder, choice, this.stem);
+    return new TableExport(this.visibility, this.limit, this.recorder, choice, this.stem, this.chosen);
   }
 
   /**
@@ -508,13 +530,26 @@ export class TableExport {
    * (control and direction-changing characters go, `/` and `\` become `-`, dots and spaces at the ends go, at most 100 characters;
    * nothing left means the default), appends `.csv` and encodes the header. See [exports](docs/tables.md#exports).
    */
-  filename(choice: string | TableFilenameChoice): TableExport {
+  filename(choice: string | TableFilenameChoice): TableExport<N> {
     if (typeof choice !== 'string' && typeof choice !== 'function') throw new TypeError('exportCsv().filename(name): a string, or a function of the request.');
-    return new TableExport(this.visibility, this.limit, this.recorder, this.separator, choice);
+    return new TableExport(this.visibility, this.limit, this.recorder, this.separator, choice, this.chosen);
+  }
+
+  /**
+   * The file's own columns, in this order: names from the table's `columns` — a page column or an `exportOnly()` one. Without it the
+   * file has every column the user sees on the page, then the `exportOnly()` ones, in the definition's order. A column the user may
+   * not see (`visible()`) is left out of the file even when named here, head and cells; the sort of the request works on the page's
+   * columns whether or not the file holds them. The names are the app's, never the request's. See [exports](docs/tables.md#exports).
+   */
+  columns<const C extends string>(names: readonly C[]): TableExport<C> {
+    if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== 'string')) throw new TypeError("exportCsv().columns(names): a list of the table's column names, such as ['name', 'email'].");
+    const twice = names.find((name, index) => names.indexOf(name) !== index);
+    if (twice !== undefined) throw new TypeError(`exportCsv().columns(): '${twice}' is named twice.`);
+    return new TableExport(this.visibility, this.limit, this.recorder, this.separator, this.stem, [...names]);
   }
 }
 
-/** A CSV export of the visible columns, as the table is filtered and sorted — streamed, formulas escaped (OWASP). */
+/** A CSV export of the visible columns (or the ones `columns()` names), as the table is filtered and sorted — streamed, formulas escaped (OWASP). */
 export function exportCsv(): TableExport {
   return new TableExport();
 }
@@ -522,7 +557,10 @@ export function exportCsv(): TableExport {
 // --- The definition --------------------------------------------------------------------------------------------------------
 
 /** Any column definition. */
-export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
+export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean, boolean>;
+
+/** An export, whichever columns it names. */
+export type AnyExport = TableExport<string>;
 /** Any filter. */
 export type AnyFilter = Filter<string, 'select' | 'dateRange' | 'has', string, string>;
 /** Any row action. */
@@ -554,7 +592,7 @@ export interface TableDefinition {
   readonly cursor: boolean;
   readonly actions: Readonly<Record<string, AnyRowAction>>;
   readonly bulk: Readonly<Record<string, AnyBulkAction>>;
-  readonly exports: Readonly<Record<string, TableExport>>;
+  readonly exports: Readonly<Record<string, AnyExport>>;
 }
 
 const TABLE_TYPES = Symbol.for('marmeon.table.types');
@@ -784,12 +822,24 @@ type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> :
 type ValueOf<DB, TB extends keyof DB, O, C> =
   C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ReferencedType<DB, TB, R>) : never;
 
-/** A row as the table sends it (and hands it to actions and policies): the visible columns by name, plus the key. */
+/** The columns of the page: all but the ones only the file has. */
+type PageColumns<Cols> = { [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, boolean, true> ? never : A]: Cols[A] };
+
+/** A row as the table sends it (and hands it to actions and policies): the visible columns of the page by name, plus the key. */
 type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<
-  { readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]> } & {
-    readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
+  { readonly [A in keyof PageColumns<Cols> as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]> } & {
+    readonly [A in keyof PageColumns<Cols> as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
   } & { readonly [P in KeyName<K>]: ReferencedType<DB, TB, K> }
 >;
+
+/** Every export may only name columns of the table. */
+export type CheckExports<Cols, Exports> = {
+  [N in keyof Exports]: Exports[N] extends TableExport<infer Named>
+    ? [Exclude<Named, keyof Cols & string>] extends [never]
+      ? unknown
+      : Problem<`'${N & string}' names ${JoinNames<Exclude<Named, keyof Cols & string>>}, no column of the table — it has ${JoinNames<keyof Cols & string>}`>
+    : unknown;
+};
 
 type PolicyProblem<P, K extends string, Row, Name extends string> = [P] extends [unknown]
   ? unknown extends P
@@ -889,7 +939,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
   readonly pagination?: Pg;
   readonly actions?: Actions & NoInfer<CheckActions<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, Actions>>;
   readonly bulk?: Bulk & NoInfer<CheckBulk<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, Bulk>>;
-  readonly export?: Exports;
+  readonly export?: Exports & NoInfer<CheckExports<Cols, Exports>>;
 }
 
 /** What the browser sends along per action that takes input — the schema's input type; actions without one are left out. */
@@ -922,7 +972,7 @@ type AnswersOf<Actions> = { [N in keyof Actions & string]: Actions[N] extends { 
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<
   RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>,
   CtxOf<Q>,
-  keyof Cols & string,
+  keyof PageColumns<Cols> & string,
   keyof Filters & string,
   keyof Actions & string,
   keyof Bulk & string,
@@ -948,7 +998,7 @@ export function defineTable<
   const Sort extends string = never,
   Actions extends Record<string, AnyRowAction> = {},
   Bulk extends Record<string, AnyBulkAction> = {},
-  Exports extends Record<string, TableExport> = {},
+  Exports extends Record<string, AnyExport> = {},
   const P extends string = '',
   const Pg extends TablePagination = {},
   D extends { readonly selectFrom: (...args: never) => unknown } = Database,
@@ -1011,6 +1061,10 @@ function normalize(input: RawInput): TableDefinition {
   const actions = entries(input.actions, 'action', RowAction, name);
   const bulkActions = entries(input.bulk, 'bulk action', BulkAction, name);
   const exports = entries(input.export, 'export', TableExport, name);
+  for (const [exportName, entry] of Object.entries(exports)) {
+    const unknown = entry.chosen?.find((alias) => !Object.hasOwn(columns, alias));
+    if (unknown !== undefined) throw new TypeError(`defineTable('${name}'): export '${exportName}' names the column '${unknown}', which is no column of the table (${Object.keys(columns).join(', ')}).`);
+  }
   const sortable = Object.entries(columns).filter(([, col]) => col.isSortable).map(([alias]) => alias);
   // The default sort is every user's: a column only some may see (`.visible()`) would answer 400 to the others on the page itself.
   const forEveryone = sortable.filter((alias) => columns[alias]!.visibility === undefined);
