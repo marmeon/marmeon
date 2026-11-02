@@ -59,7 +59,7 @@ export { verifyWebhook, Webhooks } from './webhooks.ts';
 export type { WebhookContext, WebhookDefinition, WebhookScheme } from './webhooks.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { addVary, defineMiddleware, defineRequest, defineRoutes, describeAccess, editableResponse, everyone, EXPECTS_JSON_VARY, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
+export { addVary, contentDisposition, defineMiddleware, defineRequest, defineRoutes, describeAccess, editableResponse, everyone, EXPECTS_JSON_VARY, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
 export type {
   AccessCheck,
   ContextOf,

@@ -22,6 +22,7 @@ export type {
   DataTable,
   ExportRecorderClass,
   TableDelimiterChoice,
+  TableFilenameChoice,
   TableExportInfo,
   TableText,
   TableContext,

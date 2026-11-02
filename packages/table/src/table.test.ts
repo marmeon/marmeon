@@ -508,7 +508,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toBe('text/csv; charset=utf-8');
       expect(response.headers.get('cache-control')).toBe('no-store');
-      expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="members-\d{4}-\d{2}-\d{2}\.csv"$/);
+      expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="members-(\d{4}-\d{2}-\d{2})\.csv"; filename\*=UTF-8''members-\1\.csv$/);
       const bytes = new Uint8Array(await response.arrayBuffer());
       // A byte order mark first: spreadsheets read UTF-8 (umlauts) only with it.
       expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);

@@ -39,9 +39,9 @@ describe.each(drivers)('frozen formats of the table package on %s', (driver) => 
     let now = Date.parse('2026-11-18T23:30:00Z');
     open.application.container.instance(Clock, { now: () => now });
     const name = async () => (await open!.request(endpoint(LedgerTable, 'export', 'csv'), { user: ADA })).headers.get('content-disposition');
-    expect(await name()).toBe('attachment; filename="ledger-2026-11-18.csv"');
+    expect(await name()).toBe(`attachment; filename="ledger-2026-11-18.csv"; filename*=UTF-8''ledger-2026-11-18.csv`);
     now = Date.parse('2026-11-19T00:00:01Z');
-    expect(await name()).toBe('attachment; filename="ledger-2026-11-19.csv"');
+    expect(await name()).toBe(`attachment; filename="ledger-2026-11-19.csv"; filename*=UTF-8''ledger-2026-11-19.csv`);
   });
 
   it('writes the CSV export byte for byte as the newest fixture of csv/ holds it — and names the file by the day', async () => {
@@ -50,7 +50,7 @@ describe.each(drivers)('frozen formats of the table package on %s', (driver) => 
     await seed(open, driver);
     const response = await open.request(endpoint(LedgerTable, 'export', 'csv'), { user: ADA });
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-disposition')).toBe('attachment; filename="ledger-2026-10-06.csv"');
+    expect(response.headers.get('content-disposition')).toBe(`attachment; filename="ledger-2026-10-06.csv"; filename*=UTF-8''ledger-2026-10-06.csv`);
     const bytes = Buffer.from(await response.arrayBuffer());
 
     const directory = new URL('./__fixtures__/formats/csv/', import.meta.url);

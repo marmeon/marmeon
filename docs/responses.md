@@ -426,15 +426,14 @@ raster images goes out as an attachment, so HTML, SVG or a PDF is downloaded ins
 is a 404. The route's middleware and policy decide who may download: check them as for any other route.
 
 A file your code makes, a JSON export say, goes out as a `Response` of its own. `contentDisposition()` of
-`@marmeon/storage` names it: the same encoder `serveFile()` uses, safe for any name, even one made from what a person typed.
+`@marmeon/http` names it (`@marmeon/storage` exports the same function): the encoder `serveFile()` and the table exports use, safe for any name, even one made from what a person typed.
 The header gets an ASCII fallback in which quotes, backslashes, slashes, percent signs, control characters and non-ASCII characters are `_`
 (a line break cannot split the header), and the real name as `filename*` (UTF-8, RFC 8187). Use `'inline'` instead of
 `'attachment'` only for a type a browser may show on your app's origin, a raster image.
 
 ```ts title="modules/account/controllers/ExportProfileController.ts"
 import type { Authenticated } from '@marmeon/auth';
-import { Controller, type HttpContext } from '@marmeon/http';
-import { contentDisposition } from '@marmeon/storage';
+import { contentDisposition, Controller, type HttpContext } from '@marmeon/http';
 
 export class ExportProfileController extends Controller {
   handle(ctx: HttpContext<Authenticated>) {

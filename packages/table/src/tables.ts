@@ -5,10 +5,10 @@ import { leaveOutSelections, selectionsOf } from '@marmeon/database/internal';
 import { SystemClock, type Clock, type Translator } from '@marmeon/core';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
-import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition } from '@marmeon/router';
+import { addVary, contentDisposition, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition } from '@marmeon/router';
 import { fillPath, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
-import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
+import type { TableActionResult, TableColumn, TableData, TableExportEntry, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
 import { isSchema, normalizeOptions } from './helpers.ts';
 import type { ActionInputSource, AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, DataTable, TableDefinition, TableExport, TableExportInfo, TableProps, TableVisibility } from './define.ts';
@@ -161,7 +161,7 @@ export class DataTables {
     const can = await this.#abilities(view.actions, picked);
     const keys = queryKeys(definition);
     const query = stateQuery(definition, state);
-    const urls = this.#endpoints(definition, context, view, routes);
+    const urls = this.#endpoints(definition, context, routes);
     const data: TableData = {
       name: definition.name,
       key: keyName,
@@ -193,6 +193,33 @@ export class DataTables {
       exports: view.exports.map(([name, entry]) => ({ name, format: 'csv' as const, url: urls.export(name, query), max: entry.limit })),
     };
     return data as unknown as TableProps<T>;
+  }
+
+  /**
+   * The exports of `table` the user may download, without the table's rows: for a page that links a file and shows no table — the
+   * same `{ name, format, url, max }` entries as the `exports` of the table's props, with the table's default state in the URL (no
+   * sort, search or filter). A table the user may not see answers `[]` (not a 403: the page is not the table's), and an export they
+   * may not use is left out — the checks are the download's, which asks them again. Runs no query on the table. Middleware given to
+   * `endpoints()` runs only on the download, so an access check belongs in `authorize`, where the list asks it too.
+   * The table must be attached to the route of the page, as for `resolve()`. See [exports](docs/tables.md#a-table-only-for-its-export).
+   */
+  async exports<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>['exports']> {
+    const definition = table.definition;
+    const context = ctx as unknown as HttpContext;
+    const routes = this.#attached(definition, context);
+    try {
+      await this.#authorizeTable(definition, context);
+    } catch (error) {
+      if (error instanceof HttpError && (error.status === 403 || error.status === 404)) return [] as unknown as TableProps<T>['exports'];
+      throw error;
+    }
+    const urls = this.#endpoints(definition, context, routes);
+    const entries: TableExportEntry[] = [];
+    // One after another, as `#view()` does: a policy that queries must not open a connection per export at once.
+    for (const [name, entry] of Object.entries(definition.exports)) {
+      if (await this.#visible(entry.visibility, context)) entries.push({ name, format: 'csv', url: urls.export(name, {}), max: entry.limit });
+    }
+    return entries as unknown as TableProps<T>['exports'];
   }
 
   /**
@@ -306,6 +333,7 @@ export class DataTables {
     const filtered = this.#filtered(definition, ctx, state, view);
     // Before the count and the record: an answer that is no delimiter fails the export with nothing written down.
     const delimiter = await this.#delimiter(entry, ctx);
+    const filename = await this.#filename(definition, name, entry, ctx);
     // Its limit first (one count): an export over it is refused before a byte is streamed — never a file cut short.
     const { count } = (await this.#db
       .selectFrom(filtered.select(sql<number>`1`.as('row')).as('exported'))
@@ -358,13 +386,10 @@ export class DataTables {
         if (next === null) controller.close();
       },
     });
-    // The app's clock (so `app.freeze()` fixes the name), as the UTC day: the app has no display zone.
-    const day = new Date(this.#clock().now()).toISOString().slice(0, 10);
     return new Response(body, {
       headers: {
         'content-type': 'text/csv; charset=utf-8',
-        // The table's name is letters, digits, '-' and '_' (defineTable checks it): nothing to escape, no path, no header injection.
-        'content-disposition': `attachment; filename="${definition.name}-${day}.csv"`,
+        'content-disposition': contentDisposition('attachment', filename),
         'cache-control': 'no-store',
         'x-content-type-options': 'nosniff',
       },
@@ -394,6 +419,22 @@ export class DataTables {
     const chosen = typeof entry.separator === 'function' ? await entry.separator(ctx, this.#resolve, this.#translator()) : entry.separator;
     if (!isCsvDelimiter(chosen)) throw new TypeError(`exportCsv().delimiter(…) answered ${JSON.stringify(chosen)}: "," ";" or a tab.`);
     return chosen;
+  }
+
+  /**
+   * The file's name for this request, `.csv` included: the export's `filename(…)` cleaned, or `<table>-<day>`. Decided before the
+   * count, like the delimiter: a function that throws sends no file. Whatever the app answers is cleaned — it may be the title of a
+   * record someone else named.
+   */
+  async #filename(definition: TableDefinition, name: string, entry: TableExport, ctx: HttpContext): Promise<string> {
+    // Only an export without `filename()` takes the default: a function that answers `undefined` is a mistake, not "no name".
+    const chosen = typeof entry.stem === 'function' ? await entry.stem(ctx, this.#resolve, this.#translator()) : entry.stem;
+    if (entry.stem !== undefined && typeof chosen !== 'string') {
+      throw new TypeError(`Table "${definition.name}", export '${name}': filename(…) answered ${JSON.stringify(chosen) ?? String(chosen)}, not a string.`);
+    }
+    // The app's clock (so `app.freeze()` fixes the name), as the UTC day: the app has no display zone.
+    const day = new Date(this.#clock().now()).toISOString().slice(0, 10);
+    return `${cleanStem(chosen ?? '') || `${definition.name}-${day}`}.csv`;
   }
 
   /** What this request may see — each visibility asked once. */
@@ -587,7 +628,7 @@ export class DataTables {
   }
 
   /** The URLs of the table's endpoints for this page — of the routes attached to it, with the page's own parameters. */
-  #endpoints(definition: TableDefinition, ctx: HttpContext, view: View, routes: Partial<Record<TableEndpointKind, RouteDefinition>>) {
+  #endpoints(definition: TableDefinition, ctx: HttpContext, routes: Partial<Record<TableEndpointKind, RouteDefinition>>) {
     const url = (kind: TableEndpointKind, param: string, name: string) =>
       fillPath(definition.name, routes[kind]!.path, { ...rawParams(ctx.route?.path ?? '/', new URL(ctx.request.url).pathname), [param]: name }).path;
     return {
@@ -640,6 +681,23 @@ function endpointSuffix(definition: TableDefinition, kind: TableEndpointKind): s
 }
 
 // --- helpers --------------------------------------------------------------------------------------------------------------
+
+/** Control characters (C0, DEL, C1) and the ones that reorder or hide text (zero-width and tag characters, direction marks, embeddings, isolates, line and paragraph separators). */
+// oxlint-disable-next-line no-control-regex -- control characters are exactly what it removes
+const UNSAFE_IN_NAME = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u{e0000}-\u{e007f}]/gu;
+
+/** The most code points a file's name keeps, before its extension. */
+const NAME_MAX = 100;
+
+/**
+ * A file name's stem the app gave, made harmless: no control or direction-changing character, no path separator, no dots or spaces
+ * at the ends (no hidden file, no `..`), at most {@link NAME_MAX} code points. Empty when nothing is left.
+ */
+function cleanStem(stem: string): string {
+  const trim = (text: string) => text.replace(/^[. ]+|[. ]+$/g, '');
+  const cleaned = trim(stem.toWellFormed().replace(UNSAFE_IN_NAME, '').replace(/[/\\]/g, '-'));
+  return trim(Array.from(cleaned).slice(0, NAME_MAX).join(''));
+}
 
 function forbidden(): HttpError {
   return new HttpError(403, 'This action is unauthorized.', {}, { key: 'marmeon.errors.unauthorized' });

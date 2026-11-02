@@ -18,7 +18,7 @@ export type { TextKey } from './errors.ts';
 export { CookieJar } from './cookies.ts';
 export type { CookieDefaults, CookieOptions } from './cookies.ts';
 export { RequestNonce } from './nonce.ts';
-export { editableResponse, ownResponse } from './response.ts';
+export { contentDisposition, editableResponse, ownResponse } from './response.ts';
 export { addVary, expectsJson, EXPECTS_JSON_VARY } from './request.ts';
 export type { Input, RequestState } from './request.ts';
 export { defineRequest, parseQuery, translatable, ValidationError } from './request-definition.ts';

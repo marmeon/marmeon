@@ -197,13 +197,31 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     await app.make(UserRepository).update(grace.id, { name: '=HYPERLINK("https://evil.example","Grace")' });
     const response = await app.actingAs(ada).get('/members/_tables/members/export/csv?sort=-joined').assertOk();
     response.assertHeader('cache-control', 'no-store');
-    expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="members-\d{4}-\d{2}-\d{2}\.csv"$/);
+    expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="members-(\d{4}-\d{2}-\d{2})\.csv"; filename\*=UTF-8''members-\1\.csv$/);
     const lines = response.body.replace(/^﻿/, '').split('\r\n');
     expect(lines[0]).toBe('"Name","E-mail","Joined","Links"');
     expect(lines[1], 'a formula reached the CSV').toMatch(/^"'=HYPERLINK\(""https:\/\/evil\.example"",""Grace""\)","grace@example\.com",/);
     expect(lines).toHaveLength(5);
     await app.actingAs(alan).get('/members/_tables/members/export/csv').assertForbidden();
     expect((await members(alan)).exports).toEqual([]);
+  });
+
+  it("names the file after the request's language and the day of the app clock", async () => {
+    app.freeze(new Date('2026-11-18T23:30:00Z'));
+    const english = await app.actingAs(ada).withHeaders({ 'accept-language': 'en' }).get('/members/_tables/members/export/csv').assertOk();
+    expect(english.headers.get('content-disposition')).toBe(`attachment; filename="members-2026-11-18.csv"; filename*=UTF-8''members-2026-11-18.csv`);
+    const german = await app.actingAs(ada).withHeaders({ 'accept-language': 'de' }).get('/members/_tables/members/export/csv').assertOk();
+    expect(german.headers.get('content-disposition')).toBe(`attachment; filename="Mitglieder-2026-11-18.csv"; filename*=UTF-8''Mitglieder-2026-11-18.csv`);
+  });
+
+  it('links the export on a page without the table — to who may download it only, and the link downloads', async () => {
+    const exports = async (user: User) => (await app.actingAs(user).navigating().get('/members/exports').assertOk()).page()!.props.exports as { name: string; url: string }[];
+    expect(await exports(alan)).toEqual([]);
+    const [entry] = await exports(ada);
+    expect(entry).toMatchObject({ name: 'csv', url: '/members/exports/_tables/members/export/csv' });
+    await app.actingAs(ada).get(entry!.url).assertOk();
+    // The list is no permission: the address answers who asks it, whatever a page showed.
+    await app.actingAs(alan).get(entry!.url).assertForbidden();
   });
 
   it('downloads the list with headings and separator in the request\'s language — German with a semicolon, the props with the same headings', async () => {
