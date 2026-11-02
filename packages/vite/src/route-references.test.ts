@@ -155,6 +155,27 @@ describe('collectRouteReferences', () => {
     expect(problems[0]).toContain('send its URL instead (router.url() on the server) as href, not its name');
   });
 
+  it('suggests an href only where the element takes one: <Island> and <Link>, not <Form> or useAction()', () => {
+    const { problems } = collect(`
+      import { Form, Island, Link, useAction } from '@marmeon/react';
+      export default function Page({ panel }: Props) {
+        useAction(panel.action);
+        return <><Island route={panel.route} /><Link route={panel.route} /><Form route={panel.route} /></>;
+      }
+    `);
+    expect(problems).toHaveLength(4);
+    const withHref = 'send its URL instead (router.url() on the server) as href, not its name';
+    const withoutHref = 'send its URL instead (router.url() on the server), not its name';
+    expect(problems[0]).toContain('(useAction())');
+    expect(problems[0]).toContain(withoutHref);
+    expect(problems[1]).toContain('<Island route>');
+    expect(problems[1]).toContain(withHref);
+    expect(problems[2]).toContain('<Link route>');
+    expect(problems[2]).toContain(withHref);
+    expect(problems[3]).toContain('<Form route>');
+    expect(problems[3]).toContain(withoutHref);
+  });
+
   it('reports where: each reference and problem has its offset', () => {
     const code = "import { Link } from '@marmeon/react';\nexport const A = () => <Link route={name} />;\n";
     const { problems } = collectRouteReferences(code, 'A.tsx');

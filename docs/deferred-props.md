@@ -263,22 +263,46 @@ server decides which panels a page shows, say because other modules offer them, 
 and the page embeds it with `<Island href>`:
 
 ```ts title="modules/dashboard/controllers/ShowDashboardController.ts"
-handle() {
-  return this.view('dashboard/Show', {
-    panels: this.#panels.all().map((panel) => ({ title: panel.title, url: this.#router.url(panel.route, {}, panel.query) })),
-  });
+import { Controller } from '@marmeon/http';
+import { Router } from '@marmeon/router';
+
+export class ShowDashboardController extends Controller {
+  readonly #router: Router;
+
+  constructor(router: Router) {
+    super();
+    this.#router = router;
+  }
+
+  handle() {
+    return this.view('dashboard/Show', {
+      // The panels come from the server's side: here a list, in a real app what the modules registered.
+      panels: [
+        { title: 'Recent notes', url: this.#router.url('notes.recent', {}, { limit: 3 }) },
+        { title: 'Activity', url: this.#router.url('notes.activity') },
+      ],
+    });
+  }
 }
 ```
 
 ```tsx title="modules/dashboard/views/Show.tsx"
+import type { PageProps } from '@marmeon/http';
 import { Island } from '@marmeon/react';
+import type { ShowDashboardController } from '../controllers/ShowDashboardController.ts';
 
-{panels.map((panel) => (
-  <section key={panel.url}>
-    <h2>{panel.title}</h2>
-    <Island href={panel.url} fallback={<p aria-busy="true">Loading…</p>} unauthorized={<p>Not for you.</p>} />
-  </section>
-))}
+export default function Show({ panels }: PageProps<ShowDashboardController>) {
+  return (
+    <main>
+      {panels.map((panel) => (
+        <section key={panel.url}>
+          <h2>{panel.title}</h2>
+          <Island href={panel.url} fallback={<p aria-busy="true">Loading…</p>} unauthorized={<p>Not for you.</p>} />
+        </section>
+      ))}
+    </main>
+  );
+}
 ```
 
 The query belongs in the `href`. `useIsland().reload({ query })` still works, because it changes the query of the island's own URL. The other
