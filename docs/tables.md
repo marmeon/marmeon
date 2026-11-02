@@ -669,7 +669,8 @@ A handler that answers for itself is typed as what the browser gets: for `json({
   type-checks and is a `TypeError` when `columns()` runs. Visibility still decides: a column the user may not see
   (`.visible()`) is missing from a file that names it, in the heading and in every row, and it is not selected. The sort of the
   request works on the page's columns whether or not the file holds the sort column; that column is read for the order and not
-  written. An export whose named columns are all hidden from the user is refused (a 403, before the count and the record) and is
+  written. A filter on a file-only column is hidden with it from whoever may not see the column, as for any column.
+  An export whose named columns are all hidden from the user is refused (a 403, before the count and the record) and is
   left out of the props and of `tables.exports()`. A file whose columns depend on the request, not on the table, is a [file of your own](#a-csv-file-of-your-own).
 - **A record.** `exportCsv().onExport(Recorder)` runs `handle(info, ctx)` of the class once the export is authorized, its URL checked
   and its rows counted within the limit, and before the first byte. `info` holds the `table`, the `export`, the number of `rows`

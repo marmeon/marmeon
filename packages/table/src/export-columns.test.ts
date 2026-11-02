@@ -95,6 +95,15 @@ describe.each(drivers)('an export that chooses its columns (%s)', (driver) => {
     expect(lines).toHaveLength(5);
   });
 
+  it('hides a filter on a file-only column from whoever may not see that column — no filter in the props, 400 when used', async () => {
+    open = await tableApp(driver);
+    const props = async (user: number) => ((await (await open!.request('/teams/1/file-columns', { user })).json()) as { table: { filters: { name: string }[] } }).table.filters.map((filter) => filter.name);
+    expect(await props(ADA)).toEqual(['seen']);
+    expect(await props(ALAN)).toEqual([]);
+    expect((await open.request('/teams/1/file-columns?filter[seen]=2026-10-01..', { user: ALAN })).status, 'a filter on a hidden file column was used').toBe(400);
+    expect((await open.request('/teams/1/file-columns?filter[seen]=2026-10-01..', { user: ADA })).status).toBe(200);
+  });
+
   it('writes every column the user sees, the file-only ones last, when it names none', async () => {
     open = await tableApp(driver);
     const { lines } = await file(open, ADA, 'all');

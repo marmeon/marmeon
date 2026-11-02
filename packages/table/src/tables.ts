@@ -56,7 +56,7 @@ export function endpointOf(route: RouteDefinition): { readonly definition: Table
 interface View {
   /** The columns of the page the request may see — not the ones only the files have. */
   readonly columns: readonly (readonly [string, AnyColumn])[];
-  /** Every column the request may see, the `exportOnly()` ones too, in the definition's order — what a file draws its columns from. */
+  /** Every column the request may see, the `exportOnly()` ones too (the page's first, then the file-only ones, each in the definition's order) — what a file draws its columns from. */
   readonly fileColumns: readonly (readonly [string, AnyColumn])[];
   readonly filters: readonly (readonly [string, AnyFilter])[];
   readonly actions: readonly (readonly [string, AnyRowAction])[];
@@ -469,8 +469,9 @@ export class DataTables {
       for (const [name, entry] of Object.entries(record)) if (await ask(entry.visibility)) out.push([name, entry]);
       return out;
     };
-    const fileColumns = await keep(definition.columns);
-    const columns = fileColumns.filter(([, col]) => !col.isExportOnly);
+    const seen = await keep(definition.columns);
+    const columns = seen.filter(([, col]) => !col.isExportOnly);
+    const fileColumns = [...columns, ...seen.filter(([, col]) => col.isExportOnly)];
     // A filter reads its column: on a column this request may not see it is hidden too — whatever its own visibility says (a filter
     // on a hidden column would answer, by its counts, what the column hides).
     const shown = new Set(fileColumns.map(([, col]) => col));

@@ -387,10 +387,12 @@ export const FileColumnsTable = defineTable({
   columns: {
     name: column('members.name').sortable(),
     email: column('members.email').visible(MemberPolicy, 'viewEmails'),
-    role: column('members.role').sortable(),
     active: column('members.active').label('Active').exportOnly(),
+    role: column('members.role').sortable(),
     seen: column('members.last_seen_at').visible(MemberPolicy, 'viewEmails').exportOnly(),
   },
+  // A filter on a file-only column: hidden from whoever may not see the column, as for any column.
+  filters: { seen: filter.dateRange('members.last_seen_at') },
   defaultSort: 'name',
   export: {
     all: exportCsv().authorize(() => true),
