@@ -311,6 +311,12 @@ before a statement; so is an empty list.
 const rows = await members.insertMany(names.map((name) => ({ name, email: emailOf(name) })), { returning: ['id', 'email'] });
 ```
 
+```ts
+const imported = await members.tryInsertMany(rows.map((row) => ({ name: row.name, email: row.email })));
+if (!imported.ok) return err({ kind: 'email-taken' }); // none of the rows was written
+return ok(imported.value);
+```
+
 `insertMissing()` writes a catalogue that may already be there. `on` names the columns of one unique index (a `TypeError`
 without it), and a row whose values the table holds is skipped instead of failing, so running it again writes nothing, and two
 calls at the same moment write each row once. The rows are written in the order of their `on` values, so two calls with the same
@@ -326,12 +332,6 @@ const added = await questions.insertMissing(rows, { on: ['survey', 'name'], retu
 ```
 
 The web-app's `lab` module seeds a survey's questions this way (`SurveyRepository.addMissing()`).
-
-```ts
-const imported = await members.tryInsertMany(rows.map((row) => ({ name: row.name, email: row.email })));
-if (!imported.ok) return err({ kind: 'email-taken' }); // none of the rows was written
-return ok(imported.value);
-```
 
 ### Route binding
 

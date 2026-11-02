@@ -357,13 +357,11 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * Inserts the rows whose `on` values the table does not hold yet and leaves the others alone — an idempotent catalogue (two calls
-   * at the same moment write each row once; the rows are written in the order of their `on` values, so calls with the same keys in another order take the locks in the same order and cannot deadlock; the second still waits for the first's uncommitted rows). `on` names the columns of exactly one unique index, none of them secret
-   * (a `TypeError`, as for any column that is not the table's); every row needs a value in each, never null, since a NULL never
-   * conflicts and the row would come again on every run. A unique violation on any other index throws, with every chunk rolled back.
-   * A soft-deleted row counts as present. Resolves with the number of
-   * rows inserted; with `returning`, those rows, as {@link insertMany} returns them. Stamped, chunked and atomic like {@link insertMany}.
-   * See `docs/queries.md#writing`.
+   * Inserts the rows whose `on` values the table does not hold yet and leaves the others alone. `on` names the columns of exactly
+   * one unique index, none of them secret, and every row needs a value in each (never null: a NULL never conflicts), else a
+   * `TypeError`. A unique violation on any other index throws, with every chunk rolled back. A soft-deleted row counts as present.
+   * Resolves with the number of rows inserted; with `returning`, those rows, as {@link insertMany} returns them. Lock order and
+   * concurrency: `docs/queries.md#writing`.
    */
   insertMissing<V extends NewRowOf<DB[T]>>(
     rows: readonly Exact<V, NewRowOf<DB[T]>>[],

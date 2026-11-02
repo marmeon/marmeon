@@ -86,17 +86,25 @@ describe.each(drivers)('Repository.insertMissing() on %s', (driver) => {
     const gate = new Promise<void>((resolve) => (release = resolve));
     // A holds its rows uncommitted; B starts outside A's transaction, on another connection.
     const a = connections.transaction(async () => {
-      expect(await users.insertMissing(rows, { on: ['email'] })).toBe(200);
-      opened();
+      try {
+        expect(await users.insertMissing(rows, { on: ['email'] })).toBe(200);
+      } finally {
+        opened();
+      }
       await gate;
     });
-    await hasWritten;
-    const b = users.insertMissing([...rows].reverse(), { on: ['email'] });
-    const early = await Promise.race([b, new Promise<'waiting'>((resolve) => setTimeout(resolve, 200, 'waiting'))]);
-    expect(early).toBe('waiting');
-    release();
-    await a;
-    expect(await b).toBe(0);
+    try {
+      await hasWritten;
+      const b = users.insertMissing([...rows].reverse(), { on: ['email'] });
+      const early = await Promise.race([b, new Promise<'waiting'>((resolve) => setTimeout(resolve, 200, 'waiting'))]);
+      expect(early).toBe('waiting');
+      release();
+      await a;
+      expect(await b).toBe(0);
+    } finally {
+      release();
+      await a.catch(() => undefined);
+    }
     expect(await users.count()).toBe(200);
   });
 
