@@ -127,6 +127,7 @@ describe('Session', () => {
     await request(store, id, (session) => {
       expect(session.old('name')).toBe('Ada');
       expect(session.old()).toEqual({ name: 'Ada', email: 'x' });
+      expect([session.old('toString'), session.old('constructor'), session.old('__proto__')]).toEqual([undefined, undefined, undefined]);
       session.keep('a');
     });
     await request(store, id, (session) => {

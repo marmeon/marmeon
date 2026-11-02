@@ -312,6 +312,15 @@ function fieldOf(issue: StandardIssue): string {
   return (issue.path ?? []).map((segment) => String(typeof segment === 'object' ? segment.key : segment)).join('.') || '_';
 }
 
+/** A map without prototype: a field named `toString` or `__proto__` is an ordinary key, never an inherited member. */
+function errorMap(): ValidationErrors {
+  return Object.create(null) as ValidationErrors;
+}
+
+function addError(errors: ValidationErrors, field: string, message: string): void {
+  (errors[field] ??= []).push(message);
+}
+
 /**
  * Invalid input (422). The exception handler answers APIs with `{ message, errors }`
  * and sends pages back with the errors and the old input in the session.
@@ -339,8 +348,8 @@ export class ValidationError extends HttpError {
 
   /** The errors of a schema's issues, by field — in English ({@link translate} for the request's language). */
   static fromIssues(issues: readonly StandardIssue[], input: Record<string, unknown>, labels?: ValidationLabels): ValidationError {
-    const errors: ValidationErrors = {};
-    for (const issue of issues) (errors[fieldOf(issue)] ??= []).push(messageOf(issue, { labels }));
+    const errors = errorMap();
+    for (const issue of issues) addError(errors, fieldOf(issue), messageOf(issue, { labels }));
     return new ValidationError(errors, input, issues, labels);
   }
 
@@ -350,9 +359,9 @@ export class ValidationError extends HttpError {
    * keys themselves. Other messages stay as they are.
    */
   translate(translator: MessageTranslator): ValidationError {
-    const errors: ValidationErrors = {};
+    const errors = errorMap();
     if (this.issues) {
-      for (const issue of this.issues) (errors[fieldOf(issue)] ??= []).push(messageOf(issue, { translator, labels: this.labels }));
+      for (const issue of this.issues) addError(errors, fieldOf(issue), messageOf(issue, { translator, labels: this.labels }));
     } else {
       for (const [field, messages] of Object.entries(this.errors)) {
         errors[field] = messages.map((message) => (translator.has(message) ? translator.text(message) : message));

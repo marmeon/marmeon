@@ -133,6 +133,16 @@ describe('RedirectResult', () => {
     expect(flashed._old_input).toEqual({ email: 'ada@example.com', nested: { name: 'n' } });
   });
 
+  it('drops a `__proto__` input and keeps one named like another Object member', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const input = JSON.parse('{"__proto__":{"admin":"yes"},"toString":"x"}') as Record<string, unknown>;
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
+    const old = flashed._old_input as Record<string, unknown>;
+    expect(Object.keys(old)).toEqual(['toString']);
+    expect(JSON.parse(JSON.stringify(old))).toEqual({ toString: 'x' });
+  });
+
   it('flashes no one-time code, token, recovery code or card detail — but a zip code', () => {
     const flashed: Record<string, unknown> = {};
     const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };

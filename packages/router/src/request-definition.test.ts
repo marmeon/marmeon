@@ -89,6 +89,37 @@ describe('request validation (REPR)', () => {
     expect(error.errors).toEqual({ 'address.city': ['Required.'], _: ['Form broken.'] });
   });
 
+  it('answers 422 for body fields named like Object members', async () => {
+    const request = defineRequest({ schema: v.object({ toString: v.pipe(v.string(), v.minLength(2, 'Too short.')), constructor: v.pipe(v.string(), v.minLength(2, 'Too short.')) }), authorize: () => true });
+    const Controller = class {
+      static request = request;
+      handle() {
+        return 'ok';
+      }
+    };
+    const own = new Router().load(defineRoutes((Route) => Route.post('/m', Controller)));
+    const error = (await own
+      .dispatch(own.routes[0]!, { request: new Request('http://app.test/m', { method: 'POST', body: '{"toString":"a","constructor":"b"}', headers: { 'content-type': 'application/json' } }), params: {} })
+      .catch((e: unknown) => e)) as ValidationError;
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error.status).toBe(422);
+    expect(error.errors['toString']).toEqual(['Too short.']);
+    expect(error.errors['constructor']).toEqual(['Too short.']);
+  });
+
+  it('keys errors by field names that are Object members', () => {
+    const issues = ['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__'].map((key) => ({ message: `Bad ${key}.`, path: [key] }));
+    const error = ValidationError.fromIssues([...issues, { message: 'Again.', path: ['toString'] }], {});
+    expect(Object.keys(error.errors)).toEqual(['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__']);
+    expect(error.errors['toString']).toEqual(['Bad toString.', 'Again.']);
+    expect(error.errors['__proto__']).toEqual(['Bad __proto__.']);
+    expect(Object.getPrototypeOf(error.errors)).toBeNull();
+    expect(({} as Record<string, unknown>)['length']).toBeUndefined();
+    expect(JSON.parse(JSON.stringify({ errors: error.errors })).errors.constructor).toEqual(['Bad constructor.']);
+    const translated = error.translate({ has: () => false, text: (key: string) => key } as never);
+    expect(translated.errors['valueOf']).toEqual(['Bad valueOf.']);
+  });
+
   it('never builds the controller for rejected requests', async () => {
     let built = 0;
     class Counting extends UpdateProfileController {

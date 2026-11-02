@@ -26,9 +26,7 @@ function withoutAddedKeys(given: unknown, redactor: Redactor): unknown {
   const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;
   if (Array.isArray(value)) return value.map((item) => withoutAddedKeys(item, redactor));
   if (typeof value !== 'object' || value === null) return value;
-  const kept: Record<string, unknown> = {};
-  for (const [name, item] of Object.entries(value)) if (!redactor.isAddedKey(name)) kept[name] = withoutAddedKeys(item, redactor);
-  return kept;
+  return Object.fromEntries(Object.entries(value).filter(([name]) => !redactor.isAddedKey(name)).map(([name, item]) => [name, withoutAddedKeys(item, redactor)]));
 }
 
 const FLASH = '_flash';
@@ -316,7 +314,7 @@ export class Session {
   old(key: string): unknown;
   old(key?: string): unknown {
     const input = (this.get(OLD_INPUT) ?? {}) as Record<string, unknown>;
-    return key === undefined ? input : input[key];
+    return key === undefined ? input : Object.hasOwn(input, key) ? input[key] : undefined;
   }
 
   // -- Security --------------------------------------------------------------
