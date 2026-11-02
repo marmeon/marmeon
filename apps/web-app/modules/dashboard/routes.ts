@@ -1,6 +1,7 @@
 import { authenticate, verified } from '@marmeon/auth';
 import { defineRoutes, everyone } from '@marmeon/http';
 import { ShowDashboardController } from './controllers/ShowDashboardController.ts';
+import { ShowPanelsController } from './controllers/ShowPanelsController.ts';
 import { ShowMemberStatsController } from './controllers/ShowMemberStatsController.ts';
 import { ShowMyActivityController } from './controllers/ShowMyActivityController.ts';
 import { ShowRecentSignInsController } from './controllers/ShowRecentSignInsController.ts';
@@ -12,6 +13,8 @@ export default defineRoutes((Route) => {
   // may see (who signed in lately: names and times). A route you add needs its own decision.
   const open = dashboard.authorize(everyone);
   open.get('/', ShowDashboardController).name('show');
+  // A page whose panels the server chose: it sends their island URLs, `<Island href>` embeds them.
+  open.get('/panels', ShowPanelsController).name('panels');
 
   // Islands: GET routes of their own, each with its own middleware, authorization and query — embedded with
   // `<Island route>`, never visited (a direct hit is a 404), read-only.

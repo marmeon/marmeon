@@ -455,6 +455,18 @@ export function transform(convert: (value: any) => unknown, async: boolean): Eng
   return (async ? v.transformAsync(async (value) => convert(value)) : v.transform(convert)) as unknown as Engine;
 }
 
+/** A string cleaned by the app's `convert` — a program error (`TypeError`) when it answers anything else. */
+export function normalize(convert: (value: string) => string): Engine {
+  return v.transform((value: string) => {
+    const cleaned: unknown = convert(value);
+    if (typeof cleaned !== 'string') throw new TypeError(`normalize() takes a function that returns a string, got ${cleaned === null ? 'null' : typeof cleaned}.`);
+    return cleaned;
+  }) as unknown as Engine;
+}
+
+/** What `normalize()` made of a string is still no string with a NUL character: the result goes to the same checks and to the database. */
+export const withoutNul = (): Engine => v.check((value: string) => !value.includes('\0'), typeMessage('string')) as unknown as Engine;
+
 export const trim = (): Engine => v.trim() as unknown as Engine;
 export const toLowerCase = (): Engine => v.toLowerCase() as unknown as Engine;
 export const email = (): Engine => v.email(message('email')) as unknown as Engine;

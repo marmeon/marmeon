@@ -35,6 +35,18 @@ describe('the validation lab', () => {
     await app.assertDatabaseMissing('users', { email: 'ada@example.com' });
   });
 
+  it('normalize() cleans the name before its checks: control characters come off, a name of nothing else is required', async () => {
+    const sent = await app.post('/lab/validation', { form: { ...valid, name: '\u202EAda\u200F Lovelace' }, headers: { referer: 'http://localhost/lab/validation' } }).assertValid().assertRedirect('/lab/validation');
+    await app
+      .withCookie('marmeon_session', sent.cookie('marmeon_session')!)
+      .navigating()
+      .get('/lab/validation')
+      .assertOk()
+      .assertFlash('toast', { message: 'Valid: Ada Lovelace <ada@example.com> — nothing was saved.' });
+    const empty = await app.post('/lab/validation', { json: { ...valid, name: '\u202E\u200F\u061C ' }, headers: json }).assertUnprocessable();
+    empty.assertInvalid<StoreValidationLabController>({ name: 'The Name field is required.' });
+  });
+
   it('the framework\'s messages, in English — with the field names of `attributes`', async () => {
     const response = await app.post('/lab/validation', { json: { name: '', email: 'nope', website: 'javascript:alert(1)', age: '200' }, headers: json }).assertUnprocessable();
     response.assertInvalid<StoreValidationLabController>({

@@ -406,9 +406,13 @@ function dynamicMessage(code: string, node: Node, sink: string, names: readonly 
       variable === 'condition' ? `condition ? '${first}' : '${second}'` : `${variable} === '${first.slice(prefix.length)}' ? '${first}' : '${second}'`;
     lines.push(`Did you mean one of ${listed}? Write them as literals, e.g. ${example}.`);
   } else {
+    // Only `<Link>` and `<Island>` take a URL as `href`; a form or an action names its route.
+    const takesHref = /^<(Link|Island) /.test(sink);
     lines.push(
       "Write the name as a literal — a conditional of literals works too (isOwn ? 'a.edit' : 'a.show'). " +
-        'A route that comes from props or the server: send its URL instead (router.url() on the server), not its name.',
+        (takesHref
+          ? 'A route that comes from props or the server: send its URL instead (router.url() on the server) as href, not its name.'
+          : 'A route that comes from props or the server: send its URL instead (router.url() on the server), not its name.'),
     );
   }
   return lines.join(' ');

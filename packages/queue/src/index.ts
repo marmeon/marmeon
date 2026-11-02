@@ -5,6 +5,7 @@ import type { CommandClass } from 'marmeon';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
+import { queueNameProblem } from './drivers/redis.ts';
 import { FAILED_JOBS_COLUMNS, FAILED_JOBS_TABLE, JOBS_COLUMNS, JOBS_TABLE } from './drivers/database.ts';
 import { QueueHealthCheck } from './health.ts';
 import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
@@ -153,6 +154,8 @@ export class QueueServiceProvider implements ServiceProvider {
       }
     }
     if (used.driver === 'redis') {
+      const problem = queueNameProblem(used.queue);
+      if (problem !== undefined) throw new QueueSetupError(withCode('Q4', `${problem} Set QUEUE_REDIS_QUEUE to another name.`));
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
         throw new QueueSetupError(withCode('Q4', 'QUEUE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).'));
