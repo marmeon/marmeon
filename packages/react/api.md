@@ -1015,6 +1015,8 @@ export interface CheckboxProps {
 export type { ColumnOf } from '@marmeon/table/client';
 // ExportOf
 export type { ExportOf } from '@marmeon/table/client';
+// FilterEntryOf
+export type { FilterEntryOf } from '@marmeon/table/client';
 // FilterOf
 export type { FilterOf } from '@marmeon/table/client';
 // HeaderProps
@@ -1033,6 +1035,7 @@ export interface Table<T extends AnyTableData> {
     label(row: TableRowOf<T>): string;
     sort(column: SortableOf<T>, direction?: SortDirection): void;
     readonly filters: T['filters'];
+    filter<N extends FilterOf<T>>(name: N): FilterEntryOf<T, N> | undefined;
     filter(name: FilterOf<T>, value: string | null): void;
     filterBy(values: {
         readonly [N in FilterOf<T>]?: string | null;
@@ -1059,8 +1062,8 @@ export interface Table<T extends AnyTableData> {
     readonly bulk: T['bulk'];
     readonly exports: T['exports'];
     can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
-    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome>;
-    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome>;
+    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome<TableActionDataOf<T, N>>>;
+    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome<TableBulkDataOf<T, N>>>;
     actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
     readonly pending: boolean;
     exportUrl(name: ExportOf<T>): string;
@@ -1151,6 +1154,7 @@ export interface Table<T extends AnyTableData> {
     label(row: TableRowOf<T>): string;
     sort(column: SortableOf<T>, direction?: SortDirection): void;
     readonly filters: T['filters'];
+    filter<N extends FilterOf<T>>(name: N): FilterEntryOf<T, N> | undefined;
     filter(name: FilterOf<T>, value: string | null): void;
     filterBy(values: {
         readonly [N in FilterOf<T>]?: string | null;
@@ -1177,8 +1181,8 @@ export interface Table<T extends AnyTableData> {
     readonly bulk: T['bulk'];
     readonly exports: T['exports'];
     can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
-    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome>;
-    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome>;
+    run<N extends ActionOf<T>>(action: N, row: TableRowOf<T>, ...options: ActionRunArgs<T, N>): Promise<TableRunOutcome<TableActionDataOf<T, N>>>;
+    runBulk<N extends BulkOf<T>>(name: N, ...options: BulkRunArgs<T, N>): Promise<TableRunOutcome<TableBulkDataOf<T, N>>>;
     actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
     readonly pending: boolean;
     exportUrl(name: ExportOf<T>): string;

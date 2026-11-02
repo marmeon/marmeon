@@ -12,7 +12,8 @@ import type { TableDefinition } from './index.ts';
 // @ts-expect-error — `TableVisibility` is not exported
 import type { TableVisibility } from './index.ts';
 import { rules as r } from '@marmeon/validation';
-import type { AnyTableData, TableController } from './client/index.ts';
+import type { AnyTableData, FilterEntryOf, FilterOf, TableController } from './client/index.ts';
+import { json, RedirectResult } from '@marmeon/http';
 import { action, bulk, column, type CheckColumnKey, type CheckFilters, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
@@ -624,3 +625,128 @@ describe('actions with input', () => {
     action(Deactivate).input(42);
   });
 });
+
+type SelectEntry<N extends string> = { readonly name: N; readonly type: 'select'; readonly key: string; readonly options: readonly string[]; readonly labels: readonly string[]; readonly value: string | null };
+type DateRangeEntry<N extends string> = { readonly name: N; readonly type: 'dateRange'; readonly key: string; readonly value: string | null };
+
+class Archive {
+  handle(_row: { readonly id: number }) {
+    return { archivedAt: new Date(), count: 1 };
+  }
+}
+class ArchiveMany {
+  async handle(_rows: readonly { readonly id: number }[]) {
+    return { archivedAt: new Date(), ids: [1, 2] };
+  }
+}
+class Download {
+  handle(_row: { readonly id: number }) {
+    return new Response('x');
+  }
+}
+class AnswersJson {
+  handle(_row: { readonly id: number }) {
+    return json({ x: 1 });
+  }
+}
+class Redirects {
+  handle(_rows: readonly { readonly id: number }[]) {
+    return new RedirectResult().back('/');
+  }
+}
+class MaybeAnswer {
+  handle(_rows: readonly { readonly id: number }[]) {
+    return Math.random() > 0.5 ? { note: 'x' } : undefined;
+  }
+}
+
+const Typed = defineTable({
+  name: 'typed',
+  query: (db, ctx: TableContext<Authenticated>) => db.selectFrom('members').where('team_id', '=', Number(ctx.user.id)),
+  key: 'id',
+  columns: { name: column('name').sortable() },
+  filters: { role: filter.select('role', ['admin', 'member']), team: filter.has('team', ['a', 'b']), joined: filter.dateRange('created_at') },
+  actions: { archive: action(Archive), download: action(Download), plain: action(Deactivate), json: action(AnswersJson) },
+  bulk: { archive: bulk(ArchiveMany), maybe: bulk(MaybeAnswer), plain: bulk(DeactivateMany), redirect: bulk(Redirects) },
+});
+
+describe('filters by name and the answers of actions', () => {
+  type Props = TableProps<typeof Typed>;
+  const table = undefined as unknown as TableController<Props>;
+  const row = undefined as unknown as Props['rows'][number];
+
+  it('gives filter(name) the entry of exactly the kind the definition gave it', () => {
+    expectTypeOf(table.filter('role')).toExtend<SelectEntry<'role'> | undefined>();
+    expectTypeOf(table.filter('role')).not.toExtend<DateRangeEntry<'role'> | undefined>();
+    expectTypeOf(table.filter('joined')).toExtend<DateRangeEntry<'joined'> | undefined>();
+    expectTypeOf(table.filter('joined')).not.toExtend<SelectEntry<'joined'> | undefined>();
+    expectTypeOf(table.filter('role')?.options).toEqualTypeOf<readonly string[] | undefined>();
+    expectTypeOf(table.filter('team')?.labels).toEqualTypeOf<readonly string[] | undefined>();
+    expectTypeOf(table.filter('role')?.type).toEqualTypeOf<'select' | undefined>();
+    expectTypeOf(table.filter('joined')?.type).toEqualTypeOf<'dateRange' | undefined>();
+    expectTypeOf(table.filter('joined')?.value).toEqualTypeOf<string | null | undefined>();
+    // @ts-expect-error — a date range has no options
+    void table.filter('joined')?.options;
+    // @ts-expect-error — no such filter
+    void table.filter('nope');
+  });
+
+  it('works in a generic component', () => {
+    const typeOf = <T extends AnyTableData>(controller: TableController<T>, name: FilterOf<T>) => controller.filter(name)?.type;
+    expectTypeOf(typeOf(table, 'role')).toEqualTypeOf<'select' | 'has' | 'dateRange' | undefined>();
+    const entryOf = <T extends AnyTableData>(controller: TableController<T>, name: FilterOf<T>): FilterEntryOf<T, FilterOf<T>> | undefined => controller.filter(name);
+    void entryOf;
+  });
+
+  it('keeps filters an array in the definition\'s order, discriminated by name', () => {
+    const entry = undefined as unknown as Props['filters'][number];
+    if (entry.name === 'role') expectTypeOf(entry.options).toEqualTypeOf<readonly string[]>();
+    if (entry.name === 'joined') expectTypeOf(entry.type).toEqualTypeOf<'dateRange'>();
+    const found = undefined as unknown as Props['filters'][number] | undefined;
+    if (found?.type === 'dateRange') expectTypeOf(found.name).toEqualTypeOf<'joined'>();
+    // @ts-expect-error — a date range has no options
+    void (entry.name === 'joined' ? entry.options : []);
+    const status = (undefined as unknown as Props['filters']).find((candidate) => candidate.name === 'role');
+    expectTypeOf(status?.type).toEqualTypeOf<'select' | undefined>();
+  });
+
+  it('still sets a filter with a value', () => {
+    expectTypeOf(table.filter('role', 'admin')).toEqualTypeOf<void>();
+    // @ts-expect-error — no such filter
+    table.filter('nope', 'x');
+  });
+
+  it('types the answer of a row action by its handler, as JSON', async () => {
+    const outcome = await table.run('archive', row);
+    if (outcome.ok && outcome.kind === 'data') {
+      expectTypeOf(outcome.data.data).toEqualTypeOf<{ archivedAt: string; count: number } | undefined>();
+      expectTypeOf(outcome.data.done).toEqualTypeOf<number>();
+    }
+  });
+
+  it('types the answer of a bulk action by its handler — a promise is awaited, a Date becomes a string', async () => {
+    const outcome = await table.runBulk('archive');
+    if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<{ archivedAt: string; ids: number[] } | undefined>();
+  });
+
+  it('leaves out undefined from the answer, and has none for a handler that returns nothing or a Response', async () => {
+    const maybe = await table.runBulk('maybe');
+    if (maybe.ok && maybe.kind === 'data') expectTypeOf(maybe.data.data).toEqualTypeOf<{ note: string } | undefined>();
+    const json = await table.run('json', row);
+    const redirect = await table.runBulk('redirect');
+    for (const outcome of [json, redirect]) if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<undefined>();
+    for (const outcome of [await table.run('plain', row), await table.run('download', row), await table.runBulk('plain')]) {
+      if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<undefined>();
+    }
+  });
+
+  it('keeps an untyped controller at unknown', async () => {
+    const untyped = undefined as unknown as TableController;
+    const outcome = await untyped.runBulk('anything');
+    if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<unknown>();
+    expectTypeOf(untyped.filter('anything')?.type).toEqualTypeOf<'select' | 'has' | 'dateRange' | undefined>();
+    takesAny(undefined as unknown as Serialize<Props>);
+  });
+});
+
+const takesAny = (_data: AnyTableData) => {};

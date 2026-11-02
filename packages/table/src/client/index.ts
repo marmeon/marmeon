@@ -20,40 +20,55 @@ export interface TableColumn<C extends string = string> {
   readonly sort: SortDirection | null;
 }
 
+/** The kinds of filter the table offers today — open: a new one arrives in a minor release. */
+export type TableFilterKind = 'select' | 'has' | 'dateRange';
+
+/** A select filter the user may use. */
+interface SelectFilter<N extends string = string> {
+  readonly name: N;
+  readonly type: 'select';
+  /** Its key in the URL (`filter[role]`, with the table's prefix). */
+  readonly key: string;
+  /** The values it allows — computed for this request when the table says so. */
+  readonly options: readonly string[];
+  /** The text to show for each of `options`, in the same order — the value itself when the table gave no label. */
+  readonly labels: readonly string[];
+  readonly value: string | null;
+}
+
+/** A has filter the user may use: it keeps the rows that have a related row with the chosen value. */
+interface HasFilter<N extends string = string> {
+  readonly name: N;
+  readonly type: 'has';
+  /** Its key in the URL (`filter[team]`, with the table's prefix). */
+  readonly key: string;
+  /** The values it allows — the related rows the user may choose, for this request. */
+  readonly options: readonly string[];
+  /** The text to show for each of `options`, in the same order. */
+  readonly labels: readonly string[];
+  readonly value: string | null;
+}
+
+/** A date-range filter the user may use. */
+interface DateRangeFilter<N extends string = string> {
+  readonly name: N;
+  readonly type: 'dateRange';
+  readonly key: string;
+  /** `2026-01-01..2026-03-31`, either side may be empty (`2026-01-01..`) — null when not set. */
+  readonly value: string | null;
+}
+
+/** The entry of a filter called `N` of the kind `K`. */
+type FilterEntry<N extends string, K> = K extends 'select' ? SelectFilter<N> : K extends 'has' ? HasFilter<N> : K extends 'dateRange' ? DateRangeFilter<N> : never;
+
 /**
  * A filter the user may use. The kinds are open: a new `type` arrives in a minor release, so a renderer that branches on `type`
- * needs a `default` branch (see `docs/tables.md#what-the-browser-gets`).
+ * needs a `default` branch (see `docs/tables.md#what-the-browser-gets`). `FK` maps a name to its kind: a table's props (`F` its
+ * names) then hold, per name, the entry of exactly that kind — `table.filter('status')?.options` needs no check of `type`.
  */
-export type TableFilter<F extends string = string> =
-  | {
-      readonly name: F;
-      readonly type: 'select';
-      /** Its key in the URL (`filter[role]`, with the table's prefix). */
-      readonly key: string;
-      /** The values it allows — computed for this request when the table says so. */
-      readonly options: readonly string[];
-      /** The text to show for each of `options`, in the same order — the value itself when the table gave no label. */
-      readonly labels: readonly string[];
-      readonly value: string | null;
-    }
-  | {
-      readonly name: F;
-      readonly type: 'has';
-      /** Its key in the URL (`filter[team]`, with the table's prefix). */
-      readonly key: string;
-      /** The values it allows — the related rows the user may choose, for this request. */
-      readonly options: readonly string[];
-      /** The text to show for each of `options`, in the same order. */
-      readonly labels: readonly string[];
-      readonly value: string | null;
-    }
-  | {
-      readonly name: F;
-      readonly type: 'dateRange';
-      readonly key: string;
-      /** `2026-01-01..2026-03-31`, either side may be empty (`2026-01-01..`) — null when not set. */
-      readonly value: string | null;
-    };
+export type TableFilter<F extends string = string, FK extends object = {}> = string extends F
+  ? SelectFilter<F> | HasFilter<F> | DateRangeFilter<F>
+  : { [N in F]: FilterEntry<N, N extends keyof FK ? FK[N] : TableFilterKind> }[F];
 
 /** Pages by number (the default): `count(*)` gives the total. */
 export interface OffsetPage {
@@ -116,7 +131,8 @@ export interface TableExportEntry<E extends string = string> {
  * The prop a table sends (`TableProps<typeof MembersTable>` on the server). `R` is the row — the visible columns by name plus the
  * key; `can` holds, per row, whether each row action is allowed for it (booleans only — never a policy's reason). `C` names the
  * columns, `S` the sortable ones, `F` the filters, `A`/`B`/`E` the row actions, bulk actions and exports, `AI`/`BI` what the
- * actions that take input take (by name).
+ * actions that take input take (by name), `FK` the kind of each filter (by name), `AR`/`BR` what each row and bulk action's
+ * handler answers (by name, as JSON).
  */
 export interface TableData<
   R extends object = Record<string, unknown>,
@@ -128,9 +144,14 @@ export interface TableData<
   S extends string = C,
   AI extends object = {},
   BI extends object = {},
+  FK extends object = {},
+  AR extends object = {},
+  BR extends object = {},
 > {
   /** Types only, never sent: what each row action (`AI`) and bulk action (`BI`) that takes input takes — `run(name, row, { input })`. */
   readonly '~inputs'?: { readonly actions: AI; readonly bulk: BI };
+  /** Types only, never sent: what each row action's (`AR`) and bulk action's (`BR`) handler answers — `outcome.data.data`. */
+  readonly '~results'?: { readonly actions: AR; readonly bulk: BR };
   /** The table's name — unique on its page. */
   readonly name: string;
   /** Which property of a row is its key (what actions send). */
@@ -141,7 +162,7 @@ export interface TableData<
   readonly sort: { readonly column: S; readonly direction: SortDirection } | null;
   /** The search, when a visible column is searchable — null otherwise. */
   readonly search: { readonly value: string } | null;
-  readonly filters: readonly TableFilter<F>[];
+  readonly filters: readonly TableFilter<F, FK>[];
   /** Open like the filters: a new `type` arrives in a minor release, so branch on `page.type` with a `default`. */
   readonly page: OffsetPage | CursorPage;
   readonly query: TableQueryKeys;
@@ -169,14 +190,17 @@ export interface TableActionResult<D = unknown> {
 
 export { exportUrl, keyOf, sortUrl, TableController, tableStatus } from './table.ts';
 export type {
+  TableActionDataOf,
   ActionOf,
   ActionRunArgs,
   AnyTableData,
+  TableBulkDataOf,
   BulkRunArgs,
   BulkOf,
   ColumnOf,
   ExportOf,
   FilterOf,
+  FilterEntryOf,
   TableRowOf,
   SortableOf,
   TableControllerOptions,

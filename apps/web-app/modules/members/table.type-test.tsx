@@ -20,6 +20,14 @@ export function Typed({ members }: { members: Members }) {
   table.filter('locale', 'de');
   // @ts-expect-error — no such filter
   table.filter('role', 'admin');
+  // A filter by name is the entry of its kind: no narrowing by `type`.
+  expectTypeOf(table.filter('locale')?.options).toEqualTypeOf<string[] | undefined>();
+  expectTypeOf(table.filter('link')?.labels).toEqualTypeOf<string[] | undefined>();
+  expectTypeOf(table.filter('joined')?.value).toEqualTypeOf<string | null | undefined>();
+  // @ts-expect-error — a date range has no options
+  void table.filter('joined')?.options;
+  // @ts-expect-error — no such filter
+  table.filter('role');
   table.filterBy({ locale: null, joined: '2026-01-01..' });
   // @ts-expect-error — no such filter
   table.filterBy({ loclae: 'de' });
@@ -35,6 +43,13 @@ export function Typed({ members }: { members: Members }) {
     table.can('removeLinks', row);
   }
   void table.runBulk('removeLinks');
+  // The answer of an action is what its handler returned, as JSON.
+  void table.runBulk('setLocale', { input: { locale: 'de' } }).then((outcome) => {
+    if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<{ updated: number } | undefined>();
+  });
+  void table.runBulk('removeLinks').then((outcome) => {
+    if (outcome.ok && outcome.kind === 'data') expectTypeOf(outcome.data.data).toEqualTypeOf<{ removed: number } | undefined>();
+  });
   // @ts-expect-error — no such bulk action
   void table.runBulk('deleteAll');
   table.exportUrl('csv');

@@ -19,7 +19,7 @@ const HISTORY = [await loadHistoryFallback()];
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type Row = { id: number; name: string; joined: string };
-type Members = TableData<Row, 'name' | 'joined' | 'links', 'locale', 'removeLinks', 'removeLinks', 'csv', 'name' | 'joined'>;
+type Members = TableData<Row, 'name' | 'joined' | 'links', 'locale', 'removeLinks', 'removeLinks', 'csv', 'name' | 'joined', {}, {}, { locale: 'select' }>;
 
 const ALL: Row[] = [
   { id: 1, name: 'Ada Lovelace', joined: '2026-01-01' },
@@ -79,6 +79,8 @@ function MembersPage({ members: data }: { members: Members }) {
       <button type="button" data-testid="bulk" onClick={() => void table.runBulk('removeLinks')}>
         {table.selectedCount}
       </button>
+      <p data-testid="locale">{table.filter('locale')?.options.join(',') ?? 'none'}</p>
+      <p data-testid="role">{(table.filter as (name: string) => unknown)('role') === undefined ? 'none' : 'some'}</p>
       <button type="button" data-testid="matching" onClick={() => table.selectMatching()}>
         all
       </button>
@@ -253,6 +255,12 @@ describe('useTable — accessible markup from the props', () => {
     expect(markup).toContain('3 Mitglieder, sortiert nach Name (aufsteigend)');
     expect(markup).toContain('aria-label="Grace Hopper auswählen"');
     expect(markup).not.toMatch(/checked=""/);
+  });
+
+  it('gives a filter by name, of the kind the props hold — and undefined for one they do not have', async () => {
+    await mount(pageOf('/members'));
+    expect($('[data-testid="locale"]').textContent).toBe('en,de');
+    expect($('[data-testid="role"]').textContent).toBe('none');
   });
 
   it('survives a filter, page and export kind it does not know — the kinds are open', async () => {
