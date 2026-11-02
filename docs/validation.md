@@ -116,6 +116,9 @@ without changing it for the others.
 `r.url({ protocols: ['https', 'mailto'] })` names others. A `regex()` pattern loses its `g` and `y` flags, which would make it
 remember where it stopped between two values.
 
+A string with a NUL character (`\0`) is no string for `r.string()`, and so for every rule made from it: the field says "must be a string", since Postgres refuses the character and a
+save would end in a 500. In a [query](#queries) there is no message: the field falls back to its default, like any value the schema rejects.
+
 The catalogue covers what apps use. `custom()` covers the rest.
 
 ### Missing values
@@ -396,6 +399,26 @@ const slug = r.value<string>((value) => (typeof value === 'string' && /^[a-z0-9-
 
 `meta` marks the rule with values under symbols, and every rule made from it keeps the mark. `metaOf(rule, key)` reads it, and is
 `undefined` for anything else. That is how a package finds its own fields in an app's schema.
+
+### Cleaning a string before its checks
+
+`transform()` ends the string's own checks: the rule it returns is a plain rule of the new output, so `required()`, `max()` and `trim()` are gone after it
+(they do not compile). To clean a string in a way `trim()` and `lowercase()` do not, such as Unicode normalization and one space between words,
+`transform()` first and check with `custom()` after it. Empty and too long are then checks of your own, with messages of your own, and a
+length counts code points with `[...text].length`, the way `max()` does:
+
+```ts
+const clean = (text: string): string => text.normalize('NFC').replace(/\s+/g, ' ').trim();
+
+const name = r.string()
+  .transform(clean)
+  .custom((text) => text !== '' || 'Enter a name.')
+  .custom((text) => [...text].length <= 80 || 'Use at most 80 characters.');
+```
+
+`'  Ada   Lovelace '` becomes `'Ada Lovelace'`, `'   '` is "Enter a name." and a missing field is still "required", because `transform()` runs only on a
+string. The `r.string()` in front still refuses a NUL character. A field that may stay empty drops the first `custom()` and ends in `.optional()`. The message is a text or a
+translation key, as in [messages](#messages).
 
 ## Uploads
 
