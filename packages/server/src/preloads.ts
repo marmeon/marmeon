@@ -100,9 +100,67 @@ function stylesOf(manifest: ViteManifest, keys: Iterable<string>, seen = new Set
   return found;
 }
 
-/** The preloads of every page and of tab sync in `manifest`, computed once. */
-export function assetPreloads(manifest: ViteManifest): AssetPreloads {
-  const script = (key: string): Preload => ({ href: new URL(`/${manifest[key]!.file}`, 'http://h/').pathname, as: 'script' });
+/** `base` as the build wrote it: `/`, or an `http(s)` URL that ends in `/` and carries no credentials, query or fragment. `@marmeon/vite` applies the same rule when it builds; change both together. */
+function isBase(base: string): boolean {
+  if (base === '/') return true;
+  try {
+    const url = new URL(base);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.href === base && url.pathname.endsWith('/') && !url.username && !url.password && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+/** `value` of an HTML attribute with its character references resolved, as the browser reads it (Vite writes `&` in a URL as `&amp;`). */
+function decodeAttribute(value: string): string {
+  const named: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+  return value.replace(/&(?:#(\d+)|#[xX]([\da-fA-F]+)|(amp|quot|apos|lt|gt));/g, (match, dec?: string, hex?: string, name?: string) => {
+    if (name !== undefined) return named[name]!;
+    const code = dec !== undefined ? Number.parseInt(dec, 10) : Number.parseInt(hex!, 16);
+    return code <= 0x10ffff ? String.fromCodePoint(code) : match;
+  });
+}
+
+/** `value` without the manifest `file` of the entry it ends with, or `undefined` when it ends with none. */
+function entryBase(value: string, files: readonly string[]): string | undefined {
+  const file = files.find((candidate) => value.endsWith(candidate));
+  return file === undefined ? undefined : value.slice(0, -file.length);
+}
+
+/**
+ * The `base` the app was built with, read from the built `index.html`: the `src` of the module script that loads the entry
+ * chunk, without that chunk's `file` (without a manifest: without its path under `assets/`). `/` when no script matches.
+ * Anything but `/` or an absolute URL stops the boot — the server serves `dist/client` under `/`, so a path or a relative
+ * `base` would 404 every asset.
+ */
+export function baseOf(template: string, manifest?: ViteManifest): string {
+  const files = Object.values(manifest ?? {}).filter((chunk) => chunk.isEntry).map((chunk) => chunk.file);
+  let found: string | undefined;
+  for (const [tag] of template.matchAll(/<script\b[^>]*>/gi)) {
+    if (!/\btype\s*=\s*["']?module\b/i.test(tag)) continue;
+    const src = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const raw = src?.[1] ?? src?.[2] ?? src?.[3];
+    if (raw === undefined) continue;
+    const value = decodeAttribute(raw);
+    // Without a manifest the entry is unknown: every module script under `assets/` counts, so a foreign one cannot hide a path base.
+    const base = manifest ? entryBase(value, files) : /^(.*\/|)assets\/[^/]+\.m?js$/.exec(value)?.[1];
+    if (base === undefined) continue;
+    if (!isBase(base)) {
+      throw new Error(`The build's \`base\` is '${base}', but the server serves dist/client under '/': build with \`base: '/'\`, or with an absolute URL where the assets are.`);
+    }
+    found ??= base;
+  }
+  return found ?? '/';
+}
+
+/**
+ * The preloads of every page and of tab sync in `manifest`, computed once. `base` is the build's (see `baseOf`): every href
+ * starts with it; the manifest's own entries are checked as paths and stay on `base`.
+ */
+export function assetPreloads(manifest: ViteManifest, { base = '/' }: { base?: string } = {}): AssetPreloads {
+  if (!isBase(base)) throw new Error(`assetPreloads: base must be '/' or an absolute URL ending in '/', not '${base}'.`);
+  const href = (file: string): string => `${base}${new URL(`/${file}`, 'http://h/').pathname.slice(1)}`;
+  const script = (key: string): Preload => ({ href: href(manifest[key]!.file), as: 'script' });
   const entries = Object.keys(manifest).filter((key) => manifest[key]!.isEntry);
   const initialKeys = new Set<string>();
   for (const entry of entries) closure(manifest, (manifest[entry]!.imports ?? []), initialKeys);
@@ -139,7 +197,7 @@ export function assetPreloads(manifest: ViteManifest): AssetPreloads {
     },
     stylesFor(page) {
       const hrefs = [page.component, ...(page.layers ?? []).map((layer) => layer.component)].flatMap((component) => pageStyles.get(component) ?? []);
-      return [...new Set(hrefs)].filter((file) => !entryStyles.has(file)).map((file) => new URL(`/${file}`, 'http://h/').pathname);
+      return [...new Set(hrefs)].filter((file) => !entryStyles.has(file)).map(href);
     },
   };
 }

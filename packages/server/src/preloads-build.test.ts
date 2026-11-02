@@ -20,45 +20,49 @@ function write(root: string, files: Record<string, string>): void {
 }
 
 const root = tempDir('marmeon-preloads-');
+const cdnRoot = tempDir('marmeon-preloads-cdn-');
+
+/** Builds the fixture app into `root`; `base` is Vite's, absent for its default. */
+function buildFixture(root: string, base?: string): void {
+  write(root, {
+    'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
+    'index.html': '<!doctype html><html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>',
+    'bootstrap/client.ts': [
+      "import './entry.css';",
+      "import pages from 'virtual:marmeon/pages';",
+      "import { loadHistoryFallback, loadTabSync } from '@marmeon/http/client/adapter';",
+      'const navigation = (window as { navigation?: unknown }).navigation;',
+      'void loadTabSync();',
+      'if (!navigation) void loadHistoryFallback();',
+      'for (const load of Object.values(pages)) void load();',
+    ].join('\n'),
+    'bootstrap/entry.css': '@layer base, marmeon;\n.entry-rule { color: rgb(7, 8, 9); }\n',
+    'bootstrap/ssr.ts': 'export const render = async () => ({ html: "" });\n',
+    'modules/demo/components/Shared.tsx': "import './shared.css';\nexport const shared = 'shared chunk content';\n",
+    'modules/demo/components/OnlyHome.tsx': "export const onlyHome = 'only on home';\n",
+    'modules/demo/components/shared.css': '.shared-rule { color: rgb(1, 2, 3); }\n',
+    'modules/demo/views/home.css': '.home-rule { color: rgb(4, 5, 6); }\n',
+    'modules/demo/views/Home.tsx': "import './home.css';\nimport { onlyHome } from '../components/OnlyHome.tsx';\nimport { shared } from '../components/Shared.tsx';\nexport default `home ${shared} ${onlyHome}`;\n",
+    'modules/demo/views/Other.tsx': "import { shared } from '../components/Shared.tsx';\nexport default `other ${shared}`;\n",
+    'vite.config.ts': [
+      "import { marmeon } from '@marmeon/vite';",
+      `export default { ${base === undefined ? '' : `base: ${JSON.stringify(base)}, `}plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } })] };`,
+    ].join('\n'),
+  });
+  mkdirSync(join(root, 'node_modules/@marmeon'), { recursive: true });
+  symlinkSync(vitePackage, join(root, 'node_modules/vite'), 'dir');
+  symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@marmeon/vite'), 'dir');
+  symlinkSync(join(repo, 'packages/http'), join(root, 'node_modules/@marmeon/http'), 'dir');
+
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV' || key === 'NODE_OPTIONS') delete env[key];
+  const result = spawnSync(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), 'build', '--no-typecheck'], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
+  expect(`${result.stdout}${result.stderr}`).toContain('Built dist/client and dist/server');
+  expect(result.status).toBe(0);
+}
 
 describe('preloads against a real build', { timeout: 60_000 }, () => {
-  beforeAll(() => {
-    write(root, {
-      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
-      'index.html': '<!doctype html><html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>',
-      'bootstrap/client.ts': [
-        "import './entry.css';",
-        "import pages from 'virtual:marmeon/pages';",
-        "import { loadHistoryFallback, loadTabSync } from '@marmeon/http/client/adapter';",
-        'const navigation = (window as { navigation?: unknown }).navigation;',
-        'void loadTabSync();',
-        'if (!navigation) void loadHistoryFallback();',
-        'for (const load of Object.values(pages)) void load();',
-      ].join('\n'),
-      'bootstrap/entry.css': '@layer base, marmeon;\n.entry-rule { color: rgb(7, 8, 9); }\n',
-      'bootstrap/ssr.ts': 'export const render = async () => ({ html: "" });\n',
-      'modules/demo/components/Shared.tsx': "import './shared.css';\nexport const shared = 'shared chunk content';\n",
-      'modules/demo/components/OnlyHome.tsx': "export const onlyHome = 'only on home';\n",
-      'modules/demo/components/shared.css': '.shared-rule { color: rgb(1, 2, 3); }\n',
-      'modules/demo/views/home.css': '.home-rule { color: rgb(4, 5, 6); }\n',
-      'modules/demo/views/Home.tsx': "import './home.css';\nimport { onlyHome } from '../components/OnlyHome.tsx';\nimport { shared } from '../components/Shared.tsx';\nexport default `home ${shared} ${onlyHome}`;\n",
-      'modules/demo/views/Other.tsx': "import { shared } from '../components/Shared.tsx';\nexport default `other ${shared}`;\n",
-      'vite.config.ts': [
-        "import { marmeon } from '@marmeon/vite';",
-        "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } })] };",
-      ].join('\n'),
-    });
-    mkdirSync(join(root, 'node_modules/@marmeon'), { recursive: true });
-    symlinkSync(vitePackage, join(root, 'node_modules/vite'), 'dir');
-    symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@marmeon/vite'), 'dir');
-    symlinkSync(join(repo, 'packages/http'), join(root, 'node_modules/@marmeon/http'), 'dir');
-
-    const env: Record<string, string | undefined> = { ...process.env };
-    for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV' || key === 'NODE_OPTIONS') delete env[key];
-    const result = spawnSync(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), 'build', '--no-typecheck'], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
-    expect(`${result.stdout}${result.stderr}`).toContain('Built dist/client and dist/server');
-    expect(result.status).toBe(0);
-  }, 60_000);
+  beforeAll(() => buildFixture(root), 60_000);
 
   const page = (component: string) => ({ component, props: {}, url: '/', version: null }) as unknown as PageObject;
 
@@ -108,5 +112,16 @@ describe('preloads against a real build', { timeout: 60_000 }, () => {
     // A module only one page imports is part of that page's chunk (OnlyHome is in Home's, not in Other's).
     const chunk = (name: string) => readFileSync(join(root, 'dist/client', hrefOf(name)), 'utf8');
     expect(chunk('Other')).not.toContain('only on home');
+  });
+
+  it('links chunks and stylesheets under a URL base, and nothing under / besides', async () => {
+    buildFixture(cdnRoot, 'https://cdn.example/app/');
+    const html = await (await createProductionRenderer({ root: cdnRoot })).shell(page('demo/Home'), new Request('http://h/'), 'N0NCE');
+    const hrefs = [...html.matchAll(/<link rel="(?:modulepreload|stylesheet)"[^>]*href="([^"]+)"/g)].map((match) => match[1]!);
+    // The entry's stylesheet is the template's own; the page's two and the page's chunks are the server's.
+    expect(hrefs.length).toBeGreaterThanOrEqual(6);
+    for (const href of hrefs) expect(href.startsWith('https://cdn.example/app/assets/')).toBe(true);
+    expect(html).not.toMatch(/href="\/assets\//);
+    for (const href of hrefs) expect(existsSync(join(cdnRoot, 'dist/client', href.slice('https://cdn.example/app/'.length)))).toBe(true);
   });
 });
