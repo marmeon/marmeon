@@ -49,6 +49,7 @@ import type { ScheduleTester } from '@marmeon/scheduler/testing';
 import type { FactoryDefinition, PendingFactory, RowOf, Tables } from '@marmeon/database';
 import { assertWorkerConnection, emptyWorkerDatabase, prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { TestMarkup } from './markup.ts';
+import { KeptCookies } from './kept-cookies.ts';
 import { PendingTestResponse } from './pending.ts';
 import { checkSsrServer, SSR_TEST_HEADER, TestSsr, type SsrServer } from './ssr.ts';
 import { TestResponse, type PageNameOf, type PageSource, type PropsOf } from './response.ts';
@@ -430,6 +431,8 @@ interface Defaults {
    * written afresh with their data before each: like one browser, so what binds to a session (an upload) carries over.
    */
   readonly sessionId?: { value?: string };
+  /** The cookies this view and the views made from it hold between requests (`keepingCookies`). */
+  readonly jar?: KeptCookies;
 }
 
 /** Access to the app's session store — when the app uses @marmeon/session (an optional peer). */
@@ -969,6 +972,15 @@ export class TestApp {
     return this.#with({ user, sessionId: {} });
   }
 
+  /**
+   * Carries the cookies of each response into the next request, as a browser does: by `Path`, `Domain` and `Secure`, until
+   * `Max-Age` or `Expires` is over on the app's clock (`app.travel()`). Views made from this one share them; `await` each request.
+   * See `docs/http-tests.md#keeping-cookies-between-requests`.
+   */
+  keepingCookies(): TestApp {
+    return this.#defaults.jar ? this : this.#with({ jar: new KeptCookies() });
+  }
+
   /** Sends a cookie exactly as given — e.g. to prove that forged values are ignored. */
   withUnencryptedCookie(name: string, value: string): TestApp {
     return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: false }] });
@@ -1104,7 +1116,10 @@ export class TestApp {
    * it streams (`createTestApp(app, { ssr: 'stream' })`): when the headers came, when an island arrived.
    */
   async stream(path: string, options: RequestOptions = {}): Promise<Response> {
-    return this.#shared.kernel.request(path, await this.#init('GET', options), this.#connection());
+    const init = await this.#init('GET', path, options);
+    const response = await this.#shared.kernel.request(path, init, this.#connection());
+    this.#keep(path, response);
+    return response;
   }
   post(path: string, options?: RequestOptions): PendingTestResponse {
     return this.request('POST', path, options);
@@ -1123,11 +1138,15 @@ export class TestApp {
     const label = `${method} ${path}`;
     const { ssr } = this.#shared;
     const render = ssr?.begin();
-    const response = this.#init(method, options)
+    const response = this.#init(method, path, options)
       .then(async (init) => ({
         res: await this.#shared.kernel.request(path, render === undefined ? init : { ...init, headers: { ...(init.headers as Record<string, string>), [SSR_TEST_HEADER]: render } }, this.#connection()),
         sent: (init.headers as Record<string, string>).cookie,
       }))
+      .then((answer) => {
+        this.#keep(path, answer.res);
+        return answer;
+      })
       .then(async ({ res, sent }) => {
         const response = await TestResponse.from(res, label, this.#crypto, await this.#session, async (page) =>
           render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
@@ -1177,9 +1196,22 @@ export class TestApp {
     return token;
   }
 
-  async #init(method: string, { headers = {}, form, multipart, json, body }: RequestOptions): Promise<RequestInit> {
+  /** The cookies a response set, taken into the jar (when the view keeps cookies). */
+  #keep(path: string, response: Response): void {
+    const jar = this.#defaults.jar;
+    if (!jar) return;
+    const url = new URL(path, 'http://localhost');
+    const now = this.#shared.clock.now();
+    for (const header of response.headers.getSetCookie()) jar.receive(header, url, now);
+  }
+
+  async #init(method: string, path: string, { headers = {}, form, multipart, json, body }: RequestOptions): Promise<RequestInit> {
     const testCookies = [...this.#defaults.cookies];
-    let data = this.#defaults.session;
+    const jar = this.#defaults.jar;
+    const url = new URL(path, 'http://localhost');
+    // A view that keeps cookies starts its session once: after that the jar holds the session cookie, whatever the app did to it.
+    const started = jar !== undefined && this.#defaults.sessionId !== undefined && jar.sessions.has(this.#defaults.sessionId);
+    let data = started ? undefined : this.#defaults.session;
     const tokenHeader: Record<string, string> = {};
     if (this.#defaults.token) {
       const auth = await importAuth();
@@ -1188,7 +1220,7 @@ export class TestApp {
       const token = await auth.authenticatedToken(this.application.container, user, abilities);
       tokenHeader.authorization = `Bearer ${token}`;
     }
-    if (this.#defaults.user !== undefined) {
+    if (this.#defaults.user !== undefined && !started) {
       const auth = await importAuth();
       if (!auth) throw new Error('actingAs() needs @marmeon/auth in the app.');
       data = { ...data, ...(await auth.authenticatedSession(this.application.container, this.#defaults.user)) };
@@ -1197,16 +1229,21 @@ export class TestApp {
       const session = await this.#session;
       if (!session) throw new Error('withSession() and actingAs() need @marmeon/session in the app.');
       const holder = this.#defaults.sessionId;
-      const id = await session.create(data, holder?.value);
-      if (holder) holder.value = id;
-      testCookies.push({ name: session.cookie, value: id, encrypt: true });
+      // Each jar starts a session of its own, though two of them come from the same view.
+      const id = await session.create(data, jar ? undefined : holder?.value);
+      if (holder && !jar) holder.value = id;
+      if (jar && holder) jar.sessions.add(holder);
+      if (jar) jar.set(session.cookie, encodeURIComponent(await this.#crypto.encrypt(session.cookie, id)), url);
+      else testCookies.push({ name: session.cookie, value: id, encrypt: true });
     }
+    const kept = jar?.matching(url, this.#shared.clock.now()) ?? [];
+    const held = new Set([...kept.map((cookie) => cookie.name), ...(jar?.answered(url) ?? [])]);
     const cookies = await Promise.all(
-      testCookies.map(
+      testCookies.filter(({ name }) => !held.has(name)).map(
         async ({ name, value, encrypt }) => `${name}=${encodeURIComponent(encrypt ? await this.#crypto.encrypt(name, value) : value)}`,
       ),
     );
-    const cookie = [this.#defaults.headers.cookie, ...cookies].filter(Boolean).join('; ');
+    const cookie = [this.#defaults.headers.cookie, ...cookies, ...kept.map(({ name, value }) => `${name}=${value}`)].filter(Boolean).join('; ');
     const init: RequestInit = { method, headers: { ...this.#defaults.headers, ...tokenHeader, ...(cookie ? { cookie } : {}), ...headers } };
     if (form) {
       const body = new URLSearchParams();

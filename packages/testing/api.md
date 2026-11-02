@@ -142,6 +142,7 @@ export declare class TestApp {
         guard: 'api';
         abilities?: readonly string[];
     }): TestApp;
+    keepingCookies(): TestApp;
     withUnencryptedCookie(name: string, value: string): TestApp;
     navigating(): TestApp;
     prefetching(): TestApp;
