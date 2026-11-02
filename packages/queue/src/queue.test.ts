@@ -1068,6 +1068,40 @@ describe('the QueueFake', () => {
     expect(fake.dispatched(WelcomeJob)).toMatchObject([{ payload: { userId: 1 }, inTransaction: true }]);
   });
 
+  it('records a dispatch through using(trx) of connections.transaction() with the commit, and nothing after a rollback', async () => {
+    await using application = await app();
+    const fake = new QueueFake(application.container);
+    const connections = application.container.make(Connections);
+    await expect(
+      connections.transaction(async (trx) => {
+        await fake.using(trx).dispatch(WelcomeJob, { userId: 1 });
+        expect(fake.dispatched(WelcomeJob)).toEqual([]);
+        throw new Error('rollback');
+      }),
+    ).rejects.toThrow('rollback');
+    fake.assertNothingDispatched();
+    expect(fake.pending()).toEqual([]);
+    expect(await fake.work()).toMatchObject({ processed: 0 });
+    expect(application.seen.entries).toEqual([]);
+
+    await connections.transaction((trx) => fake.using(trx).dispatch(WelcomeJob, { userId: 2 }));
+    expect(fake.dispatched(WelcomeJob)).toMatchObject([{ payload: { userId: 2 }, inTransaction: true }]);
+    expect(await fake.work()).toMatchObject({ processed: 1 });
+  });
+
+  it('records a dispatch through a transaction the app began itself at once — nothing reports its end', async () => {
+    await using application = await app();
+    const fake = new QueueFake(application.container);
+    const db = application.container.make(Connections).get();
+    await expect(
+      db.transaction().execute(async (trx) => {
+        await fake.using(trx).dispatch(WelcomeJob, { userId: 1 });
+        throw new Error('rollback');
+      }),
+    ).rejects.toThrow('rollback');
+    expect(fake.dispatched(WelcomeJob)).toMatchObject([{ inTransaction: true }]);
+  });
+
   it('refuses a unique job, and a sync one, through a transaction the app began itself like the Queue', async () => {
     await using application = await app();
     const fake = new QueueFake(application.container);
