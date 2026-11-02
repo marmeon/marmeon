@@ -36,6 +36,11 @@ export interface PageObject {
    */
   fallbackLocale?: string;
   /**
+   * The IANA time zone dates and times are shown in unless a call names its own (`APP_TIMEZONE`) — sent with `locale`, so the
+   * browser formats an instant the way the server did. Absent: the visitor's own zone.
+   */
+  timeZone?: string;
+  /**
    * The page of a localized route in every locale of the app — locale to path (`{ de: '/de/about', en: '/en/about' }`), the
    * query kept — plus `x-default`, the path without its locale. A language switcher and `hreflang` links are made of it. Absent
    * on a page that is not localized.
@@ -333,9 +338,9 @@ export function regionOf(request: Request): RegionKind | undefined {
 
 /**
  * The wire format of a region (an island): the page object of the route it shows — its component, props, URL and query,
- * deferred and merged props — without the page's language (`locale`, `fallbackLocale`): it renders in the page's.
+ * deferred and merged props — without the page's language and zone (`locale`, `fallbackLocale`, `timeZone`): it renders in the page's.
  */
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'marmeon-page';

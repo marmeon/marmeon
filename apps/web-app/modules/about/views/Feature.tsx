@@ -28,6 +28,8 @@ export default function Feature({ feature }: PageProps<ShowFeatureController>) {
       <h1>{t(`features.${feature.slug}.title`)}</h1>
       <p>{t(`features.${feature.slug}.summary`)}</p>
       <p className="muted">{t('updated', { date: t.format.date(feature.updatedAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}</p>
+      {/* No `timeZone`: the app's (`APP_TIMEZONE`) decides, on the server and in the browser alike. */}
+      <p className="muted">{t('reviewed', { at: feature.updatedAt })}</p>
       <p>
         <Link route="about.index" preload="viewport">{t('back')}</Link>
       </p>

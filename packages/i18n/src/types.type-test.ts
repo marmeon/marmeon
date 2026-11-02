@@ -7,7 +7,8 @@ import type { ParamsOf } from './index.ts';
 import type { CheckKey } from './index.ts';
 // @ts-expect-error — `KeyOf` is not exported by the browser-safe core either
 import type { KeyOf as CoreKeyOf } from './messages.ts';
-import type { Locales } from './index.ts';
+import type { Translator as CoreTranslator } from '@marmeon/core';
+import type { Locales, Translator } from './index.ts';
 import type { FrameworkTexts } from './messages.ts';
 import type { MessageKeyOf, MessageAt, MessageOverrides, Messages, MessageParamsOf, TranslateArgs } from './types.ts';
 
@@ -117,3 +118,10 @@ export type Unused = [KeyOf<string>, ParamsOf<string>, CheckKey<'a', {}, 'b'>, C
 declare const locales: Locales;
 // @ts-expect-error — the allow-list is fixed once booted: `Locales` has no `add`
 locales.add('xx');
+
+// A translator of an app's own has no zone: `timeZone` is optional in the contract.
+export const ownTranslator: CoreTranslator = { locale: 'en', has: () => false, text: (key) => key };
+declare const translator: Translator;
+export const zone: string | undefined = translator.timeZone;
+// @ts-expect-error — the zone is the app's (`APP_TIMEZONE`): a translator does not take another
+translator.timeZone = 'UTC';

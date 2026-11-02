@@ -459,6 +459,10 @@ and the browser render the same text.
 A calendar day (`2026-10-14`, what a `date` column reads back as) is shown as that day in every time zone by a `date` placeholder
 and by `format.date()` without a `timeZone`; see [Time](time.md#a-calendar-day).
 
+An instant (a `Date`, a timestamp or an ISO string with a time) is shown in the zone the call names with `timeZone`, else in the
+app's zone, `APP_TIMEZONE`, else in the zone of the process; see [Time](time.md#the-apps-zone). The `date` and `time` placeholders of a
+message follow the same order.
+
 ## Configuration
 
 | Variable | Default | Effect |
@@ -466,9 +470,14 @@ and by `format.date()` without a `timeZone`; see [Time](time.md#a-calendar-day).
 | `APP_LOCALE` | `en` | The default locale, for visitors whose session, account and browser name none of the supported ones. |
 | `APP_FALLBACK_LOCALE` | `en` | Where a message missing in a locale comes from: the language of the source files. |
 | `APP_LOCALES` | every locale with language files | The supported locales, comma-separated: `en,de`. |
+| `APP_TIMEZONE` | the zone of the process | The IANA time zone dates and times are shown in when a call names none: `Europe/Berlin`. |
 
 Each value must be a language tag, such as `en` or `de-AT`. With `APP_LOCALES` set, `APP_LOCALE` and `APP_FALLBACK_LOCALE` must be
 among them, or the app does not start. Without it, the supported locales are those the app has files for, plus the two others.
+
+`APP_TIMEZONE` must name an IANA time zone, or the app does not start. The server sends the zone with each page, so the browser
+formats an instant the way the server did. `Translator.timeZone` and `Translators` carry it too, so a mail or a job shows the
+same time as a page. It is a display setting: it moves no task, which keeps `SCHEDULE_TIMEZONE`.
 
 ## Testing
 

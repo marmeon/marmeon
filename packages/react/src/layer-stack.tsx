@@ -1,6 +1,7 @@
 import { layers } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
 import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { I18nContext } from './i18n.tsx';
 import { RegionOwnerContext, reloadsOf, RouterContext, type RouterValue } from './app.tsx';
 import { ErrorBoundary, RenderErrorFallback } from './fallbacks.tsx';
 import { LayerDialog } from './layer-dialog.tsx';
@@ -73,6 +74,8 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
   // What its view renders: its props with the optimistic patches under way over them.
   const live = useSyncExternalStore(layer?.subscribe ?? noSubscription, () => layer?.view ?? entry.page, () => entry.page);
   const manifest = useContext(RoutesContext);
+  // The page beneath speaks the language; the layer shows its instants in the zone its own page names.
+  const i18n = useContext(I18nContext);
   // An answer with another view (a wizard's next step, the new token replacing its form): shown once its view is loaded —
   // until then the layer keeps what it shows. Suspending would hide the dialog (out of the modal state, focus on the page).
   const [shown, setShown] = useState(live);
@@ -123,16 +126,19 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
     }),
     [entry.depth, isTop, page, layer],
   );
+  const layerI18n = useMemo(() => (i18n && i18n.timeZone !== page.timeZone ? { ...i18n, timeZone: page.timeZone } : i18n), [i18n, page.timeZone]);
   return (
-    <RouterContext.Provider value={router}>
-      <RegionOwnerContext.Provider value={layer?.owner ?? null}>
-        <LayerContext.Provider value={state}>
-          <Suspense fallback={null}>
-            <LayerContent resolve={resolve} page={page} frame={frame} state={state} />
-          </Suspense>
-        </LayerContext.Provider>
-      </RegionOwnerContext.Provider>
-    </RouterContext.Provider>
+    <I18nContext.Provider value={layerI18n}>
+      <RouterContext.Provider value={router}>
+        <RegionOwnerContext.Provider value={layer?.owner ?? null}>
+          <LayerContext.Provider value={state}>
+            <Suspense fallback={null}>
+              <LayerContent resolve={resolve} page={page} frame={frame} state={state} />
+            </Suspense>
+          </LayerContext.Provider>
+        </RegionOwnerContext.Provider>
+      </RouterContext.Provider>
+    </I18nContext.Provider>
   );
 }
 

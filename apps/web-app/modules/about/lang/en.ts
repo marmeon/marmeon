@@ -3,6 +3,7 @@ const en = {
   title: 'About',
   intro: 'What the framework does, one page each.',
   updated: 'Updated {date}',
+  reviewed: 'Reviewed at {at, time, short}',
   features: {
     'typed-routes': { title: 'Typed routes', summary: 'Route names and parameters are checked by the compiler, in controllers and views alike.' },
     'instant-visits': { title: 'Instant visits', summary: 'A page shows its placeholder at once while the answer is on its way.' },

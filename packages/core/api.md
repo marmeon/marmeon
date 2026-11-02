@@ -535,6 +535,7 @@ export declare class TransactionFinishedError extends TransactionError {
 export interface Translator {
     readonly locale: string;
     readonly fallbackLocale?: string;
+    readonly timeZone?: string;
     has(key: string): boolean;
     text(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): string;
 }

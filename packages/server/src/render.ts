@@ -473,7 +473,7 @@ export function createResponseFactory(
       // What every page follows (the layout's bell) — the surface shows the layout.
       ...(await liveSubscriptions(shared?.liveChannels() ?? [], scope, LAYER_BACKDROP)),
     };
-    for (const key of ['locale', 'fallbackLocale'] as const) if (layer[key] !== undefined) surface[key] = layer[key];
+    for (const key of ['locale', 'fallbackLocale', 'timeZone'] as const) if (layer[key] !== undefined) surface[key] = layer[key];
     return JSON.parse(JSON.stringify({ ...surface, layers })) as PageObject;
   };
 
@@ -533,7 +533,7 @@ export function createResponseFactory(
     // The session's epoch: the tabs of the browser compare it — on every page, a partial reload's too.
     const epoch = epochOf(scope);
     const pageSession = { ...(resolved.onceProps ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}), ...(epoch !== undefined ? { epoch } : {}) };
-    const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
+    const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}), ...(translator.timeZone ? { timeZone: translator.timeZone } : {}) } : {};
     // The parsed query, for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
     const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
     // The page of a localized route in each locale (set by `SetLocale`), for the language switcher and `hreflang`.

@@ -590,7 +590,8 @@ export function MarmeonApp({
   const owner = current.owner ?? navigator.current?.regionOwner ?? null;
 
   const locale = messages ? pageLocale(page, messages) : page.locale;
-  const i18n = useMemo(() => (catalog && locale ? { catalog, locale } : null), [catalog, locale]);
+  const timeZone = page.timeZone;
+  const i18n = useMemo(() => (catalog && locale ? { catalog, locale, timeZone } : null), [catalog, locale, timeZone]);
   useEffect(() => {
     if (locale && typeof document !== 'undefined' && document.documentElement.lang !== locale) document.documentElement.lang = locale;
   }, [locale]);

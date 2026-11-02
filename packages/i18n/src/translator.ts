@@ -46,29 +46,32 @@ export class CurrentLocale {
 export interface TranslatorOptions {
   /** The supported locales (read when needed: they are complete once the app booted). */
   readonly locales: () => readonly string[];
+  /** The zone dates are shown in unless a call names its own (`APP_TIMEZONE`); undefined: the process's. */
+  readonly timeZone?: string | undefined;
 }
 
 /** A {@link Translator} over the catalog; `locale` is read on every call (the request's may be set after creation). */
-export function createTranslator(catalog: Catalog, locale: () => string, { locales }: TranslatorOptions): Translator {
+export function createTranslator(catalog: Catalog, locale: () => string, { locales, timeZone }: TranslatorOptions): Translator {
   // An object literal with its getters — one per request (the request's `Translator`): half the cost of an object
   // completed with `Object.defineProperties` afterwards.
   const translator = {
-    get: (key: string, params?: Readonly<Record<string, unknown>>) => catalog.text(locale(), key, params),
+    get: (key: string, params?: Readonly<Record<string, unknown>>) => catalog.text(locale(), key, params, undefined, timeZone),
     has: (key: string) => catalog.has(locale(), key),
-    text: (key: string, params?: Readonly<Record<string, unknown>>, fallback?: string) => catalog.text(locale(), key, params, fallback),
+    text: (key: string, params?: Readonly<Record<string, unknown>>, fallback?: string) => catalog.text(locale(), key, params, fallback, timeZone),
     forLocale(wanted: string | null | undefined): Translator {
       const fixed = supportedLocale(wanted, locales()) ?? locale();
-      return createTranslator(catalog, () => fixed, { locales });
+      return createTranslator(catalog, () => fixed, { locales, timeZone });
     },
     get locale() {
       return locale();
     },
     fallbackLocale: catalog.fallback,
+    timeZone,
     get locales() {
       return locales();
     },
     get format() {
-      return catalog.formatter(locale());
+      return catalog.formatter(locale(), timeZone);
     },
   };
   return translator as unknown as Translator;

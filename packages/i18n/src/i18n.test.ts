@@ -119,7 +119,7 @@ async function boot({ env = {}, override }: { env?: Record<string, string>; over
   return { application, send };
 }
 
-const page = async (response: Response) => (await response.json()) as { component: string; props: Record<string, any>; locale?: string; fallbackLocale?: string };
+const page = async (response: Response) => (await response.json()) as { component: string; props: Record<string, any>; locale?: string; fallbackLocale?: string; timeZone?: string };
 
 describe('the request locale (SetLocale)', () => {
   it("speaks the browser's language — the page carries only the locale, the props are translated on the server", async () => {
@@ -329,6 +329,55 @@ describe('I18nConfig', () => {
     expect(translator.forLocale('fr').locale).toBe('en'); // not supported: the translator's own
     expect(translator.forLocale(null).locale).toBe('en');
     expect(translator.get('app.title')).toBe('Shop'); // lang/en.ts: namespace `app`
+  });
+});
+
+describe('APP_TIMEZONE', () => {
+  const instant = '2026-10-14T05:00:00Z';
+  const opts = { dateStyle: 'medium', timeStyle: 'short' } as const;
+  const clean = (text: string) => text.replaceAll('\u202f', ' ');
+
+  it('shows an instant in the app zone — a calendar day stays that day, an explicit zone wins, {at, time} follows', async () => {
+    const { application } = await boot({ env: { APP_TIMEZONE: 'America/Los_Angeles' } });
+    const translator = application.container.createScope().make(Translator);
+    expect(translator.timeZone).toBe('America/Los_Angeles');
+    expect(clean(translator.format.date(instant, opts))).toBe('Oct 13, 2026, 10:00 PM');
+    expect(translator.format.date('2026-10-14', { dateStyle: 'medium' })).toBe('Oct 14, 2026');
+    expect(clean(translator.format.date(instant, { ...opts, timeZone: 'UTC' }))).toBe('Oct 14, 2026, 5:00 AM');
+    expect(clean(translator.get('shop.opens', { at: instant }))).toBe('Opens at 10:00 PM');
+    expect(clean(translator.forLocale('de').get('shop.opens', { at: instant }))).toBe('Öffnet um 22:00');
+  });
+
+  it('gives Translators the same zone — a mail or a job shows what a page shows', async () => {
+    const { application } = await boot({ env: { APP_TIMEZONE: 'Europe/Berlin' } });
+    const translators = application.container.make(Translators);
+    expect(translators.for('en').timeZone).toBe('Europe/Berlin');
+    expect(clean(translators.for('en').format.date(instant, { timeStyle: 'short' }))).toBe('7:00 AM');
+  });
+
+  it('sends the zone with the page, so the browser formats like the server', async () => {
+    const { send } = await boot({ env: { APP_TIMEZONE: 'Europe/Berlin' } });
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }))).timeZone).toBe('Europe/Berlin');
+  });
+
+  it('is the zone of the process without the variable — nothing changes, and the page carries none', async () => {
+    const { application, send } = await boot();
+    const translator = application.container.createScope().make(Translator);
+    expect(translator.timeZone).toBeUndefined();
+    expect(translator.format.date(instant, opts)).toBe(new Intl.DateTimeFormat('en', opts).format(new Date(instant)));
+    expect('timeZone' in (await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })))).toBe(false);
+  });
+
+  it('stops the start for a zone that does not exist, and names it', async () => {
+    await expect(boot({ env: { APP_TIMEZONE: 'Mars/Olympus' } })).rejects.toThrow(ConfigError);
+    await expect(boot({ env: { APP_TIMEZONE: 'Mars/Olympus' } })).rejects.toThrow(/Mars\/Olympus/);
+    await expect(boot({ env: { APP_TIMEZONE: '+01:00' } })).rejects.toThrow(/\+01:00/);
+  });
+
+  it('keeps the canonical name — what the browser gets is a name it formats with', async () => {
+    const { application, send } = await boot({ env: { APP_TIMEZONE: 'europe/berlin' } });
+    expect(application.container.createScope().make(Translator).timeZone).toBe('Europe/Berlin');
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }))).timeZone).toBe('Europe/Berlin');
   });
 });
 

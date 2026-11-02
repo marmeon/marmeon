@@ -20,9 +20,9 @@ export declare class Catalog {
     locales(): string[];
     has(locale: string, key: string): boolean;
     message(locale: string, key: string): string | undefined;
-    text(locale: string, key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): string;
-    translate<N extends string>(locale: string, namespace: N): Translate<N>;
-    formatter(locale: string): Formatter;
+    text(locale: string, key: string, params?: Readonly<Record<string, unknown>>, fallback?: string, timeZone?: string): string;
+    translate<N extends string>(locale: string, namespace: N, timeZone?: string): Translate<N>;
+    formatter(locale: string, timeZone?: string): Formatter;
 }
 // CheckMessageKey
 export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, MessageKeyOf<T> & string>}`;
@@ -31,6 +31,7 @@ export type CheckTranslationKey<K extends string> = string extends TranslationKe
 // Formatter
 export interface Formatter {
     readonly locale: string;
+    readonly timeZone?: string;
     number(value: number | bigint, options?: Intl.NumberFormatOptions): string;
     date(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string;
     relativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions): string;
@@ -41,6 +42,7 @@ export declare const I18nConfig: import("@marmeon/core").ConfigDefinition<{
     locale: string;
     fallback: string;
     locales: string[] | undefined;
+    timeZone: string | undefined;
 }>;
 export type I18nConfig = ConfigOf<typeof I18nConfig>;
 // I18nServiceProvider
@@ -49,6 +51,7 @@ export declare class I18nServiceProvider implements ServiceProvider {
         locale: string;
         fallback: string;
         locales: string[] | undefined;
+        timeZone: string | undefined;
     }>[];
     static publishes: {
         lang: import("node:url").URL;
@@ -213,15 +216,16 @@ export declare class Catalog {
     locales(): string[];
     has(locale: string, key: string): boolean;
     message(locale: string, key: string): string | undefined;
-    text(locale: string, key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): string;
-    translate<N extends string>(locale: string, namespace: N): Translate<N>;
-    formatter(locale: string): Formatter;
+    text(locale: string, key: string, params?: Readonly<Record<string, unknown>>, fallback?: string, timeZone?: string): string;
+    translate<N extends string>(locale: string, namespace: N, timeZone?: string): Translate<N>;
+    formatter(locale: string, timeZone?: string): Formatter;
 }
 // CheckMessageKey
 export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, MessageKeyOf<T> & string>}`;
 // Formatter
 export interface Formatter {
     readonly locale: string;
+    readonly timeZone?: string;
     number(value: number | bigint, options?: Intl.NumberFormatOptions): string;
     date(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string;
     relativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions): string;
@@ -414,4 +418,6 @@ declare const en: {
 `APP_LOCALE` = `"en"`
 // APP_LOCALES
 `APP_LOCALES` = `[]`
+// APP_TIMEZONE
+`APP_TIMEZONE` — optional
 ```

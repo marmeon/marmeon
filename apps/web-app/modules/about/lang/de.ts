@@ -5,6 +5,7 @@ export default {
   title: 'Über',
   intro: 'Was das Framework kann, je Seite eine Funktion.',
   updated: 'Aktualisiert am {date}',
+  reviewed: 'Geprüft um {at, time, short}',
   features: {
     'typed-routes': { title: 'Typisierte Routen', summary: 'Routennamen und Parameter prüft der Compiler, in Controllern und Views gleichermaßen.' },
     'instant-visits': { title: 'Sofortige Besuche', summary: 'Eine Seite zeigt sofort ihren Platzhalter, während die Antwort unterwegs ist.' },

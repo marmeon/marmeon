@@ -7,6 +7,8 @@ import { createContext, useContext, useMemo } from 'react';
 export interface I18nValue {
   /** The page's locale (`PageObject.locale`). */
   readonly locale: string;
+  /** The zone dates are shown in unless a call names its own (`PageObject.timeZone`); undefined: the visitor's. */
+  readonly timeZone?: string | undefined;
   /** Its messages — loaded before the page rendered (on the server and in the browser alike: no hydration mismatch). */
   readonly catalog: Catalog;
 }
@@ -36,12 +38,12 @@ function useI18n(hook: string): I18nValue {
  * text, never as HTML. See docs/localization.md#in-the-browser.
  */
 export function useTranslation<N extends Namespace>(namespace: N): Translate<N> {
-  const { catalog, locale } = useI18n('useTranslation()');
-  return useMemo(() => catalog.translate(locale, namespace), [catalog, locale, namespace]);
+  const { catalog, locale, timeZone } = useI18n('useTranslation()');
+  return useMemo(() => catalog.translate(locale, namespace, timeZone), [catalog, locale, namespace, timeZone]);
 }
 
 /** The page's locale and its formatters — `const { locale, format } = useLocale()`. */
 export function useLocale(): { locale: string; format: Formatter } {
-  const { catalog, locale } = useI18n('useLocale()');
-  return useMemo(() => ({ locale, format: catalog.formatter(locale) }), [catalog, locale]);
+  const { catalog, locale, timeZone } = useI18n('useLocale()');
+  return useMemo(() => ({ locale, format: catalog.formatter(locale, timeZone) }), [catalog, locale, timeZone]);
 }
