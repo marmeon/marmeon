@@ -173,7 +173,19 @@ export class UserSeeder {
 }
 ```
 
-A seeder has no output of its own: what `handle()` returns is dropped, and `db:seed` prints each seeder that ran with its module and how long it took. What the person running it should be told, such as the demo accounts and their password, is printed by a [command](console.md#writing-commands) that calls the same class, with a method of the seeder that both `handle()` and the command call. The seeder takes `Factories` in its constructor, since the command has no `SeedContext`, and the method creates the accounts and returns what to print.
+What a seeder returns from `handle()` is dropped. To tell the person running `marmeon db:seed` or `migrate:fresh --seed` what it made, write to `output` in the context:
+
+```ts
+async handle({ factory, output }: SeedContext) {
+  const links = await factory(LinkFactory).count(5).create();
+  output?.info(`Made ${links.length} links.`);
+  output?.table(['Title'], links.map((link) => [link.title]));
+}
+```
+
+`output` has `line()`, `info()`, `warn()` and `table()`, like the console's [`Output`](console.md#writing-commands). The lines appear at once, ahead of the `Seeded …` line the command writes when the seeder is done, so a seeder that fails afterwards still shows what it printed. It is optional: a test that builds the context by hand (`handle({ factory, db })`) has none, which is why you write `output?.info(…)`. Under `createTestApp({ seed: true })` it is silent.
+
+The framework prints nothing from the context itself; only the seeder decides. Print a generated password or token only from a seeder that guards itself with `environment.isProtected()`, like the `UserSeeder` above: `migrate:fresh --seed` runs in deployments too, and its output ends up in their logs. Alternatively, a [command](console.md#writing-commands) can call a method of the same seeder class and print what it returns; the seeder then takes `Factories` in its constructor, since the command has no `SeedContext`.
 
 A module lists its seeders in its definition, and they run in that order:
 

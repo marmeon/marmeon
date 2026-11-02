@@ -38,6 +38,6 @@ export async function seed(seeding: Seeding, { options, output }: CommandInput):
     output.info('No seeders. Add them to a module: defineModule({ seeders: [DemoUsersSeeder] }).');
     return 0;
   }
-  await seeding.run(filter, (run) => output.success(`Seeded ${run.seeder} (${run.module}) ${run.ms.toFixed(1)} ms`));
+  await seeding.run(filter, (run) => output.success(`Seeded ${run.seeder} (${run.module}) ${run.ms.toFixed(1)} ms`), output);
   return 0;
 }
