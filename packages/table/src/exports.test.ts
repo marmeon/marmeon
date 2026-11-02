@@ -98,6 +98,11 @@ describe.each(drivers)('the name of an export (%s)', (driver) => {
     expect(broken.header).toBeNull();
     expect(open.recorder.exports).toEqual([]);
     expect((await disposition(open, 'number')).response.status).toBe(500);
+    // `undefined` is no name either: only an export without filename() gets the default. Nothing is recorded.
+    const nothing = await disposition(open, 'nothing');
+    expect(nothing.response.status).toBe(500);
+    expect(nothing.header).toBeNull();
+    expect(open.recorder.exports).toEqual([]);
   });
 
   it('refuses a name that is neither a string nor a function when the export is defined', () => {

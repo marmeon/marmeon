@@ -351,6 +351,7 @@ export const NamedTable = defineTable({
     day: exportCsv().authorize(() => true).filename((ctx, resolve) => `team-${ctx.params.team}-${new Date(resolve(Clock).now()).toISOString().slice(0, 10)}`),
     fixed: exportCsv().authorize(() => true).filename('summer party'),
     broken: exportCsv().authorize(() => true).filename(() => { throw new Error('no name for you'); }).onExport(RecordExport),
+    nothing: exportCsv().authorize(() => true).filename((() => undefined) as never).onExport(RecordExport),
     number: exportCsv().authorize(() => true).filename((() => 42) as never),
   },
 });

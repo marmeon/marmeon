@@ -757,6 +757,11 @@ the table's exports. It runs no query on the table's rows, not the base query an
 default state (no sort, search or filter), because the page shows no table.
 
 ```ts title="modules/guests/controllers/ShowReportsController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Controller } from '@marmeon/http';
+import { DataTables, type TableContext } from '@marmeon/table';
+import { GuestsTable } from '../tables/GuestsTable.ts';
+
 export class ShowReportsController extends Controller {
   readonly #tables: DataTables;
 

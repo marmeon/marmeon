@@ -333,7 +333,7 @@ export class DataTables {
     const filtered = this.#filtered(definition, ctx, state, view);
     // Before the count and the record: an answer that is no delimiter fails the export with nothing written down.
     const delimiter = await this.#delimiter(entry, ctx);
-    const filename = await this.#filename(definition, entry, ctx);
+    const filename = await this.#filename(definition, name, entry, ctx);
     // Its limit first (one count): an export over it is refused before a byte is streamed — never a file cut short.
     const { count } = (await this.#db
       .selectFrom(filtered.select(sql<number>`1`.as('row')).as('exported'))
@@ -426,9 +426,12 @@ export class DataTables {
    * count, like the delimiter: a function that throws sends no file. Whatever the app answers is cleaned — it may be the title of a
    * record someone else named.
    */
-  async #filename(definition: TableDefinition, entry: TableExport, ctx: HttpContext): Promise<string> {
+  async #filename(definition: TableDefinition, name: string, entry: TableExport, ctx: HttpContext): Promise<string> {
+    // Only an export without `filename()` takes the default: a function that answers `undefined` is a mistake, not "no name".
     const chosen = typeof entry.stem === 'function' ? await entry.stem(ctx, this.#resolve, this.#translator()) : entry.stem;
-    if (chosen !== undefined && typeof chosen !== 'string') throw new TypeError(`exportCsv().filename(…) answered ${JSON.stringify(chosen)}: a string.`);
+    if (entry.stem !== undefined && typeof chosen !== 'string') {
+      throw new TypeError(`Table "${definition.name}", export '${name}': filename(…) answered ${JSON.stringify(chosen) ?? String(chosen)}, not a string.`);
+    }
     // The app's clock (so `app.freeze()` fixes the name), as the UTC day: the app has no display zone.
     const day = new Date(this.#clock().now()).toISOString().slice(0, 10);
     return `${cleanStem(chosen ?? '') || `${definition.name}-${day}`}.csv`;
