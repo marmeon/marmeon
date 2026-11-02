@@ -13,3 +13,19 @@ export const UserFactory = define(
 
 /** The author comes from the UserFactory — created with the article. */
 export const ArticleFactory = define('articles', ({ sequence, factory }) => ({ user_id: factory(UserFactory), title: `Article ${sequence}` }));
+
+const slugOf = (title: unknown) => String(title).toLowerCase().replaceAll(/\W+/g, '-');
+
+/** The slug comes from the title the row ends up with, and the author is named after it: both derived, in that order. */
+export const SluggedArticleFactory = define('articles', ({ sequence, factory }) => ({
+  user_id: (row) => factory(UserFactory).state({ name: `Author of ${String(row.title)}` }),
+  title: `Slugged ${sequence}`,
+  slug: (row) => slugOf(row.title),
+}));
+
+/** The token is a secret column: a factory sets it, a derived column cannot read it. */
+export const ApiKeyFactory = define('api_keys', ({ sequence, factory }) => ({
+  user_id: factory(UserFactory),
+  token: `token-${sequence}`,
+  name: (row) => `key of user ${String(row.user_id)}`,
+}));

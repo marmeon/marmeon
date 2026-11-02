@@ -71,6 +71,33 @@ A value built elsewhere (a `const`, `Array.from(…)`, a `string` parameter) is 
 Moving a value from one `oneOf()` column into another whose list is shorter needs Kysely's `$castTo<'admin' | 'member'>()` (the target column's
 union) at that expression: the compiler cannot see the `where` that makes it true, and the check constraint still refuses a wrong value.
 
+### Deriving a column from the row
+
+A column's value can be a function of the row. It runs after the definition, the states and the overrides are merged and every other column
+is worked out, so it sees what the call sets, and a column the call names replaces the function, which then does not run:
+
+```ts title="modules/events/factories/ResourceFactory.ts"
+export const ResourceFactory = defineFactory('resources', ({ sequence, factory }) => ({
+  event_id: factory(EventFactory),
+  resource_group_id: (row) => factory(ResourceGroupFactory).state({ event_id: row.event_id }),
+  name: `Resource ${sequence}`,
+}));
+```
+
+`factory(ResourceFactory).create()` makes one event, and the resource and its group both lie in it. `create({ event_id })` makes no
+event, and the group lies in the one you name. `count(3)` gives each row an event of its own.
+
+- **`row`** holds the other columns' values with their types. In `create()` a related column is already the created row's id; in
+  `make()` it is still the factory, so `row.event_id` is `number | PendingFactory` and the same code compiles for both. A column the
+  table does not have is a compile error.
+- **Several derived columns** run in the order of the definition. A derived column can read every column that is not derived, and
+  the derived columns before it. Reading one that comes later, or itself, throws an error that names both columns. It throws before
+  the row is inserted, but the related rows of the plain columns (`event_id: factory(EventFactory)`) may exist by then.
+- **A secret column** may be set by a factory, but is not in `row`: the type refuses a read, so a derived value cannot copy it into a
+  column that is not secret. `create()` also throws, naming the derived and the secret column, when a function reads one anyway;
+  `make()` checks the type only.
+- A derived column returns a value or a factory, never a function or a promise: it is synchronous. A state may hold a derived column too.
+
 ### Password hashes
 
 Hashing a password is slow on purpose, and `count(50)` would hash fifty times. So the starter kit's factory stores one hash,
@@ -100,9 +127,8 @@ const notes = await factory(NoteFactory).count(3).state('shared').create({ user_
 ```
 
 Every `factory(Other)` of a definition creates a row of its own, so a factory with two foreign keys makes two parent rows. When the keys
-have to agree, as a resource's `event_id` and the event of its `resource_group_id`, the definition cannot see the overrides of the call and
-derive one from the other, and the database does not link the two columns unless a key does. Create the shared parent once and
-pass every column that points to it:
+have to agree, as a resource's `event_id` and the event of its `resource_group_id`, derive one from the other, as
+[above](#deriving-a-column-from-the-row), or create the shared parent once and pass every column that points to it:
 
 ```ts
 const event = await factory(EventFactory).create();
@@ -110,8 +136,8 @@ const group = await factory(ResourceGroupFactory).create({ event_id: event.id })
 const resource = await factory(ResourceFactory).create({ event_id: event.id, resource_group_id: group.id });
 ```
 
-Without the two overrides, `ResourceFactory.create()` makes an event for the resource and another for its group. A column an override
-sets creates no parent. Say in the factory's JSDoc which columns a caller has to name together.
+Without the derived column, `ResourceFactory.create()` would make an event for the resource and another for its group. A column an
+override sets creates no parent. Where a factory does not derive the columns, say in its JSDoc which a caller has to name together.
 
 Each call returns a new pending factory, so you can keep one and use it twice. A state the definition does not have throws, with
 the states it knows. `create()` inserts the rows one after the other, each related row first.

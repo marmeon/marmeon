@@ -9,6 +9,8 @@ Types from other packages: `kysely`
 ### Stable
 
 ```ts
+// AttributesOf
+export type AttributesOf<Table> = Attributes<NewRowOf<Table>, DerivedRow<Table>>;
 // Blueprint
 export declare class Blueprint {
     #private;
@@ -161,6 +163,10 @@ export declare class DatabaseServiceProvider implements ServiceProvider {
 }
 // Decimal
 export type Decimal = ColumnType<string, string | number, string | number>;
+// DerivedRow
+export type DerivedRow<Table> = Readonly<{
+    [K in keyof Pick<NewRowOf<Table>, keyof NewRowOf<Table> & keyof Selectable<Table>>]: Attribute<NewRowOf<Table>[K]>;
+}>;
 // DuplicateError
 export interface DuplicateError {
     readonly kind: 'duplicate';
@@ -187,8 +193,8 @@ export interface FactoryContext {
 // FactoryDefinition
 export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S extends string = never> {
     readonly table: T;
-    readonly definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>;
-    readonly states: Readonly<Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)>>;
+    readonly definition: (context: FactoryContext) => AttributesOf<DB[T]>;
+    readonly states: Readonly<Record<S, Partial<AttributesOf<DB[T]>> | ((context: FactoryContext) => Partial<AttributesOf<DB[T]>>)>>;
 }
 // ForeignIdColumn
 export declare class ForeignIdColumn<T> extends Column<T> {
@@ -331,7 +337,7 @@ export interface Paginated<T> {
 export declare class PendingFactory<T extends keyof DB & string, DB = Tables, Many extends boolean = false, S extends string = never> {
     #private;
     count(count: number): PendingFactory<T, DB, true, S>;
-    state(state: S | Partial<NewRowOf<DB[T]>>): PendingFactory<T, DB, Many, S>;
+    state(state: S | Partial<AttributesOf<DB[T]>>): PendingFactory<T, DB, Many, S>;
     using(db: Connection<DB>): PendingFactory<T, DB, Many, S>;
     make<O extends Partial<NewRowOf<DB[T]>> = {}>(overrides?: O & KnownColumns<O, NewRowOf<DB[T]>>): Many extends true ? MadeAttributes<NewRowOf<DB[T]>, O>[] : MadeAttributes<NewRowOf<DB[T]>, O>;
     create(overrides?: Partial<NewRowOf<DB[T]>>): Promise<Many extends true ? RowOf<DB[T]>[] : RowOf<DB[T]>>;
@@ -612,8 +618,8 @@ export declare function defineConnection<const Schema extends StandardSchemaV1>(
     resolve: (env: InferOutput<Schema>) => ConnectionDefinitionOptions;
 }): ConnectionDefinition;
 // defineFactory
-export declare function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(table: T, definition: NoInfer<(context: FactoryContext) => Attributes<NewRowOf<DB[T]>>>, options?: {
-    states?: Record<S, Partial<NewRowOf<DB[T]>> | NoInfer<(context: FactoryContext) => Partial<NewRowOf<DB[T]>>>>;
+export declare function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(table: T, definition: NoInfer<(context: FactoryContext) => AttributesOf<DB[T]>>, options?: {
+    states?: Record<S, Partial<AttributesOf<DB[T]>> | NoInfer<(context: FactoryContext) => Partial<AttributesOf<DB[T]>>>>;
 }): FactoryDefinition<T, DB, S>;
 // defineMigration
 export declare function defineMigration<Up extends Migration['up'], Down extends Migration['down']>(migration: {
@@ -656,8 +662,8 @@ export declare function uniqueViolationColumns(error: unknown): string[];
 // Attribute
 type Attribute<V> = V | PendingFactory<any, any, false>;
 // Attributes
-type Attributes<Row> = {
-    [K in keyof Row]: Attribute<Row[K]>;
+type Attributes<Row, View> = {
+    [K in keyof Row]: Attribute<Row[K]> | ((row: View) => Attribute<Row[K]>);
 };
 // CanWrite
 type CanWrite<DB, X> = X extends keyof DB ? ([keyof RowUpdateOf<DB[X]>] extends [never] ? false : true) : false;

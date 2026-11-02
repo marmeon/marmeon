@@ -1,5 +1,6 @@
 // Type guarantees of a factory for a table with a oneOf() column — checked by `tsc`, never run.
 import { defineFactory, type Factories, type FactoryDefinition } from '@marmeon/database';
+import { LabeledQuestionFactory } from './factories/LabeledQuestionFactory.ts';
 import { SurveyQuestionFactory } from './factories/SurveyQuestionFactory.ts';
 
 declare const factories: Factories;
@@ -28,6 +29,14 @@ defineFactory('nope', () => ({}));
 const Plain = defineFactory('lab_survey_questions', () => ({ survey: 's', name: 'n', label: 'l' }));
 // @ts-expect-error — a factory without states has no state to name
 factories.for(Plain).state('x');
+
+// A derived column reads the row's other columns with their types, and only the columns the table has.
+defineFactory('lab_survey_questions', () => ({ survey: 's', label: 'l', name: (row) => row.label as string }));
+// @ts-expect-error — a column the table does not have
+defineFactory('lab_survey_questions', () => ({ survey: 's', label: 'l', name: (row) => String(row.title) }));
+// @ts-expect-error — a derived column returns the column's type
+defineFactory('lab_survey_questions', () => ({ survey: 's', label: 'l', name: () => 1 }));
+factories.for(LabeledQuestionFactory).state({ name: (row) => String(row.label) }).make();
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type StateNames<F> = F extends FactoryDefinition<any, any, infer S> ? S : never;
