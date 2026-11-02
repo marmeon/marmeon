@@ -467,9 +467,9 @@ type MissingKeys<T> = { [K in keyof T]-?: undefined extends T[K] ? K : never }[k
 type Fields<T> = Simplify<{ [K in Exclude<keyof T, MissingKeys<T>>]: T[K] } & { [K in MissingKeys<T>]?: T[K] }>;
 
 /** What an object of `S` becomes once valid. */
-export type ShapeOutput<S extends Shape> = Fields<{ [K in keyof S]: InferOutput<S[K]> }>;
+export type ShapeOutput<S extends Shape> = Fields<{ [K in keyof S]: InferOutput<NonNullable<S[K]>> | (undefined extends S[K] ? undefined : never) }>;
 /** What an object of `S` takes. */
-export type ShapeInput<S extends Shape> = Fields<{ [K in keyof S]: InferInput<S[K]> }>;
+export type ShapeInput<S extends Shape> = Fields<{ [K in keyof S]: InferInput<NonNullable<S[K]>> | (undefined extends S[K] ? undefined : never) }>;
 
 /** An object's output with the fields of its `.when()`s, optional. A block that repeats a field may replace its value, so the field is either type. */
 type WithWhens<Own, Conditional> = Simplify<{ [K in keyof Own]: K extends keyof Conditional ? Own[K] | Conditional[K] : Own[K] } & Partial<Omit<Conditional, keyof Own>>>;
@@ -477,7 +477,7 @@ type WithWhens<Own, Conditional> = Simplify<{ [K in keyof Own]: K extends keyof 
 type WithWhensInput<Own, Conditional> = Simplify<Own & Partial<Omit<Conditional, keyof Own>>>;
 /** The fields of two `.when()` blocks; a field in both is either rule's, since either block may be skipped. */
 type MergeWhens<A extends Shape, B extends Shape> = Simplify<
-  Omit<A, keyof B> & Omit<B, keyof A> & { [K in keyof A & keyof B]: Rule<InferOutput<A[K]> | InferOutput<B[K]>, InferInput<A[K]> | InferInput<B[K]>> }
+  Omit<A, keyof B> & Omit<B, keyof A> & { [K in keyof A & keyof B]: Rule<InferOutput<NonNullable<A[K]>> | InferOutput<NonNullable<B[K]>>, InferInput<NonNullable<A[K]>> | InferInput<NonNullable<B[K]>>> }
 >;
 
 interface ObjectParts {

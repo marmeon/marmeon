@@ -285,6 +285,18 @@ describe('objects', () => {
     expect(result.issues?.map((issue) => issue.message)).toEqual(['The users.1.email field must be a valid email address.', 'The address.city field is required.']);
   });
 
+  it('a field spread in only sometimes is checked when it is there, and left out when it is not', async () => {
+    const named = (companions: boolean) => r.object({ name: r.string().required(), ...(companions ? { guests: r.array(r.object({ email: r.email() })) } : {}) });
+    expect(await check(named(false), { name: 'Ada', guests: [{ email: 'nope' }] })).toEqual({ value: { name: 'Ada' } });
+    expect(await errors(named(true), { name: 'Ada', guests: [{ email: 'nope' }] })).toEqual({ 'guests.0.email': ['The guests.0.email field must be a valid email address.'] });
+    expect(await check(named(true), { name: 'Ada', guests: [{ email: 'ada@example.com' }] })).toEqual({ value: { name: 'Ada', guests: [{ email: 'ada@example.com' }] } });
+  });
+
+  it('a field whose value is undefined is refused, not dropped', () => {
+    expect(() => r.object({ a: undefined as never })).toThrow(TypeError);
+    expect(() => r.object({ a: 'text' as never })).toThrow(TypeError);
+  });
+
   it('when: fields checked only while their condition holds — else left out — alongside the other fields\' problems', async () => {
     const form = r
       .object({ kind: r.in(['person', 'company']), name: r.string().required() })

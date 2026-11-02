@@ -452,6 +452,8 @@ export const AnswersRequest = defineRequest({
 - **It runs only then.** A request that a check or `authorize` refuses, or whose binding finds nothing, gets its 403 or 404
   without the function running, so it cannot be used to tell what exists or to load rows for anybody. A live validation builds
   the schema after the same decisions.
+- **A field that is there only sometimes keeps its type.** Spread it in conditionally, `...(named ? { guests: r.array(…) } : {})`, and the
+  form and the handler see `guests?: …[] | undefined`, so `clearErrors('guests.0.email')` compiles. `{ guests: withGuests ? rule : undefined }` is refused; spread.
 - **It may be `async`.** The router awaits it before the first field is validated. A function that throws or rejects ends the
   request with that error: an `HttpError` answers with its status, any other error is a 500. The controller does not run and
   no field is checked.

@@ -246,3 +246,33 @@ r.localDateTime((request) => (request ? 'UTC' : undefined)); // fine
 r.localDateTime(2);
 // @ts-expect-error — { field } names a field
 r.localDateTime({ zone: 'time_zone' });
+
+// ——— A field an object spreads in only sometimes ———
+declare const withGuests: boolean;
+const registration = r.object({ name: r.string(), ...(withGuests ? { guests: r.array(r.object({ name: r.string(), email: r.string() })) } : {}) });
+type RegistrationTypes = NonNullable<(typeof registration)['~standard']['types']>;
+same<RegistrationTypes['output'], { name: string; guests?: { name: string; email: string }[] | undefined }>(true);
+same<RegistrationTypes['input'], { name: string; guests?: { name: string; email: string }[] | undefined }>(true);
+class RegisterController {
+  static request = defineRequest({ schema: registration });
+  handle(ctx: ContextOf<typeof RegisterController.request>) {
+    return ctx.body;
+  }
+}
+same<FormOf<RegisterController>, { name: string; guests?: { name: string; email: string }[] | undefined }>(true);
+// @ts-expect-error — the spread field is not a number
+export const guestsAsNumber: RegistrationTypes['output']['guests'] extends number | undefined ? true : false = true;
+
+// A rule looked up in a record may be missing — under noUncheckedIndexedAccess that is a type error, not a field.
+declare const shared: Record<string, ReturnType<typeof r.string>>;
+// @ts-expect-error — shared['term'] may be undefined
+r.object({ terms: shared['term'] });
+
+// A field spread in only sometimes inside two .when() blocks: either block may be skipped, so it is either rule's type, optional.
+const mergedWhens = r
+  .object({ kind: r.in(['a', 'b']), ...(withGuests ? { note: r.string() } : {}) })
+  .when((data) => data.kind === 'a', { extra: r.string(), ...(withGuests ? { size: r.integer() } : {}) })
+  .when((data) => data.kind === 'b', { extra: r.integer(), ...(withGuests ? { size: r.string() } : {}) });
+type MergedTypes = NonNullable<(typeof mergedWhens)['~standard']['types']>;
+same<MergedTypes['output'], { kind: 'a' | 'b'; note?: string | undefined; extra?: string | number | undefined; size?: number | string | undefined }>(true);
+same<MergedTypes['input'], { kind: 'a' | 'b'; note?: string | undefined; extra?: string | number | undefined; size?: number | string | undefined }>(true);
