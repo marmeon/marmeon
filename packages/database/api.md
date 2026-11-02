@@ -35,6 +35,7 @@ export declare class Blueprint {
     foreignId(name: string): ForeignIdColumn<number>;
     foreignUuid(name: string): ForeignIdColumn<string>;
     foreign(column: string): ForeignKeyReference;
+    oneOf(column: string, values: readonly string[]): void;
     index(columns: string | readonly string[], name?: string): void;
     unique(columns: string | readonly string[], name?: string): void;
     dropColumn(name: string): void;

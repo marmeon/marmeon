@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
 import type { Connections } from '../connections.ts';
@@ -90,6 +91,111 @@ describe.each(drivers)('oneOf() and check() on %s', (driver: TestDriver) => {
     await connections.get<any>().insertInto('seats').values({ role: 'owner' }).execute();
   });
 
+  describe('oneOf(column, values) in alter()', () => {
+    const relist = (...values: string[]) => ({ up: (schema: Schema) => schema.alter('memberships', (t) => t.oneOf('role', values)) });
+    const rows = async () => (await connections.get<any>().selectFrom('memberships').select('role').orderBy('id').execute()).map((row) => row.role);
+
+    it('refuses the plan on SQLite before any step, and points to the recipe', async () => {
+      if (driver !== 'sqlite') return;
+      await runMigration(connections, { up: create });
+      const change = runMigration(connections, {
+        up: (schema) => {
+          schema.create('other', (t) => t.id());
+          schema.alter('memberships', (t) => t.oneOf('role', ['admin', 'member', 'owner']));
+        },
+      });
+      await expect(change).rejects.toThrow(/D18.*cannot use oneOf\('role', …\) on SQLite.*docs\/migrations\.md#check-constraints/s);
+      expect((await connections.get<any>().introspection.getTables()).map((t: { name: string }) => t.name)).not.toContain('other');
+    });
+
+    it.runIf(driver === 'pgsql')('adds a value, keeps the rows and refuses an unlisted one', async () => {
+      await runMigration(connections, { up: create });
+      await insert({ role: 'admin' });
+      await runMigration(connections, relist('admin', 'member', 'owner'));
+      await insert({ role: 'owner' });
+      await expect(insert({ role: 'guest' })).rejects.toThrow(/memberships_role_check/);
+      expect(await rows()).toEqual(['admin', 'owner']);
+    });
+
+    it.runIf(driver === 'pgsql')('lets NULL pass in a nullable column', async () => {
+      await runMigration(connections, { up: create });
+      await runMigration(connections, { up: (schema) => schema.alter('memberships', (t) => t.oneOf('state', ['open', 'closed', 'draft'])) });
+      await insert({ state: null });
+      await insert({ state: 'draft' });
+    });
+
+    it.runIf(driver === 'pgsql')('fails on a row the narrower list refuses, rolls back and keeps the old list', async () => {
+      await runMigration(connections, { up: create });
+      await insert({ role: 'admin' });
+      await insert({ role: 'member' });
+      await expect(runMigration(connections, {
+        up: (schema) => {
+          schema.create('other', (t) => t.id());
+          schema.alter('memberships', (t) => t.oneOf('role', ['admin']));
+        },
+      })).rejects.toThrow(/memberships_role_check/);
+      expect((await connections.get<any>().introspection.getTables()).map((t: { name: string }) => t.name)).not.toContain('other');
+      await insert({ role: 'member' });
+      expect(await rows()).toEqual(['admin', 'member', 'member']);
+      expect(table(connections.projection(), 'memberships').columns.find((c) => c.name === 'role')?.values).toEqual(['admin', 'member']);
+    });
+
+    it.runIf(driver === 'pgsql')('replaces the right constraint after the column was made by the recipe and renamed', async () => {
+      await runMigration(connections, { up: create });
+      await runMigration(connections, {
+        up: (schema) => {
+          schema.alter('memberships', (t) => t.string('role_with_owner').oneOf('admin', 'member', 'owner').default('member'));
+          schema.data(async (db) => { await db.updateTable('memberships').set({ role_with_owner: (eb: any) => eb.ref('role') }).execute(); });
+          schema.alter('memberships', (t) => t.dropColumn('role'));
+          schema.alter('memberships', (t) => t.renameColumn('role_with_owner', 'role'));
+        },
+      });
+      await insert({ role: 'owner' });
+      await runMigration(connections, relist('admin', 'member', 'owner', 'guest'));
+      await insert({ role: 'guest' });
+      await expect(insert({ role: 'x' })).rejects.toThrow(/memberships_role_with_owner_check/);
+      const constraints = await sql<{ conname: string }>`select conname from pg_constraint where conrelid = 'memberships'::regclass and contype = 'c' order by conname`.execute(connections.get<any>());
+      expect(constraints.rows.map((row) => row.conname)).toEqual(['memberships_role_with_owner_check', 'memberships_seats_check', 'memberships_state_check']);
+      expect(table(connections.projection(), 'memberships').columns.find((c) => c.name === 'role')).toMatchObject({ values: ['admin', 'member', 'owner', 'guest'], valuesCheck: 'memberships_role_with_owner_check' });
+    });
+
+    it.runIf(driver === 'pgsql')('replaces the list of a column renamed in the same alter()', async () => {
+      await runMigration(connections, { up: create });
+      await runMigration(connections, { up: (schema) => schema.alter('memberships', (t) => { t.renameColumn('role', 'kind'); t.oneOf('kind', ['admin', 'member', 'owner']); }) });
+      await connections.get<any>().insertInto('memberships').values({ kind: 'owner' }).execute();
+      await expect(connections.get<any>().insertInto('memberships').values({ kind: 'x' }).execute()).rejects.toThrow(/memberships_role_check/);
+      const constraints = await sql<{ conname: string }>`select conname from pg_constraint where conrelid = 'memberships'::regclass and contype = 'c' and (conname like '%role%' or conname like '%kind%')`.execute(connections.get<any>());
+      expect(constraints.rows.map((row) => row.conname)).toEqual(['memberships_role_check']);
+      expect(table(connections.projection(), 'memberships').columns.find((c) => c.name === 'kind')).toMatchObject({ valuesCheck: 'memberships_role_check', values: ['admin', 'member', 'owner'] });
+    });
+
+    it.runIf(driver === 'pgsql')('replaces the list of a column that gets its first list in the same alter()', async () => {
+      await runMigration(connections, { up: (schema) => schema.create('memberships', (t) => { t.id(); t.string('name').default('n'); }) });
+      await runMigration(connections, { up: (schema) => schema.alter('memberships', (t) => { t.string('x').default('a').oneOf('a'); t.oneOf('x', ['a', 'b']); }) });
+      await insert({ x: 'b' });
+      await expect(insert({ x: 'c' })).rejects.toThrow(/memberships_x_check/);
+      const constraints = await sql<{ conname: string }>`select conname from pg_constraint where conrelid = 'memberships'::regclass and contype = 'c'`.execute(connections.get<any>());
+      expect(constraints.rows.map((row) => row.conname)).toEqual(['memberships_x_check']);
+    });
+
+    it.runIf(driver === 'pgsql')('gives a column without a list one', async () => {
+      await runMigration(connections, { up: (schema) => schema.create('memberships', (t) => { t.id(); t.string('role').nullable(); }) });
+      await insert({ role: 'anything' });
+      await expect(runMigration(connections, relist('a'))).rejects.toThrow(/memberships_role_check/);
+      await connections.get<any>().deleteFrom('memberships').execute();
+      await runMigration(connections, relist('a'));
+      await insert({ role: 'a' });
+      await expect(insert({ role: 'b' })).rejects.toThrow(/memberships_role_check/);
+    });
+
+    it.runIf(driver === 'pgsql')('runs after a dropCheck() of the same alter', async () => {
+      await runMigration(connections, { up: create });
+      await runMigration(connections, { up: (schema) => schema.alter('memberships', (t) => { t.dropCheck('memberships_role_check'); t.oneOf('role', ['a', 'b']); }) });
+      await insert({ role: 'a' });
+      await expect(insert({ role: 'admin' })).rejects.toThrow(/memberships_role_check/);
+    });
+  });
+
   it('refuses a constraint name that Postgres would cut', async () => {
     const name = 'x'.repeat(64);
     const run = runMigration(connections, { up: (schema) => schema.create('memberships', (t) => { t.id(); t.check(name, 'id > 0'); }) });
@@ -97,6 +203,8 @@ describe.each(drivers)('oneOf() and check() on %s', (driver: TestDriver) => {
     else await run;
   });
 });
+
+const alterWith = (build: (t: Parameters<Parameters<Schema['alter']>[1]>[0]) => void) => planOf({ up: (schema) => schema.alter('t', build) }, 'up');
 
 describe('oneOf() and check() as the blueprint takes them', () => {
   const column = (build: (t: Parameters<Parameters<Schema['create']>[1]>[0]) => void) => () => planOf({ up: (schema) => schema.create('t', (t) => { t.id(); build(t); }) }, 'up');
@@ -113,6 +221,17 @@ describe('oneOf() and check() as the blueprint takes them', () => {
     () => column((t) => t.string('a').oneOf('a').oneOf('b'))(), /called twice/],
     ['a check without a condition', () => column((t) => t.check('c', ' '))(), /needs a name and a condition/],
   ])('refuses %s', (_, run, message) => {
+    expect(run).toThrow(message);
+  });
+
+  it.each([
+    ['no value', () => alterWith((t) => t.oneOf('a', [])), /needs at least one value/],
+    ['an empty value', () => alterWith((t) => t.oneOf('a', [''])), /1 to 255 characters/],
+    ['a backslash', () => alterWith((t) => t.oneOf('a', ['a\\b'])), /backslash/],
+    ['a value twice', () => alterWith((t) => t.oneOf('a', ['a', 'a'])), /lists a value twice/],
+    ['two calls for one column', () => alterWith((t) => { t.oneOf('a', ['a']); t.oneOf('a', ['b']); }), /called twice on table "t"/],
+    ['create()', () => planOf({ up: (schema) => schema.create('t', (t) => { t.id(); t.oneOf('a', ['a']); }) }, 'up'), /only works when changing a table.*string\('a'\)\.oneOf/s],
+  ])('refuses oneOf(column, values) with %s', (_, run, message) => {
     expect(run).toThrow(message);
   });
 
@@ -174,7 +293,44 @@ describe('what the projection says of a list and a check', () => {
   });
 });
 
+describe('what the projection says of a list that oneOf(column, values) changes', () => {
+  it('keeps the name of the constraint when the column is renamed in the same alter()', () => {
+    const projection = project(create, (schema) => schema.alter('memberships', (t) => { t.renameColumn('role', 'kind'); t.oneOf('kind', ['a']); }));
+    expect(table(projection, 'memberships').columns.find((c) => c.name === 'kind')).toMatchObject({ values: ['a'], valuesCheck: 'memberships_role_check' });
+  });
+
+  it('holds the new values and keeps the name of the constraint, also after a rename', () => {
+    const projection = project(create, (schema) => schema.alter('memberships', (t) => t.renameColumn('role', 'kind')), (schema) => schema.alter('memberships', (t) => t.oneOf('kind', ['a', 'b', 'c'])));
+    expect(table(projection, 'memberships').columns.find((c) => c.name === 'kind')).toMatchObject({ values: ['a', 'b', 'c'], valuesCheck: 'memberships_role_check' });
+  });
+
+  it('gives a column without a list the list and the name oneOf() makes', () => {
+    const projection = project(create, (schema) => schema.alter('memberships', (t) => t.dropCheck('memberships_role_check')), (schema) => schema.alter('memberships', (t) => t.oneOf('role', ['a'])));
+    expect(table(projection, 'memberships').columns.find((c) => c.name === 'role')).toMatchObject({ values: ['a'], valuesCheck: 'memberships_role_check' });
+  });
+
+  it('refuses a column that is unknown, retired, no string, or whose constraint name is taken', () => {
+    expect(() => project(create, (schema) => schema.alter('memberships', (t) => t.oneOf('nope', ['a'])))).toThrow(/D19.*memberships\.nope/s);
+    expect(() => project(create, (schema) => schema.alter('memberships', (t) => t.oneOf('seats', ['1'])))).toThrow(/D19.*no string\(\) or text\(\) column/s);
+    expect(() => project(create, (schema) => schema.alter('memberships', (t) => t.retire('state')), (schema) => schema.alter('memberships', (t) => t.oneOf('state', ['a'])))).toThrow(/D19.*retired/s);
+    expect(() =>
+      project((schema) => schema.create('t', (t) => { t.id(); t.string('x'); t.check('t_x_check', 'true'); }), (schema) => schema.alter('t', (t) => t.oneOf('x', ['a']))),
+    ).toThrow(/D19.*t_x_check/s);
+  });
+});
+
 describe('the type of a column held to a list', () => {
+  it('is the new union after oneOf(column, values)', () => {
+    const source = renderTypes({
+      driver: 'pgsql',
+      projection: project(create, (schema) => schema.alter('memberships', (t) => { t.oneOf('role', ['admin', 'owner']); t.oneOf('state', ['draft']); })),
+      modules: ['app'],
+      exposes: new Map(),
+    }).source;
+    expect(source).toContain("role: Generated<'admin' | 'owner'>;");
+    expect(source).toContain("state: 'draft' | null;");
+  });
+
   const render = (projection: SchemaProjection) => renderTypes({ driver: 'sqlite', projection, modules: ['app'], exposes: new Map() }).source;
 
   it('is the union of the values, with null for a nullable column', () => {

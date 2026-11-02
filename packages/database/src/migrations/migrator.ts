@@ -9,7 +9,7 @@ import { assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMig
 import { migratorConnection } from '../migrator-connection.ts';
 import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
 import { loadProjection } from '../schema/projection-file.ts';
-import { applyPlan, differingTables, emptyProjection, type SchemaProjection } from '../schema/projection.ts';
+import { applyPlan, differingTables, listCheckOf, emptyProjection, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
 import { migrationChecksum } from './checksum.ts';
 import { dropAllTables } from './drop-all.ts';
@@ -428,12 +428,14 @@ export class Migrator {
       const connection = this.#connectionOf(migration, file);
       const entry = { file, connection, plan: planOf(migration, 'down', `Migration ${row.name} (module "${row.module}")`) };
       const started = performance.now();
+      // The schema this rollback starts from: the constraint of a `oneOf()` list is looked up in it.
+      const starting = left().projection;
       // What the migrations that remain leave: their plans again, as `down()` is not looked into for the schema (the database is checked against it).
       remaining.delete(row.name);
       const after = left();
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
-          await this.#execute(trx, entry, undefined, after);
+          await this.#execute(trx, entry, undefined, after, starting);
           await this.#held?.heartbeat(trx);
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
         });
@@ -441,7 +443,7 @@ export class Migrator {
         await this.#db(connection)
           .transaction()
           .execute(async (trx) => {
-            await this.#execute(trx, entry, undefined, after);
+            await this.#execute(trx, entry, undefined, after, starting);
             await this.#held?.heartbeat();
           });
         await db.transaction().execute(async (trx) => {
@@ -500,7 +502,7 @@ export class Migrator {
    * the migrations before it left: the `data` steps of the plan see it with what the plan has changed up to them — and no other
    * connection does.
    */
-  async #execute(trx: Kysely<any>, { file, connection, plan }: Omit<Planned, 'checksum'>, before: SchemaProjection | undefined, after: Folded): Promise<void> {
+  async #execute(trx: Kysely<any>, { file, connection, plan }: Omit<Planned, 'checksum'>, before: SchemaProjection | undefined, after: Folded, listFrom: SchemaProjection | undefined = before): Promise<void> {
     const metadata = this.#connections.metadata(connection);
     const aroundData = before
       ? async (index: number, run: () => Promise<void>) => {
@@ -514,7 +516,7 @@ export class Migrator {
           }
         }
       : undefined;
-    await executePlan(trx, this.#driver(connection), plan, aroundData);
+    await executePlan(trx, this.#driver(connection), plan, aroundData, listFrom && listCheckOf(listFrom, plan, file));
     await this.#verify(trx, connection, file, after);
   }
 

@@ -127,6 +127,30 @@ describe.each(drivers)('migrations on %s', (driver) => {
     }
   });
 
+  it.runIf(driver === 'pgsql')('rolls back a oneOf(column, values) change to the old list through a renamed column, with one constraint', async () => {
+    const own = await freshConnections(driver);
+    try {
+      const dir = mkdtempSync(join(tempDir('marmeon-migrations-'), 'm-'));
+      const file = (name: string, up: string, down: string) =>
+        writeFileSync(join(dir, `2026_01_0${name}.ts`), `export default { up: (schema: any) => { ${up} }, down: (schema: any) => { ${down} } };`);
+      file('1_000000_create', "schema.create('memberships', (t: any) => { t.id(); t.string('role').oneOf('admin', 'member'); });", "schema.drop('memberships');");
+      file('2_000000_rename', "schema.alter('memberships', (t: any) => t.renameColumn('role', 'kind'));", "schema.alter('memberships', (t: any) => t.renameColumn('kind', 'role'));");
+      file('3_000000_widen', "schema.alter('memberships', (t: any) => t.oneOf('kind', ['admin', 'member', 'owner']));", "schema.alter('memberships', (t: any) => t.oneOf('kind', ['admin', 'member']));");
+      const own_ = migrator(own.connections, { name: 'x', migrations: dir });
+      await own_.migrate();
+      const rows = own.connections.get<any>();
+      await rows.insertInto('memberships').values({ kind: 'owner' }).execute();
+      await rows.deleteFrom('memberships').execute();
+      await own_.rollback({ steps: 1 });
+      const checks = await sql<{ conname: string }>`select conname from pg_constraint where conrelid = 'memberships'::regclass and contype = 'c'`.execute(rows);
+      expect(checks.rows.map((row) => row.conname)).toEqual(['memberships_role_check']);
+      await rows.insertInto('memberships').values({ kind: 'member' }).execute();
+      await expect(rows.insertInto('memberships').values({ kind: 'owner' }).execute()).rejects.toThrow(/memberships_role_check/);
+    } finally {
+      await own.close();
+    }
+  });
+
   it('names the file that cannot be loaded or rolled back, with its code', async () => {
     const own = await freshConnections(driver);
     try {
