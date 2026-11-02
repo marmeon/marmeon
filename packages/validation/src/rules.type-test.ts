@@ -1,7 +1,7 @@
 // Type guarantees of the rules — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
 // compiler shows them (directives removed once and read), are quoted in the comments.
 import { defineRequest, type ContextOf, type FormOf, type QueryOf } from '@marmeon/router';
-import { rules as r } from './index.ts';
+import { rules as r, type CheckAnswer, type CheckPath, type Rule } from './index.ts';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const same = <A, B>(proof: Equal<A, B>) => proof;
@@ -237,6 +237,60 @@ same<NonNullable<(typeof twice)['~standard']['types']>['output'], { k: string; x
 // @ts-expect-error — a field of when() is not there before .when()
 ends.custom(never, { field: 'vat' });
 r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { vat: r.string() }).custom(never, { field: 'vat' }); // fine
+
+// ——— A check that reports below its value ———
+interface Doc {
+  content: { text: string; marks: string[]; child?: { id: number } | null }[];
+  title: string;
+}
+const docRule = r.value<Doc>(() => undefined);
+docRule.custom(() => ({ path: ['content', 1, 'marks', 0], message: 'x' })); // fine
+docRule.custom(() => ({ path: ['content', 0, 'child', 'id'], message: 'x' })); // fine: through an optional part
+docRule.custom(() => ({ path: [], message: 'x' })); // fine: the value itself
+docRule.custom(() => [{ path: ['title'], message: 'x' }, { path: ['content', 0], message: 'y' }]); // fine
+docRule.custom(async () => ({ path: ['title'], message: 'x' })); // fine
+docRule.custom((doc) => (doc.title === '' ? { path: ['title'], message: 'x' } : undefined)); // fine
+docRule.custom(() => ({ path: ['content', 0, 'marks', 0], message: 'x' }) as const); // fine
+// @ts-expect-error — a field the value does not have
+docRule.custom(() => ({ path: ['body'], message: 'x' }));
+// @ts-expect-error — a list is entered by an index
+docRule.custom(() => ({ path: ['content', 'text'], message: 'x' }));
+// @ts-expect-error — an object is entered by a key
+docRule.custom(() => ({ path: ['title', 0], message: 'x' }));
+// @ts-expect-error — a path is a list of segments, not a string
+docRule.custom(() => ({ path: 'title', message: 'x' }));
+// @ts-expect-error — a message is needed
+docRule.custom(() => ({ path: ['title'] }));
+// @ts-expect-error — a part of the second issue does not exist
+docRule.custom(() => [{ path: ['title'], message: 'x' }, { path: ['nope'], message: 'y' }]);
+// A string has no parts; a value of unknown type takes any path.
+r.string().custom(() => ({ path: [], message: 'x' })); // fine
+// @ts-expect-error — a string has nothing below it
+r.string().custom(() => ({ path: ['a'], message: 'x' }));
+r.value<unknown>(() => undefined).custom(() => ({ path: ['a', 3], message: 'x' })); // fine
+// An object's check reports at its fields, with a path or the option.
+ends.custom(() => ({ path: ['ends_at'], message: 'x' })); // fine
+// @ts-expect-error — a typo in the field
+ends.custom(() => ({ path: ['end_at'], message: 'x' }));
+const exact: CheckPath<Doc> = ['content', 2, 'marks', 1];
+void exact;
+same<CheckPath<{ a: string }>, readonly [] | readonly ['a']>(true);
+same<CheckPath<string>, readonly []>(true);
+same<CheckPath<unknown>, readonly (string | number)[]>(true);
+// @ts-expect-error — not a path of the value
+const wrong: CheckPath<Doc> = ['content', 'marks'];
+void wrong;
+
+// A check annotated with the answer type compiles, whatever the value.
+r.string().custom((value: string): CheckAnswer => value !== ''); // fine
+r.string().custom(async (value: string): Promise<CheckAnswer> => value !== ''); // fine
+docRule.custom((doc: Doc): CheckAnswer => doc.title !== ''); // fine
+docRule.custom({ validate: (doc: Doc): CheckAnswer => (doc.title === '' ? { path: [], message: 'x' } : undefined) }); // fine
+// A rule of a narrower output stays a rule of a wider one.
+declare const narrow: Rule<number>;
+export const wide: Rule<string | number> = narrow;
+declare const literal: Rule<{ a: 'x' }>;
+export const loose: Rule<{ a: string }> = literal;
 
 // ——— A local date and time ———
 const zoned = r.object({ time_zone: r.timeZone(), starts_at: r.localDateTime({ field: 'time_zone' }), ends_at: r.localDateTime('Europe/Berlin').optional() });

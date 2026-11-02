@@ -1,6 +1,6 @@
 import { failOnDuplicate } from '@marmeon/database';
 import { abort, defineRequest, type ContextOf } from '@marmeon/http';
-import { rules as r, toLocalDateTime } from '@marmeon/validation';
+import { rules as r, toLocalDateTime, type CheckIssue, type CheckPath } from '@marmeon/validation';
 import { UserRepository } from '#modules/auth';
 import { LabConfig } from '../config.ts';
 import { LabController } from './ShowLabPageController.ts';
@@ -58,7 +58,30 @@ const fields = {
   // An account the form names: it must exist — on submit only, like every database rule (no enumeration while typing).
   inviter: r.email().exists(UserRepository, 'email').optional(),
   kind: r.in(['person', 'company']).default('person'),
+  // A tree a form cannot type (JSON): a check walks it and reports the tag that is wrong at its own path, `outline.items.1.tags.0`.
+  outline: r
+    .value<Outline | undefined>((value) => (value === undefined || isOutline(value) ? undefined : 'An outline is a list of items with tags.'))
+    .optional()
+    .custom(unknownTags),
 };
+
+/** A tree of items, each with tags — what `outline` takes. */
+interface Outline {
+  items: { title: string; tags: string[] }[];
+}
+const TAGS: readonly string[] = ['draft', 'review', 'done'];
+
+function isOutline(value: unknown): value is Outline {
+  const items = (value as Partial<Outline> | null)?.items;
+  return Array.isArray(items) && items.every((item) => typeof item?.title === 'string' && Array.isArray(item.tags) && item.tags.every((tag: unknown) => typeof tag === 'string'));
+}
+
+/** Every tag that is not known is an error at its own place in the tree — the path is typed against `Outline`. */
+function unknownTags(outline: Outline | undefined): CheckIssue<CheckPath<Outline>>[] {
+  return (outline?.items ?? []).flatMap((item, index) =>
+    item.tags.flatMap((tag, at) => (TAGS.includes(tag) ? [] : [{ path: ['items', index, 'tags', at], message: `The tag "${tag}" is unknown.` }])),
+  );
+}
 
 /** A company needs its VAT number — checked only for one (`when`). */
 const company = (data: { kind: 'person' | 'company' }) => data.kind === 'company';

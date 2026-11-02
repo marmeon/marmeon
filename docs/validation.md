@@ -387,6 +387,24 @@ An `async` check makes the rule async, and like the database rules it does not r
 for a valid answer would let everything through. A rule without an async part stays synchronous. An object with a `validate`
 method works as the check too.
 
+A check can also report an error inside its value. It answers `{ path, message }`, or a list of them, and the form shows each
+message at the full path below the field. Take a field `body` that holds a tree, where one mark is unknown:
+
+```ts
+body: r.value<Doc>(isDoc).custom((doc) =>
+  doc.content.flatMap((node, i) => node.marks.flatMap((mark, j) => (MARKS.includes(mark) ? [] : [{ path: ['content', i, 'marks', j], message: `Unknown mark "${mark}".` }]))),
+),
+```
+
+The error lands at `body.content.1.marks.0`. The path is relative to the rule's value, `[]` is the value itself, and it is typed
+against the value, so a path that does not exist is a type error. A segment is a list index or an object key without a dot. It
+never leaves the field: the path is cut at the first segment that is neither a non-negative integer nor a name other than
+`__proto__`, `prototype` or `constructor`, after its 32nd segment, and where the value has no such part (the last key of an
+object may be a missing one). The message stays at what is left of the path, and nothing throws. An answer without a usable
+message gets the check's own message at the value. On an object, `{ path: ['ends_at'], message }` is the same as the `field`
+option, also while an optional `ends_at` is absent. A live validation of
+`body` includes the errors below it.
+
 ### `r.value()`
 
 `r.value<Output, Input>(check, { meta })` is a rule for a value no other rule describes. `check` gets the value, a missing one

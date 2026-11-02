@@ -109,6 +109,16 @@ describe('the validation lab', () => {
     expect(await live({ inviter: 'nobody@example.com' }, 'inviter')).toEqual(await live({ inviter: 'grace@example.com' }, 'inviter'));
   });
 
+  it('a custom check reports the tag that is wrong at its place in a tree — below its field, nowhere else', async () => {
+    const outline = { items: [{ title: 'A', tags: ['draft'] }, { title: 'B', tags: ['done', 'nope', 'later'] }] };
+    const response = await app.post('/lab/validation', { json: { ...valid, outline }, headers: json }).assertUnprocessable();
+    response.assertInvalid<StoreValidationLabController>({
+      'outline.items.1.tags.1': 'The tag "nope" is unknown.',
+      'outline.items.1.tags.2': 'The tag "later" is unknown.',
+    });
+    await app.post('/lab/validation', { json: { ...valid, outline: { items: [{ title: 'A', tags: ['draft'] }] } }, headers: json }).assertRedirect('/lab/validation');
+  });
+
   it('as after a race — no unique rule: the unique index answers through failOnDuplicate, with the same message and attributes', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const race = await app.withHeaders({ 'accept-language': 'de', ...json }).post('/lab/validation/race', { json: valid }).assertUnprocessable();

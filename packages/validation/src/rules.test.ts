@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@marmeon/core';
-import { parseQuery, translatable } from '@marmeon/router';
+import { parseQuery, translatable, ValidationError } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { metaOf, rules as r, type Rule } from './index.ts';
 import { contentsOf } from './internal.ts';
@@ -416,6 +416,94 @@ describe('custom rules', () => {
   it('a message may be a function — what translatable() of the router makes: a key with the rule\'s parameters', async () => {
     const form = r.object({ code: r.string().custom((value) => value.length >= 4, translatable('codes.short', { min: 4 }, 'At least {min}.')) });
     expect(await errors(form, { code: 'ab' })).toEqual({ code: ['At least 4.'] });
+  });
+
+  describe('a check that reports below its value', () => {
+    type Node = { text: string; marks: string[] };
+    const tree = (check: (doc: { content: Node[] }) => never) =>
+      r.object({ body: r.value<{ content: Node[] }>(() => undefined).custom(check as never) });
+    const doc = { content: [{ text: 'a', marks: ['b'] }, { text: 'c', marks: ['x', 'y'] }] };
+
+    it('the message lands at the full path; two issues give two keys; [] is the value itself', async () => {
+      const one = tree(() => ({ path: ['content', 1, 'marks', 0], message: 'Unknown mark.' }) as never);
+      expect(await errors(one, { body: doc })).toEqual({ 'body.content.1.marks.0': ['Unknown mark.'] });
+      const two = tree(() => [{ path: ['content', 0], message: 'A.' }, { path: ['content', 1, 'text'], message: 'B.' }, { path: [], message: 'C.' }] as never);
+      expect(await errors(two, { body: doc })).toEqual({ 'body.content.0': ['A.'], 'body.content.1.text': ['B.'], body: ['C.'] });
+      expect(await errors(tree(() => [] as never), { body: doc })).toEqual({});
+    });
+
+    it('an async check and a translatable() message report the same way', async () => {
+      const slow = r.object({
+        body: r.value<{ content: Node[] }>(() => undefined).custom(async () => ({ path: ['content', 0, 'text'], message: translatable('doc.bad', {}, 'Bad {x}.') }) as never),
+      });
+      expect(await errors(slow, { body: doc })).toEqual({ 'body.content.0.text': ['Bad {x}.'] });
+    });
+
+    it('a path never leaves the field: unusable segments cut it, a missing part ends it, and nothing throws', async () => {
+      const at = async (path: unknown[]) => Object.keys(await errors(tree(() => ({ path, message: 'No.' }) as never), { body: doc }));
+      expect(await at(['__proto__', 'x'])).toEqual(['body']);
+      expect(await at(['content', 'constructor'])).toEqual(['body.content']);
+      expect(await at(['content', 0, 'prototype'])).toEqual(['body.content.0']);
+      expect(await at(['a.b'])).toEqual(['body']);
+      expect(await at([''])).toEqual(['body']);
+      expect(await at(['content', -1])).toEqual(['body.content']);
+      expect(await at(['content', 1.5])).toEqual(['body.content']);
+      expect(await at(['content', 1, 'text', 'x'])).toEqual(['body.content.1.text']);
+      expect(await at(['content', 7, 'text'])).toEqual(['body.content']);
+      expect(await at(['content', 'length'])).toEqual(['body.content']);
+      expect(await at(['content', 0, {}, 'x'] as never)).toEqual(['body.content.0']);
+      expect(await at('content' as never)).toEqual(['body']);
+      // 100 segments: cut at the 32nd, and the value has fewer levels anyway.
+      const deep: Record<string, unknown> = {};
+      let node = deep;
+      for (let i = 0; i < 100; i++) node = (node.k = {}) as Record<string, unknown>;
+      const long = r.object({ body: r.value<unknown>(() => undefined).custom(() => ({ path: Array(100).fill('k'), message: 'No.' })) });
+      const [key] = Object.keys(await errors(long, { body: deep }));
+      expect(key!.split('.')).toHaveLength(33);
+      expect(({} as Record<string, unknown>).x).toBeUndefined();
+      expect(Object.keys(Object.prototype)).toEqual([]);
+    });
+
+    it('own keys named like Object.prototype members (client JSON has them) stay out of the error keys', async () => {
+      const hostile = () => JSON.parse('{"__proto__":{"x":1},"constructor":{},"prototype":{},"a.b":{},"":{}}') as Record<string, unknown>;
+      const keys = async (path: (string | number)[]) => {
+        const rule = r.object({ body: r.value<unknown>(() => undefined).custom(() => ({ path, message: 'No.' })) });
+        return Object.keys(await errors(rule, { body: hostile() }));
+      };
+      for (const path of [['__proto__'], ['constructor'], ['prototype'], ['a.b'], [''], ['__proto__', 'x'], ['constructor', 'x']]) expect(await keys(path)).toEqual(['body']);
+      // At the top: a field of the object is named like a prototype member, and a bare key would reach the router's error map.
+      const top = r.object({ constructor: r.value<unknown>(() => undefined), }).custom(() => ({ path: ['constructor'], message: 'No.' }) as never);
+      expect(Object.keys(await errors(top, { constructor: 'x' }))).toEqual(['_']);
+      const proto = r.object({ a: r.string() }).custom(() => ({ path: ['__proto__'], message: 'No.' }) as never);
+      expect(await errors(proto, { a: 'x' })).toEqual({ _: ['No.'] });
+      expect(({} as Record<string, unknown>).x).toBeUndefined();
+    });
+
+    it('a key the object inherits (toString, hasOwnProperty) is no missing field: the error stays at the object and the error map builds', async () => {
+      for (const key of ['toString', 'hasOwnProperty', 'valueOf', 'isPrototypeOf', 'toLocaleString', '__defineGetter__']) {
+        const form = r.object({ a: r.string() }).custom(() => ({ path: [key], message: 'No.' }) as never);
+        const result = await check(form, { a: 'x' });
+        expect(ValidationError.fromIssues(result.issues as never, {}).errors).toEqual({ _: ['No.'] });
+      }
+    });
+
+    it('an answer without a usable message is the check\'s own message at the value, never a throw and never a pass', async () => {
+      const answer = async (value: unknown) => errors(r.object({ body: r.value<unknown>(() => undefined).custom(() => value as never, 'Own.') }), { body: { a: 1 } });
+      for (const bad of [[{ path: [] }], {}, { path: ['a'] }, ['oops'], [null], [{ path: ['a'], message: 5 }]]) expect(await answer(bad)).toEqual({ body: ['Own.'] });
+    });
+
+    it('on an object, { path: [field] } reports at an absent optional field too, as the option does', async () => {
+      const form = r.object({ starts_at: r.string(), ends_at: r.string().optional() }).custom(() => ({ path: ['ends_at'], message: 'Later.' }));
+      expect(await errors(form, { starts_at: 'a' })).toEqual({ ends_at: ['Later.'] });
+      const option = r.object({ starts_at: r.string(), ends_at: r.string().optional() }).custom(() => 'Later.', { field: 'ends_at' });
+      expect(await errors(option, { starts_at: 'a' })).toEqual({ ends_at: ['Later.'] });
+    });
+
+    it('on an object, { path: [field] } is the option field', async () => {
+      const event = r.object({ starts_at: r.string(), ends_at: r.string() });
+      const form = event.custom(() => ({ path: ['ends_at'], message: 'Later.' }));
+      expect(await errors(form, { starts_at: 'a', ends_at: 'b' })).toEqual({ ends_at: ['Later.'] });
+    });
   });
 
   it('r.value(): a type of your own — the check runs for a missing value too and names its message; meta rides along', async () => {

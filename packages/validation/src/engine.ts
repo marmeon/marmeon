@@ -466,20 +466,85 @@ export function regex(pattern: RegExp, describe: Message): Engine {
   return v.regex(new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, '')), describe) as unknown as Engine;
 }
 
-/** What a `.custom()` check answers: `false` — its message; a string — that message (a key or a text); else valid. */
-export type CheckAnswer = boolean | string | void | undefined;
+/** A segment of a {@link CheckIssue} path: an index of a list or a key of an object. */
+export type PathSegment = string | number;
+
+/**
+ * An error of a `.custom()` check below the rule's value: `path` leads from the value to the part that is wrong (`['content', 1]`),
+ * `[]` is the value itself. See `docs/validation.md#custom`.
+ */
+export interface CheckIssue<Path extends readonly PathSegment[] = readonly []> {
+  readonly path: Path;
+  readonly message: RuleMessage;
+}
+
+/**
+ * What a `.custom()` check answers: `false` — its message; a string — that message (a key or a text); a {@link CheckIssue} or a list
+ * of them — a message at a path below the value; else valid.
+ */
+export type CheckAnswer<Path extends readonly PathSegment[] = readonly []> =
+  | boolean
+  | string
+  | void
+  | undefined
+  | CheckIssue<Path>
+  | readonly CheckIssue<Path>[];
+
+/** The most segments of a check's path that count (more are cut off: the answer is a message, not a data structure). */
+const MAX_PATH = 32;
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function allowedSegment(segment: unknown): segment is PathSegment {
+  if (typeof segment === 'number') return Number.isSafeInteger(segment) && segment >= 0;
+  return typeof segment === 'string' && segment !== '' && !segment.includes('.') && !FORBIDDEN_KEYS.has(segment);
+}
+
+type PathItem = { type: 'object' | 'array'; origin: 'value'; input: unknown; key: PathSegment; value: unknown };
+
+/**
+ * The Valibot path items of `path` below `value`. Cut off at the first segment that is not allowed (the message stays at the longest
+ * allowed prefix — an answer built from a client's input must not become an error), at the 32nd, and where the value has no such part.
+ */
+function pathItems(value: unknown, path: unknown): PathItem[] {
+  const items: PathItem[] = [];
+  if (!Array.isArray(path)) return items;
+  let current = value;
+  const segments = path.slice(0, MAX_PATH);
+  for (const [index, segment] of segments.entries()) {
+    if (!allowedSegment(segment) || typeof current !== 'object' || current === null) break;
+    const list = Array.isArray(current);
+    // The last key of an object may be a missing one (an optional field that is absent), as the `field` option reports it — never one the
+    // object inherits (`toString`): an error map would find a function there.
+    const missingOk = !list && index === segments.length - 1 && typeof segment === 'string';
+    if (list ? typeof segment !== 'number' || segment >= (current as unknown[]).length : !Object.hasOwn(current, segment) && !(missingOk && !(segment in current))) break;
+    const next = Object.hasOwn(current, segment) ? (current as Record<PathSegment, unknown>)[segment] : undefined;
+    items.push({ type: list ? 'array' : 'object', origin: 'value', input: current, key: segment, value: next });
+    current = next;
+  }
+  return items;
+}
 
 /**
  * `.custom()`: a check of the value that may name its own message; an async one awaits. `offline`: its issues say the rule is not
  * live (an async check without `.live()`).
  */
-export function customCheck(test: (value: any) => CheckAnswer | Promise<CheckAnswer>, describe: Message, async: boolean, offline: boolean, field?: string): Engine {
+export function customCheck(test: (value: any) => CheckAnswer<readonly PathSegment[]> | Promise<CheckAnswer<readonly PathSegment[]>>, describe: Message, async: boolean, offline: boolean, field?: string): Engine {
   type Info = { message: Message; path?: unknown[] };
-  // `field`: an object's check reports at one of its fields, as the engine's own issues for a field do.
-  const report = (answer: CheckAnswer, value: unknown, addIssue: (info: Info) => void) => {
-    const path = field === undefined ? {} : { path: [{ type: 'object', origin: 'value', input: value, key: field, value: (value as Record<string, unknown>)[field] }] };
-    if (answer === false) addIssue({ message: offline ? notLive(describe) : describe, ...path });
-    else if (typeof answer === 'string') addIssue({ message: offline ? notLive(ownMessage(answer)) : ownMessage(answer), ...path });
+  const report = (answer: CheckAnswer<readonly PathSegment[]>, value: unknown, addIssue: (info: Info) => void) => {
+    const own = (text: Message) => (offline ? notLive(text) : text);
+    // `field`: an object's check reports at one of its fields, as the engine's own issues for a field do — whether or not it is there.
+    const fieldPath = field === undefined ? {} : { path: [{ type: 'object', origin: 'value', input: value, key: field, value: (value as Record<string, unknown>)[field] }] };
+    if (answer === false) addIssue({ message: own(describe), ...fieldPath });
+    else if (typeof answer === 'string') addIssue({ message: own(ownMessage(answer)), ...fieldPath });
+    else if (typeof answer === 'object' && answer !== null) {
+      // Whatever is not an issue with a message (a client's data may have made it) counts as the check's own message at the value.
+      for (const issue of Array.isArray(answer) ? (answer as readonly unknown[]) : [answer]) {
+        const { path, message } = (typeof issue === 'object' && issue !== null ? issue : {}) as Partial<CheckIssue<readonly PathSegment[]>>;
+        const usable = typeof message === 'string' || typeof message === 'function';
+        const items = usable ? pathItems(value, path) : [];
+        addIssue({ message: own(usable ? ownMessage(message) : describe), ...(items.length > 0 ? { path: items } : {}) });
+      }
+    }
   };
   if (async) return v.rawCheckAsync(async ({ dataset, addIssue }) => report(await test(dataset.value), dataset.value, addIssue as never)) as unknown as Engine;
   return v.rawCheck(({ dataset, addIssue }) => {
@@ -488,7 +553,7 @@ export function customCheck(test: (value: any) => CheckAnswer | Promise<CheckAns
       // Never skipped in silence (a Promise is no answer): an async check has to say so.
       throw new TypeError('A .custom() check returned a Promise — write it as an async function (async (value) => …), then the rule validates asynchronously.');
     }
-    report(answer as CheckAnswer, dataset.value, addIssue as never);
+    report(answer as CheckAnswer<readonly PathSegment[]>, dataset.value, addIssue as never);
   }) as unknown as Engine;
 }
 
