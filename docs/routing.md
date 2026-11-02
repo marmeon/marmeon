@@ -475,12 +475,25 @@ from every read-only request: a page that is the base of a layer is read-only wh
 after a `RequestLocale.use()` gets a `Translator` that speaks the language it set, and so does a hook declared after it; the
 `Translator` is the request's, which `SetLocale` has already given the visitor's language before the bindings. A middleware class
 is no place to translate what a hook knows: it runs before the bindings and the hooks, so it sees neither the bound record nor
-what the hook shares, and its `Translator` speaks the language from before a `RequestLocale.use()` in the hook. Without an app (a
+what the hook shares. Before `await next()` its `Translator` speaks the language from before a `RequestLocale.use()` in the hook;
+after `next()` returns, it reads the language the hook set. Without an app (a
 `Router` built on its own for a test) `resolve` builds classes with `new` and refuses a token with a `TypeError` that names it.
 
 A resolver you pass yourself (`new Router({ resolve })`, `dispatch(…, { resolve })`, `validate(…, { resolve })`) gets a class or a
-token: `(key) => container.make(key)`, or check `typeof key === 'function'` before `new key()`. A resolver typed as taking only a class
-does not compile.
+token. `(key) => container.make(key)` takes both. A resolver without a container refuses a token and builds a class itself:
+
+```ts
+import type { Constructor, Token } from '@marmeon/core';
+import type { ClassResolver } from '@marmeon/router';
+
+const resolve: ClassResolver = <T,>(key: Constructor<T> | Token<T>): T => {
+  if (typeof key !== 'function') throw new TypeError('A token resolves only inside an app.');
+  return new (key as new () => T)();
+};
+```
+
+`Constructor<T>` is abstract, so `new key()` needs the cast to a class it can build. A resolver typed as taking only a class does
+not compile.
 
 ### Routes under a page
 

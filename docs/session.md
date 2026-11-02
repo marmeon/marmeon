@@ -315,7 +315,8 @@ data stays for the page. A write there throws in development and in tests, and i
 [request lifecycle](lifecycle.md#requests-that-only-read) page lists every such request.
 
 Code that runs for those requests too, such as a route's [`afterAuthorize` hook](routing.md#after-the-checks), asks `session.readOnly`
-before it writes. It is `true` in each of those requests, and `false` on an ordinary page:
+before it writes. It is `true` in each of those requests, and `false` on an ordinary page until its session is saved; work the
+page does after that, such as a stream that goes on after the headers, finds it `true`:
 
 ```ts
 if (!session.readOnly) session.put('last_workspace', workspace.id);

@@ -110,7 +110,7 @@ export class Session {
 
   /**
    * Whether this request may not change the session — an island, a live validation, an upload, an event stream, the session's
-   * epoch check or a page rendered as a layer's base, which run beside the page. Code that runs for those too, such as a route's `afterAuthorize` hook, checks it before a write: a write then throws in
+   * epoch check or a page rendered as a layer's base, which run beside the page, and work a page does after its session is saved. Code that runs for those too, such as a route's `afterAuthorize` hook, checks it before a write: a write then throws in
    * development and is dropped in production, and the session is never saved.
    * See docs/session.md#requests-that-only-read.
    */

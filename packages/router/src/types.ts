@@ -247,7 +247,8 @@ export interface RouteBinding {
 
 /**
  * Builds a class from the request's container, or gives what a token is bound to (`resolve(Translator)`, `resolve(Clock)`).
- * Without a container (a router built on its own) a class is built with `new` and a token throws.
+ * Without a container (a router built on its own) a class is built with `new` and a token throws. See
+ * docs/routing.md#after-the-checks.
  */
 export type ClassResolver = <T>(key: Constructor<T> | Token<T>) => T;
 
