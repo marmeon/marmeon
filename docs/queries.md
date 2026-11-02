@@ -238,8 +238,9 @@ an `insertInto(…).onConflict(…)`.
 | `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at` to the app's time. |
 | `tryInsert(values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index already holds the values. Its `columns` name that index's columns. |
 | `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. A `duplicate` has `columns` too. |
-| `insertMany(rows)` | The number of rows inserted. No rows come back. Throws on a unique violation, like `insert()`, with none of the rows written. |
-| `tryInsertMany(rows)` | `ok(count)`, or an `err` of kind `duplicate` when a unique index already holds a value of any row, with `columns` like `tryInsert()`. |
+| `insertMany(rows)` | The number of rows inserted. Throws on a unique violation, like `insert()`, with none of the rows written. With `{ returning: ['id', 'email'] }`, the rows instead, holding those columns. |
+| `tryInsertMany(rows)` | `ok(count)`, or an `err` of kind `duplicate` when a unique index already holds a value of any row, with `columns` like `tryInsert()`. Takes `returning` too. |
+| `insertMissing(rows, { on })` | The number of rows inserted: those whose `on` columns the table does not hold yet. The others are left alone. With `returning`, the inserted rows. |
 | `delete(id)` | Whether there was a row. With soft deletes, it sets `deleted_at`. |
 | `forceDelete(id)` | Whether there was a row. It deletes for real, soft deletes or not. |
 | `restore(id)` | Whether there was a soft-deleted row to bring back (`false` for a row that is not deleted). It clears `deleted_at`. |
@@ -299,9 +300,32 @@ To answer a form with "taken" at its field instead, wrap the write in `failOnDup
 transaction, or in a savepoint inside an open one. When the third of five chunks fails, the first two are rolled back with it: all rows
 or none. `insertMany()` throws on a duplicate in any chunk, as `insert()` does. `tryInsertMany()` returns the same `err` as `tryInsert()`, with
 `columns`; the transaction around it stays usable, and returning the `err` from its callback rolls it back. Any other failure throws. Every row needs the same columns, and at least one, else a
-`TypeError` names the row that differs; an empty list is `0` (`ok(0)`) without a statement. No rows come back: they would be one result of
-the size of the whole import, held in memory. Read them with a query when you need them, or use `insert()` for each when the ids are
-what you want.
+`TypeError` names the row that differs; an empty list is `0` (`ok(0)`) without a statement.
+
+By default no rows come back: they would be one result of the size of the whole import, held in memory. Name the columns you need
+with `returning` and each inserted row comes back with just those, from every chunk. They come in no promised order, so match them
+by a column you wrote, such as a unique one. A secret column in `returning` is a compile error and a `TypeError` when it runs,
+before a statement; so is an empty list.
+
+```ts
+const rows = await members.insertMany(names.map((name) => ({ name, email: emailOf(name) })), { returning: ['id', 'email'] });
+```
+
+`insertMissing()` writes a catalogue that may already be there. `on` names the columns of one unique index (a `TypeError`
+without it), and a row whose values the table holds is skipped instead of failing, so running it again writes nothing, and two
+calls at the same moment write each row once. The rows are written in the order of their `on` values, so two calls with the same
+keys in another order take the locks in the same order and cannot deadlock (the second still waits for the first's uncommitted rows). A secret column is no `on` column, as it is no column of
+`findBy()`: it would tell whether a value exists. Every row needs a value in each `on` column, never `null`: a NULL never conflicts, so such a
+row would be written again on every run, and a `TypeError` says so before a statement. It is stamped, chunked and atomic like `insertMany()`. A unique violation on any
+*other* index still throws, with every chunk rolled back: an address that belongs to another account does not pass as "already
+there". When no unique index covers exactly the `on` columns, a `TypeError` names them and suggests `unique()` in the migration. A
+soft-deleted row counts as there.
+
+```ts
+const added = await questions.insertMissing(rows, { on: ['survey', 'name'], returning: ['survey', 'name'] }); // only the new ones
+```
+
+The web-app's `lab` module seeds a survey's questions this way (`SurveyRepository.addMissing()`).
 
 ```ts
 const imported = await members.tryInsertMany(rows.map((row) => ({ name: row.name, email: row.email })));
