@@ -214,50 +214,107 @@ import { Repository, secretEquals } from '@marmeon/database';
 export class GuestRepository extends Repository<'guests'> {
   static table = 'guests' as const;
 
-  /** The guest one of these MACs belongs to. The MAC does not come back: it is a secret column. */
-  findByCodeMac(macs: readonly string[]) {
-    return this.query().selectAll().where((eb) => eb.or(macs.map((mac) => secretEquals(eb, 'code_mac', mac)))).executeTakeFirst();
+  /** The guest one of these MACs belongs to, unless the code has expired (`now` is an ISO string). The MAC does not come back: it is a secret column. */
+  findByCodeMac(macs: readonly string[], now: string) {
+    return this.query()
+      .selectAll()
+      .where((eb) => eb.or(macs.map((mac) => secretEquals(eb, 'code_mac', mac))))
+      .where('expires_at', '>', now)
+      .executeTakeFirst();
+  }
+
+  /** True for exactly one caller, however many arrive at once: the update itself decides. */
+  async markCheckedIn(id: number, at: string): Promise<boolean> {
+    const result = await this.db
+      .updateTable('guests')
+      .set({ checked_in_at: at })
+      .where('id', '=', id)
+      .where('checked_in_at', 'is', null)
+      .where('expires_at', '>', at)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
   }
 }
 ```
 
+```ts title="modules/events/EventRepository.ts"
+import { Repository } from '@marmeon/database';
+
+export class EventRepository extends Repository<'events'> {
+  static table = 'events' as const;
+
+  /** Locks the event's row until the transaction ends. */
+  lock(id: number) {
+    return this.query().select('id').where('id', '=', id).forUpdate().executeTakeFirst();
+  }
+}
+```
+
+The `guests` table has `event_id`, `code_mac`, `expires_at` and a nullable `checked_in_at`, both `table.timestamp(…)`.
+
 ```ts title="modules/events/CheckIns.ts"
+import { Clock } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
 import { CheckInCodes } from './CheckInCodes.ts';
+import { EventRepository } from './EventRepository.ts';
 import { GuestRepository } from './GuestRepository.ts';
 
+const LIFETIME = 4 * 60 * 60 * 1000;
+
 export class CheckIns {
+  readonly #connections: Connections;
+  readonly #events: EventRepository;
   readonly #guests: GuestRepository;
   readonly #codes: CheckInCodes;
+  readonly #clock: Clock;
 
-  constructor(guests: GuestRepository, codes: CheckInCodes) {
+  constructor(connections: Connections, events: EventRepository, guests: GuestRepository, codes: CheckInCodes, clock: Clock) {
+    this.#connections = connections;
+    this.#events = events;
     this.#guests = guests;
     this.#codes = codes;
+    this.#clock = clock;
   }
 
-  /** Stores a new guest with a code no other guest of the event holds, under any key, and returns the code once. */
-  async issue(eventId: number, values: { name: string }) {
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const code = this.#codes.issue();
-      const [current, ...previous] = this.#codes.macs(eventId, code);
-      // A row from before a rotation holds this code under a previous key: the unique index cannot see that, so look for it.
-      if (await this.#guests.findByCodeMac([current, ...previous])) continue;
-      const result = await this.#guests.tryInsert({ ...values, event_id: eventId, code_mac: current });
-      if (result.ok) return { guest: result.value, code };
-      // The only error is `duplicate`: another request took the code in the meantime, so draw again.
-    }
-    throw new Error(`No free check-in code for event ${eventId}`);
+  /** Stores a new guest with a code no other guest of the event holds, under any key, and returns the code once. `undefined` for an unknown event. */
+  issue(eventId: number, values: { name: string }) {
+    return this.#connections.transaction(async () => {
+      // One issue at a time per event. During a rotation the MACs differ per key, so the unique index alone cannot tell that two servers drew the same code.
+      if (!(await this.#events.lock(eventId))) return undefined;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const code = this.#codes.issue();
+        const [current, ...previous] = this.#codes.macs(eventId, code);
+        // A row holds this code under a previous key, or it has expired and still holds it: the unique index cannot see the first, so look for both.
+        if (await this.#guests.findByCodeMac([current, ...previous], '1970-01-01T00:00:00.000Z')) continue;
+        const expiresAt = new Date(this.#clock.now() + LIFETIME).toISOString();
+        const result = await this.#guests.tryInsert({ ...values, event_id: eventId, code_mac: current, expires_at: expiresAt });
+        if (result.ok) return { guest: result.value, code };
+        // The only error is `duplicate`: draw again.
+      }
+      throw new Error(`No free check-in code for event ${eventId}`);
+    });
   }
 
+  /** The guest a code belongs to, unless it has expired. */
   async find(eventId: number, code: string) {
+    const now = new Date(this.#clock.now()).toISOString();
     const [current, ...previous] = this.#codes.macs(eventId, code);
-    const guest = await this.#guests.findByCodeMac([current]);
+    const guest = await this.#guests.findByCodeMac([current], now);
     if (guest || previous.length === 0) return guest;
 
     // Not found under the current key: a row from before a rotation. Look under the previous keys and move its MAC to the current key.
-    const stale = await this.#guests.findByCodeMac(previous);
+    const stale = await this.#guests.findByCodeMac(previous, now);
     // A taken MAC is an `err`, not a throw. The guest is the right one either way, and the next check-in tries again.
     if (stale) await this.#guests.tryUpdate(stale.id, { code_mac: current });
     return stale;
+  }
+
+  /** Checks a guest in with the code. A code works once: the second call, and a call after the expiry, answer `undefined`. */
+  async checkIn(eventId: number, code: string) {
+    const guest = await this.find(eventId, code);
+    if (!guest) return undefined;
+    const used = await this.#guests.markCheckedIn(guest.id, new Date(this.#clock.now()).toISOString());
+    return used ? guest : undefined;
   }
 }
 ```
@@ -265,7 +322,14 @@ export class CheckIns {
 `issue()` is what keeps `find()` unambiguous. Six digits collide sooner than it seems: with a thousand guests at one event, two of them
 share a code in about four cases of ten. The unique index refuses a repeat under the same key, and the look under every key refuses
 a code that a row holds from before a rotation, where a new code could otherwise equal an old one and `find()` would return the wrong
-guest. A longer code makes this rarer, not unnecessary.
+guest. The lock on the event's row matters for the same reason: while a rotation rolls out, a server on the old key and one on the new
+key can draw the same code at the same moment, both pass the look, and both insert, each with a MAC of its own. The lock closes that
+only with the [two-deploy rotation](#rotating-the-key), where every server knows both keys, and at the default isolation level `read committed`.
+On SQLite the clause is left out, since a write transaction there already runs alone. A longer code makes all this rarer, not unnecessary.
+
+A code lives four hours (`LIFETIME`, from the app's [clock](time.md)) and works once: `markCheckedIn()` changes the row only while
+`checked_in_at` is empty and the code has not expired, and it counts the rows it changed, so of two requests with the same code one wins.
+An expired code keeps its row, and with it the code: `issue()` does not hand it out again.
 
 A MAC cannot be turned into the MAC under a new key, because the code is not in the table. So a [rotation](#rotating-the-key) moves a
 row to the new key when its guest checks in, and a guest who never does stays under the old one. Keep the old key in
@@ -275,7 +339,7 @@ longer matches: issue it again.
 > [!WARNING]
 > The MAC protects the table, not the route. A request that brings a code tests it against every live code of the event: with a
 > thousand guests, one guess in a thousand hits, and a million guesses are enough for every code. The route that checks a code needs a
-> [limit](rate-limiting.md) per client and one per event, and a short life for the codes. Where only staff check guests in, key the limit
+> [limit](rate-limiting.md) per client and one per event, and the short life of the codes above. Where only staff check guests in, key the limit
 > by the signed-in user as well, behind `authenticate()` and an `authorize()` that lets staff only.
 
 The limiter reads the event from the URL, where `ctx.params` holds raw strings, as the [rate limiting](rate-limiting.md#defining-limiters)
