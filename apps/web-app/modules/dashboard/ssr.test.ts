@@ -74,3 +74,29 @@ describe('the dashboard, rendered on the server with its islands', () => {
     await next.get('/dashboard', document).assertOk().assertAuthenticated(ada);
   });
 });
+
+describe('panels the server chose, embedded with <Island href>', () => {
+  it('renders each panel from the URL the controller sent — with its data, and hydrates', async () => {
+    const response = await app.actingAs(ada).get('/dashboard/panels', document).assertOk().assertServerRendered().assertHydrates();
+    expect(response.page()!.props).toMatchObject({
+      panels: [
+        { key: 'sign_ins', url: '/dashboard/islands/sign-ins?limit=3' },
+        { key: 'members', url: '/dashboard/islands/members' },
+      ],
+    });
+    expect(response.body).toMatch(/data-island="\/dashboard\/islands\/sign-ins" data-status="ready"/);
+    expect(response.body).toMatch(/data-island="\/dashboard\/islands\/members" data-status="ready"/);
+    expect(islandsIn(response.body).map((island) => island.region?.component).sort()).toEqual(['dashboard/MemberStats', 'dashboard/RecentSignIns']);
+  });
+
+  it('leaves the decision to each island’s route: a member who is no administrator gets the panel’s fallback, and no data', async () => {
+    const response = await app.actingAs(alan).get('/dashboard/panels', document).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toMatch(/data-island="\/dashboard\/islands\/members" data-status="forbidden"/);
+    expect(islandsIn(response.body)).toContainEqual({ status: 'forbidden' });
+    expect(response.body).not.toContain('"stats"');
+  });
+
+  it('is for signed-in users only, like the dashboard', async () => {
+    await app.get('/dashboard/panels', document).assertRedirect();
+  });
+});

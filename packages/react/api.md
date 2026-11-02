@@ -276,20 +276,16 @@ export type ImageProps = ImageBase & ({
 // Island
 export declare function Island<const N extends BrowserRouteNameInput>(props: IslandElementProps<N>): import("react").JSX.Element;
 // IslandElementProps
-export type IslandElementProps<N extends string = string> = {
+export type IslandElementProps<N extends string = string> = (IslandOptions & {
     route: CheckIslandRouteName<N>;
     query?: QueryParams<N>;
-    fallback?: ReactNode;
-    unauthorized?: ReactNode;
-    error?: ReactNode | ((retry: () => void) => ReactNode);
-    load?: 'eager' | 'visible';
-    buffer?: number;
-    pollMs?: number;
-    keepAlive?: boolean;
-    as?: string;
-    className?: string;
-    id?: string;
-} & ParamsProp<N>;
+    href?: never;
+} & ParamsProp<N>) | (IslandOptions & {
+    href: string;
+    route?: never;
+    params?: never;
+    query?: never;
+});
 // IslandReloadOptions
 export interface IslandReloadOptions<C extends IslandAction = IslandAction> {
     query?: IslandQueryPatch<C>;
@@ -750,6 +746,19 @@ type IsPassword<K extends string> = LooksLikePassword<K>;
 type IslandAction = {
     handle: (...args: never[]) => unknown;
 };
+// IslandOptions
+interface IslandOptions {
+    fallback?: ReactNode;
+    unauthorized?: ReactNode;
+    error?: ReactNode | ((retry: () => void) => ReactNode);
+    load?: 'eager' | 'visible';
+    buffer?: number;
+    pollMs?: number;
+    keepAlive?: boolean;
+    as?: string;
+    className?: string;
+    id?: string;
+}
 // IslandQueryPatch
 type IslandQueryPatch<C> = IslandAction extends C ? Readonly<Record<string, unknown>> : [QueryOf<C>] extends [never] ? 'this island has no query schema — give its controller `static request = defineRequest({ query })`' : QueryFields<QueryOf<C>>;
 // Items

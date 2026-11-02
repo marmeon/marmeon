@@ -51,6 +51,11 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
     return { kind: 'forbidden' };
   }
   if (response.ok && speaksProtocol(response.headers) && response.headers.get(REGION_HEADER) === 'island') return { kind: 'region', region: (await response.json()) as RegionObject };
+  // A success that is no island (an `href` named a page or a JSON endpoint): it is no island, and nothing of its body is shown.
+  if (response.ok) {
+    await response.body?.cancel();
+    return { kind: 'exception', failure: { status: 404, message: undefined } };
+  }
   let message: string | undefined;
   try {
     const body = (await response.json()) as { message?: unknown };

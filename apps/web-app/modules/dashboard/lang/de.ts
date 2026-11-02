@@ -24,6 +24,10 @@ export default {
     newest: 'Zuletzt beigetreten:',
     hidden: 'Die Mitgliederzahlen sehen nur Administratoren mit bestätigter Adresse.',
   },
+  panels: {
+    title: 'Felder',
+    intro: 'Der Server hat diese Felder gewählt und jeweils die URL geschickt. Die Seite lädt sie mit Island href, und die Route jeder Island entscheidet, wer sie sieht.',
+  },
   people: 'Alle Personen',
   members_table: 'Mitgliedertabelle',
 } satisfies Messages<typeof en>;
