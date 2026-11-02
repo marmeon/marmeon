@@ -840,7 +840,7 @@ export default defineMigration({
 
 All but `check()` work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
 SQLite changes a table one step at a time. The order is fixed, whatever order you write them in: dropped indexes first, then dropped
-checks, renamed columns, new columns, NOT NULL and nullable changes, new foreign keys, new checks, new indexes, retired columns, and dropped columns last. A column in `notNull()`, `nullable()` or `foreign()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
+checks, renamed columns, new columns, NOT NULL and nullable changes, new foreign keys, changed `oneOf()` lists, new checks, new indexes, retired columns, and dropped columns last. A column in `notNull()`, `nullable()`, `foreign()` or `oneOf()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
 
