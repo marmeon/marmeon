@@ -1,4 +1,5 @@
 import { withCode } from '@marmeon/core/internal';
+import { buildWithNew } from './default-resolver.ts';
 import type { AnyMiddleware, ClassResolver, EmptyObject, Middleware, MiddlewareClass, MiddlewareHandler } from './types.ts';
 
 const RESERVED = ['request', 'params', 'route', 'query', 'input', 'inputRead', 'cookies', 'ip', 'nonce', 'expectsJson', 'body', 'pageQuery'] as const;
@@ -87,7 +88,7 @@ function refusal(key: string | symbol, current: object): string | undefined {
 }
 
 export interface PipelineOptions<TCtx> {
-  /** Builds middleware classes, e.g. from the request's container scope. Defaults to `new Class()`. */
+  /** Builds middleware classes, e.g. from the request's container scope. Defaults to building with `new`. */
   resolve?: ClassResolver;
   /** Called with every layer that ran and has a `terminate` hook, and the context it saw. */
   onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: TCtx) => void;
@@ -108,7 +109,7 @@ export function runPipeline<TCtx extends object>(
   ctx: TCtx,
   middleware: readonly AnyMiddleware[],
   destination: (ctx: TCtx) => Promise<Response>,
-  { resolve = (Class) => new Class(), onTerminable, onError }: PipelineOptions<TCtx> = {},
+  { resolve = buildWithNew, onTerminable, onError }: PipelineOptions<TCtx> = {},
 ): Promise<Response> {
   const guard = (run: () => Response | Promise<Response>, current: TCtx): Promise<Response> => {
     // Wrapping in a promise turns synchronous throws into rejections (including from constructors).
