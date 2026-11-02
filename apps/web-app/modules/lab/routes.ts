@@ -14,7 +14,7 @@ import { CreateOneTimeLinkLabController, ShowAnnouncementLabController, OpenOneT
 import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
 import { CreateGuestLabController, EditGuestLabController, StoreGuestLabController, UpdateGuestLabController } from './controllers/GuestLabController.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
-import { ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
+import { AddQuestionLabController, ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 import { Surveys } from './SurveyRepository.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
@@ -51,6 +51,8 @@ export default defineRoutes((Route) => {
   // schema is built from the rows after the lab's gate said yes.
   lab.bind('survey', Surveys, { public: true }).get('/surveys/:survey', ShowSurveyLabController);
   lab.bind('survey', Surveys, { public: true }).post('/surveys/:survey', StoreSurveyLabController);
+  // A choice for the survey: its words are a JSON column typed `readonly string[]`, and the request's schema is what checks them.
+  lab.bind('survey', Surveys, { public: true }).post('/surveys/:survey/questions', AddQuestionLabController);
   // A link that is used once: its path is the token, found by its hash (`hashLinkToken()`). Open to everyone and public by design — the
   // token is the key, and every wrong token gets the same 404. The GET only shows a page; the POST uses the link up.
   // `credentialPage()` marks every answer of the routes that carry the token, errors and the 404 for a wrong token included.

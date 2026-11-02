@@ -11,6 +11,7 @@ export type {
   Generated,
   Json,
   JsonColumn,
+  JsonTypes,
   ModuleDatabase,
   ModuleTables,
   Modules,

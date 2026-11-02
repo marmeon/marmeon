@@ -33,6 +33,13 @@ export interface PrimaryKeys {}
  */
 export interface Relations {}
 
+/**
+ * The value type of each JSON column, by `'<table>.<column>'`: `{ 'events.title': LocalizedText }`. Declared by the app (in the module
+ * that owns the table) through declaration merging; a `json()` column without an entry reads as {@link Json}. The type is a promise
+ * of the app, not a check: nothing validates a value when it is read or written. See `docs/queries.md#a-json-columns-type`.
+ */
+export interface JsonTypes {}
+
 /** A column the database fills in (identity, default): optional on insert, always there when read. */
 export type Generated<T> =
   T extends ColumnType<infer S, infer I, infer U> ? ColumnType<S, I | undefined, U> : ColumnType<T, T | undefined, T>;
@@ -44,8 +51,36 @@ export type Json = null | boolean | number | string | Json[] | { [key: string]: 
 export type Timestamp = ColumnType<string, string | Date, string | Date>;
 /** An exact decimal: read as a string (`'12.50'`), so no precision is lost. */
 export type Decimal = ColumnType<string, string | number, string | number>;
-/** A JSON column: read parsed, written as `JSON.stringify(value)`. */
-export type JsonColumn = ColumnType<Json, string, string>;
+/**
+ * The part of `T` that is not JSON — a `Date`, a function, a `bigint`, a symbol, `unknown`, a required field that may be `undefined` — or `never`
+ * when all of it is. Interfaces and optional fields count as JSON. Looks eight levels deep, which keeps a recursive type finite.
+ */
+type NotJson<T, Depth extends unknown[] = []> = Depth['length'] extends 8
+  ? never
+  : T extends null | boolean | number | string
+    ? never
+    : T extends bigint | symbol | undefined | Date | ((...args: never[]) => unknown)
+      ? T
+      : T extends readonly (infer Item)[]
+        ? NotJson<Item, [...Depth, 0]>
+        : T extends object
+          ? { [P in keyof T]-?: {} extends Pick<T, P> ? NotJson<Exclude<T[P], undefined>, [...Depth, 0]> : undefined extends T[P] ? T[P] : NotJson<T[P], [...Depth, 0]> }[keyof T]
+          : T;
+
+/** What a JSON column reads as: the type `JsonTypes` declares for key `K`, `Json` without one, a message where the declared type is no JSON. */
+type JsonValue<K extends string> = [K] extends [never]
+  ? Json
+  : K extends keyof JsonTypes
+    ? [NotJson<JsonTypes[K]>] extends [never]
+      ? JsonTypes[K]
+      : `'${K}' in JsonTypes is not JSON: a Date, class, function, bigint, unknown or undefined field cannot be stored`
+    : Json;
+
+/**
+ * A JSON column: read parsed as the type `JsonTypes` declares for `K` (`'<table>.<column>'`), `Json` without a declaration; written as
+ * `JSON.stringify(value)`. The generated `database.d.ts` writes the key. See `docs/queries.md#a-json-columns-type`.
+ */
+export type JsonColumn<K extends string = never> = ColumnType<JsonValue<K>, string, string>;
 
 /** A row as read, as inserted, as updated. */
 export type Row<T extends keyof Tables> = RowOf<Tables[T]>;
