@@ -135,16 +135,19 @@ export function parseMessage(message: string): readonly Part[] {
   return text(false, false);
 }
 
-/** The `Intl` objects of one locale — created once, reused for every message. */
+/** The `Intl` objects of one locale and time zone — created once, reused for every message. */
 export class LocaleFormats {
   readonly locale: string;
+  /** The zone dates are shown in when a call names none; undefined: the process's. */
+  readonly timeZone: string | undefined;
   readonly #numbers = new Map<string, Intl.NumberFormat>();
   readonly #dates = new Map<string, Intl.DateTimeFormat>();
   readonly #plurals = new Map<string, Intl.PluralRules>();
   readonly #relative = new Map<string, Intl.RelativeTimeFormat>();
 
-  constructor(locale: string) {
+  constructor(locale: string, timeZone?: string) {
     this.locale = locale;
+    this.timeZone = timeZone;
   }
 
   number(options: Intl.NumberFormatOptions = {}): Intl.NumberFormat {
@@ -152,7 +155,9 @@ export class LocaleFormats {
   }
 
   date(options: Intl.DateTimeFormatOptions = {}): Intl.DateTimeFormat {
-    return cached(this.#dates, options, () => new Intl.DateTimeFormat(this.locale, options));
+    // An explicit `timeZone` (also the UTC of a calendar day) wins over the app's.
+    const zoned = this.timeZone === undefined || options.timeZone !== undefined ? options : { ...options, timeZone: this.timeZone };
+    return cached(this.#dates, zoned, () => new Intl.DateTimeFormat(this.locale, zoned));
   }
 
   plural(type: Intl.PluralRuleType): Intl.PluralRules {
@@ -247,6 +252,6 @@ export function formatParts(parts: readonly Part[], params: Readonly<Record<stri
 }
 
 /** Parses and formats in one go — for a message used once. */
-export function formatMessage(message: string, params: Readonly<Record<string, unknown>> = {}, locale = 'en'): string {
-  return formatParts(parseMessage(message), params, new LocaleFormats(locale));
+export function formatMessage(message: string, params: Readonly<Record<string, unknown>> = {}, locale = 'en', timeZone?: string): string {
+  return formatParts(parseMessage(message), params, new LocaleFormats(locale, timeZone));
 }

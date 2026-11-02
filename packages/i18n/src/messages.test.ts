@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { formatMessage, parseMessage } from './format.ts';
 import { langFileOf } from './loader.ts';
 import { negotiateLocale, supportedLocale } from './locale.ts';
-import { Catalog, createMessageLoader } from './messages.ts';
+import { Catalog, createMessageLoader, type Formatter } from './messages.ts';
 
 describe('formatMessage (ICU subset)', () => {
   it('fills placeholders, formats numbers and dates for the locale', () => {
@@ -222,5 +222,42 @@ describe('the browser entry', () => {
     walk(fileURLToPath(new URL('./messages.ts', import.meta.url)));
     expect(seen.size).toBeGreaterThan(2);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('a time zone for the formatters', () => {
+  const instant = '2026-10-14T05:00:00Z';
+  const clean = (text: string) => text.replaceAll(' ', ' ');
+
+  it('shows an instant in that zone whatever the process zone is — a calendar day and an explicit zone keep theirs', () => {
+    const before = process.env.TZ;
+    process.env.TZ = 'Pacific/Kiritimati';
+    try {
+      const format = new Catalog({ fallback: 'en' }).formatter('en', 'America/Los_Angeles');
+      expect(format.timeZone).toBe('America/Los_Angeles');
+      expect(clean(format.date(instant, { dateStyle: 'medium', timeStyle: 'short' }))).toBe('Oct 13, 2026, 10:00 PM');
+      expect(format.date('2026-10-14', { dateStyle: 'medium' })).toBe('Oct 14, 2026');
+      expect(clean(format.date(instant, { timeStyle: 'short', timeZone: 'UTC' }))).toBe('5:00 AM');
+      expect(formatMessage('{d, date, long}', { d: new Date(instant) }, 'en', 'America/Los_Angeles')).toBe('October 13, 2026');
+      expect(formatMessage('{d, date, long}', { d: '2026-10-14' }, 'en', 'America/Los_Angeles')).toBe('October 14, 2026');
+    } finally {
+      if (before === undefined) delete process.env.TZ;
+      else process.env.TZ = before;
+    }
+  });
+
+  it('keeps a formatter per locale and zone, and none for the process zone', () => {
+    const catalog = new Catalog({ fallback: 'en' });
+    expect(catalog.formatter('en', 'Europe/Berlin')).toBe(catalog.formatter('en', 'Europe/Berlin'));
+    expect(catalog.formatter('en', 'Europe/Berlin')).not.toBe(catalog.formatter('en', 'UTC'));
+    expect(catalog.formatter('en', 'Europe/Berlin')).not.toBe(catalog.formatter('en'));
+    expect(catalog.formatter('en').timeZone).toBeUndefined();
+  });
+
+  it('translate() hands the zone to its messages and its format', () => {
+    const catalog = new Catalog({ fallback: 'en' }).add('en', 'shop', { opens: 'Opens at {at, time, short}' });
+    const t = catalog.translate('en', 'shop', 'Europe/Berlin') as unknown as ((key: string, params: object) => string) & { format: Formatter };
+    expect(clean(t('opens', { at: instant }))).toBe('Opens at 7:00 AM');
+    expect(t.format.timeZone).toBe('Europe/Berlin');
   });
 });

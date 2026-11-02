@@ -258,6 +258,7 @@ export declare const I18nContext: import("react").Context<I18nValue | null>;
 // I18nValue
 export interface I18nValue {
     readonly locale: string;
+    readonly timeZone?: string | undefined;
     readonly catalog: Catalog;
 }
 // Image

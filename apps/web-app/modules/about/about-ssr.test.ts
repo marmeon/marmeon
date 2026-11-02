@@ -23,3 +23,23 @@ describe('the public list of features, rendered on the server', () => {
     expect(response.body).toContain('href="/en/about"');
   });
 });
+
+describe('an instant on a public page', () => {
+  const html = { headers: { accept: 'text/html' } };
+  const feature = (language: string) => `/${language}/about/features/typed-routes`;
+
+  it('is shown in the app’s time zone (APP_TIMEZONE), and hydrates to the same text', async () => {
+    const zoned = await createTestApp(application, { ssr: true, ssrServer: server }); // APP_TIMEZONE of .env.test
+    const english = await zoned.get(feature('en'), html).assertOk().assertServerRendered().assertHydrates();
+    expect(english.page()!.timeZone).toBe('Europe/Berlin');
+    expect(english.body.replaceAll('\u202f', ' ')).toContain('Reviewed at 10:00 AM'); // 09:00 UTC on 2 March
+    const german = await zoned.get(feature('de'), html).assertServerRendered().assertHydrates();
+    expect(german.body).toContain('Geprüft um 10:00');
+  });
+
+  it('follows another zone', async () => {
+    const zoned = await createTestApp(application, { ssr: true, ssrServer: server, env: { APP_TIMEZONE: 'America/Los_Angeles' } });
+    const response = await zoned.get(feature('en'), html).assertServerRendered().assertHydrates();
+    expect(response.body.replaceAll('\u202f', ' ')).toContain('Reviewed at 1:00 AM');
+  });
+});

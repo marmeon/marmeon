@@ -12,6 +12,11 @@ export interface Translator {
   readonly locale: string;
   /** Where a message missing in this locale comes from (`APP_FALLBACK_LOCALE`) — the browser's language files use it too. */
   readonly fallbackLocale?: string;
+  /**
+   * The IANA time zone dates and times are shown in unless a call names its own (`APP_TIMEZONE`, e.g. `Europe/Berlin`); undefined: the
+   * process's zone. See `docs/time.md#the-apps-zone`.
+   */
+  readonly timeZone?: string;
   /** Whether `key` (`namespace.path`) has a message in this locale or the fallback locale. */
   has(key: string): boolean;
   /**

@@ -461,6 +461,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `APP_NAME` | auth, redis | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `APP_PREVIOUS_KEYS` | encryption | value | `[]` | [Encryption](encryption.md#the-application-key) |
 | `APP_SHUTDOWN_TIMEOUT_SECONDS` | core | duration | `10` | [Providers](providers.md#shutting-down) |
+| `APP_TIMEZONE` | i18n | value | optional | [Localization](localization.md#configuration) |
 | `APP_URL` | auth, devtools, mail, server, session | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | auth | value | `100` | [Authentication](authentication.md#configuration) |
 | `AUTH_DEVICE_COOKIE_DAYS` | auth | duration | `90` | [Authentication](authentication.md#configuration) |

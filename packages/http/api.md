@@ -363,6 +363,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    timeZone?: string;
     alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
@@ -439,7 +440,7 @@ export type ReferrerPolicy = 'no-referrer' | 'no-referrer-when-downgrade' | 'ori
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionOutcomeStatus
 export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // RegionResult
@@ -2361,6 +2362,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    timeZone?: string;
     alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
@@ -2380,7 +2382,7 @@ export interface PageObject {
     live?: LiveSubscription[];
 }
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionResult
 export type RegionResult = {
     readonly status: 'ready';
@@ -2856,6 +2858,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    timeZone?: string;
     alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
@@ -2902,7 +2905,7 @@ export declare class RedirectResult {
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
 // SensitivePattern
@@ -3010,6 +3013,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    timeZone?: string;
     alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
@@ -3037,7 +3041,7 @@ export declare const RELOAD_HEADER = "x-marmeon-reload";
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionOutcomeStatus
 export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // UPLOAD_HEADER

@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
-import { PreferredLocale } from '@marmeon/core/internal';
+import { canonicalTimeZone, PreferredLocale } from '@marmeon/core/internal';
 import { editableResponse, HttpError, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
 import { fillPath, PageAlternates, UrlLocales } from '@marmeon/router/internal';
 import { Session } from '@marmeon/session';
@@ -43,6 +43,14 @@ export const I18nConfig = defineConfig('i18n', {
       .list(env.string())
       .check((locales) => locales.every((locale) => isLanguageTag(locale)), 'Expected language tags like en,de')
       .default([]),
+    /**
+     * The IANA time zone dates and times are shown in when a call names none (`Europe/Berlin`), on the server and in the
+     * browser alike. Default: the process's zone. Not `SCHEDULE_TIMEZONE`: that one places tasks, this one only displays.
+     */
+    APP_TIMEZONE: env
+      .string()
+      .check((value) => canonicalTimeZone(value) !== undefined, (value) => `"${value}" is not an IANA time zone — e.g. Europe/Berlin or UTC`)
+      .optional(),
   })
     .check((e) => e.APP_LOCALES.length === 0 || supportedLocale(e.APP_LOCALE, e.APP_LOCALES) !== undefined, 'APP_LOCALE must be one of APP_LOCALES', 'APP_LOCALE')
     .check(
@@ -54,7 +62,7 @@ export const I18nConfig = defineConfig('i18n', {
     const explicit = e.APP_LOCALES.length > 0 ? e.APP_LOCALES : undefined;
     // In the spelling of the list, when there is one.
     const spell = (locale: string) => (explicit ? supportedLocale(locale, explicit)! : locale);
-    return { locale: spell(e.APP_LOCALE), fallback: spell(e.APP_FALLBACK_LOCALE), locales: explicit };
+    return { locale: spell(e.APP_LOCALE), fallback: spell(e.APP_FALLBACK_LOCALE), locales: explicit, timeZone: e.APP_TIMEZONE === undefined ? undefined : canonicalTimeZone(e.APP_TIMEZONE) };
   },
 });
 export type I18nConfig = ConfigOf<typeof I18nConfig>;
@@ -113,12 +121,14 @@ export class Locales {
 export class Translators {
   readonly #catalog: Catalog;
   readonly #locales: Locales;
+  readonly #timeZone: string | undefined;
   readonly #cache = new Map<string, Translator>();
 
   /** @internal Built by the container. */
-  constructor(catalog: Catalog, locales: Locales) {
+  constructor(catalog: Catalog, locales: Locales, timeZone?: string) {
     this.#catalog = catalog;
     this.#locales = locales;
+    this.#timeZone = timeZone;
   }
 
   /** A translator fixed to `locale` — or to `APP_LOCALE` when `locale` is none of the supported ones (or missing). */
@@ -126,7 +136,7 @@ export class Translators {
     const fixed = this.#locales.find(locale) ?? this.#locales.default;
     let translator = this.#cache.get(fixed);
     if (!translator) {
-      translator = createTranslator(this.#catalog, () => fixed, { locales: () => this.#locales.supported });
+      translator = createTranslator(this.#catalog, () => fixed, { locales: () => this.#locales.supported, timeZone: this.#timeZone });
       this.#cache.set(fixed, translator);
     }
     return translator;
@@ -476,16 +486,17 @@ export class I18nServiceProvider implements ServiceProvider {
   static publishes = { lang: new URL('../stubs/lang', import.meta.url) };
 
   register(container: Container): void {
-    const locales = new Locales(container.make(I18nConfig));
+    const config = container.make(I18nConfig);
+    const locales = new Locales(config);
     const catalog = new Catalog({ fallback: locales.fallback }).add('en', 'marmeon', frameworkEn, '@marmeon/i18n (en)').add('de', 'marmeon', frameworkDe, '@marmeon/i18n (de)');
     container.instance(Locales, locales);
     container.instance(Catalog, catalog);
-    container.instance(Translators, new Translators(catalog, locales));
+    container.instance(Translators, new Translators(catalog, locales, config.timeZone));
     // The request's locale (SetLocale sets it); in any other scope — a job, a command — APP_LOCALE.
     container.scoped(CurrentLocale, () => new CurrentLocale(locales.default));
     container.scoped(Translator, (c) => {
       const current = c.make(CurrentLocale);
-      return createTranslator(catalog, () => current.value, { locales: () => locales.supported });
+      return createTranslator(catalog, () => current.value, { locales: () => locales.supported, timeZone: config.timeZone });
     });
     container.scoped(RequestLocale, (c) => new RequestLocale(c.make(CurrentLocale), locales));
     container.scoped(LocalePreference, () => ({ preferredLocale: () => undefined }));

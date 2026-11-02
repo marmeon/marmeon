@@ -149,9 +149,14 @@ days.formatRange(new Date(event.starts_on), new Date(event.ends_on)); // "Octobe
 
 ## Showing a stored instant in a zone
 
-An instant has no zone of its own, so a page that prints one picks the zone: the `time_zone` of the record, as in [A time typed in a zone](#a-time-typed-in-a-zone), or a
-zone the app keeps in its configuration. Hand the zone to the view as a prop and to `format.date()`, so the server and the browser
-render the same text:
+An instant has no zone of its own, so a page that prints one picks the zone. Three places can name it, and the first that does wins:
+
+1. the call: `timeZone` of `format.date()`, for example the `time_zone` of the record, as in [A time typed in a zone](#a-time-typed-in-a-zone);
+2. the app: `APP_TIMEZONE`, see [The app's zone](#the-apps-zone);
+3. the process: the zone of the server, and of the visitor's browser.
+
+A calendar day sits above the app's zone: it is the same day everywhere, see [A calendar day](#a-calendar-day). Hand the record's zone to
+the formatter, so the server and the browser render the same text:
 
 ```tsx
 <time dateTime={event.starts_at}>
@@ -159,8 +164,24 @@ render the same text:
 </time>
 ```
 
-Without a `timeZone` the formatter uses the zone of the process, which differs between the server and a visitor's browser and shows as a
-hydration mismatch.
+Without a zone from the call or the app, the formatter uses the zone of the process, which differs between the server and a visitor's
+browser and shows as a hydration mismatch.
+
+### The app's zone
+
+An app whose times belong to one place sets the zone once:
+
+```ini title=".env"
+APP_TIMEZONE=Europe/Berlin
+```
+
+`format.date()`, `t.format` in a view and the `date` and `time` placeholders of a message then show an instant in Berlin, on the server
+and in the browser alike: the server sends the zone with each page, and the browser formats with it. A mail or a job asks
+`Translators.for(locale)` and gets the same zone. The value must name an IANA time zone, or the app does not start. Without it, an instant
+is shown in the zone of the process, and an app that shows times in the visitor's own zone sets nothing.
+
+`APP_TIMEZONE` only decides how an instant is shown. It is not `SCHEDULE_TIMEZONE`, which places tasks; setting one moves nothing of
+the other. A user's own zone stays an explicit `timeZone`, from `user.time_zone`.
 
 ## What follows the clock
 

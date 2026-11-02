@@ -4,4 +4,5 @@ export default {
   cart: '{count, plural, =0 {Your cart is empty} one {# item in your cart} other {# items in your cart}}',
   validation: { name_min: 'The name needs at least {min} characters.', email: 'Enter a valid e-mail address.' },
   html: 'Use <b>bold</b> & {value}',
+  opens: 'Opens at {at, time, short}',
 };

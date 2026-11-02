@@ -5,11 +5,14 @@ import type { Translate } from './messages.ts';
 /** Numbers, dates and relative times for one locale — `Intl`, with its formatters reused. */
 export interface Formatter {
   readonly locale: string;
+  /** The zone `date` shows an instant in when `options.timeZone` is none (`APP_TIMEZONE`); undefined: the process's. */
+  readonly timeZone?: string;
   number(value: number | bigint, options?: Intl.NumberFormatOptions): string;
   /**
    * A date or time: a `Date`, a timestamp or an ISO string (what a `Date` prop is in the browser). A calendar day
    * (`2026-10-14`, what a `date` column reads back as) is shown as that day in every zone unless `options.timeZone` is set; see
-   * [Time](docs/time.md#a-calendar-day).
+   * [Time](docs/time.md#a-calendar-day). An instant is shown in the app's zone unless `options.timeZone` is set; see
+   * [Time](docs/time.md#the-apps-zone).
    */
   date(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string;
   relativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions): string;
@@ -37,6 +40,7 @@ function time(value: Date | number | string): number {
 function createFormatter(formats: LocaleFormats): Formatter {
   return {
     locale: formats.locale,
+    ...(formats.timeZone === undefined ? {} : { timeZone: formats.timeZone }),
     number: (value, options) => formats.number(options).format(value),
     date: (value, options = { dateStyle: 'medium' }) => formats.date(dayOptions(value, options)).format(new Date(time(value))),
     relativeTime: (value, unit, options) => formats.relative(options).format(value, unit),
@@ -56,6 +60,11 @@ interface Entry {
 
 export class MessageError extends Error {
   override name = 'MessageError';
+}
+
+/** The cache key of a locale in a zone (a locale tag has no space). */
+function zoneKey(locale: string, timeZone: string | undefined): string {
+  return timeZone === undefined ? locale : `${locale} ${timeZone}`;
 }
 
 /**
@@ -146,12 +155,12 @@ export class Catalog {
    * `key`'s message with its placeholders filled — formatted for the locale the message was found in (a fallback
    * English text gets English plurals). `fallback` when no locale has the key; else the key itself.
    */
-  text(locale: string, key: string, params: Readonly<Record<string, unknown>> = {}, fallback?: string): string {
+  text(locale: string, key: string, params: Readonly<Record<string, unknown>> = {}, fallback?: string, timeZone?: string): string {
     const entry = this.#find(locale, key);
-    if (entry) return formatParts(entry.parts, params, this.#formatsOf(entry.locale));
+    if (entry) return formatParts(entry.parts, params, this.#formatsOf(entry.locale, timeZone));
     if (fallback === undefined) return key;
     try {
-      return formatParts(parseMessage(fallback), params, this.#formatsOf(locale));
+      return formatParts(parseMessage(fallback), params, this.#formatsOf(locale, timeZone));
     } catch {
       return fallback;
     }
@@ -161,26 +170,28 @@ export class Catalog {
    * The keys of one namespace in `locale` — `t('login.title')`, typed against the namespace's source file. What a UI
    * adapter's hook returns: as a method, the adapter needs no runtime import of this package (only its types).
    */
-  translate<N extends string>(locale: string, namespace: N): Translate<N> {
-    const t = (key: string, params?: Readonly<Record<string, unknown>>) => this.text(locale, `${namespace}.${key}`, params);
+  translate<N extends string>(locale: string, namespace: N, timeZone?: string): Translate<N> {
+    const t = (key: string, params?: Readonly<Record<string, unknown>>) => this.text(locale, `${namespace}.${key}`, params, undefined, timeZone);
     return Object.assign(t, {
       locale,
       namespace,
-      format: this.formatter(locale),
+      format: this.formatter(locale, timeZone),
       has: (key: string) => this.has(locale, `${namespace}.${key}`),
     }) as unknown as Translate<N>;
   }
 
   /** Numbers, dates and relative times in `locale`. What a UI adapter's hook returns with the translation: as a method, the adapter needs no runtime import of this package (only its types). */
-  formatter(locale: string): Formatter {
-    let formatter = this.#formatters.get(locale);
-    if (!formatter) this.#formatters.set(locale, (formatter = createFormatter(this.#formatsOf(locale))));
+  formatter(locale: string, timeZone?: string): Formatter {
+    const key = zoneKey(locale, timeZone);
+    let formatter = this.#formatters.get(key);
+    if (!formatter) this.#formatters.set(key, (formatter = createFormatter(this.#formatsOf(locale, timeZone))));
     return formatter;
   }
 
-  #formatsOf(locale: string): LocaleFormats {
-    let formats = this.#formats.get(locale);
-    if (!formats) this.#formats.set(locale, (formats = new LocaleFormats(locale)));
+  #formatsOf(locale: string, timeZone?: string): LocaleFormats {
+    const key = zoneKey(locale, timeZone);
+    let formats = this.#formats.get(key);
+    if (!formats) this.#formats.set(key, (formats = new LocaleFormats(locale, timeZone)));
     return formats;
   }
 }

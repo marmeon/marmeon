@@ -1,13 +1,5 @@
 import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
-
-function isTimeZone(value: string): boolean {
-  try {
-    Temporal.Now.zonedDateTimeISO(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { isTimeZone } from '@marmeon/core/internal';
 
 /**
  * The scheduler: `SCHEDULE_TIMEZONE` (default UTC) and the environment name `environments()` compares against — `APP_ENV`,
