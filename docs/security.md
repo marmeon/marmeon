@@ -132,7 +132,220 @@ a `Referrer-Policy` of `no-referrer` or `same-origin` that a controller set stay
   A request class with a schema always returns with `back()` on a failure. A form that must keep the token in its path validates in
   its controller instead, and redirects to its own URL with `this.redirect(…)` and the input.
 
-The [URL generation](urls.md#a-link-that-is-used-once) page shows how to make and look up the token.
+The [URL generation](urls.md#a-link-that-is-used-once) page shows how to make and look up the token. The [code](#a-form-behind-a-token-in-code) below puts the rules together.
+
+### A form behind a token, in code
+
+An invitation into a workspace, from the link to the accepted membership. Only the first route has the token in its path. It
+trades the token for the invitation's id in the session, and every route after it is addressed without a token:
+
+```ts title="modules/invitations/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { abort, credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
+import { AcceptInvitationController } from './controllers/AcceptInvitationController.ts';
+import { ContinueInvitationController } from './controllers/ContinueInvitationController.ts';
+import { OpenInvitationController } from './controllers/OpenInvitationController.ts';
+import { ShowInvitationController } from './controllers/ShowInvitationController.ts';
+import { InvitationRepository } from './InvitationRepository.ts';
+import { PendingInvitation } from './PendingInvitation.ts';
+
+export default defineRoutes((Route) => {
+  // The trade. The binder finds the row by the token's hash, and answers 404 for any other value (see "A link that is used once").
+  Route.middleware(credentialPage())
+    .middleware(throttle('invitations'))
+    .authorize(everyone)
+    .bind('invitation', InvitationRepository, { public: true })
+    .get('/invitations/:invitation', OpenInvitationController);
+
+  // The page and its post. The check looks the row up again, once per request, and answers the same 404 without one.
+  const pending = Route.middleware(credentialPage({ referrer: 'same-origin' })).authorize(
+    describeAccess(async (_ctx, resolve) => {
+      if ((await resolve(PendingInvitation).find()) === undefined) abort(404);
+      return true;
+    }, 'pending invitation'),
+  );
+
+  pending.get('/invitation', ShowInvitationController).name('invitations.show');
+  pending.middleware(authenticate()).post('/invitation', AcceptInvitationController);
+
+  // Where "Sign in" on the invitation page leads: no token, so the session keeps nothing secret as the intended URL.
+  Route.middleware(authenticate()).get('/invitation/continue', ContinueInvitationController).name('invitations.continue');
+});
+```
+
+The trade gives the session a new id before it stores anything, so an id that whoever sent the link planted carries nothing. The
+old id stops working and the session keeps its data, so the flow adds only the invitation's id, which is no secret and no right:
+
+```ts title="modules/invitations/controllers/OpenInvitationController.ts"
+import type { Row } from '@marmeon/database';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Session } from '@marmeon/session';
+
+declare module '@marmeon/session' {
+  interface SessionData {
+    /** The invitation whose link this visitor opened: its id, never its token. */
+    invitation: number;
+  }
+}
+
+export class OpenInvitationController extends Controller {
+  readonly #session: Session;
+
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+
+  handle(ctx: HttpContext<{}, { invitation: Row<'invitations'> }>) {
+    this.#session.regenerate();
+    this.#session.put('invitation', ctx.params.invitation.id);
+    return this.redirect().route('invitations.show');
+  }
+}
+```
+
+`PendingInvitation` is the holder of the looked-up row. It is scoped, so the check of the route and the controller share one
+query per request (register it with `container.scoped(PendingInvitation)`, as in
+[a lookup once per request](authorization.md#a-lookup-once-per-request)):
+
+```ts title="modules/invitations/PendingInvitation.ts"
+import type { Row } from '@marmeon/database';
+import { abort } from '@marmeon/http';
+import { Session } from '@marmeon/session';
+import { InvitationRepository } from './InvitationRepository.ts';
+
+export class PendingInvitation {
+  readonly #session: Session;
+  readonly #invitations: InvitationRepository;
+  #row: Promise<Row<'invitations'> | undefined> | undefined;
+
+  constructor(session: Session, invitations: InvitationRepository) {
+    this.#session = session;
+    this.#invitations = invitations;
+  }
+
+  /** The open invitation the session names, or `undefined`: none named, or used up or revoked since the link was opened. */
+  find(): Promise<Row<'invitations'> | undefined> {
+    this.#row ??= this.#lookup();
+    return this.#row;
+  }
+
+  /** The same, or the 404 of a visitor who has no invitation. */
+  async require(): Promise<Row<'invitations'>> {
+    return (await this.find()) ?? abort(404);
+  }
+
+  async #lookup(): Promise<Row<'invitations'> | undefined> {
+    const id = this.#session.get('invitation');
+    return id === undefined ? undefined : this.#invitations.findOpen(id);
+  }
+}
+```
+
+The repository finds the row by the token's hash for the trade, as in [a link that is used once](urls.md#a-link-that-is-used-once),
+and by id for everything after it:
+
+```ts title="modules/invitations/InvitationRepository.ts"
+import { hashLinkToken } from '@marmeon/encryption';
+import { Repository, secretEquals, type Row } from '@marmeon/database';
+
+export class InvitationRepository extends Repository<'invitations'> {
+  static table = 'invitations' as const;
+
+  /** `/invitations/:invitation` → the open row, or `undefined` for a 404. */
+  override resolveRouteBinding(token: string): Promise<Row<'invitations'> | undefined> {
+    return this.query().selectAll().where((eb) => secretEquals(eb, 'token_hash', hashLinkToken(token))).where('used_at', 'is', null).executeTakeFirst();
+  }
+
+  /** An invitation that is not used up. A revoked one is a deleted row. */
+  findOpen(id: Row<'invitations'>['id']): Promise<Row<'invitations'> | undefined> {
+    return this.query().selectAll().where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
+  }
+
+  /** True for exactly one caller, however many arrive at once: the update decides, not an earlier read. */
+  async redeem(id: Row<'invitations'>['id']): Promise<boolean> {
+    const result = await this.db.updateTable('invitations').set({ used_at: new Date() }).where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+}
+```
+
+The page says what the invitation is for. Its form posts to `/invitation`, with no token in the path, so `back()` and the CSRF
+check work as on any page, and a failed validation returns to it with its errors:
+
+```ts title="modules/invitations/controllers/ShowInvitationController.ts"
+import { Controller } from '@marmeon/http';
+import { PendingInvitation } from '../PendingInvitation.ts';
+import { WorkspaceRepository } from '../../workspaces/WorkspaceRepository.ts';
+
+export class ShowInvitationController extends Controller {
+  readonly #pending: PendingInvitation;
+  readonly #workspaces: WorkspaceRepository;
+
+  constructor(pending: PendingInvitation, workspaces: WorkspaceRepository) {
+    super();
+    this.#pending = pending;
+    this.#workspaces = workspaces;
+  }
+
+  async handle() {
+    const invitation = await this.#pending.require();
+    const workspace = await this.#workspaces.findOrFail(invitation.workspace_id);
+    return this.view('invitations/Show', { workspace: workspace.name, role: invitation.role });
+  }
+}
+```
+
+The post redeems the row and writes the membership in one transaction. The role comes from the invitation's row, never from the
+request. Afterwards the session forgets the id:
+
+```ts title="modules/invitations/controllers/AcceptInvitationController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { err, ok } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { Session } from '@marmeon/session';
+import { InvitationRepository } from '../InvitationRepository.ts';
+import { PendingInvitation } from '../PendingInvitation.ts';
+import { MembershipRepository } from '../../workspaces/MembershipRepository.ts';
+
+export class AcceptInvitationController extends Controller {
+  readonly #connections: Connections;
+  readonly #pending: PendingInvitation;
+  readonly #invitations: InvitationRepository;
+  readonly #memberships: MembershipRepository;
+  readonly #session: Session;
+
+  constructor(connections: Connections, pending: PendingInvitation, invitations: InvitationRepository, memberships: MembershipRepository, session: Session) {
+    super();
+    this.#connections = connections;
+    this.#pending = pending;
+    this.#invitations = invitations;
+    this.#memberships = memberships;
+    this.#session = session;
+  }
+
+  async handle(ctx: HttpContext<Authenticated>) {
+    const invitation = await this.#pending.require();
+    const accepted = await this.#connections.transaction(async () => {
+      // Used up meanwhile: the lost redeem answers like a link that never existed.
+      if (!(await this.#invitations.redeem(invitation.id))) return err({ kind: 'used' });
+      const added = await this.#memberships.tryInsert({ workspace_id: invitation.workspace_id, user_id: ctx.user.id, role: invitation.role });
+      // Already a member: the err rolls the redeem back, so the invitation stays open.
+      return added.ok ? ok(invitation.workspace_id) : err({ kind: 'member' });
+    });
+    if (!accepted.ok) abort(404);
+    this.#session.forget('invitation');
+    return this.redirect().route('workspaces.show', { workspace: accepted.value });
+  }
+}
+```
+
+The sign-in link on the page points to `/invitation/continue`, which sends a guest to the sign-in and back
+([sending a guest from an open page to sign in and back](authentication.md#sending-a-guest-from-an-open-page-to-sign-in-and-back)).
+A sign-in keeps the session's data, so the invitation's id is still there afterwards. For a visitor who has no account yet, see
+[an invitation for someone without an account](authorization.md#an-invitation-for-someone-without-an-account).
 
 ### A public page that carries a token only sometimes
 

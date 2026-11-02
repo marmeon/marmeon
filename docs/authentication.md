@@ -193,35 +193,38 @@ back there. A prefetch and a request that only reads are not remembered. A clien
 
 A page anyone may open, such as an invitation, has no `authenticate()` in front of it, so it remembers nothing. Give it a thin
 `GET` route behind `authenticate()` and link "Sign in" to that route. A guest who follows the link is turned away, the middleware
-keeps the route's path, and `intended()` brings the guest back to it after the sign-in. A signed-in user passes straight through:
+keeps the route's path, and `intended()` brings the guest back to it after the sign-in. A signed-in user passes straight through.
+
+The kept path is written to the session, where whoever reads the session store sees it, so it must never hold a secret. An invitation link has its
+token in the path: the thin route must not. Let the token route trade the token for the invitation's id in the session, and point
+"Sign in" at a route whose path has none ([a form behind a token](security.md#a-form-behind-a-token-in-code) shows the trade):
 
 ```ts title="modules/invitations/routes.ts"
 import { authenticate } from '@marmeon/auth';
 import { defineRoutes } from '@marmeon/http';
-import { JoinInvitationController } from './controllers/JoinInvitationController.ts';
-import { ShowInvitationController } from './controllers/ShowInvitationController.ts';
+import { ContinueInvitationController } from './controllers/ContinueInvitationController.ts';
 
 export default defineRoutes((Route) => {
-  Route.get('/invitations/:token', ShowInvitationController).name('invitations.show');
-  Route.middleware(authenticate()).get('/invitations/:token/join', JoinInvitationController).name('invitations.join');
+  // /invitations/:invitation (the token), /invitation and its post are in "a form behind a token".
+  Route.middleware(authenticate()).get('/invitation/continue', ContinueInvitationController).name('invitations.continue');
 });
 ```
 
-```ts title="modules/invitations/controllers/JoinInvitationController.ts"
-import type { Authenticated } from '@marmeon/auth';
-import { Controller, type HttpContext } from '@marmeon/http';
+```ts title="modules/invitations/controllers/ContinueInvitationController.ts"
+import { Controller } from '@marmeon/http';
 
-export class JoinInvitationController extends Controller {
-  handle(ctx: HttpContext<Authenticated, { token: string }>) {
-    return this.redirect().route('invitations.show', { token: ctx.params.token });
+export class ContinueInvitationController extends Controller {
+  handle() {
+    return this.redirect().route('invitations.show');
   }
 }
 ```
 
-The "Sign in" link on the invitation page points at `/invitations/<token>/join`. After the sign-in, `LoginController` ends with
-`this.redirect().intended().route(HOME)` and the guest lands on the join route, which sends the now signed-in user back to
-the invitation (`HOME` is the route name in the starter kit's `modules/auth/home.ts`). Accept it there with a form that posts: the join route is a `GET`, which a browser may prefetch, so it changes
-nothing.
+The "Sign in" link on the invitation page, `/invitation`, points at `/invitation/continue`. After the sign-in, `LoginController` ends with
+`this.redirect().intended().route(HOME)` and the guest lands on the continue route, which sends the now signed-in user back to
+the invitation (`HOME` is the route name in the starter kit's `modules/auth/home.ts`). A sign-in keeps the session's data, so the
+invitation's id is still there. Accept it with a form that posts: the continue route is a `GET`, which a browser may prefetch, so it
+changes nothing.
 
 Do not carry the target in a `?next=` parameter. Anyone can send a link with a `next` that leads to another site, and the sign-in
 would follow it; the path kept in the session was written by `authenticate()` itself, and `intended()` follows only a path of this
