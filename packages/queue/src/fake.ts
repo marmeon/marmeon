@@ -331,13 +331,16 @@ export class QueueFake implements Queue {
     // In the frame of `connections.transaction()`: ambient, or through `using(trx)` of that very transaction.
     const ambient = !this.#inTransaction && inTransaction();
     const followed = this.#transaction !== undefined && followsTransaction(this.#transaction);
+    // Like the database queue, whose row is inserted at the dispatch: the delay runs from then, not from the commit.
+    const clock = this.#container.make(Clock);
+    const availableAt = clock.now() + Math.round(delay * 1000);
     const record = async () => {
       for (const { job, payload, prepared, chain } of entries) {
         const { record } = prepared;
         const unique = record.unique ? { key: record.unique.key, forSeconds: record.unique.for, until: record.unique.until } : undefined;
         owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delaySeconds: delay, inTransaction: this.#inTransaction || ambient, unique, chain });
         // Stamped like the real queue's push: the time it can first be claimed.
-        await owner.#memory().push(options.queue ?? 'default', JSON.stringify({ ...record, availableAt: this.#container.make(Clock).now() + Math.round(delay * 1000) }), delay);
+        await owner.#memory().push(options.queue ?? 'default', JSON.stringify({ ...record, availableAt }), Math.max(0, availableAt - clock.now()) / 1000);
       }
     };
     // Like the database queue: a job dispatched inside a transaction exists once it commits, never after a rollback. A

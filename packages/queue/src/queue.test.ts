@@ -1089,6 +1089,18 @@ describe('the QueueFake', () => {
     expect(await fake.work()).toMatchObject({ processed: 1 });
   });
 
+  it('counts a delay from the dispatch, not from the commit, inside connections.transaction()', async () => {
+    await using application = await app();
+    const fake = new QueueFake(application.container);
+    const connections = application.container.make(Connections);
+    application.clock.freeze();
+    await connections.transaction(async () => {
+      await fake.dispatch(WelcomeJob, { userId: 1 }, { delay: { seconds: 30 } });
+      application.clock.travel({ seconds: 60 });
+    });
+    expect(await fake.work()).toMatchObject({ processed: 1 });
+  });
+
   it('records a dispatch through a transaction the app began itself at once — nothing reports its end', async () => {
     await using application = await app();
     const fake = new QueueFake(application.container);
