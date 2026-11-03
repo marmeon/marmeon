@@ -72,14 +72,27 @@ export function unsafePath(root: string, file: string, kind: 'file' | 'directory
   return undefined;
 }
 
-/** Why a file at `file` could not be made or replaced for want of permission: the deepest directory of its path that exists must be writable. */
+/**
+ * Why a file at `file` could not be made or replaced for want of permission: the deepest directory of its path that exists must be
+ * writable, and so must the directory of the file a link at `file` leads to, because `writeAtomic` makes its temporary file there.
+ */
 export function unwritablePath(root: string, file: string): string | undefined {
   let directory = dirname(file);
   while (!exists(directory) && directory !== root && directory !== dirname(directory)) directory = dirname(directory);
+  // Each directory with the path the message shows: the target's is made relative to the real root, as its own path is real.
+  const directories: (readonly [string, string])[] = [[directory, relative(root, directory)]];
   try {
-    accessSync(directory, constants.W_OK | constants.X_OK);
+    const target = dirname(realpathSync(file));
+    if (target !== realpathSync(directory)) directories.push([target, relative(realpathSync(root), target)]);
   } catch {
-    return `${relative(root, directory) || '.'} is not writable. Nothing was written.`;
+    // A file that is not there, or a link that leads nowhere, is judged elsewhere.
+  }
+  for (const [candidate, shown] of directories) {
+    try {
+      accessSync(candidate, constants.W_OK | constants.X_OK);
+    } catch {
+      return `${shown || '.'} is not writable. Nothing was written.`;
+    }
   }
   return undefined;
 }

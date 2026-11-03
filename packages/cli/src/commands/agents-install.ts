@@ -55,9 +55,17 @@ export class AgentsInstallCommand {
       }
     }
     for (const [index, step] of changed.entries()) {
-      const problem = write(root, step);
+      let problem: string | undefined;
+      try {
+        problem = write(root, step);
+      } catch (error) {
+        // The disk can refuse after the plan was judged (no space, a read-only file system); report it like any refusal.
+        // The code only: a message of Node names the absolute path.
+        const code = (error as NodeJS.ErrnoException).code ?? 'an unknown error';
+        problem = `${step.path} could not be written (${code}). Nothing was written.`;
+      }
       if (problem) {
-        // Only a path changed after the plan gets here; the steps before it are on disk, so the message must not say otherwise.
+        // Only a path changed after the plan, or a disk that refused, gets here; the steps before it are on disk, so the message must not say otherwise.
         const written = changed.slice(0, index);
         output.error(written.length === 0 ? problem : problem.replace(/ Nothing was written\.$/, ''));
         for (const done of written) output.warn(`${done.path} was written before the refusal.`);

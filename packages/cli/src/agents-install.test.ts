@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
 import { AgentsInstallCommand } from './commands/agents-install.ts';
@@ -155,11 +155,37 @@ describe('marmeon agents:install', () => {
     expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe(text);
   });
 
-  it('recognizes the entry of the fixture as current', () => {
-    const entry = readFileSync(new URL('./__fixtures__/formats/agents-mcp-json/v1.json', import.meta.url), 'utf8');
-    const result = mergeMcpJson(JSON.stringify({ mcpServers: { marmeon: JSON.parse(entry) } }));
-    expect(result.ok && result.value.change).toBe('unchanged');
-    expect(JSON.parse(entry)).toEqual(ENTRY);
+  it('reads every fixture of the entry: the newest is current, each older one is ours and is updated', () => {
+    const directory = new URL('./__fixtures__/formats/agents-mcp-json/', import.meta.url);
+    const versions = readdirSync(directory)
+      .filter((name) => /^v\d+\.json$/.test(name))
+      .sort((a, b) => Number(a.slice(1, -5)) - Number(b.slice(1, -5)));
+    expect(versions.length).toBeGreaterThan(0);
+    for (const [index, name] of versions.entries()) {
+      const entry = JSON.parse(readFileSync(new URL(name, directory), 'utf8'));
+      const result = mergeMcpJson(JSON.stringify({ mcpServers: { marmeon: entry } }));
+      expect(result.ok, name).toBe(true);
+      if (!result.ok) continue;
+      if (index === versions.length - 1) {
+        expect(entry).toEqual(ENTRY);
+        expect(result.value.change).toBe('unchanged');
+      } else {
+        expect(result.value.change).toBe('update');
+      }
+    }
+  });
+
+  it.skipIf(process.getuid?.() === 0)('refuses, before the first write, a SKILL.md that is a link to a file in a read-only folder', () => {
+    const root = app({ 'own/migration.md': markedSkill('1') });
+    mkdirSync(join(root, '.claude/skills/marmeon-migration'), { recursive: true });
+    symlinkSync(join(root, 'own/migration.md'), join(root, '.claude/skills/marmeon-migration/SKILL.md'));
+    chmodSync(join(root, 'own'), 0o500);
+    onTestFinished(() => chmodSync(join(root, 'own'), 0o700));
+    const before = tree(root);
+    const result = install(root);
+    expect(result.code).toBe(1);
+    expect(result.text).toContain('own is not writable. Nothing was written.');
+    expect(tree(root)).toEqual(before);
   });
 
   it('replaces an outdated SKILL.md with the mark and leaves another file of the folder', () => {
