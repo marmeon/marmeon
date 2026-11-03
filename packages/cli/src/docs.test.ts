@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Container } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
@@ -290,16 +290,11 @@ describe('docs --json', () => {
 });
 
 describe('marmeon docs in the repository', () => {
-  const shipped = join(repo, 'packages/cli/docs/index.json');
   const app = tempDir('marmeon-docs-cwd-');
 
-  it('lists the shipped pages, or says to build when the copy is not there', () => {
+  // The global test setup ships the copy when it is missing; the message without one is covered above.
+  it('lists the shipped pages', () => {
     const result = marmeon(app, ['docs', '--json']);
-    if (!existsSync(shipped)) {
-      expect(result).toMatchObject({ code: 1, stdout: '' });
-      expect(result.stderr).toContain('run pnpm build');
-      return;
-    }
     expect(result.code).toBe(0);
     const document = JSON.parse(result.stdout) as { root: string; sections: { pages: { slug: string; file: string }[] }[] };
     expect(document.root).toBe(join(repo, 'packages/cli'));

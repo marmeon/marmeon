@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "version": "0.3.0",
+  "results": [
+    {
+      "slug": "routing",
+      "title": "Routing",
+      "heading": "Route names",
+      "anchor": "route-names",
+      "file": "docs/routing.md#route-names",
+      "snippet": "Name a route to link to it from a view."
+    }
+  ],
+  "warnings": []
+}

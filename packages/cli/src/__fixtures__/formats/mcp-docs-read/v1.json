@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "slug": "validation",
+  "title": "Validation",
+  "file": "docs/validation.md",
+  "section": null,
+  "text": "# Validation\n\nRules check input.\n\n## Rules\n\nA rule names what is allowed.\n",
+  "truncated": false,
+  "warnings": []
+}

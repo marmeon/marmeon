@@ -13,7 +13,7 @@ export class DocsLocation {
 }
 
 /** One page of `docs/index.json`; `file` is relative to the package (a file below `docs/`, or `UPGRADING.md`). */
-interface Page {
+export interface Page {
   readonly slug: string;
   readonly title: string;
   readonly file: string;
@@ -24,7 +24,7 @@ interface Section {
   readonly pages: readonly Page[];
 }
 
-interface DocsIndex {
+export interface DocsIndex {
   readonly version: string;
   readonly sections: readonly Section[];
 }
@@ -106,7 +106,7 @@ function usage(output: CommandInput['output'], message: string): number {
 }
 
 /** `routing`, `routing.md` and `routing#anchor` name the same page. */
-function slugOf(wanted: string): string {
+export function slugOf(wanted: string): string {
   const name = wanted.split('#')[0]!;
   return name.endsWith('.md') ? name.slice(0, -3) : name;
 }
@@ -135,7 +135,7 @@ function displayRoot(packageRoot: string, cwd: string): string {
 }
 
 /** The index, or what is wrong with it. */
-function readIndex(directory: string): DocsIndex | string {
+export function readIndex(directory: string): DocsIndex | string {
   const text = readRegular(join(directory, 'index.json'));
   if (text === undefined) return 'The docs are not in this installation of marmeon — in the repository, run pnpm build.';
   let parsed: unknown;
@@ -182,7 +182,7 @@ function list(output: CommandInput['output'], index: DocsIndex, packageRoot: str
 }
 
 /** Up to five slugs that contain what was typed or are a few edits away from it. */
-function suggest(index: DocsIndex, slug: string): string[] {
+export function suggest(index: DocsIndex, slug: string): string[] {
   const typed = slug.toLowerCase();
   if (typed === '') return [];
   return index.sections
