@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { repo } from './__fixtures__/cli.js';
 import { commandNames } from './__fixtures__/commands.ts';
 import { shippedSkills, skillMark, SKILL_FORMAT, skillsDirectory } from './agents/skills.ts';
+import { headingsOf } from './anchors.ts';
+import { TOOLS } from './mcp/tools.ts';
 
 const skills = shippedSkills();
 const fixtures = new URL('./__fixtures__/formats/agents-skill/', import.meta.url);
@@ -22,33 +24,17 @@ function frontMatter(text: string): { keys: string[]; values: Map<string, string
   return { keys: [...values.keys()], values, lines: end };
 }
 
-/** The ids GitHub (and so the website) gives the headings of a page, duplicates numbered. */
-function anchorsOf(markdown: string): Set<string> {
-  const seen = new Map<string, number>();
-  const ids = new Set<string>();
-  let fenced = false;
-  for (const line of markdown.split('\n')) {
-    if (line.startsWith('```')) fenced = !fenced;
-    const heading = fenced ? undefined : /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
-    if (!heading) continue;
-    const base = heading[1]!
-      .replaceAll('`', '')
-      .toLowerCase()
-      .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '')
-      .replaceAll(' ', '-');
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    ids.add(count === 0 ? base : `${base}-${count}`);
-  }
-  return ids;
-}
-
 /** The anchors GitHub makes are lower case, so `#Retiring-a-column` or `#a.b` name no heading. */
 const SLUG = /^[a-z0-9_-]+$/;
 
 /** The command of every `marmeon <command>` in a skill: in code spans and in code blocks, with or without a package manager in front. */
 function commandsIn(text: string): string[] {
   return [...text.matchAll(/(?:`|^[ \t]*|\$ )(?:pnpm (?:exec )?)?marmeon ([a-z][a-z0-9:-]*)/gm)].map((match) => match[1]!);
+}
+
+/** The name of every MCP tool a skill names: a backtick-quoted name next to the word "tool", as in "its `schema` tool" or "the tool `routes`". */
+function toolsIn(text: string): string[] {
+  return [...text.matchAll(/`([a-z][a-z0-9_]*)`\s+(?:MCP\s+)?tools?\b|\btools?\s+`([a-z][a-z0-9_]*)`/g)].map((match) => (match[1] ?? match[2])!);
 }
 
 /**
@@ -98,6 +84,11 @@ describe('the skills of the package', () => {
       expect(named.filter((command) => !known.has(command))).toEqual([]);
     });
 
+    it('names only MCP tools that the server registers', () => {
+      const registered = new Set(TOOLS.map((tool) => tool.name));
+      expect(toolsIn(text).filter((tool) => !registered.has(tool))).toEqual([]);
+    });
+
     it('points only at pages and sections of the documentation that exist', () => {
       const references = referencesIn(text);
       expect(references.length).toBeGreaterThan(1);
@@ -106,7 +97,7 @@ describe('the skills of the package', () => {
         expect(existsSync(file), `docs/${page}.md`).toBe(true);
         if (anchor !== undefined) {
           expect(anchor, `docs/${page}.md#${anchor}`).toMatch(SLUG);
-          expect(anchorsOf(readFileSync(file, 'utf8')).has(anchor), `docs/${page}.md#${anchor}`).toBe(true);
+          expect(headingsOf(readFileSync(file, 'utf8')).some((heading) => heading.anchor === anchor), `docs/${page}.md#${anchor}`).toBe(true);
         }
       }
     });
@@ -118,6 +109,20 @@ describe('the skills of the package', () => {
 });
 
 describe('what the test reads out of a skill', () => {
+  it('finds a tool named before or after the word, across a line break, and no other quoted word', () => {
+    const text = 'Its `routes` tool lists them, and the\n`check`\ntool runs. Use the tool `schema`, not `marmeon check` or `devtools`.';
+    expect(toolsIn(text)).toEqual(['routes', 'check', 'schema']);
+  });
+
+  it('finds a tool in the plural or with MCP in front; of two names before "tools" only the last is found', () => {
+    expect(toolsIn('The `routes` MCP tool and its `routes` and `check` tools.')).toEqual(['routes', 'check']);
+  });
+
+  it('finds a tool that does not exist, so the registry check fails for it', () => {
+    const registered = new Set(TOOLS.map((tool) => tool.name));
+    expect(toolsIn('Its `nothing_here` tool and its `routes` tool.').filter((tool) => !registered.has(tool))).toEqual(['nothing_here']);
+  });
+
   it('finds a command with or without a package manager, in a code span or an indented block', () => {
     const text = 'Run `marmeon check`.\n\n```sh\n  pnpm exec marmeon make:nothing x\npnpm marmeon route:types\n$ marmeon nope\n```\n';
     expect(commandsIn(text)).toEqual(['check', 'make:nothing', 'route:types', 'nope']);
@@ -138,13 +143,6 @@ describe('what the test reads out of a skill', () => {
       { page: 'errors', anchor: 'codes' },
       { page: 'check', anchor: 'exit-codes' },
     ]);
-  });
-});
-
-describe('anchorsOf', () => {
-  it('numbers a repeated heading and leaves code alone', () => {
-    const ids = anchorsOf('# A\n\n## Status\n\n```sh\n# not a heading\n```\n\n## Status\n\n### The `retire()` call, 2\n');
-    expect([...ids]).toEqual(['a', 'status', 'status-1', 'the-retire-call-2']);
   });
 });
 
