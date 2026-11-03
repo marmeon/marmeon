@@ -699,10 +699,11 @@ async function checkAgents(smoke: Smoke): Promise<void> {
   if (!(version ?? '').startsWith('2025-')) throw new SmokeError(`marmeon mcp answered initialize with protocol version ${version}:\n${said}`);
   const names = ((session.replies.get(2)?.result?.tools ?? []) as { name: string }[]).map((tool) => tool.name).sort();
   if (names.join() !== MCP_TOOLS.join()) throw new SmokeError(`marmeon mcp lists ${names.join(', ')}, expected ${MCP_TOOLS.join(', ')}.`);
+  // The whole reply in the message: a JSON-RPC error has no `result`.
   const routes = session.replies.get(3)?.result;
-  if (routes?.isError || !JSON.stringify(routes?.structuredContent).includes('"/"')) throw new SmokeError(`the routes tool does not list "/":\n${JSON.stringify(routes)}`);
+  if (routes?.isError || !JSON.stringify(routes?.structuredContent ?? null).includes('"/"')) throw new SmokeError(`the routes tool does not list "/":\n${JSON.stringify(session.replies.get(3) ?? null)}`);
   const found = session.replies.get(4)?.result;
-  if (found?.isError || (found?.structuredContent?.results?.length ?? 0) < 1) throw new SmokeError(`docs_search for "migration" found nothing:\n${JSON.stringify(found)}`);
+  if (found?.isError || (found?.structuredContent?.results?.length ?? 0) < 1) throw new SmokeError(`docs_search for "migration" found nothing:\n${JSON.stringify(session.replies.get(4) ?? null)}`);
   if (session.code !== 0 || session.closedAfter > MCP_EXIT) throw new SmokeError(`marmeon mcp should end with 0 within ${MCP_EXIT / 1000} s after stdin closed, it ended with ${session.code} after ${Math.round(session.closedAfter)} ms:\n${said}`);
 
   // Production: refused before the SDK, nothing on stdout (stdout is the protocol's).
