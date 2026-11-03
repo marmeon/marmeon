@@ -226,8 +226,12 @@ function namingFiles(): { path: string; text: string }[] {
     maxBuffer: 64 * 1024 * 1024,
   });
   if (listed.status !== 0) throw new Error(`git ls-files failed: ${listed.stderr}`);
+  // The skills installed in an app are copies of the ones in packages/cli/skills (folders `marmeon-*`), which this scan does not read; they name a page
+  // as the file in `node_modules/marmeon/docs/` the person opens.
   const wanted = (path: string) =>
-    /^packages\/[^/]+\/src\/.+\.tsx?$/.test(path)
+    /^apps\/[^/]+\/\.(?:claude|agents)\/skills\/marmeon-[^/]+\//.test(path)
+      ? false
+      : /^packages\/[^/]+\/src\/.+\.tsx?$/.test(path)
       ? !/\.(?:test|type-test)\.tsx?$|__fixtures__\//.test(path)
       : /^(?:packages\/[^/]+\/stubs|packages\/create-marmeon\/template|apps\/web-app|apps\/blank-app)\//.test(path) ||
         /^(?:packages\/[^/]+\/)?README\.md$/.test(path);

@@ -126,6 +126,11 @@ is nothing to check.
 pnpm marmeon agents:install --check
 ```
 
+`marmeon check` looks at the same files: where skills or the entry are installed, a skill that is missing or out of date, or an
+existing entry that is out of date, is a warning with the fix `marmeon agents:install`, and nothing is written. An app that installed nothing gets no message. The block
+of `AGENTS.md` names the command in one line, so an agent that reads the file learns of the skills; `marmeon agents:sync` brings
+that line into an existing file. What the server offers an agent is on [the MCP server](mcp.md).
+
 ### Other clients
 
 The command writes the files of Claude Code. For other clients, add the server by hand: the command is `node` and the argument list is

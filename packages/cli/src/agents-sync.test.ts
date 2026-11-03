@@ -245,7 +245,7 @@ describe('marmeon agents:sync', () => {
 describe('the block', () => {
   it('names only commands that exist', () => {
     const named = [...AGENTS_BLOCK.matchAll(/`marmeon ([a-z][a-z0-9:-]*)/g)].map((match) => match[1]!);
-    expect(named).toEqual(expect.arrayContaining(['check', 'migrate', 'route:types', 'list', 'agents:sync']));
+    expect(named).toEqual(expect.arrayContaining(['check', 'migrate', 'route:types', 'list', 'agents:sync', 'agents:install', 'mcp']));
     const known = commandNames();
     expect(named.filter((name) => !known.has(name))).toEqual([]);
   });

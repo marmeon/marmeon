@@ -409,12 +409,20 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
 
 | `AGENTS.md` | Result |
 | --- | --- |
-| Not there | `skipped`, with the reason "no AGENTS.md". |
+| Not there | `skipped`, with the reason "no AGENTS.md" (`passed` when skills or the entry are installed and current). |
 | Its block is current | `passed`. |
 | Its block is out of date, or it has none | `warning`, with the fix `marmeon agents:sync`. |
 | Its marks are broken (a mark without its partner, two blocks) | `warning` with the reason; fix the marks, then run `marmeon agents:sync`. |
 | Its marks are of a newer version than your `marmeon` | `warning` that says to update `marmeon`. |
 | A link that leads nowhere or out of the app, or something that is no file | `warning`; it is not read. |
+
+The check also looks at what `marmeon agents:install` wrote (see [skills and the MCP server](agents.md#skills-and-the-mcp-server)),
+but only where something is installed: a skill with the mark of marmeon in `.claude/skills/` or `.agents/skills/`, or an entry
+`marmeon` in `.mcp.json`. A skill that is missing or out of date, or an existing entry that is out of date, is a `warning` with the fix
+`marmeon agents:install` (an entry removed next to installed skills is taken as a choice, as with `--no-mcp`); a
+link that leads out of the app, or a `SKILL.md` that is not marmeon's, is a `warning` with the reason and no fix. The check reads no
+target of a link out of the app and never writes. An app with `.mcp.json` of its own and no skills gets no message, and an app
+with skills but no `AGENTS.md` is checked too.
 
 To keep the warning out of the report, run `marmeon agents:sync` and commit the result, or leave the check out with
 `--skip=agents`. To make CI fail on a block that is out of date, use `marmeon agents:sync --check`. See

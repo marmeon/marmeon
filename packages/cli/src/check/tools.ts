@@ -2,6 +2,8 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { AGENTS_BLOCK } from '../agents/block.ts';
 import { exists, unsafe } from '../agents/files.ts';
+import { planInstall } from '../agents/install.ts';
+import { shippedSkills } from '../agents/skills.ts';
 import { syncAgents } from '../agents/sync.ts';
 import { findBin, runNode, typecheckApp } from '../typecheck.ts';
 import { internalImports } from './internal-imports.ts';
@@ -112,31 +114,72 @@ export function internalImportsCheck(root: string): CheckRun {
 }
 
 /**
- * Whether the block of `AGENTS.md` is the one the installed `marmeon` writes. Only warns, and writes nothing: the file belongs to
- * the app, so no `AGENTS.md` is `skipped`, and a block that is missing, out of date or marked wrongly is a warning with the command
- * that fixes it. A link that leads nowhere or out of the app is not followed. See docs/check.md#the-agents-block.
+ * Whether the block of `AGENTS.md` is the one the installed `marmeon` writes, and whether the skills and the entry in `.mcp.json`
+ * that `agents:install` wrote are current. Only warns, and writes nothing: the files belong to the app, so no `AGENTS.md` without a
+ * finding is `skipped`, and a block that is missing, out of date or marked wrongly is a warning with the command that fixes
+ * it. A link that leads nowhere or out of the app is not followed. See docs/check.md#the-agents-block.
  */
 export function agentsCheck(root: string): CheckRun {
   const started = performance.now();
   const ms = () => Math.round(performance.now() - started);
+  const install = installProblems(root);
+  const problems = [...blockProblems(root), ...install.problems];
+  if (problems.length === 0 && !install.installed && !exists(join(root, 'AGENTS.md'))) return { report: unrunReport('agents', 'skipped', 'no AGENTS.md', ms()) };
+  return { report: reportOf('agents', problems, ms()) };
+}
+
+/** No `AGENTS.md` is the app's choice, not a finding. */
+function blockProblems(root: string): CheckProblem[] {
   const file = join(root, 'AGENTS.md');
   const docs = 'docs/agents.md#keeping-the-block-current';
-  const warn = (message: string, fix?: string): CheckRun => ({
-    report: reportOf('agents', [{ severity: 'warning', message, file: 'AGENTS.md', ...(fix === undefined ? {} : { fix }), docs }], ms()),
-  });
+  const warn = (message: string, fix?: string): CheckProblem[] => [{ severity: 'warning', message, file: 'AGENTS.md', ...(fix === undefined ? {} : { fix }), docs }];
   try {
-    if (!exists(file)) return { report: unrunReport('agents', 'skipped', 'no AGENTS.md', ms()) };
+    if (!exists(file)) return [];
     const problem = unsafe(root, file);
     if (problem !== undefined) return warn(problem.replace(/ Nothing was written\.$/, ' It was not read.'));
     const result = syncAgents(readFileSync(realpathSync(file), 'utf8'), AGENTS_BLOCK);
     if (!result.ok) return warn(`${result.error.message}`);
     const { change } = result.value;
-    if (change === 'unchanged') return { report: reportOf('agents', [], ms()) };
+    if (change === 'unchanged') return [];
     return warn(
       change === 'appended' ? 'AGENTS.md has no marmeon block — marmeon agents:sync' : "AGENTS.md's marmeon block is out of date — marmeon agents:sync",
       'marmeon agents:sync',
     );
   } catch (error) {
     return warn(`AGENTS.md could not be read: ${plainReason(error, root)}`);
+  }
+}
+
+/**
+ * What `agents:install` would change, judged only where something is installed: a skill with the mark or an entry `marmeon` in
+ * `.mcp.json`. The plan reads no target of a link out of the app, and nothing is written.
+ */
+function installProblems(root: string): { problems: CheckProblem[]; installed: boolean } {
+  const docs = 'docs/agents.md#skills-and-the-mcp-server';
+  const none = { problems: [], installed: false };
+  try {
+    // With no skills to write the plan cannot refuse: it only tells what is installed, so an app that installed nothing is never refused.
+    const found = planInstall(root, [], { shared: false, mcp: false });
+    if (!found.ok || (!found.value.skillsInstalled && !found.value.mcpInstalled)) return none;
+    const { skillsInstalled } = found.value;
+    const planned = planInstall(root, skillsInstalled ? shippedSkills() : [], { shared: false, mcp: true });
+    if (!planned.ok) {
+      const message = planned.error.message.replace(/ Nothing was written\.$/, ' It was not changed.');
+      return { installed: true, problems: [{ severity: 'warning', message, ...(planned.error.path === undefined ? {} : { file: planned.error.path }), docs }] };
+    }
+    return {
+      installed: true,
+      problems: planned.value.steps
+        .filter((step) => step.change !== 'unchanged')
+        .map((step): CheckProblem => ({
+          severity: 'warning',
+          message: `${step.path} is ${step.change === 'create' ? 'missing' : 'out of date'} — marmeon agents:install`,
+          file: step.path,
+          fix: 'marmeon agents:install',
+          docs,
+        })),
+    };
+  } catch (error) {
+    return { installed: true, problems: [{ severity: 'warning', message: `The installed skills could not be read: ${plainReason(error, root)}`, docs }] };
   }
 }

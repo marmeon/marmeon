@@ -36,6 +36,8 @@ export interface InstallPlan {
 export interface InstallRefusal {
   readonly kind: 'install';
   readonly message: string;
+  /** The file of the app the refusal is about, relative with `/`; absent when it concerns no single file. */
+  readonly path?: string;
 }
 
 export interface InstallOptions {
@@ -52,7 +54,7 @@ export interface InstallOptions {
  * `.agents/skills/` with `shared`, else to `.claude/skills/`. See docs/agents.md#skills-and-the-mcp-server.
  */
 export function planInstall(root: string, shipped: readonly { name: string; text: string }[], options: InstallOptions): Result<InstallPlan, InstallRefusal> {
-  const refuse = (message: string) => err({ kind: 'install' as const, message });
+  const refuse = (message: string, path?: string) => err({ kind: 'install' as const, message, ...(path === undefined ? {} : { path }) });
   const warnings: string[] = [];
 
   for (const skill of shipped) {
@@ -84,15 +86,15 @@ export function planInstall(root: string, shipped: readonly { name: string; text
       const path = `${folder}/${skill.name}/SKILL.md`;
       const file = join(root, ...path.split('/'));
       const problem = unsafePath(root, file);
-      if (problem) return refuse(problem);
+      if (problem) return refuse(problem, path);
       const current = readIfThere(file);
       if (current === undefined) {
         steps.push({ kind: 'skill', path, text: skill.text, change: 'create' });
         continue;
       }
       const mark = skillMark(current);
-      if (typeof mark === 'number' && mark > SKILL_FORMAT) return refuse(`${path} is marked with format ${mark}, newer than this marmeon writes. Update marmeon. Nothing was written.`);
-      if (typeof mark !== 'number') return refuse(`${path} is not marmeon's (it has no valid mark). Rename your folder or remove it. Nothing was written.`);
+      if (typeof mark === 'number' && mark > SKILL_FORMAT) return refuse(`${path} is marked with format ${mark}, newer than this marmeon writes. Update marmeon. Nothing was written.`, path);
+      if (typeof mark !== 'number') return refuse(`${path} is not marmeon's (it has no valid mark). Rename your folder or remove it. Nothing was written.`, path);
       steps.push({ kind: 'skill', path, text: skill.text, change: normalize(current) === normalize(skill.text) ? 'unchanged' : 'update' });
     }
   }
@@ -104,9 +106,9 @@ export function planInstall(root: string, shipped: readonly { name: string; text
   const mcpText = mcpProblem ? undefined : readIfThere(mcpFile);
   const mcpInstalled = mcpText !== undefined && hasMcpEntry(mcpText);
   if (options.mcp && (mcpInstalled || !skillsInstalled)) {
-    if (mcpProblem) return refuse(mcpProblem);
+    if (mcpProblem) return refuse(mcpProblem, MCP_FILE);
     const merged = mergeMcpJson(mcpText);
-    if (!merged.ok) return refuse(merged.error.message);
+    if (!merged.ok) return refuse(merged.error.message, MCP_FILE);
     steps.push({
       kind: 'mcp',
       path: MCP_FILE,
