@@ -108,6 +108,29 @@ describe('modules:list --json', () => {
     expect((document as unknown as { warnings: string[] }).warnings).toEqual(['outside: its migrations folder lies outside the app root']);
   });
 
+  it('treats a link inside the app that leads out of it as outside, and a folder it cannot resolve too', async () => {
+    const base = realpathSync(tempDir('marmeon-modules-list-link-'));
+    const appRoot = join(base, 'app');
+    mkdirSync(join(appRoot, 'modules'), { recursive: true });
+    mkdirSync(join(base, 'elsewhere'));
+    symlinkSync(join(base, 'elsewhere'), join(appRoot, 'modules/linked'), 'dir');
+    symlinkSync(join(base, 'missing'), join(appRoot, 'modules/dangling'), 'dir');
+    mkdirSync(join(appRoot, 'modules/own'));
+    const modules = [
+      defineModule({ name: 'linked', ...({ migrations: 'modules/linked' } as object) }),
+      defineModule({ name: 'dangling', ...({ migrations: 'modules/dangling' } as object) }),
+      defineModule({ name: 'own', ...({ migrations: 'modules/own' } as object) }),
+      defineModule({ name: 'later', ...({ migrations: 'modules/not-yet' } as object) }),
+    ];
+    const app = await createApplication({ root: appRoot, discover: false, modules } as never, { env, phase: 'build' });
+    const lines: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((text) => (lines.push(String(text)), true));
+    new ModulesListCommand(app, app.container.make(EventRegistry)).handle({ args: [], options: { json: true }, output: new Output(), root: appRoot } as never);
+    const document = JSON.parse(lines.join('')) as { modules: { name: string; migrations: string | null }[]; warnings: string[] };
+    expect(document.modules.map((module) => [module.name, module.migrations])).toEqual([['linked', null], ['dangling', null], ['own', 'modules/own'], ['later', 'modules/not-yet']]);
+    expect(document.warnings).toEqual(['linked: its migrations folder lies outside the app root', 'dangling: its migrations folder lies outside the app root']);
+  });
+
   it('warns for no module that simply has no migrations folder', async () => {
     const { command } = await build({ modules: [defineModule({ name: 'plain' })] });
     expect((JSON.parse(run(command, { json: true })) as { warnings: string[] }).warnings).toEqual([]);
@@ -150,6 +173,11 @@ describe('modules:list as text', () => {
     expect(out).not.toMatch(/quiet\n {2}providers/);
     expect(out).toContain('NoteCreated → IndexNote (queued)');
     expect(out).toContain('NoteDeleted → AuditAll');
+  });
+
+  it('starts with the providers of the app', async () => {
+    const { command } = await build({ providers: [AppProvider], modules: [notes] });
+    expect(run(command)).toMatch(/^App providers: AppProvider\n\nnotes\n/);
   });
 
   it('points to make:module when there is none', async () => {

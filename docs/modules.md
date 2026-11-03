@@ -185,6 +185,9 @@ pnpm marmeon modules:list
 ```
 
 ```text
+Packages: @marmeon/http, @marmeon/database
+App providers: AppServiceProvider
+
 notes
   providers: NotesServiceProvider
   commands: notes:prune
@@ -232,8 +235,9 @@ yours. It reads only the fields it prints. Configuration, `.env` and everything 
 - `packages` are the installed packages whose providers were discovered, in the order they register. Their providers are not
   listed one by one.
 - `modules` keep the order of `modules: [...]`. Every list is there, empty when the module has nothing. `migrations` is the
-  folder relative to the app root, or `null`. With a warning in `warnings` (`<module>: its migrations folder lies outside the app
-  root`), the folder is elsewhere, in a monorepo for one; without a warning, the module has no folder.
+  folder relative to the app root, or `null`. With a warning in `warnings`, the folder is elsewhere, in a monorepo for one, and `null` stands for it: `<module>: its migrations
+  folder lies outside the app root` (also when a link inside the app leads out of it), or `<module>: its migrations folder is not a
+  path on this machine` (a URL that is no `file:` URL). Without a warning, the module has no folder.
 - `events` are sorted by `event`, the class name; `name` is its `static event` when that is a string, else `null`. The listeners
   keep the order they were registered in. `defined` says where a listener comes from: `app` (the `listeners` of
   `defineApplication`), `module` (the `listeners` of a module, `module` names it) or `provider` (a provider registered it in

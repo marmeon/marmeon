@@ -1,4 +1,5 @@
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Application, EventRegistry, type EventClass, type ListenerBinding, type ModuleDefinition } from '@marmeon/core';
 import { isQueuedListener } from '@marmeon/core/internal';
@@ -88,6 +89,9 @@ export class ModulesListCommand {
       return;
     }
     for (const warning of warnings) output.warn(warning);
+    if (packages.length > 0) output.line(`Packages: ${packages.join(', ')}`);
+    if (app.providers.length > 0) output.line(`App providers: ${app.providers.join(', ')}`);
+    if (packages.length > 0 || app.providers.length > 0) output.line();
     if (modules.length === 0) {
       output.line('The app has no modules. Create one with `marmeon make:module <name>`.');
     }
@@ -160,8 +164,29 @@ function migrationsFolder(root: string, value: unknown): { folder: string | null
     return { folder: null, problem: 'its migrations folder is not a path on this machine' };
   }
   const folder = relative(root, path);
-  if (folder === '' || folder === '..' || folder.startsWith(`..${sep}`) || isAbsolute(folder)) {
-    return { folder: null, problem: 'its migrations folder lies outside the app root' };
-  }
+  if (!below(folder) || !realBelow(root, path)) return { folder: null, problem: 'its migrations folder lies outside the app root' };
   return { folder: folder.split(sep).join('/') };
+}
+
+/** Whether `relativePath` stays below its base. */
+function below(relativePath: string): boolean {
+  return relativePath !== '' && relativePath !== '..' && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+}
+
+/** The real path of `path`, through its nearest ancestor that exists when it is not there yet; throws for a link that leads nowhere. */
+function real(path: string): string {
+  if (lstatSync(path, { throwIfNoEntry: false }) === undefined) {
+    const parent = dirname(path);
+    return parent === path ? path : join(real(parent), basename(path));
+  }
+  return realpathSync.native(path);
+}
+
+/** Whether the real path of `path` lies below the real path of `root` — a link inside the app that leads out does not. A path that cannot be resolved is outside. */
+function realBelow(root: string, path: string): boolean {
+  try {
+    return below(relative(real(root), real(path)));
+  } catch {
+    return false;
+  }
 }
