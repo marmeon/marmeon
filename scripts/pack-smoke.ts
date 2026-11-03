@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps, `agents:install` and `marmeon mcp` over stdio.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -29,6 +29,20 @@ export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL ?? 'redis://127.0.0.1:56379';
 /** What a missing AWS SDK says (optional peers, the exact command with the tested major). */
 const S3_COMMAND = 'pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3';
+/** A preload that records the URL of every module a process loads in `<name>.json` of `dir`: the `NODE_OPTIONS` to set and the list after the exit. */
+function recordLoads(dir: string, name: string): { option: string; read: () => string[] | undefined } {
+  const preload = join(dir, `${name}.mjs`);
+  const file = join(dir, `${name}.json`);
+  writeFileSync(
+    preload,
+    "import { registerHooks } from 'node:module';\nimport { writeFileSync } from 'node:fs';\nconst urls = [];\n" +
+      'registerHooks({ load(url, context, next) { urls.push(url); return next(url, context); } });\n' +
+      `process.on('exit', () => writeFileSync(${JSON.stringify(file)}, JSON.stringify(urls)));\n`,
+  );
+  rmSync(file, { force: true });
+  return { option: `--import=${pathToFileURL(preload).href}`, read: () => (existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as string[]) : undefined) };
+}
+
 /** What create-marmeon says without a directory and without a terminal. */
 const NO_DIRECTORY = 'create-marmeon needs a directory: create-marmeon <dir> [--yes]';
 
@@ -323,19 +337,11 @@ class Smoke {
    */
   async serve(path: string, check?: (base: string, output: () => string) => Promise<void>, env: NodeJS.ProcessEnv = {}): Promise<void> {
     const port = await freePort();
-    const loads = join(dirname(this.app), 'loads.mjs');
-    const loaded = join(dirname(this.app), 'loaded.json');
-    writeFileSync(
-      loads,
-      "import { registerHooks } from 'node:module';\nimport { writeFileSync } from 'node:fs';\nconst urls = [];\n" +
-        'registerHooks({ load(url, context, next) { urls.push(url); return next(url, context); } });\n' +
-        `process.on('exit', () => writeFileSync(${JSON.stringify(loaded)}, JSON.stringify(urls)));\n`,
-    );
-    rmSync(loaded, { force: true });
+    const loads = recordLoads(dirname(this.app), 'loads');
     const child = spawn(join(this.app, 'node_modules/.bin/marmeon'), ['start'], {
       cwd: this.app,
       // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example.
-      env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}`, ...env },
+      env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: loads.option, ...env },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -362,7 +368,7 @@ class Smoke {
               throw new SmokeError(`marmeon start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
             }
             await check?.(`http://127.0.0.1:${port}`, () => output);
-            await this.#checkLoads(child, exited, loaded, () => output);
+            await this.#checkLoads(child, exited, loads.read, () => output);
             return;
           }
           last = `${response.status}`;
@@ -408,14 +414,79 @@ class Smoke {
   }
 
   /** After SIGTERM: what the start loaded — no oxc-parser, no pino-pretty — and no "build artifacts" warning. */
-  async #checkLoads(child: ChildProcess, exited: Promise<void>, loaded: string, output: () => string): Promise<void> {
+  async #checkLoads(child: ChildProcess, exited: Promise<void>, read: () => string[] | undefined, output: () => string): Promise<void> {
     this.#stop(child);
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
-    if (!existsSync(loaded)) throw new SmokeError(`marmeon start wrote no module list (did it exit cleanly?):\n${output()}`);
-    const urls = JSON.parse(readFileSync(loaded, 'utf8')) as string[];
+    const urls = read();
+    if (!urls) throw new SmokeError(`marmeon start wrote no module list (did it exit cleanly?):\n${output()}`);
     const unwanted = ['oxc-parser', 'pino-pretty'].filter((name) => urls.some((url) => url.includes(`/node_modules/${name}/`)));
     if (unwanted.length > 0) throw new SmokeError(`marmeon start loaded ${unwanted.join(' and ')} (${urls.length} modules) — the injection lists of marmeon build and JSON logs should keep them out.`);
     if (output().includes('Build artifacts are')) throw new SmokeError(`marmeon start found the build artifacts stale or missing:\n${output()}`);
+  }
+
+  /**
+   * `marmeon mcp` of the app as a client runs it: JSON-RPC line by line over stdin and stdout, each request after the answer to
+   * the one before, then stdin closed. The child is one of this app's (`stopAll()` ends it); it is killed when `MCP_LIMIT` passes,
+   * and when it does not end within `MCP_EXIT` of the closed stdin. Rejects when the child ends before it answered.
+   */
+  async mcp(env: NodeJS.ProcessEnv, messages: readonly { id?: number; method: string; params?: object }[]): Promise<{ replies: Map<number, any>; code: number | null; stdout: string; stderr: string; closedAfter: number }> {
+    const child = spawn(process.execPath, [join(this.app, 'node_modules/marmeon/bin/marmeon.js'), 'mcp'], { cwd: this.app, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    this.#children.add(child);
+    let stdout = '';
+    let stderr = '';
+    let lines = 0;
+    let timedOut = false;
+    let closedAt: number | undefined;
+    const replies = new Map<number, any>();
+    const waiting = new Map<number, { resolve: () => void; reject: (error: Error) => void }>();
+    const ended = new Promise<number | null>((resolve) => {
+      child.once('close', (code) => {
+        for (const { reject } of waiting.values()) reject(new SmokeError(`marmeon mcp ended (${code ?? child.signalCode}) before it answered${timedOut ? `: it did not end within ${MCP_LIMIT / 1000} s and was killed` : ''}:\n${stdout}${stderr}`));
+        waiting.clear();
+        resolve(child.signalCode === null ? code : null);
+      });
+    });
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+      stdout += chunk;
+      const complete = stdout.split('\n');
+      complete.pop();
+      for (const line of complete.slice(lines)) {
+        lines++;
+        try {
+          const reply = JSON.parse(line) as { id?: number };
+          if (typeof reply.id === 'number') {
+            replies.set(reply.id, reply);
+            waiting.get(reply.id)?.resolve();
+          }
+        } catch {
+          // A line that is no message stays in stdout; the caller reads it.
+        }
+      }
+    });
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+    child.stdin.on('error', () => undefined); // a child that ended is told by `ended`
+    const limit = setTimeout(() => {
+      timedOut = true;
+      this.#stop(child, 'SIGKILL');
+    }, MCP_LIMIT);
+    try {
+      for (const message of messages) {
+        if (child.exitCode !== null || child.signalCode !== null) break;
+        const answer = message.id === undefined ? undefined : new Promise<void>((resolve, reject) => waiting.set(message.id!, { resolve, reject }));
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+        await answer;
+      }
+      closedAt = performance.now();
+      child.stdin.end();
+      const exit = setTimeout(() => this.#stop(child, 'SIGKILL'), MCP_EXIT);
+      const code = await ended;
+      clearTimeout(exit);
+      return { replies, code, stdout, stderr, closedAfter: performance.now() - closedAt };
+    } finally {
+      clearTimeout(limit);
+      this.#stop(child, 'SIGKILL');
+      this.#children.delete(child);
+    }
   }
 
   #stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
@@ -588,6 +659,58 @@ async function checkRedisDrivers(base: string, prefix: string): Promise<void> {
   if (!keys.some((key) => key.startsWith(`${prefix}session:`))) throw new SmokeError(`No session in Redis under ${prefix} — the keys: ${keys.join(', ') || 'none'}`);
 }
 
+/** The most a `marmeon mcp` of the smoke run may live: past it the process is killed, so a hanging server never holds the run. */
+const MCP_LIMIT = 60_000;
+/** What the server has to take to end after its stdin closed. */
+const MCP_EXIT = 5_000;
+/** The tools `marmeon mcp` offers. */
+const MCP_TOOLS = ['check', 'devtools_entries', 'docs_read', 'docs_search', 'last_error', 'routes', 'schema'];
+/**
+ * The agent kit in the installed app: `agents:install` writes the skills and `.mcp.json` and `--check` passes; `marmeon mcp`
+ * answers over stdio in development (the SDK loaded only there), and in production it stops with exit 1 and nothing on stdout.
+ */
+async function checkAgents(smoke: Smoke): Promise<void> {
+  const app = smoke.app;
+  smoke.marmeon('agents:install');
+  smoke.marmeon('agents:install', '--check');
+  const skill = readFileSync(join(app, '.claude/skills/marmeon-migration/SKILL.md'), 'utf8');
+  if (!/^\s+marmeon-skill: "1"$/m.test(skill)) throw new SmokeError('.claude/skills/marmeon-migration/SKILL.md has no marmeon-skill mark.');
+  const mcp = JSON.parse(readFileSync(join(app, '.mcp.json'), 'utf8')) as { mcpServers?: Record<string, unknown> };
+  if (!mcp.mcpServers?.marmeon) throw new SmokeError('.mcp.json has no marmeon entry.');
+
+  // Another command does not load the SDK.
+  const loads = recordLoads(dirname(app), 'loads-route-list');
+  smoke.run(join(app, 'node_modules/.bin/marmeon'), ['route:list'], { NODE_OPTIONS: loads.option });
+  const urls = loads.read() ?? [];
+  if (!urls.some((url) => url.includes('/node_modules/marmeon/'))) throw new SmokeError(`the module list of marmeon route:list holds no module of the command (${urls.length} modules).`);
+  const sdk = urls.filter((url) => url.includes('@modelcontextprotocol'));
+  if (sdk.length > 0) throw new SmokeError(`marmeon route:list loaded the MCP SDK:\n${sdk.join('\n')}`);
+
+  // NODE_ENV comes from the app's .env (cleanEnvironment() sets none).
+  const session = await smoke.mcp(smoke.env, [
+    { id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'pack-smoke', version: '1' } } },
+    { method: 'notifications/initialized' },
+    { id: 2, method: 'tools/list' },
+    { id: 3, method: 'tools/call', params: { name: 'routes', arguments: {} } },
+    { id: 4, method: 'tools/call', params: { name: 'docs_search', arguments: { query: 'migration' } } },
+  ]);
+  const said = `${session.stdout}${session.stderr}`;
+  const version = session.replies.get(1)?.result?.protocolVersion;
+  if (!(version ?? '').startsWith('2025-')) throw new SmokeError(`marmeon mcp answered initialize with protocol version ${version}:\n${said}`);
+  const names = ((session.replies.get(2)?.result?.tools ?? []) as { name: string }[]).map((tool) => tool.name).sort();
+  if (names.join() !== MCP_TOOLS.join()) throw new SmokeError(`marmeon mcp lists ${names.join(', ')}, expected ${MCP_TOOLS.join(', ')}.`);
+  // The whole reply in the message: a JSON-RPC error has no `result`.
+  const routes = session.replies.get(3)?.result;
+  if (routes?.isError || !JSON.stringify(routes?.structuredContent ?? null).includes('"/"')) throw new SmokeError(`the routes tool does not list "/":\n${JSON.stringify(session.replies.get(3) ?? null)}`);
+  const found = session.replies.get(4)?.result;
+  if (found?.isError || (found?.structuredContent?.results?.length ?? 0) < 1) throw new SmokeError(`docs_search for "migration" found nothing:\n${JSON.stringify(session.replies.get(4) ?? null)}`);
+  if (session.code !== 0 || session.closedAfter > MCP_EXIT) throw new SmokeError(`marmeon mcp should end with 0 within ${MCP_EXIT / 1000} s after stdin closed, it ended with ${session.code} after ${Math.round(session.closedAfter)} ms:\n${said}`);
+
+  // Production: refused before the SDK, nothing on stdout (stdout is the protocol's).
+  const production = await smoke.mcp({ ...smoke.env, NODE_ENV: 'production' }, []);
+  if (production.code !== 1 || production.stdout !== '') throw new SmokeError(`marmeon mcp with NODE_ENV=production should end with 1 and an empty stdout, it ended with ${production.code}:\n${production.stdout}${production.stderr}`);
+}
+
 async function main(): Promise<number> {
   const { values } = parseArgs({ options: { keep: { type: 'boolean' }, offline: { type: 'boolean' }, 'store-dir': { type: 'string' } } });
   const started = performance.now();
@@ -653,6 +776,7 @@ async function main(): Promise<number> {
       const page = pnpmApp.marmeon('docs', 'routing');
       if (!page.startsWith('# Routing')) throw new SmokeError(`marmeon docs routing should print the page and begin with "# Routing":\n${page.slice(0, 300)}`);
     });
+    await pnpmApp.step('marmeon agents:install (+ --check), marmeon mcp over stdio (initialize, tools, routes, docs_search, exit 0), production → exit 1', () => checkAgents(pnpmApp));
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
       if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);
