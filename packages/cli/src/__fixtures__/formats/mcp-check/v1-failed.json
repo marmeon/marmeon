@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "exitCode": 1,
+  "report": {
+    "format": 1,
+    "ok": false,
+    "exitCode": 1,
+    "checks": [
+      {
+        "name": "internal-imports",
+        "status": "failed",
+        "reason": null,
+        "problems": [
+          { "severity": "error", "file": "modules/system/lib/bad.ts", "line": 1, "column": 8, "rule": "marmeon(no-internal-imports)", "docs": "docs/check.md#imports-of-framework-internals" },
+          { "severity": "error", "file": "modules/system/lib/bad.ts", "line": 2, "column": 8, "rule": "marmeon(no-internal-imports)", "docs": "docs/check.md#imports-of-framework-internals" }
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "truncated": false,
+  "warnings": []
+}

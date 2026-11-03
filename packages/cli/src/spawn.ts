@@ -76,6 +76,23 @@ export interface JsonRun {
 /** How long a child that was asked to end (SIGTERM) has before it is killed. */
 const GRACE_MS = 5_000;
 
+/** How long the pipes of a child that exited may stay open (a grandchild holds them) before the group is killed and the result given. */
+const DRAIN_MS = 2_000;
+
+/** Whether a child gets a process group of its own, so that a signal reaches the whole tree. Windows has no such group, and `detached` there opens a console window. */
+const OWN_GROUP = process.platform !== 'win32';
+
+/** Sends `signal` to the whole process group of `child` (POSIX) or to the child (Windows); a group that is gone is no error. */
+function signalTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+  if (child.pid === undefined) return;
+  try {
+    if (OWN_GROUP) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch {
+    // The group ended in the meantime.
+  }
+}
+
 const STDERR_TAIL_BYTES = 4096;
 
 /** What is kept of stderr before it is redacted: more than is shown, so a `KEY=value` the cut would split is whole once the partial line is dropped. */
@@ -101,32 +118,69 @@ export function stderrTailOf(window: Buffer, truncated: boolean): string {
  * `marmeon <args>` in `root` as a new process, whose stdout is one JSON document (`--json`). No shell, nothing on stdin, both
  * outputs piped; the arguments are an array, never a string. Ends the child (SIGTERM, SIGKILL after a grace period) after
  * `timeoutMs`, when `signal` aborts, and when it prints more than `maxStdoutBytes`.
+ *
+ * The child leads a process group of its own (POSIX) and the signals go to the group: the launcher starts a second Node process
+ * that does not pass on SIGKILL, and `tsc` or a tool the app starts must not outlive the call. The result is given even when a
+ * process of the group keeps the pipes open: the group is killed and the pipes are closed. `documentCodes` are the exit codes
+ * whose output is read as a document (default: 0). `launcher` replaces `bin/marmeon.js`, for tests.
  */
-export function runMarmeonJson(root: string, args: readonly string[], { timeoutMs, signal, maxStdoutBytes }: { readonly timeoutMs: number; readonly signal?: AbortSignal; readonly maxStdoutBytes: number }): Promise<JsonRun> {
+export function runMarmeonJson(
+  root: string,
+  args: readonly string[],
+  { timeoutMs, signal, maxStdoutBytes, documentCodes = [0], launcher = LAUNCHER }: { readonly timeoutMs: number; readonly signal?: AbortSignal; readonly maxStdoutBytes: number; readonly documentCodes?: readonly number[]; readonly launcher?: string },
+): Promise<JsonRun> {
   const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...inherited } = process.env;
   // A call that was cancelled while it waited in the queue never starts the app.
   if (signal?.aborted) return Promise.resolve({ code: 1, document: undefined, stderrTail: '', timedOut: false, tooLarge: false });
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env: { ...inherited, [NO_INTERACTION_ENV]: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [launcher, ...args], { cwd: root, env: { ...inherited, [NO_INTERACTION_ENV]: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: OWN_GROUP });
     const out: Buffer[] = [];
     let outBytes = 0;
     let errWindow: Buffer = Buffer.alloc(0);
     let errCut = false;
     let timedOut = false;
     let tooLarge = false;
+    let done = false;
+    let exitCode: number | undefined;
     let killTimer: NodeJS.Timeout | undefined;
-    const stop = () => {
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      child.kill('SIGTERM');
-      killTimer ??= setTimeout(() => {
-        child.kill('SIGKILL');
-        // A process the launcher started may ignore SIGTERM and hold the pipes after the launcher is gone: without `close` the call would never end.
-        child.stdout.destroy();
-        child.stderr.destroy();
-        // A line the destroy cut short may end inside a token, below the length its pattern needs to be redacted.
-        errWindow = errWindow.subarray(0, errWindow.lastIndexOf(0x0a) + 1);
-      }, GRACE_MS);
+    let drainTimer: NodeJS.Timeout | undefined;
+    let abandonTimer: NodeJS.Timeout | undefined;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      clearTimeout(drainTimer);
+      clearTimeout(abandonTimer);
+      signal?.removeEventListener('abort', stop);
+      let document: unknown;
+      if (exitCode !== undefined && documentCodes.includes(exitCode) && !tooLarge && !timedOut) {
+        try {
+          document = JSON.parse(Buffer.concat(out).toString('utf8'));
+        } catch {
+          document = undefined;
+        }
+      }
+      resolve({ code: exitCode ?? 1, document, stderrTail: stderrTailOf(errWindow, errCut), timedOut, tooLarge });
     };
+    // Nothing of the group may keep a pipe: kill it, close the pipes and give the result.
+    const abandon = () => {
+      signalTree(child, 'SIGKILL');
+      child.stdout.destroy();
+      child.stderr.destroy();
+      // A line the destroy cut short may end inside a token, below the length its pattern needs to be redacted.
+      errWindow = errWindow.subarray(0, errWindow.lastIndexOf(0x0a) + 1);
+      finish();
+    };
+    function stop() {
+      // Also after the child itself exited: a process of its group may still run.
+      signalTree(child, 'SIGTERM');
+      killTimer ??= setTimeout(() => {
+        signalTree(child, 'SIGKILL');
+        // `close` follows the kill at once; if a process that left the group still holds a pipe it does not.
+        abandonTimer = setTimeout(abandon, DRAIN_MS);
+      }, GRACE_MS);
+    }
     const timer = setTimeout(() => {
       timedOut = true;
       stop();
@@ -150,24 +204,24 @@ export function runMarmeonJson(root: string, args: readonly string[], { timeoutM
       }
     });
     child.once('error', (error) => {
+      done = true;
       clearTimeout(timer);
       clearTimeout(killTimer);
+      clearTimeout(drainTimer);
+      clearTimeout(abandonTimer);
+      signal?.removeEventListener('abort', stop);
       reject(error);
     });
+    child.once('exit', (code, signalName) => {
+      exitCode = code ?? (signalName ? 1 : 0);
+      // The pipes are drained soon after the exit; a grandchild that keeps them open gets no more time than this.
+      drainTimer = setTimeout(abandon, DRAIN_MS);
+    });
     // `close`, not `exit`: the pipes are drained by then.
-    child.once('close', (code, signalName) => {
-      clearTimeout(timer);
-      clearTimeout(killTimer);
-      signal?.removeEventListener('abort', stop);
-      let document: unknown;
-      if (code === 0 && !tooLarge) {
-        try {
-          document = JSON.parse(Buffer.concat(out).toString('utf8'));
-        } catch {
-          document = undefined;
-        }
-      }
-      resolve({ code: code ?? (signalName ? 1 : 0), document, stderrTail: stderrTailOf(errWindow, errCut), timedOut, tooLarge });
+    child.once('close', () => {
+      // A process of the group that outlived the child is not left behind.
+      signalTree(child, 'SIGKILL');
+      finish();
     });
   });
 }

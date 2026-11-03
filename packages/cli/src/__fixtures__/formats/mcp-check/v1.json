@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "exitCode": 0,
+  "report": {
+    "format": 1,
+    "ok": true,
+    "exitCode": 0,
+    "checks": [
+      {
+        "name": "internal-imports",
+        "status": "passed",
+        "reason": null,
+        "problems": []
+      }
+    ],
+    "warnings": []
+  },
+  "truncated": false,
+  "warnings": []
+}
