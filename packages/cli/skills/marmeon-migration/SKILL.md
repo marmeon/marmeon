@@ -62,7 +62,10 @@ migration. A comment or a blank line counts as a change too.
 
 SQLite cannot change a column in place, so `migrate` refuses these plans before any step runs, with error D18:
 
-- `table.notNull()` and `table.nullable()` on an existing column. Add the column with a default instead.
+- `table.notNull()` and `table.nullable()` on an existing column. A new column that must be NOT NULL is added with a default and
+  filled in a `schema.data()` step (`docs/migrations.md#changing-the-data`). An existing column keeps its constraint on SQLite: add a
+  new column with the one you want, copy the values in a `schema.data()` step and retire the old column
+  (`docs/migrations.md#retiring-a-column`), or keep the change to Postgres and say so.
 - A column with a generated UUIDv7 default added by `alter()`. Create the table with it, or create a new table and copy the rows.
 - `table.check()`, `table.dropCheck()`, `table.oneOf()` and `table.foreign()` on an existing table or column.
 
