@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, and the entries of the [devtools](devtools.md), as data the agent can read.
+error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read.
 
 It is a tool for development and nothing else:
 
@@ -176,6 +176,27 @@ The call is stopped after 120 seconds.
 
 An app without `@marmeon/database` gets `"database": false` and empty lists, and nothing is started.
 
+### `app_overview`
+
+What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs, notifications, seeders and migration folder, each event with its listeners
+(and whether a listener is queued and where it is defined), and the scheduled tasks. It is for finding what exists before placing code. The tool starts [`marmeon modules:list --json`](modules.md#listing-the-modules), which registers the providers but boots
+none, and, when `@marmeon/scheduler` is installed, `marmeon schedule:list --json`, one after the other.
+
+| Input | |
+| --- | --- |
+| `module` | Only this module, by its exact name: 1 to 200 characters, no line break, not starting with `-`. The events keep only the listeners the module declares in `defineModule({ listeners })`; listeners of the app and of providers, the module's own provider included, are left out. `schedules` is `null`, and the app starts once. |
+
+The commands and their arguments are fixed; the filter applies to their documents, so no input ever reaches a command line. The tool copies the fields it knows into its answer and nothing else, so
+a configuration value, a `.env` value or a key a module carries for its own use is not in it.
+
+The document: `{ "format": 1, "packages": […], "app": { "providers": […] }, "modules": […], "events": […], "schedules": […], "warnings": [] }`. A module has `name`, `providers`, `commands`, `jobs`
+(`class` and `job`), `notifications`, `seeders` and `migrations` (a folder relative to the app, or `null`); an event has `event`, `name` and `listeners`; a schedule has `name`, `expression`, `timeZone` and
+`description`. Listeners that a provider adds in `boot()` are missing, as the page of the command says. Without `@marmeon/scheduler`, `schedules` is `[]`. An unknown `module` is an error that lists the module names.
+
+If `schedule:list` cannot answer (the scheduler does not start, it runs out of time, its document is of another format), the overview still comes: `schedules` is `null` and `warnings` says why, with the first line of
+the message of the command (secrets masked). A failing `modules:list` is an error that carries the end of its message and says to run `marmeon modules:list` in a terminal. A document of another `format` is an error that says to update `marmeon`.
+Each command is stopped after 120 seconds.
+
 ### `devtools_entries`
 
 The entries the [devtools](devtools.md) recorded while the app ran in development: requests, queries, jobs, mails, notifications, logs, exceptions, schedule
@@ -203,9 +224,9 @@ the message of the command. The call is stopped after 120 seconds. Like `routes`
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
 - Standard output carries protocol messages and nothing else. Whatever your app or a library prints there, `console.log` included, goes
   to standard error.
-- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `devtools_entries` reports the entries the devtools masked, and
+- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `app_overview` reports the names of what the modules define (no configuration, no values), `devtools_entries` reports the entries the devtools masked, and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `app_overview`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.

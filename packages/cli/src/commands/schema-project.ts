@@ -57,9 +57,10 @@ export class SchemaProjectCommand {
   }
 }
 
-export function hasPackage(root: string): boolean {
+/** Whether `name` (default `@marmeon/database`) is installed for the app at `root`, in its `node_modules` or one above. */
+export function hasPackage(root: string, name = '@marmeon/database'): boolean {
   for (let dir = resolve(root); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, 'node_modules', '@marmeon', 'database', 'package.json'))) return true;
+    if (existsSync(join(dir, 'node_modules', ...name.split('/'), 'package.json'))) return true;
     if (dirname(dir) === dir) return false;
   }
 }
