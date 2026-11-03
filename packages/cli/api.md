@@ -142,6 +142,11 @@ Types from other packages: none
 ## Commands
 
 ```ts
+// agents:install
+marmeon agents:install [--shared] [--no-mcp] [--check]
+--check (boolean)
+--no-mcp (boolean)
+--shared (boolean)
 // agents:sync
 marmeon agents:sync [--check]
 --check (boolean)
