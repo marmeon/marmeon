@@ -36,6 +36,18 @@ export function keepFromSharedCaches(response: Response): { response: Response; 
   return { response: editable, outcome: shared || cdn.length > 0 ? 'downgraded' : 'changed' };
 }
 
+/**
+ * Whether the headers keep an answer from shared caches by themselves: `no-store` or `private`. A qualified
+ * `private="x"` counts too — a caller deciding whether to share fails closed.
+ * @internal
+ */
+export function keptFromSharedCaches(headers: Headers): boolean {
+  return splitDirectives(headers.get('cache-control') ?? '').some((part) => {
+    const name = (part.split('=')[0] ?? '').trim().toLowerCase();
+    return name === 'no-store' || name === 'private';
+  });
+}
+
 /** Splits at the commas outside quotes: `private="a, b", max-age=60` is two directives. */
 function splitDirectives(value: string): string[] {
   const parts: string[] = [];

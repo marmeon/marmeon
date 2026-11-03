@@ -67,6 +67,7 @@ import {
   formatAccessProblems,
   isLiveValidation,
   keepFromSharedCaches,
+  keptFromSharedCaches,
   liveValidationFields,
   SharedCacheWarnings,
   UrlLocales,
@@ -306,6 +307,10 @@ export function createHttpKernel(
   };
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
+  /** Whether the answer to an in-process request belongs to a session — what a layer's base tells the page that renders it. */
+  const privateAnswers = new WeakMap<Request, boolean>();
+  /** Pages whose layer's base made their document private — for the warning's wording. */
+  const privateByBase = new WeakSet<Request>();
   /** Development only: each request's state (its parsed body) and route parameters, for the error page — and, while
    * something listens to `http.request`, the state and the page it answered with (the devtools). */
   const states = new WeakMap<Request, RequestState>();
@@ -379,8 +384,14 @@ export function createHttpKernel(
       const response = await app.fetch(request, { parent });
       if (response.status === 200 && speaksProtocol(response.headers)) {
         const page: unknown = await response.json();
-        if (isPageObject(page)) return { status: 'page', page: page as PageObject };
-        return { status: 'unavailable', httpStatus: 500 };
+        if (!isPageObject(page)) return { status: 'unavailable', httpStatus: 500 };
+        // `deepLink` waits for the base before the page's response exists, so this mark still reaches the headers: the
+        // page's document then carries what the base rendered for this visitor and must not be kept by a shared cache.
+        if (privateAnswers.get(request) === true || keptFromSharedCaches(response.headers)) {
+          parent.scope.make(CookieJar).markPrivate();
+          privateByBase.add(parent.request);
+        }
+        return { status: 'page', page: page as PageObject };
       }
       await response.body?.cancel();
       return { status: 'unavailable', httpStatus: response.status };
@@ -778,13 +789,16 @@ export function createHttpKernel(
     // An answer that sets a cookie is one person's: a shared cache that stored it would hand the cookie to the next visitor.
     // The same for the answer of a session, which carries its data (CSRF token, flash data, who is signed in) with or without a cookie.
     const session = state.cookies.markedPrivate;
+    if (parent) privateAnswers.set(request, session);
     if (session || final.headers.has('set-cookie')) {
       const kept = keepFromSharedCaches(final);
       final = kept.response;
       const route = matched.get(request);
       const label = route && (route.routeName ?? `${request.method} ${route.path}`);
       if (kept.outcome === 'downgraded' && route && label && sharedCacheWarnings.first(label)) {
-        logger.warn(`${request.method} ${route.path} asks shared caches to keep its answer, but the answer ${session ? 'belongs to a session' : 'sets a cookie'}, so it is sent as private. Serve the route without the session (a group without StartSession), or drop public.`);
+        logger.warn(privateByBase.has(request)
+          ? `${request.method} ${route.path} asks shared caches to keep its answer, but its layer's base belongs to a session or is private, so the deep link is sent as private. Drop public, or make the base's answer shareable.`
+          : `${request.method} ${route.path} asks shared caches to keep its answer, but the answer ${session ? 'belongs to a session' : 'sets a cookie'}, so it is sent as private. Serve the route without the session (a group without StartSession), or drop public.`);
       }
     }
 

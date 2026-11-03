@@ -1,6 +1,6 @@
 import { ConsoleLogger, createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, CloseLayerResult, HttpServiceProvider, isPageObject, view, type HttpContext, type PageObject } from '@marmeon/http';
+import { abort, cacheControl, CloseLayerResult, HttpServiceProvider, isPageObject, view, type HttpContext, type PageObject } from '@marmeon/http';
 import { MAX_LAYER_DEPTH } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
@@ -42,6 +42,13 @@ describe('createHttpKernel — layers', async () => {
       return next();
     }
   }
+  /** A base that belongs to a session, as `StartSession` makes it. */
+  class MarksPrivate {
+    handle(ctx: HttpContext, next: Next<{}>) {
+      ctx.cookies.markPrivate();
+      return next();
+    }
+  }
   const routes = openRoutes((Route) => {
     Route.get('/users/:user', (ctx: HttpContext<{}, { user: string }>) => {
       ran.push('profile');
@@ -77,6 +84,19 @@ describe('createHttpKernel — layers', async () => {
       ctx.cookies.set('written', 'yes');
       return view('users/Show', {});
     }).name('writes');
+    // A deep link is public; what decides whether it may be kept is its base.
+    Route.middleware(MarksPrivate).get('/session-base', () => view('users/Show', { name: 'Alice' })).name('session.base');
+    Route.middleware(cacheControl('public, s-maxage=600')).get('/session-base/note', () => view('admin/Note', {}).layer({ base: 'session.base' }));
+    Route.get('/open-base', () => view('users/Show', { name: 'Open' })).name('open.base');
+    Route.middleware(cacheControl('public, s-maxage=600')).get('/open-base/note', () => view('admin/Note', {}).layer({ base: 'open.base' }));
+    Route.middleware(cacheControl('private, max-age=60')).get('/own-private-base', () => view('users/Show', { name: 'Mine' })).name('own.private.base');
+    Route.middleware(cacheControl('public, s-maxage=600')).get('/own-private-base/note', () => view('admin/Note', {}).layer({ base: 'own.private.base' }));
+    Route.middleware(cacheControl('no-store')).get('/no-store-base', () => view('users/Show', { name: 'Hidden' })).name('no.store.base');
+    Route.middleware(cacheControl('public, s-maxage=600')).get('/no-store-base/note', () => view('admin/Note', {}).layer({ base: 'no.store.base' }));
+    Route.middleware(cacheControl('private="Set-Cookie"')).get('/qualified-base', () => view('users/Show', { name: 'Qualified' })).name('qualified.base');
+    Route.middleware(cacheControl('public, s-maxage=600')).get('/qualified-base/note', () => view('admin/Note', {}).layer({ base: 'qualified.base' }));
+    // A layer route that says nothing about caching, over a base of a session.
+    Route.get('/silent/note', () => view('admin/Note', {}).layer({ base: 'session.base' }));
     Route.get('/writes/note', () => view('admin/Note', {}).layer({ base: 'writes' })).name('writes.note');
   });
   const application = await createApplication({
@@ -160,6 +180,44 @@ describe('createHttpKernel — layers', async () => {
     const message = logged.find((line) => line.includes("in a layer's base")) ?? JSON.stringify(logged);
     expect(message, message).toMatch(/: a layer's base is read-only — .* Do that in the layer's own route or an action\./);
     expect(message).not.toContain('island');
+  });
+
+  it('a deep link whose base belongs to a session is private — never kept by a shared cache', async () => {
+    const response = await app.request('/session-base/note');
+    expect(documentPage(await response.text()).props).toMatchObject({ name: 'Alice' });
+    const control = response.headers.get('cache-control') ?? '';
+    expect(control).toContain('private');
+    expect(control).not.toContain('s-maxage');
+  });
+
+  it('a deep link whose base is unmarked stays public', async () => {
+    const response = await app.request('/open-base/note');
+    expect(response.headers.get('cache-control')).toBe('public, s-maxage=600');
+  });
+
+  it('a deep link whose base says private itself is private', async () => {
+    const response = await app.request('/own-private-base/note');
+    expect(documentPage(await response.text()).props).toMatchObject({ name: 'Mine' });
+    const control = response.headers.get('cache-control') ?? '';
+    expect(control).toContain('private');
+    expect(control).not.toContain('s-maxage');
+  });
+
+  it('a deep link whose base is no-store is private', async () => {
+    const control = (await app.request('/no-store-base/note')).headers.get('cache-control') ?? '';
+    expect(control).toContain('private');
+    expect(control).not.toContain('s-maxage');
+  });
+
+  it('a deep link whose base sends a qualified private="…" is private', async () => {
+    const control = (await app.request('/qualified-base/note')).headers.get('cache-control') ?? '';
+    expect(control).toContain('private');
+    expect(control).not.toContain('s-maxage');
+  });
+
+  it('a deep link without a Cache-Control of its own leaves private when its base belongs to a session', async () => {
+    const control = (await app.request('/silent/note')).headers.get('cache-control') ?? '';
+    expect(control).toContain('private');
   });
 
   it('closeLayer(): “close” to a layer’s request — a redirect to anything else (no JavaScript)', async () => {
