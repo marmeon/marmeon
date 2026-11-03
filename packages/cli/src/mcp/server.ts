@@ -54,6 +54,8 @@ function buildServer(root: string, queue: SerialQueue, ending: AbortSignal): Mcp
 }
 
 async function call(tool: McpTool, queue: SerialQueue, { input, root, signal }: { readonly input: Readonly<Record<string, unknown>>; readonly root: string; readonly signal: AbortSignal }) {
+  const refused = tool.admit?.();
+  if (refused) return refused;
   const run = () => tool.run(input, { root, signal });
   try {
     return await (tool.spawns ? queue.run(run) : run());

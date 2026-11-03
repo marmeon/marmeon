@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server and the documentation of the installed version, as data the agent can read.
+error of the development server, the documentation of the installed version and the report of `marmeon check`, as data the agent can read.
 
 It is a tool for development and nothing else:
 
@@ -111,6 +111,27 @@ The page is looked up by its slug in the index of the documentation and nowhere 
 that is not a regular file inside the package is not read. Without the documentation in the package (in the repository: before `pnpm build`)
 both tools answer with the error that `marmeon docs` prints.
 
+### `check`
+
+[`marmeon check --json`](check.md), run in a fresh process: the report of the type check, the lint, the scans of the source, the versions of
+the `@marmeon/*` packages, the checks that need the app, and the checks your packages add. It runs `tsc`, so it can take minutes; for a quick round
+ask for `only: ["types", "lint"]`.
+
+| Input | |
+| --- | --- |
+| `only` | Run only these checks: 1 to 20 names, each lower-case letters, digits and `-`, starting with a letter. |
+| `skip` | Leave these checks out, in the same form. |
+| `maxProblems` | Keep at most this many problems (and silenced problems) per check, 1 to 1000. Default 100. |
+
+A name is never passed on as free text: it must match the pattern, and `marmeon check` itself refuses a name it does not know with the list of the
+checks (an error that carries that message).
+
+The document: `{ "format": 1, "exitCode": 1, "report": {…}, "truncated": false, "warnings": [] }`. `report` is the document of
+[`check --json`](check.md#json-output) as it is, with the problems of each check cut to `maxProblems`; `truncated` says that one was cut.
+Exit code 0 (everything passed), 1 (a check found errors) and 3 (a check could not run) all answer with a report: read `exitCode` and `report`.
+A wrong call (exit code 2) is an error with the message of the command. The run is stopped after 10 minutes, and that is an error that says to run it in a terminal or
+to narrow it with `only`. A second `check` while one runs is refused at once: "A check is running; wait for its result."
+
 ## What it never does
 
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
@@ -118,9 +139,10 @@ both tools answer with the error that `marmeon docs` prints.
   to standard error.
 - It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`) starts a fresh `marmeon` process for it, with a
-  time limit of 120 seconds, no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, and a server that ends,
-  stop the process. A process the app's startup code starts, or, under the source launcher of the framework's own repository, a command that ignores SIGTERM, can outlive the kill; the call itself still ends.
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`) starts a fresh `marmeon` process for it, with a
+  time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
+  out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
+  and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
 - It writes nothing of its own.
 
 ## Results are data
