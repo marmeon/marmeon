@@ -4,7 +4,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, statSync, mkdtempSync, readdi
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
@@ -89,6 +89,57 @@ describe('the manifest and a .marmeon that links out of the app', () => {
     expect(readdirSync(outside)).toEqual([]);
     await expect(loadDiscoveredPackages({ root, conditions: DEV })).rejects.toThrow(/\.marmeon leads out of the app/);
     expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('refuses to read a current manifest through the link, and imports nothing it lists', async () => {
+    const root = tempDir('marmeon-manifest-read-');
+    const outside = tempDir('marmeon-manifest-read-outside-');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', type: 'module' }));
+    writeManifest({ root, conditions: DEV });
+    // The manifest as a planted one would be: current (its hash fits the app), but listing a provider whose import leaves a mark.
+    const planted = join(outside, 'manifest.source.json');
+    renameSync(join(root, '.marmeon'), `${outside}-moved`);
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    const marker = join(outside, 'imported');
+    writeFileSync(join(outside, 'evil.mjs'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'x'); export class Evil {}\n`);
+    const current = JSON.parse(readFileSync(join(`${outside}-moved`, 'manifest.source.json'), 'utf8'));
+    writeFileSync(planted, JSON.stringify({ ...current, modules: [join(outside, 'evil.mjs')], providers: [[0, 'Evil']] }));
+    onTestFinished(() => rmSync(`${outside}-moved`, { recursive: true, force: true }));
+
+    await expect(loadDiscoveredPackages({ root, conditions: DEV })).rejects.toThrow(/^\.marmeon leads out of the app, so \.marmeon\/manifest\.source\.json was not read\./);
+    expect(existsSync(marker)).toBe(false);
+    expect(readdirSync(outside).sort()).toEqual(['evil.mjs', 'manifest.source.json']);
+  });
+
+  it('refuses to read a manifest that is itself a link to an outside file, and imports nothing it lists', async () => {
+    const root = tempDir('marmeon-manifest-file-');
+    const outside = tempDir('marmeon-manifest-file-outside-');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', type: 'module' }));
+    writeManifest({ root, conditions: DEV });
+    const file = join(root, '.marmeon', 'manifest.source.json');
+    const current = JSON.parse(readFileSync(file, 'utf8'));
+    const marker = join(outside, 'imported');
+    writeFileSync(join(outside, 'evil.mjs'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'x'); export class Evil {}\n`);
+    writeFileSync(join(outside, 'planted.json'), JSON.stringify({ ...current, modules: [join(outside, 'evil.mjs')], providers: [[0, 'Evil']] }));
+    rmSync(file);
+    symlinkSync(join(outside, 'planted.json'), file);
+
+    await expect(loadDiscoveredPackages({ root, conditions: DEV })).rejects.toThrow(/^\.marmeon\/manifest\.source\.json leads out of the app, so \.marmeon\/manifest\.source\.json was not read\./);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('refuses a manifest that is a dangling link to an outside path, and replaces one that points inside the app', async () => {
+    const root = tempDir('marmeon-manifest-dangling-');
+    const outside = tempDir('marmeon-manifest-dangling-outside-');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', type: 'module' }));
+    mkdirSync(join(root, '.marmeon'));
+    const file = join(root, '.marmeon', 'manifest.source.json');
+    symlinkSync(join(outside, 'nowhere.json'), file);
+    await expect(loadDiscoveredPackages({ root, conditions: DEV })).rejects.toThrow(/was not read\./);
+    expect(readdirSync(outside)).toEqual([]);
+    rmSync(file);
+    symlinkSync(join(root, 'nowhere.json'), file);
+    await expect(loadDiscoveredPackages({ root, conditions: DEV })).resolves.toBeDefined();
   });
 
   it('allows a .marmeon that links to a directory inside the app', () => {

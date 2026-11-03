@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ConfigError, type Application } from '@marmeon/core';
-import { unsafeGeneratedPath } from '@marmeon/core/internal';
+import { unreadableGeneratedPath, unsafeGeneratedPath } from '@marmeon/core/internal';
 import { Router, type RouteDefinition } from '@marmeon/router';
 
 /**
@@ -105,13 +105,14 @@ function escapeRegExp(text: string): string {
 export function writeBrowserRoutes(root: string, routes: BrowserRoutes): boolean {
   const path = join(root, BROWSER_ROUTES_FILE);
   const content = `${JSON.stringify(routes, null, 2)}\n`;
+  const refused = unsafeGeneratedPath(root, path);
+  if (refused !== undefined) throw new ConfigError(refused);
   try {
-    if (readFileSync(path, 'utf8') === content) return false;
+    // A file that is a link out of the app is not compared (it could be a device): the rename below replaces the link.
+    if (unreadableGeneratedPath(root, path) === undefined && readFileSync(path, 'utf8') === content) return false;
   } catch {
     // not written yet
   }
-  const refused = unsafeGeneratedPath(root, path);
-  if (refused !== undefined) throw new ConfigError(refused);
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   writeFileSync(temporary, content);

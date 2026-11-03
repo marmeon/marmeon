@@ -34,4 +34,4 @@ export { TransactionFrame, bindTransaction, errOfRollback, followsTransaction, l
 export { fillPlaceholders, PreferredLocale } from './translator.ts';
 export { marmeonInjection } from './vite.ts';
 export { recordStubSet, readStubManifest, STUB_MANIFEST, stubHash } from './stubs/manifest.ts';
-export { escapesRoot, unsafeGeneratedPath } from './paths.ts';
+export { escapesRoot, unreadableGeneratedPath, unsafeGeneratedPath } from './paths.ts';

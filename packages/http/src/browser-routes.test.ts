@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, symlinkSync } from 'node:fs';
+import { lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineRoutes, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
@@ -61,6 +61,31 @@ describe('browserRoutes', () => {
     symlinkSync(outside, join(root, '.marmeon'), 'dir');
     expect(() => writeBrowserRoutes(root, browserRoutes(router.routes))).toThrow(/^\.marmeon leads out of the app.*Nothing was written\.$/);
     expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('does not skip the refusal because the file behind the link is current', () => {
+    const root = tempDir('marmeon-browser-routes-');
+    const outside = tempDir('marmeon-browser-routes-outside-');
+    const routes = browserRoutes(router.routes);
+    writeFileSync(join(outside, 'routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    expect(() => writeBrowserRoutes(root, routes)).toThrow(/^\.marmeon leads out of the app.*Nothing was written\.$/);
+    expect(readdirSync(outside)).toEqual(['routes.json']);
+  });
+
+  it('replaces a routes.json that links to an outside file with a regular file, and leaves the outside one alone', () => {
+    const root = tempDir('marmeon-browser-routes-');
+    const outside = tempDir('marmeon-browser-routes-outside-');
+    const routes = browserRoutes(router.routes);
+    const text = `${JSON.stringify(routes, null, 2)}\n`;
+    writeFileSync(join(outside, 'routes.json'), text);
+    mkdirSync(join(root, '.marmeon'));
+    symlinkSync(join(outside, 'routes.json'), join(root, '.marmeon', 'routes.json'));
+    expect(writeBrowserRoutes(root, routes)).toBe(true);
+    expect(lstatSync(join(root, BROWSER_ROUTES_FILE)).isFile()).toBe(true);
+    expect(readFileSync(join(root, BROWSER_ROUTES_FILE), 'utf8')).toBe(text);
+    expect(readFileSync(join(outside, 'routes.json'), 'utf8')).toBe(text);
+    expect(readdirSync(outside)).toEqual(['routes.json']);
   });
 
   it('writes through a .marmeon that links to a directory inside the app', () => {

@@ -4,7 +4,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { analyzeInjections, applyInsertions, injectConstructorDependencies, insertionsOf, type Insertion } from './analyze.ts';
 import { isBrowserSource } from './browser.ts';
 import { ConfigError } from '../environment.ts';
-import { unsafeGeneratedPath } from '../paths.ts';
+import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 
 /**
  * The app's injection lists, precomputed by `marmeon build` — so a production start neither parses the app with oxc
@@ -109,8 +109,10 @@ export class PrecomputedInjections {
     this.#missing = missing;
   }
 
-  /** Reads `root`'s {@link INJECTIONS_FILE}. A missing or unreadable file is no error: every module is then analysed at start. */
+  /** Reads `root`'s {@link INJECTIONS_FILE}. A missing or unreadable file is no error: every module is then analysed at start. Throws a `ConfigError` when `.marmeon` leads out of the app. */
   static load(root: string): PrecomputedInjections {
+    const refused = unreadableGeneratedPath(root, join(root, INJECTIONS_FILE));
+    if (refused !== undefined) throw new ConfigError(refused);
     try {
       const parsed = JSON.parse(readFileSync(join(root, INJECTIONS_FILE), 'utf8')) as Partial<InjectionsFile>;
       if (parsed.format === FORMAT && typeof parsed.files === 'object' && parsed.files !== null) return new PrecomputedInjections(root, parsed.files, false);

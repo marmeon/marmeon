@@ -223,6 +223,31 @@ export type NotExportedEntries = import('./index.ts').MarmeonEntries;
 // @ts-expect-error — not exported
 export type NotExportedApi = import('./index.ts').MarmeonPluginApi;
 
+describe('virtual:marmeon/routes behind a .marmeon that links out of the app', () => {
+  it('does not read the routes file through the link', () => {
+    const root = tree({});
+    const outside = tree({ 'routes.json': { version: 1, routes: { home: { method: 'get', path: '/' } }, hidden: {} } });
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    const plugin = routesModule();
+    const context = { addWatchFile() {}, error(message: string): never { throw new Error(message); }, environment: { config: { consumer: 'client' } } };
+    (plugin.configResolved as (config: unknown) => void)({ root, command: 'serve' });
+    expect(() => (plugin.load as (this: unknown, id: string) => string).call(context, '\0virtual:marmeon/routes')).toThrow(/^\.marmeon leads out of the app, so \.marmeon\/routes\.json was not read\./);
+  });
+});
+
+describe('virtual:marmeon/routes with a routes.json that links to an outside file', () => {
+  it('does not read it', () => {
+    const root = tree({});
+    const outside = tree({ 'routes.json': { version: 1, routes: { home: { method: 'get', path: '/' } }, hidden: {} } });
+    mkdirSync(join(root, '.marmeon'));
+    symlinkSync(join(outside, 'routes.json'), join(root, '.marmeon', 'routes.json'));
+    const plugin = routesModule();
+    const context = { addWatchFile() {}, error(message: string): never { throw new Error(message); }, environment: { config: { consumer: 'client' } } };
+    (plugin.configResolved as (config: unknown) => void)({ root, command: 'serve' });
+    expect(() => (plugin.load as (this: unknown, id: string) => string).call(context, '\0virtual:marmeon/routes')).toThrow(/was not read\./);
+  });
+});
+
 describe('virtual:marmeon/routes while serving', () => {
   const root = tree({
     '.marmeon/routes.json': {

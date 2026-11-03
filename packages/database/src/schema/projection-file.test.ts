@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -45,6 +45,57 @@ describe('the schema projection file', () => {
     expect(names(await loadProjection(root, files, { onUnwritable }))).toEqual(['users']);
     expect(onUnwritable).toHaveBeenCalledOnce();
     expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('does not read a current projection through a .marmeon that links out of the app', async () => {
+    forgetProjections();
+    const { root, files } = app(create('users'));
+    writeProjection(root, projecting('users'), files);
+    const outside = tempDir('marmeon-projection-read-outside-');
+    renameSync(join(root, '.marmeon', 'schema.json'), join(outside, 'schema.json'));
+    rmSync(join(root, '.marmeon'), { recursive: true });
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    const planted = readFileSync(join(outside, 'schema.json'), 'utf8');
+    expect(() => readProjection(root, files)).toThrow(/^\.marmeon leads out of the app, so \.marmeon\/schema\.json was not read\./);
+    // An unchanged file is no reason to skip the refusal when writing.
+    expect(() => writeProjection(root, projecting('users'), files)).toThrow(/Nothing was written\.$/);
+    // A start computes the projection in memory instead (the file is a cache) and warns.
+    const project = vi.fn(async () => projecting('computed'));
+    const onUnwritable = vi.fn();
+    expect(names(await loadProjection(root, files, { project, onUnwritable }))).toEqual(['computed']);
+    expect(project).toHaveBeenCalledOnce();
+    expect(onUnwritable).toHaveBeenCalledOnce();
+    expect(readFileSync(join(outside, 'schema.json'), 'utf8')).toBe(planted);
+    expect(readdirSync(outside)).toEqual(['schema.json']);
+  });
+
+  it('does not read a schema.json that is a link to an outside file', async () => {
+    forgetProjections();
+    const { root, files } = app(create('users'));
+    writeProjection(root, projecting('users'), files);
+    const file = join(root, PROJECTION_FILE);
+    const outside = tempDir('marmeon-projection-file-outside-');
+    renameSync(file, join(outside, 'schema.json'));
+    symlinkSync(join(outside, 'schema.json'), file);
+    expect(() => readProjection(root, files)).toThrow(/^\.marmeon\/schema\.json leads out of the app, so .* was not read\./);
+    const project = vi.fn(async () => projecting('computed'));
+    expect(names(await loadProjection(root, files, { project, onUnwritable: () => {} }))).toEqual(['computed']);
+    expect(project).toHaveBeenCalledOnce();
+  });
+
+  it('replaces a schema.json that links to an outside file with a regular file, and leaves the outside one alone', () => {
+    const { root, files } = app(create('users'));
+    writeProjection(root, projecting('users'), files);
+    const file = join(root, PROJECTION_FILE);
+    const outside = tempDir('marmeon-projection-replace-outside-');
+    const text = readFileSync(file, 'utf8');
+    renameSync(file, join(outside, 'schema.json'));
+    symlinkSync(join(outside, 'schema.json'), file);
+    writeProjection(root, projecting('users'), files);
+    expect(lstatSync(file).isFile()).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe(text);
+    expect(readFileSync(join(outside, 'schema.json'), 'utf8')).toBe(text);
+    expect(readdirSync(outside)).toEqual(['schema.json']);
   });
 
   it('computes the projection of fresh migrations and writes it', async () => {
