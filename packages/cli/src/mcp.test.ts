@@ -493,6 +493,13 @@ describe('readRegularFile', () => {
     expect(readRegularFile(path, 3)).toMatchObject({ text: 'abc', truncated: true });
   });
 
+  it('reads a file whole when the bound is far above its size', () => {
+    expect(readRegularFile(file('abcd'), 1000)).toMatchObject({ text: 'abcd', truncated: false, size: 4 });
+    expect(readRegularFile(file(''), 1000)).toMatchObject({ text: '', truncated: false });
+  });
+
+  // A file that grows between the stat and the read cannot be staged without a hook; the bound it is cut at is the stat size, which
+  // the file longer than the bound below exercises from the other side.
   it('reads no more than the bound from a file that is longer than it was when it was looked at', () => {
     const path = file('x'.repeat(100_000));
     expect(readRegularFile(path, 10)!.text).toBe('x'.repeat(10));

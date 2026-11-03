@@ -24,17 +24,18 @@ export function readRegularFile(path: string, maxBytes = DEFAULT_MAX_BYTES, iden
     const stat = fstatSync(descriptor);
     if (!stat.isFile()) return undefined;
     if (identity && (stat.dev !== identity.dev || stat.ino !== identity.ino)) return undefined;
-    // One byte more than asked for tells a file that is longer from one that is exactly as long. Unzeroed, because only the
-    // bytes read are ever shown, and a zeroed 16 MiB per read would cost more than the read.
-    const buffer = Buffer.allocUnsafe(maxBytes + 1);
+    // Never more than the file had when it was looked at: one byte more than that tells a file that grew from one that did not.
+    // Unzeroed, because only the bytes read are ever shown, and a zeroed 16 MiB per read would cost more than the read.
+    const cap = Math.min(maxBytes, stat.size);
+    const buffer = Buffer.allocUnsafe(cap + 1);
     let length = 0;
     while (length < buffer.length) {
       const read = readSync(descriptor, buffer, length, buffer.length - length, length);
       if (read === 0) break;
       length += read;
     }
-    const truncated = length > maxBytes;
-    let end = Math.min(length, maxBytes);
+    const truncated = length > cap;
+    let end = Math.min(length, cap);
     // Do not end inside a multi-byte character: back up to the byte that starts it.
     if (truncated) while (end > 0 && (buffer[end]! & 0xc0) === 0x80) end--;
     return { text: buffer.subarray(0, end).toString('utf8'), size: Math.max(stat.size, length), modifiedAt: stat.mtime, truncated };

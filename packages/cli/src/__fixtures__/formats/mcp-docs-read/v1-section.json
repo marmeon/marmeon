@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "slug": "routing",
+  "title": "Routing",
+  "file": "docs/routing.md#defining-routes",
+  "section": "defining-routes",
+  "text": "## Defining routes\n\nCall `route.get()` to define a route.\n\n```md\n## Not a heading\n```\n\n### Route names\n\nName a route to link to it from a view.\n",
+  "truncated": false,
+  "warnings": []
+}
