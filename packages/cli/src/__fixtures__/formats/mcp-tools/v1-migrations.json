@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "tools": [
+    {
+      "name": "migrations",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ran",
+              "pending"
+            ]
+          },
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\r\\n-][^\\r\\n]{0,199}$"
+          },
+          "connection": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\r\\n-][^\\r\\n]{0,199}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 200
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}

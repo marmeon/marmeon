@@ -663,7 +663,7 @@ async function checkRedisDrivers(base: string, prefix: string): Promise<void> {
 const MCP_LIMIT = 60_000;
 /** What the server has to take to end after its stdin closed. */
 const MCP_EXIT = 5_000;
-/** The tools `marmeon mcp` offers. */
+/** Tools `marmeon mcp` must offer (it may offer more). */
 const MCP_TOOLS = ['check', 'devtools_entries', 'docs_read', 'docs_search', 'last_error', 'routes', 'schema'];
 /**
  * The agent kit in the installed app: `agents:install` writes the skills and `.mcp.json` and `--check` passes; `marmeon mcp`
@@ -698,7 +698,8 @@ async function checkAgents(smoke: Smoke): Promise<void> {
   const version = session.replies.get(1)?.result?.protocolVersion;
   if (!(version ?? '').startsWith('2025-')) throw new SmokeError(`marmeon mcp answered initialize with protocol version ${version}:\n${said}`);
   const names = ((session.replies.get(2)?.result?.tools ?? []) as { name: string }[]).map((tool) => tool.name).sort();
-  if (names.join() !== MCP_TOOLS.join()) throw new SmokeError(`marmeon mcp lists ${names.join(', ')}, expected ${MCP_TOOLS.join(', ')}.`);
+  const missing = MCP_TOOLS.filter((tool) => !names.includes(tool));
+  if (missing.length > 0) throw new SmokeError(`marmeon mcp lists ${names.join(', ')}, missing ${missing.join(', ')}.`);
   // The whole reply in the message: a JSON-RPC error has no `result`.
   const routes = session.replies.get(3)?.result;
   if (routes?.isError || !JSON.stringify(routes?.structuredContent ?? null).includes('"/"')) throw new SmokeError(`the routes tool does not list "/":\n${JSON.stringify(session.replies.get(3) ?? null)}`);

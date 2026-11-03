@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe and the entries of the [devtools](devtools.md), as data the agent can read.
+error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, and the entries of the [devtools](devtools.md), as data the agent can read.
 
 It is a tool for development and nothing else:
 
@@ -154,6 +154,28 @@ because two migrations create one table, the error carries its message. A file o
 The file is read only when it is a regular file inside the app: a link in its place, or in place of `.marmeon`, is not followed and is an error.
 The call is stopped after 120 seconds.
 
+### `migrations`
+
+The migrations of the app and whether each ran: the document of [`marmeon migrate:status --json`](migrations.md#status), filtered and cut. Unlike `schema`, it needs the database:
+the record of what ran is in the `migrations` table of the `default` connection, so a database that does not answer is an error. The tool starts the app once and only reads.
+
+| Input | |
+| --- | --- |
+| `status` | `ran` or `pending`. |
+| `module` | Only migrations of this module, by its exact name: 1 to 200 characters, no line break, not starting with `-`. |
+| `connection` | Only migrations that run on this connection, by its exact name: 1 to 200 characters, no line break, not starting with `-`. |
+| `limit` | At most this many migrations, 1 to 500. Default 200. |
+
+The command and its arguments are fixed; the filters apply to its document, so no input ever reaches the command line.
+
+The document: `{ "format": 1, "database": true, "connections": [{ "name": "default", "ran": 2, "pending": 1 }], "migrations": […], "total": 3, "truncated": false, "warnings": [] }`.
+Each migration has `name`, `module`, `connection` (the one it runs on, `null` when that is unknown, with a warning), `batch` (`null` while pending) and `status`. `connections` counts all
+migrations, whatever the filter, so what is pending on `default` is always visible; `total` counts those the filter kept, and `truncated` says that `limit` cut the list. A document of another `format` is an error that
+says to update `marmeon`. When the command fails, for example because the database is unreachable, the error carries the end of its message (secrets masked) and says to run `marmeon migrate:status` in a terminal.
+The call is stopped after 120 seconds.
+
+An app without `@marmeon/database` gets `"database": false` and empty lists, and nothing is started.
+
 ### `devtools_entries`
 
 The entries the [devtools](devtools.md) recorded while the app ran in development: requests, queries, jobs, mails, notifications, logs, exceptions, schedule
@@ -181,9 +203,9 @@ the message of the command. The call is stopped after 120 seconds. Like `routes`
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
 - Standard output carries protocol messages and nothing else. Whatever your app or a library prints there, `console.log` included, goes
   to standard error.
-- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `devtools_entries` reports the entries the devtools masked, and
+- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `devtools_entries` reports the entries the devtools masked, and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
