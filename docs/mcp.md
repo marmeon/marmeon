@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version and the report of `marmeon check`, as data the agent can read.
+error of the development server, the documentation of the installed version, the report of `marmeon check` and the schema the migrations describe, as data the agent can read.
 
 It is a tool for development and nothing else:
 
@@ -132,14 +132,35 @@ Exit code 0 (everything passed), 1 (a check found errors) and 3 (a check could n
 A wrong call (exit code 2) is an error with the message of the command. The run is stopped after 10 minutes, and that is an error that says to run it in a terminal or
 to narrow it with `only`. A second `check` while one runs is refused at once: "A check is running; wait for its result."
 
+### `schema`
+
+The schema the migrations describe: the projection that [`.marmeon/schema.json`](migrations.md#what-the-migrations-describe) keeps and that `bootstrap/database.d.ts`
+is generated from. It is computed afresh for each call (the tool runs `marmeon schema:project` first), so it follows the migration files, not a
+file that was written a while ago. The app is not started: the command only registers the modules.
+
+| Input | |
+| --- | --- |
+| `table` | Only this table: a name of letters, digits and `_`, starting with a letter or `_`, at most 63 characters. |
+
+The document: `{ "format": 1, "projection": {…}, "warnings": [] }`. `projection` is the file as it is (its own `format` is 2): the version of
+`@marmeon/database`, the migrations with their hashes, and the tables with columns (type per driver, `nullable`, `primary`, `default`),
+unique keys, indexes and foreign keys. With `table` only that table is under `tables`; an unknown name is an error that lists the tables (at most 50).
+A column with `"secret": true` holds a value that never belongs in an answer or a log.
+
+An app without `@marmeon/database` has no schema: `projection` is `null` and `warnings` says so. An app that has it but where no
+file could be written (a read-only `.marmeon`) gets an error that says to run `marmeon schema:project` in a terminal to see why. When `marmeon schema:project` fails, for example
+because two migrations create one table, the error carries its message. A file of another `format` is an error that says to update `marmeon`.
+The file is read only when it is a regular file inside the app: a link in its place, or in place of `.marmeon`, is not followed and is an error.
+The call is stopped after 120 seconds.
+
 ## What it never does
 
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
 - Standard output carries protocol messages and nothing else. Whatever your app or a library prints there, `console.log` included, goes
   to standard error.
-- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers and
+- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`) starts a fresh `marmeon` process for it, with a
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`) starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.

@@ -2,6 +2,7 @@ import { CHECK_TOOL } from './check.ts';
 import { DOCS_READ_TOOL, DOCS_SEARCH_TOOL } from './docs.ts';
 import { LAST_ERROR_TOOL } from './last-error.ts';
 import { ROUTES_TOOL } from './routes.ts';
+import { SCHEMA_TOOL } from './schema.ts';
 import type { JsonSchema, ToolDocument, ToolFailure } from './result.ts';
 
 /** What a tool is given besides its input. */
@@ -26,4 +27,4 @@ export interface McpTool {
 }
 
 /** The tools the server offers. All of them only read. */
-export const TOOLS: readonly McpTool[] = [ROUTES_TOOL, LAST_ERROR_TOOL, DOCS_SEARCH_TOOL, DOCS_READ_TOOL, CHECK_TOOL];
+export const TOOLS: readonly McpTool[] = [ROUTES_TOOL, LAST_ERROR_TOOL, DOCS_SEARCH_TOOL, DOCS_READ_TOOL, CHECK_TOOL, SCHEMA_TOOL];
