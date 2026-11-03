@@ -475,7 +475,7 @@ Two hooks let a package take part in every request. Add them in `boot()`:
 | Hook | What it does |
 | --- | --- |
 | `router.beforeValidation(hook)` | Runs before every body schema, after the request's `authorize`, for a submit and a live validation alike. It may replace input values: the storage package puts a verified upload in place of its token. |
-| `router.intercept({ claims, answer })` | Answers the requests it claims in the route's place, after the route's middleware, bindings and `authorize`. The controller is never built. The storage package answers its upload requests this way. |
+| `router.intercept({ claims, answer })` | Answers the requests it claims in the route's place, after the route's middleware, bindings and `authorize`. The controller is never built. A claimed request that is a live validation too answers 400: `throttle()` lets a live validation through without counting it. The storage package answers its upload requests this way. |
 
 A hook runs for every route of every app that installs the package, so keep it narrow: claim requests by a header of your own, and
 leave everything else alone.

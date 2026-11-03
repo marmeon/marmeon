@@ -4,7 +4,7 @@ import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, defineRequest, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { PageSession } from '@marmeon/http/internal';
-import { PAGE_HEADER, PROTOCOL_VERSION, UPLOAD_HEADER } from '@marmeon/http/protocol';
+import { PAGE_HEADER, PROTOCOL_VERSION, UPLOAD_HEADER, VALIDATE_HEADER } from '@marmeon/http/protocol';
 import { defineRoutes, everyone, type RouteBinder } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
 import { rules as r } from '@marmeon/validation';
@@ -89,5 +89,12 @@ describe('an upload target of a form built per request', () => {
     expect((await target('a', 'badge', { 'x-allowed': 'no' })).status).toBe(403);
     expect((await target('z', 'badge')).status).toBe(404); // the binder finds no event
     expect(log).toEqual([]);
+  });
+
+  it('is never made for a request that is a live validation too — the route’s throttle() would not count it', async () => {
+    const target = await boot();
+    log.length = 0;
+    expect((await target('a', 'badge', { [VALIDATE_HEADER]: 'badge' })).status).toBe(400);
+    expect(log).toEqual([]); // the interceptor never ran
   });
 });
