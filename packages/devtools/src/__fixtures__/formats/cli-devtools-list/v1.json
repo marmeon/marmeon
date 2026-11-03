@@ -1,0 +1,96 @@
+{
+  "format": 1,
+  "store": {
+    "driver": "file",
+    "path": "storage/framework/devtools"
+  },
+  "entries": [
+    {
+      "id": "000000004aa0000000004",
+      "type": "job",
+      "at": 4000,
+      "batch": "batch-000000004aa0000000004",
+      "requestId": null,
+      "jobId": null,
+      "tags": [
+        "reports.build"
+      ],
+      "content": {
+        "status": "done",
+        "name": "reports.build",
+        "queue": "default",
+        "connection": "sync",
+        "attempt": 1
+      }
+    },
+    {
+      "id": "000000003aa0000000003",
+      "type": "mail",
+      "at": 3000,
+      "batch": "batch-000000003aa0000000003",
+      "requestId": null,
+      "jobId": null,
+      "tags": [
+        "Welcome"
+      ],
+      "content": {
+        "mailable": "Welcome",
+        "mode": "send",
+        "to": [
+          "a@example.com"
+        ],
+        "cc": [],
+        "bcc": [],
+        "subject": "Hi",
+        "text": "Hello",
+        "attachments": []
+      }
+    },
+    {
+      "id": "000000002aa0000000002",
+      "type": "query",
+      "at": 2000,
+      "batch": "batch-000000002aa0000000002",
+      "requestId": "req-1",
+      "jobId": null,
+      "tags": [],
+      "content": {
+        "connection": "default",
+        "driver": "sqlite",
+        "sql": "select  *\nfrom users",
+        "parameters": [],
+        "sensitive": false,
+        "durationMs": 1,
+        "slow": false
+      }
+    },
+    {
+      "id": "000000001aa0000000001",
+      "type": "request",
+      "at": 1000,
+      "batch": "batch-000000001aa0000000001",
+      "requestId": "req-1",
+      "jobId": null,
+      "tags": [
+        "status:200",
+        "route:users.show"
+      ],
+      "content": {
+        "method": "GET",
+        "url": "/users/1",
+        "path": "/users/1",
+        "route": "users.show",
+        "status": 200,
+        "durationMs": 4,
+        "inProcess": false,
+        "headers": {
+          "accept": "text/html"
+        },
+        "query": {}
+      }
+    }
+  ],
+  "truncated": false,
+  "next": null,
+  "warnings": []
+}

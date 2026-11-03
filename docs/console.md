@@ -109,6 +109,7 @@ pnpm marmeon route:list --json
 | `schedule:list --json` | [Running the scheduler](scheduling.md#running-the-scheduler) |
 | `db:show --json` | [Inspecting a connection](database.md#inspecting-a-connection) |
 | `migrate:status --json` | [Status](migrations.md#status) |
+| `devtools:list --json` | [Listing the entries](devtools.md#listing-the-entries) |
 | `docs --json` | [Reading the documentation](#reading-the-documentation) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
 
@@ -241,7 +242,7 @@ The installed packages add their commands when the app boots:
 | `@marmeon/storage` | `uploads:prune`, `make:uploads-table`. See [file storage](storage.md#the-uploads-table). |
 | `@marmeon/notifications` | `notifications:prune`, `make:notifications-table`. See [notifications](notifications.md#the-notifications-table). |
 | `@marmeon/auth` | `make:auth`, `make:sign-ins-table`, `auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]` (signs every account out and revokes API and reset tokens, see [ending every session of every account](authentication.md#ending-every-session-of-every-account)), `auth:prune-tokens` (also deletes the sign-ins that are over, see [sign-ins](authentication.md#pruning-sign-ins)), `auth:end-sessions <identifier> --force [--keep-api-tokens]` (see [ending every session of a user](authentication.md#ending-every-session-of-a-user)) and `auth:reset-two-factor <identifier> --force` (see [operator reset](two-factor-authentication.md#operator-reset)). The module `make:auth` writes adds `auth:prune-unverified`. See [starter kit](starter-kit.md). |
-| `@marmeon/devtools` | `devtools:clear`, `devtools:prune`. See [devtools](devtools.md). |
+| `@marmeon/devtools` | `devtools:clear`, `devtools:list`, `devtools:prune`. See [devtools](devtools.md). |
 
 ## Writing commands
 

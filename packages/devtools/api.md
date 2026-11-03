@@ -553,6 +553,15 @@ export interface ScheduleEntryContent {
 ```ts
 // devtools:clear
 marmeon devtools:clear
+// devtools:list
+marmeon devtools:list [--type=<types>] [--tag=<tag>] [--request=<id>] [--search=<text>] [--before=<id>] [--limit=<n>] [--json]
+--before (string)
+--json (boolean)
+--limit (string)
+--request (string)
+--search (string)
+--tag (string)
+--type (string)
 // devtools:prune
 marmeon devtools:prune
 ```

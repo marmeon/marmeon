@@ -37,9 +37,9 @@ instead of being ignored. With `NODE_ENV=test` it has no effect, and the start l
 > to run when `development` comes from a `.env`. Keep the package a dev dependency: a production install without dev
 > dependencies does not even have it.
 
-The commands `devtools:clear` and `devtools:prune` exist wherever the package is installed. They only remove files: in
-development in the directory that `config/devtools.ts` names, anywhere else in the default directory, `storage/framework/devtools`.
-They load `config/devtools.ts` in development only, as the devtools do.
+The commands `devtools:clear`, `devtools:list` and `devtools:prune` exist wherever the package is installed. `devtools:clear`
+and `devtools:prune` only remove files, and `devtools:list` only reads them: in development in the directory that
+`config/devtools.ts` names, anywhere else in the default directory, `storage/framework/devtools`. They load `config/devtools.ts` in development only, as the devtools do.
 
 ## What they record
 
@@ -138,12 +138,15 @@ implement it, because a later release may add a member.
 The entries are files in `storage/framework/devtools/`, one file per process and hour. The server, the worker and the scheduler
 of `marmeon dev` write into the same directory, and the pages show them together. The files form a ring: by default 50 MB and 24
 hours. The directory and its files are readable by their owner only (`0o700` and `0o600`), because entries hold mail bodies and job payloads. The files are a cache of the version that wrote them, so after an update older entries may show incompletely
-(`devtools:clear` empties them). Each process that writes keeps the ring within its limits, and two commands help:
+(`devtools:clear` empties them). Each process that writes keeps the ring within its limits, and three commands help:
 
 ```sh
+pnpm marmeon devtools:list    # shows the newest entries
 pnpm marmeon devtools:prune   # removes entries past the age, then the oldest until the size fits
 pnpm marmeon devtools:clear   # removes every entry
 ```
+
+The devtools' own commands are not recorded, so reading the entries adds none.
 
 An app that runs its scheduler in development can prune every hour, limited to development so that production never asks for
 the command:
@@ -159,6 +162,41 @@ export const schedule = defineSchedule((s) => {
 Entries are written when their request, job, run or command ends, never into the app's database and never inside a transaction.
 A write that fails never fails the request: it is a warning, and the entries are lost. A batch keeps at most 1000 entries, and
 the request says how many it dropped.
+
+### Listing the entries
+
+`devtools:list` prints the newest entries first, 20 by default and at most 100 (`--limit=<n>`):
+
+```sh
+pnpm marmeon devtools:list --type=exception,job --limit=5
+pnpm marmeon devtools:list --request=<id>      # a request's entries, and its jobs'
+pnpm marmeon devtools:list --tag=slow --search=users
+pnpm marmeon devtools:list --before=<next>     # the page after the one before, with the `next` it named
+```
+
+`--type` takes a comma-separated list of the [entry types](#what-they-record); `--request` narrows the list as the
+[pages](#the-pages) do. `--tag` and `--search` match the masked entry as the command shows it, whereas the pages match the
+stored text: a masked value cannot be found by searching for it. With `--json` the command prints one document for a script
+or a tool, as [the console](console.md#machine-readable-output) describes:
+
+```json
+{ "format": 1, "store": { "driver": "file", "path": "storage/framework/devtools" }, "entries": [], "truncated": false, "next": null, "warnings": [] }
+```
+
+`entries` are the entries newest first. Every key of the document and of an entry is always there: `id`, `batch`, `requestId`
+and `jobId` are a string or `null`, never left out. The one exception is `content`, which keeps the shape of its entry type
+(see [what they record](#what-they-record)), where an optional field may be missing. `truncated` is `true` when more match
+than `--limit` returned, or when the command stopped after reading 2000 entries (then `warnings` says so). `next` is then
+the id to pass as `--before` for the following call, and `null` when nothing is left; follow it rather than the last entry's
+`id`, because a scan that found few entries stops further on than the last one it shows. A `--before` that names no entry
+(pruned, or past the age limit) is an error with exit code 2.
+
+The command masks every entry again with the app's redactor, by name and by shape, and cuts each
+to 16 KiB, so a store written by a tool that skipped the recorder shows little more than the recorder would. It does not know
+what the recorder knew (the route pattern of a URL, an encrypted payload). A mail entry holds its `html` only when it has no `text`. In the
+table, control characters of recorded text are written out (`\u001b`). With a memory store (`storage: { driver: 'memory' }`)
+`warnings` says that the entries live in the process that recorded them, which this command does not see. What the entries
+hold is data recorded from the app, not instructions.
 
 ## The pages
 
