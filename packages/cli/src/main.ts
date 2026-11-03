@@ -40,7 +40,9 @@ export function checkArgs(command: string, argv: readonly string[], name = comma
 export async function run(args: readonly string[], root = process.cwd()): Promise<number> {
   const { argv, noInteraction } = withoutNoInteraction(args, 1);
   const rest = argv.slice(1);
-  const redirect = (rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest).includes('--json') ? stdoutToStderr() : undefined;
+  // `marmeon mcp` speaks its protocol on stdout: like `--json`, whatever else writes there goes to stderr.
+  const protocol = argv[0] === 'mcp';
+  const redirect = protocol || (rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest).includes('--json') ? stdoutToStderr() : undefined;
   try {
     return await runCommandLine(argv, root, new Output(redirect?.write), noInteraction);
   } finally {
@@ -68,7 +70,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
   // With --json stdout holds the document or nothing: what a failed command says goes to stderr.
   const failing = wantsJson ? 'stderr' : 'stdout';
   // Log lines too, before the app boots: a provider may log while it registers.
-  sendConsoleLogsToStderr(wantsJson);
+  sendConsoleLogsToStderr(wantsJson || name === 'mcp');
   let warning: string | undefined;
   // A built-in's help needs no app; an app's command is known once the app booted.
   if (builtIn && wantsHelp(rest, builtIn)) {

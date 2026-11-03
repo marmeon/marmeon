@@ -175,6 +175,7 @@ export default defineDocs({
         { slug: 'observability', label: 'Observability' },
         { slug: 'health', label: 'Health Checks' },
         { slug: 'agents', label: 'Coding Agents' },
+        { slug: 'mcp', label: 'MCP Server' },
       ],
     },
   ],

@@ -20,9 +20,9 @@ beforeAll(async () => {
 afterAll(() => app?.close());
 
 describe('the docs: sections of pages under /docs', () => {
-  it('lists the 88 pages in eleven sections, in this order', () => {
+  it('lists the 89 pages in eleven sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
-    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 5, 5, 11, 11, 15, 11, 7, 7, 4]);
+    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 5, 5, 11, 11, 15, 11, 7, 7, 5]);
     expect(ENTRIES[0]).toEqual({ slug: 'why-marmeon', label: 'Why Marmeon' });
     expect(ENTRIES[1]).toEqual({ slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true });
     expect(ENTRIES.filter((entry) => entry.file).map((entry) => [entry.slug, entry.file])).toEqual([
@@ -70,7 +70,8 @@ describe('the docs: sections of pages under /docs', () => {
     expect(await neighbours('why-marmeon')).toBe('none ← why-marmeon → upgrading');
     expect(await neighbours('upgrading')).toBe('why-marmeon ← upgrading → releases');
     expect(await neighbours('health')).toBe('observability ← health → agents');
-    expect(await neighbours('agents')).toBe('health ← agents → none');
+    expect(await neighbours('agents')).toBe('health ← agents → mcp');
+    expect(await neighbours('mcp')).toBe('agents ← mcp → none');
   });
 
   it('the start page lists every docs page exactly once, in its section — and no package page', async () => {

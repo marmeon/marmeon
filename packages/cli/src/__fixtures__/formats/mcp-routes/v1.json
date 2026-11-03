@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "routes": [
+    {
+      "methods": [
+        "GET"
+      ],
+      "path": "/_marmeon/session",
+      "name": null,
+      "group": "web",
+      "access": "framework",
+      "publicBindings": [],
+      "action": "SessionEpochController"
+    }
+  ],
+  "total": 1,
+  "truncated": false,
+  "warnings": []
+}

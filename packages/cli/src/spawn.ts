@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { Redactor } from '@marmeon/core';
 import { NO_INTERACTION_ENV } from './prompt.ts';
 
 /** The `marmeon` launcher of this package — `bin/marmeon.js`, next to `src/` and `dist/`. */
@@ -57,4 +58,109 @@ export const COMPANION = 'MARMEON_COMPANION';
 export function startMarmeon(root: string, args: readonly string[]): ChildProcess {
   const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...env } = process.env;
   return spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env: { ...env, [COMPANION]: '1' }, stdio: ['inherit', 'inherit', 'inherit', 'ipc'] });
+}
+
+/** What `runMarmeonJson` made of a child process. */
+export interface JsonRun {
+  readonly code: number;
+  /** What the child printed on stdout, parsed — only after exit 0 and only when it was one JSON document. */
+  readonly document: unknown | undefined;
+  /** The last 4 KiB of its stderr, redacted. */
+  readonly stderrTail: string;
+  /** It was stopped after `timeoutMs`. */
+  readonly timedOut: boolean;
+  /** It was stopped because it printed more than `maxStdoutBytes`. */
+  readonly tooLarge: boolean;
+}
+
+/** How long a child that was asked to end (SIGTERM) has before it is killed. */
+const GRACE_MS = 5_000;
+
+const STDERR_TAIL_BYTES = 4096;
+
+/** What is kept of stderr before it is redacted: more than is shown, so a `KEY=value` the cut would split is whole once the partial line is dropped. */
+const STDERR_WINDOW_BYTES = 8192;
+
+/** The end of `window` (raw stderr): its partial first line dropped, redacted, then cut to {@link STDERR_TAIL_BYTES} at a line start. */
+export function stderrTailOf(window: Buffer, truncated: boolean): string {
+  let text = window.toString('utf8');
+  if (truncated) {
+    const newline = text.indexOf('\n');
+    text = newline === -1 ? '' : text.slice(newline + 1);
+  }
+  let redacted = new Redactor().text(text);
+  if (Buffer.byteLength(redacted) > STDERR_TAIL_BYTES) {
+    const cut = Buffer.from(redacted).subarray(-STDERR_TAIL_BYTES).toString('utf8');
+    const newline = cut.indexOf('\n');
+    redacted = newline === -1 ? '' : cut.slice(newline + 1);
+  }
+  return redacted;
+}
+
+/**
+ * `marmeon <args>` in `root` as a new process, whose stdout is one JSON document (`--json`). No shell, nothing on stdin, both
+ * outputs piped; the arguments are an array, never a string. Ends the child (SIGTERM, SIGKILL after a grace period) after
+ * `timeoutMs`, when `signal` aborts, and when it prints more than `maxStdoutBytes`.
+ */
+export function runMarmeonJson(root: string, args: readonly string[], { timeoutMs, signal, maxStdoutBytes }: { readonly timeoutMs: number; readonly signal?: AbortSignal; readonly maxStdoutBytes: number }): Promise<JsonRun> {
+  const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...inherited } = process.env;
+  // A call that was cancelled while it waited in the queue never starts the app.
+  if (signal?.aborted) return Promise.resolve({ code: 1, document: undefined, stderrTail: '', timedOut: false, tooLarge: false });
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env: { ...inherited, [NO_INTERACTION_ENV]: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const out: Buffer[] = [];
+    let outBytes = 0;
+    let errWindow: Buffer = Buffer.alloc(0);
+    let errCut = false;
+    let timedOut = false;
+    let tooLarge = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    const stop = () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      child.kill('SIGTERM');
+      killTimer ??= setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stop();
+    }, timeoutMs);
+    signal?.addEventListener('abort', stop, { once: true });
+    child.stdout.on('data', (chunk: Buffer) => {
+      outBytes += chunk.length;
+      if (outBytes > maxStdoutBytes) {
+        tooLarge = true;
+        out.length = 0;
+        stop();
+        return;
+      }
+      out.push(chunk);
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      errWindow = Buffer.concat([errWindow, chunk]);
+      if (errWindow.length > STDERR_WINDOW_BYTES) {
+        errWindow = errWindow.subarray(errWindow.length - STDERR_WINDOW_BYTES);
+        errCut = true;
+      }
+    });
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      reject(error);
+    });
+    // `close`, not `exit`: the pipes are drained by then.
+    child.once('close', (code, signalName) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      signal?.removeEventListener('abort', stop);
+      let document: unknown;
+      if (code === 0 && !tooLarge) {
+        try {
+          document = JSON.parse(Buffer.concat(out).toString('utf8'));
+        } catch {
+          document = undefined;
+        }
+      }
+      resolve({ code: code ?? (signalName ? 1 : 0), document, stderrTail: stderrTailOf(errWindow, errCut), timedOut, tooLarge });
+    });
+  });
 }

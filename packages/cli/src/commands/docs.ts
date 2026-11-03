@@ -1,7 +1,8 @@
-import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CommandInput } from '../command.ts';
+import { readRegular } from '../files.ts';
 import { style } from '../output.ts';
 
 /** Where the documentation of the installed `marmeon` lies: `docs/` in the package, the same depth from `src/commands/` and `dist/commands/`. */
@@ -108,22 +109,6 @@ function usage(output: CommandInput['output'], message: string): number {
 function slugOf(wanted: string): string {
   const name = wanted.split('#')[0]!;
   return name.endsWith('.md') ? name.slice(0, -3) : name;
-}
-
-/**
- * The text of a regular file, or undefined. The file is opened without following a symlink (ELOOP) and judged by the descriptor it
- * opened, so nothing can be swapped in between the check and the read.
- */
-function readRegular(path: string): string | undefined {
-  let descriptor: number | undefined;
-  try {
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    return fstatSync(descriptor).isFile() ? readFileSync(descriptor, 'utf8') : undefined;
-  } catch {
-    return undefined;
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-  }
 }
 
 /**
