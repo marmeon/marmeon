@@ -81,7 +81,6 @@ export function images(options: ImageOptions = {}, internals: ImagesInternals = 
       if (!id.endsWith(QUERY)) return undefined;
       const file = id.slice(0, -QUERY.length);
       const name = shorten(root, file);
-      this.addWatchFile(file);
       const real = existsSync(file) && statSync(file).isFile() ? realpathSync(file) : undefined;
       if (!real) this.error(`images: ${name} does not exist.`);
       if (!INPUT_EXTENSIONS.has(extname(real).toLowerCase())) {
@@ -92,6 +91,10 @@ export function images(options: ImageOptions = {}, internals: ImagesInternals = 
       if (!inside(realpathSync(root), real) || !isFileLoadingAllowed(config, normalizePath(real))) {
         this.error(`images: ${name} is outside the app or denied by \`server.fs\`; \`?image\` reads only the app's own files.`);
       }
+      // Only now: the id can come from a request (`/@fs/<path>?image`), and a watched path outside the app, a folder
+      // recursively, would stay watched for the life of the server. `real`, not `file`: a link outside the app to an image inside it
+      // passes the checks, and Vite adds a path outside the root to its watcher.
+      this.addWatchFile(real);
 
       if (!/^(\/|https?:\/\/)/.test(config.base)) {
         this.error(`images: \`?image\` needs an absolute \`base\` ('/' or a URL), not '${config.base}': the URLs of the variants are written into the code.`);

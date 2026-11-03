@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import sharp from 'sharp';
 import { build, createServer, type Plugin, type ViteDevServer } from 'vite';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { images, type ImageOptions, type ImagesInternals } from './images.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -81,6 +81,30 @@ async function run(root: string, { options, internals, ssr = false, extra = [], 
     // No `assets/` folder: nothing was written.
   }
   return { images: exported.images, assets, out };
+}
+
+/** `images()`, with each path its `load` hook hands to `addWatchFile` recorded in `watched`. */
+function recording(watched: string[]): Plugin {
+  const plugin = images();
+  const load = plugin.load as (this: unknown, id: string) => Promise<string | undefined>;
+  return {
+    ...plugin,
+    load(id) {
+      const context = new Proxy(this, {
+        get(target, key) {
+          if (key === 'addWatchFile') {
+            return (file: string) => {
+              watched.push(file);
+              target.addWatchFile(file);
+            };
+          }
+          const value: unknown = Reflect.get(target, key);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      return load.call(context, id);
+    },
+  };
 }
 
 function urls(srcset: string): string[] {
@@ -173,6 +197,36 @@ describe('images', () => {
       { src: '/hero.jpg', width: 1000, height: 500 },
       { src: '/modules/a/pic.png', width: 40, height: 20 },
     ]);
+  });
+
+  it('watches an image once it passed the checks, never a folder or a file outside the app', async () => {
+    const root = app({ 'hero.jpg': await picture(10, 10), 'pictures/.keep': '' });
+    const outside = realpathSync(tempDir('marmeon-images-outside-'));
+    writeFileSync(join(outside, 'outside.jpg'), await picture(10, 10));
+    symlinkSync(join(outside, 'outside.jpg'), join(root, 'link.jpg'));
+    symlinkSync(join(root, 'hero.jpg'), join(outside, 'into-app.jpg'));
+    const watched: string[] = [];
+    const server = await createServer({ root, configFile: false, logLevel: 'silent', appType: 'custom', envDir: false, server: { middlewareMode: true, hmr: false, ws: false }, plugins: [recording(watched)] });
+    servers.push(server);
+    const added = vi.spyOn(server.watcher, 'add');
+    const client = server.environments.client!;
+    // A request for `/@fs/<path>?image&import` reaches the plugin as this id: Vite watches a folder outside the root recursively.
+    await expect(client.transformRequest('/@fs/?image')).rejects.toThrow(/does not exist/);
+    await expect(client.transformRequest(`/@fs${outside}?image`)).rejects.toThrow(/does not exist/);
+    await expect(client.transformRequest(`/@fs${join(root, '../../..')}?image`)).rejects.toThrow(/does not exist/);
+    await expect(client.transformRequest(`/@fs${join(root, 'pictures')}?image`)).rejects.toThrow(/does not exist/);
+    await expect(client.transformRequest(`/@fs${join(outside, 'outside.jpg')}?image`)).rejects.toThrow(/outside the app/);
+    await expect(client.transformRequest('/link.jpg?image')).rejects.toThrow(/outside the app/);
+    expect(watched).toEqual([]);
+    expect(added).not.toHaveBeenCalled();
+
+    await client.transformRequest('/hero.jpg?image');
+    expect(watched).toEqual([join(root, 'hero.jpg')]);
+    // A link outside the app to an image inside it loads, and watches the image, not the link.
+    watched.length = 0;
+    await client.transformRequest(`/@fs${join(outside, 'into-app.jpg')}?image`);
+    expect(watched).toEqual([join(root, 'hero.jpg')]);
+    expect(added).not.toHaveBeenCalled();
   });
 
   describe('refuses', () => {
