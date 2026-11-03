@@ -1,10 +1,11 @@
 import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { anchorOf, Anchors } from './anchors.ts';
 import { initialize, mcpApp, mcpEnv, mcpSession, type McpSession } from './__fixtures__/mcp.ts';
-import { docsTools, sectionsOf } from './mcp/docs.ts';
+import { docsTools, DOCS_READ_TOOL, sectionsOf } from './mcp/docs.ts';
 import { isFailure } from './mcp/result.ts';
 
 const formats = new URL('./__fixtures__/formats/', import.meta.url);
@@ -234,6 +235,26 @@ describe('docs_read', () => {
       expect(isFailure(result)).toBe(true);
       expect(JSON.stringify(result)).not.toContain('TOP-SECRET-KEY');
     }
+  });
+});
+
+describe('the shipped documentation', () => {
+  // Built in memory from the sources, not read from packages/cli/docs: a copy from an older build would miss a new heading.
+  it('has only section anchors that docs_read accepts', async () => {
+    const repository = fileURLToPath(new URL('../../..', import.meta.url));
+    // Loaded at run time: the build script lies outside the package's sources.
+    const { expectedDocs } = (await import(pathToFileURL(join(repository, 'scripts/docs-ship.ts')).href)) as { expectedDocs: (root: string) => Promise<Map<string, Buffer>> };
+    const files = await expectedDocs(repository);
+    const index = JSON.parse(files.get('docs/index.json')!.toString('utf8')) as { sections: { pages: { file: string }[] }[] };
+    const pattern = new RegExp((DOCS_READ_TOOL.inputSchema.properties as any).section.pattern);
+    const refused: string[] = [];
+    for (const page of index.sections.flatMap((section) => section.pages)) {
+      const text = files.get(page.file)!.toString('utf8');
+      for (const section of sectionsOf(text)) {
+        if (section.anchor !== null && !pattern.test(section.anchor)) refused.push(`${page.file}: "${section.heading}" has the anchor "${section.anchor}"`);
+      }
+    }
+    expect(refused, 'docs_read only accepts anchors of [a-z0-9_-] — rename the heading').toEqual([]);
   });
 });
 

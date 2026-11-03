@@ -83,7 +83,7 @@ A section is a hit when every word appears in it. A word in the page's title wei
 and no word adds more than 5. Without a section that has all the words, the sections that have some come back, and `warnings` says so.
 
 The document: `{ "format": 1, "version": "…", "results": […], "warnings": [] }`. A result is `{ "slug", "title", "heading", "anchor", "file", "snippet" }`:
-`file` is `docs/<slug>.md#<anchor>`, the link the documentation keeps working, and `snippet` is at most 300 characters around the first place
+`file` is the page's file in the package with `#<anchor>` for a section (`docs/<slug>.md#<anchor>` for a page of the documentation), and `snippet` is at most 300 characters around the first place
 a word appears. `heading` and `anchor` are `null` for the part of a page before its first heading. The anchors are the ones the website gives
 its headings, so `docs/check.md#the-agents-block` is the section "The agents block" of [Checking an App](check.md).
 
