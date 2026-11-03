@@ -1,5 +1,6 @@
 import type { Translator } from '@marmeon/i18n';
 import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import { confirmedName, greeting, recipient } from './greeting.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 import type { User } from '../users.ts';
@@ -33,7 +34,7 @@ export class TwoFactorMail implements Mailable {
   }
 
   envelope() {
-    return { to: { address: this.#user.email, name: this.#user.name }, subject: this.#t.get(`auth.mail.two_factor.${this.#notice.kind}.subject`) };
+    return { to: recipient(this.#user.email, confirmedName(this.#user)), subject: this.#t.get(`auth.mail.two_factor.${this.#notice.kind}.subject`) };
   }
 
   content() {
@@ -45,7 +46,7 @@ export class TwoFactorMail implements Mailable {
     return layout(t, {
       preview: t.get(`${key}.preview`),
       body: mjml`
-        <mj-text>${t.get('auth.mail.hello', { name: this.#user.name })}</mj-text>
+        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
         <mj-text>${t.get(`${key}.intro`, values)}</mj-text>
         <mj-text>${t.get(`${key}.outro`)}</mj-text>`,
     });

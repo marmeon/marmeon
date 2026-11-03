@@ -1,6 +1,7 @@
 import { describeDevice } from '@marmeon/auth';
 import type { Translator } from '@marmeon/i18n';
 import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import { confirmedName, greeting, recipient } from './greeting.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 import type { User } from '../users.ts';
@@ -37,7 +38,7 @@ export class SignInMail implements Mailable {
   }
 
   envelope() {
-    return { to: { address: this.#user.email, name: this.#user.name }, subject: this.#t.get(`auth.mail.sign_in.${this.#notice.kind}.subject`) };
+    return { to: recipient(this.#user.email, confirmedName(this.#user)), subject: this.#t.get(`auth.mail.sign_in.${this.#notice.kind}.subject`) };
   }
 
   content() {
@@ -54,7 +55,7 @@ export class SignInMail implements Mailable {
     return layout(t, {
       preview: t.get(`${key}.preview`),
       body: mjml`
-        <mj-text>${t.get('auth.mail.hello', { name: this.#user.name })}</mj-text>
+        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
         <mj-text>${t.get(`${key}.intro`)} ${t.get(sessionsEnded ? `${key}.ended` : `${key}.not_ended`)}</mj-text>
         <mj-text>${t.get(`${key}.details`, { at: when, from, with: using })}</mj-text>
         <mj-text>${t.get(sessionsEnded ? `${key}.outro` : `${key}.outro_not_ended`)}</mj-text>`,

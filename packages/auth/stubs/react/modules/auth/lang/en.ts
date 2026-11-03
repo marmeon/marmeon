@@ -291,6 +291,7 @@ const en = {
   mail: {
     app: 'Marmeon',
     hello: 'Hello {name},',
+    hello_unnamed: 'Hello,',
     reset: {
       subject: 'Reset your password',
       preview: 'A link to choose a new password',
@@ -408,6 +409,7 @@ const en = {
         subject: 'A passkey was added',
         preview: 'A new passkey can sign in to your account',
         intro: 'the passkey “{name}” was added to your account. It signs you in without your password.',
+        intro_unnamed: 'a passkey was added to your account. It signs you in without your password.',
         outro: 'If that was not you, remove it under Settings, Passkeys, and reset your password now. Adding a passkey needed your password.',
       },
       removed: {
@@ -427,6 +429,7 @@ const en = {
         subject: 'Your password was reset — these passkeys still sign in',
         preview: 'A password reset does not remove passkeys',
         intro: 'the password of your account was reset. Passkeys survive a reset: they still sign in without a password. Your account has these:',
+        intro_unnamed: 'the password of your account was reset. Passkeys survive a reset: they still sign in without a password. Your account has passkeys: see them under Settings, Passkeys.',
         outro: 'If you did not reset your password, someone has access to your inbox: secure it, and remove every passkey you do not know under Settings, Passkeys.',
       },
       sign_in_failed: {

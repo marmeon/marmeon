@@ -32,7 +32,8 @@ export default defineModule({
   // PasskeyServiceProvider switches passkeys on. To switch them off, remove it, `PasskeyStore` from `combineFactors` in AuthServiceProvider, and
   // both imports of '@marmeon/auth/passkeys': the WebAuthn library is loaded only by code that imports that subpath.
   providers: [AuthServiceProvider, PasskeyServiceProvider],
-  // NotifyAboutEmailChange (not queued) queues the note to the old address once an address changed.
+  // NotifyAboutEmailChange (not queued: it reads the signed-in account from `Auth`, as it was before the change, which a worker does not have)
+  // queues the note to the old address once an address changed.
   // SendEmailVerification is a queued listener (static queue): a worker runs it after the registration committed.
   // NotifyAboutNewSignIn is queued too: a sign-in with a password becomes a notification (bell + mail) in a worker.
   listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(SignedIn, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused), listen(SignInLockedOut, QueueLockoutMail), listen(EmailChanged, NotifyAboutEmailChange)],

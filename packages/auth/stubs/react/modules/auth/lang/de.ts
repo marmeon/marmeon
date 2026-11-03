@@ -284,6 +284,7 @@ export default {
   mail: {
     app: 'Marmeon',
     hello: 'Hallo {name},',
+    hello_unnamed: 'Hallo,',
     reset: {
       subject: 'Passwort zurücksetzen',
       preview: 'Ein Link, um ein neues Passwort zu wählen',
@@ -401,6 +402,7 @@ export default {
         subject: 'Ein Passkey wurde hinzugefügt',
         preview: 'Ein neuer Passkey kann sich in dein Konto anmelden',
         intro: 'der Passkey „{name}“ wurde deinem Konto hinzugefügt. Er meldet dich ohne Passwort an.',
+        intro_unnamed: 'ein Passkey wurde deinem Konto hinzugefügt. Er meldet dich ohne Passwort an.',
         outro: 'Warst du das nicht, entferne ihn unter Einstellungen, Passkeys und setze jetzt dein Passwort zurück. Zum Hinzufügen war dein Passwort nötig.',
       },
       removed: {
@@ -420,6 +422,7 @@ export default {
         subject: 'Dein Passwort wurde zurückgesetzt — diese Passkeys melden weiter an',
         preview: 'Ein Zurücksetzen des Passworts entfernt keine Passkeys',
         intro: 'das Passwort deines Kontos wurde zurückgesetzt. Passkeys überstehen das: Sie melden weiter ohne Passwort an. Dein Konto hat diese:',
+        intro_unnamed: 'das Passwort deines Kontos wurde zurückgesetzt. Passkeys überstehen das: Sie melden weiter ohne Passwort an. Dein Konto hat Passkeys: Du siehst sie unter Einstellungen, Passkeys.',
         outro: 'Hast du dein Passwort nicht zurückgesetzt, hat jemand Zugriff auf dein Postfach: Sichere es und entferne jeden Passkey, den du nicht kennst, unter Einstellungen, Passkeys.',
       },
       sign_in_failed: {

@@ -56,7 +56,8 @@ export default defineModule({
     listen(SignInLockedOut, QueueLockoutMail),
     // Not queued (the event cannot be): it queues the mail that lists the passkeys a password reset left standing.
     listen(PasswordReset, NotifyAboutPasskeysAfterReset),
-    // Not queued (the language is the account's, read when it runs): it queues the note to the old address once an address changed.
+    // Not queued (the language is the account's, read when it runs; and it reads the signed-in account from `Auth`, as it was before the
+    // change, which a worker does not have): it queues the note to the old address once an address changed.
     listen(EmailChanged, NotifyAboutEmailChange),
   ],
   // Queued work — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.

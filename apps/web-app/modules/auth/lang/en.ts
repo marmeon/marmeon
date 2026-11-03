@@ -269,6 +269,7 @@ const en = {
   },
   mail: {
     hello: 'Hello {name},',
+    hello_unnamed: 'Hello,',
     reset: {
       subject: 'Reset your password',
       preview: 'A link to choose a new password',
