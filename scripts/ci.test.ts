@@ -472,6 +472,15 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     expect(textRuleWhere('apps/web-app/.env.example')).toBe("in an app's README or .env files");
   });
 
+  it('reads the skills the marmeon package ships, which agents:install copies into apps', () => {
+    expect(textRuleHits([
+      { path: 'packages/cli/skills/marmeon-migration/SKILL.md', text: 'like Laravel migrations' },
+      { path: 'packages/cli/skills/marmeon-migration/notes.txt', text: 'as in Rails' },
+      { path: 'packages/cli/src/agents/skills.ts', text: '// like Laravel' },
+    ], frameworks)).toEqual(['packages/cli/skills/marmeon-migration/SKILL.md:1: like Laravel migrations', 'packages/cli/skills/marmeon-migration/notes.txt:1: as in Rails']);
+    expect(textRuleWhere('packages/cli/skills/marmeon-migration/SKILL.md:1: x')).toBe('in the skills');
+  });
+
   it('finds a comparison with another framework in the docs, the package cards, the root texts and what a new app copies', () => {
     expect(textRuleHits([
       { path: 'docs/authentication.md', text: 'Like Laravel Breeze, the module is yours.' },

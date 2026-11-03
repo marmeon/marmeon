@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, symlinkSync, readdirSync, readFileSync, rmSync, 
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { expectedDocs, shipDocs } from './docs-ship.ts';
-import { checkDocsInTarball } from './pack-check.ts';
+import { checkDocsInTarball, checkSkillsInTarball, expectedSkills } from './pack-check.ts';
 import { tempDir } from './test/temp-dir.js';
 
 /** A repository with two pages, a policy page and the three policies; `target` is its `packages/cli`. */
@@ -152,5 +152,59 @@ describe('checkDocsInTarball', () => {
     const { target, expected, files } = await shipped();
     const problems = checkDocsInTarball({ files: [...files, 'docs/extra.md'] }, target, expected);
     expect(problems).toEqual(["docs/extra.md is no page of the repository's docs", HINT]);
+  });
+});
+
+describe('checkSkillsInTarball', () => {
+  const HINT = 'the skills in the tarball are not the repository\'s — is "skills" named in "files" of packages/cli/package.json?';
+
+  /** A repository with two skills and an unpacked tarball that holds them. */
+  function skillful() {
+    const root = tempDir('marmeon-skills-ship-');
+    const target = tempDir('marmeon-skills-tarball-');
+    for (const base of [join(root, 'packages/cli'), target]) {
+      for (const name of ['marmeon-one', 'marmeon-two']) {
+        mkdirSync(join(base, 'skills', name), { recursive: true });
+        writeFileSync(join(base, 'skills', name, 'SKILL.md'), `# ${name}\n`);
+      }
+    }
+    const expected = expectedSkills(root);
+    return { target, expected, files: [...expected.keys()] };
+  }
+
+  it('lists the files of the repository by their path in the tarball', () => {
+    expect(skillful().files.sort()).toEqual(['skills/marmeon-one/SKILL.md', 'skills/marmeon-two/SKILL.md']);
+  });
+
+  it('accepts the skills of the repository', () => {
+    const { target, expected, files } = skillful();
+    expect(checkSkillsInTarball({ files }, target, expected)).toEqual([]);
+  });
+
+  it('names a missing skill', () => {
+    const { target, expected, files } = skillful();
+    const problems = checkSkillsInTarball({ files: files.filter((file) => !file.includes('marmeon-two')) }, target, expected);
+    expect(problems).toEqual(['skills/marmeon-two/SKILL.md is missing', HINT]);
+  });
+
+  it('names a changed skill', () => {
+    const { target, expected, files } = skillful();
+    writeFileSync(join(target, 'skills/marmeon-one/SKILL.md'), '# edited\n');
+    expect(checkSkillsInTarball({ files }, target, expected)).toEqual(["skills/marmeon-one/SKILL.md is not the repository's", HINT]);
+  });
+
+  it('names a file that is no skill of the repository', () => {
+    const { target, expected, files } = skillful();
+    expect(checkSkillsInTarball({ files: [...files, 'skills/marmeon-three/SKILL.md'] }, target, expected)).toEqual([
+      'skills/marmeon-three/SKILL.md is no skill of the repository',
+      HINT,
+    ]);
+  });
+
+  it('refuses a repository without skills', () => {
+    expect(checkSkillsInTarball({ files: [] }, tempDir('marmeon-skills-none-'), new Map())).toEqual([
+      'the repository has no skills under packages/cli/skills',
+      HINT,
+    ]);
   });
 });

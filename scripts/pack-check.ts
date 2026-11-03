@@ -138,6 +138,35 @@ export function checkDocsInTarball(packed: Pick<PackedPackage, 'files'>, dir: st
   return problems;
 }
 
+/** Every file under `packages/cli/skills/` of the repository, by its path in the tarball (`skills/<name>/SKILL.md`). */
+export function expectedSkills(root: string): Map<string, Buffer> {
+  const directory = join(root, 'packages/cli/skills');
+  const skills = new Map<string, Buffer>();
+  if (!existsSync(directory)) return skills;
+  for (const file of readdirSync(directory, { recursive: true, withFileTypes: true })) {
+    if (!file.isFile()) continue;
+    const path = join(file.parentPath, file.name);
+    skills.set(posix.join('skills', ...relative(directory, path).split(sep)), readFileSync(path));
+  }
+  return skills;
+}
+
+/** The skills in the `marmeon` tarball are the repository's, byte for byte, and nothing else lies under `skills/`. */
+export function checkSkillsInTarball(packed: Pick<PackedPackage, 'files'>, dir: string, expected: ReadonlyMap<string, Buffer>): string[] {
+  const problems: string[] = [];
+  const files = new Set(packed.files);
+  if (expected.size === 0) problems.push('the repository has no skills under packages/cli/skills');
+  for (const [path, bytes] of expected) {
+    if (!files.has(path)) problems.push(`${path} is missing`);
+    else if (!readFileSync(join(dir, path)).equals(bytes)) problems.push(`${path} is not the repository's`);
+  }
+  for (const file of packed.files) {
+    if (file.startsWith('skills/') && !expected.has(file)) problems.push(`${file} is no skill of the repository`);
+  }
+  if (problems.length > 0) problems.push('the skills in the tarball are not the repository\'s — is "skills" named in "files" of packages/cli/package.json?');
+  return problems;
+}
+
 /** Rule 7 of `pnpm check:source` over every text file of an unpacked tarball (`dir`) — `<package>/<path>:line: what: text`. */
 export function privateRecordInTarball(packed: Pick<PackedPackage, 'name' | 'files'>, dir: string): string[] {
   const files: SourceFile[] = [];
@@ -240,6 +269,7 @@ async function main(): Promise<number> {
   // The documentation of this version goes into the `marmeon` package after its build (`pnpm build` does the same).
   await shipDocs(root, join(root, 'packages/cli'));
   const docs = await expectedDocs(root);
+  const skills = expectedSkills(root);
 
   const tsconfig = JSON.parse(readFileSync(join(root, 'tsconfig.json'), 'utf8')) as { references?: { path: string }[] };
   const referenced = new Set((tsconfig.references ?? []).map((reference) => posix.normalize(reference.path)));
@@ -270,6 +300,7 @@ async function main(): Promise<number> {
         if (tar.status !== 0) return report(pkg.name, [`could not unpack ${tarball.tarball}: ${tar.stderr}`]);
         report(pkg.name, checkTarball(tarball, join(unpacked, 'package'), pkg, license));
         if (pkg.short === 'cli') report(pkg.name, checkDocsInTarball(tarball, join(unpacked, 'package'), docs));
+        if (pkg.short === 'cli') report(pkg.name, checkSkillsInTarball(tarball, join(unpacked, 'package'), skills));
         if (pkg.short === 'cli') console.log(`pack:check: ${pkg.name} tarball ${(readFileSync(tarball.tarball).byteLength / 1024).toFixed(0)} KB, ${tarball.files.filter((file) => SHIPPED.some((name) => file === name || file.startsWith(`${name}/`))).length} of its files are the docs`);
         report(pkg.name, await lint(tarball));
         // attw checks what importing the package resolves to — a package that only has a bin (create-marmeon) has nothing to import.
