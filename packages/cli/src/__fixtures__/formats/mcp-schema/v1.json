@@ -1,0 +1,99 @@
+{
+  "format": 1,
+  "projection": {
+    "format": 2,
+    "database": "x",
+    "migrations": [
+      {
+        "name": "2026_10_03_002234_create_jobs_table",
+        "module": "system"
+      }
+    ],
+    "tables": {
+      "jobs": {
+        "name": "jobs",
+        "module": "system",
+        "columns": [
+          {
+            "name": "id",
+            "type": {
+              "sqlite": "integer",
+              "pgsql": "bigint"
+            },
+            "nullable": false,
+            "primary": true,
+            "default": null,
+            "secret": false
+          },
+          {
+            "name": "queue",
+            "type": {
+              "sqlite": "varchar(255)",
+              "pgsql": "varchar(255)"
+            },
+            "nullable": false,
+            "primary": false,
+            "default": null,
+            "secret": false
+          },
+          {
+            "name": "payload",
+            "type": {
+              "sqlite": "text",
+              "pgsql": "text"
+            },
+            "nullable": false,
+            "primary": false,
+            "default": null,
+            "secret": false
+          },
+          {
+            "name": "attempts",
+            "type": {
+              "sqlite": "integer",
+              "pgsql": "integer"
+            },
+            "nullable": false,
+            "primary": false,
+            "default": null,
+            "secret": false
+          },
+          {
+            "name": "reserved_at",
+            "type": {
+              "sqlite": "integer",
+              "pgsql": "bigint"
+            },
+            "nullable": true,
+            "primary": false,
+            "default": null,
+            "secret": false
+          },
+          {
+            "name": "available_at",
+            "type": {
+              "sqlite": "integer",
+              "pgsql": "bigint"
+            },
+            "nullable": false,
+            "primary": false,
+            "default": null,
+            "secret": false
+          },
+          {
+            "name": "created_at",
+            "type": {
+              "sqlite": "integer",
+              "pgsql": "bigint"
+            },
+            "nullable": false,
+            "primary": false,
+            "default": null,
+            "secret": false
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}
