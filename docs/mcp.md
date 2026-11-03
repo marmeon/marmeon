@@ -11,7 +11,7 @@ It is a tool for development and nothing else:
 - It starts only with `NODE_ENV=development`, set in the environment or in the app's `.env`. With `production`, `test` or no
   `NODE_ENV` it prints why on stderr and ends with code 1, before it loads anything of the protocol. Nothing in a deployment starts it.
 - There is no port: the server does not listen, has no HTTP transport, and no option turns one on.
-- The server itself changes no code, database or file. A call to `routes` starts your app, though, and the app's own startup code runs: it can write files or open connections.
+- The server itself changes no code, database or file. Of the tools' own commands, only `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed. A call to `routes` or `check` starts your app, though, and the app's own startup code runs: it can write files or open connections.
 
 ## Starting it
 
@@ -136,7 +136,8 @@ to narrow it with `only`. A second `check` while one runs is refused at once: "A
 
 The schema the migrations describe: the projection that [`.marmeon/schema.json`](migrations.md#what-the-migrations-describe) keeps and that `bootstrap/database.d.ts`
 is generated from. It is computed afresh for each call (the tool runs `marmeon schema:project` first), so it follows the migration files, not a
-file that was written a while ago. The app is not started: the command only registers the modules.
+file that was written a while ago. The app is not started: the command only registers the modules. The command writes `.marmeon/schema.json` when the
+projection changed, so the tool is not announced as read-only; the server itself writes nothing.
 
 | Input | |
 | --- | --- |
@@ -147,7 +148,7 @@ The document: `{ "format": 1, "projection": {…}, "warnings": [] }`. `projectio
 unique keys, indexes and foreign keys. With `table` only that table is under `tables`; an unknown name is an error that lists the tables (at most 50).
 A column with `"secret": true` holds a value that never belongs in an answer or a log.
 
-An app without `@marmeon/database` has no schema: `projection` is `null` and `warnings` says so. An app that has it but where no
+An app without `@marmeon/database` has no schema, even if an older `.marmeon/schema.json` is left over: `projection` is `null` and `warnings` says so. An app that has it but where no
 file could be written (a read-only `.marmeon`) gets an error that says to run `marmeon schema:project` in a terminal to see why. When `marmeon schema:project` fails, for example
 because two migrations create one table, the error carries its message. A file of another `format` is an error that says to update `marmeon`.
 The file is read only when it is a regular file inside the app: a link in its place, or in place of `.marmeon`, is not followed and is an error.
@@ -164,7 +165,7 @@ The call is stopped after 120 seconds.
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
-- It writes nothing of its own.
+- It writes nothing of its own; the one file a tool's command keeps up to date is `.marmeon/schema.json`.
 
 ## Results are data
 

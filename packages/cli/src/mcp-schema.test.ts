@@ -120,10 +120,18 @@ describe('schema when the file is not what the command wrote', () => {
     writeFileSync(join(root, '.marmeon/schema.json'), typeof value === 'string' ? value : JSON.stringify(value));
   };
 
+  /** The app has `@marmeon/database` installed (a stub: the tool only asks whether the package is there). */
+  const withPackage = () => {
+    mkdirSync(join(root, 'node_modules/@marmeon/database'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/@marmeon/database/package.json'), '{}');
+  };
+  const withoutPackage = () => rmSync(join(root, 'node_modules'), { recursive: true });
+
   beforeEach(() => {
     root = realpathSync(tempDir('marmeon-mcp-schema-file-'));
     run.mockReset();
     run.mockResolvedValue(exitedClean);
+    withPackage();
   });
 
   it('reads the command with a fixed argument list and nothing from the input', async () => {
@@ -169,8 +177,6 @@ describe('schema when the file is not what the command wrote', () => {
   });
 
   it('says the schema could not be written when the package is installed and the command left no file', async () => {
-    mkdirSync(join(root, 'node_modules/@marmeon/database'), { recursive: true });
-    writeFileSync(join(root, 'node_modules/@marmeon/database/package.json'), '{}');
     expect(await SCHEMA_TOOL.run({}, context())).toEqual({ failure: '.marmeon/schema.json could not be written; run marmeon schema:project in a terminal to see why.' });
   });
 
@@ -180,7 +186,29 @@ describe('schema when the file is not what the command wrote', () => {
     expect(result).toEqual({ failure: '.marmeon/schema.json has format none; this marmeon reads 2 — update marmeon.' });
   });
 
+  const stale = () => {
+    file({ format: 2, tables: { stale_table: {} } });
+  };
+
+  it('does not return a stale file as current when the app has no @marmeon/database', async () => {
+    stale();
+    withoutPackage();
+    const result = await SCHEMA_TOOL.run({}, context());
+    expect(result).toEqual(stored('mcp-schema/v1-no-database.json'));
+    expect(JSON.stringify(result)).not.toContain('stale_table');
+  });
+
+  it('still refuses a link in place of the file when the package is absent', async () => {
+    withoutPackage();
+    const outside = join(realpathSync(tempDir('marmeon-mcp-schema-outside-')), 'schema.json');
+    writeFileSync(outside, JSON.stringify({ format: 2, tables: { stolen: {} } }));
+    mkdirSync(join(root, '.marmeon'));
+    symlinkSync(outside, join(root, '.marmeon/schema.json'));
+    expect(await SCHEMA_TOOL.run({}, context())).toEqual({ failure: '.marmeon/schema.json is not a regular file inside the app, so it was not read.' });
+  });
+
   it('says the app has no database when the command succeeded and left no file', async () => {
+    withoutPackage();
     expect(await SCHEMA_TOOL.run({}, context())).toEqual(stored('mcp-schema/v1-no-database.json'));
   });
 

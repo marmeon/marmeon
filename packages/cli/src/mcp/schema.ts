@@ -12,6 +12,8 @@ const FILE = '.marmeon/schema.json';
 /** The format of {@link FILE} this version reads. */
 const FILE_FORMAT = 2;
 
+const NO_DATABASE: ToolDocument = { format: 1, projection: null, warnings: ['This app has no @marmeon/database.'] };
+
 const CHILD_TIMEOUT_MS = 120_000;
 const MAX_CHILD_STDOUT_BYTES = 1024 * 1024;
 const MAX_FILE_BYTES = 16 * 1024 * 1024;
@@ -29,6 +31,8 @@ export const SCHEMA_TOOL: McpTool = {
     additionalProperties: false,
   },
   spawns: true,
+  // schema:project writes .marmeon/schema.json when the projection changed.
+  writes: true,
   run: schema,
 };
 
@@ -41,13 +45,13 @@ async function schema(input: Readonly<Record<string, unknown>>, { root, signal }
 
   const file = readRegularIn(root, FILE, MAX_FILE_BYTES);
   if (!file) {
-    // Absent after a successful run: the app has no database package. Anything else there (a link, a directory) is not read, and said.
-    if (!exists(join(root, FILE))) {
-      if (hasPackage(root)) return failure(`${FILE} could not be written; run marmeon schema:project in a terminal to see why.`);
-      return { format: 1, projection: null, warnings: ['This app has no @marmeon/database.'] };
-    }
-    return failure(`${FILE} is not a regular file inside the app, so it was not read.`);
+    // Absent after a successful run: either the app has no database package or the file could not be written. Anything else there (a link, a directory) is not read, and said.
+    if (exists(join(root, FILE))) return failure(`${FILE} is not a regular file inside the app, so it was not read.`);
+    if (hasPackage(root)) return failure(`${FILE} could not be written; run marmeon schema:project in a terminal to see why.`);
+    return NO_DATABASE;
   }
+  // A file an earlier version of the app left behind: without the package nothing keeps it current.
+  if (!hasPackage(root)) return NO_DATABASE;
   if (file.truncated) return failure(`${FILE} is larger than 16 MiB, so it was not read.`);
   let projection: { format?: unknown; tables?: unknown };
   try {

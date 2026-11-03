@@ -43,7 +43,7 @@ function buildServer(root: string, queue: SerialQueue, ending: AbortSignal): Mcp
   for (const tool of TOOLS) {
     server.registerTool(
       tool.name,
-      { description: tool.description, inputSchema: fromJsonSchema<Record<string, unknown>>(tool.inputSchema), annotations: { readOnlyHint: true, openWorldHint: false } },
+      { description: tool.description, inputSchema: fromJsonSchema<Record<string, unknown>>(tool.inputSchema), annotations: { readOnlyHint: tool.writes !== true, openWorldHint: false } },
       async (input, context) => {
         const signal = AbortSignal.any([ending, context.mcpReq.signal]);
         return toResult(await call(tool, queue, { input, root, signal }));
