@@ -314,6 +314,8 @@ describe('devtools:list', () => {
     const odd = [
       { id: 7, type: 'log', at: 9_000, batch: { a: 1 }, requestId: 5, jobId: [], tags: 'not-a-list', content: { level: 'info', message: 'odd', context: {} } },
       { id: 'x', type: 'bogus', at: 9_100, batch: 'b', tags: [], content: {} },
+      // A time outside the Date range would make the table's toISOString() throw.
+      { id: 'z', type: 'log', at: 1e20, batch: 'b', tags: [], content: { level: 'info', message: 'far', context: {} } },
       { id: 'y', type: 'log', at: 9_200, batch: 'b', tags: [1, null, 'ok', `k${TOKEN}`, ...Array.from({ length: 500 }, (_, i) => `many${i}`)], content: null },
     ] as unknown as AnyEntry[];
     const { app, list } = await listApp([]);
@@ -327,6 +329,9 @@ describe('devtools:list', () => {
       expect(document!.entries[1]!.tags).toHaveLength(50);
       expect(JSON.stringify(document)).not.toContain(TOKEN);
       expect(JSON.stringify(document)).not.toContain('bogus');
+      expect(JSON.stringify(document)).not.toContain('far');
+      const { lines } = await list();
+      expect(lines.join('\n')).not.toContain('far');
     } finally {
       await app.shutdown();
     }

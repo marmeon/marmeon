@@ -116,7 +116,7 @@ function plain(value: unknown): Record<string, unknown> {
 function shown(raw: unknown, redactor: Redactor): AnyEntry | undefined {
   const entry = plain(raw);
   const type = entry.type;
-  if (typeof type !== 'string' || !(ENTRY_TYPES as readonly string[]).includes(type) || typeof entry.at !== 'number' || !Number.isFinite(entry.at)) return undefined;
+  if (typeof type !== 'string' || !(ENTRY_TYPES as readonly string[]).includes(type) || typeof entry.at !== 'number' || Number.isNaN(new Date(entry.at).getTime())) return undefined;
   let content = plain(entry.content);
   if (type === 'mail') {
     const { html, ...rest } = content;
