@@ -505,6 +505,21 @@ describe('what the recorder keeps', () => {
     }
   });
 
+  it('records no batch for the devtools\' own commands — reading the entries must not add to them', async () => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      for (const command of ['devtools:list', 'devtools:prune', 'devtools:other', 'users:import']) {
+        await trace(channels.tracing('command.run'), { ...messageBase(app), command, args: [] }, async () => 0, (ended, code) => {
+          ended.exitCode = code;
+        });
+      }
+      await tester!.settled();
+      expect(tester!.entries('command').map((entry) => entry.content.command)).toEqual(['users:import']);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
   it('keeps the time a scheduled task was due as dueAt', async () => {
     const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {

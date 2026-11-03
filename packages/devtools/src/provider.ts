@@ -1,6 +1,6 @@
 import { defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@marmeon/core';
 import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
-import { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
+import { DevtoolsClearCommand, DevtoolsListCommand, DevtoolsPruneCommand } from './commands.ts';
 import { DevtoolsConfig, DevtoolsSetupError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
 import { FileDevtoolsStore } from './file-store.ts';
 import { Recorder } from './recorder.ts';
@@ -29,12 +29,12 @@ export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings
  * store (`storage/framework/devtools/`, shared with the worker and the scheduler `marmeon dev` starts) and starts the
  * {@link Recorder}. Anywhere else nothing is subscribed, nothing written, `config/devtools.ts` never loaded;
  * `DEVTOOLS_ENABLED=true` with `NODE_ENV=production` fails the start. Tests opt in with `createTestApp(App, { devtools: true })`.
- * The commands `devtools:clear` and `devtools:prune` exist everywhere (they only remove files). Found by `marmeon discover` —
+ * The commands `devtools:clear` and `devtools:prune` (they only remove files) and `devtools:list` exist everywhere. Found by `marmeon discover` —
  * install it as a dev dependency, so production installs do not even have it.
  */
 export class DevtoolsServiceProvider implements ServiceProvider {
   static config = [DevtoolsConfig];
-  static commands: readonly CommandClass[] = [DevtoolsClearCommand, DevtoolsPruneCommand];
+  static commands: readonly CommandClass[] = [DevtoolsClearCommand, DevtoolsListCommand, DevtoolsPruneCommand];
   /** On the error page and when `marmeon` cannot start the app. */
   static solutions = defineSolutions([
     {

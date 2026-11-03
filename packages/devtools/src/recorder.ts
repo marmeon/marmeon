@@ -416,7 +416,8 @@ export class Recorder {
   }
 
   #commandStarted(message: CommandRunMessage): void {
-    this.#command = this.#options.ignore.commands.has(message.command) ? undefined : this.#batch({});
+    // The devtools' own commands are no batch: reading the entries (a coding agent asks again and again) must not fill the ring it reads.
+    this.#command = message.command.startsWith('devtools:') || this.#options.ignore.commands.has(message.command) ? undefined : this.#batch({});
   }
 
   #commandEnded(message: CommandRunMessage): void {
