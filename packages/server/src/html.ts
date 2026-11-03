@@ -44,8 +44,10 @@ export function documentAround(template: string, page: PageObject, head = ''): {
   // A page title from <Head> replaces the template's default <title>.
   let before = /<title[\s>]/.test(head) ? template.slice(0, at).replace(/<title>[\s\S]*?<\/title>\s*/, '') : template.slice(0, at);
   before = withLang(before, page.locale);
-  before = before.includes(HEAD_OUTLET) ? before.replace(HEAD_OUTLET, () => head) : before;
+  // The page script goes in at the template's own `</head>` before the `<Head>` tags do: the text of a script among
+  // them may contain `</head>` (React leaves it as is), and inserting there would close that script early.
   before = before.includes('</head>') ? before.replace('</head>', () => `${pageScript}\n</head>`) : `${before}${pageScript}`;
+  before = before.includes(HEAD_OUTLET) ? before.replace(HEAD_OUTLET, () => head) : before;
   return { before, after: template.slice(at + HTML_OUTLET.length) };
 }
 
