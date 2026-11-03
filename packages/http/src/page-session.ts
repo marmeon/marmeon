@@ -6,6 +6,12 @@ import { token } from '@marmeon/core';
  */
 export interface PageSession {
   /**
+   * Whether the session middleware started a session on this request — also a guest's new one. On a page that did not start one,
+   * an island whose route starts the session loads in the browser, since a shared cache may keep the page. It does not decide
+   * whether islands get the request's cookies.
+   */
+  started(): boolean;
+  /**
    * The CSRF token, for forms that work without JavaScript (`<Form>` renders it as `_token`, `PageObject.csrf`) — of a session
    * that is kept. A guest without a session gets none: their forms pass by the browser's word (Fetch Metadata, Origin).
    */

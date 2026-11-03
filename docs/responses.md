@@ -345,7 +345,7 @@ credential takes the `credentialPage()` middleware instead; it also sets `Referr
 That leaves `back()` without a `Referer` on such a page: a form on it returns by an explicit redirect. See
 [a link that is a credential](security.md#a-link-that-is-a-credential).
 
-A response that sets a cookie, or belongs to a session, is never shared: the framework turns `public` into `private` (dropping `s-maxage`, `proxy-revalidate`, `CDN-Cache-Control` and `Surrogate-Control`) and logs a warning once per route. Cache public pages in a group without the session.
+A response that sets a cookie, or belongs to a session, is never shared: the framework turns `public` into `private` (dropping `s-maxage`, `proxy-revalidate`, `CDN-Cache-Control` and `Surrogate-Control`) and logs a warning once per route. Cache public pages in a group without the session. Such a page's islands run without the visitor's cookies, and an island whose route starts the session loads in the browser instead ([how islands load](deferred-props.md#how-islands-load)).
 
 Since that answer stays in the browser's cache, the app signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `signOut()`; see [the browser's storage on sign-out](client-features.md#the-browsers-storage-on-sign-out).
 

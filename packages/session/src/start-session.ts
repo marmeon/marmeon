@@ -20,11 +20,20 @@ export class SessionLottery {
 }
 
 /**
+ * Marks the middleware that starts a session — internal: the kernel reads it from a route's middleware to tell an island that
+ * needs the visitor's session (`Symbol.for`: the same symbol in @marmeon/server, without an export).
+ */
+const SESSION_MIDDLEWARE = Symbol.for('marmeon.middleware.session');
+
+/**
  * Loads the session before the route and saves it afterwards — also when the
  * route throws, so flash data and a regenerated id are never lost. Sends the
  * session id as a cookie (encrypted by `EncryptCookies`, which must run first).
  */
 export class StartSession {
+  /** @internal */
+  static readonly [SESSION_MIDDLEWARE] = true;
+
   readonly #session: Session;
   readonly #config: SessionConfig;
   readonly #store: SessionStore;

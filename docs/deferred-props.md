@@ -367,6 +367,14 @@ authorization. The island arrives in the same response, behind a boundary the pa
 without a request. After a visit inside the app, the browser loads the page's islands in parallel. Two identical islands share one
 request. Islands with `load="visible"` always load in the browser.
 
+A page that starts no session (a group without `StartSession`) may be kept by a shared cache and handed to every visitor, so
+nothing of the visitor's may reach its document. On such a page an island whose route starts the session (`StartSession` in its
+group or route) always loads in the browser: the server renders its `fallback`, and the island appears after hydration with the
+visitor's own session. Every other island of the page still renders on the server, but without the request's cookies. To render
+a session island on the server, put the page in the session group. The islands of that page see the cookies only while the
+page is private, that is, for a visitor whose session is kept (a signed-in one); for a guest they see none, and an island
+that reads a cookie there gets none. Move what such an island needs into the page's props or load it in the browser.
+
 > [!WARNING]
 > An island's request only reads, and so does a deferred prop streamed with the first page. Neither may write the session, set a
 > cookie or queue work after the response, and neither takes a flash message: the page itself takes its flash messages as usual,
