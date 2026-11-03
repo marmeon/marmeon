@@ -153,4 +153,14 @@ describe('agentsCheck: the installed skills and the entry in .mcp.json', () => {
   it('passes a current installation in an app without AGENTS.md', () => {
     expect(agentsCheck(installed()).report).toMatchObject({ status: 'passed', problems: [] });
   });
+
+  it('judges only the entry when only .mcp.json is installed, whatever lies in the skill folders', () => {
+    const root = realpathSync(tempDir('marmeon-agents-check-'));
+    writeFileSync(join(root, '.mcp.json'), mcp());
+    mkdirSync(join(root, '.claude/skills/marmeon-migration'), { recursive: true });
+    writeFileSync(join(root, '.claude/skills/marmeon-migration/SKILL.md'), 'MY-OWN-SKILL');
+    expect(agentsCheck(root).report.problems).toEqual([]);
+    writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { marmeon: { command: 'other' } } }));
+    expect(agentsCheck(root).report.problems).toEqual([expect.objectContaining({ file: '.mcp.json', fix: 'marmeon agents:install' })]);
+  });
 });

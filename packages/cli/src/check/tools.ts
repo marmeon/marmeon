@@ -162,7 +162,7 @@ function installProblems(root: string): { problems: CheckProblem[]; installed: b
     const found = planInstall(root, [], { shared: false, mcp: false });
     if (!found.ok || (!found.value.skillsInstalled && !found.value.mcpInstalled)) return none;
     const { skillsInstalled } = found.value;
-    const planned = planInstall(root, shippedSkills(), { shared: false, mcp: true });
+    const planned = planInstall(root, skillsInstalled ? shippedSkills() : [], { shared: false, mcp: true });
     if (!planned.ok) {
       const message = planned.error.message.replace(/ Nothing was written\.$/, ' It was not changed.');
       return { installed: true, problems: [{ severity: 'warning', message, ...(planned.error.path === undefined ? {} : { file: planned.error.path }), docs }] };
@@ -170,7 +170,7 @@ function installProblems(root: string): { problems: CheckProblem[]; installed: b
     return {
       installed: true,
       problems: planned.value.steps
-        .filter((step) => (step.kind !== 'skill' || skillsInstalled) && step.change !== 'unchanged')
+        .filter((step) => step.change !== 'unchanged')
         .map((step): CheckProblem => ({
           severity: 'warning',
           message: `${step.path} is ${step.change === 'create' ? 'missing' : 'out of date'} — marmeon agents:install`,

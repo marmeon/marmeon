@@ -418,7 +418,8 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
 
 The check also looks at what `marmeon agents:install` wrote (see [skills and the MCP server](agents.md#skills-and-the-mcp-server)),
 but only where something is installed: a skill with the mark of marmeon in `.claude/skills/` or `.agents/skills/`, or an entry
-`marmeon` in `.mcp.json`. A skill or entry that is missing or out of date is a `warning` with the fix `marmeon agents:install`; a
+`marmeon` in `.mcp.json`. A skill that is missing or out of date, or an existing entry that is out of date, is a `warning` with the fix
+`marmeon agents:install` (an entry removed next to installed skills is taken as a choice, as with `--no-mcp`); a
 link that leads out of the app, or a `SKILL.md` that is not marmeon's, is a `warning` with the reason and no fix. The check reads no
 target of a link out of the app and never writes. An app with `.mcp.json` of its own and no skills gets no message, and an app
 with skills but no `AGENTS.md` is checked too.
