@@ -64,8 +64,10 @@ SQLite cannot change a column in place, so `migrate` refuses these plans before 
 
 - `table.notNull()` and `table.nullable()` on an existing column. A new column that must be NOT NULL is added with a default and
   filled in a `schema.data()` step (`docs/migrations.md#changing-the-data`). An existing column keeps its constraint on SQLite: add a
-  new column with the one you want, copy the values in a `schema.data()` step and retire the old column
-  (`docs/migrations.md#retiring-a-column`), or keep the change to Postgres and say so.
+  new column with the one you want and copy the values in a `schema.data()` step. Retire the old column only when it is nullable or
+  has a default (`docs/migrations.md#retiring-a-column`); `retire()` refuses a `NOT NULL` column without a default with D19, so drop
+  that one with `dropColumn()` in a release that stops the old processes before `migrate` (the third way in
+  `docs/migrations.md#deploying-new-migrations`). Or keep the change to Postgres and say so.
 - A column with a generated UUIDv7 default added by `alter()`. Create the table with it, or create a new table and copy the rows.
 - `table.check()`, `table.dropCheck()`, `table.oneOf()` and `table.foreign()` on an existing table or column.
 
