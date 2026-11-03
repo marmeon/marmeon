@@ -508,6 +508,26 @@ describe('readRegularFile', () => {
   });
 });
 
+describe('runMarmeonJson and a process that will not end', () => {
+  it('settles after the grace period even when a process ignores SIGTERM and keeps the pipes open after the launcher is killed', { timeout: 30_000 }, async () => {
+    const pidFile = join(tempDir('marmeon-mcp-hang-'), 'grandchild.pid');
+    vi.stubEnv('NODE_OPTIONS', `${process.env.NODE_OPTIONS ?? ''} --import=${new URL('./__fixtures__/mcp-hang.mjs', import.meta.url).pathname}`.trim());
+    vi.stubEnv('MCP_HANG', pidFile);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      try {
+        process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL');
+      } catch {
+        // Already gone.
+      }
+    });
+    const started = Date.now();
+    const run = await runMarmeonJson(mcpApp(), ['list', '--json'], { timeoutMs: 1500, maxStdoutBytes: 1_000_000 });
+    expect(run.timedOut).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1500 + 5000 + 5000);
+  });
+});
+
 describe('runMarmeonJson without a start', () => {
   it('does not start the app when the call was cancelled before it began', async () => {
     const log = join(tempDir('marmeon-mcp-boots-'), 'boots.log');

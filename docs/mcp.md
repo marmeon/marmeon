@@ -10,8 +10,8 @@ It is a tool for development and nothing else:
 
 - It starts only with `NODE_ENV=development`, set in the environment or in the app's `.env`. With `production`, `test` or no
   `NODE_ENV` it prints why on stderr and ends with code 1, before it loads anything of the protocol. Nothing in a deployment starts it.
-- It has no port. It does not listen, there is no HTTP transport, and no option turns one on.
-- It only reads. No tool changes your code, your database or your files.
+- There is no port: the server does not listen, has no HTTP transport, and no option turns one on.
+- The server itself changes no code, database or file. A call to `routes` starts your app, though, and the app's own startup code runs: it can write files or open connections.
 
 ## Starting it
 
@@ -76,7 +76,7 @@ The file is read only when it is a regular file inside the app: a link in its pl
 - It returns no `.env`, no configuration and no file you name. `last_error` reads one file, and `routes` reports what the app registers.
 - It does not run your app inside its own process. Each call that needs the app starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds, no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, and a server that ends,
-  stop the process.
+  stop the process. A process the app's startup code starts, or, under the source launcher of the framework's own repository, a command that ignores SIGTERM, can outlive the kill; the call itself still ends.
 - It writes nothing of its own.
 
 ## Results are data

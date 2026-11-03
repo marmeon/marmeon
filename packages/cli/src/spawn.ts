@@ -118,7 +118,14 @@ export function runMarmeonJson(root: string, args: readonly string[], { timeoutM
     const stop = () => {
       if (child.exitCode !== null || child.signalCode !== null) return;
       child.kill('SIGTERM');
-      killTimer ??= setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
+      killTimer ??= setTimeout(() => {
+        child.kill('SIGKILL');
+        // A process the launcher started may ignore SIGTERM and hold the pipes after the launcher is gone: without `close` the call would never end.
+        child.stdout.destroy();
+        child.stderr.destroy();
+        // A line the destroy cut short may end inside a token, below the length its pattern needs to be redacted.
+        errWindow = errWindow.subarray(0, errWindow.lastIndexOf(0x0a) + 1);
+      }, GRACE_MS);
     };
     const timer = setTimeout(() => {
       timedOut = true;
