@@ -45,13 +45,34 @@ export function ssrResolvers(
   };
 }
 
+// Captured while the module loads: named elements in the document (`<form name="scripts">`) can replace the properties of
+// `document` itself, but not the getter further up its prototype chain (`Document.prototype`). The server has neither.
+const scriptsOf = getterOf(globalThis.document, 'scripts');
+const ScriptElement = globalThis.HTMLScriptElement;
+
+function getterOf(target: object | undefined, name: string): (() => unknown) | undefined {
+  for (let object = target && Object.getPrototypeOf(target); object; object = Object.getPrototypeOf(object)) {
+    const getter = Object.getOwnPropertyDescriptor(object, name)?.get;
+    if (getter) return getter;
+  }
+  return undefined;
+}
+
 /**
  * The JSON the server streamed into a `<script type="application/json">` — read once, while hydrating: what the browser
  * renders must be what the server did. `undefined` when there is none (the part was rendered in the browser).
  */
 export function streamedText(id: string): string | undefined {
-  // Only script elements are looked at (by `id` or `name`), and sanitised user HTML cannot contain any.
-  return globalThis.document?.scripts.namedItem(id)?.textContent || undefined;
+  const document = globalThis.document;
+  if (!document || !scriptsOf || !ScriptElement) return undefined;
+  // Only HTML script elements count: markup in the page can carry an SVG or MathML `<script>` with the same id, and a
+  // lookup by id or `name` would hand the page that text as the server's.
+  const scripts = scriptsOf.call(document) as HTMLCollectionOf<HTMLScriptElement>;
+  for (let index = 0; index < scripts.length; index++) {
+    const element = scripts[index];
+    if (element instanceof ScriptElement && element.type === 'application/json' && element.id === id) return element.textContent || undefined;
+  }
+  return undefined;
 }
 
 /** The parsed `text` of {@link streamedText} — `null` for none, or for what is not JSON. */
