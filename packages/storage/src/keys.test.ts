@@ -71,6 +71,14 @@ describe('content types', () => {
     }
   });
 
+  it('an extension named like a member of Object.prototype is unknown, not that member', () => {
+    for (const extension of ['constructor', '__proto__', 'CONSTRUCTOR', 'Constructor', '__PROTO__']) {
+      const type = mimeTypeOf(`uploads/report.${extension}`);
+      expect(type).toBe('application/octet-stream');
+      expect(isInlineType(type)).toBe(false);
+    }
+  });
+
   it('Content-Disposition: a quoted ASCII fallback and the UTF-8 name', () => {
     expect(contentDisposition('attachment', 'report.csv')).toBe(`attachment; filename="report.csv"; filename*=UTF-8''report.csv`);
     expect(contentDisposition('attachment', 'a"b\\c\r\nd.txt')).toBe(`attachment; filename="a_b_c__d.txt"; filename*=UTF-8''a%22b%5Cc%0D%0Ad.txt`);
