@@ -72,6 +72,35 @@ describe('discovery errors', () => {
   });
 });
 
+describe('the manifest and a .marmeon that links out of the app', () => {
+  it('refuses to write through the link, naming the path inside the app', async () => {
+    const root = tempDir('marmeon-manifest-link-');
+    const outside = tempDir('marmeon-manifest-link-outside-');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', type: 'module' }));
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    let message = '';
+    try {
+      writeManifest({ root, conditions: DEV });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/^\.marmeon leads out of the app.*Nothing was written\.$/);
+    expect(message).not.toContain(root);
+    expect(readdirSync(outside)).toEqual([]);
+    await expect(loadDiscoveredPackages({ root, conditions: DEV })).rejects.toThrow(/\.marmeon leads out of the app/);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('allows a .marmeon that links to a directory inside the app', () => {
+    const root = tempDir('marmeon-manifest-link-');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', type: 'module' }));
+    mkdirSync(join(root, 'cache'));
+    symlinkSync(join(root, 'cache'), join(root, '.marmeon'), 'dir');
+    writeManifest({ root, conditions: DEV });
+    expect(readdirSync(join(root, 'cache')).length).toBe(1);
+  });
+});
+
 describe('marmeon discover', () => {
   let app: string;
   beforeAll(() => {

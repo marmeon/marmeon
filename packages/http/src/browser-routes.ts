@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { Application } from '@marmeon/core';
+import { ConfigError, type Application } from '@marmeon/core';
+import { unsafeGeneratedPath } from '@marmeon/core/internal';
 import { Router, type RouteDefinition } from '@marmeon/router';
 
 /**
@@ -109,6 +110,8 @@ export function writeBrowserRoutes(root: string, routes: BrowserRoutes): boolean
   } catch {
     // not written yet
   }
+  const refused = unsafeGeneratedPath(root, path);
+  if (refused !== undefined) throw new ConfigError(refused);
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   writeFileSync(temporary, content);

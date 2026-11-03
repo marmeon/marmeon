@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -27,6 +27,14 @@ describe('injection artifacts', () => {
   beforeEach(() => {
     root = realpathSync(tempDir('marmeon-injections-'));
     write('package.json', JSON.stringify({ type: 'module', marmeon: { browser: ['client/**'] } }));
+  });
+
+  it('refuses a .marmeon that links out of the app, and writes nothing there', () => {
+    write('modules/users/ShowUserController.ts', controller);
+    const outside = tempDir('marmeon-injections-outside-');
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    expect(() => writeInjectionArtifacts({ root })).toThrow(/^\.marmeon leads out of the app.*Nothing was written\.$/);
+    expect(readdirSync(outside)).toEqual([]);
   });
 
   it('covers the modules of the app that mention a constructor — no tests, browser sources, node_modules, dist or storage', () => {

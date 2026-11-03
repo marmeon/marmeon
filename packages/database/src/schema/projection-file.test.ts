@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -34,6 +34,19 @@ function projecting(...tables: string[]): SchemaProjection {
 const names = (projection: SchemaProjection) => [...projection.tables.keys()];
 
 describe('the schema projection file', () => {
+  it('refuses a .marmeon that links out of the app, writes nothing there, and keeps the projection in memory', async () => {
+    forgetProjections();
+    const { root, files } = app(create('users'));
+    const outside = tempDir('marmeon-projection-outside-');
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    expect(() => writeProjection(root, projecting('users'), files)).toThrow(/^\.marmeon leads out of the app.*Nothing was written\.$/);
+    expect(readdirSync(outside)).toEqual([]);
+    const onUnwritable = vi.fn();
+    expect(names(await loadProjection(root, files, { onUnwritable }))).toEqual(['users']);
+    expect(onUnwritable).toHaveBeenCalledOnce();
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
   it('computes the projection of fresh migrations and writes it', async () => {
     forgetProjections();
     const { root, files } = app(create('users'), create('posts'));

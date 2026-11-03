@@ -57,3 +57,15 @@ function linkOf(from: string, root: string): string | undefined {
     current = parent;
   }
 }
+
+/**
+ * Why a generated file (`.marmeon/schema.json`, …) may not be written to `file` under `root`: a directory on the way is a link
+ * that leads out of the app, and the temporary file and the rename would land there. `undefined` when the writer may go on. The
+ * file itself is not looked at: a rename replaces a link there. A link that stays inside the app is allowed. Names the path
+ * relative to the app, never an absolute one. Check before `mkdir` and before the write.
+ */
+export function unsafeGeneratedPath(root: string, file: string): string | undefined {
+  const link = escapesRoot(root, dirname(file));
+  if (link === undefined) return undefined;
+  return `${link} leads out of the app, and ${relative(root, file)} would be written through it. Replace the link with a real directory (or a link that stays inside the app). Nothing was written.`;
+}

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineRoutes, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
@@ -53,5 +53,21 @@ describe('browserRoutes', () => {
     expect(writeBrowserRoutes(root, routes)).toBe(false);
     expect(JSON.parse(readFileSync(join(root, BROWSER_ROUTES_FILE), 'utf8'))).toEqual(routes);
     expect(writeBrowserRoutes(root, browserRoutes(router.routes, { include: ['*'] }))).toBe(true);
+  });
+
+  it('refuses a .marmeon that links out of the app, and writes nothing there', () => {
+    const root = tempDir('marmeon-browser-routes-');
+    const outside = tempDir('marmeon-browser-routes-outside-');
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    expect(() => writeBrowserRoutes(root, browserRoutes(router.routes))).toThrow(/^\.marmeon leads out of the app.*Nothing was written\.$/);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('writes through a .marmeon that links to a directory inside the app', () => {
+    const root = tempDir('marmeon-browser-routes-');
+    mkdirSync(join(root, 'cache'));
+    symlinkSync(join(root, 'cache'), join(root, '.marmeon'), 'dir');
+    expect(writeBrowserRoutes(root, browserRoutes(router.routes))).toBe(true);
+    expect(readdirSync(join(root, 'cache'))).toEqual(['routes.json']);
   });
 });
