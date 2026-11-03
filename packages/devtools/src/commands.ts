@@ -117,6 +117,9 @@ function shown(raw: unknown, redactor: Redactor): AnyEntry | undefined {
   const entry = plain(raw);
   const type = entry.type;
   if (typeof type !== 'string' || !(ENTRY_TYPES as readonly string[]).includes(type) || typeof entry.at !== 'number' || Number.isNaN(new Date(entry.at).getTime())) return undefined;
+  // Without an id that works as `--before`, an entry could not be continued from.
+  const id = identifierOf(entry.id);
+  if (id === null) return undefined;
   let content = plain(entry.content);
   if (type === 'mail') {
     const { html, ...rest } = content;
@@ -130,7 +133,7 @@ function shown(raw: unknown, redactor: Redactor): AnyEntry | undefined {
     .slice(0, MAX_TAGS)
     .map((tag) => redactor.text(tag.slice(0, MAX_TAG_CHARS)));
   return {
-    id: identifierOf(entry.id),
+    id,
     type,
     at: entry.at,
     batch: identifierOf(entry.batch),
@@ -235,6 +238,8 @@ export class DevtoolsListCommand {
     let cursor = before;
     let last: AnyEntry | undefined = start;
     let capped = false;
+    // The last entry read that has an id to continue from.
+    let lastId: string | null = null;
     // A page must lie behind the cursor: a store restarts at the newest entry when the cursor was pruned meanwhile.
     const behind = (entry: AnyEntry | undefined) => last === undefined || entry === undefined || newestFirst(entry, last) > 0;
     reading: while (true) {
@@ -252,6 +257,7 @@ export class DevtoolsListCommand {
       for (const raw of page) {
         scanned++;
         last = raw;
+        lastId = identifierOf(plain(raw).id) ?? lastId;
         const entry = shown(raw, redactor);
         if (!entry) continue;
         if (tag !== undefined && !entry.tags.includes(tag)) continue;
@@ -266,8 +272,8 @@ export class DevtoolsListCommand {
     const more = entries.length > limit;
     if (more) entries.length = limit;
     const truncated = more || capped;
-    // Where to continue: after the last entry shown when `limit` stopped the list, after the last one read when the cap did.
-    const next = capped ? identifierOf(last?.id) : more ? identifierOf((sources[limit - 1] as AnyEntry).id) : null;
+    // Where to continue: after the last entry shown when `limit` stopped the list, after the last one read with a usable id when the cap did.
+    const next = capped ? lastId : more ? identifierOf((sources[limit - 1] as AnyEntry).id) : null;
     if (capped) warnings.push(`Stopped after reading ${MAX_SCANNED} entries; narrow the list with --type or --request, or continue with --before=<next>.`);
     const memory = store instanceof MemoryDevtoolsStore;
     if (memory) warnings.push('The entries are in the memory of the process that recorded them; another process, such as this command, does not see them.');

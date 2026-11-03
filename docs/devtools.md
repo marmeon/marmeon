@@ -183,7 +183,7 @@ or a tool, as [the console](console.md#machine-readable-output) describes:
 { "format": 1, "store": { "driver": "file", "path": "storage/framework/devtools" }, "entries": [], "truncated": false, "next": null, "warnings": [] }
 ```
 
-`entries` are the entries newest first. Every key of the document and of an entry is always there: `id`, `batch`, `requestId`
+`entries` are the entries newest first; an entry without a usable `id` is left out. Every key of the document and of an entry is always there: `id`, `batch`, `requestId`
 and `jobId` are a string or `null`, never left out. The one exception is `content`, which keeps the shape of its entry type
 (see [what they record](#what-they-record)), where an optional field may be missing. `truncated` is `true` when more match
 than `--limit` returned, or when the command stopped after reading 2000 entries (then `warnings` says so). `next` is then

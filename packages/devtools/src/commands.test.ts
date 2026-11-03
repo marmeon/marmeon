@@ -257,7 +257,7 @@ describe('devtools:list', () => {
       }
     });
 
-    it('keeps ids as they are under an app pattern, and shows a hostile id as null', async () => {
+    it('keeps ids as they are under an app pattern, and shows a hostile batch, request or job id as null', async () => {
       const six = entry('req-123456-abc', 'log', 5, { level: 'info', message: 'one', context: {} }, { requestId: '123456-7890-4abc' });
       const { app, list } = await listApp([six, ...logs(3, 6), entry('000000009', 'log', 9, { level: 'info', message: 'last', context: {} })], { NODE_ENV: 'test' }, { redact: { patterns: [/\d{6}/] } });
       try {
@@ -272,13 +272,46 @@ describe('devtools:list', () => {
       }
       const hostile = await listApp([]);
       hostile.app.container.instance(DevtoolsStore, {
-        list: async () => ['has space', 'new\nline', 'x'.repeat(129), '\u001b[31m'].map((id) => ({ ...logs(1)[0]!, id, batch: id, requestId: id, jobId: id })),
+        list: async () => ['has space', 'new\nline', 'x'.repeat(129), '\u001b[31m'].map((bad, i) => ({ ...logs(1)[0]!, id: `ok${i}`, batch: bad, requestId: bad, jobId: bad })),
       } as unknown as DevtoolsStore);
       try {
         const { document } = await hostile.list({ json: true });
-        expect(document!.entries.map((e) => [e.id, e.batch, e.requestId, e.jobId])).toEqual(Array(4).fill([null, null, null, null]));
+        expect(document!.entries.map((e) => [e.id, e.batch, e.requestId, e.jobId])).toEqual([0, 1, 2, 3].map((i) => [`ok${i}`, null, null, null]));
       } finally {
         await hostile.app.shutdown();
+      }
+    });
+
+    it('leaves out an entry without a usable id, so `next` always works as --before', async () => {
+      const bad = { ...logs(1)[0]!, id: 'has space', at: 50 };
+      const { app, list } = await listApp([]);
+      const good = logs(3, 10).reverse();
+      app.container.instance(DevtoolsStore, { list: async () => [bad, ...good], get: async () => good[0] } as unknown as DevtoolsStore);
+      try {
+        const { document } = await list({ json: true, limit: '1' });
+        expect(document!.entries.map((e) => e.id)).toEqual([good[0]!.id]);
+        expect(document).toMatchObject({ truncated: true, next: good[0]!.id });
+      } finally {
+        await app.shutdown();
+      }
+    });
+
+    it('names the last readable id as `next` when the cap stops at an entry without one', async () => {
+      const { app, list } = await listApp([]);
+      const all = logs(2001).reverse();
+      const badLast = { ...all[1999]!, id: 'has space' };
+      const window = [...all.slice(0, 1999), badLast];
+      app.container.instance(DevtoolsStore, {
+        list: async (query: { before?: string; limit?: number }) => {
+          const from = query.before === undefined ? 0 : window.findIndex((e) => e.id === query.before) + 1;
+          return from === 0 && query.before !== undefined ? all.slice(2000) : (query.before === undefined || from > 0 ? [...window, ...all.slice(2000)].slice(from, from + (query.limit ?? 50)) : []);
+        },
+      } as unknown as DevtoolsStore);
+      try {
+        const { document } = await list({ json: true, search: 'zzz' });
+        expect(document).toMatchObject({ truncated: true, next: all[1998]!.id });
+      } finally {
+        await app.shutdown();
       }
     });
 
@@ -313,6 +346,7 @@ describe('devtools:list', () => {
   it('survives a store line that is not an entry — wrong types are skipped or null, never a throw', async () => {
     const odd = [
       { id: 7, type: 'log', at: 9_000, batch: { a: 1 }, requestId: 5, jobId: [], tags: 'not-a-list', content: { level: 'info', message: 'odd', context: {} } },
+      { id: 'z', type: 'log', at: 9_050, batch: { a: 1 }, requestId: 5, jobId: [], tags: 'not-a-list', content: { level: 'info', message: 'odd', context: {} } },
       { id: 'x', type: 'bogus', at: 9_100, batch: 'b', tags: [], content: {} },
       // A time outside the Date range would make the table's toISOString() throw.
       { id: 'z', type: 'log', at: 1e20, batch: 'b', tags: [], content: { level: 'info', message: 'far', context: {} } },
@@ -323,9 +357,10 @@ describe('devtools:list', () => {
     app.container.instance(DevtoolsStore, { list: async () => odd } as unknown as DevtoolsStore);
     try {
       const { document } = await list({ json: true });
+      // The entry without a usable id (`id: 7`) is left out.
       expect(document!.entries).toHaveLength(2);
-      expect(document!.entries[1]).toMatchObject({ id: 'y', requestId: null, jobId: null });
-      expect(document!.entries[0]).toMatchObject({ id: null, batch: null, requestId: null, jobId: null, tags: [] });
+      expect(document!.entries[1]).toMatchObject({ id: 'y', batch: 'b', requestId: null, jobId: null });
+      expect(document!.entries[0]).toMatchObject({ id: 'z', batch: null, requestId: null, jobId: null, tags: [] });
       expect(document!.entries[1]!.tags).toHaveLength(50);
       expect(JSON.stringify(document)).not.toContain(TOKEN);
       expect(JSON.stringify(document)).not.toContain('bogus');
