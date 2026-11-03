@@ -51,7 +51,7 @@ function referencesIn(text: string): { page: string; anchor: string | undefined 
 
 describe('the skills of the package', () => {
   it('are the ones the framework ships', () => {
-    expect(skills.map((skill) => skill.name)).toEqual(['marmeon-feature-module', 'marmeon-migration', 'marmeon-page', 'marmeon-security-review', 'marmeon-testing']);
+    expect(skills.map((skill) => skill.name)).toEqual(['marmeon-debugging', 'marmeon-feature-module', 'marmeon-migration', 'marmeon-page', 'marmeon-security-review', 'marmeon-testing']);
     expect(readdirSync(skillsDirectory())).toEqual(skills.map((skill) => skill.name));
   });
 
