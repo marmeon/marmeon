@@ -1,5 +1,5 @@
-import { lstatSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { errorCodeOf, type Application, type ErrorCode, type ErrorSolutions, type Redactor, type Solution } from '@marmeon/core';
 import type { RequestRecording } from './recorder-token.ts';
@@ -38,6 +38,7 @@ const MAX_FRAMES = 50;
 /** A stack's frames — Node's `at fn (file:line:column)` lines; `file://` URLs become paths. */
 export function parseStack(stack: string, root: string): StackFrame[] {
   const frames: StackFrame[] = [];
+  const resolvedRoot = resolvedPath(root);
   for (const line of stack.split('\n')) {
     if (frames.length >= MAX_FRAMES) break;
     const match = /^\s*at (?:(.+?) \((.+?):(\d+):(\d+)\)|(.+?):(\d+):(\d+))$/.exec(line);
@@ -46,11 +47,11 @@ export function parseStack(stack: string, root: string): StackFrame[] {
     const location = match[2] ?? match[5]!;
     const file = location.startsWith('file://') ? safePath(location) : location;
     const internal = !isAbsolute(file);
-    const inside = !internal && (file === root || file.startsWith(root.endsWith(sep) ? root : root + sep));
+    const inside = !internal && (file === root || isUnder(file, root) || (resolvedRoot !== root && isUnder(file, resolvedRoot)));
     frames.push({
       fn,
       file,
-      display: internal ? file : inside ? relative(root, file) : shorten(file, root),
+      display: internal ? file : inside ? relative(file === root || isUnder(file, root) ? root : resolvedRoot, file) : shorten(file, root),
       line: Number(match[3] ?? match[6]),
       column: Number(match[4] ?? match[7]),
       app: inside && !file.includes(`${sep}node_modules${sep}`),
@@ -60,15 +61,24 @@ export function parseStack(stack: string, root: string): StackFrame[] {
   return frames;
 }
 
+const isUnder = (file: string, dir: string) => file.startsWith(dir.endsWith(sep) ? dir : dir + sep);
+
+function resolvedPath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return path;
+  }
+}
+
 /** `file` with code snippets for the frames that matter: the app's first ones, or the very first frame. */
-export function withSnippets(frames: readonly StackFrame[], context = SNIPPET_CONTEXT, root?: string): StackFrame[] {
+export function withSnippets(frames: readonly StackFrame[], context: number, root: string): StackFrame[] {
   const sources = new Map<string, string[] | undefined>();
   const lines = (file: string) => {
     if (!sources.has(file)) {
       try {
-        // Only a regular file inside the app: a frame's path is text, and a FIFO or `/dev/stdin` would hang the read.
-        if (root !== undefined && !(file.startsWith(root.endsWith(sep) ? root : root + sep) && lstatSync(file).isFile())) throw new Error('not a file of the app');
-        sources.set(file, readFileSync(file, 'utf8').split(/\r?\n/));
+        const readable = readableSource(file, root);
+        sources.set(file, readable === undefined ? undefined : readFileSync(readable, 'utf8').split(/\r?\n/));
       } catch {
         sources.set(file, undefined);
       }
@@ -88,6 +98,34 @@ export function withSnippets(frames: readonly StackFrame[], context = SNIPPET_CO
     for (let number = from; number <= to; number++) snippet.push({ number, text: source[number - 1]!, current: number === frame.line });
     return { ...frame, snippet };
   });
+}
+
+/** Extensions of the source files of a dependency whose code a frame may show. */
+const DEPENDENCY_SOURCES = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.jsx', '.tsx']);
+
+/**
+ * The real path of `file` when a code frame may be read from it, otherwise undefined. A frame's path is text an attacker may
+ * influence, so only two places count, judged by the path after its links: the app's own files, and source files of a
+ * `node_modules` directory (a dependency, also one above the app in a workspace). A file named `.env…` is never read, and only a
+ * regular file is (a FIFO or `/dev/stdin` would hang the read).
+ */
+function readableSource(file: string, root: string): string | undefined {
+  // Judged by the text first: resolving a path touches the disk, and a UNC path (`\\host\share`) would open a network connection.
+  if (!isAbsolute(file) || /^[\\/]{2}/.test(file) || file.includes('\0')) return undefined;
+  const base = (path: string) => basename(path).toLowerCase();
+  if (base(file).startsWith('.env')) return undefined;
+  const realRoot = realpathSync.native(root);
+  if (!underRoot(file, root) && !underRoot(file, realRoot) && !file.split(/[\\/]/).includes('node_modules')) return undefined;
+  // `native` returns the case on disk, so `.ENV` on a case-insensitive disk is `.env` here.
+  const real = realpathSync.native(file);
+  if (base(real).startsWith('.env') || !statSync(real).isFile()) return undefined;
+  if (underRoot(real, realRoot)) return real;
+  return real.split(sep).includes('node_modules') && DEPENDENCY_SOURCES.has(extname(real).toLowerCase()) ? real : undefined;
+}
+
+function underRoot(file: string, root: string): boolean {
+  const path = relative(root, file);
+  return path !== '' && !path.startsWith('..') && !isAbsolute(path);
 }
 
 /** Where `/__open-in-editor` (Vite's) opens a frame: `file:line:column`. */
@@ -236,7 +274,7 @@ export async function buildReport({ error, status, request, requestId, app, reda
  * The frames of the error's stack, read after its `name: message` header: a message is text an attacker may influence, and a line
  * in it that looks like `at fn (/dev/stdin:1:1)` is no frame.
  */
-function framesOf(failure: Error, root: string, snippets: boolean): StackFrame[] {
+export function framesOf(failure: Error, root: string, snippets: boolean): StackFrame[] {
   const stack = failure.stack ?? '';
   // The stack was captured with the message as it was then; the end of that text, found by the message, is where the frames begin.
   const at = failure.message === '' ? -1 : stack.indexOf(failure.message);

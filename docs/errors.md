@@ -359,7 +359,7 @@ by its owner only and never written in production or in tests; `.marmeon/` is in
 write it is a warning in the log, never an error of the request.
 
 An error while a page renders on the server goes to Vite's overlay in the browser, with the code of the view, and the browser
-renders the page itself.
+renders the page itself. The code comes only from your app and from source files under `node_modules`, never from `.env*`.
 
 The page exists only with `NODE_ENV=development`: in production, staging and tests nothing of it is loaded, and the error page
 shows no stack, queries, headers or code. A test asks for it with `createTestApp(application, { debug: true })`.

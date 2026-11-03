@@ -1,4 +1,4 @@
-import { writeFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { createApplication, Redactor } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
@@ -32,6 +32,17 @@ describe('the frames of a report', () => {
     expect(withSnippets(frame(join(root, 'real.ts')), 1, root)[0]!.snippet).toBeDefined();
     expect(withSnippets(frame(join(outside, 'a.ts')), 1, root)[0]!.snippet).toBeUndefined();
     expect(withSnippets(frame(join(root, 'link.ts')), 1, root)[0]!.snippet).toBeUndefined();
+  });
+
+  it('get no snippet from a directory that only starts with the root\'s name', () => {
+    const parent = tempDir('marmeon-frames-');
+    const root = join(parent, 'app');
+    const sibling = join(parent, 'app-other');
+    mkdirSync(root);
+    mkdirSync(sibling);
+    writeFileSync(join(sibling, 'a.ts'), 'one\ntwo\n');
+    const frames = parseStack(`Error: x\n    at f (${join(sibling, 'a.ts')}:1:1)`, root);
+    expect(withSnippets(frames, 1, root)[0]!.snippet).toBeUndefined();
   });
 
   it('are still found after the error was renamed once its stack was read', async () => {
