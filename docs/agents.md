@@ -70,6 +70,72 @@ still gets its guide: the command does not start the app.
 `marmeon check` also looks at the block, as the [`agents` check](check.md#the-agents-block): a block that is missing or out of date is a
 warning there, never an error, and the check writes nothing. An app without `AGENTS.md` is skipped.
 
+## Skills and the MCP server
+
+Marmeon ships three skills for coding agents, short guides for a task: `marmeon-feature-module` (a new feature as a module),
+`marmeon-migration` (a schema change) and `marmeon-security-review` (what to check before a change goes out). The same command enters the
+server `marmeon mcp` in `.mcp.json`, so an agent can ask the app for its routes and the installed documentation. Nothing is
+installed until you ask:
+
+```sh
+pnpm marmeon agents:install
+```
+
+```txt
+✓ Wrote .claude/skills/marmeon-feature-module/SKILL.md.
+✓ Wrote .claude/skills/marmeon-migration/SKILL.md.
+✓ Wrote .claude/skills/marmeon-security-review/SKILL.md.
+✓ Wrote .mcp.json.
+Your agent asks you to approve the server marmeon the next time it starts.
+```
+
+Commit the result. Claude Code reads `.claude/skills/`; Cursor and Copilot read that folder too. `--shared` writes the skills to
+`.agents/skills/` instead, the folder of the open skills standard that Codex, Gemini CLI, Cursor and Copilot read. The skills never lie
+in both folders, or Cursor and Copilot would list each twice. `--no-mcp` leaves `.mcp.json` alone.
+
+### What the command owns
+
+The command writes only folders named `marmeon-*`, and only a `SKILL.md` that carries the mark `marmeon-skill: "1"` under `metadata:`.
+Other files in such a folder, and all your own skills, stay as they are. Copy a skill to a folder with another name to change it.
+
+- A `SKILL.md` without the mark, or with one the command cannot read, is a file of yours: the command refuses and writes nothing.
+- A mark with a higher number comes from a newer `marmeon`: the command refuses and asks you to update.
+- A skill that an older `marmeon` installed and this one no longer ships is named in a warning and never deleted.
+- In `.mcp.json` only the entry `marmeon` belongs to the command. It is replaced when it differs, and the command says so; every other
+  entry, key and their order stay, as do the indentation and the line ends. The file is written again with `JSON.stringify`, so
+  the formatting inside other entries changes and a key that occurs twice keeps its last value. A file that is not valid JSON, whose root
+  is not an object or whose `mcpServers` is not an object is not repaired: the command refuses and writes nothing.
+- The entry is treated like the skills. A first install adds it (not with `--no-mcp`); after that it is kept current only where it is
+  there. Skills installed without it, or an entry you removed, stay that way: add the entry by hand as shown under [other
+  clients](#other-clients).
+- A link that stays inside the app is followed and stays a link: the file it leads to is replaced. A link that leads nowhere or out of the
+  app, anything on the way that is not a directory, and a `SKILL.md` or `.mcp.json` that is not a regular file make the command refuse and
+  write nothing, as does a folder it may not write to. Every file is written whole and renamed into place, so an interrupted run leaves the old
+  file. A skill whose only difference is the line ends or a byte order mark that a checkout added counts as current.
+
+The entry reads `node node_modules/marmeon/bin/marmeon.js mcp` from the app's root: no `npx`, which could download a package, and no
+variable that only some clients expand.
+
+### Keeping them current
+
+Run `marmeon agents:install` again after you update `marmeon`, and commit the result. It updates where skills with the mark already
+lie. `--check` writes nothing and exits with 1 when a skill or the entry is missing or out of date, or with "Not installed" when there
+is nothing to check.
+
+```sh
+pnpm marmeon agents:install --check
+```
+
+### Other clients
+
+The command writes the files of Claude Code. For other clients, add the server by hand: the command is `node` and the argument list is
+`node_modules/marmeon/bin/marmeon.js` and `mcp`.
+
+- **Codex:** `codex mcp add marmeon -- node node_modules/marmeon/bin/marmeon.js mcp`, or a table `[mcp_servers.marmeon]` with `command = "node"`
+  and `args = ["node_modules/marmeon/bin/marmeon.js", "mcp"]` in `.codex/config.toml`.
+- **Cursor:** the same `mcpServers` object in `.cursor/mcp.json`.
+- **VS Code (Copilot):** `.vscode/mcp.json`, with the object under `servers` instead of `mcpServers`.
+
 ## The marks
 
 The marks name a version, `v1` today. The version is the shape of the marks, not the age of the text between them: the text may

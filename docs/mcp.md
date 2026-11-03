@@ -15,8 +15,15 @@ It is a tool for development and nothing else:
 
 ## Starting it
 
-Register the command with your agent, started in the app's root, where the `package.json` that lists `marmeon` is. For Claude Code that
-is a `.mcp.json` next to it:
+The agent starts the server in the app's root, where the `package.json` that lists `marmeon` is. `marmeon agents:install` registers it
+for Claude Code, in a `.mcp.json` next to that file, together with the framework's skills (see
+[skills and the MCP server](agents.md#skills-and-the-mcp-server)):
+
+```sh
+pnpm marmeon agents:install
+```
+
+The entry it writes is this one; to register the server without the skills, add it by hand:
 
 ```json title=".mcp.json"
 {

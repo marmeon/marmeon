@@ -160,6 +160,7 @@ start`, and `marmeon dev` refuses it.
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
 | `agents:sync [--check]` | Writes `AGENTS.md` and `CLAUDE.md`, or brings the block of marmeon in `AGENTS.md` up to the installed version. `--check` writes nothing and fails when the block is missing or out of date, for CI. See [coding agents](agents.md). |
+| `agents:install [--shared] [--no-mcp] [--check]` | Copies the skills of marmeon into `.claude/skills/` (`.agents/skills/` with `--shared`) and enters `marmeon mcp` in `.mcp.json`; run again, it updates them. Refuses links that lead out of the app or nowhere, and files that are not its own. `--check` writes nothing and fails when they are missing or out of date. See [coding agents](agents.md#skills-and-the-mcp-server). |
 | `mcp` | Serves the routes and the last error of the app to a coding agent over MCP, on standard input and output. Only with `NODE_ENV=development`; it has no network transport. See [the MCP server](mcp.md). |
 | `docs [<page>] [--path] [--json]` | Lists the pages of the documentation that came with the installed `marmeon`, or prints one. See [reading the documentation](#reading-the-documentation). |
 | `tinker [--sandbox] [--execute "<code>"] [--no-history]` | A REPL with the booted app. See [tinker](#tinker). |
