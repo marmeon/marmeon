@@ -141,6 +141,27 @@ describe('cookies', () => {
   });
 });
 
+describe('cookie names — which characters are trimmed', () => {
+  // Reference: SP and HTAB only, at either end; any character the parser treats differently shows up here.
+  const reference = (name: string): string => name.replace(/^[ \t]+|[ \t]+$/g, '');
+  const characters = [' ', '\t', '\n', '\r', '\v', '\f', '\u00A0', '\u1680', '\u2003', '\u2028', '\u3000', '\uFEFF', 'a', '-'];
+
+  it('trims exactly what /^[ \\t]+|[ \\t]+$/g trims, for every blank-like character at either end and inside', () => {
+    for (const lead of characters) {
+      for (const middle of ['', ' ', '\t ', lead]) {
+        for (const trail of characters) {
+          const name = `${lead}${lead}a${middle}b${trail}${trail}`;
+          const trimmed = reference(name);
+          const expected = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(trimmed) ? { [trimmed]: '1' } : {};
+          expect(Object.fromEntries(parseCookies(`${name}=1`)), JSON.stringify(name)).toEqual(expected);
+        }
+      }
+    }
+    expect(parseCookies('   \t ').size).toBe(0);
+    expect(parseCookies(' \t =1').size).toBe(0);
+  });
+});
+
 describe('CookieJar — locked (a read-only request)', () => {
   it('queues nothing a lock refuses, and asks for deletions too', async () => {
     const jar = new CookieJar('a=1');

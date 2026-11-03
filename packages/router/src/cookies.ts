@@ -38,7 +38,7 @@ export function parseCookies(header: string | null): Map<string, string> {
     const index = part.indexOf('=');
     if (index < 1) continue;
     // Only SP and HTAB are trimmed: `trim()` also strips U+00A0 and the like, which would turn a tossed `\u00A0__Host-x` into `__Host-x`.
-    const name = part.slice(0, index).replace(/^[ \t]+|[ \t]+$/g, '');
+    const name = trimSpaceAndTab(part.slice(0, index));
     if (!COOKIE_NAME.test(name) || cookies.has(name)) continue;
     let value = part.slice(index + 1).trim();
     if (value.startsWith('"') && value.endsWith('"') && value.length > 1) value = value.slice(1, -1);
@@ -208,4 +208,20 @@ function safeDecode(value: string): string {
   } catch {
     return value;
   }
+}
+
+/**
+ * `text` without the SP (0x20) and HTAB (0x09) at either end. A loop, not `/^[ \t]+|[ \t]+$/g`: the regex retries `[ \t]+$`
+ * at every blank of a run that does not end the text, quadratic in a header any client sends.
+ */
+function trimSpaceAndTab(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isSpaceOrTab(text.charCodeAt(start))) start++;
+  while (end > start && isSpaceOrTab(text.charCodeAt(end - 1))) end--;
+  return text.slice(start, end);
+}
+
+function isSpaceOrTab(code: number): boolean {
+  return code === 0x20 || code === 0x09;
 }
