@@ -472,7 +472,8 @@ removes its passkeys, its authenticator, its recovery codes and every API token,
 the owner proved the mailbox with the link, and nothing the first registrant attached stays. The reset leaves the address unconfirmed;
 the owner confirms it with the link of the notice page. An account that was confirmed once and then changed to an address not confirmed
 yet keeps its factors in a reset, but loses its API tokens: whoever confirmed the earlier address may have created them and then
-changed the address to one they do not own. A confirmed address loses nothing in a reset.
+changed the address to one they do not own. An account with a confirmed address keeps its factors in a reset, and its API tokens
+unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`.
 
 ### Accounts nobody confirmed
 
