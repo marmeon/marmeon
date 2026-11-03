@@ -26,6 +26,8 @@ Pass \`--no-interaction\` to \`marmeon\` when you run it in a terminal.
   recipe: \`marmeon docs\` lists them under "Recipes"; each names the generators, the files and the test.
 - https://marmeon.com/docs is the newest version — read it to update; for your code, use the guides above.
   Add \`.md\` to a page's path for Markdown (https://marmeon.com/llms.txt is the index).
+- \`marmeon agents:install\` adds the framework's skills and the MCP server \`marmeon mcp\` for your agent;
+  \`marmeon agents:install --check\` says whether they are current.
 
 ## After a change
 

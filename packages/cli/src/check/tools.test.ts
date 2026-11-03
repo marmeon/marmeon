@@ -1,5 +1,10 @@
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseOxlint, plainReason } from './tools.ts';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
+import { mergeMcpJson } from '../agents/mcp-json.ts';
+import { shippedSkills } from '../agents/skills.ts';
+import { agentsCheck, parseOxlint, plainReason } from './tools.ts';
 
 describe('parseOxlint', () => {
   // The shape `oxlint --format=json` prints (checked against the oxlint in this repository by check.test.ts).
@@ -28,5 +33,124 @@ describe('parseOxlint', () => {
 describe('plainReason', () => {
   it('writes the app directory as a dot', () => {
     expect(plainReason(new Error('ENOENT: no such file /srv/app/src/a.ts and /srv/app'), '/srv/app')).toBe('ENOENT: no such file ./src/a.ts and .');
+  });
+});
+
+describe('agentsCheck: the installed skills and the entry in .mcp.json', () => {
+  const [first] = shippedSkills();
+  const mcp = () => {
+    const merged = mergeMcpJson(undefined);
+    if (!merged.ok) throw new Error('mergeMcpJson refused an empty file');
+    return merged.value.text;
+  };
+
+  /** An app with every shipped skill copied into `.claude/skills/` and the entry in `.mcp.json`, then `files` on top. */
+  function installed(files: Record<string, string> = {}): string {
+    const root = realpathSync(tempDir('marmeon-agents-check-'));
+    const all: Record<string, string> = { '.mcp.json': mcp(), ...files };
+    for (const skill of shippedSkills()) all[`.claude/skills/${skill.name}/SKILL.md`] ??= skill.text;
+    for (const [name, text] of Object.entries(all)) {
+      mkdirSync(join(root, name, '..'), { recursive: true });
+      writeFileSync(join(root, name), text);
+    }
+    return root;
+  }
+
+  /** Every file under `root`, with its text: a check that wrote something changes this. */
+  function snapshot(root: string): string[] {
+    return readdirSync(root, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath, entry.name))
+      .sort()
+      .map((file) => `${file}\n${readFileSync(file, 'utf8')}`);
+  }
+
+  it('says nothing about a current installation', () => {
+    const root = installed();
+    expect(agentsCheck(root).report).toMatchObject({ status: 'passed', problems: [] });
+    writeFileSync(join(root, 'AGENTS.md'), '');
+    const before = snapshot(root);
+    expect(agentsCheck(root).report.problems.filter((problem) => problem.fix === 'marmeon agents:install')).toEqual([]);
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it('warns about an out-of-date skill with the command that fixes it, and writes nothing', () => {
+    const path = `.claude/skills/${first!.name}/SKILL.md`;
+    const root = installed({ [path]: first!.text.replace(/\n$/, '\nan older line\n') });
+    const before = snapshot(root);
+    const { report } = agentsCheck(root);
+    expect(report.status).toBe('warning');
+    expect(report.problems).toEqual([
+      { severity: 'warning', message: `${path} is out of date — marmeon agents:install`, file: path, fix: 'marmeon agents:install', docs: 'docs/agents.md#skills-and-the-mcp-server' },
+    ]);
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it('warns about a skill that is missing from an installation', () => {
+    const root = installed();
+    const path = `.claude/skills/${shippedSkills()[1]!.name}/SKILL.md`;
+    rmSync(join(root, path));
+    expect(agentsCheck(root).report.problems).toEqual([expect.objectContaining({ file: path, fix: 'marmeon agents:install', message: `${path} is missing — marmeon agents:install` })]);
+  });
+
+  it('says nothing when nothing is installed, with or without an .mcp.json of the app', () => {
+    const root = realpathSync(tempDir('marmeon-agents-check-'));
+    expect(agentsCheck(root).report).toMatchObject({ status: 'skipped', problems: [] });
+    writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
+    expect(agentsCheck(root).report.problems).toEqual([]);
+    writeFileSync(join(root, '.mcp.json'), '{ not json');
+    expect(agentsCheck(root).report.problems).toEqual([]);
+  });
+
+  it('warns about an entry marmeon in .mcp.json that is not the one marmeon writes', () => {
+    const root = realpathSync(tempDir('marmeon-agents-check-'));
+    writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { marmeon: { command: 'other' } } }));
+    expect(agentsCheck(root).report.problems).toEqual([
+      expect.objectContaining({ severity: 'warning', file: '.mcp.json', fix: 'marmeon agents:install', message: '.mcp.json is out of date — marmeon agents:install' }),
+    ]);
+  });
+
+  it('refuses a link out of the app without reading its target, and offers no fix', () => {
+    const outside = realpathSync(tempDir('marmeon-agents-outside-'));
+    writeFileSync(join(outside, 'SKILL.md'), 'SECRET-TEXT');
+    const root = installed();
+    const file = join(root, '.claude/skills', first!.name, 'SKILL.md');
+    rmSync(file);
+    symlinkSync(join(outside, 'SKILL.md'), file);
+    const { report } = agentsCheck(root);
+    expect(report.status).toBe('warning');
+    expect(report.problems).toHaveLength(1);
+    expect(report.problems[0]).toMatchObject({ file: `.claude/skills/${first!.name}/SKILL.md` });
+    expect(report.problems[0]).not.toHaveProperty('fix');
+    expect(JSON.stringify(report)).not.toContain('SECRET-TEXT');
+  });
+
+  it('says nothing in an app that installed nothing, whatever lies where the skills would go', () => {
+    const outside = realpathSync(tempDir('marmeon-agents-outside-'));
+    const linked = realpathSync(tempDir('marmeon-agents-check-'));
+    mkdirSync(join(linked, '.claude'));
+    symlinkSync(outside, join(linked, '.claude/skills'));
+    const file = realpathSync(tempDir('marmeon-agents-check-'));
+    mkdirSync(join(file, '.claude'));
+    writeFileSync(join(file, '.claude/skills'), 'x');
+    const foreign = realpathSync(tempDir('marmeon-agents-check-'));
+    mkdirSync(join(foreign, `.claude/skills/${first!.name}`), { recursive: true });
+    writeFileSync(join(foreign, `.claude/skills/${first!.name}/SKILL.md`), 'MY-OWN-SKILL');
+    for (const root of [linked, file, foreign]) expect(agentsCheck(root).report.problems).toEqual([]);
+  });
+
+  it('refuses an unmarked skill of the same name next to installed ones, with the file and without its text', () => {
+    const path = `.claude/skills/${first!.name}/SKILL.md`;
+    const root = installed({ [path]: 'MY-OWN-SKILL' });
+    const { report } = agentsCheck(root);
+    expect(report.status).toBe('warning');
+    expect(report.problems).toHaveLength(1);
+    expect(report.problems[0]).toMatchObject({ file: path });
+    expect(report.problems[0]).not.toHaveProperty('fix');
+    expect(JSON.stringify(report)).not.toContain('MY-OWN-SKILL');
+  });
+
+  it('passes a current installation in an app without AGENTS.md', () => {
+    expect(agentsCheck(installed()).report).toMatchObject({ status: 'passed', problems: [] });
   });
 });

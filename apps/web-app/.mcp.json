@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "marmeon": {
+      "command": "node",
+      "args": [
+        "node_modules/marmeon/bin/marmeon.js",
+        "mcp"
+      ]
+    }
+  }
+}
