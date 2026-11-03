@@ -136,6 +136,16 @@ describe('ctx.input()', () => {
 
     const deep = `a${'[x]'.repeat(21)}=1`;
     expect((await rejection(createRequestState(form(deep)).input())).status).toBe(400);
+    const atLimit = await createRequestState(form(`a${'[x]'.repeat(20)}=1`)).input();
+    expect(JSON.stringify(atLimit)).toBe(`{"a":${'{"x":'.repeat(20)}"1"${'}'.repeat(21)}`);
+    const levels = Math.floor((8 * 1024 * 1024 - 3) / 2); // as many `[]` as the body limit holds
+    const absurd = await rejection(createRequestState(form(`a${'[]'.repeat(levels)}=1`)).input());
+    expect([absurd.status, absurd.message]).toEqual([400, 'Input "a" is nested too deeply.']);
+    // Not well-formed past the limit: the name stays literal, as it does below it.
+    const unclosed = `a${'[]'.repeat(levels)}[=1`;
+    expect(Object.keys(await createRequestState(form(unclosed)).input())).toEqual([unclosed.slice(0, unclosed.indexOf('='))]);
+    const ragged = `a${'[x]'.repeat(25)}[y=1`;
+    expect(Object.keys(await createRequestState(form(ragged)).input())).toEqual([ragged.slice(0, ragged.indexOf('='))]);
   });
 
   it('drops `__proto__` keys from JSON bodies at every depth', async () => {
