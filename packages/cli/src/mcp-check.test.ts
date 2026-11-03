@@ -88,7 +88,8 @@ function stubborn(env: Record<string, string>) {
 describe('runMarmeonJson ends the whole process group', { timeout: 60_000 }, () => {
   it('kills a child that ignores SIGTERM and the grandchild that keeps the pipes open, and gives the result', async () => {
     const { launcher, pidFile } = stubborn({});
-    const running = runMarmeonJson('/', [], { ...options, timeoutMs: 500, launcher });
+    // Long enough for the stand-in to set its SIGTERM handler and start the grandchild on a slow runner.
+    const running = runMarmeonJson('/', [], { ...options, timeoutMs: 5_000, launcher });
     const grandchild = await untilFile(pidFile);
     const run = await running;
     expect(run.timedOut).toBe(true);
@@ -255,9 +256,12 @@ describe('check', { timeout: 120_000 }, () => {
     writeFileSync(pidFile, '');
     reapAfterTest(pidFile);
     vi.stubEnv('CHECK_PID_FILE', pidFile);
-    const tool = checkTool({ timeoutMs: 3_000 });
+    // Long enough for the app to boot and the check to write its pid on a slow runner; an empty file would make the pid 0.
+    const tool = checkTool({ timeoutMs: 20_000 });
     const result = await tool.run({ only: ['hang'] }, { root: app, signal: new AbortController().signal });
     expect(result).toEqual({ failure: 'marmeon check did not finish within 10 minutes; run it in a terminal, or narrow it with only.' });
-    expect(await untilGone(Number(readFileSync(pidFile, 'utf8')), 15_000)).toBe(true);
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(pid).toBeGreaterThan(0);
+    expect(await untilGone(pid, 15_000)).toBe(true);
   });
 });
