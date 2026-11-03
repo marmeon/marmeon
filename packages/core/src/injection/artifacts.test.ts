@@ -1,7 +1,7 @@
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { injectConstructorDependencies } from './analyze.ts';
 import { computeInjectionArtifacts, INJECTIONS_FILE, PrecomputedInjections, writeInjectionArtifacts } from './artifacts.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -35,6 +35,47 @@ describe('injection artifacts', () => {
     symlinkSync(outside, join(root, '.marmeon'), 'dir');
     expect(() => writeInjectionArtifacts({ root })).toThrow(/^\.marmeon leads out of the app.*Nothing was written\.$/);
     expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('refuses to read a current injections file through a .marmeon that links out of the app', () => {
+    write('modules/users/ShowUserController.ts', controller);
+    writeInjectionArtifacts({ root });
+    const outside = tempDir('marmeon-injections-read-outside-');
+    writeFileSync(join(outside, 'injections.json'), readFileSync(join(root, INJECTIONS_FILE)));
+    rmSync(join(root, '.marmeon'), { recursive: true });
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    expect(() => PrecomputedInjections.load(root)).toThrow(/^\.marmeon leads out of the app, so \.marmeon\/injections\.json was not read\./);
+  });
+
+  it('refuses an injections file that is a link to an outside file, and reads one that stays inside the app', () => {
+    write('modules/users/ShowUserController.ts', controller);
+    writeInjectionArtifacts({ root });
+    const file = join(root, INJECTIONS_FILE);
+    const outside = tempDir('marmeon-injections-file-outside-');
+    writeFileSync(join(outside, 'injections.json'), readFileSync(file));
+    rmSync(file);
+    symlinkSync(join(outside, 'injections.json'), file);
+    expect(() => PrecomputedInjections.load(root)).toThrow(/^\.marmeon\/injections\.json leads out of the app, so .* was not read\./);
+    rmSync(file);
+    write('copy.json', '{ "format": 1, "files": {} }');
+    symlinkSync(join(root, 'copy.json'), file);
+    expect(() => PrecomputedInjections.load(root)).not.toThrow();
+  });
+
+  it.skipIf(process.getuid?.() === 0)('treats a .marmeon that cannot be searched as no file, not as an error', () => {
+    mkdirSync(join(root, '.marmeon'));
+    chmodSync(join(root, '.marmeon'), 0);
+    onTestFinished(() => chmodSync(join(root, '.marmeon'), 0o755));
+    expect(() => PrecomputedInjections.load(root)).not.toThrow();
+  });
+
+  it.skipIf(process.getuid?.() === 0)('refuses a .marmeon that links to an outside directory that cannot be searched', () => {
+    const outside = tempDir('marmeon-injections-locked-outside-');
+    writeFileSync(join(outside, 'injections.json'), '{ "format": 1, "files": {} }');
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    chmodSync(outside, 0);
+    onTestFinished(() => chmodSync(outside, 0o755));
+    expect(() => PrecomputedInjections.load(root)).toThrow(/^\.marmeon leads out of the app, so \.marmeon\/injections\.json was not read\./);
   });
 
   it('covers the modules of the app that mention a constructor — no tests, browser sources, node_modules, dist or storage', () => {

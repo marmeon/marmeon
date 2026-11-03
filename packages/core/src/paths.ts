@@ -69,3 +69,27 @@ export function unsafeGeneratedPath(root: string, file: string): string | undefi
   if (link === undefined) return undefined;
   return `${link} leads out of the app, and ${relative(root, file)} would be written through it. Replace the link with a real directory (or a link that stays inside the app). Nothing was written.`;
 }
+
+/**
+ * The reading side of {@link unsafeGeneratedPath}: why a generated file may not be read from `file` under `root` — a directory on
+ * the way or the file itself leads out of the app (also a dangling link that points out), and what lies there (a manifest, a projection) is not the app's to trust. `undefined` when the file
+ * may be read. Check before every read of a file under `.marmeon/`, also the one a writer makes to see whether it changed.
+ */
+export function unreadableGeneratedPath(root: string, file: string): string | undefined {
+  let link: string | undefined;
+  try {
+    link = escapesRoot(root, file);
+  } catch (error) {
+    if (!['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+    // The file cannot be looked at because its directory cannot be searched. The directory still tells: one that leads out of the app
+    // is refused (its owner could open it before the read); inside the app, the read that follows fails and reads nothing.
+    try {
+      link = escapesRoot(root, dirname(file));
+    } catch {
+      // Not even the directory can be judged: refuse rather than read on a guess.
+      link = relative(root, dirname(file));
+    }
+  }
+  if (link === undefined) return undefined;
+  return `${link} leads out of the app, so ${relative(root, file)} was not read. Replace the link with a real directory or file (or a link that stays inside the app).`;
+}

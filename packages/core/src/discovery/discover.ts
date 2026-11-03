@@ -7,7 +7,7 @@
 import { withoutCode } from '../error-codes.ts';
 import { entryInside } from './contain.ts';
 import { ConfigError } from '../environment.ts';
-import { unsafeGeneratedPath } from '../paths.ts';
+import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
@@ -456,6 +456,8 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     return result.manifest;
   };
 
+  const unreadable = unreadableGeneratedPath(options.root, path);
+  if (unreadable !== undefined) throw new ConfigError(unreadable);
   let manifest = readManifest(path);
   let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
   // Use what was just generated — re-reading the file could see another process's write.

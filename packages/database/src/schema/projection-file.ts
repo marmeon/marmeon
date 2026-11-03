@@ -2,7 +2,7 @@ import { hash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ConfigError } from '@marmeon/core';
-import { unsafeGeneratedPath } from '@marmeon/core/internal';
+import { unreadableGeneratedPath, unsafeGeneratedPath } from '@marmeon/core/internal';
 import { spendImport, type MigrationSource } from '../migrations/load.ts';
 import { projectMigrations, type ProjectedTable, type SchemaProjection } from './projection.ts';
 
@@ -133,13 +133,14 @@ export function writeProjection(root: string, projection: SchemaProjection, file
 
 function write(root: string, text: string): void {
   const path = join(root, PROJECTION_FILE);
+  const refused = unsafeGeneratedPath(root, path);
+  if (refused !== undefined) throw new ConfigError(refused);
   try {
-    if (readFileSync(path, 'utf8') === text) return;
+    // A file that is a link out of the app is not compared (it could be a device): the rename below replaces the link.
+    if (unreadableGeneratedPath(root, path) === undefined && readFileSync(path, 'utf8') === text) return;
   } catch {
     // Not there yet, or unreadable: written below.
   }
-  const refused = unsafeGeneratedPath(root, path);
-  if (refused !== undefined) throw new ConfigError(refused);
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     mkdirSync(dirname(path), { recursive: true });
@@ -151,12 +152,17 @@ function write(root: string, text: string): void {
   }
 }
 
-/** The projection in {@link PROJECTION_FILE} when it was computed from exactly these `files` by this version; otherwise `undefined`. */
+/**
+ * The projection in {@link PROJECTION_FILE} when it was computed from exactly these `files` by this version; otherwise `undefined`.
+ * Throws a `ConfigError` when `.marmeon` leads out of the app: the file is not read.
+ */
 export function readProjection(root: string, files: readonly MigrationSource[]): SchemaProjection | undefined {
   return fromFile(root, sourcesOf(files));
 }
 
 function fromFile(root: string, sources: readonly ProjectionSource[]): SchemaProjection | undefined {
+  const refused = unreadableGeneratedPath(root, join(root, PROJECTION_FILE));
+  if (refused !== undefined) throw new ConfigError(refused);
   let text: string;
   try {
     text = readFileSync(join(root, PROJECTION_FILE), 'utf8');
@@ -206,7 +212,13 @@ export function loadProjection(root: string, files: readonly MigrationSource[], 
 }
 
 async function compute(root: string, files: readonly MigrationSource[], sources: readonly ProjectionSource[], options: LoadProjectionOptions, forget: () => void): Promise<SchemaProjection> {
-  const fromDisk = fromFile(root, sources);
+  // A `.marmeon` that leads out of the app is not read: the projection is computed instead, and the write below refuses (a directory link) or replaces the link (a file link).
+  let fromDisk: SchemaProjection | undefined;
+  try {
+    fromDisk = fromFile(root, sources);
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+  }
   if (fromDisk) return fromDisk;
   const projection = await (options.project ?? ((all) => projectMigrations(all)))(
     files.map((file, i) => ({ ...file, sha256: sources[i]!.sha256 })),

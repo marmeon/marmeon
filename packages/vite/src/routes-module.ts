@@ -1,5 +1,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { ConfigError } from '@marmeon/core';
+import { unreadableGeneratedPath } from '@marmeon/core/internal';
 import type { Plugin } from 'vite';
 import { collectRouteReferences, ROUTE_SINKS, type RouteReferenceProblem, type RouteSink } from './route-references.ts';
 
@@ -43,6 +45,8 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
 
   const file = () => join(root, BROWSER_ROUTES_FILE);
   const read = (): BrowserRoutes | undefined => {
+    const refused = unreadableGeneratedPath(root, file());
+    if (refused !== undefined) throw new ConfigError(refused);
     let text: string;
     try {
       text = readFileSync(file(), 'utf8');
