@@ -192,6 +192,38 @@ describe('the queue commands', () => {
     expect(flushed.lines).toEqual(['✓ Deleted 1 failed job.']);
   });
 
+  it('writes out the control characters of what it prints from the failed jobs, so a stored error cannot redraw the terminal', async () => {
+    await using application = await app();
+    application.clock.freeze(Date.UTC(2026, 9, 2, 12));
+    const connections = application.container.make(QueueConnections);
+    const failed = connections.failed();
+    const payload = (uuid: string, v: unknown = 1) => JSON.stringify({ v, uuid, job: 'test.ping', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 });
+    // An error quoting what a client sent: a window title (OSC), a cleared line and a carriage return that forges another entry.
+    const exception = 'Error: Unknown SKU \u001b]0;owned\u0007\u001b[2K\u001b]52;c;aGk=\u0007\r2026-10-02T12:00:00.000Z  other  test.ping\n    at x';
+    await failed.record({ uuid: 'sku\u001b[8m', connection: 'database', queue: 'mail\u2028', job: 'test.ping\u202e', payload: payload('sku'), exception, failedAt: application.clock.now() });
+    await failed.record({ uuid: 'gone', connection: 'gone\u001b]0;x\u0007', queue: 'default', job: 'test.ping', payload: payload('gone'), exception: 'Error: x', failedAt: 2 });
+    // A C1 control is no escape in JSON, so the reason of a broken version still carries it.
+    await failed.record({ uuid: 'broken', connection: 'database', queue: 'default', job: 'test.ping', payload: payload('broken', '\u009b2J'), exception: 'Error: x', failedAt: 1 });
+    const raw = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
+    const listed = input('/tmp');
+    await application.container.make(QueueFailedCommand).handle(listed.input);
+    expect(listed.lines.slice(0, 2)).toEqual([
+      '2026-10-02T12:00:00.000Z  sku\\u001b[8m  test.ping\\u202e  (database/mail\\u2028)',
+      '    Error: Unknown SKU \\u001b]0;owned\\u0007\\u001b[2K\\u001b]52;c;aGk=\\u0007\\r2026-10-02T12:00:00.000Z  other  test.ping',
+    ]);
+    expect(listed.lines.find((line) => line.includes(' gone '))).toBe('1970-01-01T00:00:00.002Z  gone  test.ping  (gone\\u001b]0;x\\u0007/default)');
+    expect(listed.lines.filter((line) => raw.test(line))).toEqual([]);
+
+    const retried = input('/tmp', ['all']);
+    expect(await application.container.make(QueueRetryCommand).handle(retried.input)).toBe(1);
+    expect(retried.lines).toEqual([
+      '✗ The failed job broken cannot be retried: The record\'s version (v) is "\\u009b2J", not a positive integer — it cannot run.',
+      `✗ The failed job gone came from the queue connection "gone\\u001b]0;x\\u0007", which is not configured. Known: ${connections.names().join(', ')}.`,
+      '✓ Queued test.ping\\u202e (sku\\u001b[8m) again on database/mail\\u2028',
+    ]);
+  });
+
   it('refuses a missing id and an --hours that is no number as a wrong call, not a failure', async () => {
     await using application = await app();
     const refused = { name: 'CommandArgumentsError' };

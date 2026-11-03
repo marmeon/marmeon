@@ -460,6 +460,10 @@ worker is not stopped.
 | `queue:prune-failed [--hours=168]` | Deletes failed jobs older than the given hours. |
 | `queue:size [queue…] [--connection=…]` | Counts the jobs per queue. |
 
+What `queue:failed` and `queue:retry` print from the failed jobs (an error, a job's name and id, a connection or a queue) has its
+control, format and line-separator characters written out as escapes (`\u001b`, `\r`, `\u2028`), as the console logger does, so an
+error that quotes what a client sent cannot redraw the terminal.
+
 Schedule `queue:prune-failed`, as the [task scheduling](scheduling.md#housekeeping-commands) page shows.
 
 ### Deploying while jobs wait
