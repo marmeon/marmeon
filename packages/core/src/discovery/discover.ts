@@ -6,6 +6,8 @@
  */
 import { withoutCode } from '../error-codes.ts';
 import { entryInside } from './contain.ts';
+import { ConfigError } from '../environment.ts';
+import { unsafeGeneratedPath } from '../paths.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
@@ -391,6 +393,8 @@ function regenerate(options: DiscoverOptions): { manifest: Manifest; summary: Di
   const conditions = options.conditions ?? runtimeConditions();
   const result = generateManifest({ ...options, conditions });
   const path = manifestPath(options.root, conditions);
+  const refused = unsafeGeneratedPath(options.root, path);
+  if (refused !== undefined) throw new ConfigError(refused);
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     mkdirSync(dirname(path), { recursive: true });

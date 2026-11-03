@@ -3,6 +3,8 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import { dirname, join, relative, sep } from 'node:path';
 import { analyzeInjections, applyInsertions, injectConstructorDependencies, insertionsOf, type Insertion } from './analyze.ts';
 import { isBrowserSource } from './browser.ts';
+import { ConfigError } from '../environment.ts';
+import { unsafeGeneratedPath } from '../paths.ts';
 
 /**
  * The app's injection lists, precomputed by `marmeon build` — so a production start neither parses the app with oxc
@@ -66,6 +68,8 @@ export function writeInjectionArtifacts({ root }: { root: string }): { path: str
   const names = Object.keys(files).sort();
   const lines = names.map((name) => `  ${JSON.stringify(name)}: ${JSON.stringify(files[name])}`);
   const path = join(root, INJECTIONS_FILE);
+  const refused = unsafeGeneratedPath(root, path);
+  if (refused !== undefined) throw new ConfigError(refused);
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     mkdirSync(dirname(path), { recursive: true });

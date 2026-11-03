@@ -1,6 +1,8 @@
 import { hash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { ConfigError } from '@marmeon/core';
+import { unsafeGeneratedPath } from '@marmeon/core/internal';
 import { spendImport, type MigrationSource } from '../migrations/load.ts';
 import { projectMigrations, type ProjectedTable, type SchemaProjection } from './projection.ts';
 
@@ -136,6 +138,8 @@ function write(root: string, text: string): void {
   } catch {
     // Not there yet, or unreadable: written below.
   }
+  const refused = unsafeGeneratedPath(root, path);
+  if (refused !== undefined) throw new ConfigError(refused);
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     mkdirSync(dirname(path), { recursive: true });

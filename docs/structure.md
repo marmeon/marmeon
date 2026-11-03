@@ -146,6 +146,12 @@ Three folders appear once you run the app or build it. Git ignores them:
 | `.marmeon/` | `marmeon` itself | The list of installed packages and their providers, the routes the browser may learn, the schema the migrations describe, and after a build the precomputed injection lists. |
 | `dist/` | `marmeon build` | The browser's files in `dist/client/` and the server rendering in `dist/server/`. |
 
+`marmeon` refuses to write into `.marmeon/` when it is a link that leads out of the app (a cloned repository can bring one), with
+`.marmeon leads out of the app … Nothing was written.` `marmeon discover`, `marmeon build`, `marmeon schema:project`, `marmeon route:types`
+and a start stop when they have to write a file there; a file that is still current is read through the link. On a start, the schema the migrations describe is kept in memory with a
+warning instead. The [last error](errors.md#the-development-error-page) is not written while `.marmeon` is a link of any kind. Remove the link,
+or point it at a directory inside the app.
+
 ## Inside a module
 
 A module grows the folders it needs. The auth module of the starter kit uses most of them:

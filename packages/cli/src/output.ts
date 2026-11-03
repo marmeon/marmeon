@@ -1,4 +1,5 @@
 import { styleText } from 'node:util';
+import { ConfigError } from '@marmeon/core';
 
 type Style = Parameters<typeof styleText>[0];
 
@@ -89,6 +90,11 @@ export function style(format: Style, text: string): string {
 export function printError(output: Output, error: unknown): void {
   if (!(error instanceof Error)) {
     output.error(String(error));
+    return;
+  }
+  // A refusal that names its own fix (a configuration or a path to change): the message, no frames.
+  if (error instanceof ConfigError) {
+    output.error(error.message);
     return;
   }
   const frames = (error.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line) && !line.includes('node:internal'));

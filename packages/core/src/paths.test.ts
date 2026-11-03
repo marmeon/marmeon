@@ -2,7 +2,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { escapesRoot } from './paths.ts';
+import { escapesRoot, unsafeGeneratedPath } from './paths.ts';
 
 function project(): { root: string; outside: string } {
   return { root: tempDir('marmeon-paths-'), outside: tempDir('marmeon-paths-outside-') };
@@ -74,5 +74,31 @@ describe('escapesRoot', () => {
     mkdirSync(join(root, 'modules'));
     expect(escapesRoot(alias, join(alias, 'modules', 'a.ts'))).toBeUndefined();
     expect(escapesRoot(root, join(alias, 'modules', 'a.ts'))).toBeUndefined();
+  });
+});
+
+describe('unsafeGeneratedPath', () => {
+  it('lets a missing or plain .marmeon pass, and a link that stays inside the app', () => {
+    const { root } = project();
+    expect(unsafeGeneratedPath(root, join(root, '.marmeon', 'schema.json'))).toBeUndefined();
+    mkdirSync(join(root, 'cache'));
+    symlinkSync(join(root, 'cache'), join(root, '.marmeon'), 'dir');
+    expect(unsafeGeneratedPath(root, join(root, '.marmeon', 'schema.json'))).toBeUndefined();
+  });
+
+  it('names the link and the file relative to the app when .marmeon leads out', () => {
+    const { root, outside } = project();
+    symlinkSync(outside, join(root, '.marmeon'), 'dir');
+    const message = unsafeGeneratedPath(root, join(root, '.marmeon', 'schema.json'))!;
+    expect(message).toContain('.marmeon leads out of the app');
+    expect(message).toContain('.marmeon/schema.json');
+    expect(message).not.toContain(root);
+  });
+
+  it('does not mind a link at the file itself: the rename replaces it', () => {
+    const { root, outside } = project();
+    mkdirSync(join(root, '.marmeon'));
+    symlinkSync(join(outside, 'x'), join(root, '.marmeon', 'schema.json'));
+    expect(unsafeGeneratedPath(root, join(root, '.marmeon', 'schema.json'))).toBeUndefined();
   });
 });
