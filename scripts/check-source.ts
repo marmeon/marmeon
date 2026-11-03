@@ -305,6 +305,8 @@ const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
 const APP_TEXTS = /^apps\/[^/]+\/(?:README\.md|\.env\.[^/]+)$/;
 /** The examples: what the demos add to a new app — read and copied like the apps' code, and run by `pnpm pack:smoke`. */
 const EXAMPLES = /^examples\//;
+/** The skills the `marmeon` package ships: `agents:install` copies them into apps, where agents read them. */
+const SKILLS = /^packages\/cli\/skills\//;
 /** The website's own pages (landing, marketing text): they speak to readers like the docs do. */
 const SITE_TEXTS = /^apps\/website\/modules\/site\/.+\.tsx?$/;
 /** Every file. */
@@ -323,7 +325,7 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
   {
     what: 'a comparison with another framework',
     pattern: /\b(?:Laravel|Breeze|Inertia|Rails|Django|Symfony|AdonisJS|NestJS|Next\.js|Nuxt)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS, SITE_TEXTS, EXAMPLES],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS, SITE_TEXTS, EXAMPLES, SKILLS],
     why: 'describe Marmeon as it is — a reader may know no other framework',
   },
 ];
@@ -334,6 +336,7 @@ export function textRuleWhere(hit: string): string {
   if (APP_COPIES.test(path)) return 'in what every new app copies';
   if (SITE_TEXTS.test(path)) return 'on the website';
   if (EXAMPLES.test(path)) return 'in the examples';
+  if (SKILLS.test(path)) return 'in the skills';
   return APP_TEXTS.test(path) ? "in an app's README or .env files" : 'in the docs';
 }
 
