@@ -360,6 +360,10 @@ command, and the [package development](docs/package-development.md#dependencies-
    start the workflow by hand once after it merges. It runs
    code nobody pinned, so `pnpm check-release` holds it to a schedule and a manual start (never a pull request or a push), the
    `contents: read` permission and no secret, a checkout without credentials, actions pinned by SHA, and no cache, restored or saved.
+7. Decided exception: **`@modelcontextprotocol/server` is an exact dependency of `marmeon`** (the CLI package) — the official SDK of
+   the protocol `marmeon mcp` speaks, loaded only by that command (`import()` after the check for `NODE_ENV=development`, only
+   from `packages/cli/src/mcp/`). The tool schemas and the protocol negotiation are tested against one version. An update is a
+   pull request of its own; `@modelcontextprotocol/client` at the same version is a devDependency of the repository for the tests.
 
 A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
 peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different

@@ -990,6 +990,14 @@ describe('the driver rule', () => {
     expect(checkDriverRule('database', { dependencies: {}, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
   });
 
+  it('holds the exact pin of the MCP SDK in the marmeon package, and refuses a range there', () => {
+    const SDK = '@modelcontextprotocol/server must be an exact dependency (x.y.z, no range) — the framework is tested against one version of it';
+    expect(checkDriverRule('cli', { dependencies: { '@modelcontextprotocol/server': '2.4.0' } })).toEqual([]);
+    expect(checkDriverRule('cli', { dependencies: { '@modelcontextprotocol/server': '^2.4.0' } })).toEqual([SDK]);
+    expect(checkDriverRule('cli', { dependencies: {} })).toEqual([SDK]);
+    expect(checkDriverRule('cli', { peerDependencies: { '@modelcontextprotocol/server': '2.4.0' } })).toEqual([SDK]);
+  });
+
   it('names a package that pins another version of kysely', () => {
     const pkg = (short: string, version: string) => ({ name: `@marmeon/${short}`, short, dir: '', manifest: { name: `@marmeon/${short}`, version: '1.0.0', dependencies: { kysely: version } } });
     expect(checkExactPins([pkg('database', '0.29.6'), pkg('table', '0.29.6')])).toEqual([]);

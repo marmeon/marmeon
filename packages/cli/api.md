@@ -259,6 +259,8 @@ marmeon make:test <name> --module=<module> [--path=/…]
 --force (boolean)
 --module (string, short m)
 --path (string)
+// mcp
+marmeon mcp
 // package:build
 marmeon package:build [package directories…] [--clean]
 --clean (boolean)

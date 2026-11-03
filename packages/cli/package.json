@@ -91,6 +91,7 @@
     "@marmeon/encryption": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/router": "workspace:*",
-    "@marmeon/server": "workspace:*"
+    "@marmeon/server": "workspace:*",
+    "@modelcontextprotocol/server": "2.4.0"
   }
 }
