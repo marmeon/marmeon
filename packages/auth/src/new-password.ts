@@ -28,7 +28,9 @@ export class AccountClaimLost extends Error {}
  * A reset of an account whose address was never confirmed (`email_verified_at` is `null` and so is `first_verified_at`, the mark an
  * address once confirmed leaves behind; a user without that property counts by `email_verified_at` alone) also removes every passkey, the authenticator and the recovery codes and revokes every API token, whatever
  * the setting: whoever registered the address first may have attached a way in of their own, and the reset is the owner proving the
- * mailbox. The factors are read again afterwards; one that survived is logged as an error. See `docs/passwords.md#resetting-the-password`.
+ * mailbox. A reset of an address that is not confirmed (`email_verified_at` is `null`) revokes every API token even when the account was
+ * confirmed once: the confirmation may have been of another address, whose holder made the tokens and then switched to this one.
+ * The factors are read again afterwards; one that survived is logged as an error. See `docs/passwords.md#resetting-the-password`.
  */
 export class NewPassword {
   readonly #tokens: () => AccessTokenStore;
@@ -71,7 +73,8 @@ export class NewPassword {
   /**
    * Stores `hash` as the password of the user `id` (`via`: a change or a reset), together with a new session key — how many API tokens it
    * revoked and the key (`Auth.updatePassword()` anchors its own session with it). A reset passes the
-   * `user` it was made for: with `email_verified_at` of `null` it removes the account's factors and tokens too. A user without that
+   * `user` it was made for: with `email_verified_at` of `null` it revokes the account's tokens too, and removes its factors where
+   * `first_verified_at` is not set either. A user without that
    * property (an app that does not verify addresses, or a provider that did not load the column) loses nothing; with a factor source
    * bound, that is logged once. A change passes `read`, the session key its session was checked against (`null`: none): the provider
    * writes the new key only over that one, in the statement of the hash (`expectedSessionKey`), and `keep`, the id of its own sign-in,
@@ -132,7 +135,10 @@ export class NewPassword {
       if (resets) await forgetResetLinks(resets, stored?.user ?? user ?? {});
       return revoked;
     };
-    const revokeTokens = this.#config.revokeTokensOnPasswordChange || unconfirmed;
+    // The tokens go with every reset of an address nobody confirmed, also where `first_verified_at` keeps the factors: that mark may
+    // be of an earlier address, whose holder made the tokens and then switched the account to this one (written at once with open
+    // registration). The factors stay there, so the holder of a mistyped new address cannot wipe them; losing the tokens lets nobody in.
+    const revokeTokens = this.#config.revokeTokensOnPasswordChange || (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === null);
     // Always in a transaction: a provider that breaks its contract (error A5) or a lost claim leaves neither the hash nor the revocations.
     const revoked = await this.#connections().transaction(() => write(revokeTokens));
     if (revokeTokens) this.#logger.info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });

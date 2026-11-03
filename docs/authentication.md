@@ -574,7 +574,7 @@ export default defineRoutes((Route) => {
 
 `ConfirmedAddress` is the starter kit's middleware: `verified()` while the registration is private. A page that creates API tokens
 needs a confirmed address as well as the password, because a token outlives a password reset unless
-`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`: an account registered with somebody else's address must never reach it. With open registration, use `verified()` there, as the
+`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` or the address is not confirmed: an account registered with somebody else's address must never reach it. With open registration, use `verified()` there, as the
 [API tokens](api-tokens.md#creating-tokens) page explains.
 
 The password alone does not change the factors of an account that has [a second factor](two-factor-authentication.md#changing-the-factors): that needs a factor proven within 15 minutes as well ([how long](#how-long-a-sign-in-lasts)).
@@ -794,8 +794,8 @@ devices writes a key.
 
 ### API tokens
 
-A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, and "sign out other devices"
-never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
+A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` (a reset also when the address is
+not confirmed, see [resetting the password](passwords.md#resetting-the-password)), and "sign out other devices" never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains when to turn it on.
 
 ## Changing the address
@@ -1407,7 +1407,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `EmailChanged` | `EmailChange.confirm()`, and `EmailChange.request()` without private registration, once the address is written | `userId`, `previousEmail` (`null` if the user had none), `email` |
-| `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
+| `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`, and every token of an account whose address is not confirmed) |
 | `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | `at`, `accounts`, `resetTokens`, `accessTokens`, `signIns` (the counts), see [ending every session of every account](#ending-every-session-of-every-account) |
 | `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back, however many rotations ago, or a known cookie came with a validator that was never issued: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
 | `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |

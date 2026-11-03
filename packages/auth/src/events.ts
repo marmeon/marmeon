@@ -193,13 +193,13 @@ export class PasswordChanged {
 }
 
 /**
- * A password was reset by e-mail link — every session and remember-me token of the user ended, and with
- * `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token (`revokedTokens`: how many).
+ * A password was reset by e-mail link — every session and remember-me token of the user ended, and every API token
+ * with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` or when the address is not confirmed (`revokedTokens`: how many).
  */
 export class PasswordReset {
   readonly #event = true;
   readonly user: AuthUser;
-  /** The API tokens the new password revoked — 0 unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`. */
+  /** The API tokens the new password revoked — 0 unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` or the address is not confirmed. */
   readonly revokedTokens: number;
 
   /** @internal Made by the framework when it dispatches the event. */

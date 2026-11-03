@@ -46,7 +46,8 @@ account can sign in at all:
 - **Open registration, `AUTH_PRIVATE_REGISTRATION=false`.** A new account is signed in at once and uses the app's pages without a
   confirmed address, unless those pages ask for `verified()`. Whoever registered with somebody else's address has a working
   account until the owner takes it over with a password reset, and that reset removes the passkeys, the authenticator and the API tokens the account holds (the factor routes refuse an unconfirmed address, so it holds none that it added since).
-  A change of address takes effect at once and leaves the account unconfirmed until the new address is confirmed.
+  A change of address takes effect at once and leaves the account unconfirmed until the new address is confirmed; a password reset
+  meanwhile revokes the account's API tokens.
 
 The [starter kit](starter-kit.md#private-registration) page explains both modes and what each tells a stranger.
 

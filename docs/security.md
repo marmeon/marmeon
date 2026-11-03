@@ -463,14 +463,16 @@ only when the accounts of your app are public anyway. The [starter kit](starter-
 An unconfirmed account is then a working account. Whoever registers with somebody else's address uses it at once: the module's
 `ConfirmedAddress` lets every signed-in user through, which is why the kit puts `verified()` on the routes that add a factor or create a token; your own routes need it too. When
 the owner later takes the account over with a password reset, its sessions and remember-me tokens end. An API token created in the
-meantime ends with them too, because the account was never confirmed (see below); an API token of a confirmed account ends only with
+meantime ends with them too, because the address was not confirmed (see below); an API token of a confirmed address ends only with
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`.
 
 The routes that add an authenticator app or a passkey sit behind `verified()` in every registration mode, so an account whose address
 nobody confirmed cannot attach a second factor of its own. And the password reset of such an account (`email_verified_at` and `first_verified_at` are `null`: the address was never confirmed)
 removes its passkeys, its authenticator, its recovery codes and every API token, whatever `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` says:
 the owner proved the mailbox with the link, and nothing the first registrant attached stays. The reset leaves the address unconfirmed;
-the owner confirms it with the link of the notice page. A confirmed account loses nothing in a reset.
+the owner confirms it with the link of the notice page. An account that was confirmed once and then changed to an address not confirmed
+yet keeps its factors in a reset, but loses its API tokens: whoever confirmed the earlier address may have created them and then
+changed the address to one they do not own. A confirmed address loses nothing in a reset.
 
 ### Accounts nobody confirmed
 
