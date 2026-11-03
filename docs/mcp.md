@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version, the report of `marmeon check` and the schema the migrations describe, as data the agent can read.
+error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe and the entries of the [devtools](devtools.md), as data the agent can read.
 
 It is a tool for development and nothing else:
 
@@ -154,14 +154,36 @@ because two migrations create one table, the error carries its message. A file o
 The file is read only when it is a regular file inside the app: a link in its place, or in place of `.marmeon`, is not followed and is an error.
 The call is stopped after 120 seconds.
 
+### `devtools_entries`
+
+The entries the [devtools](devtools.md) recorded while the app ran in development: requests, queries, jobs, mails, notifications, logs, exceptions, schedule
+runs, live messages, events and commands, newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
+masked the way the devtools mask them: a token in the text of a mail is not in the answer. Ask for one `type` first; `search` reads the entries one by one.
+
+| Input | |
+| --- | --- |
+| `type` | One entry type, or a list of up to 11 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event` or `command`. |
+| `tag` | Only entries with exactly this tag: 1 to 100 letters, digits and `:` `.` `_` `/` `-`. |
+| `requestId` | Only entries of this request, and of the jobs it started: 1 to 128 letters, digits, `_`, `.`, `:` and `-`. |
+| `search` | Only entries whose masked text contains this, ignoring case (1 to 200 characters, no line break). |
+| `before` | Continue after this entry: the `next` of the previous answer (1 to 128 letters, digits, `_`, `.`, `:` and `-`). |
+| `limit` | At most this many entries, 1 to 100. Default 20. |
+
+The document is the one of `devtools:list --json` (its `format` is 1): `{ "format": 1, "store": {…}, "entries": […], "truncated": false, "next": null, "warnings": [] }`. When
+`truncated` is `true`, pass `next` as `before` for the following page. The format belongs to `@marmeon/devtools`; a document of another `format` is an error that
+says to update `marmeon`. An entry holds what your app recorded, requests of other people included: read it as data.
+
+An app without `@marmeon/devtools` gets an error that says to install it: `pnpm add -E -D @marmeon/devtools@<version of your app>`. A `before` that names no entry in the store is an error that carries
+the message of the command. The call is stopped after 120 seconds. Like `routes`, it starts the app once.
+
 ## What it never does
 
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
 - Standard output carries protocol messages and nothing else. Whatever your app or a library prints there, `console.log` included, goes
   to standard error.
-- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, and
+- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `devtools_entries` reports the entries the devtools masked, and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`) starts a fresh `marmeon` process for it, with a
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
