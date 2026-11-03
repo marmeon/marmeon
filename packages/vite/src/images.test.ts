@@ -1,6 +1,6 @@
 import { deflateSync, crc32 } from 'node:zlib';
 import { mkdirSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import sharp from 'sharp';
 import { build, createServer, type Plugin, type ViteDevServer } from 'vite';
@@ -209,6 +209,8 @@ describe('images', () => {
     const server = await createServer({ root, configFile: false, logLevel: 'silent', appType: 'custom', envDir: false, server: { middlewareMode: true, hmr: false, ws: false }, plugins: [recording(watched)] });
     servers.push(server);
     const added = vi.spyOn(server.watcher, 'add');
+    // Vite itself adds the app's root and `public` when it starts: only a path outside the app counts.
+    const addedOutside = () => added.mock.calls.flatMap(([paths]) => [paths].flat()).filter((path) => isAbsolute(path) && path !== root && !path.startsWith(`${root}${sep}`));
     const client = server.environments.client!;
     // A request for `/@fs/<path>?image&import` reaches the plugin as this id: Vite watches a folder outside the root recursively.
     await expect(client.transformRequest('/@fs/?image')).rejects.toThrow(/does not exist/);
@@ -218,7 +220,7 @@ describe('images', () => {
     await expect(client.transformRequest(`/@fs${join(outside, 'outside.jpg')}?image`)).rejects.toThrow(/outside the app/);
     await expect(client.transformRequest('/link.jpg?image')).rejects.toThrow(/outside the app/);
     expect(watched).toEqual([]);
-    expect(added).not.toHaveBeenCalled();
+    expect(addedOutside()).toEqual([]);
 
     await client.transformRequest('/hero.jpg?image');
     expect(watched).toEqual([join(root, 'hero.jpg')]);
@@ -226,7 +228,7 @@ describe('images', () => {
     watched.length = 0;
     await client.transformRequest(`/@fs${join(outside, 'into-app.jpg')}?image`);
     expect(watched).toEqual([join(root, 'hero.jpg')]);
-    expect(added).not.toHaveBeenCalled();
+    expect(addedOutside()).toEqual([]);
   });
 
   describe('refuses', () => {
