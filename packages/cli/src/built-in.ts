@@ -27,6 +27,7 @@ import {
 } from './commands/make.ts';
 import { McpCommand } from './commands/mcp.ts';
 import { ModulesCheckCommand } from './commands/modules-check.ts';
+import { ModulesListCommand } from './commands/modules-list.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
 import { RouteTypesCommand } from './commands/route-types.ts';
@@ -40,6 +41,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   RouteListCommand,
   RouteTypesCommand,
   ModulesCheckCommand,
+  ModulesListCommand,
   SchemaProjectCommand,
   DiscoverCommand,
   BuildCommand,
