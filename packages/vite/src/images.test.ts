@@ -199,14 +199,14 @@ describe('images', () => {
     ]);
   });
 
-  it('watches an image once it passed the checks, never a folder or a file outside the app', async () => {
-    const root = app({ 'hero.jpg': await picture(10, 10), 'pictures/.keep': '' });
+  it('watches an image once it passed the checks, never a folder, a file outside the app or one `server.fs` denies', async () => {
+    const root = app({ 'hero.jpg': await picture(10, 10), 'pictures/.keep': '', 'denied-here/hero.jpg': await picture(10, 10) });
     const outside = realpathSync(tempDir('marmeon-images-outside-'));
     writeFileSync(join(outside, 'outside.jpg'), await picture(10, 10));
     symlinkSync(join(outside, 'outside.jpg'), join(root, 'link.jpg'));
     symlinkSync(join(root, 'hero.jpg'), join(outside, 'into-app.jpg'));
     const watched: string[] = [];
-    const server = await createServer({ root, configFile: false, logLevel: 'silent', appType: 'custom', envDir: false, server: { middlewareMode: true, hmr: false, ws: false }, plugins: [recording(watched)] });
+    const server = await createServer({ root, configFile: false, logLevel: 'silent', appType: 'custom', envDir: false, server: { middlewareMode: true, hmr: false, ws: false, fs: { deny: ['**/denied-here/**'] } }, plugins: [recording(watched)] });
     servers.push(server);
     const added = vi.spyOn(server.watcher, 'add');
     // Vite itself adds the app's root and `public` when it starts: only a path outside the app counts.
@@ -219,6 +219,7 @@ describe('images', () => {
     await expect(client.transformRequest(`/@fs${join(root, 'pictures')}?image`)).rejects.toThrow(/does not exist/);
     await expect(client.transformRequest(`/@fs${join(outside, 'outside.jpg')}?image`)).rejects.toThrow(/outside the app/);
     await expect(client.transformRequest('/link.jpg?image')).rejects.toThrow(/outside the app/);
+    await expect(client.transformRequest('/denied-here/hero.jpg?image')).rejects.toThrow(/denied by `server\.fs`/);
     expect(watched).toEqual([]);
     expect(addedOutside()).toEqual([]);
 
@@ -260,8 +261,9 @@ describe('images', () => {
     });
 
     it('a file `server.fs.deny` names', async () => {
-      const root = app({ 'private/hero.jpg': await picture(10, 10) }, { entry: ['./private/hero.jpg?image'] });
-      expect(await failure(root, { fs: { deny: ['**/private/**'] } })).toMatch(/denied by `server\.fs`/);
+      // Not `private`: a temporary directory on macOS is under /private, and the rule would deny the whole app.
+      const root = app({ 'denied-here/hero.jpg': await picture(10, 10) }, { entry: ['./denied-here/hero.jpg?image'] });
+      expect(await failure(root, { fs: { deny: ['**/denied-here/**'] } })).toMatch(/denied by `server\.fs`/);
     });
 
     it('a broken SVG under a raster name, without loading sharp', async () => {
