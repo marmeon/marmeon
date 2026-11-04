@@ -1,4 +1,4 @@
-import { EnvironmentConfig, outsideTransaction, type Application, type Redactor } from '@marmeon/core';
+import { EnvironmentConfig, html, outsideTransaction, type Application, type Redactor } from '@marmeon/core';
 import { devOnly } from '@marmeon/core/dev';
 import type { EmptyObject, HttpContext, Next } from '@marmeon/router';
 import { ENTRY_TYPES, type AnyEntry, type EntryType } from '../entry.ts';
@@ -118,7 +118,8 @@ function apiQuery(url: URL): EntryQuery | undefined {
 
 const oldestFirst = (entries: readonly AnyEntry[]) => [...entries].reverse();
 
-const notFound = (what: string) => htmlResponse(`<!doctype html><title>Not found</title><p>${what}</p><p><a href="${BASE}">Devtools</a></p>`, 404);
+/** `what` may carry the request's path parameter, decoded: escaped like every page. */
+const notFound = (what: string) => htmlResponse(html`<!doctype html><title>Not found</title><p>${what}</p><p><a href="${BASE}">Devtools</a></p>`.toString(), 404);
 
 class DevtoolsPages {
   readonly #store: DevtoolsStore;

@@ -237,6 +237,27 @@ describe('what the pages show', () => {
     }
   });
 
+  it('escape the id of an entry that is not there — its 404 page shows the decoded path parameter as text', async () => {
+    const { app, kernel } = await boot();
+    try {
+      for (const path of [`${BASE}/logs/%3Cb%3Ex`, `${BASE}/requests/%3Cb%3Ex`]) {
+        const response = await kernel.request(path);
+        expect(response.status, path).toBe(404);
+        const body = await response.text();
+        expect(body, path).toContain('&lt;b&gt;x');
+        expect(body, path).not.toContain('<b>');
+      }
+      const img = await (await kernel.request(`${BASE}/logs/${encodeURIComponent('<img src=x onerror=alert(1)>')}`)).text();
+      expect(img).toContain('&lt;img src=x onerror=alert(1)&gt;');
+      expect(img).not.toContain('<img');
+      const page = await (await kernel.request(`${BASE}/logs/${encodeURIComponent('"><form action="/account/email" method="post"><button>Reload</button></form>')}`)).text();
+      expect(page).not.toMatch(/<form|<button/);
+      expect(await (await kernel.request(`${BASE}/logs/nothing-here`)).text()).toBe(`<!doctype html><title>Not found</title><p>No log entry nothing-here — the ring keeps entries for 24 hours.</p><p><a href="${BASE}">Devtools</a></p>`);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
   it('show a recorded mail in a sandboxed frame — its HTML served with a sandbox CSP, no script of it runs', async () => {
     const { app, kernel, tester } = await boot();
     try {
