@@ -6,7 +6,7 @@ import { HttpError } from './errors.ts';
 import { addsConflicts, addsOf, runPipeline, type AddsConflict } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, lowerBodyLimit, type RequestState } from './request.ts';
-import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
+import { isLiveValidation, liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
 import { authorizeRequest, nothingToValidate, unauthorized, validateRequest, ValidationError, type RequestDefinition, type ValidationHook } from './request-definition.ts';
 import { Route, type RegistrarAudit } from './route.ts';
 import { RouteDefinition } from './route-definition.ts';
@@ -33,7 +33,7 @@ export function defineRoutes(register: (Route: Route) => void): RouteDefinitions
 /**
  * A request a package answers in the route's place (`router.intercept(…)`): it runs the route's middleware, bindings and
  * `authorize` (403), then the interceptor answers; the controller is never built. @marmeon/storage answers upload targets
- * this way, so who may submit a form may upload its files.
+ * this way, so who may submit a form may upload its files. A claimed request that is a live validation too answers 400.
  */
 export interface RouteInterceptor {
   /** Whether this request is the interceptor's (a header it looks for). */
@@ -416,6 +416,9 @@ export class Router {
         // An interceptor or a live validation: the controller is never built, `handle` never runs.
         const interceptor = this.#interceptors.find((candidate) => candidate.claims(finalCtx.request));
         if (interceptor) {
+          // The middleware took this request for a live validation — `throttle()` holds one to the route's limit without
+          // counting it — so no interceptor may answer it: an upload target would get past the route's limit.
+          if (isLiveValidation(finalCtx.request)) throw new HttpError(400, 'A live validation (x-marmeon-validate) is answered by its route’s validation, never by an interceptor such as an upload target.');
           return interceptor.answer(finalCtx, request, resolve);
         }
         const live = liveValidationFields(finalCtx.request);

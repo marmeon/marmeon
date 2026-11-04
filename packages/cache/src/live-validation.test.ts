@@ -1,7 +1,8 @@
 import { createApplication, defineModule, type Application } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, HttpServiceProvider, Router, type ContextOf } from '@marmeon/http';
 import { protocolHeaders, VALIDATE_HEADER } from '@marmeon/http/internal';
+import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { createHttpKernel } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +18,17 @@ class LoginController extends Controller {
   }
 }
 
+/** Upload targets made — by a stand-in for @marmeon/storage's interceptor, which claims a request by its upload header too. */
+let targets = 0;
+class Uploads {
+  boot(app: Application) {
+    app.container.make(Router).intercept({
+      claims: (request) => request.headers.has(UPLOAD_HEADER),
+      answer: () => ((targets += 1), Response.json({ token: 'a-target' })),
+    });
+  }
+}
+
 async function boot(liveLimit?: LimiterCallback) {
   class Limits {
     boot(app: Application) {
@@ -27,7 +39,7 @@ async function boot(liveLimit?: LimiterCallback) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, CacheServiceProvider, Limits],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, CacheServiceProvider, Limits, Uploads],
     modules: [
       defineModule({
         name: 'live',
@@ -84,6 +96,23 @@ describe('LimitLiveValidation', () => {
     expect(await statuses(app, '/api/login', 4, false)).toEqual([200, 200, 200, 429]);
     // The login's limit is used up: a check is refused too (no way around a limit).
     expect((await app.request('/api/login', request('ada@example.com'))).status).toBe(429);
+  });
+
+  it("refuses an upload target that names fields to validate too — every target counts against the route's limit", async () => {
+    const app = await boot();
+    targets = 0;
+    const target = (live: boolean) => {
+      const { headers, ...init } = request('ada@example.com', live);
+      return app.request('/api/login', { ...init, headers: { ...headers, ...protocolHeaders(), [UPLOAD_HEADER]: 'email' } });
+    };
+    // The throttle takes it for a live validation and does not count it: no target is made for it.
+    expect([await target(true), await target(true), await target(true), await target(true)].map((answer) => answer.status)).toEqual([400, 400, 400, 400]);
+    expect(targets).toBe(0);
+    // A target counts (one of the login's three tries), a live validation still does not.
+    expect((await target(false)).status).toBe(200);
+    expect(targets).toBe(1);
+    expect(await statuses(app, '/api/login', 3)).toEqual([204, 204, 204]);
+    expect(await statuses(app, '/api/login', 3, false)).toEqual([200, 200, 429]);
   });
 
   it("an app sets its own: `limiter.for('live-validation', …)` — `Limit.none()` turns it off", async () => {
