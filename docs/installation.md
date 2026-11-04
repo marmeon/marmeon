@@ -53,6 +53,7 @@ app's name: `my-app` is the package `my-app` and the app "My App".
 | `-y`, `--yes` | Takes the defaults and asks nothing: the starter kit, pnpm, the install and a first commit. |
 | `--minimal` | A blank app instead of the starter kit: no sign-in, no home page. |
 | `--docker` | Adds a `Dockerfile`, a `.dockerignore` and a `compose.production.yaml`. |
+| `--agents`, `--no-agents` | Installs the framework's skills for coding agents and registers `marmeon mcp` in `.mcp.json`, as `marmeon agents:install` does. Off unless you choose it; on a terminal the creator asks. |
 | `--npm`, `--pnpm` | Chooses the package manager. pnpm is the default. |
 | `--no-install` | Writes the files only. The output lists the commands to run next. |
 | `--no-git` | Creates no git repository. |
@@ -73,8 +74,8 @@ create-marmeon needs a directory: create-marmeon <dir> [--yes]
 Every wrong call ends with exit code 2: an unknown flag, two directories, or `--npm` together with `--pnpm`. A directory that is
 not empty and a Node older than 26.10 end with exit code 1, before anything is written. So does a missing pnpm when the creator
 is about to install. When a later step fails, for example the install, the run ends with exit code 1 and shows that step's
-output. The directory stays as it was at that moment, so you can fix the cause and run the step yourself. Ctrl+C at a question
-ends the run with exit code 130.
+output; only `marmeon agents:install` just warns and the run ends with exit code 0. The directory stays as it was at that moment, so you can fix the cause and run the step yourself. Ctrl+C at a question
+ends the run with exit code 130. Without `--agents` nothing is installed for agents beyond `AGENTS.md` and `CLAUDE.md`.
 
 ## What you get
 
@@ -92,7 +93,9 @@ pnpm, `save-exact=true` in `.npmrc` with `--npm`. Every `@marmeon/*` package mus
 
 The creator also runs `marmeon agents:sync`, so an installed app has an `AGENTS.md` and a `CLAUDE.md` for coding agents, both in the
 first commit. With `--no-install` the command is one of the next steps. They are not in `marmeon-stubs.json`: the block in `AGENTS.md`
-changes with every release and the rest is yours. See [coding agents](agents.md).
+changes with every release and the rest is yours. With `--agents` it also runs `marmeon agents:install`, the last step before git, so the
+skills and `.mcp.json` are in the first commit too. When that step fails, the creator only warns, names the command among the next
+steps and ends with exit code 0: the app is complete. See [coding agents](agents.md).
 
 ### The starter kit
 

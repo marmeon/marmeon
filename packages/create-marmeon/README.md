@@ -30,6 +30,7 @@ npm run dev
 | `-y`, `--yes` | Takes the defaults and asks nothing. |
 | `--minimal` | A blank app instead of the starter kit: no sign-in, no home page. |
 | `--docker` | Adds a `Dockerfile`, a `.dockerignore` and a `compose.production.yaml`. |
+| `--agents`, `--no-agents` | Installs the framework's skills for coding agents and registers `marmeon mcp` in `.mcp.json`, as `marmeon agents:install` does. Off unless you choose it; on a terminal the creator asks. |
 | `--npm`, `--pnpm` | Chooses the package manager. pnpm is the default. |
 | `--no-install` | Writes the files only. The output lists the commands to run next. |
 | `--no-git` | Creates no git repository. |
