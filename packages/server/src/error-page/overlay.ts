@@ -1,5 +1,5 @@
 import type { Redactor, Solution } from '@marmeon/core';
-import { parseStack, withSnippets } from './report.ts';
+import { framesOf, withSnippets } from './report.ts';
 
 /** Vite's error payload (`hot.send({ type: 'error', err })`) — what its overlay shows. */
 export interface OverlayError {
@@ -14,13 +14,13 @@ export interface OverlayError {
 /**
  * A server-rendering error for Vite's overlay: the message with its solutions, the stack (already mapped to the
  * sources by `ssrFixStacktrace`), and — for the first frame in the app's code — a code frame and a link (`loc`), as Vite
- * shows its own transform errors. Redacted like the error page.
+ * shows its own transform errors. The message and the stack are redacted like the error page; the code frame is not (it would rewrite ordinary source), which is why it is read only from the app and from the source files of `node_modules`.
  */
 export function overlayError(error: unknown, root: string, redactor: Redactor, solutions: readonly Solution[] = []): OverlayError {
   const failure = error instanceof Error ? error : new Error(String(error));
-  const frames = parseStack(failure.stack ?? '', root);
+  const frames = framesOf(failure, root, false);
   const target = frames.find((frame) => frame.app) ?? frames.find((frame) => !frame.internal);
-  const [located] = target ? withSnippets([target], 2) : [];
+  const [located] = target ? withSnippets([target], 2, root) : [];
   const hints = solutions.map((solution) => `\n\n${solution.title}: ${solution.text}${solution.command ? `\n  $ ${solution.command}` : ''}`).join('');
   const message = `[${failure.name}] ${failure.message}\nServer rendering failed — the browser renders this page instead.${hints}`;
   return {
