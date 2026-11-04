@@ -32,7 +32,6 @@
   },
   "dependencies": {
     "@marmeon/cache": "workspace:*",
-    "marmeon": "workspace:*",
     "@marmeon/core": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/log": "workspace:*",
@@ -42,6 +41,7 @@
     "@marmeon/validation": "workspace:*",
     "github-slugger": "2.0.0",
     "markdown-it": "15.0.3",
+    "marmeon": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "shiki": "4.5.0"
@@ -56,7 +56,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "happy-dom": "^21.0.4",
-    "oxlint": "^1.89.0",
+    "oxlint": "^1.90.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
