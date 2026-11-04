@@ -300,8 +300,6 @@ async function readBody(request: Request, limit: number): Promise<Uint8Array<Arr
 
 type Node = { [key: string]: Node | string | File };
 
-const KEY = /^([^[\]]+)((?:\[[^[\]]*\])*)$/;
-
 /**
  * Builds nested input from form entries. Later entries win, an empty file field (no file chosen) is skipped, and
  * objects whose keys are exactly `0…n-1` become arrays — so sparse indices can never allocate huge arrays.
@@ -315,12 +313,30 @@ function build(entries: Iterable<[string, string | File]>): Input {
   return finalize(root) as Input;
 }
 
+/**
+ * Splits `a[b][c]` into `['a', 'b', 'c']`; a name that is not a name followed by well-formed `[…]` groups stays literal. Walked by
+ * hand: one body holds millions of `[]`, and a quantified regex group over them exhausts the regexp engine's backtrack stack
+ * (a 500) before any depth is counted. Past `MAX_DEPTH` groups nothing more is built.
+ */
 function segments(key: string): string[] {
-  const match = KEY.exec(key);
-  if (!match) return [key];
-  const nested = [...match[2]!.matchAll(/\[([^[\]]*)\]/g)].map((m) => m[1]!);
-  if (nested.length > MAX_DEPTH) throw new HttpError(400, `Input "${match[1]}" is nested too deeply.`);
-  return [match[1]!, ...nested];
+  let position = 0;
+  while (position < key.length && key[position] !== '[' && key[position] !== ']') position++;
+  if (position === 0 || position === key.length) return [key];
+  if (key[position] === ']') return [key];
+  const name = key.slice(0, position);
+  const nested: string[] = [];
+  let tooDeep = false;
+  while (position < key.length) {
+    const close = key.indexOf(']', position + 1);
+    if (key[position] !== '[' || close === -1) return [key];
+    const open = key.indexOf('[', position + 1);
+    if (open !== -1 && open < close) return [key];
+    if (nested.length < MAX_DEPTH) nested.push(key.slice(position + 1, close));
+    else tooDeep = true;
+    position = close + 1;
+  }
+  if (tooDeep) throw new HttpError(400, `Input "${name}" is nested too deeply.`);
+  return [name, ...nested];
 }
 
 /** Per node, the next free index (highest numeric key + 1) — so `a[]` stays O(1) however many items came before. */
