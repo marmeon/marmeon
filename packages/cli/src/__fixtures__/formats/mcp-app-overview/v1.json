@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "app": { "providers": [] },
+  "modules": [{ "name": "system", "providers": [], "commands": [], "jobs": [], "notifications": [], "seeders": [], "migrations": "modules/system/migrations" }],
+  "events": [
+    { "event": "NoteCreated", "name": "notes.created", "listeners": [{ "listener": "IndexNote", "queued": false, "defined": "module", "module": "system" }] }
+  ],
+  "schedules": [{ "name": "cache:prune", "expression": "0 * * * *", "timeZone": "UTC", "description": "Prunes the cache" }],
+  "warnings": []
+}
