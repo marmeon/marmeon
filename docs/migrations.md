@@ -539,14 +539,14 @@ A deployment runs `marmeon migrate --force` once, before the new version takes r
 {
   "format": 1,
   "migrations": [
-    { "name": "2026_01_01_000000_create_users_table", "module": "auth", "batch": 1, "status": "ran" },
-    { "name": "2026_01_05_000000_create_accounts_table", "module": "accounts", "batch": null, "status": "pending" }
+    { "name": "2026_01_01_000000_create_users_table", "module": "auth", "connection": "default", "batch": 1, "status": "ran" },
+    { "name": "2026_01_05_000000_create_accounts_table", "module": "accounts", "connection": "default", "batch": null, "status": "pending" }
   ],
   "warnings": []
 }
 ```
 
-`module` is the name of the module the migration belongs to. `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the record says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too, and each migration whose file [changed after it ran](#a-migration-that-changed-after-it-ran) (`<name> changed since it ran in batch <n>`). A record this
+`module` is the name of the module the migration belongs to. `connection` is the connection the migration [runs on](#migrations-on-another-connection); the record that it ran is always on `default`. It is `null` when that cannot be told (the file does not load, its connection function throws, or it names a connection that is not configured), with the warning `<name>: the connection it runs on is unknown — marmeon migrate says why`; the error itself is never part of the document. The text table shows a `CONNECTION` column only when a migration does not run on `default` or its connection is unknown (shown as `?`). `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the record says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too, and each migration whose file [changed after it ran](#a-migration-that-changed-after-it-ran) (`<name> changed since it ran in batch <n>`). A record this
 release cannot read (other columns, see [how the migrator keeps track](#how-the-migrator-keeps-track)) fails the command: stdout stays empty, the
 message with its code is on stderr, the exit code is 1.
 

@@ -74,7 +74,7 @@ describe.each(drivers)('a migration that changed after it ran, on %s', (driver) 
     const command = new MigrateStatusCommand(migrator());
     const expected = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-migrate-status/v1-changed.json', import.meta.url), 'utf8')) as object;
     const json = await capture(() => command.handle(input({ json: true })));
-    expect(JSON.parse(json.stdout)).toEqual(expected);
+    expect(JSON.parse(json.stdout)).toMatchObject(expected);
     const text = await capture(() => command.handle(input()));
     expect(text.stderr).toContain(`${created} changed since it ran in batch 1`);
     expect(text.stdout).toContain('Put the file back and write the change as a new migration');

@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { Output, type CommandInput } from 'marmeon';
 import { sql } from 'kysely';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { migratorConnection } from './migrator-connection.ts';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { MigrateStatusCommand } from './commands/migrate.ts';
-import { MigrationStateError, Migrator, type Connections } from './index.ts';
+import { Connections, MigrationStateError, Migrator } from './index.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-migrate-status/v1.json', import.meta.url), 'utf8')) as Record<string, unknown>;
@@ -14,10 +14,12 @@ const migrator = (connections: Connections, modules: ModuleDefinition[]) => new 
 
 async function run(command: MigrateStatusCommand, options: CommandInput['options'] = {}) {
   const stdout: string[] = [];
+  const stderr: string[] = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+  vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
   try {
     const code = await command.handle({ args: [], options, output: new Output(), root: '/' } as unknown as CommandInput);
-    return { code, stdout: stdout.join('') };
+    return { code, stdout: stdout.join(''), stderr: stderr.join('') };
   } finally {
     vi.restoreAllMocks();
   }
@@ -43,7 +45,7 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
       const document = JSON.parse(stdout) as { migrations: object[] };
       expect(Object.keys(document)).toEqual(['format', 'migrations', 'warnings']);
       expect(document).toMatchObject(fixture);
-      expect(document.migrations.map((m) => Object.keys(m))).toEqual(Array(3).fill(['name', 'module', 'batch', 'status']));
+      expect(document.migrations.map((m) => Object.keys(m))).toEqual(Array(3).fill(['name', 'module', 'connection', 'batch', 'status']));
     } finally {
       await close();
     }
@@ -83,10 +85,7 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
       const { stdout } = await run(command, { json: true });
       expect(JSON.parse(stdout)).toMatchObject(missing);
       expect(JSON.parse(stdout).migrations).toHaveLength(1);
-      const stderr: string[] = [];
-      vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
-      await run(command);
-      expect(stderr.join('')).toContain('2025_12_31_000000_create_gone_table ran in batch 1 but no module has its file');
+      expect((await run(command)).stderr).toContain('2025_12_31_000000_create_gone_table ran in batch 1 but no module has its file');
     } finally {
       await close();
     }
@@ -117,5 +116,65 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
     } finally {
       await close();
     }
+  });
+});
+
+describe.each(drivers)('migrate:status --json on another connection (%s)', (driver) => {
+  const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
+  const system: ModuleDefinition = { name: 'system', migrations: fixtures('system') };
+  const other: ModuleDefinition = { name: 'other', migrations: fixtures('other') };
+  const connectionFixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-migrate-status/v1-connection.json', import.meta.url), 'utf8')) as object;
+  let connections: Connections;
+  let drops: (() => Promise<void>)[];
+  /** The app's container tells the `system` fixture its connection, like `c.make(CacheConfig).connection`. */
+  const on = (...modules: ModuleDefinition[]) => new Migrator({ modules, root: '/', container: { make: () => 'system' } } as unknown as Application, connections);
+
+  beforeAll(async () => {
+    const [app, second] = [await freshDatabase(driver), await freshDatabase(driver)];
+    drops = [app.drop, second.drop];
+    connections = new Connections({ connections: { default: app.options, system: second.options }, root: '/', logger: silent });
+    await on(auth, other).migrate();
+  });
+  afterAll(async () => {
+    await connections.destroy();
+    for (const drop of drops) await drop();
+  });
+
+  it('names the connection of each migration, the record being on default', async () => {
+    const { code, stdout } = await run(new MigrateStatusCommand(on(auth, system, other)), { json: true });
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual(connectionFixture);
+  });
+
+  it('shows the CONNECTION column when a migration does not run on default, and not otherwise', async () => {
+    const text = (await run(new MigrateStatusCommand(on(auth, system, other)))).stdout;
+    expect(text).toMatch(/MIGRATION\s+MODULE\s+CONNECTION\s+BATCH \/ STATUS/);
+    expect(text).toMatch(/create_metrics_table\s+other\s+system\s+\[1\] Ran\n/);
+    const plain = (await run(new MigrateStatusCommand(on(auth)))).stdout;
+    expect(plain).toMatch(/^MIGRATION\s+MODULE\s+BATCH \/ STATUS\n/m);
+    expect(plain).not.toContain('CONNECTION');
+  });
+
+  it('answers null and a warning for a connection that is not configured, with exit 0', async () => {
+    const { code, stdout } = await run(new MigrateStatusCommand(on({ name: 'elsewhere', migrations: fixtures('elsewhere') })), { json: true });
+    expect(code).toBe(0);
+    const document = JSON.parse(stdout) as { migrations: object[]; warnings: string[] };
+    expect(document.migrations).toMatchObject([{ name: '2026_01_09_000000_create_reports_table', connection: null, status: 'pending' }]);
+    expect(document.warnings).toContain('2026_01_09_000000_create_reports_table: the connection it runs on is unknown — marmeon migrate says why');
+    expect((await run(new MigrateStatusCommand(on({ name: 'elsewhere', migrations: fixtures('elsewhere') })))).stdout).toMatch(/elsewhere\s+\?\s+Pending/);
+  });
+
+  it('answers null for a file that throws when it is imported, without the text of the error', async () => {
+    const command = new MigrateStatusCommand(on({ name: 'throws', migrations: fixtures('throws-on-import') }));
+    const { code, stdout } = await run(command, { json: true });
+    expect(code).toBe(0);
+    const text = await run(command);
+    for (const output of [stdout, text.stdout, text.stderr]) {
+      expect(output).not.toContain(['pass', 'word'].join(''));
+      expect(output).not.toContain('hunter2');
+    }
+    const document = JSON.parse(stdout) as { migrations: object[]; warnings: string[] };
+    expect(document.migrations).toMatchObject([{ connection: null }]);
+    expect(document.warnings).toContain('2026_01_12_000000_create_broken_table: the connection it runs on is unknown — marmeon migrate says why');
   });
 });

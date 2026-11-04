@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "migrations": [
+    { "name": "2026_01_01_000000_create_users_table", "module": "auth", "connection": "default", "batch": 1, "status": "ran" },
+    { "name": "2026_01_07_000000_create_counters_table", "module": "system", "connection": "system", "batch": null, "status": "pending" },
+    { "name": "2026_01_08_000000_create_audit_table", "module": "system", "connection": "system", "batch": null, "status": "pending" },
+    { "name": "2026_01_11_000000_create_metrics_table", "module": "other", "connection": "system", "batch": 1, "status": "ran" }
+  ],
+  "warnings": []
+}

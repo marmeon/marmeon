@@ -229,16 +229,22 @@ export class MigrateStatusCommand {
   }
 
   async handle({ options, output }: CommandInput): Promise<number> {
-    const migrations = (await this.#migrator.status()).map((m) => ({
-      name: m.name,
-      module: m.module,
-      batch: m.batch ?? null,
-      status: m.batch === undefined ? ('pending' as const) : ('ran' as const),
-    }));
+    const migrations: { name: string; module: string; connection: string | null; batch: number | null; status: 'ran' | 'pending' }[] = [];
+    for (const m of await this.#migrator.status()) {
+      migrations.push({
+        name: m.name,
+        module: m.module,
+        connection: (await this.#migrator.connectionOf(m)) ?? null,
+        batch: m.batch ?? null,
+        status: m.batch === undefined ? ('pending' as const) : ('ran' as const),
+      });
+    }
     const changed = await this.#migrator.changed();
+    // No error text: what an import throws can carry values of the app; `marmeon migrate` says why.
     const warnings = [
       ...(await this.#migrator.missing()).map((m) => `${m.name} ran in batch ${m.batch} but no module has its file`),
       ...changed.map((m) => `${m.name} changed since it ran in batch ${m.batch}`),
+      ...migrations.filter((m) => m.connection === null).map((m) => `${m.name}: the connection it runs on is unknown — marmeon migrate says why`),
     ];
     if (options.json === true) {
       output.json({ format: 1, migrations, warnings });
@@ -250,10 +256,16 @@ export class MigrateStatusCommand {
       output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');
       return 0;
     }
-    output.table(
-      ['MIGRATION', 'MODULE', 'BATCH / STATUS'],
-      migrations.map((m) => [m.name, m.module, m.batch === null ? 'Pending' : `[${m.batch}] Ran`]),
-    );
+    const state = (m: (typeof migrations)[number]) => (m.batch === null ? 'Pending' : `[${m.batch}] Ran`);
+    // The column only when a migration runs elsewhere (an unknown connection counts), so an app on one connection sees the three columns only.
+    if (migrations.some((m) => m.connection !== 'default')) {
+      output.table(
+        ['MIGRATION', 'MODULE', 'CONNECTION', 'BATCH / STATUS'],
+        migrations.map((m) => [m.name, m.module, m.connection ?? '?', state(m)]),
+      );
+    } else {
+      output.table(['MIGRATION', 'MODULE', 'BATCH / STATUS'], migrations.map((m) => [m.name, m.module, state(m)]));
+    }
     return 0;
   }
 }

@@ -396,6 +396,18 @@ export class Migrator {
   }
 
   /**
+   * @internal — the connection a migration runs on, or `undefined` when it cannot be told: the file does not load, its connection
+   * function throws or it names one that is not configured. Never throws, so that `migrate:status` answers with a half-written file.
+   */
+  async connectionOf(file: MigrationFile): Promise<string | undefined> {
+    try {
+      return this.#connectionOf(await loadMigration(file), file);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * The schema the migrations describe, computed from their plans without a database: every table with its columns, keys and marks, as
    * the migrations of all modules leave it. Raw SQL is not looked into: what it makes is unknown. Read from `.marmeon/schema.json` while
    * that fits every migration file, otherwise computed and written back. See `docs/migrations.md#what-the-migrations-describe`.
