@@ -1,11 +1,11 @@
 /**
  * `create-marmeon <dir>` — a thin shell: the template (the blank app) into a new directory, its
  * `package.json` at this package's version, `.env` with a fresh `APP_KEY`, the install — then the app's own generators: the
- * guide for coding agents is `marmeon agents:sync`, the starter kit `marmeon make:auth` plus the home module, `--docker` is `marmeon make:docker`; `marmeon migrate`, a first
- * commit. No dependencies: prompts over `node:readline`, only when a terminal asks — without one nothing is asked, and a
+ * guide for coding agents is `marmeon agents:sync`, the starter kit `marmeon make:auth` plus the home module, `--docker` is `marmeon make:docker`; `marmeon migrate`,
+ * `--agents` is `marmeon agents:install` (the last generator; a failure there is a warning), a first commit. No dependencies: prompts over `node:readline`, only when a terminal asks — without one nothing is asked, and a
  * missing directory ends with exit 2.
  *
- *   pnpm create marmeon my-app                # asks (starter kit? Docker? pnpm or npm? git?) on a terminal
+ *   pnpm create marmeon my-app                # asks (starter kit? Docker? agent skills? pnpm or npm? git?) on a terminal
  *   pnpm create marmeon my-app --yes          # the defaults: starter kit, pnpm, install, git
  *   npm create marmeon@latest my-app -- --minimal --npm --docker --no-git --no-install
  */
@@ -61,6 +61,7 @@ Options:
   -y, --yes                 the defaults, nothing asked: the starter kit, pnpm, install, git
       --minimal             a blank app — no auth module, no home page (the starter kit is the default)
       --docker              a Dockerfile, .dockerignore and compose.production.yaml (marmeon make:docker)
+      --agents | --no-agents  the skills and the MCP server for coding agents (marmeon agents:install); AGENTS.md is written either way
       --npm | --pnpm        the package manager (pnpm by default)
       --no-install          only the files: install and run the generators yourself (the next steps say how)
       --no-git              no git repository
@@ -74,6 +75,7 @@ interface Choices {
   readonly directory: string;
   readonly kit: boolean;
   readonly docker: boolean;
+  readonly agents: boolean;
   readonly packageManager: PackageManager;
   readonly install: boolean;
   readonly git: boolean;
@@ -99,6 +101,7 @@ export async function main(io: Io = processIo()): Promise<number> {
         yes: { type: 'boolean', short: 'y' },
         minimal: { type: 'boolean' },
         docker: { type: 'boolean' },
+        agents: { type: 'boolean' },
         npm: { type: 'boolean' },
         pnpm: { type: 'boolean' },
         install: { type: 'boolean' },
@@ -163,7 +166,7 @@ export async function main(io: Io = processIo()): Promise<number> {
   }
 
   const shown = relative(io.cwd, target) || '.';
-  out(`Creating ${paint('bold', name)} in ${shown} — ${choices.kit ? 'the starter kit' : 'a blank app'}${choices.docker ? ', Docker files' : ''}, ${pm}`);
+  out(`Creating ${paint('bold', name)} in ${shown} — ${choices.kit ? 'the starter kit' : 'a blank app'}${choices.docker ? ', Docker files' : ''}${choices.agents ? ', agent skills' : ''}, ${pm}`);
   const step = (text: string) => out(`  ${paint('green', '✓')} ${text}`);
   const fail = (text: string, output?: string) => {
     err(`  ${paint('red', '✗')} ${text}`);
@@ -223,8 +226,22 @@ export async function main(io: Io = processIo()): Promise<number> {
       if (result.status !== 0) return fail(`marmeon ${args.join(' ')} failed (exit ${result.status ?? result.signal})`, output(result));
       step(`marmeon ${args.join(' ')}`);
     }
+    // Last, so its files are in the first commit — and not fatal: without the skills the app is still complete, and a failure here must not skip git.
+    if (choices.agents) {
+      const result = spawnSync(marmeon, ['agents:install'], { cwd: target, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      if (result.status === 0) {
+        step('marmeon agents:install (skills, .mcp.json)');
+        out('    Your agent asks you to approve the server marmeon the next time it starts.');
+      }
+      else {
+        err(`  ${paint('yellow', '!')} marmeon agents:install failed (exit ${result.status ?? result.signal}) — the app is complete; run it yourself (the next steps say how).`);
+        if (output(result).trim()) err(output(result).trimEnd().replace(/^/gm, '    '));
+        pending.push(`${pm === 'pnpm' ? 'pnpm exec marmeon' : 'npx marmeon'} agents:install`);
+      }
+    }
   } else {
     pending.push(`${pm} install`, ...generators.map((args) => `${pm === 'pnpm' ? 'pnpm exec marmeon' : 'npx marmeon'} ${args.join(' ')}`));
+    if (choices.agents) pending.push(`${pm === 'pnpm' ? 'pnpm exec marmeon' : 'npx marmeon'} agents:install`);
   }
 
   // 3 · git: a repository with a first commit — unless the directory is inside one already. Signing is the user's git config:
@@ -268,10 +285,11 @@ async function choose(values: Record<string, boolean | undefined>, directory: st
     const dir = directory ?? (await question('Directory of the new app (my-app):', 'my-app'));
     const kit = values.minimal === true ? false : !ask ? true : await yesNo('The starter kit — sign-in and registration, a layout, a home page?', true);
     const docker = values.docker ?? (ask ? await yesNo('Docker files (Dockerfile, compose.production.yaml)?', false) : false);
+    const agents = values.agents ?? (ask ? await yesNo('Skills and the MCP server for coding agents (marmeon agents:install)?', false) : false);
     const packageManager: PackageManager =
       values.npm === true ? 'npm' : values.pnpm === true || !ask ? 'pnpm' : (await question('Package manager — pnpm or npm (pnpm):', 'pnpm')).toLowerCase().startsWith('n') ? 'npm' : 'pnpm';
     const git = values.git ?? (ask ? await yesNo('A git repository with a first commit?', true) : true);
-    return { directory: dir, kit, docker, packageManager, install: values.install !== false, git };
+    return { directory: dir, kit, docker, agents, packageManager, install: values.install !== false, git };
   } finally {
     questions?.close();
   }

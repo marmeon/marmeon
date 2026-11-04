@@ -18,6 +18,7 @@ pnpm marmeon agents:sync
 
 Every app that `create-marmeon` makes, the starter kit and the blank app alike, has both files once the creator has installed it. With
 `--no-install` the command is among the next steps it prints. Run the command yourself in an app that is older.
+The skills and the MCP server are separate and opt-in: `create-marmeon` asks for them (`--agents`), and [`marmeon agents:install`](#skills-and-the-mcp-server) installs them later.
 
 ## What the command writes
 
@@ -76,7 +77,7 @@ Marmeon ships skills for coding agents, short guides for a task: `marmeon-debugg
 `marmeon-feature-module` (a new feature as a module), `marmeon-migration` (a schema change), `marmeon-page` (a page with a form and an
 island), `marmeon-security-review` (what to check before a change goes out) and `marmeon-testing` (tests for routes, jobs, mail and
 pages). The same command enters the server `marmeon mcp` in `.mcp.json`, so an agent can ask the app for its routes and the installed documentation. Nothing is
-installed until you ask:
+installed until you ask: `create-marmeon` asks when it makes an app (`--agents`), and `marmeon agents:install` does it later:
 
 ```sh
 pnpm marmeon agents:install
@@ -95,7 +96,7 @@ Your agent asks you to approve the server marmeon the next time it starts.
 
 Commit the result. Claude Code reads `.claude/skills/`; Cursor and Copilot read that folder too. `--shared` writes the skills to
 `.agents/skills/` instead, the folder of the open skills standard that Codex, Gemini CLI, Cursor and Copilot read. The skills never lie
-in both folders, or Cursor and Copilot would list each twice. `--no-mcp` leaves `.mcp.json` alone.
+in both folders, or Cursor and Copilot would list each twice. `--no-mcp` leaves `.mcp.json` alone. `create-marmeon` has no `--shared`: answer no there and run `marmeon agents:install --shared` afterwards.
 
 ### What the command owns
 

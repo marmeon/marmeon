@@ -1,7 +1,7 @@
 /**
- * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm, `--minimal --npm`) made from the
+ * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm and `--agents`, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps, `agents:install` and `marmeon mcp` over stdio.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it) and `marmeon mcp` over stdio.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -666,12 +666,11 @@ const MCP_EXIT = 5_000;
 /** Tools `marmeon mcp` must offer (it may offer more). */
 const MCP_TOOLS = ['app_overview', 'check', 'devtools_entries', 'docs_read', 'docs_search', 'last_error', 'migrations', 'routes', 'schema'];
 /**
- * The agent kit in the installed app: `agents:install` writes the skills and `.mcp.json` and `--check` passes; `marmeon mcp`
+ * The agent kit the creator installed (`--agents`): `agents:install --check` passes; `marmeon mcp`
  * answers over stdio in development (the SDK loaded only there), and in production it stops with exit 1 and nothing on stdout.
  */
 async function checkAgents(smoke: Smoke): Promise<void> {
   const app = smoke.app;
-  smoke.marmeon('agents:install');
   smoke.marmeon('agents:install', '--check');
   const skill = readFileSync(join(app, '.claude/skills/marmeon-migration/SKILL.md'), 'utf8');
   if (!/^\s+marmeon-skill: "1"$/m.test(skill)) throw new SmokeError('.claude/skills/marmeon-migration/SKILL.md has no marmeon-skill mark.');
@@ -749,9 +748,10 @@ async function main(): Promise<number> {
 
     // ── The starter kit with pnpm (the defaults — its registration private) ──
     const app = pnpmApp.app;
-    await pnpmApp.step('create-marmeon app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
-      const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
+    await pnpmApp.step('create-marmeon app --yes --agents (starter kit, pnpm, install, make:auth, migrate, agents:install, git)', () => {
+      const output = scaffold(bin, work, ['app', '--yes', '--agents'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
       if (!output.includes('marmeon make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-marmeon skipped a step:\n${output}`);
+      if (!output.includes('marmeon agents:install (skills, .mcp.json)') || output.includes('agents:install failed')) throw new SmokeError(`create-marmeon skipped agents:install:\n${output}`);
       checkManifest(app, 'pnpm');
       for (const file of ['modules/auth/routes.ts', 'modules/auth/controllers/ConfirmEmailChangeController.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite', 'AGENTS.md', 'CLAUDE.md']) {
         if (!existsSync(join(app, file))) throw new SmokeError(`the starter kit has no ${file}.`);
@@ -763,6 +763,10 @@ async function main(): Promise<number> {
       const tracked = git('ls-files').split('\n');
       const leaked = tracked.filter((file) => /^(\.env$|node_modules\/|dist\/|\.marmeon\/)|\.sqlite$|^storage\/(?!.*\.gitignore$)/.test(file));
       if (leaked.length > 0) throw new SmokeError(`the first commit carries ${leaked.join(', ')}.`);
+      for (const file of ['.claude/skills/marmeon-migration/SKILL.md', '.mcp.json']) {
+        if (!existsSync(join(app, file))) throw new SmokeError(`--agents wrote no ${file}.`);
+        if (!tracked.includes(file)) throw new SmokeError(`${file} is not in the first commit.`);
+      }
     });
     // As a developer migrates: NODE_ENV=development from the .env — no --force there.
     await pnpmApp.step('marmeon migrate (development from .env)', () => {
@@ -777,7 +781,7 @@ async function main(): Promise<number> {
       const page = pnpmApp.marmeon('docs', 'routing');
       if (!page.startsWith('# Routing')) throw new SmokeError(`marmeon docs routing should print the page and begin with "# Routing":\n${page.slice(0, 300)}`);
     });
-    await pnpmApp.step('marmeon agents:install (+ --check), marmeon mcp over stdio (initialize, tools, routes, docs_search, exit 0), production → exit 1', () => checkAgents(pnpmApp));
+    await pnpmApp.step('marmeon agents:install --check, marmeon mcp over stdio (initialize, tools, routes, docs_search, exit 0), production → exit 1', () => checkAgents(pnpmApp));
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
       if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);
@@ -874,6 +878,7 @@ async function main(): Promise<number> {
       if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
       if (!existsSync(join(npmApp.app, 'AGENTS.md'))) throw new SmokeError('the npm app has no AGENTS.md.');
+      if (existsSync(join(npmApp.app, '.claude/skills')) || existsSync(join(npmApp.app, '.mcp.json'))) throw new SmokeError('the npm app has agent skills or .mcp.json without --agents.');
     });
     await npmApp.step('marmeon build without .env, the framework\'s stylesheet linked', () => {
       npmApp.buildWithoutEnv();

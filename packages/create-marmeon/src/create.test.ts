@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -88,9 +88,9 @@ describe('create-marmeon — the call', () => {
     expect(filesUnder(join(cwd, 'taken'))).toEqual(['notes.txt']);
   });
 
-  it('asks on a terminal — directory, starter kit, Docker, package manager, git — and does what the answers say', async () => {
+  it('asks on a terminal — directory, starter kit, Docker, agent skills, package manager, git — and does what the answers say', async () => {
     const cwd = workspace();
-    const run = await create(cwd, ['--no-install'], { answers: ['Asked App', 'n', 'y', 'npm', 'n'] });
+    const run = await create(cwd, ['--no-install'], { answers: ['Asked App', 'n', 'y', '', 'npm', 'n'] });
     expect(run.code).toBe(0);
     expect(run.out).toContain('Directory of the new app (my-app):');
     const app = join(cwd, 'Asked App');
@@ -99,8 +99,88 @@ describe('create-marmeon — the call', () => {
     expect(existsSync(join(app, 'modules/home'))).toBe(false);
     expect(existsSync(join(app, '.git'))).toBe(false);
     // Without the install the generators are the next steps — make:docker among them (the Docker answer).
-    expect(run.out).toContain('npm install\n  npx marmeon agents:sync\n  npx marmeon migrate\n  npx marmeon make:docker');
+    expect(run.out).toContain('npm install\n  npx marmeon agents:sync\n  npx marmeon migrate\n  npx marmeon make:docker\n');
+    expect(run.out.slice(run.out.indexOf('Next:'))).not.toContain('agents:install');
     expect(readFileSync(join(app, '.env'), 'utf8')).toMatch(/^APP_NAME="Asked App"$/m);
+  });
+
+  it('offers the skills and the MCP server: asked on a terminal, never by default, never without a terminal', async () => {
+    const cwd = workspace();
+    const yes = await create(cwd, ['yes', '--minimal', '--no-install', '--no-git'], { answers: ['n', 'y', 'npm'] });
+    expect(yes.code).toBe(0);
+    expect(yes.out).toContain('Skills and the MCP server for coding agents (marmeon agents:install)? (y/N)');
+    expect(yes.out).toContain('npm install\n  npx marmeon agents:sync\n  npx marmeon migrate\n  npx marmeon agents:install\n');
+    expect(yes.out).toContain(', agent skills, npm');
+    const flagged = await create(cwd, ['flagged', '--yes', '--agents', '--no-install', '--no-git']);
+    expect(flagged.code).toBe(0);
+    expect(flagged.out).toContain('pnpm exec marmeon make:auth\n  pnpm exec marmeon migrate\n  pnpm exec marmeon agents:install\n');
+    const declined = await create(cwd, ['declined', '--minimal', '--no-install', '--no-git', '--no-agents'], { answers: ['n', 'npm'] });
+    expect(declined.out).not.toContain('agents:install');
+    const plain = await create(cwd, ['plain', '--yes', '--no-install', '--no-git']);
+    expect(plain.out).not.toContain('agents:install');
+    expect((await create(cwd, ['help', '--help'])).out).toContain('--agents | --no-agents');
+  });
+});
+
+describe('create-marmeon — agents:install while installing', () => {
+  /** A `pnpm` that installs a `marmeon` which logs its arguments and fails at agents:install. */
+  function fakePackageManager(failing = true): { path: string; log: string } {
+    const bin = workspace();
+    const log = join(bin, 'calls.log');
+    const pnpm = join(bin, 'pnpm');
+    writeFileSync(
+      pnpm,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then echo 12.0.0; exit 0; fi
+if [ "$1" = "install" ]; then
+  mkdir -p node_modules/.bin
+  printf '#!/bin/sh\\necho "$*" >> "%s"\\nif [ "$1" = "agents:install" ] && [ "%s" = "fail" ]; then echo "no skills for you" >&2; exit 1; fi\\n' "${log}" "${failing ? 'fail' : 'ok'}" > node_modules/.bin/marmeon
+  chmod +x node_modules/.bin/marmeon
+fi
+`,
+    );
+    chmodSync(pnpm, 0o755);
+    return { path: `${bin}${delimiter}${process.env.PATH}`, log };
+  }
+  const git = { GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@example.com', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+  const calls = (log: string) => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : []);
+
+  it('warns when it fails, lists the command under Next and still ends with exit 0 — after every other generator, without git', async () => {
+    const cwd = workspace();
+    const fake = fakePackageManager();
+    const run = await create(cwd, ['app', '--agents', '--no-git'], { env: { PATH: fake.path } });
+    expect(run.code).toBe(0);
+    expect(run.err).toContain('marmeon agents:install failed (exit 1) — the app is complete');
+    expect(run.err).toContain('    no skills for you');
+    expect(run.out).not.toContain('approve the server');
+    expect(calls(fake.log)).toEqual(['agents:sync', 'make:auth', 'migrate', 'agents:install']);
+    expect(run.out).toContain('Next:\n  cd app\n  pnpm exec marmeon agents:install\n');
+  });
+
+  it('tells an agent\'s user to approve the server when agents:install worked', async () => {
+    const cwd = workspace();
+    const fake = fakePackageManager(false);
+    const run = await create(cwd, ['app', '--agents', '--no-git'], { env: { PATH: fake.path } });
+    expect(run.code).toBe(0);
+    expect(run.err).toBe('');
+    expect(run.out).toContain('marmeon agents:install (skills, .mcp.json)\n    Your agent asks you to approve the server marmeon the next time it starts.\n');
+  });
+
+  it('still makes the first commit after a failed agents:install', async () => {
+    const cwd = workspace();
+    const fake = fakePackageManager();
+    const run = await create(cwd, ['app', '--agents'], { env: { PATH: fake.path, ...git } });
+    expect(run.code).toBe(0);
+    expect(spawnSync('git', ['log', '--format=%s'], { cwd: join(cwd, 'app'), encoding: 'utf8' }).stdout.trim()).toBe('Create the app with create-marmeon');
+  });
+
+  it('does not run it without --agents, not even with --yes', async () => {
+    const cwd = workspace();
+    const fake = fakePackageManager();
+    const run = await create(cwd, ['app', '--yes', '--no-git'], { env: { PATH: fake.path } });
+    expect(run.code).toBe(0);
+    expect(calls(fake.log)).toEqual(['agents:sync', 'make:auth', 'migrate']);
+    expect(run.out).not.toContain('agents:install');
   });
 });
 
