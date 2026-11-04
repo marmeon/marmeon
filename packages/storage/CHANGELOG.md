@@ -1,5 +1,52 @@
 # @marmeon/storage
 
+## 1.0.0-rc.6
+
+### Breaking changes
+
+- Leave the session's islands of a page without a session to the browser by @maxeckel in https://github.com/marmeon/marmeon/pull/686
+
+### Features
+
+- Ship skills for coding agents in the marmeon package by @maxeckel in https://github.com/marmeon/marmeon/pull/660
+- Serve the app's routes and last error to coding agents with marmeon mcp by @maxeckel in https://github.com/marmeon/marmeon/pull/661
+- List the devtools' entries with devtools:list by @maxeckel in https://github.com/marmeon/marmeon/pull/662
+- Search and read the installed documentation from marmeon mcp by @maxeckel in https://github.com/marmeon/marmeon/pull/663
+- Install the framework's skills and its MCP server into an app with agents:install by @maxeckel in https://github.com/marmeon/marmeon/pull/664
+- Run the app's checks from marmeon mcp with the check tool by @maxeckel in https://github.com/marmeon/marmeon/pull/665
+- Give coding agents the schema the migrations describe through marmeon mcp by @maxeckel in https://github.com/marmeon/marmeon/pull/666
+- Name agents:install in the agents block and check the installed skills by @maxeckel in https://github.com/marmeon/marmeon/pull/667
+- Give coding agents the devtools' entries through marmeon mcp by @maxeckel in https://github.com/marmeon/marmeon/pull/668
+- Say which connection each migration runs on in migrate:status by @maxeckel in https://github.com/marmeon/marmeon/pull/687
+- Give coding agents the migrations that ran and are pending through marmeon mcp by @maxeckel in https://github.com/marmeon/marmeon/pull/690
+- List the app's modules, events and packages with modules:list by @maxeckel in https://github.com/marmeon/marmeon/pull/688
+- Ship a skill for writing tests in a Marmeon app by @maxeckel in https://github.com/marmeon/marmeon/pull/689
+- Ship a skill for a page with an island and a form by @maxeckel in https://github.com/marmeon/marmeon/pull/691
+- Give coding agents an overview of the app through marmeon mcp by @maxeckel in https://github.com/marmeon/marmeon/pull/692
+- Ship a skill for debugging a Marmeon app by @maxeckel in https://github.com/marmeon/marmeon/pull/694
+- Offer the coding-agent skills and the MCP server when create-marmeon creates an app by @maxeckel in https://github.com/marmeon/marmeon/pull/696
+
+### Fixes
+
+- Refuse to write into a .marmeon that leads out of the app by @maxeckel in https://github.com/marmeon/marmeon/pull/670
+- Refuse to read through a .marmeon that leads out of the app by @maxeckel in https://github.com/marmeon/marmeon/pull/678
+- Keep a layer's deep link from shared caches when its base belongs to a session by @maxeckel in https://github.com/marmeon/marmeon/pull/672
+- Insert the page object at the template's own head end by @maxeckel in https://github.com/marmeon/marmeon/pull/673
+- Trim cookie names in linear time by @maxeckel in https://github.com/marmeon/marmeon/pull/674
+- Stop parsing a form field name at its depth limit by @maxeckel in https://github.com/marmeon/marmeon/pull/675
+- Read code frames for the overlay only from the app and its dependencies by @maxeckel in https://github.com/marmeon/marmeon/pull/676
+- Compare a reset token before deleting its expired row by @maxeckel in https://github.com/marmeon/marmeon/pull/677
+- Refuse an interceptor's request that also asks for a live validation by @maxeckel in https://github.com/marmeon/marmeon/pull/679
+- Read streamed data blocks and the app origin through getters markup cannot shadow by @maxeckel in https://github.com/marmeon/marmeon/pull/680
+- Escape the entry id on the devtools' not-found page by @maxeckel in https://github.com/marmeon/marmeon/pull/681
+- Watch an image only once it is a file the dev server may load by @maxeckel in https://github.com/marmeon/marmeon/pull/684
+- Greet by name only in mail to an address the account has confirmed by @maxeckel in https://github.com/marmeon/marmeon/pull/685
+- Revoke API tokens when a password reset proves an address the account has not confirmed by @maxeckel in https://github.com/marmeon/marmeon/pull/671
+- Escape control characters in what queue:failed and queue:retry print by @maxeckel in https://github.com/marmeon/marmeon/pull/683
+- Look up a file extension's MIME type among the table's own entries by @maxeckel in https://github.com/marmeon/marmeon/pull/682
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.5...v1.0.0-rc.6
+
 ## 1.0.0-rc.5
 
 ### Breaking changes
