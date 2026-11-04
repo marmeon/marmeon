@@ -46,7 +46,9 @@ const TYPES: Readonly<Record<string, string>> = {
 export function mimeTypeOf(key: string): string {
   const name = basename(key);
   const dot = name.lastIndexOf('.');
-  return (dot > 0 && TYPES[name.slice(dot + 1).toLowerCase()]) || 'application/octet-stream';
+  const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+  // Own entries only: an extension from a file name, like `constructor` or `__proto__`, would otherwise find Object.prototype's.
+  return Object.hasOwn(TYPES, extension) ? TYPES[extension]! : 'application/octet-stream';
 }
 
 /**
