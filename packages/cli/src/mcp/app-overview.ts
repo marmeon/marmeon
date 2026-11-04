@@ -153,9 +153,12 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
     if (!hasPackage(root, '@marmeon/scheduler')) schedules = [];
     else {
       // A schedule that cannot be read leaves the rest of the overview intact: it is a warning, not an error.
-      const second = await runMarmeonJson(root, ['schedule:list', '--json'], { timeoutMs: CHILD_TIMEOUT_MS, signal, maxStdoutBytes: MAX_CHILD_STDOUT_BYTES });
+      // The child can fail to start at all (no process left, no file handle); the error text may carry paths, so it is not passed on.
+      const second = await runMarmeonJson(root, ['schedule:list', '--json'], { timeoutMs: CHILD_TIMEOUT_MS, signal, maxStdoutBytes: MAX_CHILD_STDOUT_BYTES }).catch(() => undefined);
       if (signal.aborted) return failure('The call was cancelled; marmeon schedule:list was stopped.');
-      if (second.timedOut || second.tooLarge || second.code !== 0 || second.document === undefined) {
+      if (second === undefined) {
+        warnings.push('The schedules are missing: marmeon schedule:list failed: it could not be started'.slice(0, MAX_WARNING_LENGTH));
+      } else if (second.timedOut || second.tooLarge || second.code !== 0 || second.document === undefined) {
         const why = second.timedOut ? 'it ran out of time' : second.tooLarge ? 'it printed too much' : second.code !== 0 ? firstLine(second) || `it ended with code ${second.code}` : 'it did not print one JSON document';
         warnings.push(`The schedules are missing: marmeon schedule:list failed: ${why}`.slice(0, MAX_WARNING_LENGTH));
       } else {

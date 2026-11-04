@@ -249,6 +249,16 @@ describe('app_overview with the child process replaced', () => {
     expect(result.warnings[1]).toContain('did not print one JSON document');
   });
 
+  it('answers with schedules null and a fixed warning when schedule:list cannot be started', async () => {
+    withScheduler();
+    answer({ document: overview() });
+    run.mockRejectedValueOnce(new Error('spawn EAGAIN at /private/path'));
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
+    expect(result.schedules).toBeNull();
+    expect(result.modules).toHaveLength(2);
+    expect(result.warnings).toEqual(['from modules:list', 'The schedules are missing: marmeon schedule:list failed: it could not be started']);
+  });
+
   it('names at most twenty modules when the one asked for is unknown', async () => {
     answer({ document: overview({ modules: Array.from({ length: 25 }, (_, index) => ({ name: `m${index}`, providers: [], commands: [], jobs: [], notifications: [], seeders: [], migrations: null })) }) });
     const result = (await APP_OVERVIEW_TOOL.run({ module: 'x' }, context())) as { failure: string };
@@ -265,5 +275,16 @@ describe('app_overview with the child process replaced', () => {
     });
     expect(await APP_OVERVIEW_TOOL.run({}, { root, signal: controller.signal })).toEqual({ failure: expect.stringContaining('cancelled') });
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('is cancelled, not a warning, when the call is aborted and schedule:list then rejects', async () => {
+    withScheduler();
+    const controller = new AbortController();
+    answer({ document: overview() });
+    run.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new Error('aborted');
+    });
+    expect(await APP_OVERVIEW_TOOL.run({}, { root, signal: controller.signal })).toEqual({ failure: expect.stringContaining('cancelled') });
   });
 });

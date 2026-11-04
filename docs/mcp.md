@@ -193,8 +193,8 @@ The document: `{ "format": 1, "packages": […], "app": { "providers": […] }, 
 (`class` and `job`), `notifications`, `seeders` and `migrations` (a folder relative to the app, or `null`); an event has `event`, `name` and `listeners`; a schedule has `name`, `expression`, `timeZone` and
 `description`. Listeners that a provider adds in `boot()` are missing, as the page of the command says. Without `@marmeon/scheduler`, `schedules` is `[]`. An unknown `module` is an error that lists the module names.
 
-If `schedule:list` cannot answer (the scheduler does not start, it runs out of time, its document is of another format), the overview still comes: `schedules` is `null` and `warnings` says why, with the first line of
-the message of the command (secrets masked). A failing `modules:list` is an error that carries the end of its message and says to run `marmeon modules:list` in a terminal. A document of another `format` is an error that says to update `marmeon`.
+If `schedule:list` cannot answer (the scheduler does not start, the command cannot be started, it runs out of time, its document is of another format), the overview still comes: `schedules` is `null` and `warnings` says why, with the first line of
+the message of the command (secrets masked), or a fixed sentence when the command cannot be started. A failing `modules:list` is an error that carries the end of its message and says to run `marmeon modules:list` in a terminal. A document of another `format` is an error that says to update `marmeon`.
 Each command is stopped after 120 seconds.
 
 ### `devtools_entries`
