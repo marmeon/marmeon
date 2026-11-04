@@ -10,16 +10,19 @@ export class AccountExportMail implements Mailable {
   }
 
   envelope() {
-    return { to: { address: this.#user.email, name: this.#user.name }, subject: 'Your account data' };
+    // The name is the registrant's own text: it goes only to an address the account has confirmed (as in the kit's mails).
+    const { email, name, email_verified_at } = this.#user;
+    return { to: email_verified_at === null ? { address: email } : { address: email, name }, subject: 'Your account data' };
   }
 
   content() {
-    const { name, email } = this.#user;
+    const { email } = this.#user;
+    const name = this.#user.email_verified_at === null ? null : this.#user.name;
     const since = new Date(this.#user.created_at).toISOString().slice(0, 10);
-    return html`<p>Hello ${name},</p>
+    return html`<p>${name === null ? 'Hello,' : `Hello ${name},`}</p>
 <p>This is the data we keep about your account:</p>
 <ul>
-  <li>Name: ${name}</li>
+  <li>Name: ${name ?? '—'}</li>
   <li>E-mail address: ${email}</li>
   <li>Account created: ${since}</li>
 </ul>`;

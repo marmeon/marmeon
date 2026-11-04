@@ -1,0 +1,146 @@
+import { cookieNames } from '@marmeon/auth/testing';
+import { Translators, type Translator } from '@marmeon/i18n';
+import { Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
+import { createTestApp, type TestApp } from '@marmeon/testing';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from './factories/UserFactory.ts';
+import { AccountExistsMail } from './mail/AccountExistsMail.ts';
+import { ConfirmNewEmailMail } from './mail/ConfirmNewEmailMail.ts';
+import { EmailChangedMail } from './mail/EmailChangedMail.ts';
+import { EmailInUseMail } from './mail/EmailInUseMail.ts';
+import { LockoutMail } from './mail/LockoutMail.ts';
+import { NewSignInMail } from './mail/NewSignInMail.ts';
+import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
+import { SignInMail } from './mail/SignInMail.ts';
+import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
+import { WelcomeMail } from './mail/WelcomeMail.ts';
+import type { User } from './users.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
+
+// The account's name is the registrant's own text: a mail names the account only at an address it has confirmed. Whoever signs up with
+// a stranger's address must not get words of their choosing into the app's mail to that inbox — not in the greeting, not as the
+// recipient's name.
+
+let app: TestApp;
+let SESSION: string;
+beforeEach(async () => {
+  app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
+});
+afterEach(() => app.close());
+
+const NAME = 'Your account is suspended call 555 0100 at evil-support.example';
+const LINK = 'http://localhost/somewhere';
+
+/** The mail carries none of `name` — neither as the recipient's name nor in the subject, the text or the HTML — and greets without one. */
+function expectNameless(message: MailMessage, address: string, name = NAME) {
+  expect(message.to).toEqual([{ address }]);
+  for (const part of [message.subject, message.text, message.html]) expect(part).not.toContain(name);
+  expect(message.text).toContain('Hello,');
+}
+
+/** The mail is addressed to `address` under the account's name and greets with it. */
+function expectNamed(message: MailMessage, address: string, name: string) {
+  expect(message.to).toEqual([{ address, name }]);
+  expect(message.text).toContain(`Hello ${name},`);
+}
+
+/** The mails to the account's own address. */
+const ownMails = (user: User, t: Translator): Mailable[] => [
+  new AccountExistsMail(user, LINK, LINK, t),
+  new EmailInUseMail(user, t),
+  new LockoutMail(user, LINK, LINK, t),
+  new NewSignInMail(user, { at: new Date().toISOString(), ip: null, browser: null }, LINK, t),
+  new ResetPasswordMail(user, LINK, 60, t),
+  new SignInMail(user, { kind: 'remember_reused', at: new Date().toISOString(), ip: null, userAgent: null, sessionsEnded: true }, t),
+  new WelcomeMail(user, LINK, t),
+];
+
+describe('a sign-up with a stranger’s address', () => {
+  it('puts nothing of its name into the mails that address gets — the verification link, a reset link, the note on a second sign-up, the welcome', async () => {
+    const register = (name: string) =>
+      app.post('/register', { form: { name, email: 'victim@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } }).assertRedirect('/register/sent');
+    await register(NAME);
+    await app.post('/forgot-password', { form: { email: 'victim@example.com' } });
+    await register('Someone Else');
+    await app.queue.work();
+
+    const mails = [...app.mail.queued(VerifyEmailMail), ...app.mail.queued(ResetPasswordMail), ...app.mail.queued(AccountExistsMail), ...app.mail.sent(WelcomeMail)];
+    expect(mails.map(({ mail }) => mail.constructor.name)).toEqual(['VerifyEmailMail', 'ResetPasswordMail', 'AccountExistsMail', 'WelcomeMail']);
+    for (const { message } of mails) expectNameless(message, 'victim@example.com');
+  });
+});
+
+describe('the mails to the account’s own address', () => {
+  it('name an account whose address is not confirmed nowhere', async () => {
+    const user = await app.factory(UserFactory).create({ name: NAME, email: 'victim@example.com', email_verified_at: null, first_verified_at: null });
+    const t = app.make(Translators).for('en');
+    for (const mail of ownMails(user, t)) expectNameless(await app.make(Mailer).send(mail), 'victim@example.com');
+  });
+
+  it('greet an account whose address is confirmed by its name, as its recipient', async () => {
+    const user = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
+    const t = app.make(Translators).for('en');
+    for (const mail of ownMails(user, t)) expectNamed(await app.make(Mailer).send(mail), 'ada@example.com', 'Ada Lovelace');
+  });
+
+  it('never name the account in the link that confirms an address — that address is not confirmed yet', async () => {
+    const user = await app.factory(UserFactory).create({ name: NAME, email: 'kj@example.com' });
+    const t = app.make(Translators).for('en');
+    expectNameless(await app.make(Mailer).send(new VerifyEmailMail(user, LINK, t)), 'kj@example.com');
+    expectNameless(await app.make(Mailer).send(new ConfirmNewEmailMail(user, 'victim@example.com', LINK, t)), 'victim@example.com');
+  });
+});
+
+describe('the note to the old address after a change', () => {
+  const change = async (user: User, email: string) => {
+    const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
+    const changed = await app
+      .withCookie(SESSION, login.cookie(SESSION)!)
+      .put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } })
+      .assertRedirect('/settings/security');
+    return changed.cookie(SESSION) ?? login.cookie(SESSION)!;
+  };
+
+  it('names the account where the change came by the link of a confirmed account (private registration)', async () => {
+    const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
+    const cookie = await change(ada, 'new@example.com');
+    await app.queue.work();
+    const [confirm] = app.mail.queued(ConfirmNewEmailMail);
+    expectNameless(confirm!.message, 'new@example.com', 'Ada Lovelace');
+    const link = new URL(/https?:\/\/\S+\/email\/change\/\S+(?=\))/.exec(confirm!.message.text)![0]);
+    await app.withCookie(SESSION, cookie).get(link.pathname + link.search).assertRedirect('/users/me');
+    const [note] = app.mail.queued(EmailChangedMail);
+    expectNamed(note!.message, 'ada@example.com', 'Ada Lovelace');
+  });
+
+  describe('with AUTH_PRIVATE_REGISTRATION=false: the address changes at once', () => {
+    beforeEach(async () => {
+      await app.close();
+      app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+      ({ session: SESSION } = cookieNames(app));
+    });
+
+    it('names the account at an old address that was confirmed', async () => {
+      const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
+      await change(ada, 'new@example.com');
+      const [note] = app.mail.queued(EmailChangedMail);
+      expectNamed(note!.message, 'ada@example.com', 'Ada Lovelace');
+      const [verify] = app.mail.queued(VerifyEmailMail);
+      expectNameless(verify!.message, 'new@example.com', 'Ada Lovelace');
+    });
+
+    it('does not name it at an old address that was never confirmed', async () => {
+      const squatter = await app.factory(UserFactory).create({ name: NAME, email: 'victim@example.com', email_verified_at: null, first_verified_at: null });
+      await change(squatter, 'elsewhere@example.com');
+      const [note] = app.mail.queued(EmailChangedMail);
+      expectNameless(note!.message, 'victim@example.com');
+      const [verify] = app.mail.queued(VerifyEmailMail);
+      expectNameless(verify!.message, 'elsewhere@example.com');
+    });
+  });
+});

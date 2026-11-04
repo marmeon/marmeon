@@ -1,6 +1,7 @@
 import type { Translator } from '@marmeon/i18n';
 import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
 import type { User } from '../users.ts';
+import { confirmedName, greeting, recipient } from './greeting.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 
@@ -28,7 +29,7 @@ export class ResetPasswordMail implements Mailable {
   }
 
   envelope() {
-    return { to: { address: this.#user.email, name: this.#user.name }, subject: this.#t.get('auth.mail.reset.subject') };
+    return { to: recipient(this.#user.email, confirmedName(this.#user)), subject: this.#t.get('auth.mail.reset.subject') };
   }
 
   content() {
@@ -37,7 +38,7 @@ export class ResetPasswordMail implements Mailable {
     return layout(t, {
       preview: t.get('auth.mail.reset.preview'),
       body: mjml`
-        <mj-text>${t.get('auth.mail.hello', { name: this.#user.name })}</mj-text>
+        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
         <mj-text>${t.get('auth.mail.reset.intro')}</mj-text>
         <mj-button href="${this.#url}">${t.get('auth.mail.reset.button')}</mj-button>
         <mj-text>${t.get('auth.mail.reset.outro', { minutes: this.#minutes })}</mj-text>`,

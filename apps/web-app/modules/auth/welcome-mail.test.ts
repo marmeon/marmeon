@@ -34,7 +34,9 @@ describe('the welcome mail', () => {
     // nobody signs in with a registration (private registration): no SignedIn listener.
     expect(await app.queue.work()).toMatchObject({ processed: 3, failed: 0 });
     const [sent] = app.mail.sent(WelcomeMail);
-    expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei Marmeon' });
+    // The address is not confirmed yet: the mail names nobody (mail/greeting.ts).
+    expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com' }], subject: 'Willkommen bei Marmeon' });
+    expect(sent!.message.to[0]!.name).toBeUndefined();
     expect(sent!.message.html).toContain('href="http://localhost/users/me"');
   });
 

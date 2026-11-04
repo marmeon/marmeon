@@ -269,6 +269,7 @@ export default {
   },
   mail: {
     hello: 'Hallo {name},',
+    hello_unnamed: 'Hallo,',
     reset: {
       subject: 'Passwort zurücksetzen',
       preview: 'Ein Link, um ein neues Passwort zu wählen',

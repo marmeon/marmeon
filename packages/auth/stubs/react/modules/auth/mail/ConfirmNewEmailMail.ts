@@ -1,12 +1,14 @@
 import type { Translator } from '@marmeon/i18n';
 import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
 import type { User } from '../users.ts';
+import { greeting, recipient } from './greeting.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 
 /**
  * Private registration: to the new address of a pending change — the link that makes it the account's (signed, for this
- * account and request, 60 minutes, while signed in). In the user's language.
+ * account and request, 60 minutes, while signed in). In the user's language. Without the account's name: the address is not confirmed
+ * yet (`confirmedName`).
  */
 export class ConfirmNewEmailMail implements Mailable {
   readonly #user: User;
@@ -28,7 +30,7 @@ export class ConfirmNewEmailMail implements Mailable {
   }
 
   envelope() {
-    return { to: { address: this.#email, name: this.#user.name }, subject: this.#t.get('auth.mail.confirm_new_email.subject') };
+    return { to: recipient(this.#email, null), subject: this.#t.get('auth.mail.confirm_new_email.subject') };
   }
 
   content() {
@@ -36,7 +38,7 @@ export class ConfirmNewEmailMail implements Mailable {
     return layout(t, {
       preview: t.get('auth.mail.confirm_new_email.preview'),
       body: mjml`
-        <mj-text>${t.get('auth.mail.hello', { name: this.#user.name })}</mj-text>
+        <mj-text>${greeting(t, null)}</mj-text>
         <mj-text>${t.get('auth.mail.confirm_new_email.intro', { email: this.#email })}</mj-text>
         <mj-button href="${this.#url}">${t.get('auth.mail.confirm_new_email.button')}</mj-button>
         <mj-text>${t.get('auth.mail.confirm_new_email.outro')}</mj-text>`,

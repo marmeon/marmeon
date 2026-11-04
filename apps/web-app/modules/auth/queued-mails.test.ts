@@ -205,7 +205,10 @@ describe('mails without a request', () => {
     expect((await app.get('/_marmeon/mail/auth/SignInMail').assertOk()).body).toContain('An old or altered “Keep me signed in” cookie of your account was sent');
     const preview = await app.get('/_marmeon/mail/auth/VerifyEmailMail?locale=de').assertOk();
     expect(preview.body).toContain('<th>Subject</th><td>Bestätige deine E-Mail-Adresse</td>');
-    expect(preview.body).toContain('Ada Lovelace');
+    // The sample account's address, unnamed: the link goes to an address that is not confirmed yet (mail/greeting.ts).
+    expect(preview.body).toContain('<th>To</th><td>ada@example.com</td>');
+    // A mail to the sample account's own address names it: its address is confirmed.
+    expect((await app.get('/_marmeon/mail/auth/ResetPasswordMail?text').assertOk()).body).toContain('Hello Ada Lovelace,');
     expect(preview.headers.get('cache-control')).toBe('no-store');
     expect(preview.headers.get('set-cookie')).toBeNull(); // no session, no cookies
     await app.assertDatabaseCount('users', 0); // sample data is made, never stored
