@@ -44,6 +44,10 @@ the base with the layer over it. When the user may not see the base, because its
 shows alone over an empty surface inside the app's layout. Nothing of the base is computed for the browser then. Your own surface
 is the view `modules/system/views/layers/Backdrop.tsx`.
 
+A document that carries a base rendered with the visitor's session, or a base that sends `private` or `no-store`, is sent as
+`private` itself, even when the layer's route asks shared caches to keep it with `public`. Otherwise a cache would hand one
+visitor's base to the next.
+
 > [!WARNING]
 > A base resolved for a deep link only reads. Its middleware and controller cannot write the session, set a cookie or queue work
 > after the response, and it takes no flash message. In development and in tests such a write throws a `ReadOnlyError` that

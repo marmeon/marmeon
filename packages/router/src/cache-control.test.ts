@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keepFromSharedCaches, SharedCacheWarnings } from './cache-control.ts';
+import { keepFromSharedCaches, keptFromSharedCaches, SharedCacheWarnings } from './cache-control.ts';
 
 const answer = (headers: Record<string, string> = {}) => new Response('x', { headers });
 
@@ -56,5 +56,19 @@ describe('SharedCacheWarnings', () => {
     expect(warnings.first('GET /a')).toBe(false);
     for (let index = 1; index < 500; index++) warnings.first(`GET /${index}`);
     expect(warnings.first('GET /one-too-many')).toBe(false);
+  });
+});
+
+describe('keptFromSharedCaches', () => {
+  it.each([
+    ['private', true],
+    ['Private, max-age=60', true],
+    ['no-store', true],
+    ['public, s-maxage=60', false],
+    ['private="set-cookie"', true],
+    ['max-age="a, private"', false],
+    ['', false],
+  ])('%s → %s', (value, expected) => {
+    expect(keptFromSharedCaches(new Headers(value ? { 'cache-control': value } : {}))).toBe(expected);
   });
 });
