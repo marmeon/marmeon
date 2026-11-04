@@ -73,8 +73,8 @@ warning there, never an error, and the check writes nothing. An app without `AGE
 ## Skills and the MCP server
 
 Marmeon ships skills for coding agents, short guides for a task: `marmeon-feature-module` (a new feature as a module),
-`marmeon-migration` (a schema change), `marmeon-security-review` (what to check before a change goes out) and `marmeon-testing` (tests
-for routes, jobs, mail and pages). The same command enters the
+`marmeon-migration` (a schema change), `marmeon-page` (a page with a form and an island), `marmeon-security-review` (what to check
+before a change goes out) and `marmeon-testing` (tests for routes, jobs, mail and pages). The same command enters the
 server `marmeon mcp` in `.mcp.json`, so an agent can ask the app for its routes and the installed documentation. Nothing is
 installed until you ask:
 
@@ -85,6 +85,7 @@ pnpm marmeon agents:install
 ```txt
 ✓ Wrote .claude/skills/marmeon-feature-module/SKILL.md.
 ✓ Wrote .claude/skills/marmeon-migration/SKILL.md.
+✓ Wrote .claude/skills/marmeon-page/SKILL.md.
 ✓ Wrote .claude/skills/marmeon-security-review/SKILL.md.
 ✓ Wrote .claude/skills/marmeon-testing/SKILL.md.
 ✓ Wrote .mcp.json.
