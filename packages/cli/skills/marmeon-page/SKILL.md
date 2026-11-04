@@ -68,6 +68,9 @@ return this.redirect().route('notes.index').flash('toast', { kind: 'success', me
 - In the view, `<Form route="notes.store" resetOnSuccess>` reads its fields from inputs: `{...form.field('title')}` on the input,
   `form.error('title')` for the message, `form.processing` on the button. The field names are checked against the schema
   (`docs/forms.md#forms-without-state`). It renders a real `<form>` and posts without JavaScript (`docs/forms.md#without-javascript`).
+- Without JavaScript a failed post loads the page again, and `form.field()` does not refill the inputs. The page's controller
+  passes the flashed input on (`old: this.#session.old() as { title?: string }`, `Session` from `@marmeon/session` in its
+  constructor), and the input takes `defaultValue={old.title}`. Passwords and other secrets are never flashed (`docs/session.md#flash-data`).
 - `<Form validate>` checks fields live (`docs/forms.md#validating-while-typing`). Use `useForm('notes.store', { title: '' })` when the
   view needs the fields in state or a file upload; it needs JavaScript. A route with parameters also takes `{ params: { note: note.id } }` (`docs/forms.md#fields-and-errors`).
 - A message after success is `.flash('toast', …)`; a layout shows it with `useFlash('toast', …)` (`docs/pages.md#flash-messages`).
