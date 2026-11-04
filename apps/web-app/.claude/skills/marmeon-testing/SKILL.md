@@ -42,6 +42,8 @@ beforeEach(async () => {
 });
 ```
 
+- The examples assume the starter kit's `auth` module for users: `UserFactory`, `actingAs()` and the sign-in page `/login`. An app made with
+  `--minimal` gets it from `marmeon make:auth` (`docs/starter-kit.md`); without it, write a factory for your own users table and sign in as one of its rows.
 - `database: 'refresh'` gives each test an empty, migrated database; everything a test writes is rolled back when it ends. Only
   one test app with a database may be open at a time. Only the `default` connection is reset (`docs/database-testing.md#how-the-database-is-reset`).
 - An app made in a test or in `beforeEach` closes itself; in `beforeAll` call `await app.close()` in `afterAll` (`docs/testing.md#closing-the-app`).
@@ -57,7 +59,8 @@ beforeEach(async () => {
 
 For each route, write one request that must succeed and at least one that must be refused. A route nobody tested for a refusal is
 a route nobody knows is closed. A route open to `everyone` (a public page, sign-in, a contact form) has no refused caller: test its
-refused input instead (`assertInvalid`), and its throttle if it has one.
+refused input instead where it validates any (`assertInvalid`), and its throttle if it has one; a public page without input needs
+only its allowed request.
 
 ```ts
 // UserFactory from '#modules/auth', NoteFactory from './factories/NoteFactory.ts'
@@ -79,7 +82,8 @@ it('lets the author edit a note and refuses anyone else', async () => {
   (`docs/authorization.md#testing`). Read the policy to know which, and assert that status, not just "not 200".
 - Check the data too: after a refused change the row is unchanged.
 - An API route with a token: `actingAs(user, { guard: 'api', abilities: ['notes:read'] })` (`docs/http-tests.md#sessions-and-signing-in`).
-- The `routes` MCP tool, or `marmeon route:list`, lists every route with its access: walk the list and match each line to a test.
+- The `routes` MCP tool, or `marmeon route:list`, lists every route with its access: walk the list and match each line to a test. The tool returns at most 200 routes by
+  default: read `truncated`, and narrow with `path`, `name` or `method`, raise `limit`, or use `marmeon route:list` for the whole list.
 
 ## Requests and assertions
 
@@ -96,7 +100,9 @@ it('lets the author edit a note and refuses anyone else', async () => {
 ## Fakes
 
 Four fakes are on by default as soon as the app has the package: `app.mail`, `app.queue`, `app.notifications` and `app.storage`
-(`docs/fakes.md`). Nothing is sent, queued for real or written to disk, and a test never needs the network or a real provider.
+(`docs/fakes.md`). Those services never send, queue for real or write to disk.
+Nothing else is replaced: your own HTTP client or another provider SDK still reaches the real service, so replace it in the test with
+`override` (`docs/testing.md#replacing-services`), and a Postgres test still needs its database server.
 `app.events` is not a fake: it records every event, and the listeners still run. `app.schedule` runs the real schedule on the test's
 clock and needs `@marmeon/scheduler`.
 
