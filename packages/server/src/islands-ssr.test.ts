@@ -11,7 +11,7 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@marmeon/http';
-import { ResponseLifecycle } from '@marmeon/http/internal';
+import { PageSession, ResponseLifecycle } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
@@ -57,9 +57,13 @@ const islandsOf = (html: string) =>
 
 describe('islands resolved in-process while the page streams', async () => {
   const logged: string[] = [];
+  const warned: string[] = [];
   class CollectingLogger extends ConsoleLogger {
     override error(message: string): void {
       logged.push(message);
+    }
+    override warn(message: string): void {
+      warned.push(message);
     }
     override child(): Logger {
       return this;
@@ -141,19 +145,44 @@ describe('islands resolved in-process while the page streams', async () => {
       return next({ lifecycle: this.#lifecycle });
     }
   }
+  /** Whether the page's request started a session — what the session package's `PageSession` tells the kernel. */
+  const pageSession = { started: false, kept: true };
+  /** A middleware class that starts the session, as `StartSession` marks itself. */
+  const SESSION_MIDDLEWARE = Symbol.for('marmeon.middleware.session');
+  /** A page with a kept session is private before its route runs, as `StartSession` marks it. */
+  class MarksPrivate {
+    handle(ctx: HttpContext, next: Next<{}>) {
+      if (pageSession.started && pageSession.kept) ctx.cookies.markPrivate();
+      return next();
+    }
+  }
+  class StartsSession {
+    static readonly [SESSION_MIDDLEWARE] = true;
+    handle(ctx: HttpContext, next: Next<{}>) {
+      passed.push(`session ${new URL(ctx.request.url).pathname}`);
+      return next();
+    }
+  }
+  const sessionRoutes = openRoutes((Route) => {
+    Route.middleware(StartsSession).get('/session-islands/echo', (ctx: HttpContext) => {
+      passed.push(`route ${new URL(ctx.request.url).pathname}`);
+      return island('islands/Echo', { cookie: ctx.request.headers.get('cookie') });
+    });
+  });
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
-    modules: [defineModule({ name: 'islands', routes })],
-    middleware: { web: [ExposesLifecycle] },
+    modules: [defineModule({ name: 'islands', routes }), defineModule({ name: 'sessions', routes: sessionRoutes })],
+    middleware: { web: [ExposesLifecycle, MarksPrivate] },
   }, { env: { APP_KEY: generateKey() } });
+  application.container.scoped(PageSession, () => ({ started: () => pageSession.started, csrfToken: () => undefined, scope: () => undefined, generation: () => undefined }));
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
   const app = createHttpKernel(application, { renderer, debug: true, islandTimeoutMs: 100 });
   const production = createHttpKernel(application, { renderer, strictReadOnly: false, islandTimeoutMs: 100 });
   const page = (islands: string[], init: RequestInit = {}) => app.request(`/page?islands=${islands.join(',')}`, init);
 
-  it('runs each island through its own route’s middleware, in-process — with the page request’s cookies, languages and request id', async () => {
+  it('runs each island through its own route’s middleware, in-process — with the page request’s languages and request id, and without its cookies (the page has no session)', async () => {
     passed.length = 0;
     const response = await page(['/islands/echo'], {
       headers: { cookie: 'theme=dark', 'accept-language': 'de', purpose: 'prefetch-not', 'x-request-id': 'page-1', 'x-forwarded-for': '203.0.113.9' },
@@ -165,7 +194,7 @@ describe('islands resolved in-process while the page streams', async () => {
       region: {
         component: 'islands/Echo',
         // Serialized as for the browser (a Date is its string); nothing of the page's own request (`Purpose`).
-        props: { cookie: 'theme=dark', language: 'de', purpose: null, requestId: 'page-1', ip: null, at: '2026-10-02T12:00:00.000Z' },
+        props: { cookie: null, language: 'de', purpose: null, requestId: 'page-1', ip: null, at: '2026-10-02T12:00:00.000Z' },
         url: '/islands/echo',
         version: null,
       },
@@ -271,13 +300,65 @@ describe('islands resolved in-process while the page streams', async () => {
     expect(logged.filter((message) => message.includes("cookies.set('tracking')"))).toHaveLength(1);
   });
 
-  it('concurrent pages never share an island’s request — each sees its own page’s cookies and request id', async () => {
+  it('keeps the cookies from the islands of a page whose session is not kept — a guest’s page is not private', async () => {
+    pageSession.started = true;
+    pageSession.kept = false;
+    try {
+      const html = await (await page(['/islands/echo', '/session-islands/echo'], { headers: { cookie: 'theme=dark' } })).text();
+      expect(islandsOf(html)['/islands/echo']).toMatchObject({ status: 'ready', region: { props: { cookie: null } } });
+      // The session island runs in-process (the page has a session to adopt) — without the cookie.
+      expect(islandsOf(html)['/session-islands/echo']).toMatchObject({ status: 'ready', region: { props: { cookie: null } } });
+    } finally {
+      pageSession.started = false;
+      pageSession.kept = true;
+    }
+  });
+
+  it('hands the page request’s cookies to its islands once the page has a session', async () => {
+    pageSession.started = true;
+    try {
+      const response = await page(['/islands/echo'], { headers: { cookie: 'theme=dark' } });
+      expect(islandsOf(await response.text())['/islands/echo']).toMatchObject({ status: 'ready', region: { props: { cookie: 'theme=dark' } } });
+      passed.length = 0;
+      const withSession = await page(['/session-islands/echo'], { headers: { cookie: 'theme=dark' } });
+      expect(islandsOf(await withSession.text())['/session-islands/echo']).toMatchObject({ status: 'ready', region: { props: { cookie: 'theme=dark' } } });
+    } finally {
+      pageSession.started = false;
+    }
+  });
+
+  it('leaves an island whose route starts the session to the browser when the page has none — before its middleware or route run', async () => {
+    passed.length = 0;
+    const html = await (await page(['/session-islands/echo'], { headers: { cookie: 'session=alice' } })).text();
+    expect(islandsOf(html)['/session-islands/echo']).toEqual({ status: 'browser' });
+    expect(html).not.toContain('islands/Echo');
+    // Neither the route nor any middleware of its chain ran: the decision comes before the in-process request.
+    expect(passed).toEqual([]);
+  });
+
+  it('warns once per page route and island route in development — the line says why and where to read on', async () => {
+    const fresh = createHttpKernel(application, { renderer, debug: true, islandTimeoutMs: 100 });
+    warned.length = 0;
+    await fresh.request('/page?islands=/session-islands/echo');
+    await fresh.request('/page?islands=/session-islands/echo');
+    expect(warned.filter((line) => line.includes('/session-islands/echo'))).toEqual([expect.stringContaining('docs/deferred-props.md#how-islands-load')]);
+  });
+
+  it('does not warn without debug', async () => {
+    const quiet = createHttpKernel(application, { renderer, debug: false, islandTimeoutMs: 100 });
+    warned.length = 0;
+    const html = await (await quiet.request('/page?islands=/session-islands/echo')).text();
+    expect(islandsOf(html)['/session-islands/echo']).toEqual({ status: 'browser' });
+    expect(warned).toEqual([]);
+  });
+
+  it('concurrent pages never share an island’s request — each sees its own page’s request id', async () => {
     const responses = await Promise.all(
       Array.from({ length: 10 }, (_, index) => page(['/islands/echo'], { headers: { cookie: `user=${index}`, 'x-request-id': `page-${index}` } })),
     );
     const results = await Promise.all(responses.map(async (response) => islandsOf(await response.text())['/islands/echo']));
     results.forEach((result, index) => {
-      expect(result).toMatchObject({ status: 'ready', region: { props: { cookie: `user=${index}`, requestId: `page-${index}` } } });
+      expect(result).toMatchObject({ status: 'ready', region: { props: { cookie: null, requestId: `page-${index}` } } });
     });
   });
 

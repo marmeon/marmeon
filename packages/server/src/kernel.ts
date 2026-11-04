@@ -37,6 +37,7 @@ import {
   REGION_STATUS_HEADER,
   SUPPORTED_PROTOCOLS,
   RELOAD_HEADER,
+  PageSession,
   ResponseLifecycle,
   isVisit,
   speaksProtocol,
@@ -152,8 +153,8 @@ interface IslandParent {
 /**
  * What an island's request takes over from its page's request — as the browser would send them with its own
  * request: the `Host` the page was asked for (so host checks see the outer request's, not one a proxy header made of its URL), the cookies
- * (the session's id, a remember-me token), the languages, the client and proxy headers. Nothing
- * that is about the page's own request (its body, `Purpose`, partial reloads).
+ * (the session's id, a remember-me token — only when the page's answer is private, that is, a kept session), the languages, the client and proxy headers.
+ * Nothing that is about the page's own request (its body, `Purpose`, partial reloads).
  */
 const ISLAND_HEADERS = ['host', 'cookie', 'accept-language', 'user-agent', 'forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port'];
 
@@ -194,6 +195,9 @@ function engineOf(kernel: HttpKernel): Hono {
 
 /** The start check of route middleware (internal; the same `Symbol.for` key in @marmeon/cache's `throttle()`). */
 const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
+
+/** The mark of the middleware that starts a session (internal; the same `Symbol.for` key on `StartSession`). */
+const SESSION_MIDDLEWARE = Symbol.for('marmeon.middleware.session');
 
 /**
  * Refuses the start when a route does not say who may call it, or lets everyone call it and binds a record by its key. It
@@ -286,24 +290,39 @@ export function createHttpKernel(
   const routeHandlers = new Map<unknown, RouteDefinition>();
 
   /**
-   * The pattern of the route a URL of this app points to — for masking a `Location` or `Referer` by it (`/invite/:code`). Asks
-   * Hono's router what a GET for the path would reach: nothing runs, no middleware. A URL of another host, or a path no route
-   * answers, has none.
+   * The route a URL of this app points to. Asks Hono's router what a GET for the path would reach: nothing runs, no
+   * middleware. A URL of another host, or a path no route answers, has none.
    */
-  const routePatternOf = (value: string, request: Request): string | undefined => {
+  const routeAt = (target: URL): RouteDefinition | undefined => {
+    const [handlers] = app.router.match('GET', getPath({ url: target.origin + target.pathname } as Request));
+    for (const [[handler]] of handlers) {
+      const route = routeHandlers.get(handler);
+      if (route) return route;
+    }
+    return undefined;
+  };
+  /** {@link routeAt} for a URL given as the browser wrote it: one of another host, or an unparsable one, has no route. */
+  const routeFor = (value: string, request: Request): RouteDefinition | undefined => {
     try {
       const own = new URL(request.url);
       const target = new URL(value, own);
       if (target.host !== (request.headers.get('host') ?? own.host)) return undefined;
-      const [handlers] = app.router.match('GET', getPath({ url: target.origin + target.pathname } as Request));
-      for (const [[handler]] of handlers) {
-        const route = routeHandlers.get(handler);
-        if (route) return route.path;
-      }
+      return routeAt(target);
     } catch {
-      // An unparsable value has no route.
+      return undefined;
     }
-    return undefined;
+  };
+  /** The pattern of the route a URL points to — for masking a `Location` or `Referer` by it (`/invite/:code`). */
+  const routePatternOf = (value: string, request: Request): string | undefined => routeFor(value, request)?.path;
+  const startsSessions = new WeakMap<RouteDefinition, boolean>();
+  /** Whether the route's chain — global and group middleware included — starts a session. */
+  const startsSession = (route: RouteDefinition): boolean => {
+    let starts = startsSessions.get(route);
+    if (starts === undefined) {
+      starts = router.middlewareFor(route).some((middleware) => (middleware as { [SESSION_MIDDLEWARE]?: unknown })[SESSION_MIDDLEWARE] === true);
+      startsSessions.set(route, starts);
+    }
+    return starts;
   };
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
@@ -336,8 +355,29 @@ export function createHttpKernel(
       logger.error(`An island is the path of a route of this site (${redactor.text(url)})`);
       return { status: 'exception', failure: {} };
     }
+    // A page without a session may be kept by a shared cache and handed to every visitor: an island whose route starts the
+    // session then loads in the browser (decided before anything runs, so nothing runs twice). A page with a session, even a
+    // guest's, lets such an island adopt it: it needs no cookie.
+    const pageHasSession = parent.scope.has(PageSession) && parent.scope.make(PageSession).started();
+    if (!pageHasSession) {
+      // The target was checked against the page's own URL above; the page's `Host` header may differ from it behind a proxy.
+      const route = routeAt(target);
+      if (route && startsSession(route)) {
+        const pageRoute = matched.get(parent.request);
+        if (debug && pageRoute && sharedCacheWarnings.first(`island ${pageRoute.path} ${route.path}`)) {
+          logger.warn(`The island ${route.path} on ${pageRoute.path} loads in the browser: its route starts the session and the page does not. A page without the session may be kept by a shared cache (docs/deferred-props.md#how-islands-load).`);
+        }
+        return { status: 'browser' };
+      }
+    }
+    // The cookies go to an island only when the page's answer is already private (a kept session marked it before the route
+    // ran): the island's output lands in a document a shared cache may store for everyone, and a guest's page is not private.
+    // Every other island runs without them — also when the mark is missing (an app's own cookie auth, a wrapper around
+    // StartSession), where it renders as for a guest.
+    const sharesCookies = parent.scope.make(CookieJar).markedPrivate;
     const headers = new Headers(protocolHeaders());
     for (const name of ISLAND_HEADERS) {
+      if (name === 'cookie' && !sharesCookies) continue;
       const value = parent.request.headers.get(name);
       if (value !== null) headers.set(name, value);
     }

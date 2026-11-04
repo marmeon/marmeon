@@ -180,6 +180,7 @@ export function pageSessionOf(session: Session): PageSession {
     }
   };
   return {
+    started: () => session.started,
     // Only a session that is kept has a token worth putting into the page: a guest's new session, with nothing in it,
     // gets none — and is not kept just for it. Its forms pass by the browser's word (Fetch Metadata, Origin).
     // Made now if the session has none yet — but never by a read-only request (an island): a token it made would never be

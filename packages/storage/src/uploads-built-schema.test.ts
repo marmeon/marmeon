@@ -56,7 +56,7 @@ async function boot() {
       }),
     ],
   }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', UPLOADS_CONNECTION: 'default' } });
-  app.container.scoped(PageSession, () => ({ csrfToken: () => undefined, scope: () => 'a-session', generation: () => undefined }));
+  app.container.scoped(PageSession, () => ({ started: () => true, csrfToken: () => undefined, scope: () => 'a-session', generation: () => undefined }));
   await sql`
     create table ${sql.table(UPLOADS_TABLE)} (
       id varchar(36) primary key, session varchar(64) not null, route varchar(200) not null, field varchar(200) not null,
