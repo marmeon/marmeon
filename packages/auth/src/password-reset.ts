@@ -45,8 +45,8 @@ export abstract class PasswordResetTokenStore {
   abstract create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>>;
   /**
    * Uses `token` up if it is the current token of `email` and younger than `maxAgeSeconds`; otherwise an `err` of kind `invalid-token`
-   * — one kind for a malformed, unknown, wrong and expired token on purpose. The deletion of an expired token must commit even inside a
-   * transaction that returns the err (`commitAnyway`).
+   * — one kind for a malformed, unknown, wrong and expired token on purpose. Do the same work with and without a row. Compare the token before its age, so a wrong token writes
+   * nothing; the deletion of an expired right token must commit even inside a transaction that returns the err (`commitAnyway`).
    */
   abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { readonly kind: 'invalid-token' }>>;
   abstract forget(email: string): Promise<void>;
@@ -99,13 +99,19 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
   async consume(email: string, value: string, maxAgeSeconds: number): Promise<Result<void, { readonly kind: 'invalid-token' }>> {
     if (!TOKEN.test(value)) return err({ kind: 'invalid-token' }); // malformed: no query
     const db = this.#db();
+    const hash = sha256(value);
     const row = await db.selectFrom(PASSWORD_RESET_TABLE).select((eb) => [secret(eb, 'token_hash'), 'created_at']).where('email', '=', email).executeTakeFirst();
-    if (!row) return err({ kind: 'invalid-token' });
+    if (!row) {
+      // The same hash and compare as with a row, so the work does not time whether the address has a link; the result is discarded.
+      equal(hash, NO_ROW_HASH);
+      return err({ kind: 'invalid-token' });
+    }
+    // The token before the age: a wrong token writes nothing, so an expired row's deletion cannot time whether the address has a link.
+    if (!equal(hash, row.token_hash)) return err({ kind: 'invalid-token' });
     if (this.#clock.now() - new Date(row.created_at).getTime() >= maxAgeSeconds * 1000) {
       await this.forget(email);
       return commitAnyway(err({ kind: 'invalid-token' })); // the deletion stays when an ambient transaction would roll back an err
     }
-    if (!equal(sha256(value), row.token_hash)) return err({ kind: 'invalid-token' });
     // Used up — conditionally, so two requests with the same token cannot both succeed.
     const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where((eb) => secretEquals(eb, 'token_hash', row.token_hash)).executeTakeFirst();
     return deleted.numDeletedRows > 0n ? ok() : err({ kind: 'invalid-token' });
@@ -209,6 +215,9 @@ export class PasswordBroker {
     return ok(found.user);
   }
 }
+
+/** Stands in for a stored hash (43 base64url characters, like `sha256()`'s) when an address has no row. */
+const NO_ROW_HASH = 'A'.repeat(43);
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('base64url');

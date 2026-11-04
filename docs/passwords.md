@@ -231,7 +231,8 @@ abstract class PasswordResetTokenStore {
 
 `create()` returns an `err` of kind `throttled` while the last token of the address is younger than `throttleSeconds`. `consume()`
 returns `ok` only for the current, fresh token of the address, and uses it up in the same step; every other case is one `err` of
-kind `invalid-token`. A store that deletes an expired token before it answers must return `commitAnyway(err(…))`, so the deletion
+kind `invalid-token`. Compare the token before its age, so a wrong token writes nothing and the answer does not show that an
+address has a link, and do the same work (hash and compare) whether the address has a row or not. A store that deletes an expired token before it answers must return `commitAnyway(err(…))`, so the deletion
 survives a [transaction that returns the err](transactions.md#returning-an-err). Store a hash of the token, never the token.
 The store keys a link by the address `createToken(email)` was given, so pass it trimmed and in lower case, as the starter kit's `SendPasswordResetLinkRequest` does: ending a user's sessions and a new password call `forget()` with that form. `forgetEveryone()` deletes every token in one statement and returns how many: [ending every session of every account](authentication.md#ending-every-session-of-every-account) calls it.
 

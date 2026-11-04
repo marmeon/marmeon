@@ -1,6 +1,7 @@
 import { ConsoleLogger, err, inTransaction, resolveConfig, SystemClock, type Result } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { secret, type Connections } from '@marmeon/database';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, type PasswordResetTokenTable } from './password-reset.ts';
@@ -11,6 +12,11 @@ import { NewPassword } from './new-password.ts';
 import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
+
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return { ...actual, createHash: vi.fn(actual.createHash), timingSafeEqual: vi.fn(actual.timingSafeEqual) };
+});
 
 function must<T>(result: Result<T, { readonly kind: string }>): T {
   if (!result.ok) throw new Error('expected an ok result');
@@ -171,6 +177,23 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(await hasher.verify('old password', hash), 'a new hash next to live tokens').toBe(true);
   });
 
+  it('compares the token even when the address has no row, so the work does not show whether it has a link', async () => {
+    const created = must(await tokens.create('ada@example.com', 0));
+    const compare = vi.mocked(timingSafeEqual);
+    const hash = vi.mocked(createHash);
+    const counted = async (email: string, token: string) => {
+      compare.mockClear();
+      hash.mockClear();
+      expect(await tokens.consume(email, token, 3600)).toEqual(err({ kind: 'invalid-token' }));
+      return { compares: compare.mock.calls.length, hashes: hash.mock.calls.length };
+    };
+    const withRow = await counted('ada@example.com', 'A'.repeat(43));
+    const withoutRow = await counted('nobody@example.com', created);
+    expect(withRow.compares).toBeGreaterThan(0);
+    expect(withRow.hashes).toBeGreaterThan(0);
+    expect(withoutRow, 'the same hashing and comparing without a row').toEqual(withRow);
+  });
+
   it('an expired token, another e-mail’s token, a guessed token, a malformed one — all one answer', async () => {
     const created = must(await broker().createToken('ada@example.com'));
     const invalid = err({ kind: 'invalid-token' });
@@ -190,11 +213,22 @@ describe.each(drivers)('password reset on %s', (driver) => {
   });
 
   it('keeps the deletion of an expired token inside a transaction that returns the err', async () => {
-    await tokens.create('ada@example.com', 0);
+    const value = must(await tokens.create('ada@example.com', 0));
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
-    const answer = await connections.transaction(() => tokens.consume('ada@example.com', 'A'.repeat(43), 3600));
+    const answer = await connections.transaction(() => tokens.consume('ada@example.com', value, 3600));
     expect(answer).toStrictEqual(err({ kind: 'invalid-token' }));
     expect(await rows()).toEqual([]);
+  });
+
+  it('deletes an expired token only for the right token: a wrong one writes nothing and gets the same answer', async () => {
+    const value = must(await tokens.create('ada@example.com', 0));
+    const stored = await rows();
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
+    const invalid = err({ kind: 'invalid-token' });
+    expect(await tokens.consume('ada@example.com', 'A'.repeat(43), 3600)).toStrictEqual(invalid);
+    expect(await rows(), 'a wrong token leaves the expired row').toEqual(stored);
+    expect(await tokens.consume('ada@example.com', value, 3600)).toStrictEqual(invalid);
+    expect(await rows(), 'the right token removes it').toEqual([]);
   });
 
   it('answers a wrong token without touching the row', async () => {
