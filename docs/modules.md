@@ -174,6 +174,79 @@ container reports a constructor parameter that is `undefined` (K16, naming the c
 module runner) the container reports K16 instead. Break the cycle by letting one module read what the other
 [exposes](queries.md#module-boundaries) (its table), or by depending on an abstract class that lives in a third place.
 
+## Listing the modules
+
+`marmeon modules:list` shows what the app defines: the packages it found, the providers of the app, and for each module its
+providers, commands, jobs, notifications, seeders and migrations folder. Below the modules come the events with the listeners of each
+one. A part a module does not have is left out.
+
+```sh
+pnpm marmeon modules:list
+```
+
+```text
+Packages: @marmeon/http, @marmeon/database
+App providers: AppServiceProvider
+
+notes
+  providers: NotesServiceProvider
+  commands: notes:prune
+  jobs: ExportNotes (notes.export)
+  notifications: NoteShared (notes.shared)
+  seeders: NoteSeeder
+  migrations: modules/notes/migrations
+
+Events
+  NoteCreated → IndexNote (queued)
+```
+
+The command registers the providers and boots none of them: it needs no `.env`, no database connection and runs no `boot()` of
+yours. It reads only the fields it prints. Configuration, `.env` and everything else a module carries are never read out.
+
+`--json` prints the same as a document, always with the `format` first (see [machine-readable output](console.md#machine-readable-output)):
+
+```json
+{
+  "format": 1,
+  "packages": ["@marmeon/http", "@marmeon/database"],
+  "app": { "providers": ["AppServiceProvider"] },
+  "modules": [
+    {
+      "name": "notes",
+      "providers": ["NotesServiceProvider"],
+      "commands": ["notes:prune"],
+      "jobs": [{ "class": "ExportNotes", "job": "notes.export" }],
+      "notifications": [{ "class": "NoteShared", "notification": "notes.shared" }],
+      "seeders": ["NoteSeeder"],
+      "migrations": "modules/notes/migrations"
+    }
+  ],
+  "events": [
+    {
+      "event": "NoteCreated",
+      "name": "notes.created",
+      "listeners": [{ "listener": "IndexNote", "queued": true, "defined": "module", "module": "notes" }]
+    }
+  ],
+  "warnings": []
+}
+```
+
+- `packages` are the installed packages whose providers were discovered, in the order they register. Their providers are not
+  listed one by one.
+- `modules` keep the order of `modules: [...]`. Every list is there, empty when the module has nothing. `migrations` is the
+  folder relative to the app root, or `null`. With a warning in `warnings`, the folder is elsewhere, in a monorepo for one, and `null` stands for it: `<module>: its migrations
+  folder lies outside the app root` (also when a link inside the app leads out of it), or `<module>: its migrations folder is not a
+  path on this machine` (a URL that is no `file:` URL). Without a warning, the module has no folder.
+- `events` are sorted by `event`, the class name; `name` is its `static event` when that is a string, else `null`. The listeners
+  keep the order they were registered in. `defined` says where a listener comes from: `app` (the `listeners` of
+  `defineApplication`), `module` (the `listeners` of a module, `module` names it) or `provider` (a provider registered it in
+  `register()`, `module` is `null`).
+- A class without a name is `(anonymous)`, a `static job`, `static notification` or `static event` that is no string is `null`,
+  and no string from your code is longer than 200 characters.
+
+A listener a provider adds in `boot()` is not in the list, because nothing boots.
+
 ## Discovery
 
 The framework's packages register themselves. A package that opts in with a `"marmeon"` field in its `package.json` has its

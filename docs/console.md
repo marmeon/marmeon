@@ -109,6 +109,7 @@ pnpm marmeon route:list --json
 | `schedule:list --json` | [Running the scheduler](scheduling.md#running-the-scheduler) |
 | `db:show --json` | [Inspecting a connection](database.md#inspecting-a-connection) |
 | `migrate:status --json` | [Status](migrations.md#status) |
+| `modules:list --json` | [Listing the modules](modules.md#listing-the-modules) |
 | `devtools:list --json` | [Listing the entries](devtools.md#listing-the-entries) |
 | `docs --json` | [Reading the documentation](#reading-the-documentation) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
@@ -157,6 +158,7 @@ start`, and `marmeon dev` refuses it.
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
+| `modules:list [--json]` | The packages, the modules with their providers, commands, jobs, notifications and seeders, and the listeners of each event, without booting the app. See [listing the modules](modules.md#listing-the-modules). |
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
 | `agents:sync [--check]` | Writes `AGENTS.md` and `CLAUDE.md`, or brings the block of marmeon in `AGENTS.md` up to the installed version. `--check` writes nothing and fails when the block is missing or out of date, for CI. See [coding agents](agents.md). |
