@@ -372,8 +372,9 @@ nothing of the visitor's may reach its document. On such a page an island whose 
 group or route) always loads in the browser: the server renders its `fallback`, and the island appears after hydration with the
 visitor's own session. Every other island of the page still renders on the server, but without the request's cookies. To render
 a session island on the server, put the page in the session group. The islands of that page see the cookies only while the
-page is private, that is, for a visitor whose session is kept (a signed-in one); for a guest they see none, and an island
-that reads a cookie there gets none. Move what such an island needs into the page's props or load it in the browser.
+page is private, that is, for a visitor whose session the store already keeps: a signed-in one, or a guest whose session holds
+data. For a guest without a kept session they see none, and an island that reads a cookie there gets none. Move what such an
+island needs into the page's props or load it in the browser.
 
 > [!WARNING]
 > An island's request only reads, and so does a deferred prop streamed with the first page. Neither may write the session, set a
