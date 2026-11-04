@@ -106,7 +106,7 @@ const DEPENDENCY_SOURCES = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'
 /**
  * The real path of `file` when a code frame may be read from it, otherwise undefined. A frame's path is text an attacker may
  * influence, so only two places count, judged by the path after its links: the app's own files, and source files of a
- * `node_modules` directory (a dependency, also one above the app in a workspace). A file named `.env…` is never read, and only a
+ * `node_modules` directory (a dependency, also one inside the app or above it in a workspace). A file named `.env…` is never read, and only a
  * regular file is (a FIFO or `/dev/stdin` would hang the read).
  */
 function readableSource(file: string, root: string): string | undefined {
@@ -115,12 +115,19 @@ function readableSource(file: string, root: string): string | undefined {
   const base = (path: string) => basename(path).toLowerCase();
   if (base(file).startsWith('.env')) return undefined;
   const realRoot = realpathSync.native(root);
-  if (!underRoot(file, root) && !underRoot(file, realRoot) && !file.split(/[\\/]/).includes('node_modules')) return undefined;
+  if (!underRoot(file, root) && !underRoot(file, realRoot) && !inNodeModules(file)) return undefined;
   // `native` returns the case on disk, so `.ENV` on a case-insensitive disk is `.env` here.
   const real = realpathSync.native(file);
   if (base(real).startsWith('.env') || !statSync(real).isFile()) return undefined;
-  if (underRoot(real, realRoot)) return real;
-  return real.split(sep).includes('node_modules') && DEPENDENCY_SOURCES.has(extname(real).toLowerCase()) ? real : undefined;
+  const inside = underRoot(real, realRoot);
+  const path = inside ? relative(realRoot, real) : real;
+  if (inside && !inNodeModules(path)) return real;
+  return inNodeModules(path) && DEPENDENCY_SOURCES.has(extname(real).toLowerCase()) ? real : undefined;
+}
+
+/** Whether a path has a `node_modules` segment — in any case, as a case-insensitive disk reports the name as stored. */
+function inNodeModules(path: string): boolean {
+  return path.split(/[\\/]/).some((part) => part.toLowerCase() === 'node_modules');
 }
 
 function underRoot(file: string, root: string): boolean {

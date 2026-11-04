@@ -71,6 +71,22 @@ describe('the code frame of the overlay', () => {
     expect(JSON.stringify(overlay(failing(join(parent, 'node_modules', 'dep', '.env.js')), root))).not.toContain('env-in-dep');
   });
 
+  it('applies the dependency rule to a node_modules directory inside the app', () => {
+    const root = tempDir('marmeon-overlay-');
+    mkdirSync(join(root, 'node_modules', 'dep'), { recursive: true });
+    writeFileSync(join(root, 'node_modules', 'dep', 'data.json'), '{"k":"inner-json-content"}\n');
+    writeFileSync(join(root, 'node_modules', 'dep', 'index.js'), 'throw new Error("inner-dep-source");\n');
+    expect(JSON.stringify(overlay(failing(join(root, 'node_modules', 'dep', 'data.json')), root))).not.toContain('inner-json-content');
+    expect(overlay(failing(join(root, 'node_modules', 'dep', 'index.js')), root).frame).toContain('inner-dep-source');
+  });
+
+  it('applies the dependency rule to a NODE_MODULES directory inside the app', () => {
+    const root = tempDir('marmeon-overlay-');
+    mkdirSync(join(root, 'NODE_MODULES', 'dep'), { recursive: true });
+    writeFileSync(join(root, 'NODE_MODULES', 'dep', 'data.json'), '{"k":"upper-json-content"}\n');
+    expect(JSON.stringify(overlay(failing(join(root, 'NODE_MODULES', 'dep', 'data.json')), root))).not.toContain('upper-json-content');
+  });
+
   it('is not read through a link in node_modules that leads to a file elsewhere', () => {
     const parent = tempDir('marmeon-overlay-');
     const root = join(parent, 'app');
