@@ -51,6 +51,24 @@ describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', () => {
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup').assertRedirect('/settings/two-factor');
     await app.assertDatabaseCount('two_factor_authentications', 1);
   });
+
+  it('revokes the API token a confirmed address made before it moved the account to an address it does not own, at the reset by that address', async () => {
+    const holder = await app.factory(UserFactory).create({ email: 'holder@example.com' });
+    let cookie = (await app.post('/login', credentialsOf(holder)).assertStatus(303)).cookie(SESSION)!;
+    cookie = (await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } })).cookie(SESSION) ?? cookie; // typing the password gives the session a new id
+    await app.assertDatabaseCount('personal_access_tokens', 1);
+    // Written at once, not confirmed: `first_verified_at` still holds the confirmation of the address before.
+    await app.withCookie(SESSION, cookie).put('/settings/email', { form: { current_password: 'password', email: 'owner@example.com' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect('/settings/security');
+    await app.assertDatabaseHas('users', { id: holder.id, email: 'owner@example.com', email_verified_at: null });
+
+    await app.post('/forgot-password', { form: { email: 'owner@example.com' } });
+    await app.queue.work();
+    const link = new URL(/https?:\/\/\S+\/reset-password\S*(?=\))/.exec(app.mail.queued(ResetPasswordMail).at(-1)!.message.text)![0]);
+    const opened = await app.get(link.pathname + link.search).assertRedirect('/reset-password');
+    await app.withCookie('password_reset', opened.cookie('password_reset')!).post('/reset-password', { form: { password: 'a new password', password_confirmation: 'a new password' } }).assertRedirect('/login');
+
+    await app.assertDatabaseCount('personal_access_tokens', 0);
+  });
 });
 
 describe('the reset of an account whose address was never confirmed', () => {
@@ -111,16 +129,17 @@ describe('the reset of an account whose address was never confirmed', () => {
     await app.assertDatabaseCount('personal_access_tokens', 1);
   });
 
-  it('keeps the factors of an account that was confirmed once and then changed its address', async () => {
+  it('keeps the factors of an account that was confirmed once and then changed its address, but not its API tokens', async () => {
     const owner = await app.factory(UserFactory).create();
     await holdingEverything(owner);
-    // The address changed and is not confirmed yet (`first_verified_at` stays): a reset must not wipe what the owner set up.
+    // The address changed and is not confirmed yet (`first_verified_at` stays): a reset must not wipe the factors the owner set up.
+    // The tokens go: the confirmation may be of the earlier address, whose holder made them and then moved the account to this one.
     await app.make(Connections).get<any>().updateTable('users').set({ email_verified_at: null }).where('id', '=', owner.id).execute();
 
     await reset(owner);
 
     await app.assertDatabaseCount('passkeys', 1);
     await app.assertDatabaseCount('two_factor_authentications', 1);
-    await app.assertDatabaseCount('personal_access_tokens', 1);
+    await app.assertDatabaseCount('personal_access_tokens', 0);
   });
 });

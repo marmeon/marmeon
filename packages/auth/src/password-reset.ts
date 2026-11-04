@@ -197,7 +197,8 @@ export class PasswordBroker {
 
   /**
    * Sets `password` if `token` belongs to `email` and is unused and fresh: `ok` with the user. One answer — an `err` of
-   * kind `invalid-token` — for an unknown e-mail and a wrong, used or expired token, so the answer never tells whether an account exists. With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token
+   * kind `invalid-token` — for an unknown e-mail and a wrong, used or expired token, so the answer never tells whether an account exists. With
+   * `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, or when the address is not confirmed (`email_verified_at` is `null`), every API token
    * of the user is revoked in the transaction of the new hash.
    */
   async reset(email: string, value: string, password: string): Promise<Result<AuthUser, { readonly kind: 'invalid-token' }>> {

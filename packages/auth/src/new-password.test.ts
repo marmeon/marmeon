@@ -284,13 +284,21 @@ describe('NewPassword after a reset it leaves alone', () => {
 });
 
 describe('NewPassword for an address that was confirmed once', () => {
-  it('keeps the factors and tokens when a change of address cleared email_verified_at', async () => {
+  it('keeps the factors when a change of address cleared email_verified_at, but revokes the API tokens', async () => {
+    // The confirmation may be of the earlier address: whoever held it could have made a token and then moved the account to this one.
     const state = source(['passkey', 'totp']);
-    const { reset, events, revokedCount } = setup({ state });
-    await reset({ id: 1, email_verified_at: null, first_verified_at: '2026-01-01T00:00:00Z' });
+    const { reset, events, revokedCount, logged } = setup({ state });
+    expect((await reset({ id: 1, email_verified_at: null, first_verified_at: '2026-01-01T00:00:00Z' })).revoked).toBe(1);
     expect(state.removed).toBe(0);
-    expect(revokedCount()).toBe(0);
+    expect(revokedCount()).toBe(1);
     expect(events).toEqual([]);
+    expect(logged.filter((entry) => entry.level === 'info').map((entry) => entry.context)).toEqual([{ user: 1, tokens: 1, via: 'reset' }]);
+  });
+
+  it('revokes no token on a password change of an address that is not confirmed', async () => {
+    const { newPassword, users, revokedCount } = setup({ state: source([]) });
+    await newPassword.store(users, 1, hash, 'change', { id: 1, email_verified_at: null, first_verified_at: '2026-01-01T00:00:00Z' } as never);
+    expect(revokedCount()).toBe(0);
   });
 
   it('treats a null first_verified_at as never confirmed', async () => {
