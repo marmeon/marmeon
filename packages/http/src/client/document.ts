@@ -1,11 +1,32 @@
 import { APP_ORIGIN_META, isPageObject, PAGE_SCRIPT_ID, type PageObject } from '../protocol.ts';
 
+// Captured while the module loads: named elements in the page (`<img name="head">`, `<form name="getElementById">`) can replace
+// the properties of `document` itself, but not the members further up its prototype chain (`Document.prototype`).
+function inherited(name: string, kind: 'get' | 'value'): unknown {
+  for (let object = globalThis.document && Object.getPrototypeOf(globalThis.document); object; object = Object.getPrototypeOf(object)) {
+    const descriptor = Object.getOwnPropertyDescriptor(object, name);
+    if (descriptor) return descriptor[kind];
+  }
+  return undefined;
+}
+const headOf = inherited('head', 'get') as (() => HTMLHeadElement | null) | undefined;
+const elementById = inherited('getElementById', 'value') as ((id: string) => Element | null) | undefined;
+const ScriptElement = globalThis.HTMLScriptElement;
+
+/** The element with this `id` — of the real document through the captured method, so that named elements cannot stand in for it. */
+function byId(doc: Pick<Document, 'getElementById'>, id: string): Element | null {
+  return elementById && doc === globalThis.document ? elementById.call(doc, id) : doc.getElementById(id);
+}
+
 /**
  * The page the server rendered — the JSON in `<script id="marmeon-page" type="application/json">` (in the document
  * head, so it is there before the streamed markup is). Every adapter's hydration entry starts here.
  */
 export function readInitialPage(doc: Pick<Document, 'getElementById'> = document): PageObject {
-  const page: unknown = JSON.parse(doc.getElementById(PAGE_SCRIPT_ID)?.textContent ?? 'null');
+  const element = byId(doc, PAGE_SCRIPT_ID);
+  // Of the real document only an HTML script counts: an SVG or MathML `<script>` can carry the same id.
+  const genuine = ScriptElement && doc === globalThis.document ? element instanceof ScriptElement && element.type === 'application/json' : true;
+  const page: unknown = JSON.parse((genuine ? element?.textContent : null) ?? 'null');
   if (!isPageObject(page)) throw new Error(`Missing or invalid #${PAGE_SCRIPT_ID} script — was the page server-rendered?`);
   return page;
 }
@@ -13,7 +34,8 @@ export function readInitialPage(doc: Pick<Document, 'getElementById'> = document
 /** The origin of the app's `APP_URL`, as the first document carries it; undefined when the server has none. */
 export function readAppOrigin(doc: Pick<Document, 'head'> = document): string | undefined {
   // Not one a `<Head>` wrote (those carry the marker): only the server's own tag is the base.
-  const content = doc.head.querySelector(`meta[name="${APP_ORIGIN_META}"]:not([data-marmeon-head])`)?.getAttribute('content');
+  const head = headOf && doc === globalThis.document ? headOf.call(doc) : doc.head;
+  const content = head?.querySelector(`meta[name="${APP_ORIGIN_META}"]:not([data-marmeon-head])`)?.getAttribute('content');
   if (!content) return undefined;
   try {
     const { origin, protocol } = new URL(content);
@@ -25,10 +47,10 @@ export function readAppOrigin(doc: Pick<Document, 'head'> = document): string | 
 
 /** The element the server rendered into — waits for it while a streamed document is still arriving. */
 export async function rootElement(rootId: string, doc: Document = document): Promise<HTMLElement> {
-  let root = doc.getElementById(rootId);
+  let root = byId(doc, rootId) as HTMLElement | null;
   if (!root && doc.readyState === 'loading') {
     await new Promise((resolve) => doc.addEventListener('DOMContentLoaded', resolve, { once: true }));
-    root = doc.getElementById(rootId);
+    root = byId(doc, rootId) as HTMLElement | null;
   }
   if (!root) throw new Error(`Root element #${rootId} not found.`);
   return root;
