@@ -51,6 +51,26 @@ describe('renderDocument — head', () => {
   it('keeps the default title otherwise', () => {
     expect(renderDocument(template, page, { html: '', head: '<meta name="x" content="y"/>' })).toContain('<title>Default</title>');
   });
+
+  const jsonLd = '<script type="application/ld+json">{"description":"</head><img src=x onerror=alert(1)>"}</script>';
+  const pageScript = '<script type="application/json" id="marmeon-page">{"component":"x","props":{},"url":"/"}</script>';
+
+  it('puts the page script at the template’s own </head>, not at one in the text of a <Head> script', () => {
+    const html = renderDocument(template, page, { html: '', head: jsonLd });
+    expect(html).toContain(`${jsonLd}${pageScript}\n</head><body>`);
+  });
+
+  it('does not take a </head> in a <Head> script for the head end of a template that has none', () => {
+    const bare = '<div><!--app-head--><!--app-html--></div>';
+    const html = renderDocument(bare, page, { html: '', head: jsonLd });
+    expect(html).toBe(`<div>${jsonLd}${pageScript}</div>`);
+  });
+
+  it('does not take a </head> in a <Head> script for the head end of a template that spells it </HEAD>', () => {
+    const upper = '<html><HEAD><!--app-head--></HEAD><body><!--app-html--></body></html>';
+    const html = renderDocument(upper, page, { html: '', head: jsonLd });
+    expect(html).toContain(`${jsonLd}</HEAD><body>${pageScript}`);
+  });
 });
 
 describe('documentOf — streamed markup', () => {
