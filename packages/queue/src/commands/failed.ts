@@ -1,4 +1,4 @@
-import { Application, Clock, CommandArgumentsError } from '@marmeon/core';
+import { Application, Clock, CommandArgumentsError, escapeControls } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import type { FailedJob } from '../driver.ts';
@@ -26,9 +26,9 @@ export class MakeQueueTableCommand {
   }
 }
 
-/** The first line of a stored error, for listings. */
+/** The first line of a stored error, for listings — its control characters written out, as it may quote what a client sent. */
 function headline(job: FailedJob): string {
-  const line = job.exception.split('\n')[0] ?? '';
+  const line = escapeControls(job.exception.split('\n')[0] ?? '');
   return line.length > 120 ? `${line.slice(0, 117)}…` : line;
 }
 
@@ -50,7 +50,7 @@ export class QueueFailedCommand {
       return 0;
     }
     for (const job of jobs) {
-      output.line(`${new Date(job.failedAt).toISOString()}  ${job.uuid}  ${job.job}  (${job.connection}/${job.queue})`);
+      output.line(escapeControls(`${new Date(job.failedAt).toISOString()}  ${job.uuid}  ${job.job}  (${job.connection}/${job.queue})`));
       output.line(`    ${headline(job)}`);
     }
     output.line(`${jobs.length} failed ${jobs.length === 1 ? 'job' : 'jobs'} — marmeon queue:retry <id|all>, queue:forget <id>`);
@@ -89,14 +89,14 @@ export class QueueRetryCommand {
       // Its connection, if it still keeps jobs — else the default one; a connection that no longer exists at all is no place to guess.
       const named = this.#connections.find(job.connection);
       if (!named) {
-        output.error(`The failed job ${job.uuid} came from the queue connection "${job.connection}", which is not configured. Known: ${this.#connections.names().join(', ')}.`);
+        output.error(escapeControls(`The failed job ${job.uuid} came from the queue connection "${job.connection}", which is not configured. Known: ${this.#connections.names().join(', ')}.`));
         code = 1;
         continue;
       }
       // A record no release will run (no version, a broken chain): queued again it would only fail again.
       const parsed = parseRecord(job.payload);
       if (parsed.kind === 'invalid') {
-        output.error(`The failed job ${job.uuid} cannot be retried: ${parsed.reason}`);
+        output.error(escapeControls(`The failed job ${job.uuid} cannot be retried: ${parsed.reason}`));
         code = 1;
         continue;
       }
@@ -105,7 +105,7 @@ export class QueueRetryCommand {
       const payload = JSON.stringify({ ...(JSON.parse(job.payload) as object), availableAt: this.#clock.now() });
       await this.#connections.driver(connection).push(job.queue, payload, 0);
       await store.forget(job.uuid);
-      output.success(`Queued ${job.job} (${job.uuid}) again on ${connection}/${job.queue}`);
+      output.success(escapeControls(`Queued ${job.job} (${job.uuid}) again on ${connection}/${job.queue}`));
     }
     return code;
   }
