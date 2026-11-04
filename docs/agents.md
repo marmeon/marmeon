@@ -72,7 +72,7 @@ warning there, never an error, and the check writes nothing. An app without `AGE
 
 ## Skills and the MCP server
 
-Marmeon ships skills for coding agents, short guides for a task: `marmeon-debugging` (finding why the app fails),
+Marmeon ships skills for coding agents, short guides for a task: `marmeon-debugging` (finding why your app fails),
 `marmeon-feature-module` (a new feature as a module), `marmeon-migration` (a schema change), `marmeon-page` (a page with a form and an
 island), `marmeon-security-review` (what to check before a change goes out) and `marmeon-testing` (tests for routes, jobs, mail and
 pages). The same command enters the server `marmeon mcp` in `.mcp.json`, so an agent can ask the app for its routes and the installed documentation. Nothing is
