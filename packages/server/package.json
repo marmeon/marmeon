@@ -66,11 +66,11 @@
     "build": "tsc -b"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.5",
     "@marmeon/core": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/router": "workspace:*",
-    "@hono/node-server": "^2.1.5",
-    "hono": "^4.13.14"
+    "hono": "^4.13.16"
   },
   "marmeon": {
     "providers": [
@@ -79,8 +79,8 @@
   },
   "devDependencies": {
     "@marmeon/encryption": "workspace:*",
-    "vite": "^8.3.5",
-    "valibot": "^1.5.0"
+    "valibot": "^1.5.0",
+    "vite": "^8.3.5"
   },
   "peerDependencies": {
     "vite": "^8.3.1"

@@ -21,7 +21,6 @@
   "dependencies": {
     "@marmeon/auth": "workspace:*",
     "@marmeon/cache": "workspace:*",
-    "marmeon": "workspace:*",
     "@marmeon/core": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/encryption": "workspace:*",
@@ -36,6 +35,7 @@
     "@marmeon/server": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/validation": "workspace:*",
+    "marmeon": "workspace:*",
     "mjml": "^5.4.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
@@ -44,11 +44,11 @@
     "@marmeon/devtools": "workspace:*",
     "@marmeon/testing": "workspace:*",
     "@marmeon/vite": "workspace:*",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "oxlint": "^1.89.0",
+    "oxlint": "^1.90.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
