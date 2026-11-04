@@ -75,7 +75,7 @@ Every wrong call ends with exit code 2: an unknown flag, two directories, or `--
 not empty and a Node older than 26.10 end with exit code 1, before anything is written. So does a missing pnpm when the creator
 is about to install. When a later step fails, for example the install, the run ends with exit code 1 and shows that step's
 output; only `marmeon agents:install` just warns and the run ends with exit code 0. The directory stays as it was at that moment, so you can fix the cause and run the step yourself. Ctrl+C at a question
-ends the run with exit code 130. Without `--agents` nothing is installed for agents beyond `AGENTS.md` and `CLAUDE.md`.
+ends the run with exit code 130. Unless you say yes to the question or pass `--agents`, nothing is installed for agents beyond `AGENTS.md` and `CLAUDE.md`.
 
 ## What you get
 
