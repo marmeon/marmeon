@@ -247,6 +247,9 @@ export function checkWorkflow(repository: string): string[] {
 
   // Exactly "contents: read": a scope added here (id-token: write) would reach every job, the build job that runs the repository's code too.
   if (defaultGrantsOf(code)?.join() !== 'contents: read') problems.push(`${where}: the workflow's default "permissions:" must be exactly "contents: read" — each job asks for what it needs`);
+  // One block, its grants on indented lines: a second block or `permissions: contents: read` on one line is not a workflow GitHub starts.
+  const defaults = [...code.matchAll(/^["']?permissions["']?[ \t]*:[ \t]*(\S.*)?$/gm)];
+  if (defaults.length !== 1 || defaults[0]![1] !== undefined) problems.push(`${where}: exactly one workflow-level "permissions:", with its grants on indented lines`);
   // An anchor, alias or tag on a value (`id-token: *w`, `!!str write`) hides what a grant says from a reader of plain text.
   if (/^\s*(?:- )?["']?[\w.-]+["']?\s*:\s+[&*!]/m.test(code)) problems.push(`${where}: a YAML anchor, alias or tag — the rules read values as plain text`);
   if (/^env:/m.test(code)) problems.push(`${where}: an env: for the whole workflow — every job, the staging one too, would inherit it; set variables on the step that needs them`);
@@ -338,6 +341,7 @@ export function checkWorkflow(repository: string): string[] {
     const own = /^ {4}["']?permissions["']?[ \t]*:[ \t]*(\S.*)?$/m.exec(body);
     const grants = own === null ? [] : grantsAt(body, own.index + own[0].length, own[1], 4);
     if (own === null || grants.length === 0) problems.push(`${where}: the job "${name}" has no "permissions:" block of its own with a grant in it — a job states what it needs, none inherits a scope`);
+    if (own?.[1] !== undefined) problems.push(`${where}: the job "${name}" has its permissions on the "permissions:" line — grants go on indented lines`);
     for (const grant of grants) {
       if (!/^[a-z-]+: (?:read|write|none)$/.test(grant)) problems.push(`${where}: the job "${name}" has the permission "${grant}" — only plain "scope: read|write|none" lines`);
     }

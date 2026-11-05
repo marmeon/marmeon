@@ -572,6 +572,12 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n    outputs:', 'build'))).toContain('the job "build" has no "permissions:" block of its own');
     });
 
+    it('wants one workflow-level permissions block and every grant on an indented line', () => {
+      expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions: contents: read\n'))).toContain('exactly one workflow-level "permissions:"');
+      expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: read\npermissions:\n  contents: read\n'))).toContain('exactly one workflow-level "permissions:"');
+      expect(problemsOf(mutated('    permissions:\n      contents: read\n    outputs:', '    permissions: contents: read\n    outputs:', 'build'))).toContain('has its permissions on the "permissions:" line');
+    });
+
     it('refuses a scope a job names twice — GitHub would refuse the whole workflow', () => {
       expect(problemsOf(mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n      contents: read\n      contents: read\n    outputs:', 'build'))).toContain('names contents twice');
     });
