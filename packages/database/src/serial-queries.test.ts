@@ -88,6 +88,24 @@ describe('serialQueries()', () => {
     expect(inner.most).toBe(1);
   });
 
+  it('runs the result hook once per result when a wrapper is assigned over the proxy, as the query log does', async () => {
+    const inner = new CountingConnection([]);
+    const hook = vi.fn();
+    const connection = serialQueries(inner, { result: hook });
+    // Kysely's query log: capture the connection's method, then assign a wrapper that calls it.
+    const execute = connection.executeQuery;
+    connection.executeQuery = (query) => execute.call(connection, query) as never;
+    const stream = connection.streamQuery;
+    connection.streamQuery = (query, chunkSize) => stream.call(connection, query, chunkSize) as never;
+
+    await connection.executeQuery(raw('one'));
+    expect(hook).toHaveBeenCalledTimes(1);
+
+    hook.mockClear();
+    for await (const _chunk of connection.streamQuery(raw('stream'), 1)) void _chunk;
+    expect(hook).toHaveBeenCalledTimes(2); // its two chunks, each once
+  });
+
   it('is the connection for everything else — methods bound to it (private fields), one wrapper per connection', async () => {
     const inner = new CountingConnection(['x']);
     const connection = serialQueries(inner) as DatabaseConnection & { release(): string };

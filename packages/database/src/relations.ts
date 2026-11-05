@@ -45,6 +45,7 @@ import type { ColumnKind as Kind, SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, MANY, ONE, RELATION, RELATION_TARGET, SECRET, sourcesOf, WITH_TRASHED, type Source } from './placeholders.ts';
 import { asked, guardSecrets, outputName, type Spelled } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
+import { isoTimestamp } from './iso-timestamp.ts';
 
 /**
  * What a `with()` or `withRelation()` placeholder holds, besides the callback's query. `use` says what a relation of the chain
@@ -544,7 +545,7 @@ export class RelationsPlugin implements KyselyPlugin {
     if (!shapes?.size || result.rows.length === 0) return;
     // Loaded by the driver on the connection this query ran on (a lookup here could deadlock inside a transaction).
     const kinds = this.#metadata.kinds;
-    for (const row of result.rows) convertRow(row as Record<string, unknown>, shapes, kinds);
+    for (const row of result.rows) convertRow(row as Record<string, unknown>, shapes, kinds, this.#driver);
   }
 }
 
@@ -604,29 +605,30 @@ function shapeOf(query: SelectQueryNode): Shape {
   return shape;
 }
 
-function convertRow(row: Record<string, unknown>, shapes: Map<string, Shape>, kinds: ReadonlyMap<string, ReadonlyMap<string, Kind>>): void {
+function convertRow(row: Record<string, unknown>, shapes: Map<string, Shape>, kinds: ReadonlyMap<string, ReadonlyMap<string, Kind>>, driver: Driver): void {
   for (const [key, shape] of shapes) {
     let value = row[key];
-    // SQLite loses the JSON subtype at a subquery boundary: a relation inside a relation arrives as JSON text.
-    if (typeof value === 'string') row[key] = value = JSON.parse(value);
-    if (Array.isArray(value)) for (const item of value) convertNested(item, shape, kinds);
-    else if (value && typeof value === 'object') convertNested(value as Record<string, unknown>, shape, kinds);
+    // SQLite loses the JSON subtype at a subquery boundary: a relation inside a relation arrives as JSON text. On Postgres it never does.
+    if (driver === 'sqlite' && typeof value === 'string') row[key] = value = JSON.parse(value);
+    if (Array.isArray(value)) for (const item of value) convertNested(item, shape, kinds, driver);
+    else if (value && typeof value === 'object') convertNested(value as Record<string, unknown>, shape, kinds, driver);
   }
 }
 
-function convertNested(object: Record<string, unknown>, shape: Shape, kinds: ReadonlyMap<string, ReadonlyMap<string, Kind>>): void {
+function convertNested(object: Record<string, unknown>, shape: Shape, kinds: ReadonlyMap<string, ReadonlyMap<string, Kind>>, driver: Driver): void {
   for (const [key, { table, column }] of shape.columns) {
     const kind = kinds.get(table)?.get(column);
-    if (kind && key in object) object[key] = convert(object[key], kind);
+    if (kind && key in object) object[key] = convert(object[key], kind, driver);
   }
-  convertRow(object, shape.relations, kinds);
+  convertRow(object, shape.relations, kinds, driver);
 }
 
-function convert(value: unknown, kind: Kind): unknown {
+function convert(value: unknown, kind: Kind, driver: Driver): unknown {
   if (value === null || value === undefined) return value;
   if (kind === 'boolean') return typeof value === 'number' ? value !== 0 : value;
-  if (kind === 'json') return typeof value === 'string' ? JSON.parse(value) : value;
-  if (kind === 'timestamp') return typeof value === 'string' && !value.endsWith('Z') ? new Date(value).toISOString() : value;
+  // On Postgres json_agg/to_json embed the value as JSON and `pg` parses it: a string here is a JSON string scalar, not text to parse again.
+  if (kind === 'json') return driver === 'sqlite' && typeof value === 'string' ? JSON.parse(value) : value;
+  if (kind === 'timestamp') return typeof value === 'string' ? isoTimestamp(value) : value;
   if (typeof kind === 'object') return typeof value === 'number' ? value.toFixed(kind.decimal) : value;
   return value;
 }
