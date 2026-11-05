@@ -50,6 +50,7 @@ export interface TaskResult {
   readonly reason: RunReason;
   readonly outcome: 'ran' | 'skipped' | 'failed';
   readonly skipped?: SkipReason;
+  /** What it threw — redact it before showing it (a message may quote a secret). */
   readonly error?: unknown;
   readonly ms: number;
 }
@@ -295,7 +296,7 @@ export class Scheduler {
       driver === 'file'
         ? 'locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis.'
         : 'locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (marmeon make:cache-table) or redis for more.';
-    return `${kinds.join('/')} ${kinds.length === 1 ? 'locks' : 'lock'} in CACHE_DRIVER=${driver}: ${scope} Tasks: ${locking.map((task) => task.name).join(', ')}`;
+    return `${kinds.join('/')} ${kinds.length === 1 ? 'locks' : 'lock'} in CACHE_DRIVER=${driver}: ${scope} Tasks: ${locking.map((task) => this.#redactor.text(task.name)).join(', ')}`;
   }
 
   /** @internal Frees the overlap locks of runs still going — when the process stops before they end (they end with it). */

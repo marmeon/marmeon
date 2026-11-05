@@ -298,9 +298,12 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     const started: SchedulerProcess[] = [];
     try {
       // Production without a .env: everything it needs is given here.
-      const work = start(started, 'schedule:work', { NODE_ENV: 'production', APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
+      const work = start(started, 'schedule:work', { NODE_ENV: 'production', APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1', FIXTURE_COMMAND_TOKEN: 't0kenvalue' });
       await work.waitFor(/Running the schedule every minute/);
       expect(work.lines.join('\n')).toContain(warning);
+      // The start line lists the task names: a command's arguments are masked in it.
+      expect(work.lines.join('\n')).toContain('--token=[redacted]');
+      expect(work.lines.join('\n')).not.toContain('t0kenvalue');
       await stop(work);
     } finally {
       kill(started);

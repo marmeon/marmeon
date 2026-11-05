@@ -230,6 +230,8 @@ the runs still going `--stop-timeout` seconds, 30 by default, then ends and free
 | `schedule:list [--json]` | Lists the tasks, their schedule in their time zone, the next run and their options. |
 | `schedule:test <name>` | Runs one task now, whatever its frequency, filters and environments say. Its overlap lock still counts. |
 
+The schedule commands mask what they print with the app's redactor, as the log does with a failed task's error. This covers task names, the error of a failed run, the message for an unknown task name and the lock warning. Where an error quotes a secret, you see `[redacted]`. In the terminal, control characters print escaped (`\n`, `\u001b`), so a task name or an error cannot start a line of its own. `schedule:list --json` prints names masked but unescaped, because JSON escapes them itself.
+
 `schedule:list --json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format` (2), `tasks` and
 `warnings`. Each task has `name`, `expression`, `timeZone`, `next` (the next run as a time with its offset, `2026-10-06T03:10+02:00`,
 or `null` when none comes within 400 days), `does` (what the task runs, as in the table's Does column: `call Class`, `job name {payload}` or `command name args`, with secrets masked), `description` (the text of `.description()`, or `null`) and `options`: `oneServer` (a boolean), `overlapSeconds` (the lock's span in seconds, or `null`
