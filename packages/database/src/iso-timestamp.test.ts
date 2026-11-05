@@ -13,6 +13,13 @@ describe('isoTimestamp', () => {
     expect(isoTimestamp('10000-01-01T00:00:00+00:00')).toBe('10000-01-01T00:00:00.000Z');
   });
 
+  it('reads a zone-less value without seconds as UTC, whatever the host zone', () => {
+    expect(isoTimestamp('2026-10-01T12:00')).toBe('2026-10-01T12:00:00.000Z');
+    expect(isoTimestamp('2026-10-01 12:00')).toBe('2026-10-01T12:00:00.000Z');
+    expect(isoTimestamp('2026-10-01T12:00:00+02:00')).toBe('2026-10-01T10:00:00.000Z');
+    expect(isoTimestamp('2026-10-01')).toBe('2026-10-01T00:00:00.000Z');
+  });
+
   it('leaves infinity and a UTC value as they are', () => {
     expect(isoTimestamp('infinity')).toBe('infinity');
     expect(isoTimestamp('-infinity')).toBe('-infinity');

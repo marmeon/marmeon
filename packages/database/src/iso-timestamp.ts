@@ -1,4 +1,4 @@
-const TEXT = /^(\d{4,}-\d\d-\d\d)[ T](\d\d:\d\d:\d\d)(?:\.(\d+))?(?:\+00(?::?00)?)?$/;
+const TEXT = /^(\d{4,}-\d\d-\d\d)[ T](\d\d:\d\d)(?::(\d\d)(?:\.(\d+))?)?(?:\+00(?::?00)?)?$/;
 
 /**
  * A timestamp the database returned as text (`2026-10-01 12:00:00.123456+00` from a UTC session, `2026-10-01T12:00:00+00:00` from
@@ -10,8 +10,8 @@ export function isoTimestamp(value: string): string {
   if (value === 'infinity' || value === '-infinity' || value.endsWith('Z')) return value;
   const match = TEXT.exec(value);
   if (match) {
-    const [, date, time, fraction = ''] = match;
-    return `${date}T${time}.${fraction.padEnd(3, '0').slice(0, 3)}Z`;
+    const [, date, time, seconds = '00', fraction = ''] = match;
+    return `${date}T${time}:${seconds}.${fraction.padEnd(3, '0').slice(0, 3)}Z`;
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toISOString();
