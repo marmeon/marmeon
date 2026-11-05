@@ -102,7 +102,7 @@ scripts/test      the test suite's temporary directory per run, tempDir() and wo
 deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next
 .github           workflows/ (ci.yml: pnpm run ci in parallel jobs; release.yml: started by hand, staged publishing; pr-label.yml: the release label
-                  check), release.yml (the notes' categories, generated) and release-base (the commit a release was prepared from)
+                  check; codeql.yml and codeql/: code scanning), release.yml (the notes' categories, generated) and release-base (the commit a release was prepared from)
 ```
 
 ```sh
@@ -957,6 +957,16 @@ depends on the folder depth, and the preset has one override per depth. Its patt
 (`!../*/index.*`), because oxlint's `regex` has no lookaround and drops a pattern it cannot compile without a word; the
 generator's test lints a fixture app to prove every pattern fires. The `make:auth` fixture test lints the generated module with
 and without `--boundaries`.
+
+### Code scanning
+
+CodeQL (`.github/workflows/codeql.yml`, configured by `.github/codeql/codeql-config.yml`) analyzes the TypeScript and the
+workflows with the `security-extended` queries, on every pull request, on every push to `main` and once a week. It is not a
+required check; its alerts show in the repository's Security tab, which only maintainers see. The job that uploads them runs no
+step of the repository — no install, no build — and `pnpm check-release` holds that shape.
+
+A false positive is dismissed on GitHub with its reason, never suppressed in the code. A real finding becomes its own `fix`
+pull request; one an attacker can exploit goes through a private advisory first ([SECURITY.md](SECURITY.md)).
 
 ## Comments
 

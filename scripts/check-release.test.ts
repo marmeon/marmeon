@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -1284,5 +1284,156 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
 
   it('refuses an expression inside a script', () => {
     expect(problemsOf(mutated('update "kysely@$VERSION"', 'update "kysely@${{ steps.kysely.outputs.version }}"'))).toContain('an expression inside a run script');
+  });
+});
+
+describe('checkCodeqlWorkflow — code scanning', () => {
+  const real = readFileSync(join(root, '.github/workflows/codeql.yml'), 'utf8');
+  const realConfig = readFileSync(join(root, '.github/codeql/codeql-config.yml'), 'utf8');
+  const codeqlSha = '9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
+
+  function repositoryWithCodeql(workflow: string, config: string | null = realConfig): string {
+    const directory = repositoryWith(unreleased);
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true });
+    mkdirSync(join(directory, '.github/codeql'), { recursive: true });
+    writeFileSync(join(directory, '.github/workflows/codeql.yml'), workflow);
+    if (config !== null) writeFileSync(join(directory, '.github/codeql/codeql-config.yml'), config);
+    return directory;
+  }
+  /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
+  function mutated(from: string, to: string): string {
+    const result = real.replace(from, to);
+    expect(result, `the mutation of ${from} changed nothing`).not.toBe(real);
+    return result;
+  }
+  const problemsOf = (workflow: string) => checkCodeqlWorkflow(repositoryWithCodeql(workflow)).join('\n');
+
+  it('passes the repository’s workflow', () => {
+    expectProblems(checkCodeqlWorkflow(root), []);
+  });
+
+  it('refuses a missing workflow', () => {
+    expect(checkCodeqlWorkflow(repositoryWith(unreleased)).join()).toContain('is missing');
+  });
+
+  it('refuses pull_request_target and any other event, and wants the three it has', () => {
+    for (const event of ['pull_request_target', 'workflow_dispatch', 'issue_comment']) {
+      expect(problemsOf(mutated('  pull_request:\n', `  pull_request:\n  ${event}:\n`)), event).toContain('exactly pull_request, push and schedule');
+    }
+    expect(problemsOf(mutated('  pull_request:\n', '  pull_request_target:\n'))).toContain('never pull_request_target');
+    expect(problemsOf(mutated("  schedule:\n    - cron: '23 4 * * 2'\n", ''))).toContain('exactly pull_request, push and schedule');
+  });
+
+  it('wants empty workflow permissions and exactly the two grants in the job', () => {
+    expect(problemsOf(mutated('permissions: {}', 'permissions:\n  contents: read'))).toContain('must be "{}"');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: read\n      actions: write\n'))).toContain('more than "contents: read"');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: read\n      id-token: write\n'))).toContain('more than "contents: read"');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: write\n'))).toContain('more than "contents: read"');
+    expect(problemsOf(mutated('      security-events: write\n', ''))).toContain('must say "permissions: security-events: write"');
+    expect(problemsOf(mutated('      contents: read\n', ''))).toContain('must say "permissions: contents: read"');
+  });
+
+  it('wants every action pinned by its full SHA', () => {
+    expect(problemsOf(mutated('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', 'actions/checkout@v7'))).toContain('is not pinned to a commit');
+    expect(problemsOf(mutated(`codeql-action/init@${codeqlSha}`, 'codeql-action/init@v4'))).toContain('is not pinned to a commit');
+  });
+
+  it('refuses autobuild and any other action', () => {
+    const step = (action: string) => mutated('      - uses: github/codeql-action/analyze', `      - uses: ${action}@${codeqlSha}\n      - uses: github/codeql-action/analyze`);
+    expect(problemsOf(step('github/codeql-action/autobuild'))).toContain('only actions/checkout and github/codeql-action/init and analyze');
+    expect(problemsOf(step('actions/setup-node'))).toContain('only actions/checkout');
+  });
+
+  it('refuses a run step — nothing of the repository runs in the job that writes scanning results', () => {
+    expect(problemsOf(mutated('      - uses: github/codeql-action/analyze', '      - run: pnpm install\n      - uses: github/codeql-action/analyze'))).toContain('a "run:" step');
+    expect(problemsOf(mutated('      - uses: github/codeql-action/analyze', '      - run: |\n          node scripts/x.ts\n      - uses: github/codeql-action/analyze'))).toContain('a "run:" step');
+  });
+
+  it('wants the checkout to leave no credentials behind', () => {
+    expect(problemsOf(mutated('          persist-credentials: false\n', ''))).toContain('without "persist-credentials: false"');
+    expect(problemsOf(mutated('          persist-credentials: false\n', '          persist-credentials: true\n'))).toContain('without "persist-credentials: false"');
+  });
+
+  it('wants init and analyze on the same commit', () => {
+    const other = '0123456789abcdef0123456789abcdef01234567';
+    expect(problemsOf(mutated(`codeql-action/analyze@${codeqlSha}`, `codeql-action/analyze@${other}`))).toContain('the same commit');
+  });
+
+  it('refuses a secret and the token', () => {
+    const env = (line: string) => mutated('          category:', `          token: ${line}\n          category:`);
+    expect(problemsOf(env('${{ secrets.TOKEN }}'))).toContain('a secret or the token');
+    expect(problemsOf(env('${{ github.token }}'))).toContain('a secret or the token');
+  });
+
+  it('wants a build-free analysis from the repository’s config and both languages', () => {
+    expect(problemsOf(mutated('          build-mode: none\n', ''))).toContain('every "build-mode:" must be "none"');
+    expect(problemsOf(mutated('config-file: ./.github/codeql/codeql-config.yml', 'config-file: ./other.yml'))).toContain('config-file');
+    expect(problemsOf(mutated('[javascript-typescript, actions]', '[javascript-typescript]'))).toContain('matrix must be exactly');
+    expect(problemsOf(mutated('[javascript-typescript, actions]', '[javascript-typescript, actions, python]'))).toContain('matrix must be exactly');
+  });
+
+  it('allows only the known inputs of each step, and no container', () => {
+    const init = '          languages: ${{ matrix.language }}\n';
+    for (const input of ['tools: https://evil.example/codeql.tgz', 'tools: nightly', 'packs: someone/queries', 'queries: security-and-quality', 'config: x']) {
+      expect(problemsOf(mutated(init, `${init}          ${input}\n`)), input).toContain(`the input "${input.split(':')[0]}" of github/codeql-action/init`);
+    }
+    expect(problemsOf(mutated('          category:', '          upload: never\n          category:'))).toContain('the input "upload" of github/codeql-action/analyze');
+    expect(problemsOf(mutated('          persist-credentials: false\n', '          persist-credentials: false\n          ref: x\n'))).toContain('the input "ref" of actions/checkout');
+    expect(problemsOf(mutated('    timeout-minutes: 45\n', '    timeout-minutes: 45\n    container: node:latest\n'))).toContain('"container:" or "services:"');
+    expect(problemsOf(mutated('    timeout-minutes: 45\n', '    timeout-minutes: 45\n    services:\n      x:\n        image: y\n'))).toContain('"container:" or "services:"');
+    expect(problemsOf(mutated('        with:\n          languages', '        env:\n          X: y\n        with:\n          languages'))).toContain('"env:" on a step');
+  });
+
+  it('refuses a run step in flow style, quoted or behind an anchor, and anchors in general', () => {
+    const analyze = '      - uses: github/codeql-action/analyze';
+    for (const step of ['- { run: pnpm install }', '- &s { run: "pnpm install" }', '- "run": pnpm install']) {
+      expect(problemsOf(mutated(analyze, `      ${step}\n${analyze}`)), step).toContain('a "run:" step');
+    }
+    expect(problemsOf(mutated(analyze, `      - &s\n        name: x\n${analyze}`))).toContain('anchor or alias');
+  });
+
+  it('wants every build-mode to be none', () => {
+    expect(problemsOf(mutated('          build-mode: none\n', '          build-mode: none\n          build-mode: autobuild\n'))).toContain('every "build-mode:" must be "none"');
+    expect(problemsOf(mutated('          build-mode: none', '          build-mode: ${{ matrix.mode }}'))).toContain('every "build-mode:" must be "none"');
+  });
+
+  it('refuses what only the shape sees: a quoted flow step, a wide dash, an explicit key, an env, defaults, another runner, two documents', () => {
+    const sha = '9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
+    const init = /      - uses: github\/codeql-action\/init@[\s\S]*?config-file: \S+\n/.exec(real)![0];
+    const shaped = (replacement: string) => mutated(init, replacement);
+    const cases: Record<string, string> = {
+      'a quoted flow step': `      - { uses: 'github/codeql-action/init@${sha}', with: { languages: 'actions', tools: nightly } }\n`,
+      'a wide dash': `      -   uses: github/codeql-action/init@${sha}\n        with:\n          languages: actions\n          tools: nightly\n`,
+      'an explicit key': `      - uses: github/codeql-action/init@${sha}\n        with:\n          languages: actions\n          ? tools\n          : nightly\n`,
+    };
+    for (const [name, step] of Object.entries(cases)) expect(problemsOf(shaped(step)), name).toContain('differs from the expected shape');
+    expect(problemsOf(mutated('permissions: {}\n', 'permissions: {}\n\nenv:\n  NODE_OPTIONS: --require ./x.js\n'))).toContain('differs from the expected shape');
+    expect(problemsOf(mutated('    timeout-minutes: 45\n', '    timeout-minutes: 45\n    env:\n      CODEQL_ACTION_X: y\n'))).toContain('differs from the expected shape');
+    expect(problemsOf(mutated('    timeout-minutes: 45\n', '    timeout-minutes: 45\n    defaults:\n      run:\n        shell: bash\n'))).toContain('differs from the expected shape');
+    expect(problemsOf(mutated('runs-on: ubuntu-latest', 'runs-on: self-hosted'))).toContain('differs from the expected shape');
+    expect(problemsOf(`${real}---\nname: second\n`)).toContain('differs from the expected shape');
+    expect(problemsOf(`---\n${real}`)).toContain('differs from the expected shape');
+  });
+
+  it('does not read a no-break space as the start of a comment, nor a BOM as part of the file', () => {
+    const line = 'config-file: ./.github/codeql/codeql-config.yml';
+    const problems = problemsOf(mutated(line, `${line}\u00a0#evil`));
+    expect(problems).toContain('config-file');
+    expect(problems).toContain('differs from the expected shape');
+    expect(problemsOf(`\uFEFF${real}`)).toBe('');
+  });
+
+  it('refuses packs, a remote query and paths in the config, and keeps paths-ignore and query-filters', () => {
+    const problemsOfConfig = (config: string) => checkCodeqlWorkflow(repositoryWithCodeql(real, config)).join('\n');
+    expect(problemsOfConfig(`${realConfig}\npacks:\n  - evil/pack\n`)).toContain('"packs:"');
+    expect(problemsOfConfig(realConfig.replace('  - uses: security-extended\n', '  - uses: security-extended\n  - uses: evil/repo/q.ql@main\n'))).toContain('other than security-extended');
+    expect(problemsOfConfig(`${realConfig}\npaths:\n  - x\n`)).toContain('"paths:"');
+    expect(problemsOfConfig(`${realConfig}\nquery-filters:\n  - exclude:\n      id: js/x\n`)).toBe('');
+    expect(problemsOfConfig(realConfig)).toBe('');
+  });
+
+  it('wants the config file, with the security-extended suite', () => {
+    expect(checkCodeqlWorkflow(repositoryWithCodeql(real, null)).join()).toContain('codeql-config.yml is missing');
+    expect(checkCodeqlWorkflow(repositoryWithCodeql(real, realConfig.replaceAll('security-extended', 'security-and-quality'))).join()).toContain('security-extended');
   });
 });
