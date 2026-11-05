@@ -43,6 +43,8 @@ export function dockerfile(app: DockerApp): string {
   const lockfile = pnpm ? 'pnpm-lock.yaml' : 'package-lock.json';
   const manifests = ['package.json', lockfile, ...app.installFiles].join(' ');
   const cache = pnpm ? '--mount=type=cache,id=pnpm-store,target=/pnpm/store' : '--mount=type=cache,id=npm-cache,target=/root/.npm';
+  // The user's npmrc (registry auth) as a BuildKit secret: no layer keeps it, and BuildKit skips it when the build is not given one.
+  const secret = '--mount=type=secret,id=npmrc,target=/root/.npmrc';
   const install = pnpm ? 'pnpm install --frozen-lockfile --store-dir /pnpm/store' : 'npm ci --no-audit --no-fund';
   // A fresh install of the production dependencies — \`pnpm install --prod\` over the full one unlinks the dev dependencies but
   // leaves them in node_modules/.pnpm.
@@ -52,6 +54,7 @@ export function dockerfile(app: DockerApp): string {
 # \`queue:work\` and \`schedule:work\` — compose.production.yaml runs each in a container of its own.
 #
 #   docker build -t ${app.name} .
+#   docker build --secret id=npmrc,src=$HOME/.npmrc -t ${app.name} .   # a private registry: the credential stays out of the image
 #   docker run -p 3000:3000 --env-file .env.production -v ${app.name}-storage:/app/storage ${app.name}
 #
 # The app stays TypeScript: Node runs its .ts files; \`marmeon build\` adds the bundles, the injection lists and the
@@ -65,15 +68,18 @@ FROM \${NODE_IMAGE} AS build
 ${pnpm ? `# pnpm as the app pins it ("packageManager" in package.json) — Node ships no Corepack since 25.\nRUN npm install --global --no-audit --no-fund pnpm@${app.pnpmVersion}\n` : ''}WORKDIR /app
 # The dependencies first: this layer is rebuilt only when they change, not with every change of the code.
 COPY ${manifests} ./
-${app.localPackages.map((dir) => `COPY ${dir} ./${dir}\n`).join('')}RUN ${cache} ${install}
+${app.localPackages.map((dir) => `COPY ${dir} ./${dir}\n`).join('')}RUN ${cache} ${secret} ${install}
 COPY . .
 # \`marmeon build\` needs no .env and no secret: it registers the app's providers without booting them (the route types) —
 # no APP_KEY, no database, nothing that could end up in the image.
 RUN NODE_ENV=production node_modules/.bin/marmeon build
 # Production dependencies only — marmeon is one; typescript, vite and vitest leave. Then the discovery manifest of exactly
-# these packages: the start rewrites nothing, and the app's files may be read-only.
-RUN ${cache} ${prune} \\
- && node_modules/.bin/marmeon discover
+# these packages: the start rewrites nothing, and the app's files may be read-only. Every .npmrc of the project (a nested one too) has done its
+# service (the install read its settings; ~/.npmrc from the secret adds the registry auth): the run stage copies /app whole,
+# and a token in the file would ship with the image — .dockerignore cannot drop it, the build stage needs it.
+RUN ${cache} ${secret} ${prune} \\
+ && node_modules/.bin/marmeon discover \\
+ && find . -path ./node_modules -prune -o -name .npmrc -type f -exec rm -f {} +
 
 # ── Run: Node and the app, nothing to build with ───────────────────────────────────────────────────────────────────────
 FROM \${NODE_IMAGE}
