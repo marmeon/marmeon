@@ -156,7 +156,8 @@ export class ConsoleLogger implements Logger {
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
-    const data = this.#redactor.log({ ...withoutFrameworkFields(context ?? {}), ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...this.#bindings });
+    // The call's context is redacted before its framework-named keys are renamed: a name the app redacts (`msg`) is judged as written.
+    const data = { ...withoutFrameworkFields(this.#redactor.log(context ?? {})), ...this.#redactor.log({ ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...this.#bindings }) };
     const line = escapeControls(`[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`);
     (everythingToStderr || level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }

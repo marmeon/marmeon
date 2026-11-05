@@ -87,7 +87,7 @@ message is not part of it.
 | `trace_id`, `span_id`, `trace_flags` | The active span, with `@marmeon/otel`: its W3C trace flags as two hex digits (`01` = sampled). |
 | `err` | An error the app logs as `{ err: error }`: `type`, `message` and `stack`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of the frozen set yet. |
 
-The fields keep the framework's values: a key of the context you pass to a log call that names one of them (every field of the table except `err`) is written as `context.<key>`. Data you log, such as a webhook payload, cannot forge a level or a request id that way. The bindings of a child logger are not renamed.
+The fields keep the framework's values: a key of the context you pass to a log call that names one of them (every field of the table except `err`) is written as `context.<key>`. Data you log, such as a webhook payload, cannot forge a level or a request id that way. The bindings of a child logger are renamed the same way when they are `level`, `time`, `msg` or `appEnv`; the others, such as `task`, keep their name.
 
 ## The log context
 
@@ -141,7 +141,8 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
   `#` still ends it, as it ends the URL for every parser: percent-encode it.
 - The console logger, which is used without `@marmeon/log`, writes every control and format character of a line as an escape: a line
   break in a message or a value (a decoded `%0A` in a route parameter) comes out as `\n`, so it cannot forge a line of its own.
-  The pretty format of `@marmeon/log` does the same for the message and the stacks of errors. JSON lines escape it by themselves.
+  The pretty format of `@marmeon/log` does the same for the message, every string and key name on the top level of the context, the
+  bindings of child loggers and the stacks of errors. JSON lines escape it by themselves.
   A logger of your own that writes lines can call `escapeControls(line)` from `@marmeon/core` for the same escaping.
 
 > [!WARNING]
