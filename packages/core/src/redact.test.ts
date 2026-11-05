@@ -340,6 +340,30 @@ describe('Redactor.log — the log path', () => {
     expect(JSON.stringify(new Redactor().log(deep as Record<string, unknown>))).not.toContain('deep');
   });
 
+  it('masks a string cause and the string items of an aggregate error like a message', () => {
+    const redactor = new Redactor().addKeys('marmeon_session');
+    const leak = 'Cookie: a=1; marmeon_session=s3ss10nvalue';
+    const shown = redactor.log({
+      error: new Error('failed', { cause: leak }),
+      aggregate: new AggregateError([leak, new Error('one'), 'plain'], 'two failed'),
+    }) as Record<string, Record<string, unknown>>;
+    expect(JSON.stringify(shown)).not.toContain('s3ss10nvalue');
+    expect(String(shown.error?.cause)).toContain(REDACTED);
+    const items = shown.aggregate?.aggregateErrors as unknown[];
+    expect(String(items[0])).toContain(REDACTED);
+    expect(items[2]).toBe('plain');
+    // A plain string under another key is not an error's message: it stays as it is.
+    expect(redactor.log({ note: leak })).toEqual({ note: leak });
+  });
+
+  it('writes an enumerable errors field once, masked', () => {
+    const leak = 'Cookie: a=1; marmeon_session=s3ss10nvalue';
+    const error = Object.assign(new Error('failed'), { errors: [leak] });
+    const shown = new Redactor().addKeys('marmeon_session').log({ error }) as Record<string, Record<string, unknown>>;
+    expect(JSON.stringify(shown)).not.toContain('s3ss10nvalue');
+    expect(shown.error).not.toHaveProperty('errors');
+  });
+
   it('describes a non-error cause or a thrown object redacted by key, also inside lists', () => {
     const text = describeError(new Error('failed', { cause: { attempts: [{ token: 'abc' }] } }), new Redactor());
     expect(text).toContain('Caused by: {"attempts":[{"token":"[redacted]"}]}');
