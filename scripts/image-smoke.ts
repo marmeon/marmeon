@@ -11,7 +11,7 @@
  *   pnpm image:smoke --npm    # create-marmeon --npm (package-lock.json) — make:docker writes the npm variant (without the docs)
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -173,6 +173,10 @@ async function main(): Promise<number> {
       const written = readFileSync(join(app, 'Dockerfile'), 'utf8');
       if (written.includes('npm ci') !== npm) throw new SmokeError(`make:docker did not write the ${npm ? 'npm' : 'pnpm'} variant:\n${written}`);
       if (!/^COPY vendor\S* \.\/vendor/m.test(written)) throw new SmokeError(`the Dockerfile does not copy the vendored tarballs before the install:\n${written}`);
+      // A link named .npmrc in a folder, and the file it points to: both must stay out of the image.
+      mkdirSync(join(app, 'config'), { recursive: true });
+      writeFileSync(join(app, 'config/npmrc.credentials'), 'fund=false\n');
+      symlinkSync('npmrc.credentials', join(app, 'config/.npmrc'));
       addStuckJob(app);
     });
     const buildSeconds = await step(`docker build -t ${image}`, () => {
@@ -195,6 +199,8 @@ async function main(): Promise<number> {
       if (asRoot.code !== 0) throw new SmokeError('the image contains /root/.npmrc.');
       const mounted = docker.run(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'test -z "$(find /app -name .npmrc -not -path "/app/node_modules/*")"'], { expect: 'any' });
       if (mounted.code !== 0) throw new SmokeError('the image contains an .npmrc under /app.');
+      const linked = docker.run(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'test ! -e /app/config/npmrc.credentials && test ! -L /app/config/.npmrc'], { expect: 'any' });
+      if (linked.code !== 0) throw new SmokeError('the image contains config/.npmrc or the file it links to (config/npmrc.credentials).');
       if (!listed.includes('dist') || !listed.includes('.marmeon')) throw new SmokeError(`the image has no build (dist/, .marmeon/): ${listed.join(' ')}`);
       // Production dependencies only: the dev dependencies of the build stage are not in the image, not even unlinked.
       const store = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "const fs = require('fs'); console.log([...(fs.existsSync('node_modules/.pnpm') ? fs.readdirSync('node_modules/.pnpm') : []), ...fs.readdirSync('node_modules')].join('\\n'))"]).output.split('\n');

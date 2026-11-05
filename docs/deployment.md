@@ -209,7 +209,7 @@ secrets:
 
 `make:docker` warns when the project's `.npmrc` holds a literal `_authToken`, `_auth` or `_password` (`${NPM_TOKEN}` is no literal credential, but drop it as well when you pass the secret). An
 app that has written its Dockerfile before runs `marmeon make:docker --force` again, or adds the changes by hand: the secret
-mount on both install steps and a `find` that deletes every `.npmrc` file or link outside `node_modules` at the end of the last `RUN` of the build stage. Remove the auth line
+mount on both install steps and a `find` that deletes every `.npmrc` file or link outside `node_modules` (and the file inside the app that such a link points to; a link to a directory stops the build) at the end of the last `RUN` of the build stage. Remove the auth line
 from the project's `.npmrc` when you use the secret, and rotate a token that was in a pushed image or a pushed build cache.
 
 ### Storage and a read-only file system

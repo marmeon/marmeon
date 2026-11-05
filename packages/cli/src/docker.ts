@@ -74,12 +74,23 @@ COPY . .
 # no APP_KEY, no database, nothing that could end up in the image.
 RUN NODE_ENV=production node_modules/.bin/marmeon build
 # Production dependencies only — marmeon is one; typescript, vite and vitest leave. Then the discovery manifest of exactly
-# these packages: the start rewrites nothing, and the app's files may be read-only. Every .npmrc of the project (a nested one too) has done its
-# service (the install read its settings; ~/.npmrc from the secret adds the registry auth): the run stage copies /app whole,
+# these packages: the start rewrites nothing, and the app's files may be read-only. Every .npmrc of the project (a nested
+# one too, and the file a link of that name points to inside /app) has done its service (the install read its settings;
+# ~/.npmrc from the secret adds the registry auth): the run stage copies /app whole,
 # and a token in the file would ship with the image — .dockerignore cannot drop it, the build stage needs it.
 RUN ${cache} ${secret} ${prune} \\
  && node_modules/.bin/marmeon discover \\
- && find . -path ./node_modules -prune -o -name .npmrc \\( -type f -o -type l \\) -exec rm -f {} +
+ && find . -path ./node_modules -prune -o -name .npmrc \\( -type f -o -type l \\) -exec sh -c '\\
+      for f; do \\
+        if [ -L "$f" ]; then \\
+          t=$(readlink -f "$f") || exit 1; \\
+          case "$t" in /app/*) \\
+            if [ -d "$t" ]; then echo "$f links to the directory $t: the build stops, its files would reach the image" >&2; exit 1; fi; \\
+            rm -f "$t";; \\
+          esac; \\
+        fi; \\
+        rm -f "$f"; \\
+      done' _ {} +
 
 # ── Run: Node and the app, nothing to build with ───────────────────────────────────────────────────────────────────────
 FROM \${NODE_IMAGE}

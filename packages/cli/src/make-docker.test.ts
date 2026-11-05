@@ -107,7 +107,12 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(dockerfile).not.toContain('required=true');
     // The last instruction of the build stage removes the file; the run stage gets /app only through that stage.
     const last = build!.split('\n').filter((line) => !line.startsWith('#') && line !== '').join('\n').split(/\n(?=[A-Z]+ )/).pop()!;
-    expect(last).toMatch(/^RUN .*&& find \. -path \.\/node_modules -prune -o -name \.npmrc \\\( -type f -o -type l \\\) -exec rm -f \{\} \+$/s);
+    expect(last).toMatch(/&& find \. -path \.\/node_modules -prune -o -name \.npmrc \\\( -type f -o -type l \\\) -exec sh -c '/);
+    // A link named .npmrc: its target inside /app goes with it (readlink -f), a directory target stops the build.
+    expect(last).toContain('readlink -f "$f"');
+    expect(last).toContain('case "$t" in /app/*)');
+    expect(last).toContain('[ -d "$t" ]');
+    expect(last.trimEnd()).toMatch(/done' _ \{\} \+$/);
     expect(last).toContain('marmeon discover');
     expect(run).toMatch(/^\S/);
     expect(run.split('\n').filter((line) => /^(COPY|ADD)\b/.test(line))).toEqual(['COPY --from=build --chmod=a+rX /app ./']);
@@ -132,7 +137,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     symlinkSync('config/npmrc.credentials', join(root, '.npmrc'));
     const result = makeDocker(root);
     expect(result.code).toBe(0);
-    expect(result.stderr).toContain('.npmrc is a link: its target is copied into the image with the rest of the app');
+    expect(result.stderr).toContain('.npmrc is a link: the Dockerfile deletes its target when that lies inside the app');
     expect(result.file('Dockerfile')).toContain('\\( -type f -o -type l \\)');
   });
 

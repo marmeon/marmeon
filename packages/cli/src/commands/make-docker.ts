@@ -51,7 +51,7 @@ export class MakeDockerCommand {
     }
     for (const note of app.notes) output.warn(note);
     if (lstatSync(join(root, '.npmrc'), { throwIfNoEntry: false })?.isSymbolicLink()) {
-      output.warn('.npmrc is a link: its target is copied into the image with the rest of the app. Keep credentials out of the build context, or pass them as a BuildKit secret (https://marmeon.com/docs/deployment#a-private-registry).');
+      output.warn('.npmrc is a link: the Dockerfile deletes its target when that lies inside the app, but the build stage and its cache still hold it. Keep credentials out of the build context, or pass them as a BuildKit secret (https://marmeon.com/docs/deployment#a-private-registry).');
     }
     if (app.docker.installFiles.includes('.npmrc')) {
       const keys = literalCredentials(readFileSync(join(root, '.npmrc'), 'utf8'));
