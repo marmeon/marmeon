@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Clock, createApplication, defineModule, env, type ConfigDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -280,6 +280,20 @@ describe('configuration', () => {
       });
       await expect(boot(config)).rejects.toThrow(/The private disk "local" and the public disk "public" share a directory/);
     }
+    // …also through a link the system follows differently from a resolver that collapses `d/..` first
+    mkdirSync(join(base, 'other', 'sub'), { recursive: true });
+    mkdirSync(join(base, 'shared'));
+    mkdirSync(join(base, 'other', 'shared'));
+    symlinkSync(join('other', 'sub'), join(base, 'd'));
+    symlinkSync('d/../shared', join(base, 'tricky'));
+    await expect(
+      boot(
+        defineStorage({
+          default: 'local',
+          disks: { local: { driver: 'local', root: join(base, 'tricky') }, public: { driver: 'local', root: join(base, 'other', 'shared'), visibility: 'public', url: '/storage' } },
+        }),
+      ),
+    ).rejects.toThrow(/share a directory/);
     // …also through a symlinked root
     mkdirSync(join(base, 'real-public'));
     symlinkSync(join(base, 'real-public'), join(base, 'alias'));
@@ -289,6 +303,47 @@ describe('configuration', () => {
     });
     mkdirSync(join(base, 'real-public', 'private'));
     await expect(boot(aliased)).rejects.toThrow(StorageSetupError);
+    // …and a private root that does not exist yet, under a link to the public one
+    mkdirSync(join(base, 'pub-target'));
+    symlinkSync(join(base, 'pub-target'), join(base, 'pub-link'));
+    const later = defineStorage({
+      default: 'local',
+      disks: { local: { driver: 'local', root: join(base, 'pub-link', 'not-yet') }, public: { driver: 'local', root: join(base, 'pub-target'), visibility: 'public', url: '/storage' } },
+    });
+    await expect(boot(later)).rejects.toThrow(/share a directory/);
+    // …and a link to nothing on the way to a root is refused, since the root would be created where it points
+    symlinkSync(join(base, 'public', 'later'), join(base, 'dangling'));
+    const dangling = defineStorage({
+      default: 'local',
+      disks: { local: { driver: 'local', root: join(base, 'dangling', 'x') }, public: { driver: 'local', root: join(base, 'public'), visibility: 'public', url: '/storage' } },
+    });
+    await expect(boot(dangling)).rejects.toThrow(/a link to nothing/);
+  });
+
+  it('a root with `..` behind a link: the disk lives where the startup check judged it (template strings: `join` would fold the `..`)', async () => {
+    const base = freshDirectory();
+    mkdirSync(join(base, 'other', 'sub'), { recursive: true });
+    mkdirSync(join(base, 'other', 'shared'));
+    symlinkSync(join('other', 'sub'), join(base, 'd'));
+    const publicDisk = { driver: 'local', root: join(base, 'other', 'shared'), visibility: 'public', url: '/storage' } as const;
+    // The kernel would follow `d` before the `..` and land in `other/shared`, the public disk; the root is normalized first.
+    for (const [closed, lands] of [
+      [`${base}/d/../shared`, 'shared'],
+      [`${base}/d/../shared/inner`, 'shared/inner'],
+      [`${base}/new/../d/../shared`, 'shared'],
+    ] as const) {
+      const { storage } = await boot(defineStorage({ default: 'local', disks: { local: { driver: 'local', root: closed }, public: publicDisk } }));
+      await storage.disk('local').put('k.txt', 'private');
+      expect(existsSync(join(base, lands, 'k.txt'))).toBe(true);
+      expect(existsSync(join(base, 'other', 'shared', 'k.txt'))).toBe(false);
+    }
+    // …and the same string as the public root is refused
+    mkdirSync(join(base, 'twin'));
+    const twin = defineStorage({
+      default: 'local',
+      disks: { local: { driver: 'local', root: `${base}/d/../twin` }, public: { driver: 'local', root: join(base, 'twin'), visibility: 'public', url: '/storage' } },
+    });
+    await expect(boot(twin)).rejects.toThrow(/share a directory/);
   });
 
   it('a private S3 disk whose prefix nests with a public one in the same bucket fails the start', async () => {

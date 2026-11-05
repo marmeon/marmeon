@@ -24,7 +24,7 @@ const VITE_DEFAULT_DENY = ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', 
 function privateFiles(root: string): string[] {
   let real = root;
   try {
-    real = realpathSync(root);
+    real = realpathSync.native(root);
   } catch {
     // A root that does not exist yet has nothing to resolve.
   }
@@ -289,7 +289,7 @@ function installedModules(root: string, specifiers: readonly string[]): string[]
     const name = specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/');
     for (let dir = root; ; dir = dirname(dir)) {
       const candidate = join(dir, 'node_modules', name);
-      if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate).includes(`${sep}node_modules${sep}`);
+      if (existsSync(join(candidate, 'package.json'))) return realpathSync.native(candidate).includes(`${sep}node_modules${sep}`);
       if (dirname(dir) === dir) return false;
     }
   });

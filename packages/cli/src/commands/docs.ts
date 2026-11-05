@@ -119,14 +119,14 @@ export function slugOf(wanted: string): string {
 function displayRoot(packageRoot: string, cwd: string): string {
   let real: string;
   try {
-    real = realpathSync(packageRoot);
+    real = realpathSync.native(packageRoot);
   } catch {
     return packageRoot;
   }
   for (let directory = cwd; ; directory = dirname(directory)) {
     const link = join(directory, 'node_modules', 'marmeon');
     try {
-      if (realpathSync(link) === real) return link;
+      if (realpathSync.native(link) === real) return link;
     } catch {
       // No such link here; keep climbing.
     }

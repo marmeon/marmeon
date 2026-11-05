@@ -21,9 +21,9 @@ export function belongsTo(root: string, path: string): boolean {
  */
 export function entryInside(dir: string, entry: string): boolean {
   if (!belongsTo(resolve(dir), resolve(entry))) return false;
-  const root = realpathSync(dir);
+  const root = realpathSync.native(dir);
   try {
-    return isInside(root, realpathSync(entry));
+    return isInside(root, realpathSync.native(entry));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false;
   }
@@ -31,7 +31,7 @@ export function entryInside(dir: string, entry: string): boolean {
   let ancestor = dirname(resolve(entry));
   for (;;) {
     try {
-      const real = realpathSync(ancestor);
+      const real = realpathSync.native(ancestor);
       return real === root || isInside(root, real);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false;

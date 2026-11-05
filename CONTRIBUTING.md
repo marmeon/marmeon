@@ -306,6 +306,11 @@ checked over every file of the repository — tracked, or new and not ignored. E
 13. **No lint rule is disabled without a reason**: every `eslint-disable` or `oxlint-disable` comment in code (`-next-line`, `-line`
     or a range, also inside `/* */`; comments are read with oxc-parser) gives its reason after ` -- `, at least three words — why the
     rule is wrong for this line. `// oxlint-disable-next-line no-control-regex -- control characters are exactly what it removes`.
+14. **Real paths come from the system**: no `realpathSync` without `.native` (a call, a value such as `map(realpathSync)`, or an alias), no
+    `fs.realpath(` and no `realpath` imported from `node:fs` in a package's sources or launchers (`packages/<name>/src/` and `bin/`; tests,
+    type tests and fixtures aside). The JavaScript implementation joins a link's target with `path.resolve`, so with
+    `d -> ../outside/sub` and `evil -> d/../x` it answers `x` inside the root while the kernel lands in `outside/x`; a containment
+    check built on it passes what escapes. `realpathSync.native` asks the system, and `realpath` of `node:fs/promises` already does.
 
 A new rule joins the same script, with its test.
 

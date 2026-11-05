@@ -138,7 +138,7 @@ export function editDefinition(source: string, filename: string, edit: Definitio
  */
 export function editDefinitionFile(file: string, edit: DefinitionEdit, display: string = file): DefinitionEditOutcome {
   if (!existsSync(file)) return manual(`${display} does not exist`);
-  const real = realpathSync(file); // a symlinked file is edited where it lives, the link stays
+  const real = realpathSync.native(file); // a symlinked file is edited where it lives, the link stays
   const outcome = editDefinition(readFileSync(real, 'utf8'), display, edit);
   if (outcome.status !== 'added') return outcome;
   try {

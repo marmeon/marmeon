@@ -71,7 +71,7 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
       command = config.command;
       let real = root;
       try {
-        real = realpathSync(root);
+        real = realpathSync.native(root);
       } catch {
         // a root that does not exist yet: nothing to collect from
       }

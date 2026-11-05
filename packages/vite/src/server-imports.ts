@@ -125,7 +125,7 @@ export function serverImports(options: ServerImportsOptions): Plugin {
       aliases = config.resolve.alias.filter(({ find }) => typeof find !== 'string' || !find.startsWith('@vite/'));
       let real = config.root;
       try {
-        real = realpathSync(config.root);
+        real = realpathSync.native(config.root);
       } catch {
         // a root that does not exist yet: nothing to check
       }

@@ -12,7 +12,7 @@ import { dirname, join, matchesGlob, relative, sep } from 'node:path';
 
 /** The nearest `pnpm-workspace.yaml` above `dir` lists `dir` among its `packages`. */
 export function inWorkspace(dir) {
-  const pkg = realpathSync(dir);
+  const pkg = realpathSync.native(dir);
   for (let parent = dirname(pkg); ; parent = dirname(parent)) {
     const file = join(parent, 'pnpm-workspace.yaml');
     if (existsSync(file)) return listedIn(readFileSync(file, 'utf8'), relative(parent, pkg).split(sep).join('/'));

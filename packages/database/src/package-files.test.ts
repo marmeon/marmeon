@@ -86,6 +86,24 @@ describe('the files a package publishes', () => {
     expect(message(result)).toContain('leads out of the package');
   });
 
+  it('follows a link the way the system does: `d/../de.ts` is taken from where `d` leads', async () => {
+    const outside = tempDir('marmeon-package-files-outside-');
+    mkdirSync(join(outside, 'sub'));
+    writeFileSync(join(outside, 'de.ts'), EN);
+    const { result } = await read(
+      { 'stubs/lang/de.ts': DE },
+      {
+        publishes: (dir) => {
+          symlinkSync(join(outside, 'sub'), join(dir, 'stubs/lang/d'));
+          symlinkSync('d/../de.ts', join(dir, 'stubs/lang/en.ts'));
+          return { lang: pathToFileURL(join(dir, 'stubs/lang')) };
+        },
+      },
+    );
+    expect(message(result)).toContain('stubs/lang/en.ts');
+    expect(message(result)).toContain('leads out of the package');
+  });
+
   it.each(['notes.ts', 'e1.ts', 'en.d.ts', 'e.ts', 'en-.ts'])('refuses the file name %s (D25)', async (name) => {
     const { result } = await read({ 'stubs/lang/en.ts': EN, [`stubs/lang/${name}`]: EN });
     expect(message(result)).toContain('D25');
