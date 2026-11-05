@@ -564,6 +564,30 @@ describe('checkWorkflow — the release run', () => {
       expect(checkTrust(root)).toEqual([]);
     });
 
+    it('wants the default permissions exactly "contents: read" — a blank line does not end the block early', () => {
+      expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n\n  id-token: write\n'))).toContain('default "permissions:"');
+    });
+
+    it('wants a grant in every job\'s own permissions block — an empty one may read as unset', () => {
+      expect(problemsOf(mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n    outputs:', 'build'))).toContain('the job "build" has no "permissions:" block of its own');
+    });
+
+    describe('a write grant of the build job, spelled so that a plain-text reader misses it', () => {
+      const build = (grant: string) => mutated('    permissions:\n      contents: read\n    outputs:', `    permissions:\n      contents: read\n${grant}\n    outputs:`, 'build');
+      it.each([
+        ['a quoted id-token key', '      "id-token": write', 'the job "build" has "id-token: write"'],
+        ['a quoted contents key', '      "contents": write', 'the job "build" asks for "contents: write"'],
+        ['a quoted value', '      contents: "write"', 'the job "build" asks for "contents: write"'],
+        ['an explicit key', '      ? id-token\n      : write', 'an explicit key'],
+        ['an escaped key', '      "id\\x2dtoken": write', 'an escaped quoted key'],
+        ['an escaped value', '      contents: "wr\\x69te"', 'has the permission'],
+        ['an alias', '      id-token: *w', 'anchor, alias or tag'],
+        ['a tag', '      id-token: !!str write', 'anchor, alias or tag'],
+      ])('refuses %s', (_name, grant, problem) => {
+        expect(problemsOf(build(grant))).toContain(problem);
+      });
+    });
+
     it('gives the OIDC token to the staging job only — not to the build job, which runs the repository’s code', () => {
       const withToken = mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n      contents: read\n      id-token: write\n    outputs:', 'build');
       expect(problemsOf(withToken)).toContain('the job "build" has "id-token: write" but stages nothing');

@@ -243,9 +243,12 @@ export function checkWorkflow(repository: string): string[] {
   const workflow = readFileSync(file, 'utf8');
   const code = workflow.replace(/(^|\s)#.*$/gm, '$1'); // comments say what must not happen — read only the YAML
   const where = 'release.yml';
+  if (hidesKeys(code)) problems.push(`${where}: an explicit key ("? key") or an escaped quoted key — the rules read keys as plain text`);
 
   // Exactly "contents: read": a scope added here (id-token: write) would reach every job, the build job that runs the repository's code too.
-  if (!/^permissions:[ \t]*\n[ \t]+contents:[ \t]*read[ \t]*\n(?=\S|$)/m.test(code)) problems.push(`${where}: the workflow's default "permissions:" must be exactly "contents: read" — each job asks for what it needs`);
+  if (defaultGrantsOf(code)?.join() !== 'contents: read') problems.push(`${where}: the workflow's default "permissions:" must be exactly "contents: read" — each job asks for what it needs`);
+  // An anchor, alias or tag on a value (`id-token: *w`, `!!str write`) hides what a grant says from a reader of plain text.
+  if (/^\s*(?:- )?["']?[\w.-]+["']?\s*:\s+[&*!]/m.test(code)) problems.push(`${where}: a YAML anchor, alias or tag — the rules read values as plain text`);
   if (/^env:/m.test(code)) problems.push(`${where}: an env: for the whole workflow — every job, the staging one too, would inherit it; set variables on the step that needs them`);
   if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @marmeon/source condition; pnpm packs the packages and npm stages the tarballs`);
   if (/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|registry-url:/.test(code)) problems.push(`${where}: an npm token or registry-url — trusted publishing (OIDC) needs no token, and none may sit in the repository`);
@@ -332,17 +335,22 @@ export function checkWorkflow(repository: string): string[] {
   const artifactWith = (step: string) => new RegExp(`^\\s*name:\\s*${ARTIFACT.name}\\s*$`, 'm').test(step) && new RegExp(`^\\s*path:\\s*${ARTIFACT.path.replace(/[$.{}]/g, '\\$&')}\\s*$`, 'm').test(step);
 
   for (const [name, body] of jobs) {
-    if (!/^ {4}permissions:\s*$/m.test(body)) problems.push(`${where}: the job "${name}" has no "permissions:" block of its own — a job states what it needs, none inherits a scope`);
+    const own = /^ {4}["']?permissions["']?[ \t]*:[ \t]*(\S.*)?$/m.exec(body);
+    const grants = own === null ? [] : grantsAt(body, own.index + own[0].length, own[1], 4);
+    if (own === null || grants.length === 0) problems.push(`${where}: the job "${name}" has no "permissions:" block of its own with a grant in it — a job states what it needs, none inherits a scope`);
+    for (const grant of grants) {
+      if (!/^[a-z-]+: (?:read|write|none)$/.test(grant)) problems.push(`${where}: the job "${name}" has the permission "${grant}" — only plain "scope: read|write|none" lines`);
+    }
     const stages = name === stagingName;
     const builds = name === buildName;
     const releases = name === releaseName;
-    const oidc = /^\s+id-token:\s*write\s*$/m.test(body);
+    const oidc = grants.includes('id-token: write') || /^\s+["']?id-token["']?\s*:\s*["']?write["']?\s*$/m.test(body);
     const environment = /^ {4}environment:\s*["']?([\w.-]+)["']?\s*(#.*)?$/m.exec(body)?.[1];
     if (stages && environment !== ENVIRONMENT) problems.push(`${where}: the job "${name}" stages without "environment: ${ENVIRONMENT}" — npm trusts the staging only from that environment, whose branch policy keeps other branches out`);
     if (!stages && /^ {4}environment:/m.test(body)) problems.push(`${where}: the job "${name}" has an "environment:" — only the staging job enters ${ENVIRONMENT}`);
     if (stages && !oidc) problems.push(`${where}: the job "${name}" stages the packages without "id-token: write" — trusted publishing and provenance need the OIDC token`);
     if (!stages && oidc) problems.push(`${where}: the job "${name}" has "id-token: write" but stages nothing — only the staging job gets the OIDC token`);
-    for (const [, scope] of body.matchAll(/^\s+([\w-]+):\s*write\b/gm)) {
+    for (const [, scope] of body.matchAll(/^\s+["']?([\w-]+)["']?\s*:\s*["']?write\b/gm)) {
       if (!stages && !releases) problems.push(`${where}: the job "${name}" asks for "${scope}: write" — only the staging job (id-token) and the job after it (contents) may write`);
       else if (scope === 'contents' && !releases) problems.push(`${where}: the job "${name}" asks for "contents: write" — only the job after the staging, which installs nothing, may write contents`);
       else if (scope !== 'contents' && scope !== 'id-token') problems.push(`${where}: the job "${name}" asks for "${scope}: write" — a release needs contents (tag, draft) and id-token (staging) only`);
@@ -648,7 +656,7 @@ export function checkCiWorkflow(repository: string): string[] {
   // The workflow reads the contents and nothing else: no job asks for more (zizmor uploads no SARIF, so it needs no write grant).
   if (defaultGrantsOf(code)?.join() !== 'contents: read') problems.push('ci.yml: the workflow\'s default "permissions:" must be exactly "contents: read" — a wider default reaches every job');
   // Keys a reader cannot match as text (an explicit `? key`, an escaped quoted key) would hide a rule above; a top-level env or a ZIZMOR_ variable would reach the zizmor action.
-  if (/^\s*(?:- )?\?\s/m.test(code) || /^\s*(?:- )?"[^"\n]*\\[^"\n]*"\s*:/m.test(code)) problems.push('ci.yml: an explicit key ("? key") or an escaped quoted key — the rules read keys as plain text');
+  if (hidesKeys(code)) problems.push('ci.yml: an explicit key ("? key") or an escaped quoted key — the rules read keys as plain text');
   if (/^["']?env["']?\s*:/m.test(code) || /\bZIZMOR_/.test(code)) problems.push('ci.yml: an env for the whole workflow or a ZIZMOR_ variable — it would reach the zizmor action and could switch its audits off; set variables on the step that needs them');
   const extra = grantsOf(code).filter((grant) => grant !== 'contents: read');
   if (extra.length > 0) problems.push(`ci.yml: a job asks for more than "contents: read" (${extra.join(', ')}) — the workflow is read-only`);
@@ -723,6 +731,11 @@ export function checkLabelWorkflow(repository: string): string[] {
   const listed = /^\s+CATEGORIES:\s*(.*?)\s*$/m.exec(code)?.[1];
   if (listed !== wanted) problems.push(`${where}: CATEGORIES is "${listed ?? ''}", release-rules.ts has "${wanted}" — one list, in the same order`);
   return problems;
+}
+
+/** Whether a workflow spells a key a reader cannot match as text: an explicit `? key` or an escaped quoted key (`"id\\x2dtoken"`). */
+function hidesKeys(code: string): boolean {
+  return /^\s*(?:- )?\?\s/m.test(code) || /^\s*(?:- )?"[^"\n]*\\[^"\n]*"\s*:/m.test(code);
 }
 
 /** The `scope: level` lines under a `permissions:` key at `indent` (blank lines skipped, the block ends at the first line not deeper), or its inline value. */
