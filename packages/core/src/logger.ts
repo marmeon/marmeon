@@ -68,6 +68,20 @@ export class LogContextSources {
     };
   }
 
+  /** The fields each source adds now, one entry per source that adds any — for a reader that judges every part on its own. @internal */
+  parts(): LogContext[] {
+    const parts: LogContext[] = [];
+    for (const source of this.#sources) {
+      try {
+        const fields = source();
+        if (fields) parts.push(fields);
+      } catch {
+        // A source must never cost a log entry.
+      }
+    }
+    return parts;
+  }
+
   /** What the sources add now — `undefined` when none adds anything (the common case: no source at all). */
   current(): LogContext | undefined {
     if (this.#sources.size === 0) return undefined;
@@ -76,10 +90,10 @@ export class LogContextSources {
       let fields: LogContext | undefined;
       try {
         fields = source();
+        if (fields) merged = { ...merged, ...fields };
       } catch {
-        // A source must never cost a log entry.
+        // A source must never cost a log entry (nor may a getter of what it returns).
       }
-      if (fields) merged = { ...merged, ...fields };
     }
     return merged;
   }
@@ -122,6 +136,41 @@ export function consoleLogsGoToStderr(): boolean {
 }
 
 /**
+ * An entry's data as JSON. A `bigint` (a driver's error field or cause) is written as its digits. The redactor cuts cycles
+ * (error causes, depth), so what can still throw is code of the app's own in the logged data — a `toJSON` or a getter.
+ */
+function serialize(data: Record<string, unknown>): string {
+  return JSON.stringify(data, (_key, value: unknown) => (typeof value === 'bigint' ? String(value) : value));
+}
+
+/** Written in place of a part of an entry that could not be read. A constant, never the error: its message may quote the value that failed. @internal */
+export const UNREADABLE_PART: Readonly<Record<string, unknown>> = Object.freeze({ context: '[unserializable]' });
+
+/**
+ * One part of an entry (the call's context, the request's or job's, one source's fields, a logger's bindings) redacted — or
+ * `undefined` when reading it throws (a getter of the app's own). Every part is judged on its own, so a failing one costs only
+ * itself. With `probe`, writing it as JSON must work too (a `toJSON` that throws): for a logger that serializes itself, where a
+ * failed write would otherwise cost the whole entry; pino replaces just the one value, so its parts are not probed. @internal
+ */
+export function redactedLogPart(redactor: Redactor, part: LogContext, probe = false): Record<string, unknown> | undefined {
+  try {
+    const redacted = redactor.log(part);
+    if (probe) serialize(redacted);
+    return redacted;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The request's or job's context and the fields of each log context source of `app`, each part redacted on its own ({@link redactedLogPart}). @internal */
+export function redactedFrameworkFields(redactor: Redactor, app: Application | undefined, probe = false): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(redactedLogPart(redactor, currentLogContext(), probe) ?? UNREADABLE_PART) };
+  const sources = logContextSourcesOf(app);
+  if (sources) for (const part of sources.parts()) Object.assign(out, redactedLogPart(redactor, part, probe) ?? UNREADABLE_PART);
+  return out;
+}
+
+/**
  * Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included.
  * With an `app`, entries also go to the `log` channel while something listens, and are redacted by the app's
  * `Redactor` (the names its packages add count too).
@@ -151,14 +200,45 @@ export class ConsoleLogger implements Logger {
     this.#write('error', message, context);
   }
   child(bindings: LogContext): Logger {
-    return new ConsoleLogger({ ...this.#bindings, ...bindings }, this.#app);
+    // Read once, here: a getter or `toJSON` of the app's own that throws must not fail every later log call of the child.
+    let merged: LogContext | undefined;
+    try {
+      merged = { ...this.#bindings, ...bindings };
+    } catch {
+      merged = undefined;
+    }
+    if (merged === undefined || redactedLogPart(this.#redactor, merged, true) === undefined) merged = { ...this.#bindings, ...UNREADABLE_PART };
+    return new ConsoleLogger(merged, this.#app);
   }
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
-    if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
-    // The call's context is redacted before its framework-named keys are renamed: a name the app redacts (`msg`) is judged as written.
-    const data = { ...withoutFrameworkFields(this.#redactor.log(context ?? {})), ...this.#redactor.log({ ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...this.#bindings }) };
-    const line = escapeControls(`[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`);
+    // A getter of the app's own that throws must not turn a log call — often inside cleanup — into a failure.
+    if (this.#app && entries.hasSubscribers) {
+      try {
+        entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
+      } catch {
+        // The entry is still written below.
+      }
+    }
+    // Each part is judged on its own, so a failing one costs only itself and the framework's (the request's id, the task) stay on
+    // the line. The call's context is redacted before its framework-named keys are renamed: a name the app redacts (`msg`) is
+    // judged as written. Written once; only when that fails are the parts probed one by one.
+    const parts = (probe: boolean): Record<string, unknown> => ({
+      ...withoutFrameworkFields(redactedLogPart(this.#redactor, context ?? {}, probe) ?? { ...UNREADABLE_PART }),
+      ...redactedFrameworkFields(this.#redactor, this.#app, probe),
+      ...(redactedLogPart(this.#redactor, this.#bindings, probe) ?? UNREADABLE_PART),
+    });
+    let json: string;
+    try {
+      json = serialize(parts(false));
+    } catch {
+      try {
+        json = serialize(parts(true));
+      } catch {
+        json = serialize({ ...UNREADABLE_PART });
+      }
+    }
+    const line = escapeControls(`[${level}] ${message}${json === '{}' ? '' : ` ${json}`}`);
     (everythingToStderr || level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }
 }

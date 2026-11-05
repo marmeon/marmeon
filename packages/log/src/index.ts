@@ -1,5 +1,5 @@
-import { Application, currentLogContext, defineConfig, env, environment, escapeControls, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
-import { consoleLogsGoToStderr, logContextSourcesOf, messageBase, withoutFrameworkFields } from '@marmeon/core/internal';
+import { Application, defineConfig, env, environment, escapeControls, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
+import { consoleLogsGoToStderr, messageBase, redactedFrameworkFields, redactedLogPart, UNREADABLE_PART, withoutFrameworkFields } from '@marmeon/core/internal';
 import { channels } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { destination as pinoDestination, pino, type Logger as Pino } from 'pino';
@@ -86,12 +86,17 @@ class PinoLogger implements Logger {
     // is judged as written.
     // A binding that names a field pino or this logger writes itself (`time`, `level`, `msg`, `appEnv`) would be written a second
     // time, and parsers take the last one — it becomes `context.<key>`, as in the context of a call.
-    const redacted = Object.fromEntries(Object.entries(this.#redactor.log(bindings)).map(([key, value]) => [PINO_OWN_FIELDS.has(key) ? `context.${key}` : key, value]));
+    // A getter of the app's own that throws: the child is bound with a constant, never with the error.
+    const redacted = Object.fromEntries(Object.entries(redactedLogPart(this.#redactor, bindings) ?? UNREADABLE_PART).map(([key, value]) => [PINO_OWN_FIELDS.has(key) ? `context.${key}` : key, value]));
     return new PinoLogger(this.#pino.child(this.#terminal ? terminalSafeEntry(redacted) : redacted), this.#app, bindings, this, this.#terminal);
   }
 
   #publish(level: 'debug' | 'info' | 'warn' | 'error', message: string, context: LogContext | undefined): void {
-    entries.publish({ ...messageBase(this.#app!), level, message, context: { ...this.#allBindings(), ...context } });
+    try {
+      entries.publish({ ...messageBase(this.#app!), level, message, context: { ...this.#allBindings(), ...context } });
+    } catch {
+      // A getter of the app's own that throws: the entry is written already.
+    }
   }
 
   #allBindings(): LogContext {
@@ -169,8 +174,6 @@ export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions 
   const stream =
     destination ??
     (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv', destination: fd }) : fd === 2 ? pinoDestination({ fd, sync: true }) : undefined);
-  // What the app's packages add to every entry (@marmeon/otel: `trace_id`, `span_id`) — nothing to merge without a source.
-  const sources = logContextSourcesOf(app);
   const redactor = redactorOf(app);
   const logger = pino(
     {
@@ -200,12 +203,13 @@ export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions 
       // pino's own `level`, `time` and `msg` cannot be overridden by logged data.
       // A child's bindings are renamed for `level`, `time`, `msg` and `appEnv` only (`child()`); the framework binds `task` and the like itself.
       // The app's Redactor: sensitive keys at any depth, an error under any key as type, message and stack, masked. The call's
-      // context and the mixin's values are redacted here, before the rename: a name the app redacts (`msg`) is judged as written.
-      mixinMergeStrategy: (mergeObject, mixinObject) => Object.assign({}, withoutFrameworkFields(redactor.log(mergeObject as LogContext)), redactor.log(mixinObject as LogContext)),
-      mixin: (_merge, _level, instance) => {
-        const added = sources?.current();
-        return withoutBound(added ? { ...currentLogContext(), ...added } : currentLogContext(), instance);
-      },
+      // context is redacted here, before the rename (the mixin's values already in `mixin`): a name the app redacts (`msg`) is
+      // judged as written.
+      // A getter of the app's own that throws in the call's context must not make the log call throw: the entry is written with the
+      // mixin's values (redacted part by part in `mixin`) and a constant (never the error, whose message may quote the value).
+      mixinMergeStrategy: (mergeObject, mixinObject) =>
+        Object.assign({}, withoutFrameworkFields(redactedLogPart(redactor, mergeObject as LogContext) ?? { ...UNREADABLE_PART }), mixinObject),
+      mixin: (_merge, _level, instance) => withoutBound(redactedFrameworkFields(redactor, app), instance),
     },
     stream as never,
   );
