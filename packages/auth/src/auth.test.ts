@@ -1,4 +1,4 @@
-import { createApplication, defineModule, err, inTransaction, listen, Logger, ok, type Container, type LogContext } from '@marmeon/core';
+import { createApplication, defineModule, err, inTransaction, listen, Logger, ok, Redactor, type Container, type LogContext } from '@marmeon/core';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -266,7 +266,7 @@ const routes = openRoutes((Route) => {
 
 const CHEAP = { HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: SignInStore) => SignInStore['consume'] } = {}) {
+async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: SignInStore) => SignInStore['consume']; end?: () => Promise<boolean> } = {}) {
   const users = options.users ?? new MemoryUsers();
   const application = await createApplication({
     root: import.meta.dirname,
@@ -296,6 +296,17 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
               return consume(cookie);
             }
           })(real),
+        );
+      }
+      if (options.end) {
+        const end = options.end;
+        container.instance(
+          SignInStore,
+          new (class extends DelegatingSignIns {
+            override end() {
+              return end();
+            }
+          })(container.make(SignInStore)),
         );
       }
       if (options.factors) container.instance(TwoFactorState, twoFactorState({ factors: async (id) => options.factors!.get(Number(id)) ?? [] }));
@@ -1129,6 +1140,19 @@ describe('remember me', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]!.context).toMatchObject({ user: 1 });
     expect(JSON.stringify(errors)).not.toContain(copied);
+  });
+
+  it('logs a sign-in row that cannot be ended masked: the session cookie its error quotes stays out of the entry', async () => {
+    const errors: string[] = [];
+    const redactor = new Redactor().addKeys('marmeon_session');
+    const logger: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => void errors.push(JSON.stringify({ message, context: redactor.log(context ?? {}) })), child: () => logger };
+    const { add, browser } = await boot({ logger, end: () => Promise.reject(new Error('store refused: Cookie: a=1; marmeon_session=s3ss10nvalue')) });
+    await add(ada);
+    const laptop = browser();
+    await rememberLogin(laptop.send);
+    expect((await laptop.send('/logout', { method: 'POST' })).status).toBeLessThan(400);
+    expect(errors.some((entry) => entry.includes('A sign-in row could not be ended'))).toBe(true);
+    for (const entry of errors) expect(entry).not.toContain('s3ss10nvalue');
   });
 
   it('signs out only this device', async () => {

@@ -165,7 +165,7 @@ export class SignInThrottle {
     try {
       for (const key of keys) await this.#limiter.clear(key);
     } catch (error) {
-      this.#logger.error('The count of password sign-ins could not be cleared; it stays where it is.', { error: String(error) });
+      this.#logger.error('The count of password sign-ins could not be cleared; it stays where it is.', { error });
     }
   }
 

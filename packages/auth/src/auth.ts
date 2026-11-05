@@ -660,7 +660,7 @@ export class Auth {
       await this.#signIns.endAll(userId, own?.id);
       if (ownTokenGone && own !== undefined) await this.#signIns.dropToken(userId, own.id);
     } catch (error) {
-      this.#logger.error('The sign-in rows of the other devices could not be ended', { error: error instanceof Error ? error.message : String(error) });
+      this.#logger.error('The sign-in rows of the other devices could not be ended', { error });
     }
   }
 
@@ -944,7 +944,7 @@ export class Auth {
       } catch (error) {
         this.#logger.error('A rotated remember-me token was used again, but the sessions of the user could not be ended', {
           user: userId,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         });
       }
       let tokensGone = sessionsEnded;
@@ -956,7 +956,7 @@ export class Auth {
         } catch (error) {
           this.#logger.error('A rotated remember-me token was used again, but the remember-me tokens of the user could not be deleted', {
             user: userId,
-            error: error instanceof Error ? error.message : String(error),
+            error,
           });
         }
       }
@@ -975,7 +975,7 @@ export class Auth {
     } catch (error) {
       this.#logger.error('A rotated remember-me token was used again, but the event could not be dispatched', {
         user: userId,
-        error: error instanceof Error ? error.message : String(error),
+        error,
       });
     }
   }
@@ -1068,7 +1068,7 @@ export class Auth {
     if (signIn === undefined) return;
     // Clean-up only: the sign-in it belonged to is over or replaced already, so a store that fails here leaves a row that `prune` removes.
     await this.#signIns.end(signIn.userId, signIn.id).catch((error: unknown) => {
-      this.#logger.error('A sign-in row could not be ended', { error: error instanceof Error ? error.message : String(error) });
+      this.#logger.error('A sign-in row could not be ended', { error });
     });
   }
 

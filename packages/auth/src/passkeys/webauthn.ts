@@ -175,8 +175,6 @@ function withoutAttestation(response: RegistrationResponseJSON) {
   return { ...registrationForLibrary(response), response: { ...response.response, attestationObject } };
 }
 
-const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
 /**
  * Checks a registration response against the challenge the session held (taken out of it before this call). Fixed on
  * purpose: user presence and verification are required, the algorithm is on the list, the origin and RP ID are the
@@ -228,7 +226,7 @@ export async function verifyRegistration(
       backedUp: credentialBackedUp,
     });
   } catch (error) {
-    logger?.debug('A passkey registration was refused', { reason: reasonOf(error) });
+    logger?.debug('A passkey registration was refused', { reason: error });
     return err({ kind: 'invalid' });
   }
 }
@@ -281,7 +279,7 @@ export async function verifyAuthentication(
       throw new Error('user handle missing or not the passkey owner\'s');
     }
   } catch (error) {
-    logger?.debug('A passkey sign-in was refused', { reason: reasonOf(error) });
+    logger?.debug('A passkey sign-in was refused', { reason: error });
     return err({ kind: 'invalid' });
   }
   const { newCounter, credentialBackedUp } = verified.authenticationInfo;

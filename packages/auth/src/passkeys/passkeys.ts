@@ -244,7 +244,7 @@ export class Passkeys {
       try {
         await this.#store.remove(id, created.value.id, { lastFactorAllowed: true });
       } catch (error) {
-        this.#logger.error('A passkey was registered for a session that had ended, and taking it out again failed: the passkey may be on without its owner having added it', { user: id, error: error instanceof Error ? error.message : String(error) });
+        this.#logger.error('A passkey was registered for a session that had ended, and taking it out again failed: the passkey may be on without its owner having added it', { user: id, error });
         throw error;
       }
       return err({ kind: 'signed-out' });
@@ -256,7 +256,7 @@ export class Passkeys {
         await this.#auth.updateSessionKey();
         await this.#auth[DROP_REMEMBER_TOKEN]();
       } catch (error) {
-        this.#logger.error('A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error: error instanceof Error ? error.message : String(error) });
+        this.#logger.error('A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error });
         throw error;
       }
       this.#cookies.delete(this.#rememberCookie);
@@ -516,14 +516,14 @@ export class Passkeys {
         const ended = await this.#accountSessions.end(record.userId as never, { accessTokens: false });
         if (!ended.ok) this.#logger.warn('A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
       } catch (error) {
-        this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });
+        this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error });
       }
     };
     await afterRollback(async () => {
       try {
         await this.#store.suspend(record.id);
       } catch (error) {
-        this.#logger.error('A passkey looked copied, but its suspension could not be written again after a rollback', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });
+        this.#logger.error('A passkey looked copied, but its suspension could not be written again after a rollback', { user: record.userId, passkey: record.id, error });
       }
       await end();
     });

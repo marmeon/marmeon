@@ -222,7 +222,7 @@ export class AccountSessions {
     try {
       await this.#endings?.endAccount(accountScope(userId));
     } catch (error) {
-      this.#logger?.error('The live streams of an account could not be told its sign-ins ended', { error: error instanceof Error ? error.message : String(error) });
+      this.#logger?.error('The live streams of an account could not be told its sign-ins ended', { error });
     }
   }
 
@@ -290,7 +290,8 @@ export class AccountSessions {
    * instance ends at its next request. Throws, naming the remedy and before anything is deleted, when the `UserProvider` has no
    * `updateEverySessionKey()` or a store it will use lacks its `forgetEveryone()`/`revokeEveryone()` (JavaScript, a cast); throws when the
    * provider's `sampleId` account cannot be read back with the new key (a missing `sampleId` is an error too); throws inside a
-   * database transaction, as `end()` does. A later failure leaves the earlier steps done (the error says which); calling again is safe. See
+   * database transaction, as `end()` does. A later failure leaves the earlier steps done (the error says which); calling again is safe. The thrown message quotes the cause
+   * and stays raw (the log gets it masked): redact it before showing it. See
    * `docs/authentication.md#ending-every-session-of-every-account`.
    */
   async endEveryone({ accessTokens = true, resetTokens = true }: { readonly accessTokens?: boolean; readonly resetTokens?: boolean } = {}): Promise<EveryoneEnded> {
@@ -345,7 +346,6 @@ export class AccountSessions {
             : keys === 'unconfirmed'
               ? 'the keys were written but could not be confirmed'
               : 'the keys are NOT rotated, so every session is still live';
-        const cause = error instanceof Error ? error.message : String(error);
         // A store that cannot be emptied fails the same way on every run: name the way out.
         const optOut =
           name === 'password-reset tokens'
@@ -353,9 +353,11 @@ export class AccountSessions {
             : name === 'API tokens'
               ? '; if that store cannot be emptied, keep the API tokens with --keep-api-tokens ({ accessTokens: false })'
               : '';
-        const message = `AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}): ${cause} — ${keys === 'unconfirmed' ? 'fix the UserProvider, then run it again' : 'run it again'}${optOut}.`;
-        this.#logger?.error(message, { step: name, done, error: error instanceof Error ? error.message : String(error) });
-        throw new Error(message, { cause: error });
+        const advice = `${keys === 'unconfirmed' ? 'fix the UserProvider, then run it again' : 'run it again'}${optOut}`;
+        // A log message is never masked, and the cause may quote a secret: the log gets the error as a field, the thrown error keeps the cause in its message.
+        this.#logger?.error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}) — ${advice}.`, { step: name, done, error });
+        const cause = error instanceof Error ? error.message : String(error);
+        throw new Error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}): ${cause} — ${advice}.`, { cause: error });
       }
     };
     let signIns = (done.signIns = await step('sign-ins', () => this.#signIns.endEveryone()));
@@ -404,7 +406,7 @@ export class AccountSessions {
       try {
         await this.#events?.dispatch(new EverySessionEnded(ended, new Date(this.#clock?.now() ?? Date.now())));
       } catch (error) {
-        this.#logger?.error('A listener of EverySessionEnded failed', { error: error instanceof Error ? error.message : String(error) });
+        this.#logger?.error('A listener of EverySessionEnded failed', { error });
       }
       return ended;
     } finally {
@@ -413,7 +415,7 @@ export class AccountSessions {
         try {
           await this.#endings?.endEverySession();
         } catch (error) {
-          this.#logger?.error('The live streams could not be told every sign-in ended', { error: error instanceof Error ? error.message : String(error) });
+          this.#logger?.error('The live streams could not be told every sign-in ended', { error });
         }
       }
     }

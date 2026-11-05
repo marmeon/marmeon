@@ -271,7 +271,7 @@ export class TwoFactor {
       try {
         await this.#store.removeTotp(id, { lastFactor: (await this.#state.factors(id)).every((factor) => factor === 'totp') });
       } catch (error) {
-        this.#logger.error('Two-factor authentication was turned on for a session that had ended, and taking it out again failed: the factor may be on without its owner having set it up', { user: id, error: error instanceof Error ? error.message : String(error) });
+        this.#logger.error('Two-factor authentication was turned on for a session that had ended, and taking it out again failed: the factor may be on without its owner having set it up', { user: id, error });
         throw error;
       }
       return err({ kind: 'signed-out' });
@@ -284,7 +284,7 @@ export class TwoFactor {
       await this.#auth[DROP_REMEMBER_TOKEN]();
     } catch (error) {
       // The factor stays on (later sign-ins are asked for it); what is left to end are sessions that raced the activation: tell the operators.
-      this.#logger.error('Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error: error instanceof Error ? error.message : String(error) });
+      this.#logger.error('Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error });
       throw error;
     }
     this.#cookies.delete(this.#rememberCookie);

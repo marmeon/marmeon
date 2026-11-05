@@ -1,5 +1,5 @@
 import { hostname, userInfo } from 'node:os';
-import { environment, type Logger } from '@marmeon/core';
+import { Container, environment, Logger as LoggerToken, Redactor, type Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import type { Connections } from '@marmeon/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -49,7 +49,7 @@ describe('auth:end-all-sessions', () => {
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const info = vi.fn();
     const run = (options: Record<string, boolean>, target: Pick<AccountSessions, 'endEveryone'> = accounts, args: string[] = []) =>
-      new EndAllSessionsCommand(target as AccountSessions, { info } as unknown as Logger).handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
+      new EndAllSessionsCommand(target as AccountSessions, { info } as unknown as Logger, new Redactor().addKeys('marmeon_session')).handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
     const rows = async (table: string) => (await db.selectFrom(table).selectAll().execute()).length as number;
     return { users, run, lines, rows, access, token, info };
   }
@@ -115,6 +115,18 @@ describe('auth:end-all-sessions', () => {
     expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });
 
+  it('is built by the container with the redactor, through its static inject list', async () => {
+    const { lines } = await setup();
+    const container = new Container();
+    container.instance(AccountSessions, { endEveryone: async () => Promise.reject(new Error('refused: Cookie: a=1; marmeon_session=s3ss10nvalue')) } as unknown as AccountSessions);
+    container.instance(LoggerToken, { info() {} } as unknown as Logger);
+    container.instance(Redactor, new Redactor().addKeys('marmeon_session'));
+    const output = { line: () => {}, success: () => {}, error: (line: string) => lines.push(line) };
+    expect(await (container.make(EndAllSessionsCommand as never) as EndAllSessionsCommand).handle({ args: [], options: { force: true }, output, root: '/', spawn: async () => 0 } as never)).toBe(1);
+    expect(lines.join('\n')).not.toContain('s3ss10nvalue');
+    expect(lines.join('\n')).toContain('[redacted]');
+  });
+
   it('is registered by the auth provider', () => {
     expect(AuthServiceProvider.commands).toContain(EndAllSessionsCommand);
   });
@@ -163,6 +175,20 @@ describe('auth:end-all-sessions', () => {
     });
     expect(await run({ force: true }, { endEveryone })).toBe(1);
     expect(lines.at(-1)).toBe(`✗ ${message}`);
+  });
+
+  it('masks a secret the failure quotes, and writes it on one line without control characters', async () => {
+    const { run, lines } = await setup();
+    const endEveryone = async () => {
+      throw new Error('failed: Cookie: a=1; marmeon_session=s3ss10nvalue\nFORGED\u001b]52;c;eA==\u0007');
+    };
+    expect(await run({ force: true }, { endEveryone })).toBe(1);
+    const printed = lines.at(-1)!;
+    expect(printed).not.toContain('s3ss10nvalue');
+    expect(printed).toContain('[redacted]');
+    expect([...printed].some((char) => char.charCodeAt(0) < 32)).toBe(false);
+    expect(printed).toContain('\\n');
+    expect(printed).toContain('\\u001b');
   });
 
   it('refuses before changing anything when the provider cannot write every key', async () => {
