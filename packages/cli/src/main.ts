@@ -1,4 +1,4 @@
-import { Application, ConfigError, Container, errorCodeOf, ErrorReports, ErrorSolutions, type ServiceProviderClass } from '@marmeon/core';
+import { Application, ConfigError, Container, errorCodeOf, ErrorReports, ErrorSolutions, type Redactor, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages, messageBase, sendConsoleLogsToStderr, trace } from '@marmeon/core/internal';
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, type CommandClass, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
@@ -105,7 +105,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
         const where = loaded instanceof ConfigError ? undefined : appFrameOf(loaded, root);
         const redactor = await redactorAfter(undefined, root);
         output.error(redactor.text(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}${where ? `\n  at ${where}` : ''}`));
-        await printSolutions(output, loaded, root, failing);
+        await printSolutions(output, loaded, root, failing, redactor);
         printPackageAdvice(output, loaded, root, failing);
         return 1;
       }
@@ -224,7 +224,7 @@ function reportFailure(app: Application | undefined, Command: CommandClass, erro
  * What to do about an error the app could not start with — the solutions of the core and of the installed packages
  * (`APP_KEY` → `marmeon key:generate`), as text. Never fails itself.
  */
-async function printSolutions(output: Output, error: Error, root: string, stream: 'stdout' | 'stderr'): Promise<void> {
+async function printSolutions(output: Output, error: Error, root: string, stream: 'stdout' | 'stderr', redactor: Redactor): Promise<void> {
   const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${terminalText(text)}\n`) : output.line(text));
   try {
     const discovered = await loadDiscoveredPackages({ root }).catch(() => undefined);
@@ -232,10 +232,10 @@ async function printSolutions(output: Output, error: Error, root: string, stream
     const solutions = await new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]).find(error);
     for (const solution of solutions) {
       line();
-      line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} How to fix it${solution.code ? ` (${solution.code})` : ''}: ${solution.title}`);
-      line(`  ${solution.text}`);
-      if (solution.command) line(`  $ ${solution.command}`);
-      if (solution.docs) line(`  docs: ${solution.docs}`);
+      line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} How to fix it${solution.code ? ` (${solution.code})` : ''}: ${redactor.text(solution.title)}`);
+      line(`  ${redactor.text(solution.text)}`);
+      if (solution.command) line(`  $ ${redactor.text(solution.command)}`);
+      if (solution.docs) line(`  docs: ${redactor.text(solution.docs)}`);
     }
   } catch {
     // The error itself was printed — that is what counts.

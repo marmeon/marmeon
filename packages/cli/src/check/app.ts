@@ -87,8 +87,8 @@ async function bootProblem(error: unknown, root: string): Promise<CheckProblem> 
     severity: 'error',
     message: solution?.fix === undefined && solution?.text ? `${message}\n${redactor.text(solution.text)}` : message,
     ...(code === undefined ? {} : { code }),
-    ...(solution?.fix === undefined ? {} : { fix: solution.fix }),
-    ...(solution?.docs === undefined ? {} : { docs: solution.docs }),
+    ...(solution?.fix === undefined ? {} : { fix: redactor.text(solution.fix) }),
+    ...(solution?.docs === undefined ? {} : { docs: redactor.text(solution.docs) }),
   };
 }
 

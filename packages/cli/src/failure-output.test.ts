@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -21,6 +21,7 @@ describe('what marmeon prints about a failure', { timeout: 60_000 }, () => {
         "import { CommandArgumentsError } from 'marmeon';",
         'export class FailingProvider {',
         '  register() {',
+        '    if (process.env.BOOT_FAILS_CODE) throw Object.assign(new Error(`Unknown file extension ".tsx" for ${process.env.BOOT_FAILS_FILE}`), { code: process.env.BOOT_FAILS_CODE });',
         '    if (process.env.BOOT_FAILS) throw new Error(process.env.BOOT_FAILS);',
         '  }',
         '}',
@@ -105,5 +106,38 @@ describe('what marmeon prints about a failure', { timeout: 60_000 }, () => {
     const run = marmeon(app, ['key:generate', '--bogus'], {}, 20_000);
     expect(run.code).toBe(2);
     expect(existsSync(marker)).toBe(false);
+  });
+
+  it('masks the hint for a start error, which may quote a value from the error', () => {
+    const app = appThrowing('x');
+    const env = { BOOT_FAILS: 'tsx', BOOT_FAILS_CODE: 'ERR_UNKNOWN_FILE_EXTENSION', BOOT_FAILS_FILE: `${key} postgres://u:s3cret@h/db` };
+    const run = marmeon(app, ['fail'], env);
+    expect(run.code).toBe(1);
+    // The core's hint for a .tsx file names the file the error names.
+    expect(run.stdout + run.stderr).toContain('How to fix it');
+    for (const secret of [key, 's3cret']) expect(run.stdout + run.stderr).not.toContain(secret);
+  });
+
+  it('masks the command and the docs link that marmeon check shows for a start error', () => {
+    const app = appThrowing('x');
+    // The app's node_modules plus one package: its provider brings a hint that quotes the error in `command` and `docs`.
+    rmSync(join(app, 'node_modules'));
+    const pkg = join(app, 'node_modules/fake-hints');
+    mkdirSync(pkg, { recursive: true });
+    for (const entry of readdirSync(join(blank, 'node_modules'))) symlinkSync(join(blank, 'node_modules', entry), join(app, 'node_modules', entry));
+    writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'fake-hints', version: '1.0.0', type: 'module', main: 'index.js', types: 'index.d.ts', marmeon: { providers: ['HintsProvider'] } }));
+    writeFileSync(
+      join(pkg, 'index.js'),
+      "export class HintsProvider {\n  static solutions = [{ for: Error, when: (e) => e.message.includes('hint-me'), solve: (e) => ({ title: 'Try again', text: 'Look again.', command: `fix ${e.message}`, docs: `docs/${e.message}` }) }];\n  register() {}\n}\n",
+    );
+    writeFileSync(join(pkg, 'index.d.ts'), 'export declare class HintsProvider {\n  static solutions: unknown[];\n  register(): void;\n}\n');
+    const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ ...manifest, dependencies: { ...manifest.dependencies, 'fake-hints': '1.0.0' } }));
+    const run = marmeon(app, ['check', '--only=boot', '--json'], { BOOT_FAILS: `hint-me ${key}` }, 90_000);
+    const reports = JSON.parse(run.stdout).checks as { name: string; problems: { fix?: string; docs?: string }[] }[];
+    const problem = reports.find((report) => report.name === 'boot')!.problems[0]!;
+    expect(problem.fix).toContain('hint-me');
+    expect(problem.docs).toContain('hint-me');
+    expect(run.stdout + run.stderr).not.toContain(key);
   });
 });
