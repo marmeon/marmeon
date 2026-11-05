@@ -200,6 +200,29 @@ describe('the SQLite lock row', () => {
     await lock.release();
   });
 
+  it('writes control characters of the holder out in the timeout message and in the takeover warning', async () => {
+    const owner = 'evil\x1b]8;;https://evil.test\x07:1';
+    const dead = await acquire({ owner });
+    try {
+      // Held now: the message names the holder.
+      const timeout = await acquire({ waitSeconds: 0 }).catch((error: unknown) => error);
+      expect(timeout).toBeInstanceOf(MigrationLockTimeoutError);
+      expect((timeout as Error).message).toContain('evil\\u001b]8;;https://evil.test\\u0007:1');
+      expect((timeout as Error).message).not.toMatch(/[^\P{Cc}\n]/u);
+      expect((timeout as MigrationLockTimeoutError).holder.owner).toBe(owner);
+      // Ten minutes later by the real clock, the row counts as abandoned: the command takes it over and says whose it was.
+      const stale = new Migrator({ modules: [auth], root: '/' } as unknown as Application, connections);
+      vi.spyOn(stale, 'migrate').mockResolvedValue([]);
+      const { printed, input: given } = input({ force: true });
+      expect(await new MigrateCommand(stale, {} as TypeGenerator).handle(given)).toBe(0);
+      const warning = printed.find((line) => line.startsWith('warn:'))!;
+      expect(warning).toContain('Took over the migration lock of evil\\u001b]8;;https://evil.test\\u0007:1');
+      expect(warning).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await dead.release();
+    }
+  });
+
   it('counts a heartbeat as a sign of life', async () => {
     const lock = await acquire({ owner: 'busy:2' });
     clock += STALE_AFTER_MS - 1000;

@@ -1,7 +1,7 @@
 import { relative } from 'node:path';
 import type { CommandInput } from 'marmeon';
 import { CommandArgumentsError, environment } from '@marmeon/core';
-import { withCode } from '@marmeon/core/internal';
+import { printable, withCode } from '@marmeon/core/internal';
 import { confirmed } from './confirm.ts';
 import { MigrationLockLostError, MigrationLockTimeoutError } from '../migrations/lock.ts';
 import { Migrator, type ChangedMigration, type MigrateOptions, type MigrationRun } from '../migrations/migrator.ts';
@@ -24,7 +24,7 @@ async function underLock(migrator: Migrator, { options, output }: CommandInput, 
   }
   migrator.lockWith({
     ...(seconds === undefined ? {} : { waitSeconds: seconds }),
-    onTakeover: (previous) => output.warn(`Took over the migration lock of ${previous.owner}: its process is gone or showed no sign of life for ten minutes.`),
+    onTakeover: (previous) => output.warn(`Took over the migration lock of ${printable(previous.owner)}: its process is gone or showed no sign of life for ten minutes.`),
   });
   try {
     return await migrator.locked(work);
@@ -47,7 +47,7 @@ const CHANGED_ADVICE =
 /** What a command says before it runs or rolls back with migrations whose file changed after they ran: a warning each, then the advice once. */
 function changedMigrations(output: CommandInput['output']): (changed: readonly ChangedMigration[]) => void {
   return (changed) => {
-    for (const { name, module, batch } of changed) output.warn(`${name} (${module}) changed since it ran in batch ${batch}.`);
+    for (const { name, module, batch } of changed) output.warn(`${printable(name)} (${printable(module)}) changed since it ran in batch ${printable(String(batch))}.`);
     output.line(CHANGED_ADVICE);
   };
 }
@@ -58,9 +58,9 @@ function notices(output: CommandInput['output']): MigrateOptions {
     onCarriedOver: carriedOver(output),
     onChanged: changedMigrations(output),
     onLegacy: (connection, tables) =>
-      output.info(`${tables.join(', ')} on the connection "${connection}" are left in place for processes of Marmeon 0.3; drop them once none runs.`),
+      output.info(`${printable(tables.join(', '))} on the connection "${connection}" are left in place for processes of Marmeon 0.3; drop them once none runs.`),
     onUnknown: (connection, { tables, columns }) => {
-      const listed = (names: readonly string[]) => `${names.slice(0, 5).join(', ')}${names.length > 5 ? `, and ${names.length - 5} more` : ''}`;
+      const listed = (names: readonly string[]) => `${printable(names.slice(0, 5).join(', '))}${names.length > 5 ? `, and ${names.length - 5} more` : ''}`;
       if (tables.length > 0) {
         output.info(
           `The database connection "${connection}" has tables no migration made: ${listed(tables)}. Marmeon does not know them: they are unprotected (no secret columns, soft deletes or timestamps). ` +
@@ -78,7 +78,7 @@ function notices(output: CommandInput['output']): MigrateOptions {
 }
 
 function report(output: CommandInput['output'], verb: string) {
-  return (run: MigrationRun) => output.success(`${verb} ${run.name} (${run.module}) ${run.ms.toFixed(1)} ms`);
+  return (run: MigrationRun) => output.success(`${verb} ${printable(run.name)} (${printable(run.module)}) ${run.ms.toFixed(1)} ms`);
 }
 
 /**
@@ -250,21 +250,21 @@ export class MigrateStatusCommand {
       output.json({ format: 1, migrations, warnings });
       return 0;
     }
-    for (const warning of warnings) output.warn(warning);
+    for (const warning of warnings) output.warn(printable(warning));
     if (changed.length > 0) output.line(CHANGED_ADVICE);
     if (migrations.length === 0) {
       output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');
       return 0;
     }
-    const state = (m: (typeof migrations)[number]) => (m.batch === null ? 'Pending' : `[${m.batch}] Ran`);
+    const state = (m: (typeof migrations)[number]) => (m.batch === null ? 'Pending' : `[${printable(String(m.batch))}] Ran`);
     // The column only when a migration runs elsewhere (an unknown connection counts), so an app on one connection sees the three columns only.
     if (migrations.some((m) => m.connection !== 'default')) {
       output.table(
         ['MIGRATION', 'MODULE', 'CONNECTION', 'BATCH / STATUS'],
-        migrations.map((m) => [m.name, m.module, m.connection ?? '?', state(m)]),
+        migrations.map((m) => [printable(m.name), printable(m.module), m.connection ?? '?', state(m)]),
       );
     } else {
-      output.table(['MIGRATION', 'MODULE', 'BATCH / STATUS'], migrations.map((m) => [m.name, m.module, state(m)]));
+      output.table(['MIGRATION', 'MODULE', 'BATCH / STATUS'], migrations.map((m) => [printable(m.name), printable(m.module), state(m)]));
     }
     return 0;
   }

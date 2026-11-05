@@ -1,4 +1,5 @@
 import type { CommandInput } from 'marmeon';
+import { printable } from '@marmeon/core/internal';
 import { sql } from 'kysely';
 import { inspectionConnection } from '../migrator-connection.ts';
 import { describeConnection } from '../config.ts';
@@ -34,7 +35,8 @@ export class DbShowCommand {
     const tables = await db.introspection.getTables();
     const found = await Promise.all(
       tables.map(async (table) => {
-        const { count } = await db.selectFrom(table.name).select(sql<number>`count(*)`.as('count')).executeTakeFirstOrThrow();
+        // `sql.id` keeps a dot in a name; `selectFrom` would read it as a schema separator.
+        const { count } = (await sql<{ count: number }>`select count(*) as count from ${table.schema ? sql.id(table.schema, table.name) : sql.id(table.name)}`.execute(db)).rows[0]!;
         return { name: table.name, schema: table.schema ?? null, columns: table.columns.length, rows: Number(count) };
       }),
     );
@@ -44,7 +46,7 @@ export class DbShowCommand {
       output.json({ format: 1, connection: name, driver: settings.driver, target: described.slice(settings.driver.length + 1), server: version, tables: found, warnings: [] });
       return 0;
     }
-    const rows = found.map((table) => [table.schema ? `${table.schema}.${table.name}` : table.name, String(table.columns), String(table.rows)]);
+    const rows = found.map((table) => [printable(table.schema ? `${table.schema}.${table.name}` : table.name), String(table.columns), String(table.rows)]);
 
     output.line(`Connection  ${name}`);
     output.line(`Target      ${described}`);

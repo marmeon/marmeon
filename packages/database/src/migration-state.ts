@@ -1,4 +1,4 @@
-import { withCode } from '@marmeon/core/internal';
+import { printable, withCode } from '@marmeon/core/internal';
 import type { Kysely } from 'kysely';
 import { tableColumns, type CatalogQuery } from './introspection.ts';
 import type { Driver } from './schema/blueprint.ts';
@@ -144,7 +144,7 @@ export function assertLockReadable(columns: ReadonlyMap<string, readonly string[
     connection,
     withCode(
       'D1',
-      `The migration lock (${LOCK_TABLE}) of the database connection "${connection}" has the columns ${found.toSorted().join(', ')}, not the ones this release of Marmeon writes ` +
+      `The migration lock (${LOCK_TABLE}) of the database connection "${connection}" has the columns ${printable(found.toSorted().join(', '))}, not the ones this release of Marmeon writes ` +
         `(${LOCK_COLUMNS.join(', ')}): a newer Marmeon migrated this database. Update @marmeon/*. See docs/migrations.md#one-migration-at-a-time.`,
     ),
   );
@@ -177,7 +177,7 @@ export function recordVersion(columns: ReadonlyMap<string, readonly string[]>, c
     connection,
     withCode(
       'D1',
-      `The record of migrations (${MIGRATIONS_TABLE}) of the database connection "${connection}" has the columns ${recorded.toSorted().join(', ')}, not the ones this release of Marmeon reads ` +
+      `The record of migrations (${MIGRATIONS_TABLE}) of the database connection "${connection}" has the columns ${printable(recorded.toSorted().join(', '))}, not the ones this release of Marmeon reads ` +
         `(${RECORD_COLUMNS[2].join(', ')}, or ${RECORD_COLUMNS[1].join(', ')} as Marmeon 0.3 wrote them): a newer Marmeon migrated this database, or another tool keeps a table of that name. Update @marmeon/*. ${REFUSED}. See docs/migrations.md#how-the-migrator-keeps-track.`,
     ),
   );
@@ -207,7 +207,7 @@ export async function checkMigrationState(run: CatalogQuery, driver: Driver, con
         connection,
         withCode(
           'D1',
-          `The database connection "${connection}" has tables (${tables.slice(0, LISTED).join(', ')}${tables.length > LISTED ? ', …' : ''}) and no record of migrations (${MIGRATIONS_TABLE}), ` +
+          `The database connection "${connection}" has tables (${printable(tables.slice(0, LISTED).join(', '))}${tables.length > LISTED ? ', …' : ''}) and no record of migrations (${MIGRATIONS_TABLE}), ` +
             'so Marmeon cannot tell which migrations ran. Run "marmeon migrate" if Marmeon migrates this database; for a database that another tool manages, set `managed: false` on the connection. ' +
             `${REFUSED}. See docs/migrations.md#how-the-migrator-keeps-track.`,
         ),
