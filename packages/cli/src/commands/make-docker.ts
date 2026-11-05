@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, TESTED_PNPM, type DockerApp, type PackageManager, type Proxy } from '../docker.ts';
 import { style } from '../output.ts';
-import { leavesProject } from '../write-guard.ts';
+import { leavesProject, refusesOverwrite, writeProjectFile } from '../write-guard.ts';
 
 /**
  * `marmeon make:docker [--caddy|--nginx] [--systemd] [--force]`: the files to run the app in production — a
@@ -39,14 +39,14 @@ export class MakeDockerCommand {
       ...(systemd ? Object.fromEntries(Object.entries(systemdUnits(app.docker)).map(([role, unit]) => [`deploy/systemd/${role}.service`, unit])) : {}),
     };
     if (leavesProject({ root, output }, Object.keys(files).map((file) => join(root, file)))) return 1;
+    if (options.force === true && refusesOverwrite({ root, output }, Object.keys(files).map((file) => join(root, file)))) return 1;
     const existing = Object.keys(files).filter((file) => existsSync(join(root, file)));
     if (existing.length > 0 && options.force !== true) {
       output.error(`${existing.join(', ')} already exist${existing.length === 1 ? 's' : ''} (use --force to overwrite).`);
       return 1;
     }
     for (const [file, content] of Object.entries(files)) {
-      mkdirSync(dirname(join(root, file)), { recursive: true });
-      writeFileSync(join(root, file), content);
+      writeProjectFile(join(root, file), content);
       output.success(`Created ${file}`);
     }
     for (const note of app.notes) output.warn(note);

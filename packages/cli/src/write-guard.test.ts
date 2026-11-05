@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
+import { leavesProject, writeProjectFile } from './write-guard.ts';
 import { MakeJobCommand, MakeModuleCommand, MakeEventCommand } from './commands/make.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -110,5 +111,98 @@ describe('generators and links out of the project', () => {
     symlinkSync(join(root, 'real.env'), join(root, '.env'));
     expect(new KeyGenerateCommand().handle(input(root).input)).toBe(0);
     expect(readFileSync(join(root, 'real.env'), 'utf8')).toMatch(/^APP_KEY=/m);
+  });
+});
+
+describe('a link to nothing at the name of a generated file', () => {
+  /** `root/d -> ../outside/sub` and `root/evil -> d/../x`: the write would create `outside/sub/../x`, i.e. `outside/x`. */
+  function dangling(): { root: string; outside: string } {
+    const { root, outside } = project();
+    mkdirSync(join(outside, 'sub'));
+    symlinkSync(join(outside, 'sub'), join(root, 'd'), 'dir');
+    return { root, outside };
+  }
+
+  it('make:event refuses a target that is a link to nothing outside the project', async () => {
+    const { root, outside } = dangling();
+    mkdirSync(join(root, 'modules/shop/events'), { recursive: true });
+    symlinkSync('../../../d/../OrderShipped.ts', join(root, 'modules/shop/events/OrderShipped.ts'));
+    const { input: given, errors } = input(root, ['OrderShipped'], { module: 'shop', force: true });
+    expect(await new MakeEventCommand().handle(given)).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('modules/shop/events/OrderShipped.ts leads out of the project');
+    expect(existsSync(join(outside, 'OrderShipped.ts'))).toBe(false);
+  });
+
+  it('make:event refuses a link to nothing whose target lies inside the project, too', async () => {
+    const { root } = project();
+    mkdirSync(join(root, 'modules/shop/events'), { recursive: true });
+    symlinkSync(join(root, 'elsewhere.ts'), join(root, 'modules/shop/events/OrderShipped.ts'));
+    const { input: given, errors } = input(root, ['OrderShipped'], { module: 'shop', force: true });
+    expect(await new MakeEventCommand().handle(given)).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('modules/shop/events/OrderShipped.ts is a link to nothing');
+    expect(existsSync(join(root, 'elsewhere.ts'))).toBe(false);
+  });
+});
+
+describe('writeProjectFile', () => {
+  it('creates a new file and its folders, and overwrites an existing one', () => {
+    const { root } = project();
+    const file = join(root, 'a/b/c.txt');
+    writeProjectFile(file, 'one');
+    expect(readFileSync(file, 'utf8')).toBe('one');
+    writeProjectFile(file, 'two');
+    expect(readFileSync(file, 'utf8')).toBe('two');
+  });
+
+  it('fails with EEXIST on a link to nothing at the name, and creates nothing behind it', () => {
+    const { root, outside } = project();
+    symlinkSync(join(outside, 'new.txt'), join(root, 'link.txt'));
+    expect(() => writeProjectFile(join(root, 'link.txt'), 'x')).toThrow(expect.objectContaining({ code: 'EEXIST' }));
+    expect(existsSync(join(outside, 'new.txt'))).toBe(false);
+  });
+
+  it('refuses to overwrite a file that became a link, and writes nothing outside', () => {
+    const { root, outside } = project();
+    writeProjectFile(join(root, 'a.txt'), 'one');
+    rmSync(join(root, 'a.txt'));
+    symlinkSync(join(outside, 'kept.txt'), join(root, 'a.txt'));
+    expect(() => writeProjectFile(join(root, 'a.txt'), 'two')).toThrow(/A link at the name/);
+    untouched(outside);
+  });
+
+  it('refuses to overwrite a file with another hard link, and leaves its content', () => {
+    const { root, outside } = project();
+    linkSync(join(outside, 'kept.txt'), join(root, 'a.txt'));
+    expect(() => writeProjectFile(join(root, 'a.txt'), 'two')).toThrow(/hard link/);
+    untouched(outside);
+  });
+});
+
+describe('--force and a link inside the project', () => {
+  it('make:docker --force writes none of its files when one of them is a link', () => {
+    const { root } = project();
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'shop', dependencies: { '@marmeon/core': '1.0.0' } }));
+    writeFileSync(join(root, 'package-lock.json'), '{}');
+    writeFileSync(join(root, 'Dockerfile'), 'mine');
+    writeFileSync(join(root, 'real.ignore'), 'mine');
+    symlinkSync(join(root, 'real.ignore'), join(root, '.dockerignore'));
+    const { input: given, errors } = input(root, [], { force: true });
+    expect(new MakeDockerCommand().handle(given)).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('.dockerignore is a link');
+    expect(readFileSync(join(root, 'Dockerfile'), 'utf8')).toBe('mine');
+    expect(existsSync(join(root, 'compose.production.yaml'))).toBe(false);
+  });
+});
+
+describe('leavesProject below a regular file', () => {
+  it('does not throw when a parent of the file is a file', () => {
+    const { root } = project();
+    writeFileSync(join(root, 'file'), 'x');
+    const { input: given, errors } = input(root);
+    expect(leavesProject(given, [join(root, 'file/sub.txt')])).toBe(false);
+    expect(errors).toEqual([]);
   });
 });

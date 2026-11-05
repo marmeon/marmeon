@@ -77,6 +77,38 @@ describe('escapesRoot', () => {
   });
 });
 
+describe('escapesRoot and a link whose target folds a directory link', () => {
+  /** `root/d -> ../outside/sub` and `root/evil -> d/../x`: the kernel reads `evil` as `outside/x`, a textual resolve as `root/x`. */
+  function folded(): { root: string; outside: string } {
+    const { root, outside } = project();
+    mkdirSync(join(outside, 'sub'));
+    symlinkSync(join(outside, 'sub'), join(root, 'd'), 'dir');
+    symlinkSync('d/../x', join(root, 'evil'));
+    return { root, outside };
+  }
+
+  it('names the link when what it points at exists outside', () => {
+    const { root, outside } = folded();
+    writeFileSync(join(outside, 'x'), 'secret');
+    expect(escapesRoot(root, 'evil')).toBe('evil');
+  });
+
+  it('names the link when it points at nothing and the write would create the file outside', () => {
+    const { root } = folded();
+    expect(escapesRoot(root, 'evil')).toBe('evil');
+  });
+
+  it('lets a relative link inside the root pass, also one to nothing yet', () => {
+    const { root } = project();
+    mkdirSync(join(root, 'real'));
+    writeFileSync(join(root, 'real', 'a'), 'x');
+    symlinkSync('real/a', join(root, 'there'));
+    symlinkSync('real/new', join(root, 'later'));
+    expect(escapesRoot(root, 'there')).toBeUndefined();
+    expect(escapesRoot(root, 'later')).toBeUndefined();
+  });
+});
+
 describe('unsafeGeneratedPath', () => {
   it('lets a missing or plain .marmeon pass, and a link that stays inside the app', () => {
     const { root } = project();
