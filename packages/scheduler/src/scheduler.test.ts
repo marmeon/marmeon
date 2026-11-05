@@ -586,6 +586,92 @@ describe('events', () => {
     await app.shutdown();
   });
 
+  describe('the output of schedule:run and schedule:test', () => {
+    async function print(schedule: ModuleDefinition['schedule'], command: 'schedule:run' | 'schedule:test' | 'schedule:list', args: string[] = []) {
+      const { app, scheduler } = await boot(schedule);
+      app.container.make(Redactor).addKeys('marmeon_session');
+      const out: string[] = [];
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((text) => (out.push(String(text)), true));
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((text) => (out.push(String(text)), true));
+      try {
+        const Command = app.container.make(CommandRegistry).get(command)!;
+        const code = await (app.container.make(Command) as { handle(input: unknown): Promise<number> }).handle({ args, options: {}, output: new Output(), root: app.root });
+        return { code, text: out.join(''), warning: scheduler.lockWarning() };
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+        await app.shutdown();
+      }
+    }
+    const throwing = (message: string, name = 'leaky') =>
+      defineSchedule((s) => {
+        s.call(
+          class {
+            handle() {
+              throw new Error(message);
+            }
+          },
+        )
+          .everyMinute()
+          .name(name);
+      });
+
+    it.each(['schedule:run', 'schedule:test'] as const)('%s masks a secret in the error', async (command) => {
+      const { code, text } = await print(throwing('the store refused Cookie: a=1; marmeon_session=s3ss10nvalue'), command, command === 'schedule:test' ? ['leaky'] : []);
+      expect(code).toBe(1);
+      expect(text, text).not.toContain('s3ss10nvalue');
+      expect(text).toContain('[redacted]');
+    });
+
+    it.each(['schedule:run', 'schedule:test'] as const)('%s escapes control characters in the error: one line', async (command) => {
+      const { text } = await print(throwing('boom\nFORGED\u001b]52;c;eA==\u0007'), command, command === 'schedule:test' ? ['leaky'] : []);
+      expect(text.trimEnd().split('\n')).toHaveLength(1);
+      expect(text).toContain('boom\\nFORGED\\u001b]52;c;eA==\\u0007');
+      expect(text).not.toContain('\u001b]52');
+    });
+
+    it('masks and escapes a task name — in the result line, the task list and the lock warning', async () => {
+      const schedule = defineSchedule((s) => {
+        s.command('fixture:prune', ['--token=t0kenvalue']).everyMinute().onOneServer();
+        s.call(CountRun).everyMinute().name('esc\nape');
+      });
+      const run = await print(schedule, 'schedule:run');
+      expect(run.text, run.text).not.toContain('t0kenvalue');
+      expect(run.text).toContain('esc\\nape: ran');
+      // One line per task, plus the lock warning.
+      expect(run.text.trimEnd().split('\n')).toHaveLength(3);
+      expect(run.warning).not.toContain('t0kenvalue');
+      const asked = await print(schedule, 'schedule:test', ['fixture:prune', '--token=t0kenvalue']);
+      expect(asked.text).not.toContain('t0kenvalue');
+      expect(asked.text).toContain('--token=[redacted]');
+      // The "Which task?" list and the unknown-name message list every name.
+      await expect(print(schedule, 'schedule:test')).rejects.toThrow(/--token=\[redacted\]/);
+      await expect(print(schedule, 'schedule:test')).rejects.not.toThrow('t0kenvalue');
+      await expect(print(schedule, 'schedule:test', ['nope'])).rejects.toThrow(/--token=\[redacted\]/);
+      await expect(print(schedule, 'schedule:test', ['nope'])).rejects.not.toThrow('t0kenvalue');
+    });
+
+    describe('the lock warning and the process check in the output of the schedule commands', () => {
+      const locking = defineSchedule((s) => void s.call(CountRun).everyMinute().name('lock\nname').onOneServer());
+
+      it.each(['schedule:run', 'schedule:list'] as const)('%s prints the lock warning on one line, a control character in a task name escaped', async (command) => {
+        const { text } = await print(locking, command);
+        const warning = text.split('\n').filter((line) => line.includes('Tasks:'));
+        expect(warning).toHaveLength(1);
+        expect(warning[0]).toContain('Tasks: lock\\nname');
+        // The table row of schedule:list is one line as well.
+        if (command === 'schedule:list') expect(text.split('\n').filter((line) => line.includes('lock\\nname') && line.includes('* * * * *'))).toHaveLength(1);
+      });
+
+      it('schedule:run says a command the app does not have masked: the name may hold an argument', async () => {
+        const { code, text } = await print(defineSchedule((s) => void s.command('nosuch --token=t0kenvalue').everyMinute()), 'schedule:run');
+        expect(code).toBe(1);
+        expect(text).toContain('--token=[redacted]');
+        expect(text).not.toContain('t0kenvalue');
+      });
+    });
+  });
+
   it('a run that does not happen: Skipped with why — filter, overlapping', async () => {
     const { scheduler, events, app, clock, gate } = await withEvents(
       defineSchedule((s) => {

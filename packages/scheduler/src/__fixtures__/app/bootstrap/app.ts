@@ -11,6 +11,7 @@ import { RecordRun } from '../tasks.ts';
 // A minimal app for the scheduler processes of `processes.test.ts`: `marmeon schedule:work` and `schedule:run` run in it
 // for real. Database and cache come from the environment (DB_*, CACHE_DRIVER, REDIS_*), the tasks from FIXTURE_*:
 // - FIXTURE_ONE_SERVER=1: the task `record` (every minute) runs on one server only;
+// - FIXTURE_COMMAND_TOKEN=<value>: a command task (due once a year) with `--token=<value>` in its arguments, so its name holds a secret;
 // - FIXTURE_MISSED=<minute of the hour>: a task `missed`, due at that minute of every hour;
 // - FIXTURE_CLOCK_AT=<ms>: the app's clock reads exactly that at its first read and runs on in real time — so a test can
 //   place a minute boundary (or ten minutes of downtime) where it needs them, with the real command and the real timers;
@@ -55,6 +56,7 @@ export default defineApplication({
       schedule: defineSchedule((s) => {
         const record = s.call(RecordRun).everyMinute().name('record');
         if (process.env.FIXTURE_ONE_SERVER === '1') record.onOneServer();
+        if (process.env.FIXTURE_COMMAND_TOKEN !== undefined) s.command('schedule:list', [`--token=${process.env.FIXTURE_COMMAND_TOKEN}`]).cron('0 0 1 1 *');
         if (process.env.FIXTURE_MISSED !== undefined) s.call(RecordRun).cron(`${process.env.FIXTURE_MISSED} * * * *`).name('missed');
       }),
     }),

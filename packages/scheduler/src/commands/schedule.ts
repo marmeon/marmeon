@@ -1,14 +1,21 @@
 import type { CommandInput } from 'marmeon';
-import { Application, Clock, CommandArgumentsError, environment, Logger, Redactor } from '@marmeon/core';
+import { Application, Clock, CommandArgumentsError, environment, escapeControls, Logger, Redactor } from '@marmeon/core';
 import { environmentChecks, exitAfterShutdown } from '@marmeon/core/internal';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute, isoMinute } from '../time.ts';
 import { ScheduleWorker } from '../worker.ts';
 
-function describe(result: TaskResult): string {
+/** Text for the terminal: masked like a log line (a name holds a command's arguments, an error may quote a secret), control characters escaped. */
+function shown(redactor: Redactor, text: string): string {
+  return escapeControls(redactor.text(text));
+}
+
+function describe(result: TaskResult, redactor: Redactor): string {
   if (result.outcome === 'ran') return `ran (${result.ms} ms)`;
-  if (result.outcome === 'failed') return `failed: ${result.error instanceof Error ? result.error.message : String(result.error)}`;
+  if (result.outcome === 'failed') {
+    return `failed: ${shown(redactor, result.error instanceof Error ? `${result.error.name}: ${result.error.message}` : String(result.error))}`;
+  }
   const why = { filter: 'when()/skip() said no', 'other-server': 'another server runs it', overlapping: 'its previous run has not finished', 'job-waiting': 'the job queued last time still waits' };
   return `skipped — ${why[result.skipped!]}`;
 }
@@ -17,16 +24,16 @@ function describe(result: TaskResult): string {
  * A scheduler that cannot start (no cache, a missing command …) says so, without a stack trace. One that starts with
  * locks in a cache that is not shared says that too — and starts.
  */
-async function checked(scheduler: Scheduler, output: CommandInput['output'], options: { warn?: boolean } = {}): Promise<boolean> {
+async function checked(scheduler: Scheduler, output: CommandInput['output'], redactor: Redactor, options: { warn?: boolean } = {}): Promise<boolean> {
   try {
     await scheduler.checkProcess();
   } catch (error) {
     if (!(error instanceof ScheduleError)) throw error;
-    output.error(error.message);
+    output.error(shown(redactor, error.message));
     return false;
   }
   const warning = options.warn === false ? undefined : scheduler.lockWarning();
-  if (warning) output.warn(warning);
+  if (warning) output.warn(escapeControls(warning));
   return true;
 }
 
@@ -61,7 +68,7 @@ export class ScheduleWorkCommand {
     if (!Number.isFinite(stopTimeout) || stopTimeout < 0) {
       throw new CommandArgumentsError(`--stop-timeout must be a number of seconds ≥ 0, not ${String(options['stop-timeout'])}.`);
     }
-    if (!(await checked(this.#scheduler, output))) return 1;
+    if (!(await checked(this.#scheduler, output, this.#redactor))) return 1;
 
     const stop = new AbortController();
     const onSignal = (signal: NodeJS.Signals) => {
@@ -79,7 +86,7 @@ export class ScheduleWorkCommand {
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed — `.environments(…)` compares against its APP_ENV (`local`, `testing`, `production` by default).
     output.line(
-      `Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''} — in ${environment.describe()}`,
+      `Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => shown(this.#redactor, task.name)).join(', ')})` : ''} — in ${environment.describe()}`,
     );
     const worker = new ScheduleWorker(this.#scheduler, this.#clock, this.#logger, this.#redactor);
     try {
@@ -108,21 +115,23 @@ export class ScheduleRunCommand {
 
   readonly #scheduler: Scheduler;
   readonly #clock: Clock;
+  readonly #redactor: Redactor;
 
-  constructor(scheduler: Scheduler, clock: Clock) {
+  constructor(scheduler: Scheduler, clock: Clock, redactor: Redactor) {
     this.#scheduler = scheduler;
     this.#clock = clock;
+    this.#redactor = redactor;
   }
 
   async handle({ output }: CommandInput): Promise<number> {
-    if (!(await checked(this.#scheduler, output))) return 1;
+    if (!(await checked(this.#scheduler, output, this.#redactor))) return 1;
     const runs = await this.#scheduler.tick(this.#clock.now());
     if (runs.length === 0) {
       output.line('No scheduled tasks are due.');
       return 0;
     }
     const results = await Promise.all(runs.map((run) => run.done));
-    for (const result of results) output.line(`${result.task}${result.reason === 'catch-up' ? ' (missed earlier)' : ''}: ${describe(result)}`);
+    for (const result of results) output.line(`${shown(this.#redactor, result.task)}${result.reason === 'catch-up' ? ' (missed earlier)' : ''}: ${describe(result, this.#redactor)}`);
     return results.some((result) => result.outcome === 'failed') ? 1 : 0;
   }
 }
@@ -198,11 +207,11 @@ export class ScheduleListCommand {
           o.environments ? `only ${o.environments.join('/')}` : '',
           o.filtered ? 'filtered' : '',
         ].filter(Boolean);
-        const row = [name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), does, labels.join(', ')];
+        const row = [escapeControls(name), `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), escapeControls(does), labels.join(', ')];
         return description === null ? [row] : [row, `  ${description}`];
       }),
     );
-    if (warning) output.warn(warning);
+    if (warning) output.warn(escapeControls(warning));
     return 0;
   }
 }
@@ -214,27 +223,29 @@ export class ScheduleTestCommand {
   static usage = '<name>';
 
   readonly #scheduler: Scheduler;
+  readonly #redactor: Redactor;
 
-  constructor(scheduler: Scheduler) {
+  constructor(scheduler: Scheduler, redactor: Redactor) {
     this.#scheduler = scheduler;
+    this.#redactor = redactor;
   }
 
   async handle({ args, output }: CommandInput): Promise<number> {
     const name = args.join(' ').trim();
     if (name === '') {
-      throw new CommandArgumentsError(`Which task? marmeon schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
+      throw new CommandArgumentsError(`Which task? marmeon schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => shown(this.#redactor, task.name)).join(', ') || '(none)'}`);
     }
     // A test run ignores onOneServer(): no word about where its lock lives.
-    if (!(await checked(this.#scheduler, output, { warn: false }))) return 1;
+    if (!(await checked(this.#scheduler, output, this.#redactor, { warn: false }))) return 1;
     let task;
     try {
       task = this.#scheduler.task(name);
     } catch (error) {
       if (!(error instanceof ScheduleError)) throw error;
-      throw new CommandArgumentsError(error.message);
+      throw new CommandArgumentsError(shown(this.#redactor, error.message));
     }
     const result = await this.#scheduler.runNow(task).done;
-    (result.outcome === 'failed' ? output.error.bind(output) : output.success.bind(output))(`${task.name}: ${describe(result)}`);
+    (result.outcome === 'failed' ? output.error.bind(output) : output.success.bind(output))(`${shown(this.#redactor, task.name)}: ${describe(result, this.#redactor)}`);
     return result.outcome === 'failed' ? 1 : 0;
   }
 }
