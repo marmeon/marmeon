@@ -16,8 +16,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function hubOf(): LiveHub {
-  const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100 }, silent, undefined, new Redactor());
+function hubOf(backend = new MemoryLiveBackend()): LiveHub {
+  const hub = new LiveHub(backend, { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100 }, silent, undefined, new Redactor());
   cleanups.push(() => hub.close());
   return hub;
 }
@@ -32,6 +32,7 @@ function controllerOf(hub: LiveHub, authorizer?: LiveAuthorizer | readonly LiveA
 describe('LiveAuthorizer — asked at every connection of a stream', () => {
   it('without one bound, every signed channel is followed', async () => {
     const hub = hubOf();
+    await hub.listen();
     const stream = new LiveStreamReader(await controllerOf(hub).handle(request(`connection=tab-a-0001&${pair('team.1')}`)));
     cleanups.push(() => stream.close());
     expect(await stream.hello()).toEqual({ seq: { 'team.1': 0 } });
@@ -39,6 +40,7 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
 
   it('a right that is gone stops the hints at the next connection', async () => {
     const hub = hubOf();
+    await hub.listen();
     let member = true;
     const authorizer = { allows: (channel: string) => channel === 'team.1' && member };
     const first = new LiveStreamReader(await controllerOf(hub, authorizer).handle(request(`connection=tab-a-0001&${pair('team.1')}`)));
@@ -53,6 +55,7 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
 
   it('a stranger with a valid token but no right is refused', async () => {
     const hub = hubOf();
+    await hub.listen();
     const response = await controllerOf(hub, { allows: () => false }).handle(request(`connection=tab-a-0001&${pair('team.9')}`));
     expect([response.status, await response.text()]).toEqual([403, 'Not allowed to follow these channels.']);
     expect(hub.size).toBe(0);
@@ -60,6 +63,7 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
 
   it('leaves out the channel that is denied and follows the other', async () => {
     const hub = hubOf();
+    await hub.listen();
     const asked: string[] = [];
     const authorizer = { allows: async (channel: string) => (asked.push(channel), channel !== 'team.1') };
     const stream = new LiveStreamReader(await controllerOf(hub, authorizer).handle(request(`connection=tab-a-0001&${pair('team.1')}&${pair('notifications.user.1')}`)));
@@ -71,6 +75,7 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
 
   it('keeps a channel only for exactly true', async () => {
     const hub = hubOf();
+    await hub.listen();
     const truthy = { allows: () => 'yes' as never };
     expect((await controllerOf(hub, truthy).handle(request(`connection=tab-a-0001&${pair('team.1')}`))).status).toBe(403);
     expect(hub.size).toBe(0);
@@ -78,6 +83,7 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
 
   it('a throw is a 503 with Retry-After and no stream, logged once a minute', async () => {
     const hub = hubOf();
+    await hub.listen();
     const error = vi.fn();
     const logger = { error } as unknown as Logger;
     const failing = () => controllerOf(hub, { allows: () => Promise.reject(new Error('down')) }, undefined, logger);
@@ -99,6 +105,7 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
 
   it('is not asked for a forged token or an ended sign-in', async () => {
     const hub = hubOf();
+    await hub.listen();
     const allows = vi.fn(() => true);
     const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'team.1')}.team.2`)}`;
     expect((await controllerOf(hub, { allows }).handle(request(`connection=tab-a-0001&${forged}`))).status).toBe(403);
@@ -106,5 +113,27 @@ describe('LiveAuthorizer — asked at every connection of a stream', () => {
     expect(await ended.text()).toBe('event: end\ndata: {}\n\n');
     expect(allows).not.toHaveBeenCalled();
     expect(hub.size).toBe(0);
+  });
+
+  it('a session that ended while a stream waited for its authorizer: the stream ends once it opens', async () => {
+    const backend = new MemoryLiveBackend();
+    const hub = hubOf(backend);
+    await hub.listen();
+    const other = new LiveStreamReader(await hub.open({ channels: ['team.1'], scope: 'another-session', connection: 'tab-b-0001' }));
+    cleanups.push(() => other.close());
+    await other.hello(); // the hub listens
+    let release!: () => void;
+    const hang = new Promise<boolean>((resolve) => (release = () => resolve(true)));
+    const opening = controllerOf(hub, { allows: () => hang }).handle(request(`connection=tab-a-0001&${pair('team.1')}`));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // The session was read already; its end finds no stream to close.
+    await backend.end(ADA);
+    release();
+    const reader = new LiveStreamReader(await opening);
+    cleanups.push(() => reader.close());
+    const outcome = await Promise.race([reader.closed.then(() => 'ended'), new Promise((resolve) => setTimeout(resolve, 500, 'still open'))]);
+    expect(outcome).toBe('ended');
+    expect(reader.events.map((each) => each.event)).toEqual(['hello', 'end']);
+    expect(hub.size).toBe(1); // only the other session's stream is left
   });
 });

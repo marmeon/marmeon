@@ -49,8 +49,42 @@ export interface LiveHubOptions {
 /** The streams one session may hold in a process when nothing says otherwise (`LIVE_MAX_STREAMS_PER_SESSION`). */
 export const MAX_STREAMS_PER_SESSION = 16;
 
-/** Ends of accounts the hub remembers at most (a flood of messages cannot grow it without bound). */
+/** Ends of one kind the hub remembers at most (a flood of messages cannot grow it without bound). */
 const MAX_REMEMBERED_ENDS = 100_000;
+
+/** How long an end is remembered (ms): longer than any request should take between reading its session and opening its stream. */
+const REMEMBER_ENDS_MS = 60_000;
+
+/**
+ * The scopes that ended lately, newest last (the map stays in time order: pruning only looks at the oldest). Anything dropped
+ * moves `#forgotten` up, so a stream whose moment lies before it knows an end of its own may be gone with the dropped ones.
+ */
+class RecentEnds {
+  readonly #ends = new Map<string, number>();
+  #forgotten = Number.NEGATIVE_INFINITY;
+
+  get size(): number {
+    return this.#ends.size;
+  }
+
+  remember(scope: string): void {
+    const now = monotonicNow();
+    this.#ends.delete(scope);
+    this.#ends.set(scope, now);
+    for (const [oldest, at] of this.#ends) {
+      if (now - at <= REMEMBER_ENDS_MS && this.#ends.size <= MAX_REMEMBERED_ENDS) break;
+      this.#forgotten = Math.max(this.#forgotten, at);
+      this.#ends.delete(oldest);
+    }
+  }
+
+  /** `ended` when one of `scopes` ended at or after `moment`, `unknown` when entries from after it are already forgotten. */
+  since(scopes: readonly string[], moment: number): 'ended' | 'unknown' | 'none' {
+    const ended = Math.max(...scopes.map((scope) => this.#ends.get(scope) ?? Number.NEGATIVE_INFINITY));
+    if (ended >= moment) return 'ended';
+    return moment <= this.#forgotten ? 'unknown' : 'none';
+  }
+}
 
 /** How long a stream lives when nothing says otherwise (`LIVE_MAX_STREAM_SECONDS`). */
 export const MAX_STREAM_SECONDS = 900;
@@ -226,10 +260,14 @@ export class LiveHub {
   readonly #channels = new Map<string, Set<OpenStream>>();
   readonly #sessions = new Map<string, Set<OpenStream>>();
   /** Keyed account scope (or `'*'`) → when its sign-ins last ended: a stream opened on an answer from before it is closed again. */
-  readonly #recentEnds = new Map<string, number>();
+  readonly #recentEnds = new RecentEnds();
+  /** Session scope → when that session last ended: a stream opened on a session read from before it is ended again. */
+  readonly #recentSessionEnds = new RecentEnds();
   /** Keyed account scope → its streams (those opened by a signed-in browser). */
   readonly #accounts = new Map<string, Set<OpenStream>>();
   #listening: Promise<unknown> | undefined;
+  /** When the backend began to deliver ends to this hub (after the subscription answered); an end before it was seen by nobody. */
+  #listeningSince = Number.POSITIVE_INFINITY;
   #closed = false;
 
   /** `redactor` masks a failure's text in the log — the app's, so the names and patterns it adds count. */
@@ -295,10 +333,16 @@ export class LiveHub {
         return refuse(503, 'The server is closing.', '1');
       }
       stream.hello(seqs, request.lastEventId, this.#options);
-      // The sign-in was asked about before an end of this account arrived: the answer may be stale, so ask again after a pause.
-      if (stream.accounts !== undefined && request.checkedAt !== undefined) {
-        const ended = Math.max(this.#recentEnds.get('*') ?? 0, ...stream.accounts.map((account) => this.#recentEnds.get(account) ?? 0));
-        if (ended >= request.checkedAt) stream.reconnect();
+      if (request.checkedAt !== undefined) {
+        // An end before the hub listened was neither delivered nor remembered: it cannot be ruled out, whatever the memory says.
+        const blind = request.checkedAt < this.#listeningSince;
+        // The session ended after it was read: nothing is left to reconnect to, so the stream ends, as any stream of that session did.
+        // An end older than the memory cannot be ruled out: the browser asks again, and its next request reads the session anew.
+        const session = this.#recentSessionEnds.since([stream.scope], request.checkedAt);
+        if (session === 'ended') stream.end();
+        else if (session === 'unknown' || blind) stream.reconnect();
+        // The sign-in was asked about before an end of this account arrived: the answer may be stale, so ask again after a pause.
+        else if (stream.accounts !== undefined && this.#recentEnds.since(['*', ...stream.accounts], request.checkedAt) !== 'none') stream.reconnect();
       }
     } catch (error) {
       stream.close();
@@ -306,6 +350,14 @@ export class LiveHub {
       return refuse(503, 'Live updates are unavailable.', '5');
     }
     return new Response(stream.readable, { status: 200, headers: STREAM_HEADERS });
+  }
+
+  /**
+   * Subscribes to the backend now (the first stream does it otherwise). Ends that come before it are seen by nobody, so a stream
+   * whose session was read earlier is asked to connect again.
+   */
+  async listen(): Promise<void> {
+    await this.#listen();
   }
 
   /** Closes every stream (the server closes: the browsers reconnect to the next one). */
@@ -325,15 +377,9 @@ export class LiveHub {
     return this.#recentEnds.size;
   }
 
-  /** Only account ends (and `'*'`) matter to a stream that is opening. The map stays in time order: the oldest entries are first, and are all that pruning looks at. */
-  #rememberEnd(scope: string): void {
-    const now = monotonicNow();
-    this.#recentEnds.delete(scope);
-    this.#recentEnds.set(scope, now);
-    for (const [oldest, at] of this.#recentEnds) {
-      if (now - at <= 60_000 && this.#recentEnds.size <= MAX_REMEMBERED_ENDS) break;
-      this.#recentEnds.delete(oldest);
-    }
+  /** The number of session ends remembered, for tests. */
+  get sessionEndsRemembered(): number {
+    return this.#recentSessionEnds.size;
   }
 
   #forget(stream: OpenStream): void {
@@ -346,8 +392,13 @@ export class LiveHub {
   #listen(): Promise<unknown> {
     this.#listening ??= this.#backend
       .listen((message) => outsideTransaction(() => this.#deliver(message)))
+      .then((value) => {
+        this.#listeningSince = Math.min(this.#listeningSince, monotonicNow());
+        return value;
+      })
       .catch((error: unknown) => {
         this.#listening = undefined;
+        this.#listeningSince = Number.POSITIVE_INFINITY;
         throw error;
       });
     return this.#listening;
@@ -355,7 +406,9 @@ export class LiveHub {
 
   #deliver(message: LiveMessage): void {
     if (message.kind === 'end') {
-      if (message.scope === '*' || message.scope.startsWith(ACCOUNT_PREFIX)) this.#rememberEnd(message.scope);
+      // Remembered for a stream that is still opening: the account ends apart from the session ends, so a flood of sign-outs never pushes an account out.
+      if (message.scope === '*' || message.scope.startsWith(ACCOUNT_PREFIX)) this.#recentEnds.remember(message.scope);
+      else this.#recentSessionEnds.remember(message.scope);
       // A stream that ends leaves its set meanwhile — copied first. A session scope and an account scope never collide (keyed apart);
       // `'*'` is every account's streams, guests' stay.
       for (const stream of [...(this.#sessions.get(message.scope) ?? [])]) stream.end();

@@ -48,8 +48,9 @@ export class LiveStreamController {
   readonly #logger: Logger | undefined;
   readonly #redactor: Redactor;
   readonly #authorizers: () => readonly LiveAuthorizer[];
+  readonly #readAt: () => number | undefined;
 
-  constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience: LiveAudience | undefined, logger: Logger | undefined, redactor: Redactor, authorizers: () => readonly LiveAuthorizer[] = () => []) {
+  constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience: LiveAudience | undefined, logger: Logger | undefined, redactor: Redactor, authorizers: () => readonly LiveAuthorizer[] = () => [], readAt: () => number | undefined = () => undefined) {
     this.#hub = hub;
     this.#tokens = tokens;
     this.#maxChannels = maxChannels;
@@ -58,6 +59,7 @@ export class LiveStreamController {
     this.#logger = logger;
     this.#redactor = redactor;
     this.#authorizers = authorizers;
+    this.#readAt = readAt;
   }
 
   async handle(ctx: HttpContext): Promise<Response> {
@@ -68,6 +70,9 @@ export class LiveStreamController {
     if (!CONNECTION_ID.test(connection)) return refuse(400, 'A live stream names its connection: ?connection=<id>.');
     const given = query.getAll('c');
     if (given.length === 0 || given.length > this.#maxChannels) return refuse(400, `A live stream follows 1 to ${this.#maxChannels} channels (?c=<token>.<channel>).`);
+    // When the session began to be read (the session middleware ran before this): an end of the session, its account or `*` after this
+    // moment is one what was read may not know of. The hub covers those ends once the stream is in its indexes, up to a minute back.
+    const checkedAt = Math.min(this.#readAt() ?? Number.POSITIVE_INFINITY, monotonicNow());
     const scope = this.#scope();
     if (scope === undefined) return refuse(401, 'A live stream belongs to a session.');
     const channels = new Set<string>();
@@ -80,8 +85,6 @@ export class LiveStreamController {
       channels.add(channel);
     }
     // After the tokens, so a forged request learns nothing of the sign-in; before the hub, so an ended one holds no place in it.
-    // Before the sign-in is asked: an end that arrives after this moment is one the answer may not know of (the hub checks).
-    const checkedAt = monotonicNow();
     let accounts: string[] | undefined;
     if (this.#audience) {
       try {

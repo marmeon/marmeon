@@ -28,6 +28,7 @@ import {
   ParentRequest,
   ReadOnly,
   ServerClosing,
+  ServerServing,
   IncomingRequest,
   isViewResult,
   LOCATION_HEADER,
@@ -1203,6 +1204,14 @@ export async function startServer({
   // 127.0.0.1 beside a program on `::`/`::1`: `localhost` may reach that program — said before listening (a worker only names 127.0.0.1).
   const shadow = await shadowedLocalhost(port, host);
   if (shadow && !cluster.isWorker) app.container.make(Logger).warn(shadow);
+
+  // Before the port accepts connections: what the app needs ready for its first request (the live backend's subscription).
+  try {
+    if (app.container.has(ServerServing)) await app.container.make(ServerServing).begin((deadlineMs) => app.container.make(Logger).warn(`A start-up task did not finish within ${deadlineMs} ms; the server starts without waiting for it`));
+  } catch (error) {
+    await closeVite?.();
+    throw error;
+  }
 
   return new Promise((resolve, reject) => {
     // A port that is taken (EADDRINUSE) or not allowed (EACCES): the start fails with Node's error — not an uncaught exception,

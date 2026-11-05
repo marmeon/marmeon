@@ -7,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type PageObject } from '@marmeon/http';
+import { PageSession, ServerServing } from '@marmeon/http/internal';
 import { ServerServiceProvider, startServer } from '@marmeon/server';
 import { SessionEndings, SessionServiceProvider } from '@marmeon/session';
+import type { HttpContext, Next } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { LiveHub } from './hub.ts';
@@ -65,12 +67,18 @@ describe('a live stream and the server', () => {
     const gate = new Promise<void>((resolve) => (release = resolve));
     let arrived!: () => void;
     const waiting = new Promise<void>((resolve) => (arrived = resolve));
+    let starting = true;
     const slow: LiveBackend = {
       refresh: memory.refresh.bind(memory),
       end: memory.end.bind(memory),
       seqs: memory.seqs.bind(memory),
       close: memory.close.bind(memory),
       listen: async (listener) => {
+        // The subscription at start fails (logged, the server starts): the stream's own is the one that waits.
+        if (starting) {
+          starting = false;
+          throw new Error('down at start');
+        }
         arrived();
         await gate;
         return memory.listen(listener);
@@ -100,6 +108,98 @@ describe('a live stream and the server', () => {
     expect(outcome).toBe('closed');
     expect(response.status).toBe(503);
     expect(running.server.listening).toBe(false);
+    await app.shutdown();
+  }, 20_000);
+});
+
+describe('a backend that never answers the subscription', () => {
+  it('does not keep the port closed: the server starts within the deadline, logs it, and the streams of the start connect again', async () => {
+    const memory = new MemoryLiveBackend();
+    let answer!: () => void;
+    const gate = new Promise<void>((resolve) => (answer = resolve));
+    const silent: LiveBackend = {
+      refresh: memory.refresh.bind(memory),
+      end: memory.end.bind(memory),
+      seqs: memory.seqs.bind(memory),
+      close: memory.close.bind(memory),
+      listen: async (listener) => {
+        await gate;
+        return memory.listen(listener);
+      },
+    };
+    const logged: string[] = [];
+    const capture: Logger = { debug() {}, info() {}, warn: (message) => void logged.push(message), error: (message) => void logged.push(message), child: () => capture };
+    const app = await createApplication({
+      root,
+      discover: false,
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
+      modules: [defineModule({ name: 'board', routes: openRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
+    }, { env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' }, override: (container: Container) => { container.instance(LiveBackend, silent); container.instance(Logger, capture); } });
+    app.container.make(ServerServing).deadlineMs = 150;
+    const running = await Promise.race([startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' }), new Promise<never>((_, reject) => setTimeout(reject, 3000, new Error('the start waited for the backend')))]);
+    expect(logged.some((line) => line.includes('did not answer the subscription'))).toBe(true);
+    const { port } = running.server.address() as AddressInfo;
+    const answered = await fetch(`http://127.0.0.1:${port}/board`, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+    const page = (await answered.json()) as PageObject;
+    const cookie = answered.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
+    const { channel, token } = page.live![0]!;
+    const opening = fetch(`http://127.0.0.1:${port}/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } });
+    // The request has read its session and sits in the hub, waiting for the subscription.
+    while (app.container.make(LiveHub).size === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+    answer();
+    const stream = new LiveStreamReader(await opening);
+    const outcome = await Promise.race([stream.closed.then(() => 'asked to connect again'), new Promise((resolve) => setTimeout(resolve, 3000, 'streaming blind'))]);
+    expect(outcome).toBe('asked to connect again');
+    expect(stream.events.map((each) => each.event)).toEqual(['hello']);
+    await running.close();
+    await app.shutdown();
+  }, 20_000);
+});
+
+describe('a session that ends after it was read', () => {
+  it('while a middleware behind the session middleware waits: the stream ends once it opens', async () => {
+    let arrived!: () => void;
+    const waiting = new Promise<void>((resolve) => (arrived = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let scope: string | undefined;
+    // After StartSession (web group, later): the session is read already, the stream's request has not reached the endpoint.
+    class Waits {
+      readonly #page: PageSession;
+      constructor(page: PageSession) {
+        this.#page = page;
+      }
+      async handle(ctx: HttpContext, next: Next<{}>) {
+        if (new URL(ctx.request.url).pathname === '/_marmeon/live') {
+          scope = this.#page.scope();
+          arrived();
+          await gate;
+        }
+        return next();
+      }
+    }
+    const app = await createApplication({
+      root,
+      discover: false,
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
+      middleware: { web: [Waits] },
+      modules: [defineModule({ name: 'board', routes: openRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
+    }, { env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' } });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
+    const { port } = running.server.address() as AddressInfo;
+    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+    const page = (await answer.json()) as PageObject;
+    const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
+    const { channel, token } = page.live![0]!;
+    const opening = fetch(`http://127.0.0.1:${port}/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } });
+    await waiting;
+    await app.container.make(SessionEndings).ended(scope!);
+    release();
+    const stream = new LiveStreamReader(await opening);
+    const outcome = await Promise.race([stream.closed.then(() => 'ended'), new Promise((resolve) => setTimeout(resolve, 3000, 'still open'))]);
+    expect(outcome).toBe('ended');
+    expect(stream.events.map((each) => each.event)).toEqual(['hello', 'end']);
+    await running.close();
     await app.shutdown();
   }, 20_000);
 });

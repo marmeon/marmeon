@@ -55,7 +55,7 @@ describe('once props on the server', async () => {
     ],
   }, { env: { APP_KEY: generateKey() } });
   application.container.make(Router).middleware.append('web', ShareCountries, 400);
-  application.container.scoped(PageSession, () => ({ started: () => true, csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined }));
+  application.container.scoped(PageSession, () => ({ started: () => true, csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined, readAt: () => undefined }));
   application.container.scoped(Translator, () => ({ locale, has: () => false, text: (key: string) => key }) as never);
   const app = createHttpKernel(application);
   const visit = async (path: string, headers: Record<string, string> = {}) =>

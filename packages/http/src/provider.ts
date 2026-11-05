@@ -14,7 +14,7 @@ import { ResponseLifecycle } from './response-lifecycle.ts';
 import { epochOfResolver, SessionEpoch, SessionEpochController } from './session-epoch.ts';
 import { SharedData } from './shared-data.ts';
 import { httpSolutions } from './solutions.ts';
-import { ServerClosing } from './server-closing.ts';
+import { ServerClosing, ServerServing } from './server-closing.ts';
 import { UrlSigner } from './signed-urls.ts';
 import { Webhooks } from './webhooks.ts';
 import { SESSION_PATH } from './tab-sync-protocol.ts';
@@ -79,6 +79,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(SessionEpoch);
     container.scoped(SessionEpochController, (c) => new SessionEpochController(() => epochOfResolver(c)));
     container.singleton(ServerClosing);
+    container.singleton(ServerServing);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
 
     // The routes are loaded here, not in boot(): `marmeon build` writes the route types from an app that registers its providers

@@ -78,6 +78,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('opens a stream for channels signed for this session — with the stream headers', async () => {
     const hub = hubOf();
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const response = await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}&${pair('dashboard.sign-ins')}`));
     expect(response.status).toBe(200);
@@ -97,6 +98,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     'ends the stream with 204 and opens none for %s — before the tokens, the session or the sign-in are looked at',
     async (_name, mark) => {
       const hub = hubOf();
+      await hub.listen();
       let asked = 0;
       const scope = () => (asked++, ADA);
       let checked = 0;
@@ -118,6 +120,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('with the version, a forged token is still a 403 and no stream', async () => {
     const hub = hubOf();
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
     expect((await controller.handle(raw(`v=1&connection=tab-a-0001&${forged}`))).status).toBe(403);
@@ -127,6 +130,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('takes the timeout of waitFor() as a duration', async () => {
     const hub = hubOf();
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const reader = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
     cleanups.push(() => reader.close());
@@ -136,6 +140,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('refuses a token rewritten to another channel (users.1 → users.2): 403, no stream', async () => {
     const hub = hubOf();
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
     const response = await controller.handle(request(`connection=tab-a-0001&${pair('dashboard.sign-ins')}&${forged}`));
@@ -145,6 +150,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('refuses a token of another session — or of one that ended (signed out: the cookie names a new session now): 403', async () => {
     const hub = hubOf();
+    await hub.listen();
     // The tab's cookie is Grace's session now (another browser's token, or Ada signed out and the id was regenerated).
     const controller = new LiveStreamController(hub, tokens, 20, () => GRACE, undefined, undefined, new Redactor());
     expect((await controller.handle(request(`connection=tab-a-0001&${pair('users.1', ADA)}`))).status).toBe(403);
@@ -153,6 +159,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('refuses a stream without a connection, without channels, with too many — and one without a session (401)', async () => {
     const hub = hubOf();
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 2, () => ADA, undefined, undefined, new Redactor());
     expect((await controller.handle(request(pair('users.1')))).status).toBe(400);
     expect((await controller.handle(request('connection=tab-a-0001'))).status).toBe(400);
@@ -162,6 +169,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('asks the audience after the tokens: an ended sign-in gets `end` and no place in the hub; an open one a stream', async () => {
     const hub = hubOf();
+    await hub.listen();
     const ended = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => ({ kind: 'ended' }) }, undefined, new Redactor());
     const response = await ended.handle(request(`connection=tab-a-0001&${pair('users.1')}`));
     expect(response.status).toBe(200);
@@ -185,6 +193,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     try {
       const backend = new MemoryLiveBackend();
       const hub = hubOf(backend);
+      await hub.listen();
       await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
       const check = async () => {
         vi.advanceTimersByTime(1);
@@ -206,6 +215,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('refuses with 503 when the audience cannot tell (the database is down), and opens nothing', async () => {
     const hub = hubOf();
+    await hub.listen();
     const error = vi.fn();
     const logger = { error } as unknown as Logger;
     const failing = () => new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => Promise.reject(new Error('down')) }, logger, new Redactor());
@@ -229,6 +239,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('holds at most LIVE_MAX_STREAMS streams per process — beyond, 503 with Retry-After until one closes', async () => {
     const hub = hubOf(new MemoryLiveBackend(), { maxStreams: 1 });
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const first = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
     const refused = await controller.handle(request(`connection=tab-b-0001&${pair('users.1')}`));
@@ -244,6 +255,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     const warnings: string[] = [];
     const logger: Logger = { ...silent, warn: (message) => void warnings.push(message), child: () => logger };
     const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100 }, logger, undefined, new Redactor());
+    await hub.listen();
     cleanups.push(() => hub.close());
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const opened: LiveStreamReader[] = [];
@@ -292,6 +304,7 @@ describe('the stream — hints, never data', () => {
   it('says hello with each channel’s sequence, then a hint per refresh: { channel, only, seq } — only to followers of the channel', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     await backend.refresh('users.1', null, undefined);
     const ada = await open(hub, ['users.1', 'notifications.user.1']);
     const other = await open(hub, ['users.2'], { connection: 'tab-c-0001' });
@@ -312,6 +325,7 @@ describe('the stream — hints, never data', () => {
   it('a hint goes to the streams of its channel only (the index) — a session’s end to that session’s streams only', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const followers = [await open(hub, ['users.1'], { connection: 'tab-a-0001' }), await open(hub, ['users.1', 'users.2'], { scope: GRACE, connection: 'tab-b-0001' })];
     const others = await Promise.all(Array.from({ length: 30 }, (_, tab) => open(hub, [`users.${100 + tab}`], { scope: `scope-${tab}`, connection: `tab-${String(tab).padStart(2, '0')}-0002` })));
     await Promise.all([...followers, ...others].map((reader) => reader.hello()));
@@ -331,6 +345,7 @@ describe('the stream — hints, never data', () => {
   it('a refresh never carries data — whatever a caller passes besides `only` (the schema of every hint of these tests)', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const ada = await open(hub, ['users.1']);
     await ada.hello();
     await broadcasterOf(backend).refresh('users.1', { only: ['profile'], data: { secret: 'CANARY' }, props: { email: 'CANARY' } } as never);
@@ -352,6 +367,7 @@ describe('the stream — hints, never data', () => {
   it('the tab that caused a refresh (x-marmeon-connection) gets it with nothing to reload — the others with its props', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const a = await open(hub, ['users.1'], { connection: 'tab-a-0001' });
     const b = await open(hub, ['users.1'], { connection: 'tab-b-0001' });
     await Promise.all([a.hello(), b.hello()]);
@@ -381,6 +397,7 @@ describe('the stream — hints, never data', () => {
       },
     };
     const hub = hubOf(slow);
+    await hub.listen();
     const opening = hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
     await settle();
     await backend.refresh('users.1', null, undefined); // seq 1 — before hello reads: hello counts it
@@ -399,6 +416,7 @@ describe('the stream — hints, never data', () => {
   it('reconnecting with Last-Event-ID: hello names the channels whose sequence moved meanwhile', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const first = await open(hub, ['users.1', 'dashboard.sign-ins']);
     await first.hello();
     await backend.refresh('users.1', null, undefined);
@@ -413,6 +431,7 @@ describe('the stream — hints, never data', () => {
 
   it('sends heartbeats on an idle stream (a comment line, every LIVE_HEARTBEAT_SECONDS)', async () => {
     const hub = hubOf(new MemoryLiveBackend(), { heartbeatSeconds: 0.02 });
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     await reader.waitFor(() => reader.heartbeats >= 3);
     expect(reader.hints).toEqual([]);
@@ -421,6 +440,7 @@ describe('the stream — hints, never data', () => {
   it('a session that ended (signed out, in any process): its streams get `end` and close — no further hints; others stay', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const adaA = await open(hub, ['users.1'], { connection: 'tab-a-0001' });
     const adaB = await open(hub, ['users.1'], { connection: 'tab-b-0001' });
     const grace = await open(hub, ['users.1'], { scope: GRACE, connection: 'tab-g-0001' });
@@ -437,6 +457,7 @@ describe('the stream — hints, never data', () => {
   it('the sign-ins of an account ended: its streams close without `end` and with a pause to reconnect after — other accounts, guests and the sessions stay', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const adaA = await open(hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a1', account: 'a:ada' });
     const adaB = await open(hub, ['users.1'], { connection: 'tab-b-0001', scope: 'session-a2', account: 'a:ada' });
     const grace = await open(hub, ['users.1'], { connection: 'tab-g-0001', scope: 'session-g', account: 'a:grace' });
@@ -463,6 +484,7 @@ describe('the stream — hints, never data', () => {
     for (const [from, to] of [[k0, k1], [k1, k0], [k1, k1]] as const) {
       const backend = new MemoryLiveBackend();
       const hub = hubOf(backend);
+      await hub.listen();
       const process = new LiveTokens(to);
       const reader = new LiveStreamController(hub, process, 20, () => ADA, { check: async () => ({ kind: 'account', scope: 'acct-1' }) }, undefined, new Redactor());
       const stream = new LiveStreamReader(await reader.handle({ request: new Request(`http://app.test/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${process.sign(ADA, 'users.1')}.users.1`)}`) } as never));
@@ -478,6 +500,7 @@ describe('the stream — hints, never data', () => {
   it('a stream filed under two scopes is closed once by `*` and leaves every index', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const reader = await open(hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a' });
     const both = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', accounts: ['a:new', 'a:old'], connection: 'tab-b-0001' }));
     cleanups.push(() => both.close());
@@ -500,6 +523,7 @@ describe('the stream — hints, never data', () => {
   it('every account ended (\'*\'): every account\'s streams close, a guest\'s stays', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const ada = await open(hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a', account: 'a:ada' });
     const grace = await open(hub, ['users.1'], { connection: 'tab-g-0001', scope: 'session-g', account: 'a:grace' });
     const guest = await open(hub, ['users.1'], { connection: 'tab-x-0001', scope: 'session-x' });
@@ -515,6 +539,7 @@ describe('the stream — hints, never data', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const hub = hubOf(new MemoryLiveBackend(), { maxStreamSeconds: 100 });
+      await hub.listen();
       const reader = await open(hub, ['users.1'], { account: 'a:ada' });
       await reader.hello();
       await vi.advanceTimersByTimeAsync(74_000);
@@ -534,6 +559,7 @@ describe('the stream — hints, never data', () => {
     try {
       const backend = new MemoryLiveBackend();
       const hub = hubOf(backend);
+      await hub.listen();
       await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
       const checkedAt = monotonicNow();
       vi.advanceTimersByTime(1);
@@ -570,6 +596,7 @@ describe('the stream — hints, never data', () => {
     try {
       const backend = new MemoryLiveBackend();
       const hub = hubOf(backend);
+      await hub.listen();
       await (await open(hub, ['users.1'], { account: 'a:other' })).hello();
       for (let i = 0; i < 50; i++) await backend.end(`session-${i}`);
       expect(hub.endsRemembered).toBe(0);
@@ -583,6 +610,67 @@ describe('the stream — hints, never data', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('a session end forgotten before the stream opened is not ruled out: the stream asks its browser to connect again', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const backend = new MemoryLiveBackend();
+      const hub = hubOf(backend);
+      await hub.listen();
+      await (await open(hub, ['users.1'], { scope: 'other' })).hello();
+      const checkedAt = monotonicNow();
+      await backend.end('gone');
+      vi.advanceTimersByTime(90_000);
+      await backend.end('another'); // prunes 'gone'
+      expect(hub.sessionEndsRemembered).toBe(1);
+      const reconnect = vi.spyOn(OpenStream.prototype, 'reconnect');
+      cleanups.push(() => reconnect.mockRestore());
+      const reader = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'gone', checkedAt, connection: 'tab-w-0001' }));
+      cleanups.push(() => reader.close());
+      await reader.hello();
+      expect(reconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('an account end forgotten before the stream opened is not ruled out: the stream asks its browser to connect again', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const backend = new MemoryLiveBackend();
+      const hub = hubOf(backend);
+      await hub.listen();
+      const checkedAt = monotonicNow();
+      await backend.end('a:ada');
+      vi.advanceTimersByTime(90_000);
+      await backend.end('a:grace'); // prunes 'a:ada'
+      expect(hub.endsRemembered).toBe(1);
+      const reconnect = vi.spyOn(OpenStream.prototype, 'reconnect');
+      cleanups.push(() => reconnect.mockRestore());
+      const reader = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-a', accounts: ['a:ada'], checkedAt, connection: 'tab-z-0001' }));
+      cleanups.push(() => reader.close());
+      await reader.closed;
+      expect(reconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a hub that began to listen after the session was read cannot rule out an end: the first stream asks its browser to connect again', async () => {
+    const hub = hubOf(); // not listening yet: the first stream subscribes
+    const checkedAt = monotonicNow();
+    const reconnect = vi.spyOn(OpenStream.prototype, 'reconnect');
+    cleanups.push(() => reconnect.mockRestore());
+    const first = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'fresh', checkedAt, connection: 'tab-x-0001' }));
+    cleanups.push(() => first.close());
+    await first.hello();
+    expect(reconnect).toHaveBeenCalledTimes(1);
+    // Asked after the subscription: nothing to doubt.
+    const second = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'fresh-2', checkedAt: monotonicNow(), connection: 'tab-y-0001' }));
+    cleanups.push(() => second.close());
+    await second.hello();
+    expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
   it('LiveTokens names the account under every key, the current one first', () => {
@@ -603,6 +691,7 @@ describe('the stream — hints, never data', () => {
   it('the server closing ends every stream (without `end`: the browser reconnects to the next server)', async () => {
     const closing = new AbortController();
     const hub = hubOf(new MemoryLiveBackend(), {}, closing.signal);
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     await reader.hello();
     closing.abort();
@@ -614,6 +703,7 @@ describe('the stream — hints, never data', () => {
   it('the server began closing: a stream asked for afterwards is refused (503) — none opens that would hold server.close()', async () => {
     const closing = new AbortController();
     const hub = hubOf(new MemoryLiveBackend(), {}, closing.signal);
+    await hub.listen();
     closing.abort();
     const late = await hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
     await late.body?.cancel();
@@ -632,6 +722,7 @@ describe('the stream — hints, never data', () => {
     const gate = new Promise<void>((resolve) => (release = resolve));
     const slow: LiveBackend = { refresh: backend.refresh.bind(backend), end: backend.end.bind(backend), listen: backend.listen.bind(backend), close: backend.close.bind(backend), seqs: async (channels) => (await gate, backend.seqs(channels)) };
     const hub = hubOf(slow, {}, closing.signal);
+    await hub.listen();
     const opening = hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
     await settle();
     closing.abort();
@@ -643,6 +734,7 @@ describe('the stream — hints, never data', () => {
 
   it('a tab that goes away closes its stream (the hub lets go of it)', async () => {
     const hub = hubOf();
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     await reader.hello();
     expect(hub.size).toBe(1);
@@ -675,6 +767,7 @@ describe('a channel whose counter started again (its key expired, was evicted or
   it('an open stream that saw 5 is told the hints of the new count (1, 2, …) — never drops them as old', async () => {
     const { backend, forget } = forgetful();
     const hub = hubOf(backend);
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     await reader.hello();
     for (let n = 0; n < 5; n++) await backend.refresh('users.1', ['profile'], undefined);
@@ -689,6 +782,7 @@ describe('a channel whose counter started again (its key expired, was evicted or
   it('a reconnect with a Last-Event-ID above the new count: hello names the channel as missed — the tab reloads once', async () => {
     const { backend, forget } = forgetful();
     const hub = hubOf(backend);
+    await hub.listen();
     for (let n = 0; n < 5; n++) await backend.refresh('users.1', null, undefined);
     forget();
     await backend.refresh('users.1', null, undefined);
@@ -714,6 +808,7 @@ describe('the memory backend — bounded like Redis', () => {
   it('a forgotten channel counts on above every forgotten sequence — a stream still open takes its next hint', async () => {
     const backend = new MemoryLiveBackend({ maxChannels: 2 });
     const hub = hubOf(backend);
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     for (let n = 0; n < 5; n++) await backend.refresh('users.1', null, undefined);
     await reader.waitFor(5);
@@ -733,6 +828,7 @@ describe('the Broadcaster — after the commit, never in a rollback', () => {
   it('inside a transaction the hint goes out once it committed — not before', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     await reader.hello();
     const recorder = new BroadcastTester();
@@ -749,6 +845,7 @@ describe('the Broadcaster — after the commit, never in a rollback', () => {
   it('a transaction that rolls back sends nothing', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
+    await hub.listen();
     const reader = await open(hub, ['users.1']);
     await reader.hello();
     const recorder = new BroadcastTester();
@@ -922,6 +1019,7 @@ describe('a heartbeat keeps a stream alive behind a proxy with an idle timeout',
   async function streamThroughProxy(heartbeatSeconds: number) {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend, { heartbeatSeconds });
+    await hub.listen();
     const app: Server = createServer(async (_request, response) => {
       const answer = await hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
       response.writeHead(answer.status, Object.fromEntries(answer.headers));

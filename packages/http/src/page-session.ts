@@ -28,5 +28,10 @@ export interface PageSession {
    * for a guest: nothing of a guest's is protected, so a guest's session never reloads other tabs. Never the session id itself.
    */
   generation(): string | undefined;
+  /**
+   * When the session began to be read for this request (ms, `performance.timeOrigin + performance.now()`), before the store
+   * answered: an end of the session after it may not be known to what was read. Undefined without a session.
+   */
+  readAt(): number | undefined;
 }
 export const PageSession = token<PageSession>('PageSession');

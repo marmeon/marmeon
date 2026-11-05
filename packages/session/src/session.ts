@@ -65,6 +65,7 @@ export class Session {
   #key: string | undefined;
   #data: SessionPayload = {};
   #started = false;
+  #readAt: number | undefined;
   /** The session came from the store (it is not new in this request). */
   #loaded = false;
   /** The version the store had when the session was loaded — what a write back compares. */
@@ -133,11 +134,21 @@ export class Session {
   }
 
   /**
+   * When `start()` began to read the session (ms on the clock of `performance.timeOrigin + performance.now()`), undefined before.
+   * @internal
+   */
+  get readAt(): number | undefined {
+    return this.#readAt;
+  }
+
+  /**
    * Loads the session `id` (from the cookie) — looked up by its key, `sessionKey(id)` — or starts a new one if it is unknown,
    * expired or unreadable (an encrypted payload that does not decrypt).
    * @internal
    */
   async start(id?: string): Promise<void> {
+    // Before the store is read: an end of this session that arrives later may not be known to what is read.
+    this.#readAt = performance.timeOrigin + performance.now();
     const key = id && SESSION_ID.test(id) ? sessionKey(id) : undefined;
     const stored = key ? await this.#store.read(key) : undefined;
     // The plain codec answers at once: awaited only when it is a promise (the encrypted codec) — a microtask less per request.

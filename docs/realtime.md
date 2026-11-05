@@ -303,6 +303,8 @@ counts are each process's own: with four processes, a session may hold 16 stream
 
 `@marmeon/redis` brings the Redis client, and the [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
+A server subscribes to the backend before its port accepts connections (for up to five seconds, then it starts anyway), so a stream never misses the end of its session. An app that serves through its own server built on `createHttpKernel`, not `startServer`, has its first streams connect once more after the start.
+
 ## Catching up
 
 Every hint carries its channel's sequence number. When a stream opens it says each channel's number, and the tab compares. A

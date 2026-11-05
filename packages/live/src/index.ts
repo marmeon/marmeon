@@ -3,7 +3,7 @@ import { Application, Logger, Redactor, type Container, type Resolver, type Serv
 import { CLUSTER_WORKER, withCode } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { defineRoutes, LiveAudience, Router, type LiveAuthorizerClass } from '@marmeon/http';
-import { FRAMEWORK_ROUTES, IncomingRequest, CONNECTION_HEADER, LIVE_PATH, LiveSigner, PageSession, ReadOnly, ServerClosing } from '@marmeon/http/internal';
+import { FRAMEWORK_ROUTES, IncomingRequest, CONNECTION_HEADER, LIVE_PATH, LiveSigner, PageSession, ReadOnly, ServerClosing, ServerServing } from '@marmeon/http/internal';
 import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { LiveConfig } from './config.ts';
@@ -51,6 +51,15 @@ function sessionScopeOf(container: Resolver, keep = false): string | undefined {
     return container.make(PageSession).scope({ keep });
   } catch {
     return undefined; // no session in this app (or on this route)
+  }
+}
+
+/** When the request's session began to be read (see `PageSession.readAt`); undefined without a session. */
+function sessionReadAtOf(container: Resolver): number | undefined {
+  try {
+    return container.make(PageSession).readAt();
+  } catch {
+    return undefined;
   }
 }
 
@@ -111,7 +120,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const recorder = container.has(BroadcastTester) ? container.make(BroadcastTester) : undefined;
       return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application), redactor: c.make(Redactor) });
     });
-    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor), () => [...new Set(c.make(Application).modules.flatMap((module) => module.liveAuthorizers ?? []))].map((authorizer) => c.make(authorizer))));
+    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor), () => [...new Set(c.make(Application).modules.flatMap((module) => module.liveAuthorizers ?? []))].map((authorizer) => c.make(authorizer)), () => sessionReadAtOf(c)));
   }
 
   async boot(app: Application): Promise<void> {
@@ -138,6 +147,25 @@ export class LiveServiceProvider implements ServiceProvider {
       const connections = container.make(this.#redis.RedisConnections);
       connections.options(config.redisConnection);
       await connections.verify();
+    }
+    // Subscribed before the process takes requests: an end that comes while a stream opens is then heard. If the backend is down now
+    // the server starts anyway (logged); streams are then asked to connect again and the next one retries the subscription.
+    if (container.has(ServerServing)) {
+      const logger = container.make(Logger).child({ channel: 'live' });
+      const redactor = container.make(Redactor);
+      container.make(ServerServing).onServe(async (deadlineMs) => {
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          // A backend that never answers the subscription must not keep the port closed: the subscription goes on in the hub, which
+          // counts streams as blind (they connect again) until it settles.
+          const timedOut = new Promise<'late'>((resolve) => (timer = setTimeout(resolve, deadlineMs, 'late')));
+          if ((await Promise.race([container.make(LiveHub).listen(), timedOut])) === 'late') logger.error(`The live backend did not answer the subscription within ${deadlineMs} ms; the server starts, streams connect again until it does`);
+        } catch (error) {
+          logger.error('The live backend could not be subscribed to at start; streams retry it as they open', { exception: redactor.text(String(error)) });
+        } finally {
+          clearTimeout(timer);
+        }
+      });
     }
     // The keys come from APP_KEY: a missing key fails the start, not the first page.
     container.make(LiveTokens);
