@@ -352,6 +352,15 @@ describe('Redactor.log — the log path', () => {
     const items = shown.aggregate?.aggregateErrors as unknown[];
     expect(String(items[0])).toContain(REDACTED);
     expect(items[2]).toBe('plain');
+    // Cut at the same length as a message.
+    const long = 'x'.repeat(MAX_ENTRY_BYTES + 10);
+    const bounded = redactor.log({
+      error: new Error('failed', { cause: long }),
+      aggregate: new AggregateError([long], 'two failed'),
+    }) as Record<string, Record<string, unknown>>;
+    expect(String(bounded.error?.cause)).toMatch(/… \[cut: 10 more characters\]$/);
+    const boundedItems = bounded.aggregate?.aggregateErrors as unknown[];
+    expect(String(boundedItems[0])).toMatch(/… \[cut: 10 more characters\]$/);
     // A plain string under another key is not an error's message: it stays as it is.
     expect(redactor.log({ note: leak })).toEqual({ note: leak });
   });
