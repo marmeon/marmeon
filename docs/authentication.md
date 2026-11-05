@@ -1056,8 +1056,12 @@ the sign-ins once more, for one that a running sign-in made in between, then the
 that is being stored at that moment is refused. The call throws, naming the remedy and before anything is deleted, when the
 `UserProvider` or a store it will use lacks its method, and inside a database transaction.
 
-A step that fails stops the call. The message, printed by the command with exit code 1 and logged, names the step, what was
-already done, and whether the keys are rotated: if they are, every session is ended and only the clean-up remains. Run it
+A step that fails stops the call. The thrown error's message names the step, what was already done, and whether the keys are
+rotated: if they are, every session is ended and only the clean-up remains. The message also quotes the cause, which may hold a
+secret, so it stays raw. The command prints it with exit code 1, masked with the app's `Redactor` and with control characters
+escaped. The log line names the step and what was done, and carries the cause as the `error` field, which the redactor masks. When
+you call `endEveryone()` yourself, mask the message before you show it, for example with `redactor.text(error.message)` (see
+[keeping secrets out of the log](logging.md#keeping-secrets-out-of-the-log)). Run it
 again: each step deletes or overwrites everything, so a second run is safe and finishes the rest. If the keys were written but the read-back
 could not confirm them, the message says "fix the UserProvider, then run it again": a plain rerun fails the same way, so fix `findById()` first.
 

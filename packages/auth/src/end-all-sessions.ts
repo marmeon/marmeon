@@ -1,5 +1,5 @@
 import { hostname, userInfo } from 'node:os';
-import { CommandArgumentsError, environment, Logger } from '@marmeon/core';
+import { CommandArgumentsError, environment, escapeControls, Logger, Redactor } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
 
@@ -22,14 +22,17 @@ export class EndAllSessionsCommand {
     'api-tokens': { type: 'boolean' },
     'reset-tokens': { type: 'boolean' },
   } as const;
-  static inject = [AccountSessions, Logger];
+  static inject = [AccountSessions, Logger, Redactor];
 
   readonly #accounts: AccountSessions;
   readonly #logger: Logger | undefined;
 
-  constructor(accounts: AccountSessions, logger?: Logger) {
+  readonly #redactor: Redactor;
+
+  constructor(accounts: AccountSessions, logger: Logger, redactor: Redactor) {
     this.#accounts = accounts;
     this.#logger = logger;
+    this.#redactor = redactor;
   }
 
   async handle({ args, options, output }: CommandInput): Promise<number> {
@@ -57,8 +60,8 @@ export class EndAllSessionsCommand {
     try {
       ended = await this.#accounts.endEveryone({ accessTokens, resetTokens });
     } catch (error) {
-      // The message says which steps finished and whether to run it again or fix the user provider first.
-      output.error(error instanceof Error ? error.message : String(error));
+      // The message says which steps finished and whether to run it again or fix the user provider first; it quotes the cause, which may hold a secret.
+      output.error(escapeControls(this.#redactor.text(error instanceof Error ? error.message : String(error))));
       return 1;
     }
     // `endEveryone()` has logged the counts; this adds who asked for it.

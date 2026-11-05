@@ -154,7 +154,7 @@ export class NewPassword {
         try {
           await this.#endings?.endAccount(accountScope(id));
         } catch (error) {
-          this.#logger.error('The live streams of an account could not be told its sign-ins ended', { error: error instanceof Error ? error.message : String(error) });
+          this.#logger.error('The live streams of an account could not be told its sign-ins ended', { error });
         }
       });
     }
