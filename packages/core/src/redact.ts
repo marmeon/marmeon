@@ -20,22 +20,23 @@ const MAX_CAUSES = 5;
 // separator (`=`, `: `, `":` of JSON, `': ` of `util.inspect`) and the value. A value in quotes goes to its closing quote of the
 // same kind (a JSON string `"correct horse battery"` whole; `\"` does not close it) or, when the text is cut off, to the end of
 // the line: a stored error often ends in the middle of a JSON body, and what follows an opening quote is a value to the end. One
-// without quotes goes to the next space, quote or delimiter. A statement's `?`/`$1` placeholder stays readable (`"?"`, not
-// `"?secret"`). A value in quotes is never left for the unquoted branch once its quote opened: it either matches whole or is
+// without quotes goes to the next space, quote or delimiter. A statement's `?`/`$1` placeholder stays readable when it is
+// the whole value (`"?"`, `password = ?`, not `"?secret"`). A value in quotes is never left for the unquoted branch once
+// its quote opened: it either matches whole or is
 // empty. The second form is a JSON string inside a JSON string (`{"error":"{\"password\":\"x y\"}"}`): its quotes are `\"`.
 // Linear: every quoted loop is unrolled (`plain*(?:escape plain*)*`, no group repeated per character: a long value would
 // overflow the stack), its alternatives start with different characters, and it ends at its quote or the line's end, so after
 // a miss only the other kind of quote can run far again on the same line.
 const quoted = (quote: string): string =>
   String.raw`${quote}(?!${quote}|\[redacted\]${quote}|\?${quote}|\$\d+${quote}|\\?(?:\n|$))([^${quote}\\\n]*(?:\\[^\n][^${quote}\\\n]*)*)(${quote}|(?=\\?(?:\n|$)))`;
-const VALUE_TAIL = String.raw`(?:(["']?\s*[:=]\s*)(?:${quoted('"')}|${quoted("'")}|("?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?[^\s"'&,;}]+)|((?:\\?["'])?\s*[:=]\s*)\\"(?!\[redacted\]\\")(?=[^"\\\n]|\\[^"\n])([^"\\\n]*(?:\\(?:[^"\\\n]|\\\\[^\n]|\\[^"\\\n])[^"\\\n]*)*)(\\"|(?=["\\\n]|$)))`;
+const VALUE_TAIL = String.raw`(?:(["']?\s*[:=]\s*)(?:${quoted('"')}|${quoted("'")}|("?)(?!\[redacted\]|(?:\?|\$\d+)(?![^\s"'&,;)}]))((?:Bearer|Basic)\s+)?[^\s"'&,;}]+)|((?:\\?["'])?\s*[:=]\s*)\\"(?!\[redacted\]\\")(?=[^"\\\n]|\\[^"\n])([^"\\\n]*(?:\\(?:[^"\\\n]|\\\\[^\n]|\\[^"\\\n])[^"\\\n]*)*)(\\"|(?=["\\\n]|$)))`;
 // Groups after the name (group 1): 2 separator, 3 and 5 the text inside double and single quotes, 4 and 6 the closing quote or
 // nothing, 7 an opening quote without a closing one, 8 `Bearer `/`Basic `; 9 the separator of a stringified value, 10 its text,
 // 11 its closing `\"` or nothing.
 const keyValuePattern = (name: string, before: string): RegExp => new RegExp(`${before}(${name})${VALUE_TAIL}`, 'gi');
 // `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value. Matches start at a word's
 // beginning only (the lookbehind): otherwise a long word costs quadratic time (a 64 KB string took seconds).
-const KEY_VALUE = keyValuePattern(String.raw`(?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64})`, String.raw`(?<![\w-])`);
+const KEY_VALUE = keyValuePattern(String.raw`(?:(?:x-)?auth(?![\w-])|[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64})`, String.raw`(?<![\w-])`);
 
 /** Replaces the value `KEY_VALUE` or an added name found, keeping the key, the separator, the quotes and a `Bearer ` scheme. */
 function maskValue(_match: string, key: string, ...groups: (string | undefined)[]): string {
@@ -290,7 +291,7 @@ export class Redactor {
   addKeys(...keys: string[]): this {
     for (const key of keys) if (key !== '') this.#keys.add(key.toLowerCase());
     const names = [...this.#keys].map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    this.#text = names.length > 0 ? keyValuePattern(`\\b(?:${names.join('|')})`, '') : undefined;
+    this.#text = names.length > 0 ? keyValuePattern(`(?:${names.join('|')})`, String.raw`(?<!\w)`) : undefined;
     return this;
   }
 

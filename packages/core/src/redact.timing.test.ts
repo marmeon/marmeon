@@ -52,6 +52,9 @@ describe('the time of masking hostile input', () => {
       'iban: "'.repeat(30_000),
       `{"iban":"${'\\"'.repeat(100_000)}`,
       `password: "${'\\'.repeat(100_001)}x`,
+      'password=$1'.repeat(30_000),
+      'x-auth: ?'.repeat(30_000),
+      '.iban='.repeat(40_000),
       '{"e":"{\\"iban\\":\\"'.repeat(20_000),
       `{"e":"{\\"iban\\":\\"${'a \\\\\\"'.repeat(50_000)}`,
       // Both escape kinds of a JSON string inside a JSON string: one that could be read two ways would backtrack exponentially.

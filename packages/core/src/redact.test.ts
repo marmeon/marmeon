@@ -431,6 +431,30 @@ describe('Redactor: a value in quotes, for the names of the core and the added o
     expect(redactText('password: "a b\\\rc d" ok')).toBe('password: "[redacted]" ok');
   });
 
+  it('keeps an unquoted placeholder only when it is the whole value', () => {
+    expect(redactText('password=?secret')).toBe('password=[redacted]');
+    expect(redactText('password=$1secret')).toBe('password=[redacted]');
+    for (const text of ['password = ?', 'password = $1', 'password = $12, x', 'insert (password) values (password=?)', 'password=? and x', 'password=$1&b=2']) expect(redactText(text), text).toBe(text);
+  });
+
+  it('masks auth and x-auth as whole names only', () => {
+    expect(redactText('x-auth: abc123')).toBe('x-auth: [redacted]');
+    expect(redactText('Auth=abc123&a=1')).toBe('Auth=[redacted]&a=1');
+    expect(redactText('{"x-auth":"abc 123"}')).toBe('{"x-auth":"[redacted]"}');
+    for (const text of ['author: Ada', 'oauth_state=xyz', 'authority=example.org', 'my-auth: x', 'x-author: Ada']) expect(redactText(text), text).toBe(text);
+  });
+
+  it('masks an added name that starts with punctuation, but not inside a longer name', () => {
+    const redactor = new Redactor({ keys: ['.iban', '$token', 'iban'] });
+    expect(redactor.text('{".iban":"DE89 3704 0044"}')).toBe('{".iban":"[redacted]"}');
+    expect(redactor.text('$token=abc')).toBe('$token=[redacted]');
+    expect(redactor.text('xiban: DE89')).toBe('xiban: DE89');
+    expect(redactor.text('ibanx: DE89')).toBe('ibanx: DE89');
+    expect(redactor.text('my-iban=DE89')).toBe('my-iban=[redacted]');
+    expect(redactor.text('user_iban=DE89')).toBe('user_iban=DE89');
+    expect(redactor.text('iban=DE89')).toBe('iban=[redacted]');
+  });
+
   it('answers with [redacted] instead of throwing when a value is too long for the regex engine', () => {
     const huge = `{"token":"${'a b '.repeat(2_800_000)}"}`;
     expect(() => redactText(huge)).not.toThrow();
