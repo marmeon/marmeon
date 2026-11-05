@@ -714,9 +714,24 @@ const NAME_MAX = 100;
  * at the ends (no hidden file, no `..`), at most {@link NAME_MAX} code points. Empty when nothing is left.
  */
 function cleanStem(stem: string): string {
-  const trim = (text: string) => text.replace(/^[. ]+|[. ]+$/g, '');
+  // Index loops, not `/^[. ]+|[. ]+$/g`: the unanchored `[. ]+$` restarts at every position of a run of dots or spaces that does
+  // not reach the end, so a long run inside the stem (text the app took from a user) costs quadratic time.
+  const trim = (text: string) => {
+    let start = 0;
+    let end = text.length;
+    while (start < end && (text[start] === '.' || text[start] === ' ')) start++;
+    while (end > start && (text[end - 1] === '.' || text[end - 1] === ' ')) end--;
+    return text.slice(start, end);
+  };
   const cleaned = trim(stem.toWellFormed().replace(UNSAFE_IN_NAME, '').replace(/[/\\]/g, '-'));
-  return trim(Array.from(cleaned).slice(0, NAME_MAX).join(''));
+  // Stops after NAME_MAX code points instead of splitting the whole stem into an array first.
+  let cut = '';
+  let count = 0;
+  for (const point of cleaned) {
+    if (count++ === NAME_MAX) break;
+    cut += point;
+  }
+  return trim(cut);
 }
 
 function forbidden(): HttpError {
