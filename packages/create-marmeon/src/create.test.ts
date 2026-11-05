@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
-import { appManifest, appPath, filesUnder, KIT_DEV_DEPENDENCIES, nameTitles, PERSONALIZED, PNPM_VERSION, readTarEntry, stubSets, TEMPLATE, TEMPLATE_APP_CONSTANT, TEMPLATE_TITLE, writeStubManifest, writeTitle } from './template.ts';
+import { appManifest, appPath, filesUnder, packageName, KIT_DEV_DEPENDENCIES, nameTitles, PERSONALIZED, PNPM_VERSION, readTarEntry, stubSets, TEMPLATE, TEMPLATE_APP_CONSTANT, TEMPLATE_TITLE, writeStubManifest, writeTitle } from './template.ts';
 import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -43,6 +43,14 @@ function blankAppFiles(): string[] {
   const listed = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '--', '.'], { cwd: blank, encoding: 'utf8' });
   return listed.stdout.split('\n').filter((file) => file && existsSync(join(blank, file))).sort();
 }
+
+describe('create-marmeon — the package name', () => {
+  it('has no dash, dot or underscore at its start and no dash at its end', () => {
+    expect(packageName('-x-')).toBe('x');
+    expect(packageName('._My App--')).toBe('my-app');
+    expect(packageName('---')).toBe('marmeon-app');
+  });
+});
 
 describe('create-marmeon — the call', () => {
   it('without a directory and without a terminal: exit 2 and the reason, at once — it never waits for an answer', async () => {

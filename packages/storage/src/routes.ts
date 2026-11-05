@@ -12,7 +12,7 @@ type Http = typeof import('@marmeon/http');
 /** `/storage` → the public disks the app serves under a path: local or memory, public, with a `url` that is a path. */
 export function servedPublicDisks(options: StorageOptions): { name: string; path: string }[] {
   return Object.entries(options.disks).flatMap(([name, disk]) =>
-    (disk.driver === 'local' || disk.driver === 'memory') && visibilityOf(disk) === 'public' && disk.url?.startsWith('/') ? [{ name, path: disk.url.replace(/\/+$/, '') }] : [],
+    (disk.driver === 'local' || disk.driver === 'memory') && visibilityOf(disk) === 'public' && disk.url?.startsWith('/') ? [{ name, path: disk.url.replace(/(?<!\/)\/+$/, '') }] : [],
   );
 }
 

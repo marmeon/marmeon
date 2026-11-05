@@ -379,6 +379,7 @@ function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Pars
 /** @internal */
 export type FileRead = { ok: true; contents: string } | { ok: false; why: 'not-a-file' | 'too-large' | 'no-migration' | 'not-utf8' | 'unreadable' };
 
+// oxlint-disable-next-line regexp/no-super-linear-move -- the text is the source of an installed package's migration
 const DEFAULT_EXPORT = /^\s*export\s+default\b/m;
 
 /**

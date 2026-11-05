@@ -95,9 +95,9 @@ export interface S3DiskConfig {
 export function s3BaseUrl(options: S3DiskOptions): string {
   const root = normalizeDirectory(options.root ?? '');
   const base = options.url
-    ? options.url.replace(/\/+$/, '')
+    ? options.url.replace(/(?<!\/)\/+$/, '')
     : options.endpoint
-      ? `${options.endpoint.replace(/\/+$/, '')}/${encodeURIComponent(options.bucket ?? '')}`
+      ? `${options.endpoint.replace(/(?<!\/)\/+$/, '')}/${encodeURIComponent(options.bucket ?? '')}`
       : `https://${options.bucket}.s3.${options.region ?? 'us-east-1'}.amazonaws.com`;
   return root === '' ? base : `${base}/${encodeKey(root)}`;
 }

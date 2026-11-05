@@ -288,6 +288,7 @@ async function recreateFrom(database: DatabaseModule, app: Application, name: st
   try {
     // Opens the connection first, so that a missing database fails here, before anything is swept or dropped.
     await sql`select 1`.execute(admin.get());
+    // oxlint-disable-next-line regexp/no-super-linear-move -- the name is built by the test run from the app's config
     const server = `${new URL(adminUrl).host}/${name.replace(/\d+_\d+$/, '')}`;
     if (!swept.has(server)) {
       swept.add(server);

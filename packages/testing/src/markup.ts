@@ -68,6 +68,7 @@ const TABLE_SECTIONS = new Set(['table', 'tbody', 'tfoot', 'thead']);
  */
 export function misnested(html: string): string | undefined {
   const open: string[] = [];
+  // oxlint-disable-next-line regexp/no-super-linear-backtracking -- the markup is rendered by the app's own tests
   const tag = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w-]*)[^>]*?(\/?)>/g;
   for (let match = tag.exec(html); match; match = tag.exec(html)) {
     if (match[2] === undefined) continue;

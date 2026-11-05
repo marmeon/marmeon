@@ -33,6 +33,7 @@ const DECIMAL = 'Decimal';
  * that actually arrives, after the connection's normalization (int8 → number, timestamps → ISO strings).
  */
 export function columnType(dataType: string, driver: Driver, jsonKey?: string): string | undefined {
+  // oxlint-disable-next-line regexp/no-super-linear-move -- the type name comes from the database's catalog
   const t = dataType.toLowerCase().replace(/\s*\(.*\)$/, '');
   if (t === 'boolean' || t === 'bool') return 'boolean';
   if (t === 'json' || t === 'jsonb') return jsonKey === undefined ? 'JsonColumn' : `JsonColumn<${literalType(jsonKey)}>`;

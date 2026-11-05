@@ -36,7 +36,7 @@ export interface InstrumentOptions {
 
 const KNOWN_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH']);
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
-const OPERATION = /^\s*\(?\s*(select|insert|update|delete|with|create|drop|alter|truncate|begin|commit|rollback|savepoint|release|pragma|explain)\b/i;
+const OPERATION = /^\s*(?:\(\s*)?(select|insert|update|delete|with|create|drop|alter|truncate|begin|commit|rollback|savepoint|release|pragma|explain)\b/i;
 const TARGET = /\b(?:from|into|update|table(?: if (?:not )?exists)?)\s+(?:"([^"]+)"|`([^`]+)`|([\w.]+))/gi;
 const DB_SYSTEMS: Readonly<Record<string, string>> = { sqlite: 'sqlite', pgsql: 'postgresql' };
 const MESSAGING_SYSTEM = 'marmeon';

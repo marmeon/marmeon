@@ -27,10 +27,11 @@ export function listedIn(yaml, path) {
   let list = false;
   for (const line of yaml.split(/\r?\n/)) {
     if (/^packages\s*:/.test(line)) list = true;
+    // oxlint-disable-next-line regexp/no-super-linear-move -- the line comes from the app's pnpm-workspace.yaml
     else if (list && /^\s*-\s/.test(line)) globs.push(unquote(line.replace(/^\s*-\s+/, '').replace(/\s+#.*$/, '').trim()));
     else if (list && /^[^\s#]/.test(line)) list = false;
   }
-  const matches = (glob) => matchesGlob(path, glob.replace(/\/+$/, ''));
+  const matches = (glob) => matchesGlob(path, glob.replace(/(?<!\/)\/+$/, ''));
   return globs.some((glob) => !glob.startsWith('!') && matches(glob)) && !globs.some((glob) => glob.startsWith('!') && matches(glob.slice(1)));
 }
 

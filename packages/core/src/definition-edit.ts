@@ -386,6 +386,7 @@ function appendSplices(source: string, items: Node[], container: Node, text: str
   const after = last.end + comma[0].length;
   const fallback = (): Splice[] => (hasComma ? [[after, after, ` ${text}`]] : [[last.end, last.end, `, ${text}`]]);
   if (multiline) {
+    // oxlint-disable-next-line regexp/no-super-linear-backtracking -- the text is the app's source that a generator edits
     const rest = /^[ \t]*(,)?[ \t]*(?:\/\/[^\r\n]*|\/\*(?:(?!\*\/)[^\r\n])*\*\/)?(?=\r?\n|$)/.exec(source.slice(last.end));
     if (rest) {
       const at = last.end + rest[0].length;

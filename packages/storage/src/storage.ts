@@ -232,7 +232,7 @@ export function checkStorage(options: StorageOptions, appRoot: string, drivers: 
   // The same on S3: one bucket (on one endpoint), the prefix of one inside the other's — the public one's URLs (and the bucket policy
   // that makes them public) reach the private files.
   const buckets = Object.entries(options.disks).flatMap(([name, disk]) =>
-    disk.driver === 's3' && disk.bucket ? [{ name, visibility: visibilityOf(disk), at: `${disk.endpoint ?? ''} ${disk.bucket}`, root: (disk.root ?? '').replace(/^\/+|\/+$/g, '') }] : [],
+    disk.driver === 's3' && disk.bucket ? [{ name, visibility: visibilityOf(disk), at: `${disk.endpoint ?? ''} ${disk.bucket}`, root: (disk.root ?? '').replace(/^\/+|(?<!\/)\/+$/g, '') }] : [],
   );
   for (const open of buckets.filter((disk) => disk.visibility === 'public')) {
     for (const closed of buckets.filter((disk) => disk.visibility === 'private' && disk.at === open.at)) {

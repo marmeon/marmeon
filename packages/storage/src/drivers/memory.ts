@@ -40,7 +40,7 @@ export class MemoryDisk implements Disk {
   constructor(config: MemoryDiskConfig) {
     this.name = config.name;
     this.visibility = config.visibility;
-    this.#url = config.url?.replace(/\/+$/, '');
+    this.#url = config.url?.replace(/(?<!\/)\/+$/, '');
     this.#temporaryUrls = config.temporaryUrls;
     this.#clock = config.clock;
   }
