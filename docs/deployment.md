@@ -249,8 +249,8 @@ whose secret is still under a removed key). Replacing the key without this step 
 
 ### Mail
 
-The default `MAIL_DRIVER=log` sends nothing. It writes every mail, reset and confirmation links included, into the log, and a
-protected app warns about it at every start. Production needs `smtp`, and queued mails then go out through a worker.
+The default `MAIL_DRIVER=log` sends nothing. In a protected app it writes only each mail's recipients and subject into the log,
+and the app warns about it at every start. Production needs `smtp`, and queued mails then go out through a worker.
 
 SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, or STARTTLS on the default port 587. `MAIL_REQUIRE_TLS=false` turns
 the STARTTLS requirement off. Use it only for a relay without TLS on the same machine.

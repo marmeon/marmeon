@@ -55,12 +55,11 @@ export type MailConfig = ConfigOf<typeof MailConfig>;
 /**
  * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV`) runs on the
  * `log` mailer — the default when `MAIL_DRIVER` is not set.
- * The log mailer stays as it is everywhere: in development the links of a mail are clicked from the log.
+ * The log mailer writes the text of a mail only in development and tests, where its links are clicked from the log.
  */
 export const LOG_MAILER_WARNING =
-  'MAIL_DRIVER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password ' +
-  'reset, e-mail verification, signed URLs) in plain text. Set MAIL_DRIVER=smtp and MAIL_HOST, ' +
-  'MAIL_USERNAME, MAIL_PASSWORD.';
+  "MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is " +
+  'left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.';
 
 /**
  * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV`) sends from the
@@ -68,4 +67,4 @@ export const LOG_MAILER_WARNING =
  */
 export const fromDefaultWarning = (driver: string): string =>
   `MAIL_FROM_ADDRESS is not set: mail goes out from ${DEFAULT_FROM_ADDRESS}, which receiving servers reject or file as spam. ` +
-  `Set it to an address of your domain.${driver === 'log' ? ' (MAIL_DRIVER=log: now only in the log.)' : ''}`;
+  `Set it to an address of your domain.${driver === 'log' ? ' (MAIL_DRIVER=log: no mail is sent.)' : ''}`;

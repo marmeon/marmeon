@@ -193,8 +193,8 @@ runs. Copy the confirmation link from it and open it. The app asks you to sign i
 the dashboard.
 
 > [!NOTE]
-> The log mailer writes links and tokens in plain text. Outside development the app warns at every start while `MAIL_DRIVER` is
-> still `log`. Set up a real mailer before anyone else uses the app.
+> In development and tests the log mailer writes links and tokens in plain text. Outside development and tests it logs only recipients
+> and subjects, sends nothing, and the app warns at every start while `MAIL_DRIVER` is still `log`. Set up a real mailer before anyone else uses the app.
 
 ### Tests and lint
 

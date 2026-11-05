@@ -65,15 +65,17 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 ### The log mailer
 
 `log` is the default in every environment. In development that is the point: the mail's text goes to the log, and you click its
-links from there. Anywhere else it puts working password reset links into the log and leaves your users without their mails. So
-outside development and tests the app warns at every start while `MAIL_DRIVER` is `log`:
+links from there. Anywhere else it leaves your users without their mails, so outside development and tests the app warns at every
+start while `MAIL_DRIVER` is `log`, and the log line holds only the recipients and the subject, with a note that the text is left
+out (it can hold password reset and sign-in links, and whoever reads the log may not be allowed to use them). That goes for mails
+sent in a queue worker too:
 
 ```text
-MAIL_DRIVER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password reset, e-mail verification, signed URLs) in plain text. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.
+MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.
 ```
 
-It is a warning and not an error, since a deployment may route mails through its log on purpose. Set `MAIL_DRIVER=smtp` in
-production.
+It is a warning and not an error. Set `MAIL_DRIVER=smtp` in production. A deployment that wants its mails in a log or a file
+on purpose writes its own transport ([Mail transports](drivers.md#mail-transports)).
 
 ### The sender address
 
@@ -84,7 +86,7 @@ development and tests the app warns once at start when the variable is not set:
 MAIL_FROM_ADDRESS is not set: mail goes out from hello@example.com, which receiving servers reject or file as spam. Set it to an address of your domain.
 ```
 
-With `MAIL_DRIVER=log` the line ends with "(MAIL_DRIVER=log: now only in the log.)", and the warning appears all the same. It is a
+With `MAIL_DRIVER=log` the line ends with "(MAIL_DRIVER=log: no mail is sent.)", and the warning appears all the same. It is a
 warning and not an error: without SMTP the default does no harm. Development and tests stay quiet.
 
 ### SMTP and TLS

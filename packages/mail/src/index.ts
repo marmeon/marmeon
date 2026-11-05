@@ -57,7 +57,7 @@ export class MailServiceProvider implements ServiceProvider {
     container.singleton(MailTransport, (c) => {
       if (config.driver === 'array') this.#transport = new ArrayTransport();
       else if (config.driver === 'smtp') this.#transport = new SmtpTransport(config.smtp);
-      else if (config.driver === 'log') this.#transport = new LogTransport(c.make(Logger));
+      else if (config.driver === 'log') this.#transport = new LogTransport(c.make(Logger), { text: !config.protected });
       else this.#transport = this.#custom(config, c);
       return this.#transport;
     });
@@ -102,7 +102,7 @@ export class MailServiceProvider implements ServiceProvider {
     const queue = await importQueue();
     if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@marmeon/mail', { framework: true });
 
-    // Production on the log mailer: no mail goes out, and reset links land in the log — said once, at boot.
+    // Production on the log mailer: no mail goes out, and the log gets only recipients and subjects — said once, at boot.
     if (config.protected && config.driver === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { driver: 'log' });
     if (config.protected && config.fromDefaulted) app.container.make(Logger).warn(fromDefaultWarning(config.driver), { driver: config.driver });
     if (config.previews) await registerPreviews(app);
