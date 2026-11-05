@@ -970,7 +970,7 @@ action installs the version pinned there from a hash-checked lock file and uploa
 alone. `.github/zizmor.yml` holds the rules we set: every action by its full commit SHA, and a Dependabot cooldown of three
 days (the install policy's wait for npm packages — change both together).
 
-`pnpm run ci --only zizmor` (`pnpm zizmor`) runs the same persona offline, since no token is handed to it, and notes when the
+`pnpm run ci --only zizmor` (`pnpm zizmor`) runs the same persona with `--offline` (no audit that needs the network, no token from the environment), and notes when the
 installed version differs from the one in `ci.yml`. Without zizmor installed the part is skipped (exit 75), never green. Fix a
 finding first; ignore one only inline, with `# zizmor: ignore[<audit>] <reason>` on the same line (a comment above does not count), never by line
 number in `zizmor.yml`. `pnpm check-release` holds `ci.yml` to the shape the job relies on.

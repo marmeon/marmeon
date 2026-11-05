@@ -962,6 +962,13 @@ describe('checkCiWorkflow — the pins of ci.yml', () => {
     expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    permissions :\n      contents: write\n'))).toContain('(contents: write)');
   });
 
+  it('refuses a zizmor checkout of another repository or ref', () => {
+    const checkout = /(- uses: actions\/checkout@[0-9a-f]{40} # v[\w.]+\n {8}with:\n {10}persist-credentials: false\n)(?= {6}- uses: zizmorcore)/.exec(real)![1]!;
+    for (const extra of ['repository: other/repo', 'ref: refs/heads/other', 'path: x', 'token: x']) {
+      expect(problemsOf(mutated(`${checkout}      - uses: zizmorcore`, `${checkout}          ${extra}\n      - uses: zizmorcore`)), extra).toContain('first step of the zizmor job');
+    }
+  });
+
   it('refuses keys the rules cannot read as text', () => {
     expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    ? continue-on-error\n    : true\n'))).toContain('explicit key');
     expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    "continue\\x2don-error": true\n'))).toContain('escaped quoted key');

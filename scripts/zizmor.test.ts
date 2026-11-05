@@ -46,9 +46,19 @@ describe('pnpm zizmor', () => {
     expect(result.stderr).toMatch(/uv tool install zizmor==\d+\.\d+\.\d+/);
   });
 
-  it('hands the regular persona, offline audits and the repository to zizmor, and turns its finding red', () => {
+  it('fails, not skips, when zizmor is there but cannot be started', () => {
+    const directory = tempDir('marmeon-zizmor-');
+    writeFileSync(join(directory, 'zizmor'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(directory, 'zizmor'), 0o644);
+    const result = run(directory);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('could not be started');
+  });
+
+  it('hands the regular persona, --offline and the repository to zizmor, and turns its finding red', () => {
     const result = run(fakeZizmor(pinned(), 13));
     expect(result.status).toBe(13);
+    expect(ZIZMOR_ARGS).toContain('--offline');
     expect(result.stdout).toContain(`args: ${ZIZMOR_ARGS.join(' ')}`);
     expect(result.stderr).toBe('');
   });

@@ -664,7 +664,15 @@ export function checkCiWorkflow(repository: string): string[] {
     if (other.length > 0) problems.push(`ci.yml: the zizmor job has ${other.join(', ')} — it may only have ${allowed.join(', ')}, so that no finding is skipped or ignored`);
     if (!/^ {4}runs-on:\s*ubuntu-latest\s*$/m.test(zizmor)) problems.push('ci.yml: the zizmor job must run on "runs-on: ubuntu-latest"');
     if (/^\s*(?:- )?["']?(?:continue-on-error|if|env|permissions)["']?\s*:|\bsecrets\b/m.test(zizmor)) problems.push('ci.yml: the zizmor job has continue-on-error, if, env, permissions or a secret — a finding must turn it red, with no token of its own');
-    if (stepsOf(zizmor).length !== 2) problems.push('ci.yml: the zizmor job must have exactly two steps, the checkout and the action');
+    const steps = stepsOf(zizmor);
+    if (steps.length !== 2) problems.push('ci.yml: the zizmor job must have exactly two steps, the checkout and the action');
+    // The checkout is what zizmor reads: a repository, ref or path of its own would audit something else.
+    const checkout = steps[0] ?? '';
+    const checkoutWith = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(checkout)?.[2] ?? '';
+    const checkoutKeys = [...checkoutWith.matchAll(/^\s*["']?([\w-]+)["']?\s*:\s*(.*?)\s*$/gm)].map((match) => `${match[1]}: ${match[2]}`);
+    if (!/^\s*- uses:\s*actions\/checkout@[0-9a-f]{40}\s*$/m.test(checkout) || checkoutKeys.join() !== 'persist-credentials: false') {
+      problems.push('ci.yml: the first step of the zizmor job must be actions/checkout with exactly "persist-credentials: false" — a repository, ref or path would have zizmor audit something else');
+    }
   }
   if (action !== undefined) {
     const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(action)?.[2] ?? '';

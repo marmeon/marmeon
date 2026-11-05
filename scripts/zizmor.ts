@@ -1,6 +1,6 @@
 /**
  * `pnpm zizmor` — zizmor over the workflows and Dependabot's configuration, a part of `pnpm run ci`. CI runs it online in the job
- * `zizmor` of ci.yml (the action installs the version pinned there); here it runs offline, because no token is handed to it. Without
+ * `zizmor` of ci.yml (the action installs the version pinned there); here it runs with `--offline` (no audit that needs the network, no token read from the environment). Without
  * zizmor installed it exits 75: skipped, not green (`scripts/ci.ts`). The rules: `.github/zizmor.yml`; CONTRIBUTING.md, "The
  * workflows: zizmor".
  */
@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /** What `zizmor` gets here: the regular persona, as in CI, over the repository's own workflows and `.github/dependabot.yml`. */
-export const ZIZMOR_ARGS = ['--persona=regular', '--no-online-audits', '.'] as const;
+export const ZIZMOR_ARGS = ['--persona=regular', '--offline', '.'] as const;
 
 /** The exit code of a run that could not happen here, as in `scripts/ci.ts`. */
 const SKIPPED_EXIT = 75;
@@ -26,6 +26,10 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 function main(): number {
   const wanted = zizmorVersion(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'));
   const found = spawnSync('zizmor', ['--version'], { encoding: 'utf8' });
+  if (found.error && (found.error as NodeJS.ErrnoException).code !== 'ENOENT') {
+    console.error(`zizmor could not be started: ${found.error.message}`);
+    return 1;
+  }
   if (found.error) {
     const version = wanted ?? '<version>';
     console.error(
