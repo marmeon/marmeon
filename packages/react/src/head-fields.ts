@@ -156,7 +156,8 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
   if (languages) {
     hrefs = new Map();
     for (const [locale, path] of Object.entries(languages.paths)) {
-      const href = absoluteUrl(path.replace(/\?.*$/s, ''), base, warn);
+      const query = path.indexOf('?');
+      const href = absoluteUrl(query === -1 ? path : path.slice(0, query), base, warn);
       if (href === undefined) {
         hrefs = undefined;
         break;

@@ -79,6 +79,10 @@ describe('html``', () => {
     expect(textFromHtml('<p>a  b\tc</p>')).toBe('a  b\tc');
   });
 
+  it('ends a tag at a `<` inside it', () => {
+    expect(textFromHtml('<p>x<a<b>y</p>')).toBe('x<ay');
+  });
+
   it('drops a line of blanks between paragraphs', () => {
     expect(textFromHtml('<p>one</p>\n   \n<p>two</p>')).toBe('one\n\ntwo');
     expect(textFromHtml('<p>one</p>\n   \n   \n   \n<p>two</p>')).toBe('one\n\ntwo');

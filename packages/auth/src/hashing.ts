@@ -383,7 +383,8 @@ function derive(parsed: Parsed, password: Buffer, length: number): Promise<Buffe
 
 /** PHC uses standard base64 without padding. */
 function b64(bytes: Buffer): string {
-  return bytes.toString('base64').replace(/=+$/, '');
+  // The lookbehind starts a match only at the first `=` of a run: linear on a long run that does not reach the end.
+  return bytes.toString('base64').replace(/(?<!=)=+$/, '');
 }
 
 /** Strict: Node's decoder skips what it cannot read, so only canonical encodings are accepted. */

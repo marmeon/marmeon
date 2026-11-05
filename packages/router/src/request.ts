@@ -121,7 +121,7 @@ export function addVary(headers: Readonly<Record<string, string>> | undefined, n
   const rest: Record<string, string> = {};
   const listed: string[] = [];
   for (const [name, value] of Object.entries(headers ?? {})) {
-    if (name.toLowerCase() === 'vary') listed.push(...value.split(/\s*,\s*/).filter(Boolean));
+    if (name.toLowerCase() === 'vary') listed.push(...value.split(',').map((token) => token.trim()).filter(Boolean));
     else rest[name] = value;
   }
   if (!listed.includes('*')) {

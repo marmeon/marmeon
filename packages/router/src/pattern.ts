@@ -120,7 +120,8 @@ export function matchParams(pattern: string, pathname: string): Record<string, s
     const segment = `/(${isParameterName(token.name) ? `?<${token.name}>` : ''}${token.constraint ?? '[^/]+'})`;
     source += token.optional ? `(?:${segment})?` : segment;
   }
-  const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  // The lookbehind starts a match only at the first slash of a run: linear on a long run that does not reach the end.
+  const trimmed = pathname.length > 1 ? pathname.replace(/(?<!\/)\/+$/, '') : pathname;
   const found = new RegExp(`^${source || '/'}$`).exec(trimmed || '/');
   if (!found) return undefined;
   const params: Record<string, string> = {};
