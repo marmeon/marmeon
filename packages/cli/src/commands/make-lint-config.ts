@@ -1,8 +1,8 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { leavesProject } from '../write-guard.ts';
+import { leavesProject, refusesOverwrite, writeProjectFile } from '../write-guard.ts';
 
 /** The file oxlint reads in the app root. */
 export const LINT_CONFIG_FILE = '.oxlintrc.json';
@@ -108,6 +108,7 @@ export class MakeLintConfigCommand {
   handle({ options, output, root }: CommandInput): number {
     const file = join(root, LINT_CONFIG_FILE);
     if (leavesProject({ root, output }, [file])) return 1;
+    if (options.force === true && refusesOverwrite({ root, output }, [file])) return 1;
     if (existsSync(file) && options.force !== true) {
       output.error(`${LINT_CONFIG_FILE} already exists (use --force to overwrite).`);
       return 1;
@@ -128,7 +129,7 @@ export class MakeLintConfigCommand {
           ]
         : []),
     ];
-    writeFileSync(file, `${header.join('\n')}\n${formatConfig(config)}\n`);
+    writeProjectFile(file, `${header.join('\n')}\n${formatConfig(config)}\n`);
     output.success(`Created ${LINT_CONFIG_FILE}`);
     output.line();
     output.line('Lint with oxlint:');

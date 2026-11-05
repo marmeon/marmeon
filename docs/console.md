@@ -224,6 +224,8 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses: `publish` for `@marmeon/auth`. See [sign-ins](authentication.md#sign-ins). |
 | `make:cache-table`, `make:session-table`, `make:queue-table`, `make:notifications-table`, `make:uploads-table` `[--module=<m>]` | The migrations of the database drivers' tables, each `publish` for its own package: writes what your app lacks, and ends with exit code 0 and "Nothing to publish" when it has it all. See [the framework's tables](migrations.md#the-frameworks-tables). |
 
+A generator does not write through a link that leads out of the project, refuses a link to nothing at the name of a file it would create, and with `--force` refuses to overwrite a file that is a link or has other hard links.
+
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 
 `make:controller` decides nothing about who may call the controller: say it in the request's `authorize`, or with `Route.authorize(…)` on the registrar (`everyone` if anyone may). The command prints that reminder after the route line. In a module made with `--no-routes` it prints the `routes.ts` to create and the `routes` entry for `defineModule` instead, and writes neither.

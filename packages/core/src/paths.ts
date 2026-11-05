@@ -1,15 +1,15 @@
 import { lstatSync, type Stats, readlinkSync, realpathSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { isInside } from './discovery/contain.ts';
 
 /**
  * Where a write to `target` would leave `root`: the project-relative path of the link (or of `target` itself, when it lies
  * outside by its path) — `undefined` when the real location of its deepest existing ancestor is `root` or below it. A link
  * that stays inside the project is fine, also one to nothing yet (the write creates what it points at), as long as that lies inside too.
- * Both sides are resolved with `realpath`, so a root reached over a link (a temp directory on macOS) works.
+ * Both sides are resolved with the system's `realpath`, so a root reached over a link (a temp directory on macOS) works.
  */
 export function escapesRoot(root: string, target: string): string | undefined {
-  return escapes(realpathSync(root), root, target, 0);
+  return escapes(realpathSync.native(root), root, target, 0);
 }
 
 function escapes(realRoot: string, root: string, target: string, depth: number): string | undefined {
@@ -20,12 +20,18 @@ function escapes(realRoot: string, root: string, target: string, depth: number):
     if (entry !== undefined) {
       let real: string;
       try {
-        real = realpathSync(ancestor);
+        // `.native` asks the kernel: the JS implementation resolves a link target textually (`d/../x` folds before `d` is followed).
+        real = realpathSync.native(ancestor);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !entry.isSymbolicLink()) return relative(root, ancestor);
         // A dangling link: the write would create what it points at, which must lie inside as well.
         if (depth > 8) return relative(root, ancestor);
-        const aim = resolve(dirname(ancestor), readlinkSync(ancestor));
+        let aim: string;
+        try {
+          aim = resolveLinkTarget(dirname(ancestor), readlinkSync(ancestor));
+        } catch {
+          return relative(root, ancestor);
+        }
         return escapes(realRoot, root, aim, depth + 1) === undefined ? undefined : relative(root, ancestor);
       }
       if (real === realRoot || isInside(realRoot, real)) return undefined;
@@ -34,6 +40,27 @@ function escapes(realRoot: string, root: string, target: string, depth: number):
     const parent = dirname(ancestor);
     if (parent === ancestor) return relative(root, path);
     ancestor = parent;
+  }
+}
+
+/**
+ * Where the kernel would put a link's `target` (read against `parent`) once the parts that do not exist yet are created. The target
+ * is not normalised first: `d/../x` leaves the directory `d` points at, which a textual `..` would not. Throws when that cannot be told
+ * (a dangling link or an unreadable directory on the way): the caller refuses then.
+ */
+function resolveLinkTarget(parent: string, target: string): string {
+  let existing = isAbsolute(target) ? target : `${realpathSync.native(parent)}${sep}${target}`;
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      return resolve(realpathSync.native(existing), ...missing);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const name = basename(existing);
+    if (name === '..' || name === '.' || name === '' || dirname(existing) === existing) throw new Error('A link target that cannot be resolved.');
+    missing.unshift(name);
+    existing = dirname(existing);
   }
 }
 

@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { leavesProject } from '../write-guard.ts';
+import { leavesProject, writeProjectFile } from '../write-guard.ts';
 import { dependsOn, KEBAB, migrationStamp, PASCAL, registerModule } from './make.ts';
 import { resourceFiles, type ResourceNames } from './make-resource-templates.ts';
 
@@ -116,8 +116,7 @@ export class MakeResourceCommand {
     if (leavesProject(input, [...files.keys()].map((path) => join(dir, path)).concat(join(input.root, 'bootstrap/app.ts')))) return 1;
     for (const [path, contents] of files) {
       const file = join(dir, path);
-      mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, contents);
+      writeProjectFile(file, contents);
       input.output.success(`Created ${relative(input.root, file)}`);
     }
 

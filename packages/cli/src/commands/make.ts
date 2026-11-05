@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
 import { bindingNameOf, parseSync } from '@marmeon/core/internal';
 import { CommandArgumentsError, CommandRegistry, isReservedCommand, RESERVED_COMMANDS, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { leavesProject } from '../write-guard.ts';
+import { leavesProject, refusesOverwrite, writeProjectFile } from '../write-guard.ts';
 
 export const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
 export const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -12,12 +12,12 @@ export const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 /** Shared checks and file writing for the `make:*` generators. */
 export function write(input: CommandInput, file: string, contents: string): boolean {
   if (leavesProject(input, [file])) return false;
+  if (input.options.force === true && refusesOverwrite(input, [file])) return false;
   if (existsSync(file) && input.options.force !== true) {
     input.output.error(`${relative(input.root, file)} already exists (use --force to overwrite).`);
     return false;
   }
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, contents);
+  writeProjectFile(file, contents);
   input.output.success(`Created ${relative(input.root, file)}`);
   return true;
 }
