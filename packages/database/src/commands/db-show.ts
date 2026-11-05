@@ -35,7 +35,8 @@ export class DbShowCommand {
     const tables = await db.introspection.getTables();
     const found = await Promise.all(
       tables.map(async (table) => {
-        const { count } = await db.selectFrom(table.name).select(sql<number>`count(*)`.as('count')).executeTakeFirstOrThrow();
+        // `sql.id` keeps a dot in a name; `selectFrom` would read it as a schema separator.
+        const { count } = (await sql<{ count: number }>`select count(*) as count from ${table.schema ? sql.id(table.schema, table.name) : sql.id(table.name)}`.execute(db)).rows[0]!;
         return { name: table.name, schema: table.schema ?? null, columns: table.columns.length, rows: Number(count) };
       }),
     );

@@ -25,7 +25,10 @@ async function run(command: MigrateStatusCommand, options: CommandInput['options
   }
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
 describe.each(drivers)('migrate:status --json (%s)', (driver) => {
   const setup = async (modules: ModuleDefinition[]) => {
@@ -92,6 +95,7 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
   });
 
   it('writes control characters of a recorded migration name out in the text', async () => {
+    vi.stubEnv('FORCE_COLOR', '0');
     const { connections, close, command } = await setup([auth]);
     try {
       await migrator(connections, [auth]).migrate();
@@ -113,6 +117,21 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toContain('"gone\\u001b]52;c;aGk=\\u0007" (module "mod\\u001b[2K"): its file is gone');
       expect((error as Error).message).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await close();
+    }
+  });
+
+  it.skipIf(driver !== 'sqlite')('writes control characters of a forged batch out in the table and in the changed warning', async () => {
+    vi.stubEnv('FORCE_COLOR', '0');
+    const { connections, close, command } = await setup([auth]);
+    try {
+      await migrator(connections, [auth]).migrate();
+      await sql`update migrations set batch = ${'1\x1b]52;c;aGk=\x07'}, checksum = 'sha256:forged'`.execute(migratorConnection(connections));
+      const { stderr, stdout } = await run(command);
+      expect(stdout).toContain('[1\\u001b]52;c;aGk=\\u0007] Ran');
+      expect(stderr).toContain('in batch 1\\u001b]52;c;aGk=\\u0007');
+      expect(stderr + stdout).not.toMatch(/[^\P{Cc}\n]/u);
     } finally {
       await close();
     }

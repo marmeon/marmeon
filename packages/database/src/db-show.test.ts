@@ -3,9 +3,10 @@ import { createApplication, env } from '@marmeon/core';
 import { Output } from 'marmeon';
 import { CompiledQuery, Kysely, PostgresAdapter, PostgresQueryCompiler, sql, type DatabaseIntrospector, type Driver, type QueryResult, type TableMetadata } from 'kysely';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { registerInspection } from './migrator-connection.ts';
+import { migratorConnection, registerInspection } from './migrator-connection.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { Connections, DatabaseServiceProvider, defineConnection } from './index.ts';
+import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function fixture(name: string): Record<string, unknown> {
@@ -60,7 +61,10 @@ async function show(vars: Record<string, string>, options: Record<string, string
   return { code, stdout: stdout.join(''), stderr: stderr.join('') };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
 const POSTGRES = { DB_DRIVER: 'pgsql' };
 
@@ -94,21 +98,6 @@ describe('db:show --json', () => {
     const document = JSON.parse(stdout) as Record<string, unknown>;
     expect(document).toMatchObject(fixture('v1-pgsql'));
     expect((document.tables as object[]).map((table) => Object.keys(table))).toEqual(Array(2).fill(['name', 'schema', 'columns', 'rows']));
-  });
-
-  it('writes control characters of a table name out in the text', async () => {
-    const app = await createApplication({ root: tempDir('marmeon-db-show-'), discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:', DB_MANAGED: 'false' } });
-    const connections = app.container.make(Connections);
-    await connections.get().schema.createTable('x\x1b]8;;evil\x07y').addColumn('id', 'integer').execute();
-    const stdout: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
-    await new DbShowCommand(connections).handle({ args: [], options: {}, output: new Output(), root: '/' } as never);
-    vi.restoreAllMocks();
-    await app.shutdown();
-    const out = stdout.join('');
-    expect(out).toContain('x\\u001b]8;;evil\\u0007y');
-    expect(out).not.toMatch(/[^\P{Cc}\n]/u);
-    expect(out).not.toContain('\x1b');
   });
 
   it('prints an empty database as an empty list', async () => {
@@ -165,5 +154,55 @@ describe('db:show never prints a secret of the connection', () => {
     vi.restoreAllMocks();
     await app.shutdown();
     expect(JSON.parse(stdout.join('')).target).toBe(':memory:');
+  });
+});
+
+describe.each(drivers)('db:show with names that hold a dot and control characters on %s', (driver) => {
+  async function showOf(connections: Connections, options: Record<string, string | boolean>) {
+    const stdout: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+    try {
+      await new DbShowCommand(connections).handle({ args: [], options, output: new Output(), root: '/' } as never);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    return stdout.join('');
+  }
+
+  it('counts a table whose name holds a dot and writes its control characters out', async () => {
+    vi.stubEnv('FORCE_COLOR', '0');
+    const { connections, close } = await freshConnections(driver, { record: false });
+    const name = 'x.\x1b]8;;evil\x07y';
+    const db = migratorConnection(connections);
+    await sql`create table ${sql.id(name)} (id integer)`.execute(db);
+    try {
+      await sql`insert into ${sql.id(name)} (id) values (1), (2)`.execute(db);
+      const out = await showOf(connections, {});
+      const line = out.split('\n').find((l) => l.includes('evil'))!;
+      expect(line).toContain('x.\\u001b]8;;evil\\u0007y');
+      expect(line.trim().endsWith('2')).toBe(true);
+      expect(out).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await sql`drop table if exists ${sql.id(name)}`.execute(db);
+      await close();
+    }
+  });
+
+  it.skipIf(driver !== 'pgsql')('counts a table in another schema under its own schema', async () => {
+    const { connections, close } = await freshConnections(driver, { record: false });
+    const db = migratorConnection(connections);
+    await sql`create schema db_show_other`.execute(db);
+    try {
+      await sql`create table public.s6_t (id integer)`.execute(db);
+      await sql`create table db_show_other.s6_t (id integer)`.execute(db);
+      await sql`insert into db_show_other.s6_t (id) values (1), (2), (3)`.execute(db);
+      const document = JSON.parse(await showOf(connections, { json: true })) as { tables: { name: string; schema: string; rows: number }[] };
+      const counted = document.tables.filter((t) => t.name === 's6_t').map((t) => [t.schema, t.rows]);
+      expect(counted.toSorted()).toEqual([['public', 0], ['db_show_other', 3]]);
+    } finally {
+      await sql`drop table if exists public.s6_t`.execute(db);
+      await sql`drop schema if exists db_show_other cascade`.execute(db);
+      await close();
+    }
   });
 });

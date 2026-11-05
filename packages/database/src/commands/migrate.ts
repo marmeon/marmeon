@@ -47,7 +47,7 @@ const CHANGED_ADVICE =
 /** What a command says before it runs or rolls back with migrations whose file changed after they ran: a warning each, then the advice once. */
 function changedMigrations(output: CommandInput['output']): (changed: readonly ChangedMigration[]) => void {
   return (changed) => {
-    for (const { name, module, batch } of changed) output.warn(`${printable(name)} (${printable(module)}) changed since it ran in batch ${batch}.`);
+    for (const { name, module, batch } of changed) output.warn(`${printable(name)} (${printable(module)}) changed since it ran in batch ${printable(String(batch))}.`);
     output.line(CHANGED_ADVICE);
   };
 }
@@ -256,7 +256,7 @@ export class MigrateStatusCommand {
       output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');
       return 0;
     }
-    const state = (m: (typeof migrations)[number]) => (m.batch === null ? 'Pending' : `[${m.batch}] Ran`);
+    const state = (m: (typeof migrations)[number]) => (m.batch === null ? 'Pending' : `[${printable(String(m.batch))}] Ran`);
     // The column only when a migration runs elsewhere (an unknown connection counts), so an app on one connection sees the three columns only.
     if (migrations.some((m) => m.connection !== 'default')) {
       output.table(
