@@ -73,7 +73,7 @@ export function findPackage(name: string, fromDir: string): PackageInfo | undefi
       let realDir: string;
       let json: unknown;
       try {
-        realDir = realpathSync(dirname(candidate));
+        realDir = realpathSync.native(dirname(candidate));
         json = JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8'));
       } catch (cause) {
         throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) cannot be read as JSON: ${printable(cause instanceof Error ? cause.message : String(cause))}`), { cause });

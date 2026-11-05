@@ -123,7 +123,7 @@ function readLangDirectory(pkg: { name: string; dir: string }, directory: string
   const fail = (why: string) => invalid(pkg, why);
   let root: string;
   try {
-    root = realpathSync(pkg.dir);
+    root = realpathSync.native(pkg.dir);
   } catch {
     return fail('the package directory cannot be read.');
   }
@@ -144,7 +144,7 @@ function readLangDirectory(pkg: { name: string; dir: string }, directory: string
     const path = `${from}/${entry}`;
     let real: string;
     try {
-      real = realpathSync(join(directory, entry));
+      real = realpathSync.native(join(directory, entry));
     } catch {
       return fail(`${show(path)} cannot be read.`);
     }
@@ -173,7 +173,7 @@ function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Pars
 
   let real: string;
   try {
-    real = realpathSync(declaration.path);
+    real = realpathSync.native(declaration.path);
   } catch {
     return fail(`${where} does not exist in the package.`);
   }
@@ -209,7 +209,7 @@ export async function assignPublishes(
   const roots = new Map<ProviderPackage, string>();
   for (const pkg of packages) {
     try {
-      roots.set(pkg, realpathSync(pkg.dir));
+      roots.set(pkg, realpathSync.native(pkg.dir));
     } catch {
       results.set(pkg, invalid(pkg, 'the package directory cannot be read.'));
     }
@@ -220,7 +220,7 @@ export async function assignPublishes(
     if (!declaration.ok) continue;
     let real: string | undefined;
     try {
-      real = realpathSync(declaration.path);
+      real = realpathSync.native(declaration.path);
     } catch {
       // checked below, for the package whose path it is
     }

@@ -62,7 +62,7 @@ export function readMigrationDirectory(pkg: { name: string; dir: string }, direc
   const fail = (why: string) => invalid(pkg, why);
   let root: string;
   try {
-    root = realpathSync(pkg.dir);
+    root = realpathSync.native(pkg.dir);
   } catch {
     return fail('the package directory cannot be read.');
   }
@@ -92,7 +92,7 @@ export function readMigrationDirectory(pkg: { name: string; dir: string }, direc
     const path = `${from}/${entry}`;
     let real: string;
     try {
-      real = realpathSync(join(directory, entry));
+      real = realpathSync.native(join(directory, entry));
     } catch {
       return fail(`${show(path)} cannot be read.`);
     }
@@ -227,7 +227,7 @@ export async function exportedClasses(pkg: ProviderPackage, root: string): Promi
   if (entry === undefined) return { reason: 'the package has no entry' };
   let inside = false;
   try {
-    inside = belongsTo(resolve(pkg.dir), resolve(entry)) && isInside(root, realpathSync(entry));
+    inside = belongsTo(resolve(pkg.dir), resolve(entry)) && isInside(root, realpathSync.native(entry));
   } catch {
     // an entry that does not exist is not in the package
   }
@@ -277,7 +277,7 @@ export async function assignMigrations(
   const roots = new Map<ProviderPackage, string>();
   for (const pkg of packages) {
     try {
-      roots.set(pkg, realpathSync(pkg.dir));
+      roots.set(pkg, realpathSync.native(pkg.dir));
     } catch {
       results.set(pkg, invalid(pkg, 'the package directory cannot be read.'));
     }
@@ -291,7 +291,7 @@ export async function assignMigrations(
     if (!declaration.ok) continue;
     let real: string | undefined;
     try {
-      real = realpathSync(declaration.path);
+      real = realpathSync.native(declaration.path);
     } catch {
       // checked below, for the package whose path it is
     }
@@ -358,7 +358,7 @@ function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Pars
 
   let real: string;
   try {
-    real = realpathSync(declaration.path);
+    real = realpathSync.native(declaration.path);
   } catch {
     return fail(`${where} does not exist in the package.`);
   }
@@ -398,7 +398,7 @@ export function readRegularFile(real: string, root: string): FileRead {
       if (stat.size > MAX_BYTES) return { ok: false, why: 'too-large' };
       const path = lstatSync(real);
       if (path.ino !== stat.ino || path.dev !== stat.dev) return { ok: false, why: 'unreadable' };
-      if (realpathSync(real) !== real) return { ok: false, why: 'unreadable' };
+      if (realpathSync.native(real) !== real) return { ok: false, why: 'unreadable' };
       if (process.platform === 'linux') {
         let opened: string | undefined;
         try {

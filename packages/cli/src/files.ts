@@ -58,8 +58,8 @@ export function readRegular(path: string): string | undefined {
 export function readRegularIn(root: string, relative: string, maxBytes?: number): RegularFile | undefined {
   let identity: { dev: number; ino: number };
   try {
-    const real = realpathSync(join(root, relative));
-    const base = realpathSync(root);
+    const real = realpathSync.native(join(root, relative));
+    const base = realpathSync.native(root);
     if (!real.startsWith(base.endsWith(sep) ? base : base + sep)) return undefined;
     const { dev, ino } = statSync(real);
     identity = { dev, ino };

@@ -81,14 +81,14 @@ export function images(options: ImageOptions = {}, internals: ImagesInternals = 
       if (!id.endsWith(QUERY)) return undefined;
       const file = id.slice(0, -QUERY.length);
       const name = shorten(root, file);
-      const real = existsSync(file) && statSync(file).isFile() ? realpathSync(file) : undefined;
+      const real = existsSync(file) && statSync(file).isFile() ? realpathSync.native(file) : undefined;
       if (!real) this.error(`images: ${name} does not exist.`);
       if (!INPUT_EXTENSIONS.has(extname(real).toLowerCase())) {
         const hint = /\.(svg|gif)$/i.test(real) ? ' SVG and GIF are not processed: import it without `?image`.' : '';
         this.error(`images: ${name} is not a .jpg, .jpeg, .png, .webp or .avif file.${hint}`);
       }
       // Only the app's own files, and only those Vite's `server.fs` rules let through: no `../../etc`, no `fs.deny`.
-      if (!inside(realpathSync(root), real) || !isFileLoadingAllowed(config, normalizePath(real))) {
+      if (!inside(realpathSync.native(root), real) || !isFileLoadingAllowed(config, normalizePath(real))) {
         this.error(`images: ${name} is outside the app or denied by \`server.fs\`; \`?image\` reads only the app's own files.`);
       }
       // Only now: the id can come from a request (`/@fs/<path>?image`), and a watched path outside the app, a folder
@@ -111,7 +111,7 @@ export function images(options: ImageOptions = {}, internals: ImagesInternals = 
 
       if (config.command !== 'build') {
         // Development resizes nothing: the original, with its size.
-        const src = `${config.base}${normalizePath(relative(realpathSync(root), real))}`;
+        const src = `${config.base}${normalizePath(relative(realpathSync.native(root), real))}`;
         return moduleCode({ src, width: meta.width, height: meta.height });
       }
 

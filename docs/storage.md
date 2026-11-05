@@ -94,6 +94,8 @@ List it in `bootstrap/app.ts`, beside the app's other configuration: `config: [A
 | `s3` | `bucket`, `region`, `endpoint` for an S3-compatible store, `forcePathStyle`, `credentials`, `root` as a prefix in the bucket, `url` for a public disk. |
 | `memory` | `url`. The files are gone with the process: for tests. |
 
+A local disk's `root` is resolved as text against the app's directory before anything on disk is looked at: `..` steps back from the path as written, not from where a symlink in it leads.
+
 Disks are private unless they say `visibility: 'public'`. Keep a local disk's `root` under `storage/`: it is the one directory
 a production deployment lets the app write, and the [deployment](deployment.md#storage-and-a-read-only-file-system) page shows
 how to keep it.

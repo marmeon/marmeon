@@ -36,7 +36,7 @@ function resolveInstalled(from: string, name: string): { readonly dir: string; r
     const candidates = [join(dir, 'node_modules', name), ...(basename(dir) === 'node_modules' ? [join(dir, name)] : [])];
     for (const candidate of candidates) {
       if (!existsSync(join(candidate, 'package.json'))) continue;
-      const real = realpathSync(candidate);
+      const real = realpathSync.native(candidate);
       const manifest = readManifest(join(real, 'package.json'));
       if (manifest?.version !== undefined) return { dir: real, manifest };
     }

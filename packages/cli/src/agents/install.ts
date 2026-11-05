@@ -189,7 +189,7 @@ function normalize(text: string): string {
 
 function realOrSelf(path: string): string {
   try {
-    return realpathSync(path);
+    return realpathSync.native(path);
   } catch {
     return path;
   }

@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bindingNameOf, editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';
@@ -304,6 +304,21 @@ describe('editDefinitionFile', () => {
     expect(editDefinitionFile(link, job()).status).toBe('added');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readFileSync(real, 'utf8')).toContain('jobs: [SendInvoiceReminderJob]');
+  });
+
+  it('edits the file the system opens for a link through a link (`d/../x` is taken from where `d` leads)', () => {
+    const base = realpathSync(tempDir('marmeon-definition-edit-'));
+    const dir = join(base, 'app');
+    mkdirSync(dir);
+    mkdirSync(join(base, 'shared', 'sub'), { recursive: true });
+    const source = `${head}export default defineModule({ jobs: [] });\n`;
+    writeFileSync(join(dir, 'index.ts'), source);
+    writeFileSync(join(base, 'shared', 'index.ts'), source);
+    symlinkSync(join('..', 'shared', 'sub'), join(dir, 'd'));
+    symlinkSync('d/../index.ts', join(dir, 'module.ts'));
+    expect(editDefinitionFile(join(dir, 'module.ts'), job()).status).toBe('added');
+    expect(readFileSync(join(base, 'shared', 'index.ts'), 'utf8')).toContain('jobs: [SendInvoiceReminderJob]');
+    expect(readFileSync(join(dir, 'index.ts'), 'utf8')).toBe(source);
   });
 
   it('keeps the mode of the file and leaves a read-only file alone', () => {

@@ -1,5 +1,5 @@
-import { existsSync, realpathSync } from 'node:fs';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { basename, dirname, resolve, sep } from 'node:path';
 import { token, type Clock, type Resolver } from '@marmeon/core';
 import type { CheckDiskName, DefaultDiskName, DiskDriverFactory, DiskFor, DiskNameInput, DiskOptions, StorageOptions } from './config.ts';
 import type { Disk, DiskDriver, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
@@ -147,14 +147,34 @@ export function visibilityOf(options: DiskOptions): Visibility {
   return options.visibility === 'public' ? 'public' : 'private';
 }
 
-/** The absolute root of a local disk. */
+/** The absolute root of a local disk, normalized: no `..` reaches the kernel, which would follow a link before it, and the startup check compares this very string. */
 export function localRoot(appRoot: string, root: string): string {
-  return isAbsolute(root) ? root : resolve(appRoot, root);
+  return resolve(appRoot, root);
 }
 
-/** A path's real path when it exists (symlinked roots compare by where they lead), else the path itself. */
+/**
+ * A path's real path: its deepest existing part resolved by the system, the parts that do not exist yet appended. A root that is
+ * created later nests with one that exists now, so both must be compared where they will lie (symlinked roots compare by where they lead).
+ * Only a part that is not there walks up: a link to nothing (it would be created where it points) or a part that cannot be inspected stops the start.
+ */
 function realOrSelf(path: string): string {
-  return existsSync(path) ? realpathSync(path) : path;
+  const missing: string[] = [];
+  for (let existing = path; ; existing = dirname(existing)) {
+    try {
+      return resolve(realpathSync.native(existing), ...missing);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' && lstatSync(existing, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        throw new StorageSetupError(withCode('S2', `The local root ${path} runs through ${existing}, a link to nothing — its files would be created where it points. Remove or fix the link.`));
+      }
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+        throw new StorageSetupError(withCode('S2', `The local root ${path} cannot be inspected (${existing}: ${code ?? 'error'}).`));
+      }
+      const parent = dirname(existing);
+      if (parent === existing) return path;
+      missing.unshift(basename(existing));
+    }
+  }
 }
 
 function nests(a: string, b: string): boolean {

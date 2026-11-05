@@ -56,7 +56,7 @@ export class LocalDisk implements Disk {
   get root(): string {
     if (this.#real === undefined) {
       mkdirSync(this.#root, { recursive: true });
-      this.#real = realpathSync(this.#root);
+      this.#real = realpathSync.native(this.#root);
     }
     return this.#real;
   }

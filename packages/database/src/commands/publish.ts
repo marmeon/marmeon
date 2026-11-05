@@ -24,7 +24,7 @@ function locate(name: string, root: string): Package | undefined {
   const top = installRoot(root);
   // From the real path: the way up from a symlinked app root would pass `top` without ever meeting it.
   const directories: string[] = [];
-  for (let dir = realpathSync(root); ; dir = dirname(dir)) {
+  for (let dir = realpathSync.native(root); ; dir = dirname(dir)) {
     directories.push(dir);
     if (dir === top || dirname(dir) === dir) break;
   }
@@ -264,7 +264,7 @@ interface Own {
 /** The migrations the service provider of the package `own` declares for it; its files count as shipped by it for the collision check. */
 async function ownEntry(context: Context, own: Own): Promise<Entry> {
   try {
-    const dir = realpathSync(own.dir);
+    const dir = realpathSync.native(own.dir);
     const pkg: Package = { name: own.name, dir, json: JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) };
     const assigned = await assignMigrations([pkg], migrationDeclarations([own.Provider]));
     const read = assigned.results.get(pkg)!;

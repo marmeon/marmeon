@@ -158,6 +158,16 @@ describe('the entries of the directory', () => {
     expect(messageOf(await read())).toContain('leads out of the package');
   });
 
+  it('follows a link the way the system does: `d/../<file>` is taken from where `d` leads', async () => {
+    const outside = tempDir('marmeon-package-migrations-outside-');
+    mkdirSync(join(outside, 'sub'));
+    writeFileSync(join(outside, '2026_01_01_000000_create_things_table.ts'), STUB);
+    const { dir, read } = reader.build({ [FIRST]: STUB });
+    symlinkSync(join(outside, 'sub'), join(dir, 'stubs/migrations/d'));
+    symlinkSync('d/../2026_01_01_000000_create_things_table.ts', join(dir, 'stubs/migrations/2026_02_01_000000_create_evil_table.ts'));
+    expect(messageOf(await read())).toContain('leads out of the package');
+  });
+
   it('refuses a symlinked directory that leads outside the package', async () => {
     const outside = tempDir('marmeon-package-migrations-outside-');
     writeFileSync(join(outside, 'notes.ts'), STUB);

@@ -25,11 +25,11 @@ export function unsafe(root: string, file: string): string | undefined {
   const name = file.slice(root.length + 1);
   let real: string;
   try {
-    real = realpathSync(file);
+    real = realpathSync.native(file);
   } catch {
     return `${name} is a link that leads nowhere. Remove it or fix it, then run marmeon agents:sync again. Nothing was written.`;
   }
-  const inside = realpathSync(root);
+  const inside = realpathSync.native(root);
   if (real !== inside && !real.startsWith(inside + sep)) return `${name} is a link to ${real}, outside the app. Nothing was written.`;
   if (!statSync(real).isFile()) return `${name} is not a file. Nothing was written.`;
   try {
@@ -49,7 +49,7 @@ export function unsafe(root: string, file: string): string | undefined {
 export function unsafePath(root: string, file: string, kind: 'file' | 'directory' = 'file'): string | undefined {
   const parts = relative(root, file).split(sep);
   if (parts[0] === '..' || parts[0] === '') return `${file} is outside the app. Nothing was written.`;
-  const inside = realpathSync(root);
+  const inside = realpathSync.native(root);
   let current = root;
   for (const [index, part] of parts.entries()) {
     current = join(current, part);
@@ -62,7 +62,7 @@ export function unsafePath(root: string, file: string, kind: 'file' | 'directory
     }
     let real: string;
     try {
-      real = realpathSync(current);
+      real = realpathSync.native(current);
     } catch {
       return `${name} is a link that leads nowhere. Remove it or fix it. Nothing was written.`;
     }
@@ -90,8 +90,8 @@ export function unwritablePath(root: string, file: string): string | undefined {
   // Each directory with the path the message shows: the target's is made relative to the real root, as its own path is real.
   const directories: (readonly [string, string])[] = [[directory, relative(root, directory)]];
   try {
-    const target = dirname(realpathSync(file));
-    if (target !== realpathSync(directory)) directories.push([target, relative(realpathSync(root), target)]);
+    const target = dirname(realpathSync.native(file));
+    if (target !== realpathSync.native(directory)) directories.push([target, relative(realpathSync.native(root), target)]);
   } catch {
     // A file that is not there, or a link that leads nowhere, is judged elsewhere.
   }
@@ -114,7 +114,7 @@ export function writeAtomic(file: string, text: string): void {
   let target = file;
   let mode = 0o666;
   try {
-    target = realpathSync(file);
+    target = realpathSync.native(file);
     mode = statSync(target).mode & 0o777;
   } catch {
     // A new file takes the default permissions.

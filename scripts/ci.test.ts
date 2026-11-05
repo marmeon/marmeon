@@ -10,6 +10,7 @@ import {
   ENGINE,
   engineHits,
   INTERNAL,
+  jsRealpathHits,
   internalImportHits,
   LIBRARY,
   libraryImportHits,
@@ -419,6 +420,64 @@ describe('check:source — NODE_ENV is checked positively', () => {
       'packages/create-marmeon/template/kit/modules/auth/views/Login.tsx:1: {!import.meta.env.PROD && <DevHint />}',
       'packages/react/src/app.tsx:1: const debug = import.meta.env.DEV;',
     ]);
+  });
+});
+
+describe('check:source — real paths come from the system', () => {
+  it('finds the JavaScript realpathSync in a package\'s sources and launchers — called, passed as a value, aliased', () => {
+    expect(jsRealpathHits([
+      { path: 'packages/x/src/a.ts', text: 'const a = 1;\nconst real = realpathSync(p);' },
+      { path: 'packages/x/src/b.ts', text: 'const real = fs.realpathSync (p);' },
+      { path: 'packages/x/src/c.ts', text: 'const real = paths.map(realpathSync);' },
+      { path: 'packages/x/src/d.ts', text: 'const rp = fs.realpathSync;' },
+      { path: 'packages/x/src/e.ts', text: "import { realpathSync as rp } from 'node:fs';" },
+      { path: 'packages/x/bin/f.js', text: 'const real = realpathSync(p);' },
+    ])).toEqual([
+      'packages/x/src/a.ts:2: const real = realpathSync(p);',
+      'packages/x/src/b.ts:1: const real = fs.realpathSync (p);',
+      'packages/x/src/c.ts:1: const real = paths.map(realpathSync);',
+      'packages/x/src/d.ts:1: const rp = fs.realpathSync;',
+      "packages/x/src/e.ts:1: import { realpathSync as rp } from 'node:fs';",
+      'packages/x/bin/f.js:1: const real = realpathSync(p);',
+    ]);
+  });
+
+  it('finds the callback realpath: fs.realpath( and realpath imported from node:fs', () => {
+    expect(jsRealpathHits([
+      { path: 'packages/x/src/a.ts', text: 'fs.realpath(p, done);' },
+      { path: 'packages/x/src/b.ts', text: "import { realpath } from 'node:fs';" },
+      { path: 'packages/x/src/c.ts', text: "import { readFile, realpath } from 'fs';" },
+    ])).toEqual([
+      'packages/x/src/a.ts:1: fs.realpath(p, done);',
+      "packages/x/src/b.ts:1: import { realpath } from 'node:fs';",
+      "packages/x/src/c.ts:1: import { readFile, realpath } from 'fs';",
+    ]);
+  });
+
+  it('reads imports and requires over several lines', () => {
+    expect(jsRealpathHits([
+      { path: 'packages/x/src/a.ts', text: "import {\n  realpath,\n} from 'node:fs';" },
+      { path: 'packages/x/src/b.js', text: "const x = 1;\nconst {\n  realpath } = require('fs');" },
+      { path: 'packages/x/src/c.ts', text: "import {\n  readFileSync,\n  realpathSync as rp,\n} from 'node:fs';" },
+    ])).toEqual([
+      "packages/x/src/a.ts:1: import {",
+      'packages/x/src/b.js:2: const {',
+      'packages/x/src/c.ts:3: realpathSync as rp,',
+    ]);
+    expect(jsRealpathHits([
+      { path: 'packages/x/src/a.ts', text: "import {\n  readFileSync,\n  realpathSync,\n} from 'node:fs';\nrealpathSync.native(p);" },
+      { path: 'packages/x/src/b.ts', text: "import { realpath } from 'node:fs/promises';\nconst { realpath: r } = require('node:fs/promises');" },
+    ])).toEqual([]);
+  });
+
+  it('leaves the native calls, plain imports, the promise realpath, tests, fixtures and other code alone', () => {
+    expect(jsRealpathHits([
+      { path: 'packages/x/src/a.ts', text: "import { realpathSync } from 'node:fs';\nconst real = realpathSync.native(p);\nconst r = fs.realpath.native(p, done);" },
+      { path: 'packages/x/src/b.ts', text: "import { realpath } from 'node:fs/promises';\nawait realpath(p);" },
+      { path: 'packages/x/src/a.test.ts', text: 'const real = realpathSync(p);' },
+      { path: 'packages/x/src/__fixtures__/a.ts', text: 'const real = realpathSync(p);' },
+      { path: 'scripts/a.ts', text: 'const real = realpathSync(p);' },
+    ])).toEqual([]);
   });
 });
 

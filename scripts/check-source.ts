@@ -282,6 +282,64 @@ export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
+/** Lines that reach the JavaScript `realpathSync`: a call, a value (`map(realpathSync)`), an alias, `fs.realpath(`. */
+const JS_REALPATH_LINE = [/\brealpathSync\b(?!\s*\.\s*native\b)/, /\bfs\s*\.\s*realpath\b(?!\s*\.\s*native\b)\s*\(/];
+/** A named import, over any number of lines: `import { a, b } from 'x'`. */
+const NAMED_IMPORT = /\bimport\s*(?:type\s+)?\{[^{}]*\}\s*from\s*['"][^'"]+['"]/g;
+/** `realpath` (the callback one) taken from `fs`: the braces are captured once and their body is tested in code, because a pattern that looks for the name between braces backtracks over a whole file. */
+const FS_NAMED_IMPORT = /\bimport\s*(?:type\s+)?\{([^{}]*)\}\s*from\s*['"](?:node:)?fs['"]/g;
+const FS_REQUIRE = /\brequire\(\s*['"](?:node:)?fs['"]\s*\)/g;
+/** The line offsets of `realpath` imported or destructured from `fs` in `text`. */
+function callbackRealpathOffsets(text: string): number[] {
+  const offsets: number[] = [];
+  for (const match of text.matchAll(FS_NAMED_IMPORT)) if (/\brealpath\b/.test(match[1]!)) offsets.push(match.index);
+  for (const match of text.matchAll(FS_REQUIRE)) {
+    const before = text.slice(Math.max(0, match.index - 400), match.index);
+    const close = before.search(/\}\s*=\s*$/);
+    if (close < 0) continue;
+    const open = before.lastIndexOf('{', close);
+    if (open >= 0 && /\brealpath\b/.test(before.slice(open + 1, close))) offsets.push(match.index - before.length + open);
+  }
+  return offsets;
+}
+
+/**
+ * Rule 14: no use of the JavaScript `realpathSync` (or the callback `fs.realpath`) in a package's sources or launchers — it joins a link's target
+ * with `path.resolve`, so `dir/../x` collapses before `dir` is followed, while the kernel (and `realpathSync.native`, `fs/promises` `realpath`)
+ * lands elsewhere. Tests, type tests and fixtures are aside. A plain named import of `realpathSync` is fine (its uses are checked); an alias hides them.
+ */
+export function jsRealpathHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!CODE.test(path) || !/^packages\/[^/]+\/(?:src|bin)\//.test(path) || /\.test\.|\.type-test\.|__fixtures__\//.test(path)) continue;
+    // The newlines' offsets once, searched by halves: slicing the text for every match would cost the square of a file of many imports.
+    const newlines = [...text.matchAll(/\n/g)].map((match) => match.index);
+    const lineOf = (offset: number) => {
+      let low = 0;
+      let high = newlines.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (newlines[middle]! < offset) low = middle + 1;
+        else high = middle;
+      }
+      return low + 1;
+    };
+    const plainImport = new Set<number>();
+    for (const match of text.matchAll(NAMED_IMPORT)) {
+      if (/\brealpathSync\s+as\b/.test(match[0])) continue;
+      for (let line = lineOf(match.index); line <= lineOf(match.index + match[0].length); line++) plainImport.add(line);
+    }
+    const lines = text.split('\n');
+    const found = new Set<number>();
+    lines.forEach((line, index) => {
+      if (!plainImport.has(index + 1) && JS_REALPATH_LINE.some((pattern) => pattern.test(line))) found.add(index + 1);
+    });
+    for (const offset of callbackRealpathOffsets(text)) found.add(lineOf(offset));
+    for (const line of [...found].sort((a, b) => a - b)) hits.push(`${path}:${line}: ${lines[line - 1]!.trim().slice(0, 160)}`);
+  }
+  return hits;
+}
+
 /** One part of rule 5 or 7: a pattern no line of the files it reads may match. */
 export interface TextRule {
   /** What the pattern finds, for the problem's message: `a decision number`. */
@@ -713,6 +771,9 @@ export function checkSource(repository: string = root): string[] {
     ...negativeEnvHits(files).map(
       (hit) => `NODE_ENV checked positively (only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
+    ...jsRealpathHits(files).map(
+      (hit) => `realpathSync resolves a link target textually (\`dir/../x\` before following \`dir\`): use realpathSync.native (CONTRIBUTING.md › Rules over the source): ${hit}`,
+    ),
     ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (API tokens start with marmeon_): ${hit}`),
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
@@ -736,7 +797,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; every lint-disable comment says why; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; nothing but @marmeon/database imports or installs ${LIBRARY}.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no package's sources call the JavaScript realpathSync (use realpathSync.native); no mutant is disabled without a reason or left disabled; every lint-disable comment says why; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; nothing but @marmeon/database imports or installs ${LIBRARY}.`,
     );
   }
 }

@@ -140,7 +140,7 @@ function blockProblems(root: string): CheckProblem[] {
     // What cannot be read is reported once, by `installProblems`; no block is judged against a guess.
     const tools = installedTools(root);
     if (!tools.ok) return [];
-    const result = syncAgents(readFileSync(realpathSync(file), 'utf8'), agentsBlock(tools.value));
+    const result = syncAgents(readFileSync(realpathSync.native(file), 'utf8'), agentsBlock(tools.value));
     if (!result.ok) return warn(`${result.error.message}`);
     const { change } = result.value;
     if (change === 'unchanged') return [];
