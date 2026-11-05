@@ -32,16 +32,32 @@ export type MailDriverFactory = (context: MailDriverContext) => MailTransport;
 
 const NO_RECEIPT: MailReceipt = Object.freeze({ messageId: undefined });
 
-/** Writes every message to the log instead of sending it (`MAIL_DRIVER=log`, the default). */
+/**
+ * Writes every message to the log instead of sending it (`MAIL_DRIVER=log`, the default). Without `text` only the recipients
+ * and the subject are written. See `docs/mail.md#the-log-mailer`.
+ */
 export class LogTransport implements MailTransport {
   readonly #logger: Logger;
+  readonly #text: boolean;
 
-  constructor(logger: Logger) {
+  /** `text` has no default, so that every construction decides whether the mail's text may reach the log. */
+  constructor(logger: Logger, options: { readonly text: boolean }) {
     this.#logger = logger.child({ channel: 'mail' });
+    this.#text = options.text;
   }
 
   async send(message: MailMessage): Promise<MailReceipt> {
     const to = message.to.map((recipient) => recipient.address).join(', ');
+    if (!this.#text) {
+      // Security invariant: whoever reads the log has fewer rights than the app and must not get the tokens in its mails
+      // (reset, verification, signed links). The loggers redact the context, never the message, and a queued mail is
+      // decrypted by the worker before it gets here, so the text stays out entirely.
+      this.#logger.info(`Mail to ${to}: ${message.subject} — the text is left out outside development and tests (it can hold reset and sign-in links).`, {
+        to,
+        subject: message.subject,
+      });
+      return NO_RECEIPT;
+    }
     // The text version in full: in development, links in mails (password reset, verification) are clicked from here.
     this.#logger.info(`Mail to ${to}: ${message.subject}\n\n${message.text}\n`, { to, subject: message.subject });
     return NO_RECEIPT;

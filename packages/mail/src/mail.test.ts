@@ -39,6 +39,19 @@ class WelcomeMail implements Mailable {
   }
 }
 
+class TokenMail implements Mailable {
+  readonly #token: string;
+  constructor(token: string) {
+    this.#token = token;
+  }
+  envelope() {
+    return { to: 'ada@example.com', subject: 'Reset your password' };
+  }
+  content() {
+    return fromHtml(html`<p>Reset: <a href="${`https://app.test/reset-password/${this.#token}`}">here</a></p>`);
+  }
+}
+
 describe('html``', () => {
   it('escapes every value — a name cannot inject markup', () => {
     const name = '<img src=x onerror="alert(1)">';
@@ -150,9 +163,30 @@ describe('transports', () => {
         return this;
       }
     }
-    const receipt = await new LogTransport(new Capture()).send(await compose(new WelcomeMail('Ada'), 'hello@app.test'));
+    const receipt = await new LogTransport(new Capture(), { text: true }).send(await compose(new WelcomeMail('Ada'), 'hello@app.test'));
     expect(receipt, 'no provider took part').toEqual({ messageId: undefined });
     expect(lines).toEqual(['Mail to ada@example.com: Welcome, Ada\n\nHello Ada\n\nStart here: Your profile (https://app.test/start?a=1&b=2)\n']);
+  });
+
+  it('log: without the text it writes recipient and subject and says the text is left out', async () => {
+    const lines: { message: string; context: LogContext | undefined }[] = [];
+    class Capture extends ConsoleLogger {
+      override info(message: string, context?: LogContext) {
+        lines.push({ message, context });
+      }
+      override child(): Logger {
+        return this;
+      }
+    }
+    const token = 'a'.repeat(40);
+    const mail = await compose(new TokenMail(token), 'hello@app.test');
+    await new LogTransport(new Capture(), { text: false }).send(mail);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.message).toContain('ada@example.com');
+    expect(lines[0]!.message).toContain('Reset your password');
+    expect(lines[0]!.message).toContain('left out');
+    expect(JSON.stringify(lines)).not.toContain(token);
+    expect(JSON.stringify(lines)).not.toContain('reset-password');
   });
 
   it('smtp: hands the message to an SMTP server through nodemailer — text and HTML parts', async () => {
@@ -218,7 +252,7 @@ describe('MailServiceProvider', () => {
     await expect(boot({ MAIL_FROM_ADDRESS: 'nope' })).rejects.toThrow(/mail: MAIL_FROM_ADDRESS/);
   });
 
-  it('warns once at boot when a protected environment runs on the log mailer — reset links would land in the log', async () => {
+  it('warns once at boot when a protected environment runs on the log mailer — the log holds no mail text', async () => {
     const warningsWith = async (env: Record<string, string>) => {
       env = { MAIL_FROM_ADDRESS: 'team@app.test', ...env };
       const warnings: string[] = [];
@@ -229,7 +263,8 @@ describe('MailServiceProvider', () => {
     expect(await warningsWith({ NODE_ENV: 'production' })).toEqual([LOG_MAILER_WARNING]); // MAIL_DRIVER unset: the default
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'log' })).toEqual([LOG_MAILER_WARNING]);
     expect(LOG_MAILER_WARNING).toContain('no mail is sent');
-    expect(LOG_MAILER_WARNING).toContain('in plain text');
+    expect(LOG_MAILER_WARNING).toContain('left out');
+    expect(LOG_MAILER_WARNING).not.toContain('plain text');
     // Quiet with a real mailer, and in development and tests (there the log is where the links are clicked).
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'smtp' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'array' })).toEqual([]);
@@ -238,6 +273,24 @@ describe('MailServiceProvider', () => {
     // Fail-closed: a missing NODE_ENV is protected like production — APP_ENV changes nothing.
     expect(await warningsWith({ NODE_ENV: 'production', APP_ENV: 'local' })).toEqual([LOG_MAILER_WARNING]);
     expect(await warningsWith({ NODE_ENV: '' })).toEqual([LOG_MAILER_WARNING]);
+  });
+
+  it('logs only recipients and subject outside development and tests, with the text in development and tests', async () => {
+    const linesWith = async (env: Record<string, string>) => {
+      const lines: string[] = [];
+      const logger: Logger = { debug() {}, info: (message: string) => void lines.push(message), warn() {}, error() {}, child: () => logger };
+      const app = await boot({ MAIL_FROM_ADDRESS: 'team@app.test', ...env }, (container) => container.instance(Logger, logger));
+      await app.container.make(Mailer).send(new TokenMail('t'.repeat(40)));
+      return lines.join('\n');
+    };
+    for (const env of [{ NODE_ENV: 'production' } as Record<string, string>, { NODE_ENV: 'production', MAIL_DRIVER: 'log' }, { NODE_ENV: '' }, {}]) {
+      const logged = await linesWith(env);
+      expect(logged, JSON.stringify(env)).toContain('ada@example.com: Reset your password');
+      expect(logged, JSON.stringify(env)).not.toContain('tttt');
+      expect(logged, JSON.stringify(env)).not.toContain('reset-password');
+    }
+    expect(await linesWith({ NODE_ENV: 'development' })).toContain('https://app.test/reset-password/' + 't'.repeat(40));
+    expect(await linesWith({ NODE_ENV: 'test' })).toContain('https://app.test/reset-password/' + 't'.repeat(40));
   });
 
   it('warns once at boot when a protected environment sends from the default address', async () => {
@@ -250,9 +303,9 @@ describe('MailServiceProvider', () => {
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'smtp' })).toEqual([fromDefaultWarning('smtp')]);
     expect(await warningsWith({ NODE_ENV: '', MAIL_DRIVER: 'smtp' })).toEqual([fromDefaultWarning('smtp')]);
     expect(fromDefaultWarning('smtp')).toContain('MAIL_FROM_ADDRESS is not set: mail goes out from hello@example.com');
-    // On the log mailer both warnings apply, and the sender line says the mail is only logged.
+    // On the log mailer both warnings apply, and the sender line says no mail is sent.
     expect(await warningsWith({ NODE_ENV: 'production' })).toEqual([LOG_MAILER_WARNING, fromDefaultWarning('log')]);
-    expect(fromDefaultWarning('log')).toContain('now only in the log');
+    expect(fromDefaultWarning('log')).toContain('no mail is sent');
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'smtp', MAIL_FROM_ADDRESS: 'team@app.test' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'development', MAIL_DRIVER: 'smtp' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'test', MAIL_DRIVER: 'smtp' })).toEqual([]);
