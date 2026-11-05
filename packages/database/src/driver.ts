@@ -687,7 +687,16 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
     if (query.sql.includes(PREFIX)) return Promise.reject(new Error(unresolved(hooks.name ?? 'default', query.sql.includes(SECRET))));
     return undefined;
   };
-  const { result: after } = hooks;
+  // Kysely's query log wraps the connection's executeQuery and streamQuery after this proxy exists, and the wrapper is resolved again
+  // (see `set` below), so one result passes the hook twice. A conversion that is not idempotent (JSON text → value) must run once.
+  const converted = new WeakSet<object>();
+  const after = hooks.result
+    ? (query: CompiledQuery, result: QueryResult<unknown>) => {
+        if (converted.has(result)) return;
+        converted.add(result);
+        hooks.result!(query, result);
+      }
+    : undefined;
   const finished = (inner: Execute): Execute =>
     after ? (query, ...rest) => inner(query, ...rest).then((result) => (after(query, result), result)) : inner;
   const resolvedExecute = (logged: Execute): Execute => {

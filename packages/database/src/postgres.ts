@@ -1,4 +1,5 @@
 import { PostgresDialect } from 'kysely';
+import { isoTimestamp } from './iso-timestamp.ts';
 
 export interface PostgresOptions {
   url: string;
@@ -118,9 +119,5 @@ function parseInt8(value: string): number {
 
 /** `2026-10-01 12:00:00.123456+00` (UTC session) → `2026-10-01T12:00:00.123Z`. */
 function toIsoTimestamp(value: string): string {
-  if (value === 'infinity' || value === '-infinity') return value;
-  const match = /^(\d{4,}-\d\d-\d\d) (\d\d:\d\d:\d\d)(?:\.(\d+))?(?:\+00(?::?00)?)?( BC)?$/.exec(value);
-  if (!match || match[4]) return new Date(value).toISOString();
-  const [, date, time, fraction = ''] = match;
-  return `${date}T${time}.${fraction.padEnd(3, '0').slice(0, 3)}Z`;
+  return isoTimestamp(value);
 }

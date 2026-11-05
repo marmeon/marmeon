@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Migrator, type Connections, type Json, type QueryEvent } from './index.ts';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 
 const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: new URL('./__fixtures__/migrations/auth/', import.meta.url) },
@@ -82,6 +82,74 @@ describe.each(drivers)('relations on %s', (driver) => {
       author: { name: 'Ada', is_admin: true, settings: { theme: 'dark' }, balance: '12.50', created_at: expect.stringMatching(ISO_UTC) },
     });
     expectTypeOf(article!.author).toEqualTypeOf<{ name: string; is_admin: boolean; settings: Json; balance: string; created_at: string } | null>();
+  });
+
+  // Each case adds its own user and article and removes them, so the other tests see the fixture as seeded.
+  async function withScratchArticle(values: { settings?: string; published_at?: string }, check: (article: { id: number; user_id: number }) => Promise<void>): Promise<void> {
+    const email = `scratch-${crypto.randomUUID()}@example.com`;
+    const user = await db.insertInto('users').values({ name: 'Scratch', email, ...(values.settings === undefined ? {} : { settings: values.settings }) }).returning('id').executeTakeFirstOrThrow();
+    const article = await db.insertInto('articles').values({ user_id: user.id, title: email }).returning(['id', 'user_id']).executeTakeFirstOrThrow();
+    try {
+      if (values.published_at !== undefined) await sql`update articles set published_at = ${values.published_at}::timestamptz where id = ${article.id}`.execute(db);
+      await check(article);
+    } finally {
+      await db.deleteFrom('articles').where('id', '=', article.id).execute();
+      await db.deleteFrom('users').where('id', '=', user.id).execute();
+    }
+  }
+
+  it.each([
+    ['a JSON string scalar', 'abc'],
+    ['a string that looks like an object', '{"role":"admin"}'],
+    ['a string that looks like a number', '123'],
+    ['a string that looks like a boolean', 'true'],
+    ['an object', { theme: 'dark', nested: [1, 'two', null] }],
+    ['an array', [1, 'two', { three: 3 }]],
+    ['a number', 42],
+    ['a boolean', false],
+    ['a JSON null', null],
+  ])('reads %s in a JSON column through a relation as it reads it directly', async (_label, stored) => {
+    await withScratchArticle({ settings: JSON.stringify(stored) }, async (article) => {
+      const direct = await db.selectFrom('users').select('settings').where('id', '=', article.user_id).executeTakeFirstOrThrow();
+      const [viaRelation] = await db
+        .selectFrom('articles')
+        .select('articles.id')
+        .withRelation('author', { table: 'users', foreignKey: 'id', localKey: 'user_id', one: true }, (q) => q.select(['users.settings']))
+        .where('articles.id', '=', article.id)
+        .execute();
+      expect(direct.settings).toEqual(stored);
+      expect(viaRelation!.author!.settings).toEqual(direct.settings);
+      expect(typeof viaRelation!.author!.settings).toBe(typeof direct.settings);
+    });
+  });
+
+  // SQLite stores timestamps as text; it has no special values.
+  it.runIf(driver === 'pgsql').each(['infinity', '-infinity'])('reads a timestamp of %s through a relation as it reads it directly', async (value) => {
+    await withScratchArticle({ published_at: value }, async (article) => {
+      const direct = await db.selectFrom('articles').select('published_at').where('id', '=', article.id).executeTakeFirstOrThrow();
+      const [viaRelation] = await db
+        .selectFrom('users')
+        .select('users.id')
+        .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) => q.select(['articles.published_at']))
+        .where('users.id', '=', article.user_id)
+        .execute();
+      expect(direct.published_at).toBe(value);
+      expect(viaRelation!.articles).toEqual([{ published_at: value }]);
+    });
+  });
+
+  it.runIf(driver === 'pgsql')('reads a BC timestamp through a relation and directly without throwing', async () => {
+    await withScratchArticle({ published_at: '0044-03-15 12:00:00+00 BC' }, async (article) => {
+      const direct = await db.selectFrom('articles').select('published_at').where('id', '=', article.id).executeTakeFirstOrThrow();
+      const [viaRelation] = await db
+        .selectFrom('users')
+        .select('users.id')
+        .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) => q.select(['articles.published_at']))
+        .where('users.id', '=', article.user_id)
+        .execute();
+      expect(typeof direct.published_at).toBe('string');
+      expect(viaRelation!.articles).toHaveLength(1);
+    });
   });
 
   it('nests relations, with aliases and renamed columns', async () => {
