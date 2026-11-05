@@ -133,8 +133,8 @@ export function loadedUrls(markup: string): string[] {
   const text = decodeEntities(markup);
   const urls: string[] = [];
   const value = (match: RegExpMatchArray) => (match[1] ?? match[2] ?? match[3] ?? '').trim();
-  // Stops at the next `<`: decoded user text (`&lt;link`) turns into tag starts, and a scan must not run on into the next one.
-  for (const match of text.matchAll(new RegExp(String.raw`<(?:link|image|mj-font)\b[^<>]*?\bhref${VALUE}`, 'gi'))) urls.push(value(match));
+  // Tags are found in the markup as written, and only their value is decoded: escaped text (`&lt;link`) holds no `<`, so it cannot start a tag, and every scan from a real tag start is tied to a `<` the author wrote.
+  for (const match of markup.matchAll(new RegExp(String.raw`<(?:link|image|mj-font)\b[^>]*?\bhref${VALUE}`, 'gi'))) urls.push(decodeEntities(value(match)).trim());
   for (const match of text.matchAll(new RegExp(String.raw`\bsrcset${VALUE}`, 'gi'))) for (const candidate of value(match).split(',')) urls.push(candidate.trim().split(/\s+/)[0]!);
   for (const match of text.matchAll(new RegExp(String.raw`\b${LOADING_ATTRIBUTE}${VALUE}`, 'gi'))) urls.push(value(match));
   for (const match of text.matchAll(/url\(\s*["']?([^"')]+)/gi)) urls.push(match[1]!.trim());
