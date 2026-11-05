@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, TESTED_PNPM, type DockerApp, type PackageManager, type Proxy } from '../docker.ts';
@@ -50,6 +50,17 @@ export class MakeDockerCommand {
       output.success(`Created ${file}`);
     }
     for (const note of app.notes) output.warn(note);
+    if (lstatSync(join(root, '.npmrc'), { throwIfNoEntry: false })?.isSymbolicLink()) {
+      output.warn('.npmrc is a link: the Dockerfile deletes its target when that lies inside the app, but the build stage and its cache still hold it. Keep credentials out of the build context, or pass them as a BuildKit secret (https://marmeon.com/docs/deployment#a-private-registry).');
+    }
+    if (app.docker.installFiles.includes('.npmrc')) {
+      const keys = literalCredentials(readFileSync(join(root, '.npmrc'), 'utf8'));
+      if (keys.length > 0) {
+        output.warn(
+          `.npmrc holds a registry credential (${keys.join(', ')}). The image does not get it, but the build stage and its cache do: pass it as a BuildKit secret instead, with no auth line left in .npmrc (https://marmeon.com/docs/deployment#a-private-registry).`,
+        );
+      }
+    }
     if (existsSync(join(root, '.env.production'))) {
       const git = (...args: string[]) => spawnSync('git', args, { cwd: root, stdio: 'ignore' }).status;
       // Exit 128 means no repository: nothing to leak into.
@@ -68,6 +79,22 @@ export class MakeDockerCommand {
     output.line('never into the image; storage/ is a volume. Proxies, Kubernetes, SERVER_SHUTDOWN_DELAY_SECONDS: https://marmeon.com/docs/deployment#the-docker-image');
     return 0;
   }
+}
+
+/** The keys of an `.npmrc` that carry a literal credential — never their values. `${NAME}` is read from the environment, so it holds none. */
+export function literalCredentials(npmrc: string): string[] {
+  const keys: string[] = [];
+  for (const line of npmrc.split(/\r?\n/)) {
+    const text = line.trim();
+    if (text === '' || text.startsWith('#') || text.startsWith(';')) continue;
+    const separator = text.indexOf('=');
+    if (separator < 0) continue;
+    const key = text.slice(0, separator).trim();
+    const value = text.slice(separator + 1).trim().replace(/^(["'])(.*)\1$/, '$2');
+    if (!/(?:^|:)_(?:authToken|auth|password)$/.test(key) || /^\$\{[^}]+\}$/.test(value)) continue;
+    keys.push(key);
+  }
+  return keys;
 }
 
 /** What the files depend on: name, package manager (by its lockfile), the pinned pnpm, local packages the install needs. */

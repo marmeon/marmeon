@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
@@ -91,6 +91,54 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(dockerfile).toContain('npm ci --no-audit --no-fund');
     expect(dockerfile).toContain('npm prune --omit=dev');
     expect(dockerfile).not.toContain('pnpm');
+  });
+
+  it.each([
+    ['pnpm', { 'pnpm-lock.yaml': "lockfileVersion: '9.0'\n" }],
+    ['npm', { 'package-lock.json': '{}' }],
+  ])('%s: the run stage cannot contain the project .npmrc, and the installs take the registry auth as an optional secret', (_name, lock) => {
+    const root = app({ 'package.json': JSON.stringify({ name: 'blog' }), ...lock, '.npmrc': 'fund=false\n' });
+    const dockerfile = makeDocker(root).file('Dockerfile');
+    const [build, ...rest] = dockerfile.split(/^FROM /m).slice(1);
+    const run = rest.join('FROM ');
+    const runs = build!.split('\n').filter((line) => line.startsWith('RUN --mount=type=cache'));
+    expect(runs).toHaveLength(2);
+    for (const line of runs) expect(line).toContain('--mount=type=secret,id=npmrc,target=/root/.npmrc');
+    expect(dockerfile).not.toContain('required=true');
+    // The last instruction of the build stage removes the file; the run stage gets /app only through that stage.
+    const last = build!.split('\n').filter((line) => !line.startsWith('#') && line !== '').join('\n').split(/\n(?=[A-Z]+ )/).pop()!;
+    expect(last).toMatch(/&& find \. -path \.\/node_modules -prune -o -name \.npmrc \\\( -type f -o -type l \\\) -exec sh -c '/);
+    // A link named .npmrc: its target inside /app goes with it (readlink -f), a directory target stops the build.
+    expect(last).toContain('readlink -f "$f"');
+    expect(last).toContain('case "$t" in /app/*)');
+    expect(last).toContain('[ -d "$t" ]');
+    expect(last.trimEnd()).toMatch(/done' _ \{\} \+$/);
+    expect(last).toContain('marmeon discover');
+    expect(run).toMatch(/^\S/);
+    expect(run.split('\n').filter((line) => /^(COPY|ADD)\b/.test(line))).toEqual(['COPY --from=build --chmod=a+rX /app ./']);
+    expect(run).not.toContain('.npmrc');
+  });
+
+  it('warns when the .npmrc holds a literal credential — naming the key, never the value', () => {
+    const token = ['npm', 'x'.repeat(30)].join('_');
+    const credentials = (npmrc: string) => makeDocker(app({ 'package.json': JSON.stringify({ name: 'blog' }), 'package-lock.json': '{}', '.npmrc': npmrc }));
+    const warned = credentials(`fund=false\n//r.example/:_authToken=${token}\n_auth = "${token}"\n//r.example/:_password=${token}\n`);
+    expect(warned.code).toBe(0);
+    expect(warned.stderr).toContain('.npmrc holds a registry credential (//r.example/:_authToken, _auth, //r.example/:_password)');
+    expect(warned.stderr).toContain('docs/deployment#a-private-registry');
+    expect(warned.stdout + warned.stderr).not.toContain(token);
+    for (const quiet of ['//r.example/:_authToken=${NPM_TOKEN}\n', 'fund=false\n', '# //r.example/:_authToken=abc\n; _auth=abc\n']) {
+      expect(credentials(quiet).stderr).not.toContain('registry credential');
+    }
+  });
+
+  it('warns when the project .npmrc is a link: its target is copied into the image', () => {
+    const root = app({ 'package.json': JSON.stringify({ name: 'blog' }), 'package-lock.json': '{}', 'config/npmrc.credentials': 'fund=false\n' });
+    symlinkSync('config/npmrc.credentials', join(root, '.npmrc'));
+    const result = makeDocker(root);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('.npmrc is a link: the Dockerfile deletes its target when that lies inside the app');
+    expect(result.file('Dockerfile')).toContain('\\( -type f -o -type l \\)');
   });
 
   it('refuses an app without a lockfile, two proxies, and existing files without --force', () => {

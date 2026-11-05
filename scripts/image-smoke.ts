@@ -1,6 +1,6 @@
 /**
  * `pnpm image:smoke` — the app as an image: `create-marmeon app --docker` from the tarballs (as in `pack:smoke`, outside the
- * monorepo) is built with Docker, then the container's life: non-root, no .env* in the image, migrate, `/up` and `/login` 200,
+ * monorepo) is built with Docker, then the container's life: non-root, no .env* and no .npmrc in the image, migrate, `/up` and `/login` 200,
  * healthy, SIGTERM with SERVER_SHUTDOWN_DELAY_SECONDS=1 → `/up/ready` 503 at once and exit 0 (tini is PID 1, no `docker run --init`, and reaps
  * orphans), a read-only root, `--workers=2`, a stuck job ends the container with 70. Then the docs' image (`website-image.ts`).
  *
@@ -11,7 +11,7 @@
  *   pnpm image:smoke --npm    # create-marmeon --npm (package-lock.json) — make:docker writes the npm variant (without the docs)
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -159,6 +159,12 @@ async function main(): Promise<number> {
         env: npm ? { npm_config_prefer_offline: 'true' } : { pnpm_config_prefer_offline: 'true' },
       });
       if (!output.includes('marmeon make:docker')) throw new SmokeError(`create-marmeon wrote no Docker files:\n${output}`);
+      // A project .npmrc (the npm scaffold writes one already): the build stage reads it, the image must not get it.
+      if (!existsSync(join(app, '.npmrc'))) {
+        writeFileSync(join(app, '.npmrc'), 'fund=false\n');
+        const again = spawnSync(join(app, 'node_modules/.bin/marmeon'), ['make:docker', '--force'], { cwd: app, env: docker.env, encoding: 'utf8' });
+        if (again.status !== 0) throw new SmokeError(`marmeon make:docker --force failed:\n${again.stdout}${again.stderr}`);
+      }
       // A .env in the context (the scaffolder wrote it) — the image must not get it; the server's configuration next to the compose
       // file — in the build context too, so the image must keep it out as well.
       writeFileSync(join(app, '.env.production'), `APP_KEY=${key}\nAPP_NAME=Smoke\nAPP_URL=https://smoke.example\n`);
@@ -167,6 +173,10 @@ async function main(): Promise<number> {
       const written = readFileSync(join(app, 'Dockerfile'), 'utf8');
       if (written.includes('npm ci') !== npm) throw new SmokeError(`make:docker did not write the ${npm ? 'npm' : 'pnpm'} variant:\n${written}`);
       if (!/^COPY vendor\S* \.\/vendor/m.test(written)) throw new SmokeError(`the Dockerfile does not copy the vendored tarballs before the install:\n${written}`);
+      // A link named .npmrc in a folder, and the file it points to: both must stay out of the image.
+      mkdirSync(join(app, 'config'), { recursive: true });
+      writeFileSync(join(app, 'config/npmrc.credentials'), 'fund=false\n');
+      symlinkSync('npmrc.credentials', join(app, 'config/.npmrc'));
       addStuckJob(app);
     });
     const buildSeconds = await step(`docker build -t ${image}`, () => {
@@ -183,6 +193,14 @@ async function main(): Promise<number> {
       const listed = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "console.log(require('fs').readdirSync('.').join('\\n'))"]).output.split('\n');
       const leaked = listed.filter((file) => file.startsWith('.env'));
       if (leaked.length > 0) throw new SmokeError(`the image contains ${leaked.join(', ')} — .dockerignore must keep every .env* out.`);
+      if (listed.includes('.npmrc')) throw new SmokeError('the image contains .npmrc — the build stage must remove it before the run stage copies the app.');
+      // As root: the user node cannot traverse /root, and `test ! -e` would pass on the permission error.
+      const asRoot = docker.run(['run', '--rm', '--user', 'root', '--entrypoint', 'sh', image, '-c', 'test ! -e /root/.npmrc'], { expect: 'any' });
+      if (asRoot.code !== 0) throw new SmokeError('the image contains /root/.npmrc.');
+      const mounted = docker.run(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'test -z "$(find /app -name .npmrc -not -path "/app/node_modules/*")"'], { expect: 'any' });
+      if (mounted.code !== 0) throw new SmokeError('the image contains an .npmrc under /app.');
+      const linked = docker.run(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'test ! -e /app/config/npmrc.credentials && test ! -L /app/config/.npmrc'], { expect: 'any' });
+      if (linked.code !== 0) throw new SmokeError('the image contains config/.npmrc or the file it links to (config/npmrc.credentials).');
       if (!listed.includes('dist') || !listed.includes('.marmeon')) throw new SmokeError(`the image has no build (dist/, .marmeon/): ${listed.join(' ')}`);
       // Production dependencies only: the dev dependencies of the build stage are not in the image, not even unlinked.
       const store = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "const fs = require('fs'); console.log([...(fs.existsSync('node_modules/.pnpm') ? fs.readdirSync('node_modules/.pnpm') : []), ...fs.readdirSync('node_modules')].join('\\n'))"]).output.split('\n');
