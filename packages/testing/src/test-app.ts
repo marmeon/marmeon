@@ -3,7 +3,7 @@ import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
 import { CookieEncryption, Router } from '@marmeon/http';
-import { protocolHeaders, writeAppBrowserRoutes, browserRoutes, CONNECTION_HEADER, LIVE_PATH, LIVE_VERSION } from '@marmeon/http/internal';
+import { protocolHeaders, writeAppBrowserRoutes, browserRoutes, CONNECTION_HEADER, LIVE_PATH, LIVE_VERSION, ServerServing } from '@marmeon/http/internal';
 import { urlFor } from '@marmeon/router/url';
 import type {
   CheckIslandRouteName,
@@ -261,6 +261,13 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       ssr = await TestSsr.start(definition.root, { stream: options.ssr === 'stream', ...(options.ssrServer ? { server: options.ssrServer } : {}) });
     }
   } catch (error) {
+    await application.shutdown();
+    throw error;
+  }
+  try {
+    if (application.container.has(ServerServing)) await application.container.make(ServerServing).begin();
+  } catch (error) {
+    await ssr?.close();
     await application.shutdown();
     throw error;
   }

@@ -34,6 +34,7 @@ describe('the live stream: the fixtures of every version it once spoke', () => {
     expect(more).toEqual([]);
     const query = fixture!.text.trim().replace(/TOKEN\.([\w.-]+)/g, (_all, channel: string) => encodeURIComponent(`${tokens.sign(ADA, channel)}.${channel}`));
     const hub = new LiveHub(new MemoryLiveBackend(), options, silent, undefined, new Redactor());
+    await hub.listen();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const reader = new LiveStreamReader(await controller.handle({ request: new Request(`http://app.test/_marmeon/live?${query}`) } as never));
     try {
@@ -65,6 +66,7 @@ describe('the live stream: the fixtures of every version it once spoke', () => {
     await backend.refresh('users.1', null, undefined);
     await backend.refresh('users.1', null, undefined);
     const hub = new LiveHub(backend, options, silent, undefined, new Redactor());
+    await hub.listen();
     try {
       const response = await hub.open({ channels: ['users.1'], scope: ADA, connection: CONNECTION });
       await backend.refresh('users.1', ['posts'], undefined);

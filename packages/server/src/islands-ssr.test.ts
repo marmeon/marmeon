@@ -176,7 +176,7 @@ describe('islands resolved in-process while the page streams', async () => {
     modules: [defineModule({ name: 'islands', routes }), defineModule({ name: 'sessions', routes: sessionRoutes })],
     middleware: { web: [ExposesLifecycle, MarksPrivate] },
   }, { env: { APP_KEY: generateKey() } });
-  application.container.scoped(PageSession, () => ({ started: () => pageSession.started, csrfToken: () => undefined, scope: () => undefined, generation: () => undefined }));
+  application.container.scoped(PageSession, () => ({ started: () => pageSession.started, csrfToken: () => undefined, scope: () => undefined, generation: () => undefined, readAt: () => undefined }));
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
   const app = createHttpKernel(application, { renderer, debug: true, islandTimeoutMs: 100 });
   const production = createHttpKernel(application, { renderer, strictReadOnly: false, islandTimeoutMs: 100 });
