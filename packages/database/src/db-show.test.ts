@@ -96,6 +96,21 @@ describe('db:show --json', () => {
     expect((document.tables as object[]).map((table) => Object.keys(table))).toEqual(Array(2).fill(['name', 'schema', 'columns', 'rows']));
   });
 
+  it('writes control characters of a table name out in the text', async () => {
+    const app = await createApplication({ root: tempDir('marmeon-db-show-'), discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:', DB_MANAGED: 'false' } });
+    const connections = app.container.make(Connections);
+    await connections.get().schema.createTable('x\x1b]8;;evil\x07y').addColumn('id', 'integer').execute();
+    const stdout: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+    await new DbShowCommand(connections).handle({ args: [], options: {}, output: new Output(), root: '/' } as never);
+    vi.restoreAllMocks();
+    await app.shutdown();
+    const out = stdout.join('');
+    expect(out).toContain('x\\u001b]8;;evil\\u0007y');
+    expect(out).not.toMatch(/[^\P{Cc}\n]/u);
+    expect(out).not.toContain('\x1b');
+  });
+
   it('prints an empty database as an empty list', async () => {
     const app = await createApplication({ root: tempDir('marmeon-db-show-'), discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:' } });
     const stdout: string[] = [];

@@ -1,4 +1,5 @@
 import type { CommandInput } from 'marmeon';
+import { printable } from '@marmeon/core/internal';
 import { sql } from 'kysely';
 import { inspectionConnection } from '../migrator-connection.ts';
 import { describeConnection } from '../config.ts';
@@ -44,7 +45,7 @@ export class DbShowCommand {
       output.json({ format: 1, connection: name, driver: settings.driver, target: described.slice(settings.driver.length + 1), server: version, tables: found, warnings: [] });
       return 0;
     }
-    const rows = found.map((table) => [table.schema ? `${table.schema}.${table.name}` : table.name, String(table.columns), String(table.rows)]);
+    const rows = found.map((table) => [printable(table.schema ? `${table.schema}.${table.name}` : table.name), String(table.columns), String(table.rows)]);
 
     output.line(`Connection  ${name}`);
     output.line(`Target      ${described}`);

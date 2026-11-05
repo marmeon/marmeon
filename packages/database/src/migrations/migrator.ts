@@ -1,7 +1,7 @@
 import { hash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Application } from '@marmeon/core';
-import { withCode } from '@marmeon/core/internal';
+import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
@@ -434,11 +434,11 @@ export class Migrator {
     for (const row of rows) {
       await this.#held?.heartbeat();
       const file = files.get(row.name);
-      if (!file) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): its file is gone.`));
+      if (!file) throw new Error(withCode('D16', `Cannot roll back "${printable(row.name)}" (module "${printable(row.module)}"): its file is gone.`));
       const migration = await loadMigration(file);
-      if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): it has no down().`));
+      if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${printable(row.name)}" (module "${printable(row.module)}"): it has no down().`));
       const connection = this.#connectionOf(migration, file);
-      const entry = { file, connection, plan: planOf(migration, 'down', `Migration ${row.name} (module "${row.module}")`) };
+      const entry = { file, connection, plan: planOf(migration, 'down', `Migration ${printable(row.name)} (module "${printable(row.module)}")`) };
       const started = performance.now();
       // The schema this rollback starts from: the constraint of a `oneOf()` list is looked up in it.
       const starting = left().projection;

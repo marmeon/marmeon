@@ -228,6 +228,38 @@ describe.each(drivers)('a database with tables and no record of migrations, on %
     expect(await connections.get<any>().selectFrom('stranger').selectAll().execute()).toEqual([]);
   });
 
+  it('writes control characters of a table name out in what `migrate` says', async () => {
+    const evil = 'x\x1b]8;;evil\x07y';
+    const db = migratorConnection(connections);
+    await db.schema.createTable(evil).addColumn('id', 'integer').execute();
+    try {
+      const printed: string[] = [];
+      const say = (kind: string) => (text: string) => void printed.push(`${kind}: ${text}`);
+      const output = { line: say('line'), info: say('info'), success: say('success'), warn: say('warn'), error: say('error'), table: () => {} };
+      const command = new MigrateCommand(migrator(connections, auth), {} as TypeGenerator);
+      expect(await command.handle({ options: { force: true }, output, root: '/' } as unknown as CommandInput)).toBe(0);
+      const notice = printed.find((line) => line.startsWith('info:') && line.includes('tables no migration made'))!;
+      expect(notice).toContain('x\\u001b]8;;evil\\u0007y');
+      expect(printed.join('\n')).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await db.schema.dropTable(evil).ifExists().execute();
+    }
+  });
+
+  it('writes control characters of a table name out in the refusal of a query', async () => {
+    const evil = 'x\x1b]8;;evil\x07y';
+    const db = migratorConnection(connections);
+    await db.schema.createTable(evil).addColumn('id', 'integer').execute();
+    try {
+      const error = await connections.get<any>().selectFrom('stranger').selectAll().execute().catch((e: unknown) => e as Error);
+      expect(error).toMatchObject({ reason: 'unmigrated' });
+      expect((error as Error).message).toContain('x\\u001b]8;;evil\\u0007y');
+      expect((error as Error).message).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await db.schema.dropTable(evil).ifExists().execute();
+    }
+  });
+
   it('refuses before it runs anything when a table it creates is there already — and leaves no record behind', async () => {
     await migratorConnection(connections).schema.createTable('users').addColumn('id', 'integer').execute();
     await expect(migrator(connections, auth).migrate()).rejects.toThrow(/\[marmeon:D3\].*already has the table users.*2026_01_01_000000_create_users_table.*is this the database you mean/s);

@@ -91,6 +91,33 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
     }
   });
 
+  it('writes control characters of a recorded migration name out in the text', async () => {
+    const { connections, close, command } = await setup([auth]);
+    try {
+      await migrator(connections, [auth]).migrate();
+      await sql`insert into migrations (name, module, batch) values (${'gone\x1b]52;c;aGk=\x07'}, 'gone', 1)`.execute(migratorConnection(connections));
+      const { stderr, stdout } = await run(command);
+      expect(stderr).toContain('gone\\u001b]52;c;aGk=\\u0007 ran in batch 1 but no module has its file');
+      expect(stderr + stdout).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await close();
+    }
+  });
+
+  it('writes control characters of a recorded name out in the error of a rollback that has no file to run', async () => {
+    const { connections, close } = await setup([auth]);
+    try {
+      await migrator(connections, [auth]).migrate();
+      await sql`insert into migrations (name, module, batch) values (${'gone\x1b]52;c;aGk=\x07'}, ${'mod\x1b[2K'}, 99)`.execute(migratorConnection(connections));
+      const error = await migrator(connections, [auth]).rollback().catch((e: unknown) => e as Error);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('"gone\\u001b]52;c;aGk=\\u0007" (module "mod\\u001b[2K"): its file is gone');
+      expect((error as Error).message).not.toMatch(/[^\P{Cc}\n]/u);
+    } finally {
+      await close();
+    }
+  });
+
   it('throws for a record of migrations with other columns, so that the CLI prints nothing on stdout', async () => {
     const { connections, close, command } = await setup([auth, accounts]);
     try {
