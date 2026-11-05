@@ -158,6 +158,58 @@ describe('@marmeon/log', () => {
     expect(lines.join('')).toContain('GET /users/7\\nWARN: Login failed for admin\\u001b[31m');
   });
 
+  it('escapes every top-level string, key name and child binding of a pretty logger — none forges a line', () => {
+    const lines: string[] = [];
+    const destination = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+    const logger = createPinoLogger({ level: 'info', format: 'pretty' }, { destination: pinoPretty({ colorize: false, sync: true, destination }) });
+    const forged = 'Ada\n[12:00:00.000] INFO: forged';
+    const written = (write: () => void) => {
+      lines.length = 0;
+      write();
+      return lines.join('');
+    };
+    const outputs = [
+      written(() => logger.info('x', { name: forged })),
+      written(() => logger.info('x', { caller: forged })),
+      written(() => logger.info('x', { note: forged })),
+      written(() => logger.info('x', { ['k\n[12:00:00.000] INFO: forged']: 1 })),
+      written(() => logger.child({ name: forged }).info('x')),
+      written(() => logger.child({ caller: forged }).info('x')),
+      written(() => logger.child({ ['k\n[12:00:00.000] INFO: forged']: 1 }).info('x')),
+      written(() => logger.child({ a: 1 }).child({ name: forged }).info('x')),
+      written(() => logger.child({ a: 1 }).child({ ['k\n[12:00:00.000] INFO: forged']: 1 }).info('x')),
+    ];
+    for (const text of outputs) {
+      expect(text).not.toMatch(/^\s*\[12:00:00\.000\] INFO: forged/m);
+      expect(text).toContain('\\n[12:00:00.000] INFO: forged');
+    }
+  });
+
+  it('writes a child binding named time, level, msg or appEnv as context.<key> — the entry keeps one of each', () => {
+    const lines: Record<string, unknown>[] = [];
+    const raw: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, done) {
+        raw.push(String(chunk));
+        lines.push(JSON.parse(String(chunk)));
+        done();
+      },
+    });
+    const logger = createPinoLogger({ level: 'info', format: 'json', environment: 'real-env' }, { destination: stream });
+    logger.child({ time: 'forged', appEnv: 'forged', level: 'forged', msg: 'forged', task: 'session:prune' }).info('real');
+    logger.child({ a: 1 }).child({ time: 'forged' }).info('nested');
+    expect(raw[1]!.match(/"time":/g)).toHaveLength(1);
+    expect(lines[1]).toMatchObject({ 'context.time': 'forged' });
+    for (const key of ['time', 'appEnv', 'level', 'msg']) expect(raw[0]!.match(new RegExp(`"${key}":`, 'g')), key).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ level: 30, msg: 'real', appEnv: 'real-env', task: 'session:prune', 'context.time': 'forged', 'context.appEnv': 'forged', 'context.level': 'forged', 'context.msg': 'forged' });
+    expect(lines[0]!.time).not.toBe('forged');
+  });
+
   it('writes a key of the log context once when a child logger is bound with it too (the scheduler’s task)', () => {
     const { lines, raw, logger } = capture();
     runWithTask({ task: 'session:prune' }, () => logger.child({ channel: 'schedule', task: 'session:prune' }).info('Done'));
