@@ -43,7 +43,29 @@ export function rawWriter(output: Output): (text: string) => void {
   return writers.get(output) ?? ((text) => void process.stdout.write(text));
 }
 
-/** Console output for commands. Colours are dropped automatically when not writing to a terminal. Given to a command and not meant to be implemented — tests use `app.command()`. */
+/**
+ * @internal `text` with every control, format and separator character written as `\uXXXX` (per UTF-16 unit, so the notation is also
+ * a valid JSON escape), except line feeds, tabs, the zero-width joiners and colour sequences (SGR) that do not conceal. A caller embeds `style()` colours in the
+ * text, so the colours must survive; an OSC, a cursor move, a carriage return or a hidden-text sequence in someone else's value must not.
+ */
+export function terminalText(text: string): string {
+  // oxlint-disable-next-line no-control-regex -- control characters are exactly what it writes out
+  return text.replace(/\x1b\[([0-9;]*)m|[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (match, parameters: string | undefined) => {
+    if (parameters !== undefined && !parameters.split(';').some((parameter) => parameter !== '' && Number(parameter) === 8)) return match;
+    // The joiners shape Persian, Indic and emoji text; every other format character (bidi controls included) is written out.
+    if (match === '\n' || match === '\t' || match === '\u200c' || match === '\u200d') return match;
+    // A concealing colour sequence loses only its escape: the rest reads as text.
+    const [written, rest] = parameters === undefined ? [match, ''] : ['\x1b', match.slice(1)];
+    let escaped = '';
+    for (let i = 0; i < written.length; i++) escaped += `\\u${written.charCodeAt(i).toString(16).padStart(4, '0')}`;
+    return escaped + rest;
+  });
+}
+
+/**
+ * Console output for commands. Colours are dropped automatically when not writing to a terminal. Control characters in the text are
+ * written out (`\u001b`), colours stay: see docs/console.md#writing-commands. Given to a command and not meant to be implemented — tests use `app.command()`.
+ */
 export class Output {
   /** @internal `write` replaces `process.stdout.write` as the way to stdout: `run()` gives its own `Output` the original one while the process is kept off stdout. */
   constructor(write?: (text: string) => void) {
@@ -52,8 +74,8 @@ export class Output {
 
   line(text = ''): void {
     const write = writers.get(this);
-    if (write) write(`${text}\n`);
-    else process.stdout.write(`${text}\n`);
+    if (write) write(`${terminalText(text)}\n`);
+    else process.stdout.write(`${terminalText(text)}\n`);
   }
   info(text: string): void {
     this.line(`${style('cyan', 'ℹ')} ${text}`);
@@ -62,10 +84,10 @@ export class Output {
     this.line(`${style('green', '✓')} ${text}`);
   }
   warn(text: string): void {
-    process.stderr.write(`${style('yellow', '!')} ${text}\n`);
+    process.stderr.write(`${style('yellow', '!')} ${terminalText(text)}\n`);
   }
   error(text: string): void {
-    process.stderr.write(`${style('red', '✗')} ${text}\n`);
+    process.stderr.write(`${style('red', '✗')} ${terminalText(text)}\n`);
   }
   /** Prints `document` as the only thing on stdout, `format` first. The one way a command writes `--json`. */
   json(document: JsonDocument): void {
@@ -74,6 +96,8 @@ export class Output {
   }
   /** Aligned columns; the header row is dimmed. A row that is a string is a note: printed as it is under the row before, outside the column widths. */
   table(header: readonly string[], rows: readonly (readonly string[] | string)[]): void {
+    header = header.map(terminalText);
+    rows = rows.map((row) => (typeof row === 'string' ? row : row.map(terminalText)));
     const cells = rows.filter((row): row is readonly string[] => typeof row !== 'string');
     const widths = header.map((cell, i) => Math.max(cell.length, ...cells.map((row) => row[i] ?? '').map((cell) => cell.length)));
     const format = (row: readonly string[]) => row.map((cell, i) => cell.padEnd(widths[i]!)).join('  ').trimEnd();
