@@ -572,6 +572,10 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n    outputs:', 'build'))).toContain('the job "build" has no "permissions:" block of its own');
     });
 
+    it('refuses a scope a job names twice — GitHub would refuse the whole workflow', () => {
+      expect(problemsOf(mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n      contents: read\n      contents: read\n    outputs:', 'build'))).toContain('names contents twice');
+    });
+
     describe('a write grant of the build job, spelled so that a plain-text reader misses it', () => {
       const build = (grant: string) => mutated('    permissions:\n      contents: read\n    outputs:', `    permissions:\n      contents: read\n${grant}\n    outputs:`, 'build');
       it.each([

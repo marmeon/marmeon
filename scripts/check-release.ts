@@ -341,6 +341,9 @@ export function checkWorkflow(repository: string): string[] {
     for (const grant of grants) {
       if (!/^[a-z-]+: (?:read|write|none)$/.test(grant)) problems.push(`${where}: the job "${name}" has the permission "${grant}" — only plain "scope: read|write|none" lines`);
     }
+    const scopes = grants.map((grant) => grant.split(':')[0]!);
+    const repeated = scopes.filter((scope, index) => scopes.indexOf(scope) !== index);
+    if (repeated.length > 0) problems.push(`${where}: the job "${name}" names ${[...new Set(repeated)].join(', ')} twice — GitHub refuses the workflow, so no release could start`);
     const stages = name === stagingName;
     const builds = name === buildName;
     const releases = name === releaseName;
