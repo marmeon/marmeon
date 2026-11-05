@@ -43,6 +43,11 @@ describe('pnpm run ci', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
   });
 
+  it('runs zizmor last, as a job of its own in the workflow', () => {
+    expect(parts.at(-1)).toMatchObject({ name: 'zizmor', command: ['pnpm', 'run', 'zizmor'] });
+    expect(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')).toMatch(/^ {2}zizmor:\n(?: {4}#.*\n)* {4}name: zizmor\n/m);
+  });
+
   it('runs api:check after the build', () => {
     const entry = parts.find((candidate) => candidate.name === 'api:check');
     expect(entry?.command).toEqual(['pnpm', 'run', 'api:check']);

@@ -1,5 +1,6 @@
 # The same parts as `pnpm run ci` (scripts/ci.ts) — the tests in three shards, one job per suite that needs a database (Postgres in
-# two shards behind one check, test:pgsql), one for the tarballs, one for the image, so they run side by side on their own runners.
+# two shards behind one check, test:pgsql), one for the tarballs, one for the image, one for zizmor (the action installs it, hash-checked),
+# so they run side by side on their own runners.
 # Locally `pnpm run ci` runs them all, one after the other.
 name: CI
 
@@ -276,3 +277,22 @@ jobs:
           restore-keys: pnpm-store-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - run: pnpm run ci --only build,test:s3
+
+  zizmor:
+    # The workflows through zizmor, online (`pnpm run ci` runs it offline when it is installed). The action installs the pinned version
+    # from a hash-checked lock file in its own tree and uploads no SARIF, so the job needs no `security-events: write`: findings are
+    # annotations and turn the job red. Rules: .github/zizmor.yml.
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          version: 1.32.0
+          persona: regular
+          online-audits: true
+          advanced-security: false
+          annotations: true

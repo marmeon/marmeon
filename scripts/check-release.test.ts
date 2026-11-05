@@ -936,6 +936,69 @@ describe('checkCiWorkflow — the pins of ci.yml', () => {
   it('refuses the combined cache action, which a pull request would write', () => {
     expect(problemsOf(real.replace('actions/cache/restore@', 'actions/cache@'))).toContain('a pull request would write the cache');
   });
+
+  /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
+  function mutated(from: string, to: string): string {
+    const result = real.replace(from, to);
+    expect(result, `the mutation of ${from} changed nothing`).not.toBe(real);
+    return result;
+  }
+
+  it('refuses a job with a grant beyond reading the contents', () => {
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    permissions:\n      security-events: write\n'))).toContain('more than "contents: read" (security-events: write)');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    permissions: write-all\n'))).toContain('more than "contents: read" (write-all)');
+  });
+
+  it('refuses a default permission block that is not exactly contents: read, and a quoted job key', () => {
+    expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions: write-all\n'))).toContain('default "permissions:" must be exactly');
+    expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n  security-events: write\n'))).toContain('default "permissions:" must be exactly');
+    expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: write\n'))).toContain('default "permissions:" must be exactly');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    "permissions":\n      contents: write\n'))).toContain('more than "contents: read" (contents: write)');
+  });
+
+  it('reads a permission block past a blank line and a key with a space before the colon', () => {
+    expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n\n  security-events: write\n'))).toContain('default "permissions:" must be exactly');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    permissions:\n\n      contents: write\n'))).toContain('(contents: write)');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    permissions :\n      contents: write\n'))).toContain('(contents: write)');
+  });
+
+  it('refuses keys the rules cannot read as text', () => {
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    ? continue-on-error\n    : true\n'))).toContain('explicit key');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    "continue\\x2don-error": true\n'))).toContain('escaped quoted key');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: zizmor\n    "permissions\\x3a": x\n'))).toContain('escaped quoted key');
+  });
+
+  it('refuses a workflow-level env and a ZIZMOR_ variable', () => {
+    expect(problemsOf(mutated('\njobs:\n', '\nenv:\n  A: b\n\njobs:\n'))).toContain('an env for the whole workflow');
+    expect(problemsOf(mutated('\njobs:\n', '\n"env":\n  GH_HOST: example.com\n\njobs:\n'))).toContain('an env for the whole workflow');
+    expect(problemsOf(mutated('          MARMEON_SIZE_BASE:', '          ZIZMOR_OFFLINE: 1\n          MARMEON_SIZE_BASE:'))).toContain('ZIZMOR_ variable');
+  });
+
+  it('refuses a zizmor job that could let a finding pass', () => {
+    const lines = ['continue-on-error: true', 'if: false', 'env:\n      A: b', 'container: node', 'runs-on: self-hosted'];
+    for (const extra of lines) {
+      const text = extra.startsWith('runs-on') ? mutated('runs-on: ubuntu-latest\n    timeout-minutes: 10', `${extra}\n    timeout-minutes: 10`) : mutated('    name: zizmor\n', `    name: zizmor\n    ${extra}\n`);
+      expect(problemsOf(text), extra).toMatch(/zizmor job/);
+    }
+    expect(problemsOf(mutated('          annotations: true', '          annotations: true\n          token: ${{ secrets.X }}'))).toContain('beyond version');
+    for (const extra of ['min-severity: high', 'config: x.yml', 'inputs: .', 'fail-on-no-inputs: false']) {
+      expect(problemsOf(mutated('          annotations: true', `          annotations: true\n          ${extra}`)), extra).toContain('beyond version');
+    }
+    expect(problemsOf(mutated('online-audits: true', 'online-audits: false'))).toContain('"online-audits: true"');
+    expect(problemsOf(mutated('          annotations: true', '          annotations: true\n        env:\n          A: b'))).toContain('zizmor job has continue-on-error, if, env');
+  });
+
+  it('refuses the zizmor action with a SARIF upload, a loose version or another persona', () => {
+    expect(problemsOf(mutated('advanced-security: false', 'advanced-security: true'))).toContain('"advanced-security: false"');
+    expect(problemsOf(mutated(/version: \d+\.\d+\.\d+/.exec(real)![0], 'version: latest'))).toContain('exact "version: X.Y.Z"');
+    expect(problemsOf(mutated('persona: regular', 'persona: pedantic'))).toContain('"persona: regular"');
+  });
+
+  it('refuses a zizmor action on a tag, and a workflow without the zizmor job', () => {
+    expect(problemsOf(mutated(pinOf(real, 'zizmorcore/zizmor-action'), 'zizmorcore/zizmor-action@v0.8.0'))).toContain('no job named "zizmor"');
+    expect(problemsOf(mutated('    name: zizmor\n', '    name: audit\n'))).toContain('no job named "zizmor"');
+    expect(problemsOf(real.slice(0, real.indexOf('\n  zizmor:\n')))).toContain('no job named "zizmor"');
+  });
 });
 
 describe('checkLabelWorkflow — the release label check', () => {

@@ -618,7 +618,7 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
 /** The label check's events: only the one that gives a fork's code no token, on every change of the commits or the labels. */
 const LABEL_EVENT_TYPES = ['opened', 'reopened', 'synchronize', 'labeled', 'unlabeled'];
 
-/** ci.yml: every action pinned by its full commit SHA, so a moved tag changes no job. */
+/** ci.yml: every action pinned by its full commit SHA, so a moved tag changes no job; read-only; the zizmor job in its shape. */
 export function checkCiWorkflow(repository: string): string[] {
   const file = join(repository, '.github/workflows/ci.yml');
   if (!existsSync(file)) return ['.github/workflows/ci.yml is missing'];
@@ -645,6 +645,38 @@ export function checkCiWorkflow(repository: string): string[] {
   }
   // actions/cache itself saves on every run, a pull request's included; restore and save are the two halves.
   if (/\bactions\/cache@/.test(code)) problems.push('ci.yml: actions/cache — a pull request would write the cache; use actions/cache/restore, and actions/cache/save only on main');
+  // The workflow reads the contents and nothing else: no job asks for more (zizmor uploads no SARIF, so it needs no write grant).
+  if (defaultGrantsOf(code)?.join() !== 'contents: read') problems.push('ci.yml: the workflow\'s default "permissions:" must be exactly "contents: read" — a wider default reaches every job');
+  // Keys a reader cannot match as text (an explicit `? key`, an escaped quoted key) would hide a rule above; a top-level env or a ZIZMOR_ variable would reach the zizmor action.
+  if (/^\s*(?:- )?\?\s/m.test(code) || /^\s*(?:- )?"[^"\n]*\\[^"\n]*"\s*:/m.test(code)) problems.push('ci.yml: an explicit key ("? key") or an escaped quoted key — the rules read keys as plain text');
+  if (/^["']?env["']?\s*:/m.test(code) || /\bZIZMOR_/.test(code)) problems.push('ci.yml: an env for the whole workflow or a ZIZMOR_ variable — it would reach the zizmor action and could switch its audits off; set variables on the step that needs them');
+  const extra = grantsOf(code).filter((grant) => grant !== 'contents: read');
+  if (extra.length > 0) problems.push(`ci.yml: a job asks for more than "contents: read" (${extra.join(', ')}) — the workflow is read-only`);
+  // The job named "zizmor": the action pinned by SHA, an exact version (the local part compares against it), no SARIF upload.
+  const zizmor = [...jobsOf(code).values()].find((job) => /^\s+name:\s*zizmor\s*$/m.test(job));
+  const action = zizmor === undefined ? undefined : stepsOf(zizmor).find((step) => /^\s*(?:- )?["']?uses["']?\s*:\s*zizmorcore\/zizmor-action@[0-9a-f]{40}\s*$/m.test(step));
+  if (action === undefined) problems.push('ci.yml: no job named "zizmor" that uses zizmorcore/zizmor-action pinned by its full SHA');
+  if (zizmor !== undefined) {
+    // Only these job keys and steps: anything else (an `if`, `continue-on-error`, `env`, a container) could let a finding pass.
+    const keys = [...zizmor.matchAll(/^ {4}["']?([\w-]+)["']?\s*:/gm)].map((match) => match[1]!);
+    const allowed = ['name', 'runs-on', 'timeout-minutes', 'steps'];
+    const other = keys.filter((key) => !allowed.includes(key));
+    if (other.length > 0) problems.push(`ci.yml: the zizmor job has ${other.join(', ')} — it may only have ${allowed.join(', ')}, so that no finding is skipped or ignored`);
+    if (!/^ {4}runs-on:\s*ubuntu-latest\s*$/m.test(zizmor)) problems.push('ci.yml: the zizmor job must run on "runs-on: ubuntu-latest"');
+    if (/^\s*(?:- )?["']?(?:continue-on-error|if|env|permissions)["']?\s*:|\bsecrets\b/m.test(zizmor)) problems.push('ci.yml: the zizmor job has continue-on-error, if, env, permissions or a secret — a finding must turn it red, with no token of its own');
+    if (stepsOf(zizmor).length !== 2) problems.push('ci.yml: the zizmor job must have exactly two steps, the checkout and the action');
+  }
+  if (action !== undefined) {
+    const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(action)?.[2] ?? '';
+    const wanted = new Map([['persona', 'regular'], ['online-audits', 'true'], ['advanced-security', 'false'], ['annotations', 'true']]);
+    const given = new Map([...withBlock.matchAll(/^\s*["']?([\w-]+)["']?\s*:\s*(.*?)\s*$/gm)].map((match) => [match[1]!, match[2]!] as const));
+    for (const [key, value] of wanted) {
+      if (given.get(key) !== value) problems.push(`ci.yml: the zizmor action needs "${key}: ${value}"${key === 'advanced-security' ? ' — ci.yml holds no "security-events: write"' : ''}`);
+    }
+    if (!/^\d+\.\d+\.\d+$/.test(given.get('version') ?? '')) problems.push('ci.yml: the zizmor action needs an exact "version: X.Y.Z" — pnpm zizmor compares the installed version against it');
+    const unknown = [...given.keys()].filter((key) => key !== 'version' && !wanted.has(key));
+    if (unknown.length > 0) problems.push(`ci.yml: the zizmor action has ${unknown.join(', ')} beyond version, persona, online-audits, advanced-security and annotations — each could hide findings`);
+  }
   return problems;
 }
 
@@ -685,17 +717,27 @@ export function checkLabelWorkflow(repository: string): string[] {
   return problems;
 }
 
+/** The `scope: level` lines under a `permissions:` key at `indent` (blank lines skipped, the block ends at the first line not deeper), or its inline value. */
+function grantsAt(code: string, end: number, inline: string | undefined, indent: number): string[] {
+  if (inline !== undefined) return [inline.trim()];
+  const own: string[] = [];
+  for (const line of code.slice(end).split('\n').slice(1)) {
+    if (line.trim() === '') continue;
+    if (line.length - line.trimStart().length <= indent) break;
+    own.push(line.trim());
+  }
+  return own;
+}
+
 /** Every indented `permissions:` of a workflow — a block of `scope: level` lines or an inline value — as the grants it lists. */
 function grantsOf(code: string): string[] {
-  return [...code.matchAll(/^([ \t]+)permissions:[ \t]*(\S.*)?$/gm)].flatMap((match) => {
-    if (match[2] !== undefined) return [match[2].trim()];
-    const own: string[] = [];
-    for (const line of code.slice(match.index + match[0].length).split('\n').slice(1)) {
-      if (line.trim() === '' || line.length - line.trimStart().length <= match[1]!.length) break;
-      own.push(line.trim());
-    }
-    return own;
-  });
+  return [...code.matchAll(/^([ \t]+)["']?permissions["']?[ \t]*:[ \t]*(\S.*)?$/gm)].flatMap((match) => grantsAt(code, match.index + match[0].length, match[2], match[1]!.length));
+}
+
+/** The grants of the workflow-level `permissions:`; `undefined` when there is none. */
+function defaultGrantsOf(code: string): string[] | undefined {
+  const match = /^["']?permissions["']?[ \t]*:[ \t]*(\S.*)?$/m.exec(code);
+  return match === null ? undefined : grantsAt(code, match.index + match[0].length, match[1], 0);
 }
 
 /**

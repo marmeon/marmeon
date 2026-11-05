@@ -57,15 +57,17 @@ pnpm dev               # the web app (apps/web-app) on http://localhost:3000 —
 
 `pnpm-workspace.yaml` holds the install policy: a release younger than three days is not installed, a package whose trust evidence got weaker is refused, and no dependency runs an install script. The compose services listen on `127.0.0.1` only.
 
+Optional: [zizmor](https://docs.zizmor.sh) (`brew install zizmor` or `uv tool install zizmor==<version>`), so that `pnpm run ci` can check the workflows ([The workflows: zizmor](#the-workflows-zizmor)).
+
 ## Before you open a pull request
 
 ```sh
-pnpm run ci            # every check CI runs: build, typecheck, lint, the test suites, sizes, types, docs, tarballs, image, release
+pnpm run ci            # every check CI runs: build, typecheck, lint, the test suites, sizes, types, docs, tarballs, image, release, workflows
 ```
 
-`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 16 parts (`pnpm run ci --list`;
+`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 17 parts (`pnpm run ci --list`;
 [The repository](#the-repository) names them); some of them: `pnpm run ci --only test,lint`. `pack:smoke` and `image` need the
-package store, the registry and Docker — without them they are reported as skipped, which is not green.
+package store, the registry and Docker, `zizmor` needs [zizmor](#the-workflows-zizmor) — without them they are reported as skipped, which is not green.
 
 - **Tests** come with the change — type guarantees as `@ts-expect-error` tests, behaviour in Vitest, a feature shown in
   `apps/web-app` (principle 9).
@@ -95,14 +97,14 @@ apps/blank-app    an app without modules: what create-marmeon --minimal writes (
 examples/*        demos on the starter kit, each an overlay (files, edits, commands) that pack:smoke applies to its kit app and runs
 apps/website      the documentation as a Marmeon app: docs/*.md and the policies at the root (pnpm website:dev; apps/website/Dockerfile, deploy/website)
 docs              the documentation's pages, in the order apps/website/docs.config.ts lists them
-scripts/ci.ts     pnpm run ci — its 16 parts, from the build to the release rules (below)
+scripts/ci.ts     pnpm run ci — its 17 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 scripts/test      the test suite's temporary directory per run, tempDir() and workspaceTempDir() — the repository's own, not exported by a package
                   (pnpm test fails when a test leaves an entry behind)
 deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next
 .github           workflows/ (ci.yml: pnpm run ci in parallel jobs; release.yml: started by hand, staged publishing; pr-label.yml: the release label
-                  check), release.yml (the notes' categories, generated) and release-base (the commit a release was prepared from)
+                  check), zizmor.yml (the rules of the zizmor job), release.yml (the notes' categories, generated) and release-base (the commit a release was prepared from)
 ```
 
 ```sh
@@ -122,16 +124,17 @@ pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome und
 signs in over HTTP and visits the guest and signed-in pages, a layer by deep link and by click, and a failing visit — in headless
 Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <path>` or `CHROME`).
 
-`pnpm run ci` runs 16 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
+`pnpm run ci` runs 17 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
 and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle sizes against the base commit —
 [The bundle sizes](#the-bundle-sizes)), `types:check` (the apps' generated route and table types are current), `api:check` (each package's `api.md` matches its built declarations — [The API snapshot](#the-api-snapshot)), `website:check`,
-`pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-release`.
-`pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
+`pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image), `check-release` and `zizmor`
+(the workflows, [below](#the-workflows-zizmor)).
+`pack:smoke` and `image` without a package store, the registry or Docker, and `zizmor` without zizmor, are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `--shard i/n` runs one n-th
 of the files of the selected test parts (Vitest's `--shard`; with no test part selected it is an error). `ci.yml` splits the parts
 into jobs that run side by side (the checks, the tests as three shards `test (1/3)` to `test (3/3)`, the tarballs, the image,
-Postgres as two shards `test:pgsql (1/2)` and `(2/2)`, Redis, S3); a shard builds for itself, and a job's name is what a required
+Postgres as two shards `test:pgsql (1/2)` and `(2/2)`, Redis, S3, zizmor); a shard builds for itself, and a job's name is what a required
 check of the repository would list. The job `test:pgsql` only waits for both Postgres shards and fails unless they passed, so the
 name a required check lists stays the same.
 
@@ -957,6 +960,20 @@ depends on the folder depth, and the preset has one override per depth. Its patt
 (`!../*/index.*`), because oxlint's `regex` has no lookaround and drops a pattern it cannot compile without a word; the
 generator's test lints a fixture app to prove every pattern fires. The `make:auth` fixture test lints the generated module with
 and without `--boundaries`.
+
+### The workflows: zizmor
+
+[zizmor](https://docs.zizmor.sh) reads `.github/workflows/*.yml` and `.github/dependabot.yml` for the mistakes that make a workflow
+exploitable: an expression injected into a script, a token that outlives its job, an action on a moving tag, a cache a pull
+request can poison. The job `zizmor` in `ci.yml` runs it online with the `regular` persona and turns red on any finding; the
+action installs the version pinned there from a hash-checked lock file and uploads no SARIF, so `ci.yml` keeps `contents: read`
+alone. `.github/zizmor.yml` holds the rules we set: every action by its full commit SHA, and a Dependabot cooldown of three
+days (the install policy's wait for npm packages — change both together).
+
+`pnpm run ci --only zizmor` (`pnpm zizmor`) runs the same persona offline, since no token is handed to it, and notes when the
+installed version differs from the one in `ci.yml`. Without zizmor installed the part is skipped (exit 75), never green. Fix a
+finding first; ignore one only inline, with `# zizmor: ignore[<audit>] <reason>` on the same line (a comment above does not count), never by line
+number in `zizmor.yml`. `pnpm check-release` holds `ci.yml` to the shape the job relies on.
 
 ## Comments
 
