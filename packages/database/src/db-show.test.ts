@@ -193,14 +193,14 @@ describe.each(drivers)('db:show with names that hold a dot and control character
     const db = migratorConnection(connections);
     await sql`create schema db_show_other`.execute(db);
     try {
-      await sql`create table public.s6_t (id integer)`.execute(db);
-      await sql`create table db_show_other.s6_t (id integer)`.execute(db);
-      await sql`insert into db_show_other.s6_t (id) values (1), (2), (3)`.execute(db);
+      await sql`create table public.db_show_t (id integer)`.execute(db);
+      await sql`create table db_show_other.db_show_t (id integer)`.execute(db);
+      await sql`insert into db_show_other.db_show_t (id) values (1), (2), (3)`.execute(db);
       const document = JSON.parse(await showOf(connections, { json: true })) as { tables: { name: string; schema: string; rows: number }[] };
-      const counted = document.tables.filter((t) => t.name === 's6_t').map((t) => [t.schema, t.rows]);
-      expect(counted.toSorted()).toEqual([['public', 0], ['db_show_other', 3]]);
+      const counted = document.tables.filter((t) => t.name === 'db_show_t').map((t) => [t.schema, t.rows]);
+      expect(counted.toSorted()).toEqual([['db_show_other', 3], ['public', 0]]);
     } finally {
-      await sql`drop table if exists public.s6_t`.execute(db);
+      await sql`drop table if exists public.db_show_t`.execute(db);
       await sql`drop schema if exists db_show_other cascade`.execute(db);
       await close();
     }
