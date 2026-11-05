@@ -7,6 +7,7 @@ import type { CommandInput } from '../command.ts';
 import { precompressAssets } from '../precompress.ts';
 import { internalImports } from '../check/internal-imports.ts';
 import { escapeControl } from '../check/report.ts';
+import { terminalText } from '../output.ts';
 import { typecheckApp } from '../typecheck.ts';
 
 /**
@@ -56,7 +57,7 @@ export class BuildCommand {
         return 1;
       }
       if (checked.status === 'failed') {
-        process.stdout.write(checked.output.endsWith('\n') ? checked.output : `${checked.output}\n`);
+        process.stdout.write(terminalText(checked.output.endsWith('\n') ? checked.output : `${checked.output}\n`));
         const errors = `${checked.errors} type error${checked.errors === 1 ? '' : 's'}`;
         const files = checked.files > 0 ? ` in ${checked.files} file${checked.files === 1 ? '' : 's'}` : '';
         output.error(`Not built: ${errors}${files} (tsc --noEmit). Fix them — or build anyway with --no-typecheck.`);

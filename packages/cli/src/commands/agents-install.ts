@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { printable } from '@marmeon/core/internal';
 import type { CommandInput } from '../command.ts';
 import { agentsBlock } from '../agents/block.ts';
 import { exists, unsafe, unsafePath, unwritablePath, writeAtomic } from '../agents/files.ts';
@@ -25,12 +26,12 @@ export class AgentsInstallCommand {
   handle({ options, output, root }: CommandInput): number {
     const planned = planInstall(root, shippedSkills(), { shared: options.shared === true, mcp: options['no-mcp'] !== true });
     if (!planned.ok) {
-      output.error(planned.error.message);
+      output.error(printable(planned.error.message));
       return 1;
     }
     const { warnings, retired, skillsInstalled, mcpInstalled } = planned.value;
-    for (const warning of warnings) output.warn(warning);
-    for (const folder of retired) output.warn(`${JSON.stringify(folder)} is a skill this marmeon no longer ships. It was left as it is; remove it if you do not need it.`);
+    for (const warning of warnings) output.warn(printable(warning));
+    for (const folder of retired) output.warn(printable(`${JSON.stringify(folder)} is a skill this marmeon no longer ships. It was left as it is; remove it if you do not need it.`));
 
     if (options.check === true) {
       // Only what is installed is judged: a skill folder or an entry that was never made is not out of date.
@@ -40,7 +41,7 @@ export class AgentsInstallCommand {
         return 1;
       }
       const stale = steps.filter((step) => step.change !== 'unchanged');
-      for (const step of stale) output.error(`${step.path} is ${step.change === 'create' ? 'missing' : 'out of date'}.`);
+      for (const step of stale) output.error(printable(`${step.path} is ${step.change === 'create' ? 'missing' : 'out of date'}.`));
       const blockStale = refreshBlock(root, true, output);
       if (stale.length > 0 || blockStale) {
         output.error('Run marmeon agents:install.');
@@ -55,7 +56,7 @@ export class AgentsInstallCommand {
     for (const step of changed) {
       const problem = unwritablePath(root, join(root, ...step.path.split('/')));
       if (problem) {
-        output.error(problem);
+        output.error(printable(problem));
         return 1;
       }
     }
@@ -72,12 +73,12 @@ export class AgentsInstallCommand {
       if (problem) {
         // Only a path changed after the plan, or a disk that refused, gets here; the steps before it are on disk, so the message must not say otherwise.
         const written = changed.slice(0, index);
-        output.error(written.length === 0 ? problem : problem.replace(/ Nothing was written\.$/, ''));
-        for (const done of written) output.warn(`${done.path} was written before the refusal.`);
+        output.error(printable(written.length === 0 ? problem : problem.replace(/ Nothing was written\.$/, '')));
+        for (const done of written) output.warn(printable(`${done.path} was written before the refusal.`));
         return 1;
       }
     }
-    for (const step of changed) output.success(step.note ?? `${step.change === 'create' ? 'Wrote' : 'Updated'} ${step.path}.`);
+    for (const step of changed) output.success(printable(step.note ?? `${step.change === 'create' ? 'Wrote' : 'Updated'} ${step.path}.`));
     if (changed.length === 0) output.success('The skills and the entry in .mcp.json are current.');
     // Judged again from the disk, now that the files are there; never from what the plan predicted.
     refreshBlock(root, false, output);
@@ -118,12 +119,12 @@ function refreshBlock(root: string, check: boolean, output: Output): boolean {
   }
   const problem = unsafe(root, file);
   if (problem) {
-    output.warn(left(problem));
+    output.warn(printable(left(problem)));
     return false;
   }
   const tools = installedTools(root);
   if (!tools.ok) {
-    output.warn(left(tools.error.message));
+    output.warn(printable(left(tools.error.message)));
     return false;
   }
   let text: string;
@@ -135,7 +136,7 @@ function refreshBlock(root: string, check: boolean, output: Output): boolean {
   }
   const result = syncAgents(text, agentsBlock(tools.value));
   if (!result.ok) {
-    output.warn(left(result.error.message));
+    output.warn(printable(left(result.error.message)));
     return false;
   }
   const { change, text: next } = result.value;
@@ -151,7 +152,7 @@ function refreshBlock(root: string, check: boolean, output: Output): boolean {
   // The guard sits on the side that writes: judged once more right before the write, in case a link appeared since.
   const again = unsafe(root, file);
   if (again) {
-    output.warn(left(again));
+    output.warn(printable(left(again)));
     return false;
   }
   try {

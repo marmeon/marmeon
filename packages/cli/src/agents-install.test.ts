@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { installedTools } from './agents/install.ts';
 import { AGENTS_BLOCK, agentsBlock, NO_TOOLS } from './agents/block.ts';
@@ -9,6 +9,7 @@ import { BUILT_IN } from './built-in.ts';
 import { AgentsInstallCommand } from './commands/agents-install.ts';
 import { mergeMcpJson } from './agents/mcp-json.ts';
 import { shippedSkills } from './agents/skills.ts';
+import { Output } from './output.ts';
 
 const skills = shippedSkills();
 const ENTRY = { command: 'node', args: ['node_modules/marmeon/bin/marmeon.js', 'mcp'] };
@@ -212,6 +213,54 @@ describe('marmeon agents:install', () => {
     expect(result.text).toContain('.claude/skills/marmeon-old');
     expect(readFileSync(join(root, '.claude/skills/marmeon-old/SKILL.md'), 'utf8')).toContain('retired');
     expect(readFileSync(join(root, '.claude/skills/my-own/SKILL.md'), 'utf8')).toBe('mine');
+  });
+
+  describe('prints nothing a terminal would obey', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    /** The run with the real `Output`, so what the command prints is judged as the terminal gets it. */
+    function printed(root: string, options: Record<string, unknown> = {}) {
+      const written: string[] = [];
+      vi.spyOn(process.stdout, 'write').mockImplementation(((text: string) => void written.push(text)) as never);
+      vi.spyOn(process.stderr, 'write').mockImplementation(((text: string) => void written.push(text)) as never);
+      const code = new AgentsInstallCommand().handle({ root, args: [], options, output: new Output(), spawn: async () => 0 } as never) as number;
+      return { code, text: written.join('') };
+    }
+    // oxlint-disable-next-line no-control-regex -- control characters are what the test looks for
+    const noControl = (text: string) => expect(text).not.toMatch(/[\x00-\x09\x0b-\x1f\x7f-\x9f\u202e]/);
+
+    it('in the name of a skill folder it no longer ships', () => {
+      const name = 'marmeon-\x1b]52;c;aGk=\x07\u202e\x9bx';
+      const root = app({ [`.claude/skills/${name}/SKILL.md`]: markedSkill('1', 'retired') });
+      const result = printed(root);
+      expect(result.code).toBe(0);
+      noControl(result.text);
+      expect(result.text).toContain('\\u001b]52;c;aGk=\\u0007');
+      expect(result.text).toContain('\\u202e\\u009bx');
+    });
+
+    it('in a folder name with a line feed, which cannot forge a line', (ctx) => {
+      const name = 'marmeon-x\n! forged line';
+      const root = app();
+      try {
+        put(root, { [`.claude/skills/${name}/SKILL.md`]: markedSkill('1', 'retired') });
+      } catch {
+        // Some file systems refuse a line feed in a name; there is then nothing to print.
+        ctx.skip();
+      }
+      const result = printed(root);
+      expect(result.text.split('\n').filter((line) => line.startsWith('! forged'))).toEqual([]);
+      expect(result.text).toContain('marmeon-x\\n! forged line');
+    });
+
+    it('in the message about a .mcp.json that does not parse', () => {
+      const root = app({ '.mcp.json': '{ "mcpServers": \x1b]52;c;aGk=\x07\u202e }' });
+      const result = printed(root);
+      expect(result.code).toBe(1);
+      noControl(result.text);
+      expect(result.text).toContain('is not valid JSON');
+      expect(result.text).toContain('\\u001b]52;c;aGk');
+    });
   });
 
   it('writes through a link that stays inside the app and leaves the link a link', () => {

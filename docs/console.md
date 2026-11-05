@@ -315,7 +315,7 @@ export default defineModule({
   nothing means 0.
 
 `output` writes `line()`, `info()`, `success()` and `table(header, rows)` to stdout, and `warn()` and `error()` to stderr. Colours
-are dropped when the output is no terminal.
+are dropped when the output is no terminal. Control characters in the text, such as an escape sequence in a file name the command prints, are written out (`\u001b`) so they cannot steer the terminal; line feeds, tabs and colours stay.
 
 Each run gets a scope of its own, as a request does. A scoped service, such as the `Translator`, is fresh for each command and
 speaks `APP_LOCALE`. The app shuts down after the command, so open connections never keep the process alive. An error the command

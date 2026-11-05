@@ -7,7 +7,7 @@ import { packageAdvice } from './check/packages.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
 import { loadApplication } from './load.ts';
 import { appFrameOf } from './load-failure.ts';
-import { Output, printError, stdoutToStderr, style } from './output.ts';
+import { Output, printError, stdoutToStderr, style, terminalText } from './output.ts';
 import { createPrompt, isPromptCancelled } from './prompt.ts';
 import { shutDown } from './shut-down.ts';
 import { spawnMarmeon } from './spawn.ts';
@@ -221,7 +221,7 @@ function reportFailure(app: Application | undefined, Command: CommandClass, erro
  * (`APP_KEY` → `marmeon key:generate`), as text. Never fails itself.
  */
 async function printSolutions(output: Output, error: Error, root: string, stream: 'stdout' | 'stderr'): Promise<void> {
-  const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${text}\n`) : output.line(text));
+  const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${terminalText(text)}\n`) : output.line(text));
   try {
     const discovered = await loadDiscoveredPackages({ root }).catch(() => undefined);
     const providers = (discovered?.providers ?? []) as ServiceProviderClass[];
@@ -246,7 +246,7 @@ function printPackageAdvice(output: Output, error: unknown, root: string, stream
   if (errorCodeOf(error) !== 'K3') return;
   const advice = packageAdvice(root);
   if (advice.length === 0) return;
-  const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${text}\n`) : output.line(text));
+  const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${terminalText(text)}\n`) : output.line(text));
   line();
   line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} The @marmeon packages of this app are not in one version (docs/check.md#the-packages-check):`);
   for (const text of advice) line(`  ${text}`);
