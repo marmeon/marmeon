@@ -284,6 +284,8 @@ export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
 
 /** Lines that reach the JavaScript `realpathSync`: a call, a value (`map(realpathSync)`), an alias, `fs.realpath(`. */
 const JS_REALPATH_LINE = [/\brealpathSync\b(?!\s*\.\s*native\b)/, /\bfs\s*\.\s*realpath\b(?!\s*\.\s*native\b)\s*\(/];
+/** The name `fs` bound to `fs/promises`, by a default or namespace import or a `require`. */
+const FS_IS_PROMISES = /\b(?:import\s+(?:\*\s+as\s+)?fs\s+from\s*|\bfs\s*=\s*require\(\s*)['"](?:node:)?fs\/promises['"]/;
 /** A named import, over any number of lines: `import { a, b } from 'x'`. */
 const NAMED_IMPORT = /\bimport\s*(?:type\s+)?\{[^{}]*\}\s*from\s*['"][^'"]+['"]/g;
 /** `realpath` (the callback one) taken from `fs`: the braces are captured once and their body is tested in code, because a pattern that looks for the name between braces backtracks over a whole file. */
@@ -331,8 +333,10 @@ export function jsRealpathHits(files: Iterable<SourceFile>): string[] {
     }
     const lines = text.split('\n');
     const found = new Set<number>();
+    // `fs` taken from `fs/promises` (`import * as fs from 'node:fs/promises'`): its `realpath` is the native one.
+    const patterns = FS_IS_PROMISES.test(text) ? JS_REALPATH_LINE.slice(0, 1) : JS_REALPATH_LINE;
     lines.forEach((line, index) => {
-      if (!plainImport.has(index + 1) && JS_REALPATH_LINE.some((pattern) => pattern.test(line))) found.add(index + 1);
+      if (!plainImport.has(index + 1) && patterns.some((pattern) => pattern.test(line))) found.add(index + 1);
     });
     for (const offset of callbackRealpathOffsets(text)) found.add(lineOf(offset));
     for (const line of [...found].sort((a, b) => a - b)) hits.push(`${path}:${line}: ${lines[line - 1]!.trim().slice(0, 160)}`);

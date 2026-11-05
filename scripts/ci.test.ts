@@ -470,10 +470,17 @@ describe('check:source — real paths come from the system', () => {
     ])).toEqual([]);
   });
 
+  it('still refuses fs.realpath( when fs is the callback module', () => {
+    expect(jsRealpathHits([{ path: 'packages/x/src/a.ts', text: "import * as fs from 'node:fs';\nfs.realpath(p, done);" }])).toEqual(['packages/x/src/a.ts:2: fs.realpath(p, done);']);
+  });
+
   it('leaves the native calls, plain imports, the promise realpath, tests, fixtures and other code alone', () => {
     expect(jsRealpathHits([
       { path: 'packages/x/src/a.ts', text: "import { realpathSync } from 'node:fs';\nconst real = realpathSync.native(p);\nconst r = fs.realpath.native(p, done);" },
       { path: 'packages/x/src/b.ts', text: "import { realpath } from 'node:fs/promises';\nawait realpath(p);" },
+      { path: 'packages/x/src/c.ts', text: "import * as fs from 'node:fs/promises';\nawait fs.realpath(p);" },
+      { path: 'packages/x/src/d.ts', text: "import fs from 'fs/promises';\nawait fs.realpath(p);" },
+      { path: 'packages/x/src/e.ts', text: "const fs = require('node:fs/promises');\nawait fs.realpath(p);" },
       { path: 'packages/x/src/a.test.ts', text: 'const real = realpathSync(p);' },
       { path: 'packages/x/src/__fixtures__/a.ts', text: 'const real = realpathSync(p);' },
       { path: 'scripts/a.ts', text: 'const real = realpathSync(p);' },
