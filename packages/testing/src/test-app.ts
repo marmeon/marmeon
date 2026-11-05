@@ -1,4 +1,4 @@
-import { Application, Clock, createApplication, environment, EventRegistry, type ApplicationDefinition, type Container, type Duration, type EventClass, type Key, type Resolve } from '@marmeon/core';
+import { Application, Clock, createApplication, environment, EventRegistry, Redactor, type ApplicationDefinition, type Container, type Duration, type EventClass, type Key, type Resolve } from '@marmeon/core';
 import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
@@ -931,11 +931,13 @@ export class TestApp {
       const code = await cli.runCommand(scope, Command, argv, { output, root: where, spawn });
       return { code, lines };
     } catch (error) {
+      // The app's redactor, as `marmeon` masks what a failed command prints.
+      const redactor = container.has(Redactor) ? container.make(Redactor) : new Redactor();
       if (error instanceof cli.CommandArgumentsError) {
-        output.error(error.message);
+        output.error(redactor.text(error.message));
         return { code: 2, lines };
       }
-      cli.printError(output, error);
+      cli.printError(output, error, redactor);
       return { code: 1, lines };
     }
   }

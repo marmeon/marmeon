@@ -12,6 +12,7 @@ import { RouteAccessError } from '@marmeon/router';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { packageAdvice } from '../check/packages.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
+import { safeRedactor } from '../load.ts';
 import { startMarmeon } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
 import { watchMigrations } from '../migration-watch.ts';
@@ -59,7 +60,7 @@ export class ServeCommand {
         refuseUndecidedRoutes(this.#app);
       } catch (error) {
         if (!(error instanceof RouteAccessError)) throw error;
-        output.error(error.message);
+        output.error(this.#shown(error));
         return 1;
       }
       return this.#primary(workers);
@@ -82,7 +83,7 @@ export class ServeCommand {
       try {
         warnUnlisted(output, root, this.#app.modules);
       } catch (error) {
-        output.warn(`Could not check for unlisted jobs and notifications: ${error instanceof Error ? error.message : String(error)}`);
+        output.warn(`Could not check for unlisted jobs and notifications: ${this.#shown(error)}`);
       }
     }
     // A migration file added, changed or removed while the server runs is read again, without a restart.
@@ -97,7 +98,7 @@ export class ServeCommand {
       migrations?.close();
       // A setup problem (no Vite, no marmeon() plugin) or routes that do not say who may call them: a message, not a stack trace.
       if (!(error instanceof ViteSetupError) && !(error instanceof RouteAccessError)) throw error;
-      output.error(error.message);
+      output.error(this.#shown(error));
       return 1;
     }
     // The report of the last 5xx for agents (docs/errors.md#the-development-error-page): only where the development server runs, not in `tinker` or `db:migrate`.
@@ -239,22 +240,27 @@ export class ServeCommand {
     };
   }
 
+  /** An error's message as the app's redactor masks it: a message may quote a secret. */
+  #shown(error: unknown): string {
+    return safeRedactor(this.#app).text(error instanceof Error ? error.message : String(error));
+  }
+
   /** `'refused'` when the first run found an error page or the backdrop in its former place (K14): the server must not start with the built-in page in its stead. */
   async #watchRouteTypes(output: CommandInput['output'], root: string): Promise<FSWatcher | undefined | 'refused'> {
     // Any other failure is reported, never fatal: the server runs on with the committed file.
     const regenerate = () =>
       writeRouteTypes(this.#routeTypes, output, root, { quiet: true }).catch((error: unknown) => {
-        output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${error instanceof Error ? error.message : String(error)}`);
+        output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${this.#shown(error)}`);
         return false;
       });
     try {
       await writeRouteTypes(this.#routeTypes, output, root, { quiet: true });
     } catch (error) {
       if (errorCodeOf(error) === 'K14') {
-        output.error(error instanceof Error ? error.message : String(error));
+        output.error(this.#shown(error));
         return 'refused';
       }
-      output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${error instanceof Error ? error.message : String(error)}`);
+      output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${this.#shown(error)}`);
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

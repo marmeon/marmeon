@@ -38,6 +38,15 @@ describe('marmeon schema:project (the schema projection of the migrations)', { t
     expect(existsSync(join(dir, '.marmeon/schema.json'))).toBe(false);
   });
 
+  it('masks a secret that the error of a migration quotes', () => {
+    const dir = app();
+    writeFileSync(join(dir, 'modules/system/migrations/2026_10_04_000000_broken.ts'), "throw new Error('cannot reach postgres://u:s3cret@h/db');\n");
+    const { code, stdout, stderr } = marmeon(dir, ['schema:project']);
+    expect(code).toBe(1);
+    expect(stdout + stderr).toContain('cannot reach');
+    expect(stdout + stderr).not.toContain('s3cret');
+  });
+
   /** A copy of the blank app whose `node_modules` has every package but `@marmeon/database`. */
   function appWithoutDatabase(migrations: boolean): string {
     const dir = realpathSync(tempDir('marmeon-project-'));

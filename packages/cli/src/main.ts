@@ -5,7 +5,7 @@ import { CommandArgumentsError, CommandRegistry, type CommandClass, CommandSetup
 import { BUILT_IN } from './built-in.ts';
 import { packageAdvice } from './check/packages.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
-import { loadApplication } from './load.ts';
+import { loadApplication, redactorAfter } from './load.ts';
 import { appFrameOf } from './load-failure.ts';
 import { Output, printError, stdoutToStderr, style, terminalText } from './output.ts';
 import { createPrompt, isPromptCancelled } from './prompt.ts';
@@ -84,14 +84,16 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       parseCommandArgs(builtIn, rest);
     } catch (error) {
       if (!(error instanceof CommandArgumentsError)) throw error;
-      output.error(error.message);
+      // No app is loaded for a built-in that needs none, and its code is not run for a wrong call: the core's lists mask the message.
+      output.error((await redactorAfter(undefined, root, false)).text(error.message));
       return EXIT_USAGE;
     }
   }
 
   // Boot the application unless the command works without it (generators, tooling).
   let app: Application | undefined;
-  if (listing || !builtIn || builtIn.boots !== false) {
+  const booted = listing || !builtIn || builtIn.boots !== false;
+  if (booted) {
     // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `marmeon build` needs.
     const loaded = await loadApplication(root, !listing && builtIn?.boots === 'build' ? 'build' : 'run');
     if (loaded instanceof Error) {
@@ -101,13 +103,15 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
         const code = (loaded as { code?: unknown }).code;
         // The place in the app where it failed: Node's message alone names no file.
         const where = loaded instanceof ConfigError ? undefined : appFrameOf(loaded, root);
-        output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}${where ? `\n  at ${where}` : ''}`);
+        const redactor = await redactorAfter(undefined, root);
+        output.error(redactor.text(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}${where ? `\n  at ${where}` : ''}`));
         await printSolutions(output, loaded, root, failing);
         printPackageAdvice(output, loaded, root, failing);
         return 1;
       }
       const where = appFrameOf(loaded, root);
       warning = `${loaded.message.split('\n')[0]}${where ? ` (at ${where})` : ''} — showing built-in commands only.`;
+      warning = (await redactorAfter(undefined, root)).text(warning);
       if (!json) output.warn(warning);
     } else {
       app = loaded;
@@ -122,7 +126,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     const flags = rest.slice(0, rest.includes('--') ? rest.indexOf('--') : undefined);
     const stray = flags.find((flag) => flag.startsWith('-') && flag !== '--help' && flag !== '-h' && flag !== '--json');
     if (stray !== undefined) {
-      output.error(`Unknown option '${stray}'\nUsage: marmeon ${name === 'help' ? 'help [command]' : 'list'}`);
+      output.error(`Unknown option '${stray.split('=')[0]}'\nUsage: marmeon ${name === 'help' ? 'help [command]' : 'list'}`);
       return EXIT_USAGE;
     }
     const target = name === 'help' ? flags.find((flag) => !flag.startsWith('-')) : undefined;
@@ -164,12 +168,12 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     parseCommandArgs(Command, rest);
   } catch (error) {
     if (!(error instanceof CommandArgumentsError)) {
-      printError(output, error);
+      printError(output, error, await redactorAfter(app, root, booted));
       reportFailure(app, Command, error);
       await shutDown(app);
       return 1;
     }
-    output.error(error.message);
+    output.error((await redactorAfter(app, root, booted)).text(error.message));
     await shutDown(app);
     return EXIT_USAGE;
   }
@@ -196,10 +200,10 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     }
     // An argument the command itself refuses is a wrong call, like one `parseCommandArgs` refuses: exit 2, not an error to report.
     if (error instanceof CommandArgumentsError) {
-      output.error(error.message);
+      output.error((await redactorAfter(app, root, booted)).text(error.message));
       return EXIT_USAGE;
     }
-    printError(output, error);
+    printError(output, error, await redactorAfter(app, root, booted));
     printPackageAdvice(output, error, root, 'stderr');
     reportFailure(app, Command, error);
     return 1;

@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
+import { safeRedactor } from '../load.ts';
 
 /** What `@marmeon/database/internal` offers this command — found in the app, since the CLI does not depend on the package. */
 interface DatabaseInternals {
@@ -51,7 +52,7 @@ export class SchemaProjectCommand {
       else output.warn(`Projected ${projected.tables} tables of ${projected.migrations} migrations, but ${projected.path} cannot be written here (and none exists): a start computes them itself.`);
       return 0;
     } catch (error) {
-      output.error(error instanceof Error ? error.message : String(error));
+      output.error(safeRedactor(this.#app).text(error instanceof Error ? error.message : String(error)));
       return 1;
     }
   }

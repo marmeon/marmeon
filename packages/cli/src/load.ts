@@ -70,3 +70,31 @@ export async function appRedactor(root: string): Promise<Redactor> {
     return new Redactor();
   }
 }
+
+/** The app's redactor — the core's keys alone for an app that did not load. */
+export function redactorOf(app: Application | undefined): Redactor {
+  return app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
+}
+
+/** {@link redactorOf} that cannot fail: `fallback` (the redactor of the app's definition) when there is no app or its redactor cannot be built. */
+export function safeRedactor(app: Application | undefined, fallback: Redactor = new Redactor()): Redactor {
+  try {
+    return app ? redactorOf(app) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * What masks the text a failed command or start prints: the app's redactor, or the one of its definition when there is no app or its
+ * redactor cannot be built. `loaded` is whether {@link loadApplication} ran (the definition is in the module cache): a command that
+ * needs no app never imports the app's code, so its text is masked with the core's lists alone.
+ */
+export async function redactorAfter(app: Application | undefined, root: string, loaded = true): Promise<Redactor> {
+  try {
+    if (app) return redactorOf(app);
+  } catch {
+    // Falls through to the definition.
+  }
+  return loaded ? await appRedactor(root) : new Redactor();
+}

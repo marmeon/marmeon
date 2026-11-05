@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { Redactor } from '@marmeon/core';
 import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core/internal';
 import { ViteSetupError } from '@marmeon/server';
 import { marmeonEntries, explainConfigError, importVite } from '@marmeon/server/internal';
@@ -48,7 +49,7 @@ export class BuildCommand {
       for (const problem of internals) output.warn(`${escapeControl(problem.file ?? '')}:${problem.line}:${problem.column} ${problem.message}`);
       if (internals.length > 0) output.warn('marmeon check fails on these imports.');
     } catch (error) {
-      output.warn(`the scan for framework internals could not run: ${error instanceof Error ? error.message : String(error)}`);
+      output.warn(`the scan for framework internals could not run: ${new Redactor().text(error instanceof Error ? error.message : String(error))}`);
     }
     if (options['no-typecheck'] !== true) {
       const checked = await typecheckApp(root);
