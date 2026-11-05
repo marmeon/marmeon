@@ -1,12 +1,16 @@
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { err, ok, type Result } from '@marmeon/core';
-import { unsafePath } from './files.ts';
+import type { AgentTools } from './block.ts';
+import { isUnreadable, UNREADABLE, unsafePath } from './files.ts';
 import { hasMcpEntry, mergeMcpJson } from './mcp-json.ts';
 import { SKILL_FORMAT, skillMark } from './skills.ts';
 
 /** The folders of skills the installer knows, relative to the app's root. */
 export const SKILL_FOLDERS = { claude: '.claude/skills', shared: '.agents/skills' } as const;
+
+/** One of the folders in `SKILL_FOLDERS`. */
+export type SkillFolder = (typeof SKILL_FOLDERS)[keyof typeof SKILL_FOLDERS];
 
 const MCP_FILE = '.mcp.json';
 /** Only folders with this prefix belong to the installer; an app's own skills never collide with them. */
@@ -31,6 +35,10 @@ export interface InstallPlan {
   readonly skillsInstalled: boolean;
   /** `.mcp.json` has an entry `marmeon`. */
   readonly mcpInstalled: boolean;
+  /** Files or folders inside the app that are there but cannot be read (`.mcp.json`, a skills folder, a `SKILL.md`), relative with `/`. */
+  readonly unreadable: readonly string[];
+  /** The folders `marmeon-*` with a mark, in the order of `SKILL_FOLDERS`; the names come from the disk and are never trusted as text. */
+  readonly found: readonly { readonly folder: SkillFolder; readonly name: string }[];
 }
 
 export interface InstallRefusal {
@@ -62,6 +70,8 @@ export function planInstall(root: string, shipped: readonly { name: string; text
   }
 
   const installedIn: string[] = [];
+  const found: { folder: SkillFolder; name: string }[] = [];
+  const unreadable: string[] = [];
   const retired: string[] = [];
   const seen = new Set<string>();
   for (const folder of Object.values(SKILL_FOLDERS)) {
@@ -69,8 +79,9 @@ export function planInstall(root: string, shipped: readonly { name: string; text
     const real = realOrSelf(join(root, ...folder.split('/')));
     if (seen.has(real)) continue;
     seen.add(real);
-    const marked = markedFolders(root, folder);
+    const marked = markedFolders(root, folder, unreadable);
     if (marked.length > 0) installedIn.push(folder);
+    for (const name of marked) found.push({ folder, name });
     for (const name of marked) if (!shipped.some((skill) => skill.name === name)) retired.push(`${folder}/${name}`);
   }
   const skillsInstalled = installedIn.length > 0;
@@ -103,6 +114,7 @@ export function planInstall(root: string, shipped: readonly { name: string; text
   // installed without it, or took it out, is not asked again.
   const mcpFile = join(root, MCP_FILE);
   const mcpProblem = unsafePath(root, mcpFile);
+  if (isUnreadable(mcpProblem)) unreadable.push(MCP_FILE);
   const mcpText = mcpProblem ? undefined : readIfThere(mcpFile);
   const mcpInstalled = mcpText !== undefined && hasMcpEntry(mcpText);
   if (options.mcp && (mcpInstalled || !skillsInstalled)) {
@@ -117,25 +129,53 @@ export function planInstall(root: string, shipped: readonly { name: string; text
       ...(merged.value.replaced ? { note: `Replaced the entry marmeon in ${MCP_FILE} (it belongs to marmeon agents:install).` } : {}),
     });
   }
-  return ok({ steps, retired, warnings, skillsInstalled, mcpInstalled });
+  return ok({ steps, retired, warnings, skillsInstalled, mcpInstalled, found, unreadable });
+}
+
+/**
+ * What the app has installed, found the way `agents:install` finds it, so the block of `AGENTS.md`, `agents:install --check` and
+ * `marmeon check` never disagree. A link out of the app counts as not installed. A skill or `.mcp.json` that cannot be read
+ * (a permission, say) is a refusal: nothing is guessed.
+ */
+export function installedTools(root: string): Result<AgentTools, InstallRefusal> {
+  let plan: Result<InstallPlan, InstallRefusal>;
+  try {
+    plan = planInstall(root, [], { shared: false, mcp: false });
+  } catch (error) {
+    // The code only: a message of Node names the absolute path.
+    const code = (error as NodeJS.ErrnoException).code ?? 'an unknown error';
+    return err({ kind: 'install', message: `The skills or .mcp.json could not be read (${code}). Nothing was written.` });
+  }
+  if (!plan.ok) return plan;
+  const { found, mcpInstalled, unreadable } = plan.value;
+  if (unreadable.length > 0) return err({ kind: 'install', message: `${JSON.stringify(unreadable[0])} ${UNREADABLE}`, path: unreadable[0]! });
+  const skillFolder = found[0]?.folder;
+  return ok({ skillFolder, skills: new Set(found.filter((skill) => skill.folder === skillFolder).map((skill) => skill.name)), mcp: mcpInstalled });
 }
 
 /** The names of the folders `marmeon-*` of `folder` whose `SKILL.md` carries a mark. A folder that is a link, or a file that is unsafe, is not one of them. */
-function markedFolders(root: string, folder: string): string[] {
+function markedFolders(root: string, folder: string, unreadable: string[]): string[] {
   const directory = join(root, ...folder.split('/'));
-  if (unsafePath(root, directory, 'directory') !== undefined) return [];
+  const directoryProblem = unsafePath(root, directory, 'directory');
+  if (directoryProblem !== undefined) {
+    if (isUnreadable(directoryProblem)) unreadable.push(folder);
+    return [];
+  }
   let entries;
   try {
     entries = readdirSync(directory, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadable.push(folder);
     return [];
   }
   return entries
     // A link to a directory inside the app counts, so a folder reached through one is found again.
-    .filter((entry) => entry.name.startsWith(PREFIX) && isDirectory(join(directory, entry.name)))
+    .filter((entry) => entry.name.startsWith(PREFIX) && isDirectory(join(directory, entry.name), () => unreadable.push(`${folder}/${entry.name}`)))
     .filter((entry) => {
       const file = join(directory, entry.name, 'SKILL.md');
-      const text = unsafePath(root, file) === undefined ? readIfThere(file) : undefined;
+      const problem = unsafePath(root, file);
+      if (isUnreadable(problem)) unreadable.push(`${folder}/${entry.name}/SKILL.md`);
+      const text = problem === undefined ? readIfThere(file) : undefined;
       return text !== undefined && typeof skillMark(text) === 'number';
     })
     .map((entry) => entry.name)
@@ -155,10 +195,12 @@ function realOrSelf(path: string): string {
   }
 }
 
-function isDirectory(path: string): boolean {
+/** Whether `path` is a directory; `unreadable` is called when it cannot be inspected (anything but a path that is not there). */
+function isDirectory(path: string, unreadable: () => void): boolean {
   try {
     return statSync(path).isDirectory();
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadable();
     return false;
   }
 }

@@ -1,8 +1,8 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { AGENTS_BLOCK } from '../agents/block.ts';
+import { agentsBlock } from '../agents/block.ts';
 import { exists, unsafe } from '../agents/files.ts';
-import { planInstall } from '../agents/install.ts';
+import { installedTools, planInstall } from '../agents/install.ts';
 import { shippedSkills } from '../agents/skills.ts';
 import { syncAgents } from '../agents/sync.ts';
 import { findBin, runNode, typecheckApp } from '../typecheck.ts';
@@ -114,7 +114,7 @@ export function internalImportsCheck(root: string): CheckRun {
 }
 
 /**
- * Whether the block of `AGENTS.md` is the one the installed `marmeon` writes, and whether the skills and the entry in `.mcp.json`
+ * Whether the block of `AGENTS.md` is the one the installed `marmeon` writes for this app, and whether the skills and the entry in `.mcp.json`
  * that `agents:install` wrote are current. Only warns, and writes nothing: the files belong to the app, so no `AGENTS.md` without a
  * finding is `skipped`, and a block that is missing, out of date or marked wrongly is a warning with the command that fixes
  * it. A link that leads nowhere or out of the app is not followed. See docs/check.md#the-agents-block.
@@ -137,7 +137,10 @@ function blockProblems(root: string): CheckProblem[] {
     if (!exists(file)) return [];
     const problem = unsafe(root, file);
     if (problem !== undefined) return warn(problem.replace(/ Nothing was written\.$/, ' It was not read.'));
-    const result = syncAgents(readFileSync(realpathSync(file), 'utf8'), AGENTS_BLOCK);
+    // What cannot be read is reported once, by `installProblems`; no block is judged against a guess.
+    const tools = installedTools(root);
+    if (!tools.ok) return [];
+    const result = syncAgents(readFileSync(realpathSync(file), 'utf8'), agentsBlock(tools.value));
     if (!result.ok) return warn(`${result.error.message}`);
     const { change } = result.value;
     if (change === 'unchanged') return [];
@@ -158,10 +161,11 @@ function installProblems(root: string): { problems: CheckProblem[]; installed: b
   const docs = 'docs/agents.md#skills-and-the-mcp-server';
   const none = { problems: [], installed: false };
   try {
-    // With no skills to write the plan cannot refuse: it only tells what is installed, so an app that installed nothing is never refused.
-    const found = planInstall(root, [], { shared: false, mcp: false });
-    if (!found.ok || (!found.value.skillsInstalled && !found.value.mcpInstalled)) return none;
-    const { skillsInstalled } = found.value;
+    // An unreadable file is a warning, not a guess; an app that installed nothing gets no message.
+    const found = installedTools(root);
+    if (!found.ok) return { installed: true, problems: [{ severity: 'warning', message: found.error.message.replace(/ Nothing was written\.$/, ' It was not read.'), docs }] };
+    const skillsInstalled = found.value.skillFolder !== undefined;
+    if (!skillsInstalled && !found.value.mcp) return none;
     const planned = planInstall(root, skillsInstalled ? shippedSkills() : [], { shared: false, mcp: true });
     if (!planned.ok) {
       const message = planned.error.message.replace(/ Nothing was written\.$/, ' It was not changed.');

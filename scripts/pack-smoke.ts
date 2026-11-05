@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm and `--agents`, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it) and `marmeon mcp` over stdio.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -672,6 +672,12 @@ const MCP_TOOLS = ['app_overview', 'check', 'devtools_entries', 'docs_read', 'do
 async function checkAgents(smoke: Smoke): Promise<void> {
   const app = smoke.app;
   smoke.marmeon('agents:install', '--check');
+  // The creator ran agents:sync before agents:install, so the block must already name what was installed.
+  smoke.marmeon('agents:sync', '--check');
+  const agentsText = readFileSync(join(app, 'AGENTS.md'), 'utf8');
+  for (const needle of ['## Skills and MCP tools', '.claude/skills/<name>/SKILL.md', 'app_overview']) {
+    if (!agentsText.includes(needle)) throw new SmokeError(`AGENTS.md of the --agents app does not contain "${needle}".`);
+  }
   const skill = readFileSync(join(app, '.claude/skills/marmeon-migration/SKILL.md'), 'utf8');
   if (!/^\s+marmeon-skill: "1"$/m.test(skill)) throw new SmokeError('.claude/skills/marmeon-migration/SKILL.md has no marmeon-skill mark.');
   const mcp = JSON.parse(readFileSync(join(app, '.mcp.json'), 'utf8')) as { mcpServers?: Record<string, unknown> };
@@ -879,6 +885,8 @@ async function main(): Promise<number> {
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
       if (!existsSync(join(npmApp.app, 'AGENTS.md'))) throw new SmokeError('the npm app has no AGENTS.md.');
       if (existsSync(join(npmApp.app, '.claude/skills')) || existsSync(join(npmApp.app, '.mcp.json'))) throw new SmokeError('the npm app has agent skills or .mcp.json without --agents.');
+      const npmAgents = readFileSync(join(npmApp.app, 'AGENTS.md'), 'utf8');
+      if (!npmAgents.includes("`marmeon agents:install` adds the framework's skills") || npmAgents.includes('## Skills')) throw new SmokeError('the AGENTS.md of the npm app is not the block for an app without skills.');
     });
     await npmApp.step('marmeon build without .env, the framework\'s stylesheet linked', () => {
       npmApp.buildWithoutEnv();

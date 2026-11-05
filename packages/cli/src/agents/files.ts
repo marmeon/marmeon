@@ -2,6 +2,14 @@ import { accessSync, closeSync, constants, fsyncSync, lstatSync, openSync, realp
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
+/** What `unsafe` and `unsafePath` say, after the name, about a file that is there but not readable. */
+export const UNREADABLE = 'cannot be read. Nothing was written.';
+
+/** Whether a message of `unsafe` or `unsafePath` says that the file or a folder on its way is there but cannot be read or inspected. */
+export function isUnreadable(problem: string | undefined): boolean {
+  return problem !== undefined && (problem.endsWith(UNREADABLE) || problem.endsWith('cannot be inspected. Nothing was written.'));
+}
+
 export function exists(file: string): boolean {
   try {
     lstatSync(file);
@@ -27,7 +35,7 @@ export function unsafe(root: string, file: string): string | undefined {
   try {
     accessSync(real, constants.R_OK);
   } catch {
-    return `${name} cannot be read. Nothing was written.`;
+    return `${name} ${UNREADABLE}`;
   }
   return undefined;
 }
@@ -65,7 +73,7 @@ export function unsafePath(root: string, file: string, kind: 'file' | 'directory
       try {
         accessSync(real, constants.R_OK);
       } catch {
-        return `${name} cannot be read. Nothing was written.`;
+        return `${name} ${UNREADABLE}`;
       }
     }
   }

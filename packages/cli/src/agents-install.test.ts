@@ -2,6 +2,9 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
 import { dirname, join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { installedTools } from './agents/install.ts';
+import { AGENTS_BLOCK, agentsBlock, NO_TOOLS } from './agents/block.ts';
+import { AgentsSyncCommand } from './commands/agents-sync.ts';
 import { BUILT_IN } from './built-in.ts';
 import { AgentsInstallCommand } from './commands/agents-install.ts';
 import { mergeMcpJson } from './agents/mcp-json.ts';
@@ -508,5 +511,108 @@ describe('marmeon agents:install', () => {
   it('does not read mcpServers from the prototype chain', () => {
     const result = mergeMcpJson('{"__proto__": {"mcpServers": "x"}}');
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('marmeon agents:install and the block of AGENTS.md', () => {
+  const blocked = (block = AGENTS_BLOCK) => `# shop\n\n${block}\n\n## This app\n\nMine.\n`;
+  const read = (root: string, name: string) => readFileSync(join(root, name), 'utf8');
+  const sync = (root: string, check = false) => {
+    const lines: string[] = [];
+    const say = (prefix: string) => (line = '') => void lines.push(`${prefix}${line}`);
+    const output = { success: say('✓ '), error: say('✗ '), warn: say('! '), line: say('') };
+    return new AgentsSyncCommand().handle({ root, args: [], options: { check }, output, spawn: async () => 0 } as never) as number;
+  };
+
+  it('replaces the plain block by the one for what it installed, the way agents:sync writes it', () => {
+    for (const [options, heading, path] of [
+      [{}, '## Skills and MCP tools', '.claude/skills/<name>'],
+      [{ 'no-mcp': true }, '## Skills\n', '.claude/skills/<name>'],
+      [{ shared: true }, '## Skills and MCP tools', '.agents/skills/<name>'],
+    ] as const) {
+      const root = app({ 'AGENTS.md': blocked() });
+      const result = install(root, options);
+      expect(result.code).toBe(0);
+      expect(result.lines).toContain('✓ Updated the block of AGENTS.md.');
+      expect(result.lines.indexOf('✓ Updated the block of AGENTS.md.')).toBeGreaterThan(result.lines.findIndex((line) => line.startsWith('✓ Wrote')));
+      expect(read(root, 'AGENTS.md')).toContain(heading);
+      expect(read(root, 'AGENTS.md')).toContain(path);
+      expect(read(root, 'AGENTS.md')).toContain('## This app\n\nMine.\n');
+      expect(sync(root, true)).toBe(0);
+      expect(install(root, { ...options, check: true }).code).toBe(0);
+    }
+  });
+
+  it('makes no AGENTS.md and adds no block, and says so', () => {
+    const root = app();
+    const result = install(root);
+    expect(result.text).toContain('AGENTS.md has no marmeon block; marmeon agents:sync writes one');
+    expect(existsSync(join(root, 'AGENTS.md'))).toBe(false);
+    expect(existsSync(join(root, 'CLAUDE.md'))).toBe(false);
+    const quiet = install(root, { check: true });
+    expect(quiet.code).toBe(0);
+    expect(quiet.lines.filter((line) => /^[✗!]/.test(line))).toEqual([]);
+
+    const bare = app({ 'AGENTS.md': '# mine\n' });
+    install(bare);
+    expect(read(bare, 'AGENTS.md')).toBe('# mine\n');
+    expect(install(bare).text).toContain('has no marmeon block');
+  });
+
+  it('warns, and leaves the file, when its marks are broken; the skills are written anyway', () => {
+    const text = `${AGENTS_BLOCK}\n\n${AGENTS_BLOCK}\n`;
+    const root = app({ 'AGENTS.md': text });
+    const result = install(root);
+    expect(result.code).toBe(0);
+    expect(result.lines.some((line) => line.startsWith('! '))).toBe(true);
+    expect(read(root, 'AGENTS.md')).toBe(text);
+    expect(existsSync(join(root, '.claude/skills/marmeon-page/SKILL.md'))).toBe(true);
+  });
+
+  it('does not follow AGENTS.md out of the app', () => {
+    const outside = realpathSync(tempDir('marmeon-install-outside-'));
+    const target = join(outside, 'AGENTS.md');
+    writeFileSync(target, blocked());
+    const root = app();
+    symlinkSync(target, join(root, 'AGENTS.md'));
+    for (const options of [{}, { check: true }]) {
+      const result = install(root, options);
+      expect(result.code).toBe(0);
+      expect(result.lines.some((line) => line.startsWith('! ') && line.includes('outside the app'))).toBe(true);
+      expect(result.text).not.toContain('Nothing was written');
+      expect(readFileSync(target, 'utf8')).toBe(blocked());
+    }
+  });
+
+  it('under --check, fails on a block that is out of date and writes nothing', () => {
+    const root = app();
+    install(root);
+    writeFileSync(join(root, 'AGENTS.md'), blocked(agentsBlock(NO_TOOLS)));
+    const before = tree(root);
+    const result = install(root, { check: true });
+    expect(result.code).toBe(1);
+    expect(result.lines).toEqual(["✗ AGENTS.md's block is out of date.", '✗ Run marmeon agents:install.']);
+    expect(tree(root)).toEqual(before);
+    expect(sync(root, true)).toBe(1);
+
+    install(root);
+    expect(install(root, { check: true }).code).toBe(0);
+  });
+
+  it('does not judge the block of an app that installed nothing', () => {
+    const root = app({ 'AGENTS.md': blocked() });
+    const result = install(root, { check: true });
+    expect(result.code).toBe(1);
+    expect(result.lines).toEqual(['✗ Not installed. Run marmeon agents:install.']);
+  });
+
+  it('refuses, naming no path, when the app cannot be inspected at all', () => {
+    const missing = join(app(), 'not-there');
+    const result = installedTools(missing);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toMatch(/could not be read \(\w+\)\. Nothing was written\./);
+      expect(result.error.message).not.toContain(missing);
+    }
   });
 });
