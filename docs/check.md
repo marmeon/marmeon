@@ -415,6 +415,7 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
 | Its marks are broken (a mark without its partner, two blocks) | `warning` with the reason; fix the marks, then run `marmeon agents:sync`. |
 | Its marks are of a newer version than your `marmeon` | `warning` that says to update `marmeon`. |
 | A link that leads nowhere or out of the app, or something that is no file | `warning`; it is not read. |
+| A skill, a skill folder, the skills folder or `.mcp.json` that is there but cannot be read or inspected | One `warning` with the reason; no block is judged until it can be read. |
 
 The check also looks at what `marmeon agents:install` wrote (see [skills and the MCP server](agents.md#skills-and-the-mcp-server)),
 but only where something is installed: a skill with the mark of marmeon in `.claude/skills/` or `.agents/skills/`, or an entry

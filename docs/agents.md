@@ -4,7 +4,7 @@
 
 A coding agent that works in your app reads a file at the start of every session: `AGENTS.md`, or `CLAUDE.md` for Claude Code.
 `marmeon agents:sync` writes both. It keeps a block in `AGENTS.md` that tells the agent how to work with Marmeon: where the
-documentation of the installed version lies (`node_modules/marmeon/docs/`, which `marmeon docs` reads), which recipe to start a task from (a resource, a public form, a background job), which commands to run after a change and which rules the framework holds you to, and, once `marmeon agents:install` set them up, which skill to load for a task and what the MCP server answers. The block comes with the
+documentation of the installed version lies (`node_modules/marmeon/docs/`, which `marmeon docs` reads), which recipe to start a task from (a resource, a public form, a background job), which commands to run after a change and which rules the framework holds you to, and, once `marmeon agents:install` has set them up, which skill to load for a task and what the MCP server answers. The block comes with the
 installed `marmeon`, so it changes when you update.
 
 ```sh
@@ -69,8 +69,9 @@ It exits with 1 when `AGENTS.md` has no block or the block differs from the one 
 still gets its guide: the command does not start the app.
 
 The block depends on the app. The section on skills and tools appears only where a marked `SKILL.md` lies under `.claude/skills/` or
-`.agents/skills/`, or where `.mcp.json` has the entry `marmeon`; a link that leads out of the app does not count. A `SKILL.md`, a skill folder, the skills folder (or a link to a folder inside the app) or
-`.mcp.json` the command cannot read or inspect makes `agents:sync` refuse and write nothing, rather than guess. `marmeon agents:install` brings
+`.agents/skills/`, or where `.mcp.json` has the entry `marmeon`. A link that leads out of the app does not count.
+When `agents:sync` cannot read or inspect one of these, it refuses and writes nothing rather than guess. That holds for a
+`SKILL.md`, a skill folder, the skills folder, a link to a folder inside the app and `.mcp.json`. `marmeon agents:install` brings
 the block up to date itself; after you removed the skills or the entry, run `agents:sync`. Commit the skills, `.mcp.json` and
 `AGENTS.md` together, or `--check` in CI disagrees with your machine.
 
