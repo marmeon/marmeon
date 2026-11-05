@@ -2,7 +2,7 @@ import { Html } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
 import { raw } from './html.ts';
-import { fromMjml, Mjml, mjml } from './mjml.ts';
+import { fromMjml, loadedUrls, Mjml, mjml } from './mjml.ts';
 
 describe('mjml', () => {
   it('makes an Mjml that is an Html', () => {
@@ -180,6 +180,14 @@ describe('mjml', () => {
         }
       });
 
+      it('refuses a link or image whose earlier attribute holds a <', async () => {
+        for (const tag of ['link', 'image']) {
+          await withTestComponent(`/p.png" /><${tag} title="a<b" href="https://tracker.example.test/s.css`, async () => {
+            await expect(fromMjml(page())).rejects.toThrow(/Q7.*tracker\.example\.test/s);
+          });
+        }
+      });
+
       it('lets through a host the template names', async () => {
         await withTestComponent('https://assets.example.test/pixel.png', async () => {
           const { html } = await fromMjml(page('<mj-image src="https://assets.example.test/a.png" />'));
@@ -195,5 +203,28 @@ describe('mjml', () => {
         }
       });
     });
+  });
+});
+
+describe('loadedUrls', () => {
+  it('finds the href of an mj-font, a link and an image, written out or as entities', () => {
+    expect(loadedUrls('<mj-font name="B" href="https://a.test/f.css" />')).toEqual(['https://a.test/f.css']);
+    expect(loadedUrls('<link rel="stylesheet" href=\'https://b.test/s.css\'>')).toEqual(['https://b.test/s.css']);
+    expect(loadedUrls('<link href="h&#116;tps://c.test/x.css">')).toEqual(['https://c.test/x.css']);
+    expect(loadedUrls('<image href=https://d.test/i.svg>')).toEqual(['https://d.test/i.svg']);
+  });
+
+  it('does not take an href of a later tag for the tag it follows', () => {
+    expect(loadedUrls('<link rel="x"> <a href="https://e.test/">')).toEqual([]);
+  });
+
+  it('finds the href of a tag with a < in an earlier attribute', () => {
+    expect(loadedUrls('<link title="a<b" href="https://e.test/s.css">')).toEqual(['https://e.test/s.css']);
+    expect(loadedUrls('<mj-font name="a&lt;b" href="https://g.test/" />')).toEqual(['https://g.test/']);
+  });
+
+  it('takes escaped text for text, not for a tag', () => {
+    expect(loadedUrls('&lt;link href=&quot;https://f.test/s.css&quot;&gt;')).toEqual([]);
+    expect(loadedUrls('&lt;link &lt;link href="https://f.test/s.css">')).toEqual([]);
   });
 });
