@@ -1,9 +1,11 @@
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { mergeMcpJson } from '../agents/mcp-json.ts';
 import { shippedSkills } from '../agents/skills.ts';
+import { AGENTS_BLOCK, agentsBlock } from '../agents/block.ts';
+import { installedTools } from '../agents/install.ts';
 import { agentsCheck, parseOxlint, plainReason } from './tools.ts';
 
 describe('parseOxlint', () => {
@@ -162,5 +164,29 @@ describe('agentsCheck: the installed skills and the entry in .mcp.json', () => {
     expect(agentsCheck(root).report.problems).toEqual([]);
     writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { marmeon: { command: 'other' } } }));
     expect(agentsCheck(root).report.problems).toEqual([expect.objectContaining({ file: '.mcp.json', fix: 'marmeon agents:install' })]);
+  });
+
+  it('judges the block against what is installed: the full block passes, the plain one is out of date', () => {
+    const root = installed();
+    const tools = installedTools(root);
+    if (!tools.ok) throw new Error(tools.error.message);
+    writeFileSync(join(root, 'AGENTS.md'), `# x\n\n${agentsBlock(tools.value)}\n`);
+    expect(agentsCheck(root).report.problems).toEqual([]);
+    writeFileSync(join(root, 'AGENTS.md'), `# x\n\n${AGENTS_BLOCK}\n`);
+    expect(agentsCheck(root).report.problems).toEqual([
+      expect.objectContaining({ file: 'AGENTS.md', message: "AGENTS.md's marmeon block is out of date — marmeon agents:sync" }),
+    ]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('warns once, and judges no block, when .mcp.json cannot be read', () => {
+    const root = installed();
+    writeFileSync(join(root, 'AGENTS.md'), `# x\n\n${AGENTS_BLOCK}\n`);
+    chmodSync(join(root, '.mcp.json'), 0o000);
+    onTestFinished(() => chmodSync(join(root, '.mcp.json'), 0o600));
+    const { report } = agentsCheck(root);
+    expect(report.status).toBe('warning');
+    expect(report.problems).toHaveLength(1);
+    expect(report.problems[0]!.message).toContain('".mcp.json" cannot be read');
+    expect(JSON.stringify(report)).not.toContain(root);
   });
 });

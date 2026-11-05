@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read.
+error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read. Where `.mcp.json` has the entry, the block of `AGENTS.md` lists the tools and when to reach for them ([coding agents](agents.md#skills-and-the-mcp-server)).
 
 It is a tool for development and nothing else:
 

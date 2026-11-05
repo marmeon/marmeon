@@ -1,12 +1,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandInput } from '../command.ts';
-import { AGENTS_BLOCK } from '../agents/block.ts';
+import { agentsBlock } from '../agents/block.ts';
 import { exists, unsafe } from '../agents/files.ts';
+import { installedTools } from '../agents/install.ts';
 import { syncAgents } from '../agents/sync.ts';
 
 /**
- * Keeps the block of `AGENTS.md` between the `marmeon:begin` and `marmeon:end` marks in step with the installed `marmeon`, and
+ * Keeps the block of `AGENTS.md` between the `marmeon:begin` and `marmeon:end` marks in step with the installed `marmeon` and with the skills and the MCP entry the app has, and
  * makes `AGENTS.md` and `CLAUDE.md` when they are missing. Runs without booting the app: an app that does not start needs the
  * guide more. `--check` writes nothing and exits with 1 when the block is missing or out of date. See docs/agents.md#keeping-the-block-current.
  */
@@ -26,8 +27,14 @@ export class AgentsSyncCommand {
       output.error(problem);
       return 1;
     }
+    // What is installed decides which lines the block has; what cannot be read is refused, not guessed (also with --check).
+    const tools = installedTools(root);
+    if (!tools.ok) {
+      output.error(tools.error.message);
+      return 1;
+    }
     const hasAgents = exists(agents);
-    const result = syncAgents(hasAgents ? readFileSync(agents, 'utf8') : undefined, AGENTS_BLOCK, appName(root));
+    const result = syncAgents(hasAgents ? readFileSync(agents, 'utf8') : undefined, agentsBlock(tools.value), appName(root));
     if (!result.ok) {
       output.error(result.error.message);
       return 1;

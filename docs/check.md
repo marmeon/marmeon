@@ -405,7 +405,7 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
 ## The agents block
 
 `agents` reads `AGENTS.md` and compares the block between the `marmeon:begin` and `marmeon:end` marks with the one the installed
-`marmeon` writes. It only warns and writes nothing, so it never changes the exit code: the file belongs to your app.
+`marmeon` writes for this app (with the section on skills and tools when they are installed). It only warns and writes nothing, so it never changes the exit code: the file belongs to your app.
 
 | `AGENTS.md` | Result |
 | --- | --- |

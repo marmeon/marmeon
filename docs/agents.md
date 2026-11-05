@@ -4,7 +4,7 @@
 
 A coding agent that works in your app reads a file at the start of every session: `AGENTS.md`, or `CLAUDE.md` for Claude Code.
 `marmeon agents:sync` writes both. It keeps a block in `AGENTS.md` that tells the agent how to work with Marmeon: where the
-documentation of the installed version lies (`node_modules/marmeon/docs/`, which `marmeon docs` reads), which recipe to start a task from (a resource, a public form, a background job), which commands to run after a change and which rules the framework holds you to. The block comes with the
+documentation of the installed version lies (`node_modules/marmeon/docs/`, which `marmeon docs` reads), which recipe to start a task from (a resource, a public form, a background job), which commands to run after a change and which rules the framework holds you to, and, once `marmeon agents:install` set them up, which skill to load for a task and what the MCP server answers. The block comes with the
 installed `marmeon`, so it changes when you update.
 
 ```sh
@@ -68,6 +68,12 @@ pnpm marmeon agents:sync --check
 It exits with 1 when `AGENTS.md` has no block or the block differs from the one your `marmeon` carries. An app that does not boot
 still gets its guide: the command does not start the app.
 
+The block depends on the app. The section on skills and tools appears only where a marked `SKILL.md` lies under `.claude/skills/` or
+`.agents/skills/`, or where `.mcp.json` has the entry `marmeon`; a link that leads out of the app does not count. A `SKILL.md`, a skill folder, the skills folder (or a link to a folder inside the app) or
+`.mcp.json` the command cannot read or inspect makes `agents:sync` refuse and write nothing, rather than guess. `marmeon agents:install` brings
+the block up to date itself; after you removed the skills or the entry, run `agents:sync`. Commit the skills, `.mcp.json` and
+`AGENTS.md` together, or `--check` in CI disagrees with your machine.
+
 `marmeon check` also looks at the block, as the [`agents` check](check.md#the-agents-block): a block that is missing or out of date is a
 warning there, never an error, and the check writes nothing. An app without `AGENTS.md` is skipped.
 
@@ -105,6 +111,8 @@ Other files in such a folder, and all your own skills, stay as they are. Copy a 
 
 - A `SKILL.md` without the mark, or with one the command cannot read, is a file of yours: the command refuses and writes nothing.
 - A mark with a higher number comes from a newer `marmeon`: the command refuses and asks you to update.
+- In `AGENTS.md` the command replaces only the block between the marks, as `agents:sync` does, and only where the file has one; it
+  never makes the file or adds a block. A problem with the file is a warning: the skills are installed anyway.
 - A skill that an older `marmeon` installed and this one no longer ships is named in a warning and never deleted.
 - In `.mcp.json` only the entry `marmeon` belongs to the command. It is replaced when it differs, and the command says so; every other
   entry, key and their order stay, as do the indentation and the line ends. The file is written again with `JSON.stringify`, so
@@ -131,10 +139,14 @@ is nothing to check.
 pnpm marmeon agents:install --check
 ```
 
+`--check` also exits with 1 when the block of `AGENTS.md` is out of date for what is installed. A problem with `AGENTS.md` itself
+(no file, no block, broken marks, a link) never changes the exit code there.
+
 `marmeon check` looks at the same files: where skills or the entry are installed, a skill that is missing or out of date, or an
-existing entry that is out of date, is a warning with the fix `marmeon agents:install`, and nothing is written. An app that installed nothing gets no message. The block
-of `AGENTS.md` names the command in one line, so an agent that reads the file learns of the skills; `marmeon agents:sync` brings
-that line into an existing file. What the server offers an agent is on [the MCP server](mcp.md).
+existing entry that is out of date, is a warning with the fix `marmeon agents:install`, and nothing is written. An app that installed nothing gets no message.
+Where something is installed, the block of `AGENTS.md` says which skill to load for which task and which tools the server has; where
+nothing is, it names the command in one line, so an agent that reads the file learns of the skills. What the server offers an agent
+is on [the MCP server](mcp.md).
 
 ### Other clients
 

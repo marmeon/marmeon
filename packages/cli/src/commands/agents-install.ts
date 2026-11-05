@@ -1,15 +1,19 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { CommandInput } from '../command.ts';
-import { unsafePath, unwritablePath, writeAtomic } from '../agents/files.ts';
-import { planInstall, type InstallStep } from '../agents/install.ts';
+import { agentsBlock } from '../agents/block.ts';
+import { exists, unsafe, unsafePath, unwritablePath, writeAtomic } from '../agents/files.ts';
+import { installedTools, planInstall, type InstallStep } from '../agents/install.ts';
 import { shippedSkills } from '../agents/skills.ts';
+import { syncAgents } from '../agents/sync.ts';
+import type { Output } from '../output.ts';
 
 /**
  * Copies the skills of the installed `marmeon` into the app (`.claude/skills/marmeon-*`, or `.agents/skills/` with `--shared`) and
  * enters the server `marmeon mcp` in `.mcp.json`; run again, it brings both up to date. It writes only the folders `marmeon-*` that
- * carry its mark and only the entry `marmeon`, refuses links and files that are not its own, and writes nothing then. `--check`
- * writes nothing and exits with 1 when something is missing or out of date. See docs/agents.md#skills-and-the-mcp-server.
+ * carry its mark and only the entry `marmeon`, refuses links and files that are not its own, and writes nothing then. It also
+ * brings the block of `AGENTS.md` up to what is installed, where the file has one. `--check` writes nothing and exits with 1 when
+ * something is missing or out of date, the block included. See docs/agents.md#skills-and-the-mcp-server.
  */
 export class AgentsInstallCommand {
   static command = 'agents:install';
@@ -26,7 +30,7 @@ export class AgentsInstallCommand {
     }
     const { warnings, retired, skillsInstalled, mcpInstalled } = planned.value;
     for (const warning of warnings) output.warn(warning);
-    for (const folder of retired) output.warn(`${folder} is a skill this marmeon no longer ships. It was left as it is; remove it if you do not need it.`);
+    for (const folder of retired) output.warn(`${JSON.stringify(folder)} is a skill this marmeon no longer ships. It was left as it is; remove it if you do not need it.`);
 
     if (options.check === true) {
       // Only what is installed is judged: a skill folder or an entry that was never made is not out of date.
@@ -37,7 +41,8 @@ export class AgentsInstallCommand {
       }
       const stale = steps.filter((step) => step.change !== 'unchanged');
       for (const step of stale) output.error(`${step.path} is ${step.change === 'create' ? 'missing' : 'out of date'}.`);
-      if (stale.length > 0) {
+      const blockStale = refreshBlock(root, true, output);
+      if (stale.length > 0 || blockStale) {
         output.error('Run marmeon agents:install.');
         return 1;
       }
@@ -74,6 +79,8 @@ export class AgentsInstallCommand {
     }
     for (const step of changed) output.success(step.note ?? `${step.change === 'create' ? 'Wrote' : 'Updated'} ${step.path}.`);
     if (changed.length === 0) output.success('The skills and the entry in .mcp.json are current.');
+    // Judged again from the disk, now that the files are there; never from what the plan predicted.
+    refreshBlock(root, false, output);
     if (changed.some((step) => step.kind === 'mcp')) output.line('Your agent asks you to approve the server marmeon the next time it starts.');
     return 0;
   }
@@ -93,4 +100,66 @@ function write(root: string, step: InstallStep): string | undefined {
   if (again) return again;
   writeAtomic(file, step.text);
   return undefined;
+}
+
+const NO_BLOCK = 'AGENTS.md has no marmeon block; marmeon agents:sync writes one that names the skills and the tools.';
+
+/**
+ * Brings the block of `AGENTS.md` up to what is installed, only where the file has a block: no file is made and no block added.
+ * A problem with the file is a warning, since the skills are installed anyway. With `check` nothing is written; true means the
+ * block is out of date.
+ */
+function refreshBlock(root: string, check: boolean, output: Output): boolean {
+  const file = join(root, 'AGENTS.md');
+  const left = (message: string) => message.replace(/ Nothing was written\.$/, ' It was left as it is.');
+  if (!exists(file)) {
+    if (!check) output.line(NO_BLOCK);
+    return false;
+  }
+  const problem = unsafe(root, file);
+  if (problem) {
+    output.warn(left(problem));
+    return false;
+  }
+  const tools = installedTools(root);
+  if (!tools.ok) {
+    output.warn(left(tools.error.message));
+    return false;
+  }
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (error) {
+    output.warn(`AGENTS.md could not be read (${(error as NodeJS.ErrnoException).code ?? 'an unknown error'}). It was left as it is.`);
+    return false;
+  }
+  const result = syncAgents(text, agentsBlock(tools.value));
+  if (!result.ok) {
+    output.warn(left(result.error.message));
+    return false;
+  }
+  const { change, text: next } = result.value;
+  if (change === 'appended') {
+    if (!check) output.line(NO_BLOCK);
+    return false;
+  }
+  if (change !== 'replaced') return false;
+  if (check) {
+    output.error("AGENTS.md's block is out of date.");
+    return true;
+  }
+  // The guard sits on the side that writes: judged once more right before the write, in case a link appeared since.
+  const again = unsafe(root, file);
+  if (again) {
+    output.warn(left(again));
+    return false;
+  }
+  try {
+    writeFileSync(file, next);
+  } catch (error) {
+    output.warn(`AGENTS.md could not be written (${(error as NodeJS.ErrnoException).code ?? 'an unknown error'}). It was left as it is.`);
+    return false;
+  }
+  output.success('Updated the block of AGENTS.md.');
+  return false;
 }
