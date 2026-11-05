@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Application, durationToMilliseconds, ErrorSolutions, errorCodeOf, HealthChecks, Redactor, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages } from '@marmeon/core/internal';
-import { appRedactor, loadApplication } from '../load.ts';
+import { appRedactor, loadApplication, redactorOf, safeRedactor } from '../load.ts';
 import { CheckRegistry, type AppCheckClass } from './registry.ts';
 import { escapeControl, reportOf, unrunReport, type CheckProblem, type CheckReport, type SilencedProblem } from './report.ts';
 
@@ -30,20 +30,6 @@ export async function discoveredChecks(root: string): Promise<{ build: string[];
     return { build: registry.all('build').map((check) => check.check), run: registry.all('run').map((check) => check.check) };
   } catch {
     return { build: [], run: [] };
-  }
-}
-
-/** The app's redactor — the core's keys alone for an app that did not load. */
-function redactorOf(app: Application | undefined): Redactor {
-  return app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
-}
-
-/** {@link redactorOf} that cannot fail: `fallback` (the redactor of the app's definition) when there is no app or its redactor cannot be built. */
-function safeRedactor(app: Application | undefined, fallback: Redactor = new Redactor()): Redactor {
-  try {
-    return app ? redactorOf(app) : fallback;
-  } catch {
-    return fallback;
   }
 }
 
@@ -101,8 +87,8 @@ async function bootProblem(error: unknown, root: string): Promise<CheckProblem> 
     severity: 'error',
     message: solution?.fix === undefined && solution?.text ? `${message}\n${redactor.text(solution.text)}` : message,
     ...(code === undefined ? {} : { code }),
-    ...(solution?.fix === undefined ? {} : { fix: solution.fix }),
-    ...(solution?.docs === undefined ? {} : { docs: solution.docs }),
+    ...(solution?.fix === undefined ? {} : { fix: redactor.text(solution.fix) }),
+    ...(solution?.docs === undefined ? {} : { docs: redactor.text(solution.docs) }),
   };
 }
 

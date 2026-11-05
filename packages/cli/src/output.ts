@@ -1,5 +1,5 @@
 import { styleText } from 'node:util';
-import { ConfigError } from '@marmeon/core';
+import { ConfigError, type Redactor } from '@marmeon/core';
 
 type Style = Parameters<typeof styleText>[0];
 
@@ -110,17 +110,22 @@ export function style(format: Style, text: string): string {
   return styleText(format, text, { stream: process.stdout });
 }
 
-/** A failed command: its error and where it came from — not Node's dump of every property of every cause. */
-export function printError(output: Output, error: unknown): void {
+/**
+ * A failed command: its error and where it came from — not Node's dump of every property of every cause. The text is masked with
+ * `redactor` (a message may quote a secret) and, like all output, written without control characters.
+ */
+export function printError(output: Output, error: unknown, redactor: Redactor): void {
   if (!(error instanceof Error)) {
-    output.error(String(error));
+    output.error(redactor.text(String(error)));
     return;
   }
   // A refusal that names its own fix (a configuration or a path to change): the message, no frames.
   if (error instanceof ConfigError) {
-    output.error(error.message);
+    output.error(redactor.text(error.message));
     return;
   }
   const frames = (error.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line) && !line.includes('node:internal'));
-  output.error([`${error.name}: ${error.message}`, ...frames.slice(0, 5).map((frame) => `  ${frame.trim()}`)].join('\n'));
+  // Continuation lines of the message are indented: a line break in it cannot start a line that looks like another message.
+  const message = `${error.name}: ${error.message}`.replaceAll('\n', '\n  ');
+  output.error(redactor.text([message, ...frames.slice(0, 5).map((frame) => `  ${frame.trim()}`)].join('\n')));
 }

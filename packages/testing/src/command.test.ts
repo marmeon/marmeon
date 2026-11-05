@@ -24,6 +24,14 @@ class BoomCommand {
   }
 }
 
+class LeakyCommand {
+  static command = 'leaky';
+  static description = 'Throws a message that quotes a secret';
+  handle(): never {
+    throw new Error('refused postgres://u:s3cret@h/db');
+  }
+}
+
 class NestedCommand {
   static command = 'nested';
   static description = 'Starts another marmeon';
@@ -38,7 +46,7 @@ const definition: ApplicationDefinition = {
   root: tempDir('marmeon-testing-command-'),
   discover: false,
   providers: [EncryptionServiceProvider, HttpServiceProvider, CliServiceProvider],
-  modules: [defineModule({ name: 'commands', commands: [EchoCommand, BoomCommand, NestedCommand] })],
+  modules: [defineModule({ name: 'commands', commands: [EchoCommand, BoomCommand, LeakyCommand, NestedCommand] })],
 };
 
 const env = { APP_KEY: generateKey() };
@@ -86,6 +94,15 @@ describe('app.command()', () => {
     expect(run.lines[0]).toBe('✗ RangeError: it blew up');
     expect(run.lines.length).toBeGreaterThan(1);
     expect(run.lines.length).toBeLessThanOrEqual(6);
+    await app.close();
+  });
+
+  it('masks what a failing command quotes, with the redactor of the app', async () => {
+    const app = await createTestApp(definition, { env });
+    const run = await app.command('leaky');
+    expect(run.code).toBe(1);
+    expect(run.lines[0]).toContain('refused');
+    expect(run.lines.join('\n')).not.toContain('s3cret');
     await app.close();
   });
 
