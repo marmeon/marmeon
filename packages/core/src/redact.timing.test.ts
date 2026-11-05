@@ -40,4 +40,29 @@ describe('the time of masking hostile input', () => {
       expect(performance.now() - started).toBeLessThan(100);
     }
   });
+
+  it('masks values in quotes in time that does not grow with the square of the input — an unterminated value, many keys', () => {
+    // 200 000 to 390 000 characters: a quoted value that is searched for its closing quote from every key would take seconds.
+    const redactor = new Redactor({ keys: ['iban'] });
+    const inputs = [
+      '"iban":"'.repeat(30_000),
+      `password: "${'a'.repeat(200_000)}`,
+      `iban: '${'a '.repeat(100_000)}`,
+      '"password=\'a '.repeat(30_000),
+      'iban: "'.repeat(30_000),
+      `{"iban":"${'\\"'.repeat(100_000)}`,
+      `password: "${'\\'.repeat(100_001)}x`,
+      '{"e":"{\\"iban\\":\\"'.repeat(20_000),
+      `{"e":"{\\"iban\\":\\"${'a \\\\\\"'.repeat(50_000)}`,
+      // Both escape kinds of a JSON string inside a JSON string: one that could be read two ways would backtrack exponentially.
+      `{"e":"{\\"iban\\":\\"${'\\'.repeat(200_001)}x`,
+      `{"e":"{\\"iban\\":\\"${'\\u00e9'.repeat(40_000)}`,
+    ];
+    for (const input of inputs) {
+      const started = performance.now();
+      redactor.text(input);
+      redactText(input);
+      expect(performance.now() - started, input.slice(0, 20)).toBeLessThan(100);
+    }
+  });
 });

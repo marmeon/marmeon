@@ -368,6 +368,91 @@ describe('Redactor.text — the shortcut for text without anything to mask', () 
   });
 });
 
+describe('Redactor: a value in quotes, for the names of the core and the added ones', () => {
+  const iban = new Redactor({ keys: ['iban'] });
+
+  it('masks an added name in JSON, with spaces in the value', () => {
+    expect(iban.text('Error: 422 {"iban":"DE89 3704 0044 0532 0130 00","x":1}')).toBe('Error: 422 {"iban":"[redacted]","x":1}');
+    expect(iban.text('{ iban: \'DE89 3704\', other: 1 }')).toBe("{ iban: '[redacted]', other: 1 }");
+    expect(iban.text('iban=DE89')).toBe('iban=[redacted]');
+    expect(iban.text('iban: DE89,')).toBe('iban: [redacted],');
+  });
+
+  it('masks a value of the core\'s names in quotes up to the closing quote', () => {
+    expect(redactText('{"password":"correct horse battery","user":"ada"}')).toBe('{"password":"[redacted]","user":"ada"}');
+    expect(redactText("{ password: 'correct horse', user: 'ada' }")).toBe("{ password: '[redacted]', user: 'ada' }");
+    expect(redactText('password = "a b c" and more')).toBe('password = "[redacted]" and more');
+    expect(redactText('"authorization":"Bearer abc def"')).toBe('"authorization":"Bearer [redacted]"');
+  });
+
+  it('does not end a JSON string at an escaped quote, and does not run past the line', () => {
+    expect(redactText('{"password":"a \\"b\\" c","user":"ada"}')).toBe('{"password":"[redacted]","user":"ada"}');
+    expect(redactText('password: "abc\nnext line stays')).toBe('password: "[redacted]\nnext line stays');
+    expect(redactText('password: "abc def\nnext line stays')).toBe('password: "[redacted]\nnext line stays');
+    expect(redactText('password: "abc"\n"x def" ok')).toBe('password: "[redacted]"\n"x def" ok');
+    expect(iban.text('{"iban":"a \\" b","x":"y z"}')).toBe('{"iban":"[redacted]","x":"y z"}');
+  });
+
+  it('masks a cut-off value to the end of the line', () => {
+    expect(redactText('Request failed: {"password":"correct horse batt')).toBe('Request failed: {"password":"[redacted]');
+    expect(redactText("token: 'a b c")).toBe("token: '[redacted]");
+    expect(redactText('password: "abc\\')).toBe('password: "[redacted]\\');
+    expect(iban.text('{"iban":"DE89 3704')).toBe('{"iban":"[redacted]');
+    expect(redactText('password: "')).toBe('password: "');
+    expect(redactText('password: ""')).toBe('password: ""');
+  });
+
+  it('keeps a placeholder only when it is the whole quoted value', () => {
+    expect(redactText('{"password":"?secret value"}')).toBe('{"password":"[redacted]"}');
+    expect(redactText('{"password":"$1abc def"}')).toBe('{"password":"[redacted]"}');
+    expect(redactText('{"password":"$1"}')).toBe('{"password":"$1"}');
+    expect(redactText('{"password":"?"}')).toBe('{"password":"?"}');
+  });
+
+  it('masks a name inside a JSON string that holds JSON', () => {
+    const line = '{"error":"{\\"password\\":\\"x y\\",\\"user\\":\\"ada\\"}","n":1}';
+    expect(redactText(line)).toBe('{"error":"{\\"password\\":\\"[redacted]\\",\\"user\\":\\"ada\\"}","n":1}');
+    expect(iban.text('{"e":"{\\"iban\\":\\"DE89 37\\\\\\"04\\",\\"k\\":1}"}')).toBe('{"e":"{\\"iban\\":\\"[redacted]\\",\\"k\\":1}"}');
+    expect(redactText('{"error":"{\\"password\\":\\"[redacted]\\"}"}')).toBe('{"error":"{\\"password\\":\\"[redacted]\\"}"}');
+    expect(redactText(redactText(line))).toBe(redactText(line));
+  });
+
+  it('masks the whole value of a stringified name that holds escapes of the outer JSON', () => {
+    const q = '\\"';
+    const nest = (value: string) => `{"e":"{${q}password${q}:${q}${value}${q},${q}user${q}:${q}ada${q}}"}`;
+    for (const value of ['caf\\u00e9 x y', '\\u00e9abc def', 'a\\/b c', 'tab\\there x', 'a\\\\\\/b c', 'abc\\ndef ghi']) {
+      expect(redactText(nest(value)), value).toBe(nest('[redacted]'));
+    }
+    expect(redactText(`{"e":"{${q}password${q}:${q}abc\\ndef ghi`)).toBe(`{"e":"{${q}password${q}:${q}[redacted]`);
+  });
+
+  it('does not stop a quoted value at a backslash before a carriage return or a line separator', () => {
+    expect(redactText('password: "a b\\\u2028c d" ok')).toBe('password: "[redacted]" ok');
+    expect(redactText('password: "a b\\\rc d" ok')).toBe('password: "[redacted]" ok');
+  });
+
+  it('answers with [redacted] instead of throwing when a value is too long for the regex engine', () => {
+    const huge = `{"token":"${'a b '.repeat(2_800_000)}"}`;
+    expect(() => redactText(huge)).not.toThrow();
+    expect(() => iban.text(huge)).not.toThrow();
+    expect(`${redactText(huge)}${iban.text(huge)}`).not.toContain('a b a b');
+  });
+
+  it('answers with [redacted] when a text overflows the regex engine', () => {
+    const word = 'a'.repeat(32 * 1024 * 1024);
+    expect(redactText(word)).toBe('[redacted]');
+    expect(iban.text(word)).toBe('[redacted]');
+  });
+
+  it('leaves placeholders, masked values and empty strings as they are', () => {
+    for (const text of ['where password = ?', 'password=$1', '{"password":"[redacted]"}', "{ password: '[redacted]' }", 'password: ""', '{"password":"?"}']) {
+      expect(redactText(text)).toBe(text);
+      expect(redactText(redactText(text))).toBe(redactText(text));
+    }
+    expect(iban.text('{"iban":"[redacted]"}')).toBe('{"iban":"[redacted]"}');
+  });
+});
+
 describe('Redactor.headers — a header given more than once', () => {
   it('redacts set-cookie as a list and joins other lists', () => {
     const shown = new Redactor().headers({ 'set-cookie': ['a=1', 'b=2'], 'x-forwarded-for': ['1.2.3.4', '5.6.7.8'], accept: 'text/html', missing: undefined });

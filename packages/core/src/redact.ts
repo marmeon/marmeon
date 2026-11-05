@@ -16,10 +16,38 @@ const MAX_DEPTH = 6;
 /** How many causes an error's message and stack name at most. */
 const MAX_CAUSES = 5;
 
-// `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value (not a statement's `?`/`$1`
-// placeholder: `where password = ?` stays readable). Matches start at a word's beginning only (the lookbehind): otherwise a
-// long word costs quadratic time (a 64 KB string took seconds).
-const KEY_VALUE = /(?<![\w-])((?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64}))("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
+// What follows a name, for the core's own names and the ones an app adds alike (one source, so the two cannot drift apart): the
+// separator (`=`, `: `, `":` of JSON, `': ` of `util.inspect`) and the value. A value in quotes goes to its closing quote of the
+// same kind (a JSON string `"correct horse battery"` whole; `\"` does not close it) or, when the text is cut off, to the end of
+// the line: a stored error often ends in the middle of a JSON body, and what follows an opening quote is a value to the end. One
+// without quotes goes to the next space, quote or delimiter. A statement's `?`/`$1` placeholder stays readable (`"?"`, not
+// `"?secret"`). A value in quotes is never left for the unquoted branch once its quote opened: it either matches whole or is
+// empty. The second form is a JSON string inside a JSON string (`{"error":"{\"password\":\"x y\"}"}`): its quotes are `\"`.
+// Linear: every quoted loop is unrolled (`plain*(?:escape plain*)*`, no group repeated per character: a long value would
+// overflow the stack), its alternatives start with different characters, and it ends at its quote or the line's end, so after
+// a miss only the other kind of quote can run far again on the same line.
+const quoted = (quote: string): string =>
+  String.raw`${quote}(?!${quote}|\[redacted\]${quote}|\?${quote}|\$\d+${quote}|\\?(?:\n|$))([^${quote}\\\n]*(?:\\[^\n][^${quote}\\\n]*)*)(${quote}|(?=\\?(?:\n|$)))`;
+const VALUE_TAIL = String.raw`(?:(["']?\s*[:=]\s*)(?:${quoted('"')}|${quoted("'")}|("?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?[^\s"'&,;}]+)|((?:\\?["'])?\s*[:=]\s*)\\"(?!\[redacted\]\\")(?=[^"\\\n]|\\[^"\n])([^"\\\n]*(?:\\(?:[^"\\\n]|\\\\[^\n]|\\[^"\\\n])[^"\\\n]*)*)(\\"|(?=["\\\n]|$)))`;
+// Groups after the name (group 1): 2 separator, 3 and 5 the text inside double and single quotes, 4 and 6 the closing quote or
+// nothing, 7 an opening quote without a closing one, 8 `Bearer `/`Basic `; 9 the separator of a stringified value, 10 its text,
+// 11 its closing `\"` or nothing.
+const keyValuePattern = (name: string, before: string): RegExp => new RegExp(`${before}(${name})${VALUE_TAIL}`, 'gi');
+// `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value. Matches start at a word's
+// beginning only (the lookbehind): otherwise a long word costs quadratic time (a 64 KB string took seconds).
+const KEY_VALUE = keyValuePattern(String.raw`(?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64})`, String.raw`(?<![\w-])`);
+
+/** Replaces the value `KEY_VALUE` or an added name found, keeping the key, the separator, the quotes and a `Bearer ` scheme. */
+function maskValue(_match: string, key: string, ...groups: (string | undefined)[]): string {
+  const [separator, double, doubleClose, single, singleClose, open, scheme, nested, nestedText, nestedClose] = groups;
+  if (nestedText !== undefined) return `${key}${nested}\\"${REDACTED}${nestedClose}`;
+  const inner = double ?? single;
+  if (inner === undefined) return `${key}${separator}${open ?? ''}${scheme ?? ''}${REDACTED}`;
+  const quote = double !== undefined ? '"' : "'";
+  const close = (double !== undefined ? doubleClose : singleClose) ?? '';
+  return `${key}${separator}${quote}${/^(?:Bearer|Basic)\s+/i.exec(inner)?.[0] ?? ''}${REDACTED}${close}`;
+}
+
 // `Authorization: Bearer …` without the key in front (a header value on its own).
 const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 // `postgres://user:secret@host`, `redis://:secret@host` — the password of a URL, to the last `@` before the first space, `?`, `#`,
@@ -107,6 +135,17 @@ export function maskUrlPasswords(text: string): string {
  * alone — the names and patterns an app adds need the app's {@link Redactor}.
  */
 export function redactText(text: string): string {
+  try {
+    return maskText(text);
+  } catch (error) {
+    // A text too long for the regex engine's stack (a single word of megabytes): all of it goes, never an error from the code that
+    // reports an error.
+    if (error instanceof RangeError) return REDACTED;
+    throw error;
+  }
+}
+
+function maskText(text: string): string {
   return text
     .replace(PEM_KEY, '[redacted]')
     .replace(CODE_PARAM, '$1[redacted]')
@@ -119,7 +158,7 @@ export function redactText(text: string): string {
     .replace(PREFIXED_KEY, '[redacted]')
     .replace(PATH_SEGMENT, (segment) => (looksLikeToken(segment) ? '[redacted]' : segment))
     .replace(BARE_WORD, (word) => (looksLikeBareToken(word) ? '[redacted]' : word))
-    .replace(KEY_VALUE, (_, key: string, separator: string, scheme: string | undefined) => `${key}${separator}${scheme ?? ''}[redacted]`)
+    .replace(KEY_VALUE, maskValue)
     .replace(BEARER, '$1 [redacted]');
 }
 
@@ -251,7 +290,7 @@ export class Redactor {
   addKeys(...keys: string[]): this {
     for (const key of keys) if (key !== '') this.#keys.add(key.toLowerCase());
     const names = [...this.#keys].map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    this.#text = names.length > 0 ? new RegExp(`(\\b(?:${names.join('|')}))(\\s*[:=]\\s*"?)(?!\\[redacted\\])([^\\s"'&,;}]+)`, 'gi') : undefined;
+    this.#text = names.length > 0 ? keyValuePattern(`\\b(?:${names.join('|')})`, '') : undefined;
     return this;
   }
 
@@ -372,8 +411,14 @@ export class Redactor {
    */
   text(text: string): string {
     if (this.#patterns.length === 0 && text.length <= MAX_ENTRY_BYTES && !MAYBE_SECRET.test(text)) return text;
-    const masked = redactText(text);
-    return truncate(this.#appPatterns(this.#text ? masked.replace(this.#text, `$1$2${REDACTED}`) : masked));
+    try {
+      const masked = redactText(text);
+      return truncate(this.#appPatterns(this.#text ? masked.replace(this.#text, maskValue) : masked));
+    } catch (error) {
+      // As in `redactText`: the added names' pattern or an app's pattern may overflow on a huge value; nothing of it stays.
+      if (error instanceof RangeError) return REDACTED;
+      throw error;
+    }
   }
 
   /**

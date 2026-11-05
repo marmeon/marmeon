@@ -184,6 +184,10 @@ export default defineApplication({
 });
 ```
 
+A name is masked in `name=value`, `name: value`, JSON (`"name":"…"`) and `util.inspect` form (`name: '…'`), like the core's own. A value in quotes is
+masked up to its closing quote, spaces included (`"iban":"DE89 3704 0044"`); a value cut off before its closing quote is masked to the end of the line, and
+so is a name inside a JSON string that holds JSON (`\"iban\":\"…\"`).
+
 Every redactor of the app has them from the start: the log, failed jobs, the development error page, the devtools, the traces of
 the OpenTelemetry package, the live updates, and the report of `marmeon check` for an app that could not start. A package adds the
 same from a provider's `boot()` with `app.container.make(Redactor).addKeys(…)` and `.addPatterns(…)`.
