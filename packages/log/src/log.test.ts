@@ -21,6 +21,54 @@ function capture(level: 'info' | 'warn' = 'info') {
 }
 
 describe('@marmeon/log', () => {
+  it('does not throw for a getter of the logged data that throws, in a call or a child binding', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
+    const off = channels.subscribe(app, 'log', () => undefined);
+    try {
+      const { lines, raw, logger } = capture();
+      const withApp = createPinoLogger({ level: 'info', format: 'json' }, { destination: new Writable({ write: (chunk, _e, done) => { raw.push(String(chunk)); lines.push(JSON.parse(String(chunk))); done(); } }), app });
+      const thrower = () => { throw new Error('secret=s3cr3t'); };
+      const nested = { get x(): number { return thrower(); } };
+      const field = Object.defineProperty(new Error('driver'), 'detail', { enumerable: true, get: thrower });
+      const top = { get x(): number { return thrower(); } };
+      for (const log of [logger, withApp]) {
+        expect(() => log.info('Nested', { ctx: nested })).not.toThrow();
+        expect(() => log.info('Field', { error: field })).not.toThrow();
+        expect(() => log.info('Top', top)).not.toThrow();
+        expect(() => log.child({ ctx: nested }).info('Child')).not.toThrow();
+      }
+      expect(lines).toHaveLength(8);
+      for (const line of lines) expect(line.context).toBe('[unserializable]');
+      expect(raw.join('')).not.toContain('s3cr3t');
+    } finally {
+      off();
+    }
+  });
+
+  it('keeps the request\'s context and the other sources on the line when one source returns data that cannot be read', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
+    const sources = app.container.make(LogContextSources);
+    const offGood = sources.add(() => ({ trace_id: 'abc' }));
+    const offBad = sources.add(() => ({ nested: { get x(): number { throw new Error('secret=s3cr3t'); } } }));
+    try {
+      const { lines, raw } = capture();
+      const logger = createPinoLogger({ level: 'info', format: 'json' }, { destination: new Writable({ write: (chunk, _e, done) => { raw.push(String(chunk)); lines.push(JSON.parse(String(chunk))); done(); } }), app });
+      runWithRequest({ requestId: 'req-1' }, () => logger.child({ task: 't' }).info('m', { a: 1 }));
+      expect(lines[0]).toMatchObject({ requestId: 'req-1', trace_id: 'abc', task: 't', a: 1, context: '[unserializable]' });
+      expect(raw.join('')).not.toContain('s3cr3t');
+    } finally {
+      offGood();
+      offBad();
+    }
+  });
+
+  it('keeps the other keys of an entry when one value has a toJSON that throws — pino replaces just that value', () => {
+    const { lines, logger } = capture();
+    expect(() => logger.info('m', { a: 1, bad: { toJSON: () => { throw new Error('secret=s3cr3t'); } }, b: 2 })).not.toThrow();
+    expect(lines[0]).toMatchObject({ a: 1, b: 2 });
+    expect(JSON.stringify(lines[0])).not.toContain('s3cr3t');
+  });
+
   it('takes the stream and the app in its options — the positional form of an untyped caller throws', () => {
     const stream = new Writable({ write: (_chunk, _encoding, done) => done() });
     const untyped = createPinoLogger as unknown as (...args: unknown[]) => unknown;
