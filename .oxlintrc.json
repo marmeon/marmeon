@@ -2,7 +2,10 @@
 // `marmeon make:lint-config` writes — which oxlint takes for their files instead of this one.
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": [".tmp/"],
+  "ignorePatterns": [".tmp/", "node_modules/"],
+  // `regexp/no-super-linear-*` need eslint-plugin-regexp, which oxlint loads as a JS plugin (alpha). `scripts/lint.test.ts` proves
+  // the rules fire, so a plugin that loads but stops reporting turns the test red instead of the lint silently green.
+  "jsPlugins": ["eslint-plugin-regexp"],
   "categories": { "correctness": "error" },
   "rules": {
     // With verbatimModuleSyntax, `import { type X }` stays as `import {} from …` and loads the module.
@@ -17,9 +20,56 @@
   },
   "overrides": [
     {
+      // Text from a request or a user must not tie up the event loop for quadratic time. Only code an app runs is in scope
+      // (stubs end up in apps); `scripts/` and tests see repository content only.
+      "files": ["packages/*/src/**", "packages/*/bin/**", "packages/*/stubs/**"],
+      "rules": { "regexp/no-super-linear-backtracking": "error", "regexp/no-super-linear-move": "error" }
+    },
+    {
       // Type tests provoke errors on purpose: `// @ts-expect-error` above `user.password;`.
       "files": ["**/*.test.*", "**/*.type-test.*"],
-      "rules": { "no-unused-expressions": "off" }
+      "rules": { "no-unused-expressions": "off", "regexp/no-super-linear-backtracking": "off", "regexp/no-super-linear-move": "off" }
+    },
+    {
+      "files": ["**/__fixtures__/**"],
+      "rules": { "regexp/no-super-linear-backtracking": "off", "regexp/no-super-linear-move": "off" }
+    },
+    {
+      // Being made linear in this pull request: these files still hold hits, the rules stay off for them until they are rewritten or
+      // allowed with a reason.
+      "files": [
+        "packages/auth/src/hashing.ts",
+        "packages/auth/src/make-auth.ts",
+        "packages/auth/src/two-factor/totp.ts",
+        "packages/cache/src/rate-limiter.ts",
+        "packages/cli/bin/workspace.js",
+        "packages/cli/src/anchors.ts",
+        "packages/cli/src/check/silence.ts",
+        "packages/core/src/definition-edit.ts",
+        "packages/create-marmeon/src/template.ts",
+        "packages/database/src/package-migrations.ts",
+        "packages/database/src/types-gen/render.ts",
+        "packages/devtools/src/client/bar.ts",
+        "packages/i18n/src/index.ts",
+        "packages/mail/src/html.ts",
+        "packages/otel/src/tracer.ts",
+        "packages/react/src/head-fields.ts",
+        "packages/redis/src/index.ts",
+        "packages/router/src/pattern.ts",
+        "packages/router/src/request.ts",
+        "packages/server/src/error-page/markdown.ts",
+        "packages/server/src/localized-routes.ts",
+        "packages/server/src/render.ts",
+        "packages/storage/src/drivers/local.ts",
+        "packages/storage/src/drivers/memory.ts",
+        "packages/storage/src/drivers/s3.ts",
+        "packages/storage/src/routes.ts",
+        "packages/storage/src/storage.ts",
+        "packages/testing/src/database.ts",
+        "packages/testing/src/markup.ts",
+        "packages/vite/src/images.ts"
+      ],
+      "rules": { "regexp/no-super-linear-backtracking": "off", "regexp/no-super-linear-move": "off" }
     }
   ]
 }

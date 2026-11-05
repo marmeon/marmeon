@@ -45,6 +45,7 @@
     "@marmeon/vite": "workspace:*",
     "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "^26.6.6",
+    "eslint-plugin-regexp": "^3.3.3",
     "marmeon": "workspace:*",
     "oxlint": "^1.90.0",
     "publint": "^0.3.25",
