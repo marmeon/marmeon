@@ -813,7 +813,7 @@ const CODEQL_SHAPE = [
 function yamlLines(text: string): string[] {
   return text
     .replace(/^\uFEFF/, '')
-    .split('\n')
+    .split(/\r?\n/)
     .map((line) => line.replace(/(^|[ \t])#.*$/, '$1').replace(/[ \t\r]+$/, ''))
     .filter((line) => !/^[ \t\r]*$/.test(line));
 }
@@ -824,6 +824,36 @@ function shapeOf(code: string): string[] {
 }
 
 const CODEQL_CONFIG = './.github/codeql/codeql-config.yml';
+
+/**
+ * The problems of the CodeQL config: its top-level keys are listed, `queries:` is the one suite, and no spelling of YAML that
+ * could hide a remote query or pack (flow collections, quoted or explicit keys, anchors, aliases, tags, block scalars) is read.
+ * `paths-ignore:` and `query-filters:` stay free for what they hold.
+ */
+function configProblems(lines: string[]): string[] {
+  const where = 'codeql-config.yml';
+  const problems: string[] = [];
+  const keys = ['name', 'queries', 'paths-ignore', 'query-filters'];
+  for (const line of lines.filter((candidate) => !/^[ \t]/.test(candidate))) {
+    const key = /^([\w-]+):/.exec(line)?.[1];
+    if (key === undefined || !keys.includes(key)) problems.push(`${where}: top-level "${key ?? line}:" — only ${keys.join(', ')}; "packs:" and "paths:" would add what the suite and the ignore list do not show`);
+  }
+  if (lines.filter((line) => line.startsWith('queries:')).length > 1) problems.push(`${where}: "queries:" twice — one list, so no reader takes the other one`);
+  const start = lines.findIndex((line) => /^queries:[ \t]*$/.test(line));
+  const rest = start < 0 ? [] : lines.slice(start + 1);
+  const end = rest.findIndex((line) => !/^[ \t]/.test(line));
+  const entries = end < 0 ? rest : rest.slice(0, end);
+  if (start < 0 || entries.length !== 1 || !/^[ \t]+-[ \t]+uses:[ \t]*security-extended$/.test(entries[0]!)) {
+    problems.push(`${where}: "queries:" must be exactly one entry, "- uses: security-extended" — nothing other than security-extended (found ${entries.map((entry) => entry.trim()).join(' | ') || 'none'})`);
+  }
+  const plain = lines.map((line) => line.replace(/"[^"]*"|'[^']*'/g, '""'));
+  if (lines.some((line) => /^[ \t]*(?:-[ \t]+)*["'][^"']*["'][ \t]*:/.test(line))) problems.push(`${where}: a quoted key — keys are plain`);
+  if (plain.some((line) => /[{}[\]]/.test(line))) problems.push(`${where}: a flow collection ("{…}" or "[…]") — write the block form`);
+  if (plain.some((line) => /^[ \t]*(?:-[ \t]+)*\?([ \t]|$)/.test(line))) problems.push(`${where}: an explicit key ("? …")`);
+  if (plain.some((line) => /(?:^|[ \t:-])[&*!][^\s]/.test(line))) problems.push(`${where}: an anchor, an alias or a tag ("&x", "*x", "!x")`);
+  if (plain.some((line) => /(?::|-)[ \t]*[|>][+-]?\d?$/.test(line))) problems.push(`${where}: a block scalar ("|" or ">")`);
+  return problems;
+}
 
 /**
  * The CodeQL workflow: its job may write code-scanning results, so nothing of the repository runs in it — no `run:` step, no
@@ -909,13 +939,7 @@ export function checkCodeqlWorkflow(repository: string): string[] {
   const config = join(repository, '.github/codeql/codeql-config.yml');
   if (!existsSync(config)) problems.push(`${where}: .github/codeql/codeql-config.yml is missing`);
   else {
-    const lines = yamlLines(readFileSync(config, 'utf8'));
-    const uses = lines.flatMap((line) => /^[ \t]*-[ \t]+uses[ \t]*:(.*)$/.exec(line)?.[1]?.trim() ?? []);
-    if (!uses.includes('security-extended')) problems.push('codeql-config.yml: the queries must include "uses: security-extended"');
-    if (uses.some((query) => query !== 'security-extended')) problems.push('codeql-config.yml: "uses:" other than security-extended — a remote query or pack runs code CodeQL fetches');
-    if (lines.some((line) => /^[ \t]*["']?(?:packs|paths|uses)["']?[ \t]*:/.test(line) && !/^[ \t]*-[ \t]+uses[ \t]*:/.test(line))) {
-      problems.push('codeql-config.yml: "packs:", "paths:" or a "uses:" outside the query list — only queries from the suite and "paths-ignore:"');
-    }
+    problems.push(...configProblems(yamlLines(readFileSync(config, 'utf8'))));
   }
   return problems;
 }

@@ -1432,6 +1432,24 @@ describe('checkCodeqlWorkflow — code scanning', () => {
     expect(problemsOfConfig(realConfig)).toBe('');
   });
 
+  it('reads the config closed: no hidden query, pack or key next to security-extended', () => {
+    const problemsOfConfig = (config: string) => checkCodeqlWorkflow(repositoryWithCodeql(real, config)).join('\n');
+    const suite = '  - uses: security-extended\n';
+    const withQueries = (extra: string) => realConfig.replace(suite, `${suite}${extra}`);
+    expect(problemsOfConfig(withQueries('  - { uses: evil/repo/q.ql@main }\n'))).toContain('nothing other than security-extended');
+    expect(problemsOfConfig(withQueries('  - "uses": evil/repo/q.ql@main\n'))).toContain('nothing other than security-extended');
+    expect(problemsOfConfig(withQueries("  - 'uses': evil/repo/q.ql@main\n"))).toContain('a quoted key');
+    expect(problemsOfConfig(`${realConfig}other: x\n`)).toContain('top-level "other:"');
+    expect(problemsOfConfig(`${realConfig}query-filters:\n  - exclude: { id: js/x }\n`)).toContain('a flow collection');
+    expect(problemsOfConfig(`${realConfig}query-filters:\n  - "exclude":\n      id: js/x\n`)).toContain('a quoted key');
+    expect(problemsOfConfig(`${realConfig}query-filters:\n  - &f\n    exclude:\n      id: js/x\n`)).toContain('an anchor');
+    expect(problemsOfConfig(`${realConfig}query-filters:\n  - ? exclude\n    : x\n`)).toContain('an explicit key');
+    expect(problemsOfConfig(`${realConfig}query-filters:\n  - exclude: |\n      id: js/x\n`)).toContain('a block scalar');
+    expect(problemsOfConfig(`${realConfig}query-filters:\n  - exclude:\n      id: js/foo\n`)).toBe('');
+    expect(problemsOfConfig(`${realConfig}queries:\n  - uses: security-extended\n`)).toContain('"queries:" twice');
+    expect(problemsOfConfig(realConfig.replaceAll('\n', '\r\n'))).toBe('');
+  });
+
   it('wants the config file, with the security-extended suite', () => {
     expect(checkCodeqlWorkflow(repositoryWithCodeql(real, null)).join()).toContain('codeql-config.yml is missing');
     expect(checkCodeqlWorkflow(repositoryWithCodeql(real, realConfig.replaceAll('security-extended', 'security-and-quality'))).join()).toContain('security-extended');
