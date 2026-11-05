@@ -894,7 +894,7 @@ export function checkCodeqlWorkflow(repository: string): string[] {
   if (/\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token)|GITHUB_TOKEN/.test(code)) problems.push(`${where}: a secret or the token — the job must hold none beyond its own grants`);
   const buildModes = [...code.matchAll(/^\s*build-mode\s*:(.*)$/gm)].map((match) => match[1]!.trim());
   if (buildModes.length === 0 || buildModes.some((mode) => mode !== 'none')) problems.push(`${where}: every "build-mode:" must be "none" — the analysis reads the source and builds nothing`);
-  if (!new RegExp(`^\\s*config-file:\\s*${CODEQL_CONFIG.replace(/[./]/g, '\\$&')}\\s*$`, 'm').test(code)) {
+  if (!new RegExp(`^\\s*config-file:\\s*${RegExp.escape(CODEQL_CONFIG)}\\s*$`, 'm').test(code)) {
     problems.push(`${where}: "config-file: ${CODEQL_CONFIG}" — the scanned paths and the query suite live in the repository`);
   }
   const languages = /^\s*language:\s*\[([^\]]*)\]\s*$/m.exec(code)?.[1]?.split(',').map((language) => language.trim()).sort().join();
