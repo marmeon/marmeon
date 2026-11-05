@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ConsoleLogger } from './logger.ts';
+import { createApplication } from './application.ts';
+import { Redactor } from './redact.ts';
 import { runWithJob, runWithRequest, runWithTask } from './request-context.ts';
 
 describe('ConsoleLogger', () => {
@@ -9,6 +11,18 @@ describe('ConsoleLogger', () => {
       runWithRequest({ requestId: 'real-request' }, () => new ConsoleLogger().info('Hook', { requestId: 'forged', level: 'fatal', user: 7 }));
       const data = JSON.parse(String(log.mock.calls[0]![0]).replace(/^\[info\] Hook /, '')) as Record<string, unknown>;
       expect(data).toEqual({ requestId: 'real-request', 'context.requestId': 'forged', 'context.level': 'fatal', user: 7 });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('redacts a key the framework renames (level) before it is renamed', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
+    app.container.make(Redactor).addKeys('level');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      new ConsoleLogger({}, app).info('Hook', { level: 'called-s3cret' });
+      expect(String(log.mock.calls[0]![0])).not.toContain('called-s3cret');
     } finally {
       log.mockRestore();
     }

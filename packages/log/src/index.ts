@@ -82,11 +82,11 @@ class PinoLogger implements Logger {
   }
   child(bindings: LogContext): Logger {
     // pino writes a child's bindings once, at creation, past `formatters.log` and `formatters.bindings` (it resets the latter for
-    // a child) — so they are renamed, redacted and, for a terminal, escaped here, in this order.
+    // a child) — so they are redacted, renamed and, for a terminal, escaped here, in this order: a name the app redacts (`msg`)
+    // is judged as written.
     // A binding that names a field pino or this logger writes itself (`time`, `level`, `msg`, `appEnv`) would be written a second
     // time, and parsers take the last one — it becomes `context.<key>`, as in the context of a call.
-    const renamed = Object.fromEntries(Object.entries(bindings).map(([key, value]) => [PINO_OWN_FIELDS.has(key) ? `context.${key}` : key, value]));
-    const redacted = this.#redactor.log(renamed);
+    const redacted = Object.fromEntries(Object.entries(this.#redactor.log(bindings)).map(([key, value]) => [PINO_OWN_FIELDS.has(key) ? `context.${key}` : key, value]));
     return new PinoLogger(this.#pino.child(this.#terminal ? terminalSafeEntry(redacted) : redacted), this.#app, bindings, this, this.#terminal);
   }
 
@@ -177,9 +177,9 @@ export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions 
       level: config.level,
       // The app's environment on every entry (`APP_ENV`, informative) — a log shipper tells one deployment from another by it.
       base: config.environment === undefined ? undefined : { appEnv: config.environment },
-      // The app's Redactor: sensitive keys at any depth, an error under any key as type, message and stack, masked.
+      // Runs after the redaction in `mixinMergeStrategy`: in pretty mode, only escapes what pino-pretty prints outside JSON.
       formatters: {
-        log: (object) => (config.format === 'pretty' ? terminalSafeEntry(redactor.log(object)) : redactor.log(object)) as Record<string, unknown>,
+        log: (object) => (config.format === 'pretty' ? terminalSafeEntry(object) : object) as Record<string, unknown>,
         // The root's bindings, `base` (undefined without an environment); a child's go through `PinoLogger.child()`.
         bindings: (bindings) => (config.format === 'pretty' && bindings ? terminalSafeEntry(bindings) : bindings),
       },
@@ -199,7 +199,9 @@ export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions 
       // A key of the call's context that names a field of the framework is written as `context.<key>`: the mixin's values and
       // pino's own `level`, `time` and `msg` cannot be overridden by logged data.
       // A child's bindings are renamed for `level`, `time`, `msg` and `appEnv` only (`child()`); the framework binds `task` and the like itself.
-      mixinMergeStrategy: (mergeObject, mixinObject) => Object.assign({}, withoutFrameworkFields(mergeObject as LogContext), mixinObject),
+      // The app's Redactor: sensitive keys at any depth, an error under any key as type, message and stack, masked. The call's
+      // context and the mixin's values are redacted here, before the rename: a name the app redacts (`msg`) is judged as written.
+      mixinMergeStrategy: (mergeObject, mixinObject) => Object.assign({}, withoutFrameworkFields(redactor.log(mergeObject as LogContext)), redactor.log(mixinObject as LogContext)),
       mixin: (_merge, _level, instance) => {
         const added = sources?.current();
         return withoutBound(added ? { ...currentLogContext(), ...added } : currentLogContext(), instance);

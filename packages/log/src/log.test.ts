@@ -342,6 +342,20 @@ describe('@marmeon/log', () => {
     expect(written.join(''), JSON.stringify(written)).not.toMatch(/bound-s3ss|tenant-k3y/);
   });
 
+  it('redacts a key the framework renames (msg, time) before it is renamed — a call\'s context and a child\'s bindings', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
+    app.container.make(Redactor).addKeys('msg', 'time');
+    const raw: string[] = [];
+    const stream = new Writable({ write: (chunk, _encoding, done) => (raw.push(String(chunk)), done()) });
+    const logger = createPinoLogger({ level: 'info', format: 'json' }, { destination: stream, app });
+    logger.child({ msg: 'bound-s3cret' }).info('Child');
+    logger.info('Call', { time: 'called-s3cret' });
+    const all = raw.join('');
+    expect(all).not.toMatch(/bound-s3cret|called-s3cret/);
+    expect(JSON.parse(raw[0]!)).toMatchObject({ 'context.msg': '[redacted]' });
+    expect(JSON.parse(raw[1]!)).toMatchObject({ 'context.time': '[redacted]' });
+  });
+
   it('writes an error under any key with its type, message and stack — masked like under err, never as {}', () => {
     const { lines, raw, logger } = capture();
     const failure = () => Object.assign(new TypeError('import failed for password=errpw', { cause: new Error('socket token=c4use') }), { code: 'EIMPORT', secret: 'own-field' });
