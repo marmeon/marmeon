@@ -1,4 +1,4 @@
-import { type Stats, closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, writeFileSync, writeSync } from 'node:fs';
+import { type Stats, closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
 import { dirname, relative } from 'node:path';
 import { escapesRoot } from '@marmeon/core/internal';
 import type { CommandInput } from './command.ts';
@@ -81,7 +81,7 @@ export function writeProjectFile(file: string, contents: string): void {
     const entry = fstatSync(fd);
     if (!entry.isFile() || entry.nlink > 1) throw new Error('A hard link or no regular file at the name of the file, and the command would write through it.');
     ftruncateSync(fd);
-    writeSync(fd, contents);
+    writeFileSync(fd, contents); // writes to the end on the checked descriptor, also after a short write
   } finally {
     closeSync(fd);
   }
