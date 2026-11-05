@@ -128,12 +128,13 @@ function decodeEntities(text: string): string {
 const LOADING_ATTRIBUTE = String.raw`(?:src|poster|background|background-url|icon-wrapped-url|icon-unwrapped-url|left-icon|right-icon)`;
 const VALUE = String.raw`\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))`;
 
-/** URLs a mail would load, as written in `markup`: images, backgrounds, stylesheets, SVG images, `url()` and `@import`. */
-function loadedUrls(markup: string): string[] {
+/** @internal — URLs a mail would load, as written in `markup`: images, backgrounds, stylesheets, SVG images, `url()` and `@import`. */
+export function loadedUrls(markup: string): string[] {
   const text = decodeEntities(markup);
   const urls: string[] = [];
   const value = (match: RegExpMatchArray) => (match[1] ?? match[2] ?? match[3] ?? '').trim();
-  for (const match of text.matchAll(new RegExp(String.raw`<(?:link|image|mj-font)\b[^>]*?\bhref${VALUE}`, 'gi'))) urls.push(value(match));
+  // Stops at the next `<`: decoded user text (`&lt;link`) turns into tag starts, and a scan must not run on into the next one.
+  for (const match of text.matchAll(new RegExp(String.raw`<(?:link|image|mj-font)\b[^<>]*?\bhref${VALUE}`, 'gi'))) urls.push(value(match));
   for (const match of text.matchAll(new RegExp(String.raw`\bsrcset${VALUE}`, 'gi'))) for (const candidate of value(match).split(',')) urls.push(candidate.trim().split(/\s+/)[0]!);
   for (const match of text.matchAll(new RegExp(String.raw`\b${LOADING_ATTRIBUTE}${VALUE}`, 'gi'))) urls.push(value(match));
   for (const match of text.matchAll(/url\(\s*["']?([^"')]+)/gi)) urls.push(match[1]!.trim());

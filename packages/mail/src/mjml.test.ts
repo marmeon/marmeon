@@ -2,7 +2,7 @@ import { Html } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
 import { raw } from './html.ts';
-import { fromMjml, Mjml, mjml } from './mjml.ts';
+import { fromMjml, loadedUrls, Mjml, mjml } from './mjml.ts';
 
 describe('mjml', () => {
   it('makes an Mjml that is an Html', () => {
@@ -195,5 +195,24 @@ describe('mjml', () => {
         }
       });
     });
+  });
+});
+
+describe('loadedUrls', () => {
+  it('finds the href of an mj-font, a link and an image, written out or as entities', () => {
+    expect(loadedUrls('<mj-font name="B" href="https://a.test/f.css" />')).toEqual(['https://a.test/f.css']);
+    expect(loadedUrls('<link rel="stylesheet" href=\'https://b.test/s.css\'>')).toEqual(['https://b.test/s.css']);
+    expect(loadedUrls('<link href="h&#116;tps://c.test/x.css">')).toEqual(['https://c.test/x.css']);
+    expect(loadedUrls('<image href=https://d.test/i.svg>')).toEqual(['https://d.test/i.svg']);
+  });
+
+  it('does not take an href of a later tag for the tag it follows', () => {
+    expect(loadedUrls('<link rel="x"> <a href="https://e.test/">')).toEqual([]);
+    expect(loadedUrls('&lt;link &lt;link href="https://f.test/s.css">')).toEqual(['https://f.test/s.css']);
+    expect(loadedUrls('&lt;link <a href="https://e.test/">')).toEqual([]);
+  });
+
+  it('misses an href behind a decoded < in an earlier attribute, which leaves the host unallowed', () => {
+    expect(loadedUrls('<mj-font name="a&lt;b" href="https://g.test/">')).toEqual([]);
   });
 });

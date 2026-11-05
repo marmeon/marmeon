@@ -59,6 +59,21 @@ describe('html``', () => {
     const markup = String(html`<style>p{color:red}</style><h1>Hi &amp; welcome</h1><p>Line<br>two</p><ul><li>one</li><li>two</li></ul><p><a href="${'https://x.test/?a=1&b=2'}">Go</a></p>`);
     expect(textFromHtml(markup)).toBe('Hi & welcome\n\nLine\ntwo\n\n- one\n- two\n\nGo (https://x.test/?a=1&b=2)');
   });
+
+  it('drops the blanks at the ends of lines and the indentation of compiled templates', () => {
+    expect(textFromHtml('<div>\n    <p>one \t </p>\n    <p>two</p>\n  </div>')).toBe('one\n\ntwo');
+    expect(textFromHtml('<p>a</p> \t \n \t <p>b</p>')).toBe('a\n\nb');
+    expect(textFromHtml('<p>a  b\tc</p>')).toBe('a  b\tc');
+  });
+
+  it('drops a line of blanks between paragraphs', () => {
+    expect(textFromHtml('<p>one</p>\n   \n<p>two</p>')).toBe('one\n\ntwo');
+    expect(textFromHtml('<p>one</p>\n   \n   \n   \n<p>two</p>')).toBe('one\n\ntwo');
+  });
+
+  it('leaves an entity beyond Unicode as written instead of throwing', () => {
+    expect(textFromHtml('<p>a &#99999999; b &#128512;</p>')).toBe('a &#99999999; b \u{1F600}');
+  });
 });
 
 class ResetMail implements Mailable {
