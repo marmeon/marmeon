@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
@@ -107,7 +107,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(dockerfile).not.toContain('required=true');
     // The last instruction of the build stage removes the file; the run stage gets /app only through that stage.
     const last = build!.split('\n').filter((line) => !line.startsWith('#') && line !== '').join('\n').split(/\n(?=[A-Z]+ )/).pop()!;
-    expect(last).toMatch(/^RUN .*&& find \. -path \.\/node_modules -prune -o -name \.npmrc -type f -exec rm -f \{\} \+$/s);
+    expect(last).toMatch(/^RUN .*&& find \. -path \.\/node_modules -prune -o -name \.npmrc \\\( -type f -o -type l \\\) -exec rm -f \{\} \+$/s);
     expect(last).toContain('marmeon discover');
     expect(run).toMatch(/^\S/);
     expect(run.split('\n').filter((line) => /^(COPY|ADD)\b/.test(line))).toEqual(['COPY --from=build --chmod=a+rX /app ./']);
@@ -125,6 +125,15 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     for (const quiet of ['//r.example/:_authToken=${NPM_TOKEN}\n', 'fund=false\n', '# //r.example/:_authToken=abc\n; _auth=abc\n']) {
       expect(credentials(quiet).stderr).not.toContain('registry credential');
     }
+  });
+
+  it('warns when the project .npmrc is a link: its target is copied into the image', () => {
+    const root = app({ 'package.json': JSON.stringify({ name: 'blog' }), 'package-lock.json': '{}', 'config/npmrc.credentials': 'fund=false\n' });
+    symlinkSync('config/npmrc.credentials', join(root, '.npmrc'));
+    const result = makeDocker(root);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('.npmrc is a link: its target is copied into the image with the rest of the app');
+    expect(result.file('Dockerfile')).toContain('\\( -type f -o -type l \\)');
   });
 
   it('refuses an app without a lockfile, two proxies, and existing files without --force', () => {

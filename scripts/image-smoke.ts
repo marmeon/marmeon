@@ -190,8 +190,11 @@ async function main(): Promise<number> {
       const leaked = listed.filter((file) => file.startsWith('.env'));
       if (leaked.length > 0) throw new SmokeError(`the image contains ${leaked.join(', ')} — .dockerignore must keep every .env* out.`);
       if (listed.includes('.npmrc')) throw new SmokeError('the image contains .npmrc — the build stage must remove it before the run stage copies the app.');
-      const mounted = docker.run(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'test ! -e /root/.npmrc && test -z "$(find /app -name .npmrc -not -path "/app/node_modules/*")"'], { expect: 'any' });
-      if (mounted.code !== 0) throw new SmokeError('the image contains an .npmrc under /app or /root/.npmrc.');
+      // As root: the user node cannot traverse /root, and `test ! -e` would pass on the permission error.
+      const asRoot = docker.run(['run', '--rm', '--user', 'root', '--entrypoint', 'sh', image, '-c', 'test ! -e /root/.npmrc'], { expect: 'any' });
+      if (asRoot.code !== 0) throw new SmokeError('the image contains /root/.npmrc.');
+      const mounted = docker.run(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'test -z "$(find /app -name .npmrc -not -path "/app/node_modules/*")"'], { expect: 'any' });
+      if (mounted.code !== 0) throw new SmokeError('the image contains an .npmrc under /app.');
       if (!listed.includes('dist') || !listed.includes('.marmeon')) throw new SmokeError(`the image has no build (dist/, .marmeon/): ${listed.join(' ')}`);
       // Production dependencies only: the dev dependencies of the build stage are not in the image, not even unlinked.
       const store = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "const fs = require('fs'); console.log([...(fs.existsSync('node_modules/.pnpm') ? fs.readdirSync('node_modules/.pnpm') : []), ...fs.readdirSync('node_modules')].join('\\n'))"]).output.split('\n');

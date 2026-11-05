@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, TESTED_PNPM, type DockerApp, type PackageManager, type Proxy } from '../docker.ts';
@@ -50,6 +50,9 @@ export class MakeDockerCommand {
       output.success(`Created ${file}`);
     }
     for (const note of app.notes) output.warn(note);
+    if (lstatSync(join(root, '.npmrc'), { throwIfNoEntry: false })?.isSymbolicLink()) {
+      output.warn('.npmrc is a link: its target is copied into the image with the rest of the app. Keep credentials out of the build context, or pass them as a BuildKit secret (https://marmeon.com/docs/deployment#a-private-registry).');
+    }
     if (app.docker.installFiles.includes('.npmrc')) {
       const keys = literalCredentials(readFileSync(join(root, '.npmrc'), 'utf8'));
       if (keys.length > 0) {

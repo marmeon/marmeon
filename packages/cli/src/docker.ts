@@ -79,7 +79,7 @@ RUN NODE_ENV=production node_modules/.bin/marmeon build
 # and a token in the file would ship with the image — .dockerignore cannot drop it, the build stage needs it.
 RUN ${cache} ${secret} ${prune} \\
  && node_modules/.bin/marmeon discover \\
- && find . -path ./node_modules -prune -o -name .npmrc -type f -exec rm -f {} +
+ && find . -path ./node_modules -prune -o -name .npmrc \\( -type f -o -type l \\) -exec rm -f {} +
 
 # ── Run: Node and the app, nothing to build with ───────────────────────────────────────────────────────────────────────
 FROM \${NODE_IMAGE}

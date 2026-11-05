@@ -157,7 +157,7 @@ started.
 The Dockerfile has two stages, both on `node:26-slim`:
 
 1. **build** installs every dependency, runs `marmeon build`, then keeps the production dependencies alone and runs
-   `marmeon discover` for exactly these, and removes every `.npmrc` before the run stage copies the app. With a `pnpm-lock.yaml` it installs pnpm at the version `package.json` pins; with a
+   `marmeon discover` for exactly these, and removes every `.npmrc` outside `node_modules` before the run stage copies the app. With a `pnpm-lock.yaml` it installs pnpm at the version `package.json` pins; with a
    `package-lock.json` it uses `npm ci`.
 2. **run** copies the app, owned by root and readable for everyone, makes `storage/` the only folder the user `node` may write,
    and sets `NODE_ENV=production`, `HOST=0.0.0.0` and `PORT=3000`. A health check fetches `/up` with Node's own `fetch`.
@@ -183,6 +183,8 @@ or a cache export with `--cache-to type=registry,mode=max`, publishes the `COPY`
 readable by anyone who can pull it. The secret keeps the token out: the Dockerfile mounts the `npmrc` secret as `/root/.npmrc` for both
 installs, next to the project's file, and BuildKit skips the mount when you pass none. The token stays in no layer.
 
+The secret is mounted while the install runs, so a dependency's install script can read it: use a token that can only read packages.
+
 When you pass the secret, the project's `.npmrc` holds no auth line for that registry, only settings: npm lets the project file win over
 `/root/.npmrc` key by key, so a `_authToken=${NPM_TOKEN}` there sends the text `${NPM_TOKEN}` instead of the secret's token.
 
@@ -207,7 +209,7 @@ secrets:
 
 `make:docker` warns when the project's `.npmrc` holds a literal `_authToken`, `_auth` or `_password` (`${NPM_TOKEN}` is no literal credential, but drop it as well when you pass the secret). An
 app that has written its Dockerfile before runs `marmeon make:docker --force` again, or adds the changes by hand: the secret
-mount on both install steps and a `find` that deletes every `.npmrc` outside `node_modules` at the end of the last `RUN` of the build stage. Remove the auth line
+mount on both install steps and a `find` that deletes every `.npmrc` file or link outside `node_modules` at the end of the last `RUN` of the build stage. Remove the auth line
 from the project's `.npmrc` when you use the secret, and rotate a token that was in a pushed image or a pushed build cache.
 
 ### Storage and a read-only file system
