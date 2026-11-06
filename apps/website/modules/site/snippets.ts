@@ -136,13 +136,10 @@ export type NoteChanges = RowUpdate<'notes'>;
     file: 'modules/user-profile/policies/ProfileLinkPolicy.ts',
     source: { repo: 'apps/web-app/modules/user-profile/policies/ProfileLinkPolicy.ts' },
     lang: 'ts',
-    code: `/** What the policy needs of a link: whose it is. A bound row has it, and so has a link read for the profile page. */
-type OwnedLink = Pick<Row<'profile_links'>, 'user_id'>;
+    code: `type OwnedLink = Pick<Row<'profile_links'>, 'user_id'>;
 
 export class ProfileLinkPolicy {
-  /** Remove a link: only from your own profile. (The route already looks the link up within its user, so this is a second check.) */
   delete(user: AuthUser, link: OwnedLink) {
-    // The argument is a translation key: the exception handler turns it into the message.
     return link.user_id === user.id || deny('user-profile.validation.own_profile');
   }
 }
@@ -157,7 +154,6 @@ export class ProfileLinkPolicy {
       if (created.ok) await this.#events.dispatch(new Registered(created.value));
       return created;
     });
-    // Taken — the unique index decides (the schema never asks; two sign-ups at once included): a field error.
     if (!created.ok) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
 `,
   },
@@ -167,7 +163,6 @@ export class ProfileLinkPolicy {
     lang: 'ts',
     code: `import { defineMigration } from '@marmeon/database';
 
-/** The language a user chose (the switcher) — mails reach them in it, and a new device starts in it. */
 export default defineMigration({
   up: (schema) => schema.alter('users', (table) => table.string('locale', 35).nullable()),
   down: (schema) => schema.alter('users', (table) => table.dropColumn('locale')),
@@ -180,7 +175,6 @@ export default defineMigration({
     lang: 'ts',
     code: `import { rules as r } from '@marmeon/validation';
 
-/** What a note's form sends: a title, and a body that may stay empty. Nothing else — the owner is the signed-in user. */
 export const noteFields = r.object({
   title: r.string().trim().required().max(120),
   body: r.string().max(10_000),
@@ -193,10 +187,7 @@ export const noteFields = r.object({
     lang: 'ts',
     code: `  async handle(payload: JobPayload<typeof SendAccountExportJob>, job: JobContext): Promise<void> {
     const user = await this.#users.find(payload.userId);
-    // The request checked that the address is confirmed; the job checks it again, since the account may have changed since:
-    // a new address is unconfirmed until its owner confirms it. No mail, and no retry that could never succeed.
     if (!user || user.email_verified_at == null) return job.discard('the account is gone or its address is not confirmed');
-    // job.id stays the same over every attempt and every retry: a record that comes back after the mail went out sends nothing more.
     await job.once(\`account-export:\${job.id}\`, () => this.#mailer.send(new AccountExportMail(user)));
   }
 `,
@@ -221,7 +212,6 @@ export const noteFields = r.object({
     lang: 'ts',
     code: `export const schedule = defineSchedule((s) => {
   s.job(RebuildMemberStatsJob).hourly();
-  // "Download my data" files (the private disk): gone once their five-minute link has expired.
   s.call(PruneDataExports).everyTenMinutes().withoutOverlapping().onOneServer().name('user-profile.prune-data-exports');
 });
 `,

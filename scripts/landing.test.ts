@@ -193,7 +193,7 @@ describe('landingProblems', () => {
     const root = repository();
     mkdirSync(join(root, 'examples/notes/files/modules'), { recursive: true });
     const cut = 'export class A {\n  a() {\n    return 1;\n  }\n\n  b() {\n    return 2;\n  }\n';
-    writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), cut);
+    writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), `${cut}}\n`);
     expect(landingProblems(root, { batteryCut: app({ code: cut }), other: app({ code: cut }) }, [])).toEqual(['snippet "batteryCut": a battery excerpt must be a complete unit, a "}" is missing.']);
   });
 
