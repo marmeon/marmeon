@@ -1,7 +1,8 @@
 /**
  * The code on the landing page — server only: `SiteSnippets` highlights it once at boot, the browser gets markup. Every snippet
- * is a file of the notes example the docs build up (`docs/migrations.md`, `docs/queries.md`, `docs/controllers.md`, …); when
- * the API changes, these change with it. A snippet shows no comment lines: the file it comes from may have them.
+ * is a piece of a file of the notes example the docs build up (`docs/migrations.md`, `docs/queries.md`, `docs/controllers.md`, …)
+ * or of the example app `apps/web-app`; when the API changes, these change with it. A snippet shows no comment lines: the file it
+ * comes from may have them.
  */
 export type SnippetSource =
   /** A file of the smoke app (starter kit, `examples/notes`, `examples/recipes`, `examples/landing`); a `*` in the last segment stands for one file name, as in an overlay's `edits.json`. */
@@ -10,7 +11,7 @@ export type SnippetSource =
   | { readonly repo: string };
 
 export interface Snippet {
-  /** The file name shown above the code; none for an excerpt. */
+  /** The name of the file the code is from, shown above it; none for a line shown on its own. */
   readonly file?: string;
   /** The type-checked file the code is a word-for-word piece of; `scripts/landing.ts` compares them. */
   readonly source: SnippetSource;
@@ -130,6 +131,123 @@ export type NoteChanges = RowUpdate<'notes'>;
 `,
   },
   routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
+  // The batteries section: one excerpt of 4 to 8 lines per package, each a word-for-word piece of the file it names.
+  batteryAuth: {
+    file: 'modules/notes/policies/NotePolicy.ts',
+    source: { app: 'modules/notes/policies/NotePolicy.ts' },
+    lang: 'ts',
+    code: `export class NotePolicy {
+  view(user: AuthUser, record: Row<'notes'>) {
+    return record.user_id === user.id || denyAsNotFound();
+  }
+
+  update(user: AuthUser, record: Row<'notes'>) {
+    return record.user_id === user.id || denyAsNotFound();
+  }
+`,
+  },
+  batteryDatabase: {
+    file: 'modules/auth/controllers/RegisterController.ts',
+    source: { repo: 'apps/web-app/modules/auth/controllers/RegisterController.ts' },
+    lang: 'ts',
+    code: `    const created = await this.#connections.transaction(async () => {
+      const created = await this.#users.register({ name, email, password: hash, locale });
+      if (created.ok) await this.#events.dispatch(new Registered(created.value));
+      return created;
+    });
+    // Taken — the unique index decides (the schema never asks; two sign-ups at once included): a field error.
+    if (!created.ok) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
+`,
+  },
+  batteryMigrations: {
+    file: 'modules/auth/migrations/2026_10_01_180000_add_locale_to_users_table.ts',
+    source: { repo: 'apps/web-app/modules/auth/migrations/2026_10_01_180000_add_locale_to_users_table.ts' },
+    lang: 'ts',
+    code: `import { defineMigration } from '@marmeon/database';
+
+/** The language a user chose (the switcher) — mails reach them in it, and a new device starts in it. */
+export default defineMigration({
+  up: (schema) => schema.alter('users', (table) => table.string('locale', 35).nullable()),
+  down: (schema) => schema.alter('users', (table) => table.dropColumn('locale')),
+});
+`,
+  },
+  batteryValidation: {
+    file: 'modules/notes/noteFields.ts',
+    source: { app: 'modules/notes/noteFields.ts' },
+    lang: 'ts',
+    code: `import { rules as r } from '@marmeon/validation';
+
+/** What a note's form sends: a title, and a body that may stay empty. Nothing else — the owner is the signed-in user. */
+export const noteFields = r.object({
+  title: r.string().trim().required().max(120),
+  body: r.string().max(10_000),
+});
+`,
+  },
+  batteryQueue: {
+    file: 'modules/auth/jobs/SendWelcomeMailJob.ts',
+    source: { repo: 'apps/web-app/modules/auth/jobs/SendWelcomeMailJob.ts' },
+    lang: 'ts',
+    code: `export class SendWelcomeMailJob {
+  /** Stable — the queue stores this name, never the class name. */
+  static readonly job = 'auth.send-welcome-mail';
+  static readonly schema = r.object({ userId: r.integer() });
+  static readonly tries = 5;
+  /** Seconds before the 2nd, 3rd, … attempt (the last repeats) — an SMTP server that is down for a while. */
+  static readonly backoff = [10, 60, 300];
+  static readonly timeout = 30;
+`,
+  },
+  batteryMail: {
+    file: 'modules/notes/mail/NoteSharedMail.ts',
+    source: { app: 'modules/notes/mail/NoteSharedMail.ts' },
+    lang: 'ts',
+    code: `  envelope() {
+    return { to: this.#to, subject: this.#t.get('notes.mail.shared.subject') };
+  }
+
+  content() {
+    const text = this.#t.get('notes.mail.shared.intro', { title: this.#title });
+    return mjml\`<mjml><mj-body><mj-section><mj-column><mj-text>\${text}</mj-text></mj-column></mj-section></mj-body></mjml>\`;
+  }
+`,
+  },
+  batteryScheduler: {
+    file: 'modules/user-profile/schedule.ts',
+    source: { repo: 'apps/web-app/modules/user-profile/schedule.ts' },
+    lang: 'ts',
+    code: `export const schedule = defineSchedule((s) => {
+  s.job(RebuildMemberStatsJob).hourly();
+  // "Download my data" files (the private disk): gone once their five-minute link has expired.
+  s.call(PruneDataExports).everyTenMinutes().withoutOverlapping().onOneServer().name('user-profile.prune-data-exports');
+});
+`,
+  },
+  batteryStorage: {
+    file: 'modules/user-profile/controllers/ExportMyDataController.ts',
+    source: { repo: 'apps/web-app/modules/user-profile/controllers/ExportMyDataController.ts' },
+    lang: 'ts',
+    code: `    const disk = this.#storage.disk('local');
+    const key = dataExportKey(user.id);
+    await disk.put(key, JSON.stringify(data, null, 2), { contentType: 'application/json' });
+    return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: \`my-data-\${user.id}.json\` })).status(303);
+`,
+  },
+  batteryModules: {
+    file: 'modules/notes/index.ts',
+    source: { app: 'modules/notes/index.ts' },
+    lang: 'ts',
+    code: `import { defineModule } from '@marmeon/core';
+import routes from './routes.ts';
+
+export default defineModule({
+  name: 'notes',
+  migrations: new URL('./migrations/', import.meta.url),
+  routes,
+});
+`,
+  },
   islandController: {
     file: 'modules/site/controllers/ShowRenderClockController.ts',
     source: { repo: 'apps/website/modules/site/controllers/ShowRenderClockController.ts' },

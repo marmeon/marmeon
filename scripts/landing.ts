@@ -104,7 +104,7 @@ function firstMissingLine(code: string, text: string): string {
 /**
  * What is wrong with the landing's snippets and typo chain, one message each: a snippet without a source, a `repo` source that
  * is missing or does not hold the code, an `app` path that is absolute, leaves the app or holds more than one `*`, a `file`
- * label that does not fit the source, a snippet whose `app` file is one of `examples/landing/files` or `examples/notes/files` (no
+ * label that does not fit the source, a `battery…` snippet of fewer than 4 or more than 8 lines, a snippet whose `app` file is one of `examples/landing/files` or `examples/notes/files` (no
  * edit changes it afterwards) and does not hold the code, and a chain step whose `find` is not exactly once, on one line, in its
  * snippet, whose `replace` equals `find` or whose snippet is not from the app. A file a generator writes or an edit changes is for
  * `pnpm pack:smoke`. Empty when all is well.
@@ -147,6 +147,10 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
     } else {
       problems.push(`snippet "${name}": its source must be { app } or { repo }.`);
     }
+  }
+  for (const [name, snippet] of Object.entries(snippets)) {
+    const lines = snippet.code.replace(/\n$/, '').split('\n').length;
+    if (name.startsWith('battery') && (lines < 4 || lines > 8)) problems.push(`snippet "${name}": a battery excerpt has 4 to 8 lines, not ${lines}.`);
   }
   for (const step of chain) {
     const snippet = snippets[step.snippet];

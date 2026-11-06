@@ -169,6 +169,15 @@ describe('landingProblems', () => {
     ]);
   });
 
+  it('names a battery excerpt of fewer than 4 or more than 8 lines, and lets other snippets be any length', () => {
+    const lines = (count: number) => `${Array.from({ length: count }, (_, index) => `const a${index} = 1;`).join('\n')}\n`;
+    const snippets = { batteryShort: app({ code: lines(3) }), batteryLong: app({ code: lines(9) }), batteryFour: app({ code: lines(4) }), batteryEight: app({ code: lines(8) }), long: app({ code: lines(12) }) };
+    const root = repository();
+    mkdirSync(join(root, 'examples/notes/files/modules'), { recursive: true });
+    writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), `${lines(12)}`);
+    expect(landingProblems(root, snippets, [])).toEqual(['snippet "batteryShort": a battery excerpt has 4 to 8 lines, not 3.', 'snippet "batteryLong": a battery excerpt has 4 to 8 lines, not 9.']);
+  });
+
   it('names a chain step whose error has no TS code or no one-line message', () => {
     const snippets = { a: app({ code: 'a a\n' }) };
     const typo = { find: 'a a', replace: 'b' };

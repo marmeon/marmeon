@@ -8,5 +8,15 @@
     "file": "modules/notes/routes.ts",
     "find": "  const note = notes.bind('note', NoteRepository);\n",
     "replace": "  const note = notes.bind('note', NoteRepository);\n  note.get('/:note', ShowNoteController).name('show');\n"
+  },
+  {
+    "file": "modules/notes/lang/en.ts",
+    "find": "    deleted: 'Note deleted.',\n  },\n",
+    "replace": "    deleted: 'Note deleted.',\n  },\n  mail: {\n    shared: {\n      subject: 'A note was shared with you',\n      intro: 'A note was shared with you: {title}',\n    },\n  },\n"
+  },
+  {
+    "file": "modules/notes/lang/de.ts",
+    "find": "    deleted: 'Notiz gelöscht.',\n  },\n",
+    "replace": "    deleted: 'Notiz gelöscht.',\n  },\n  mail: {\n    shared: {\n      subject: 'Eine Notiz wurde mit dir geteilt',\n      intro: 'Eine Notiz wurde mit dir geteilt: {title}',\n    },\n  },\n"
   }
 ]
