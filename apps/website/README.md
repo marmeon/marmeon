@@ -44,8 +44,10 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   each with its own stylesheet in `styles/landing/` (`base.css` holds what they share).
   Its code lives in `modules/site/snippets.ts` — files of the notes example the docs build up, so keep them in step with the API.
   Every snippet names its `source`, the file it is a piece of (`app`: a file of the smoke app; `repo`: a file of this repository), and
-  `scripts/landing.ts` checks that in `pnpm test`. The seven typos of "one type, end to end" are `modules/site/chain.ts`; the page shows each
-  misspelt line from it (`mistakeLine`).
+  `scripts/landing.ts` checks it: `pnpm test` the `repo` sources and the files of `examples/landing`, `pnpm pack:smoke` every `app` snippet word
+  for word in the smoke app with `examples/landing` laid over it. The seven typos of "one type, end to end" are `modules/site/chain.ts`; the page
+  shows each misspelt line from it (`mistakeLine`). `chain.ts` also holds each typo's compiler error (`error`), which `pnpm pack:smoke`
+  reproduces word for word, so a TypeScript update that rewords it turns that check red until `chain.ts` follows.
   `SiteSnippets` highlights them once at boot with the docs' Shiki and theme (the browser gets markup, no highlighter), and the
   controller hands them to the page. `modules/site` owns the `public` group, the answers' headers and the Content-Security-Policy;
   the version of the framework it shows comes from `@marmeon/core`'s manifest (shared once as `site.version`).

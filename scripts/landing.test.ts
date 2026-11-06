@@ -1,11 +1,11 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CHAIN, mistakeLine, type ChainStepSpec } from '../apps/website/modules/site/chain.ts';
 import type { Snippet } from '../apps/website/modules/site/snippets.ts';
 import type { DemoTarget } from './notes-demo.ts';
 import { SmokeError } from './pack-smoke.ts';
-import { checkLanding, landingProblems } from './landing.ts';
+import { checkLanding, checkTypo, landingProblems } from './landing.ts';
 import { tempDir } from './test/temp-dir.js';
 
 describe('the landing of the repository', () => {
@@ -37,7 +37,7 @@ function repository(file = 'const a = 1;\n') {
 }
 
 const app = (extra: Partial<Snippet> & { source?: unknown } = {}) => ({ lang: 'ts', code: 'const a = 1;\n', source: { app: 'modules/a.ts' }, ...extra }) as Snippet;
-const step = (extra: Partial<ChainStepSpec> = {}): ChainStepSpec => ({ id: 'row', title: 'Row', snippet: 'a', typo: { find: 'a', replace: 'b' }, ...extra }) as ChainStepSpec;
+const step = (extra: Partial<ChainStepSpec> = {}): ChainStepSpec => ({ id: 'row', title: 'Row', snippet: 'a', typo: { find: 'a', replace: 'b' }, error: { code: 'TS2551', message: 'm' }, ...extra }) as ChainStepSpec;
 
 describe('landingProblems', () => {
   it('accepts snippets whose sources are fine', () => {
@@ -93,6 +93,21 @@ describe('landingProblems', () => {
     ]);
   });
 
+  it('names a chain step whose error has no TS code or no one-line message', () => {
+    const snippets = { a: app({ code: 'a a\n' }) };
+    const typo = { find: 'a a', replace: 'b' };
+    const chain = [
+      step({ id: 'row', typo, error: { code: '2322' as never, message: 'm' } }),
+      step({ id: 'route', typo, error: { code: 'TS2322', message: '' } }),
+      step({ id: 'props', typo, error: { code: 'TS2322', message: 'a\nb' } }),
+    ];
+    expect(landingProblems(repository(), snippets, chain)).toEqual([
+      'chain step "row": the error code must look like TS2322.',
+      "chain step \"route\": the error message must be the first line of the compiler's message, not empty.",
+      "chain step \"props\": the error message must be the first line of the compiler's message, not empty.",
+    ]);
+  });
+
   it('names a chain step whose find is twice or not in the snippet, whose replace is its find, or whose snippet has a repo source', () => {
     const snippets = { a: app({ code: 'a a\na\n' }), r: { lang: 'ts', code: 'const a = 1;\n', source: { repo: 'apps/web-app/x.ts' } } } as Record<string, Snippet>;
     const chain = [step(), step({ id: 'route', typo: { find: 'zz', replace: 'y' } }), step({ id: 'props', typo: { find: 'a a', replace: 'a a' } }), step({ id: 'form', snippet: 'r' as never, typo: { find: 'const', replace: 'cnst' } }), step({ id: 'migration', snippet: 'missing' as never }), step({ id: 'controller', typo: { find: 'a\na', replace: 'b' } })];
@@ -114,7 +129,7 @@ function smoke(options: { generated?: string; extra?: string[]; tests?: string }
   writeFileSync(join(repo, 'examples/landing/files/modules/a.test.ts'), 'it();\n');
   writeFileSync(join(repo, 'examples/landing/edits.json'), '[]');
   writeFileSync(join(repo, 'examples/landing/commands.json'), JSON.stringify({ beforeCopy: [], afterCopy: ['marmeon route:types'] }));
-  const app = tempDir('marmeon-landing-');
+  const { root: app } = project();
   mkdirSync(join(app, 'modules/dir'), { recursive: true });
   writeFileSync(join(app, 'modules/gen.ts'), options.generated ?? 'const g = 1;\n');
   for (const name of options.extra ?? []) writeFileSync(join(app, 'modules/dir', name), 'const g = 1;\n');
@@ -135,33 +150,113 @@ function smoke(options: { generated?: string; extra?: string[]; tests?: string }
 const generated = (path = 'modules/gen.ts'): Record<string, Snippet> => ({ g: app({ code: 'const g = 1;\n', source: { app: path } }) });
 
 describe('checkLanding', () => {
-  it('lays the overlay on the app, finds each snippet in its file and runs the tools', () => {
+  it('lays the overlay on the app, finds each snippet in its file and runs the tools', async () => {
     const { repo, target, ran } = smoke({ extra: ['x_one.ts'] });
-    checkLanding(target, 'pnpm', repo, { ...generated(), star: app({ code: 'const g = 1;\n', source: { app: 'modules/dir/*_one.ts' } }) });
+    await checkLanding(target, 'pnpm', repo, { ...generated(), star: app({ code: 'const g = 1;\n', source: { app: 'modules/dir/*_one.ts' } }) }, []);
     expect(ran).toEqual(['pnpm exec marmeon route:types', 'pnpm run test --reporter=verbose', 'pnpm run typecheck', 'pnpm run lint --deny-warnings']);
   });
 
-  it('names a snippet that is not in the app file', () => {
+  it('proves each typo of the chain on the app and type-checks it again', async () => {
+    const { repo, target } = smoke();
+    const snippets = { a: app({ code: 'value.length;\n', source: { app: 'a.ts' } }) };
+    await checkLanding(target, 'pnpm', repo, snippets, [TYPO]);
+    await expect(checkLanding(target, 'pnpm', repo, snippets, [{ ...TYPO, error: { code: 'TS2551', message: 'other' } }])).rejects.toThrow(/chain step "row" \(a\.ts:2\)/);
+  });
+
+  it('fails when the app does not type-check at the end', async () => {
+    const { repo, target } = smoke();
+    writeFileSync(join(target.app, 'a.ts'), "const value: string = 1;\n");
+    await expect(checkLanding(target, 'pnpm', repo, generated(), [])).rejects.toThrow(/does not type-check after the typos were put back:\na\.ts\(1,7\): TS2322/);
+  });
+
+  it('names a snippet that is not in the app file', async () => {
     const { repo, target } = smoke({ generated: 'const g = 2;\n' });
-    expect(() => checkLanding(target, 'pnpm', repo, generated())).toThrow(new SmokeError('snippet "g": the code is not in modules/gen.ts: "const g = 1;" is not there.'));
+    await expect(checkLanding(target, 'pnpm', repo, generated(), [])).rejects.toThrow(new SmokeError('snippet "g": the code is not in modules/gen.ts: "const g = 1;" is not there.'));
   });
 
-  it('names a snippet whose file is missing, and a "*" that matches two files or none', () => {
+  it('names a snippet whose file is missing, and a "*" that matches two files or none', async () => {
     const { repo, target } = smoke({ extra: ['x_one.ts', 'y_one.ts'] });
-    expect(() => checkLanding(target, 'pnpm', repo, generated('modules/gone.ts'))).toThrow(/snippet "g": modules\/gone\.ts must match exactly one file of the app, it matches 0\./);
-    expect(() => checkLanding(target, 'pnpm', repo, generated('modules/dir/*_one.ts'))).toThrow(/snippet "g": modules\/dir\/\*_one\.ts must match exactly one file of the app, it matches 2 \(/);
-    expect(() => checkLanding(target, 'pnpm', repo, generated('modules/dir/*_two.ts'))).toThrow(/it matches 0\./);
+    await expect(checkLanding(target, 'pnpm', repo, generated('modules/gone.ts'), [])).rejects.toThrow(/snippet "g": modules\/gone\.ts must match exactly one file of the app, it matches 0\./);
+    await expect(checkLanding(target, 'pnpm', repo, generated('modules/dir/*_one.ts'), [])).rejects.toThrow(/snippet "g": modules\/dir\/\*_one\.ts must match exactly one file of the app, it matches 2 \(/);
+    await expect(checkLanding(target, 'pnpm', repo, generated('modules/dir/*_two.ts'), [])).rejects.toThrow(/it matches 0\./);
   });
 
-  it('fails when a test file of the overlay did not run or the tests did not pass', () => {
-    expect(() => checkLanding(smoke({ tests: ' Tests  1 passed (1)\n' }).target, 'pnpm', smoke().repo, generated())).toThrow(/did not run modules\/a\.test\.ts/);
+  it('fails when a test file of the overlay did not run or the tests did not pass', async () => {
+    await expect(checkLanding(smoke({ tests: ' Tests  1 passed (1)\n' }).target, 'pnpm', smoke().repo, generated(), [])).rejects.toThrow(/did not run modules\/a\.test\.ts/);
     const { repo, target } = smoke({ tests: ' ✓ modules/a.test.ts > a\n Tests  1 failed (1)\n' });
-    expect(() => checkLanding(target, 'pnpm', repo, generated())).toThrow(/tests did not pass/);
+    await expect(checkLanding(target, 'pnpm', repo, generated(), [])).rejects.toThrow(/tests did not pass/);
   });
 
-  it('refuses a snippet whose source is wrong before it touches the app', () => {
+  it('refuses a snippet whose source is wrong before it touches the app', async () => {
     const { repo, target, ran } = smoke();
-    expect(() => checkLanding(target, 'pnpm', repo, generated('../x.ts'))).toThrow(/snippet "g": its app path must be relative/);
+    await expect(checkLanding(target, 'pnpm', repo, generated('../x.ts'), [])).rejects.toThrow(/snippet "g": its app path must be relative/);
     expect(ran).toEqual([]);
+  });
+});
+
+/** A project of one file, `a.ts`, that type-checks with the TypeScript of this repository. */
+function project() {
+  const root = tempDir('marmeon-landing-');
+  mkdirSync(join(root, 'node_modules'), { recursive: true });
+  symlinkSync(realpathSync(join(import.meta.dirname, '../node_modules/typescript')), join(root, 'node_modules/typescript'), 'dir');
+  writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'bundler', types: [] }, include: ['a.ts'] }));
+  const original = "const value: string = 'x';\nvalue.length;\n";
+  writeFileSync(join(root, 'a.ts'), original);
+  return { root, original };
+}
+
+const TYPO: ChainStepSpec = { id: 'row', title: 'Row', snippet: 'a' as never, typo: { find: 'value.length', replace: 'value.lenght' }, error: { code: 'TS2551', message: "Property 'lenght' does not exist on type 'string'. Did you mean 'length'?" } };
+
+describe('checkTypo', () => {
+  it('accepts a typo that fails with the named error on its line, and puts the file back', async () => {
+    const { root, original } = project();
+    await checkTypo(root, 'a.ts', TYPO);
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe(original);
+  });
+
+  it('refuses a typo that compiles', async () => {
+    const { root, original } = project();
+    const step = { ...TYPO, typo: { find: 'value.length', replace: 'value.length;' } };
+    await expect(checkTypo(root, 'a.ts', step)).rejects.toThrow(new SmokeError('chain step "row" (a.ts:2): the typo compiles.'));
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe(original);
+  });
+
+  it('refuses a typo with two errors and lists them', async () => {
+    const { root, original } = project();
+    const step = { ...TYPO, typo: { find: "const value: string = 'x';", replace: "const value: string = 1;\nvalue.lenght;" } };
+    await expect(checkTypo(root, 'a.ts', step)).rejects.toThrow(/expected one error, TS2551 .*, on line 1; the compiler said:\na\.ts\(1,7\): TS2322 .*\na\.ts\(2,7\): TS2551/);
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe(original);
+  });
+
+  it('shows the real message when the stored one is wrong', async () => {
+    const { root, original } = project();
+    const step = { ...TYPO, error: { code: 'TS2551', message: 'something else' } } as const satisfies Partial<ChainStepSpec>;
+    await expect(checkTypo(root, 'a.ts', step)).rejects.toThrow(/the compiler said:\na\.ts\(2,7\): TS2551 Property 'lenght' does not exist on type 'string'\. Did you mean 'length'\?/);
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe(original);
+  });
+
+  it('refuses the right error on another line than the typo', async () => {
+    const { root } = project();
+    // `find` is on line 1; the error it causes is on line 2.
+    writeFileSync(join(root, 'a.ts'), "let value = 'x';\nvalue.length;\n");
+    const step = { ...TYPO, typo: { find: "let value = 'x';", replace: 'let value = 1;' }, error: { code: 'TS2339' as const, message: "Property 'length' does not exist on type 'number'." } };
+    await expect(checkTypo(root, 'a.ts', step)).rejects.toThrow(/expected one error, TS2339 .*, on line 1; the compiler said:\na\.ts\(2,7\): TS2339/);
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe("let value = 'x';\nvalue.length;\n");
+  });
+
+  it('refuses the right error in another file than the typo', async () => {
+    const { root } = project();
+    writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'bundler', types: [] }, include: ['a.ts', 'b.ts'] }));
+    // Both files are scripts and share `value`: the error lands in b.ts on the line number of `find`.
+    writeFileSync(join(root, 'a.ts'), "let value = 'x';\n");
+    writeFileSync(join(root, 'b.ts'), 'value.length;\n');
+    const step = { ...TYPO, typo: { find: "let value = 'x';", replace: 'let value = 1;' }, error: { code: 'TS2339' as const, message: "Property 'length' does not exist on type 'number'." } };
+    await expect(checkTypo(root, 'a.ts', step)).rejects.toThrow(/on line 1; the compiler said:\nb\.ts\(1,7\): TS2339/);
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe("let value = 'x';\n");
+  });
+
+  it('refuses a find that is not exactly once in the file', async () => {
+    const { root } = project();
+    await expect(checkTypo(root, 'a.ts', { ...TYPO, typo: { find: 'value', replace: 'v' } })).rejects.toThrow(/must stand exactly once in a\.ts, not 2 times/);
   });
 });

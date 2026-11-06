@@ -3,18 +3,16 @@
  * (`source`): a file of the smoke app (`app`) or of this repository (`repo`). `landingProblems` compares what it can without the
  * smoke app, in `pnpm test`. A function, no command of its own.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHAIN, type ChainStepSpec } from '../apps/website/modules/site/chain.ts';
 import { SNIPPETS, type Snippet } from '../apps/website/modules/site/snippets.ts';
+import { typecheckApp } from '../packages/cli/src/typecheck.ts';
 import { applyOverlay, readEdits, type DemoTarget } from './notes-demo.ts';
 import { SmokeError } from './pack-smoke.ts';
 
 const REPOSITORY = fileURLToPath(new URL('..', import.meta.url));
-
-/** `examples/landing` of this repository. */
-export const LANDING = fileURLToPath(new URL('../examples/landing', import.meta.url));
 
 /** How often `part` stands in `text`, without overlaps. */
 function occurrences(text: string, part: string): number {
@@ -100,6 +98,8 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
     if (step.typo.find.includes('\n')) problems.push(`chain step "${step.id}": ${JSON.stringify(step.typo.find)} must sit on one line.`);
     if (count !== 1) problems.push(`chain step "${step.id}": ${JSON.stringify(step.typo.find)} must stand exactly once in snippet "${step.snippet}", not ${count} times.`);
     if (!snippet.source || !('app' in snippet.source)) problems.push(`chain step "${step.id}": snippet "${step.snippet}" must have an app source, which the type check can run on.`);
+    if (!/^TS\d+$/.test(step.error?.code ?? '')) problems.push(`chain step "${step.id}": the error code must look like TS2322.`);
+    if (typeof step.error?.message !== 'string' || step.error.message === '' || step.error.message.includes('\n')) problems.push(`chain step "${step.id}": the error message must be the first line of the compiler's message, not empty.`);
   }
   return problems;
 }
@@ -122,26 +122,77 @@ function testFilesBelow(dir: string): string[] {
     .map((entry) => join(entry.parentPath, entry.name).slice(dir.length + 1));
 }
 
+/** The diagnostics of a failed type check, one per line as `file(line,col): TScode message`. */
+function listed(result: Awaited<ReturnType<typeof typecheckApp>>): string {
+  if (result.status !== 'failed') return result.status;
+  return result.diagnostics.map((d) => `${d.file ?? '(no file)'}${d.line === undefined ? '' : `(${d.line},${d.column})`}: ${d.code} ${d.message.split('\n')[0]}`).join('\n');
+}
+
 /**
- * The landing on the smoke app (the notes demo and the recipes may be on it already): `examples/landing` applied; every `app`
- * snippet word for word in its file of the app (a `*` finds exactly one); the overlay's tests run; type check; lint. A difference
- * is a `SmokeError` with the snippet's name.
+ * Proves one typo of the chain on the app: `find` stands exactly once in `file` (relative to `app`); with `replace` in its place the
+ * type check fails with exactly one error, in that file on the line of `find`, with the step's code and message as its first line.
+ * The file is restored in any case. Otherwise a `SmokeError` that lists what the compiler said.
  */
-export function checkLanding(smoke: DemoTarget, pm: 'pnpm', repository: string = REPOSITORY, snippets: Readonly<Record<string, Snippet>> = SNIPPETS, overlay: string = join(repository, 'examples/landing')): void {
-  const problems = landingProblems(repository, snippets, []);
+export async function checkTypo(app: string, file: string, step: ChainStepSpec): Promise<void> {
+  const path = join(app, file);
+  const original = readFileSync(path, 'utf8');
+  const count = occurrences(original, step.typo.find);
+  if (count !== 1) throw new SmokeError(`chain step "${step.id}": ${JSON.stringify(step.typo.find)} must stand exactly once in ${file}, not ${count} times.`);
+  const line = original.slice(0, original.indexOf(step.typo.find)).split('\n').length;
+  let result: Awaited<ReturnType<typeof typecheckApp>>;
+  writeFileSync(path, original.replace(step.typo.find, () => step.typo.replace));
+  try {
+    result = await typecheckApp(app, { pretty: false });
+  } finally {
+    writeFileSync(path, original);
+  }
+  const where = `chain step "${step.id}" (${file}:${line})`;
+  if (result.status === 'passed') throw new SmokeError(`${where}: the typo compiles.`);
+  if (result.status !== 'failed') throw new SmokeError(`${where}: the app could not be type-checked (${result.status}).`);
+  const [only] = result.diagnostics;
+  const first = only?.message.split('\n')[0];
+  if (result.diagnostics.length !== 1 || only?.file !== file || only.line !== line || only.code !== step.error.code || first !== step.error.message) {
+    throw new SmokeError(`${where}: expected one error, ${step.error.code} ${step.error.message}, on line ${line}; the compiler said:\n${listed(result)}`);
+  }
+}
+
+/**
+ * The landing on the smoke app after the notes demo (and the recipes): `examples/landing` applied; every `app` snippet word for
+ * word in its file of the app (a `*` finds exactly one); the overlay's tests run; type check; lint; then each typo of the chain
+ * fails with the error the page names (`checkTypo`), and the app type-checks again. A difference is a `SmokeError` with the
+ * snippet's or step's name.
+ */
+export async function checkLanding(
+  smoke: DemoTarget,
+  pm: 'pnpm',
+  repository: string = REPOSITORY,
+  snippets: Readonly<Record<string, Snippet>> = SNIPPETS,
+  chain: readonly ChainStepSpec[] = CHAIN,
+  overlay: string = join(repository, 'examples/landing'),
+): Promise<void> {
+  const problems = landingProblems(repository, snippets, chain);
   if (problems.length > 0) throw new SmokeError(`the landing's snippets are wrong:\n${problems.join('\n')}`);
   applyOverlay(smoke.app, (args) => void smoke.run(pm, ['exec', 'marmeon', ...args]), overlay);
-  for (const [name, snippet] of Object.entries(snippets)) {
-    if (!('app' in snippet.source)) continue;
-    const path = snippet.source.app;
+  const fileOf = (name: string, path: string) => {
     const found = appFiles(smoke.app, path);
     if (found.length !== 1) throw new SmokeError(`snippet "${name}": ${path} must match exactly one file of the app, it matches ${found.length}${found.length > 0 ? ` (${found.join(', ')})` : ''}.`);
-    const text = readFileSync(join(smoke.app, found[0]!), 'utf8');
-    if (!text.includes(snippet.code)) throw new SmokeError(`snippet "${name}": the code is not in ${found[0]!}: ${JSON.stringify(firstMissingLine(snippet.code, text))} is not there.`);
+    return found[0]!;
+  };
+  for (const [name, snippet] of Object.entries(snippets)) {
+    if (!('app' in snippet.source)) continue;
+    const file = fileOf(name, snippet.source.app);
+    const text = readFileSync(join(smoke.app, file), 'utf8');
+    if (!text.includes(snippet.code)) throw new SmokeError(`snippet "${name}": the code is not in ${file}: ${JSON.stringify(firstMissingLine(snippet.code, text))} is not there.`);
   }
   const tests = smoke.run(pm, ['run', 'test', '--reporter=verbose']);
   for (const file of testFilesBelow(join(overlay, 'files'))) if (!tests.includes(file)) throw new SmokeError(`vitest did not run ${file}, a test of the landing:\n${tests}`);
   if (!/Tests\s+\d+ passed/.test(tests)) throw new SmokeError(`the landing's tests did not pass:\n${tests}`);
   smoke.run(pm, ['run', 'typecheck']);
   smoke.run(pm, ['run', 'lint', '--deny-warnings']);
+  for (const step of chain) {
+    const source = snippets[step.snippet]!.source;
+    await checkTypo(smoke.app, fileOf(step.snippet, (source as { app: string }).app), step);
+  }
+  const after = await typecheckApp(smoke.app, { pretty: false });
+  if (after.status !== 'passed') throw new SmokeError(`the app does not type-check after the typos were put back:\n${listed(after)}`);
 }

@@ -826,8 +826,8 @@ async function main(): Promise<number> {
     });
     // The recipes (examples/recipes) on the same app, after the demo: their overlays, and the blocks of their pages in the app's files.
     await pnpmApp.step('recipes (examples/recipes/*): overlays, blocks in the app, test, typecheck, lint, check, docs', () => checkRecipes(pnpmApp, 'pnpm'));
-    // The landing page's code (examples/landing) on the same app, after the recipes: every snippet word for word in a file that type checks.
-    await pnpmApp.step('landing snippets (examples/landing): overlay, every snippet in the app, test, typecheck, lint', () => checkLanding(pnpmApp, 'pnpm'));
+    // The landing page's code (examples/landing) on the same app, after the recipes: every snippet word for word in a file that type checks, and each typo of the chain with the compiler's error.
+    await pnpmApp.step('landing snippets (examples/landing): overlay, every snippet in the app, test, typecheck, lint, every typo of the chain fails with its error', () => checkLanding(pnpmApp, 'pnpm'));
     // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
     await pnpmApp.step('pnpm install --prod → node_modules/.bin/marmeon', () => {
       pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);
