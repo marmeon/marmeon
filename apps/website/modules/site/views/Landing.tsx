@@ -4,6 +4,7 @@ import { BatteriesSection } from '../components/landing/BatteriesSection.tsx';
 import { ChainSection } from '../components/landing/ChainSection.tsx';
 import { DevtoolsSection } from '../components/landing/DevtoolsSection.tsx';
 import { HeroSection } from '../components/landing/HeroSection.tsx';
+import { IslandSection } from '../components/landing/IslandSection.tsx';
 import { ModulesSection } from '../components/landing/ModulesSection.tsx';
 import { PrinciplesSection } from '../components/landing/PrinciplesSection.tsx';
 import { SecureSection } from '../components/landing/SecureSection.tsx';
@@ -26,6 +27,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
       <BatteriesSection />
       <SecureSection />
       <TestingSection snippet={snippets.test} />
+      <IslandSection snippets={snippets} />
       <DevtoolsSection />
       <StartSection />
     </div>

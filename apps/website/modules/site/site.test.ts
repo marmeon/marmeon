@@ -85,13 +85,31 @@ describe('the landing page', () => {
     expect(start).toContain('<a href="https://github.com/marmeon/marmeon/discussions" rel="noopener">discussion on GitHub</a>');
   });
 
+  it('shows the island section with its code and, without JavaScript, only the fallback', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).toContain('<section class="islands" aria-labelledby="islands-title"');
+    expect(body.indexOf('id="islands-title"')).toBeLessThan(body.indexOf('id="devtools-title"'));
+    const section = body.slice(body.indexOf('<section class="islands"'), body.indexOf('<section class="devtools"'));
+    expect(section).toContain('<div class="island-frame" data-island="site.render-clock"');
+    expect(section).toContain('With JavaScript, the browser loads an island here: a part of the page the server renders on its own.');
+    expect(section).toContain('<h3 class="tabs-heading">ShowRenderClockController.ts</h3>');
+    expect(section).toContain('<h3 class="tabs-heading">IslandSection.tsx</h3>');
+    expect(section).not.toContain('<h4');
+    expect(section).toContain('IslandSection.tsx');
+    // `load="visible"`: the server renders the fallback only, never the island's answer.
+    const frame = section.slice(section.indexOf('data-island="site.render-clock"'), section.indexOf('</div></div>', section.indexOf('data-island="site.render-clock"')));
+    expect(frame).toContain('island-fallback');
+    expect(frame).not.toContain('<time');
+    expect(frame).not.toContain('Rendered on the server');
+  });
+
   it('has the six sections after the chain, each named by its heading', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     for (const name of ['modules', 'batteries', 'secure', 'testing', 'devtools', 'start']) {
       expect(body, name).toMatch(new RegExp(`<section class="${name}" aria-labelledby="${name}-title"`));
       expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
     }
-    expect(body.match(/<h2[ >]/g)).toHaveLength(9);
+    expect(body.match(/<h2[ >]/g)).toHaveLength(10);
     expect(body).toContain('<nav aria-label="Start reading">');
     expect(body).toContain('aria-label="Files of the notes module"');
     for (const group of ['In every new app', 'Add when you need it']) expect(body).toContain(group);

@@ -159,6 +159,32 @@ export class NoteRepository extends Repository<'notes'> {
   controllerCall: { source: { app: 'modules/notes/controllers/ShowNoteController.ts' }, lang: 'ts', code: `return this.view('notes/Show', { note: ctx.params.note });\n` },
   pageSignature: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `export default function Show({ note }: PageProps<ShowNoteController>) {\n` },
   routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
+  islandController: {
+    file: 'modules/site/controllers/ShowRenderClockController.ts',
+    source: { repo: 'apps/website/modules/site/controllers/ShowRenderClockController.ts' },
+    lang: 'ts',
+    code: `export class ShowRenderClockController extends Controller {
+  handle() {
+    return this.island('site/islands/RenderClock', { renderedAt: new Date() });
+  }
+}
+`,
+  },
+  islandPage: {
+    file: 'modules/site/components/landing/IslandSection.tsx',
+    source: { repo: 'apps/website/modules/site/components/landing/IslandSection.tsx' },
+    lang: 'tsx',
+    code: `const clock = (
+  <Island
+    route="site.render-clock"
+    load="visible"
+    pollMs={10_000}
+    fallback={<p className="island-fallback">With JavaScript, the browser loads an island here: a part of the page the server renders on its own.</p>}
+    className="island-frame"
+  />
+);
+`,
+  },
 } as const satisfies Record<string, Snippet>;
 
 export type SnippetName = keyof typeof SNIPPETS;

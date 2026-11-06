@@ -41,6 +41,7 @@
 
 /* Most sections share an introduction and a two-column layout. */
 .landing .modules .landing-inner,
+.landing .islands .landing-inner,
 .landing .batteries .landing-inner,
 .landing .secure .landing-inner,
 .landing .testing .landing-inner,

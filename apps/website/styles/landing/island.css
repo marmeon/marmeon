@@ -23,3 +23,19 @@
   .island-clock--flash-a { border-color: var(--accent); }
   .island-clock--flash-b { border-color: var(--accent-strong); }
 }
+
+.island-clock .button { min-height: 36px; padding: 0 14px; font-size: var(--text-sm); }
+.island-clock .button[aria-disabled='true'] { opacity: 0.6; cursor: progress; }
+
+/* Around the clock: the frame the section hands to <Island>, its fallback sentence, and the code column beside it (the island stacks under the code below 1200px). */
+.island-frame { min-width: 0; }
+.island-fallback { margin: 0; padding: 1rem 1.25rem; border: 1px dashed var(--line-strong); border-radius: var(--radius-3); color: var(--muted); }
+.island-stage { align-self: center; }
+.landing .island-columns { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 75rem) {
+  .landing .island-columns { grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem); }
+}
+
+.island-at time {
+  white-space: nowrap;
+}
