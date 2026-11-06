@@ -1,6 +1,7 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
-import { mergeConfig, resolveConfig, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
+import { createServer, isFileLoadingAllowed, mergeConfig, resolveConfig, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import { adapterPeers, marmeon, CLIENT_CHUNKS, PLUGIN_NAME, SOURCE_CONDITION, virtualGlob, type MarmeonOptions, type MarmeonPluginApi } from './plugin.ts';
 import { routesModule } from './routes-module.ts';
@@ -124,6 +125,47 @@ describe('marmeon()', () => {
     const hook = main(marmeon()).config as (config: UserConfig, env: ConfigEnv) => UserConfig;
     const deny = hook({ root: link, resolve: { preserveSymlinks: true } }, { command: 'serve', mode: 'development' } as ConfigEnv).server?.fs?.deny ?? [];
     expect(deny).toEqual(expect.arrayContaining([`${link}/storage/**`, `${realpathSync(real)}/storage/**`]));
+  });
+
+  // A backslash is only a character of a name on POSIX; Vite's middlewares slash the path before they check it.
+  it.skipIf(process.platform === 'win32')('denies the app\'s directories when its path holds a backslash or glob characters — as written and as the middlewares slash it', async () => {
+    for (const name of ['a\\b', 'a\\\\b', 'a\\', 'a(x)', 'a[x]', 'a{x,y}', 'a*', 'a!b', 'a|b', 'a"b', '"']) {
+      const parent = tempDir('marmeon-vite-');
+      writeFileSync(join(parent, 'pnpm-workspace.yaml'), 'packages: []\n'); // the default `fs.allow` is the workspace root
+      const root = join(parent, name, 'app');
+      for (const file of ['package.json', 'storage/x.txt', 'dist/x.txt', '.marmeon/x.txt', 'src/x.txt']) {
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        writeFileSync(join(root, file), '{}');
+      }
+      const config = await resolveConfig({ root, configFile: false, logLevel: 'silent', plugins: [marmeon()] }, 'serve');
+      for (const form of [(path: string) => path, (path: string) => path.replaceAll('\\', '/')]) {
+        const served = (file: string) => isFileLoadingAllowed(config, form(`${realpathSync(root)}/${file}`));
+        expect(served('src/x.txt'), name).toBe(true);
+        for (const file of ['storage/x.txt', 'dist/x.txt', '.marmeon/x.txt']) expect(served(file), `${name} ${file}`).toBe(false);
+      }
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('answers 403 over HTTP for the private files of an app whose directory holds a backslash', async () => {
+    const parent = tempDir('marmeon-vite-');
+    writeFileSync(join(parent, 'pnpm-workspace.yaml'), 'packages: []\n');
+    const root = join(parent, 'a\\b', 'app');
+    for (const file of ['package.json', 'storage/x.txt', 'dist/x.txt', '.marmeon/x.txt', 'src/x.txt']) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), 'secret');
+    }
+    const server = await createServer({ root, configFile: false, logLevel: 'silent', plugins: [marmeon()], server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
+    try {
+      await server.listen();
+      const base = `http://127.0.0.1:${(server.httpServer!.address() as AddressInfo).port}`;
+      expect((await fetch(`${base}/src/x.txt`)).status).toBe(200);
+      for (const file of ['storage/x.txt', 'dist/x.txt', '.marmeon/x.txt']) {
+        expect((await fetch(`${base}/${file}`)).status, file).toBe(403);
+        expect((await fetch(`${base}/@fs${realpathSync(root).replaceAll('\\', '%5C')}/${file}`)).status, `@fs ${file}`).toBe(403);
+      }
+    } finally {
+      await server.close();
+    }
   });
 
   it('pre-bundles from the client entry and the pages — and the devtools\' bar when an installed package brings it (no reload on the first request)', () => {
