@@ -45,9 +45,6 @@
 }
 
 .landing .hero-code {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
-  gap: var(--space-5);
   margin-top: clamp(40px, 5vw, 64px);
 }
 
