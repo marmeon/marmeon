@@ -122,6 +122,11 @@
   overflow-x: auto;
 }
 
+.landing .devtools-replica-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .landing .devtools-replica table {
   width: 100%;
   border-collapse: collapse;

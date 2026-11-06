@@ -23,8 +23,9 @@ function Table({ columns, rows, label }: { readonly columns?: readonly string[];
       </ul>
     );
   }
+  // Focusable, so a keyboard can scroll a table wider than its column.
   return (
-    <div className="devtools-replica-scroll">
+    <div className="devtools-replica-scroll" tabIndex={0} role="region" aria-label={label}>
       <table aria-label={label}>
         <thead>
           <tr>
