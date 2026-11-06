@@ -1,5 +1,5 @@
-import { type Stats, closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
-import { dirname, relative } from 'node:path';
+import { type Stats, existsSync, lstatSync } from 'node:fs';
+import { relative } from 'node:path';
 import { escapesRoot } from '@marmeon/core/internal';
 import type { CommandInput } from './command.ts';
 
@@ -51,38 +51,5 @@ function isLinkToNothing(file: string): boolean {
     // Nothing there, or a file where a directory should be: no link.
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return false;
     throw error;
-  }
-}
-
-/**
- * Writes a generated file, creating its folders. A file that is not there yet is created with `wx` (`O_CREAT|O_EXCL`), which
- * fails with `EEXIST` at any link on its name — also one that appeared after {@link leavesProject} looked. An existing file is
- * opened with `O_NOFOLLOW`, so a link at its name is refused, and one with other hard links is refused: the caller has
- * checked `--force`, and a link there has no path to check. A link in a folder on the way is {@link leavesProject}'s to find,
- * before the write. Throws instead of writing through anything it refuses.
- */
-export function writeProjectFile(file: string, contents: string): void {
-  mkdirSync(dirname(file), { recursive: true });
-  if (!existsSync(file)) {
-    writeFileSync(file, contents, { flag: 'wx' });
-    return;
-  }
-  // O_TRUNC only after the checks: a hard link to a file elsewhere would lose its content before we looked.
-  let fd: number;
-  try {
-    fd = openSync(file, constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
-      throw new Error('A link at the name of the file, and the command would write through it.', { cause: error });
-    }
-    throw error;
-  }
-  try {
-    const entry = fstatSync(fd);
-    if (!entry.isFile() || entry.nlink > 1) throw new Error('A hard link or no regular file at the name of the file, and the command would write through it.');
-    ftruncateSync(fd);
-    writeFileSync(fd, contents); // writes to the end on the checked descriptor, also after a short write
-  } finally {
-    closeSync(fd);
   }
 }

@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { leavesProject, writeProjectFile } from '../write-guard.ts';
+import { leavesProject } from '../write-guard.ts';
+import { writeProjectFile } from '@marmeon/core/internal';
 import { dependsOn, KEBAB, migrationStamp, PASCAL, registerModule } from './make.ts';
 import { resourceFiles, type ResourceNames } from './make-resource-templates.ts';
 

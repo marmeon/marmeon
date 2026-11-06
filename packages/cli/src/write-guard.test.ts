@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
-import { leavesProject, writeProjectFile } from './write-guard.ts';
+import { writeProjectFile } from '@marmeon/core/internal';
+import { leavesProject } from './write-guard.ts';
 import { MakeJobCommand, MakeModuleCommand, MakeEventCommand } from './commands/make.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 

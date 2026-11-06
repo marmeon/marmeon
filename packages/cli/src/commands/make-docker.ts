@@ -4,7 +4,8 @@ import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, TESTED_PNPM, type DockerApp, type PackageManager, type Proxy } from '../docker.ts';
 import { style } from '../output.ts';
-import { leavesProject, refusesOverwrite, writeProjectFile } from '../write-guard.ts';
+import { leavesProject, refusesOverwrite } from '../write-guard.ts';
+import { writeProjectFile } from '@marmeon/core/internal';
 
 /**
  * `marmeon make:docker [--caddy|--nginx] [--systemd] [--force]`: the files to run the app in production — a

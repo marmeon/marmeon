@@ -226,7 +226,7 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses: `publish` for `@marmeon/auth`. See [sign-ins](authentication.md#sign-ins). |
 | `make:cache-table`, `make:session-table`, `make:queue-table`, `make:notifications-table`, `make:uploads-table` `[--module=<m>]` | The migrations of the database drivers' tables, each `publish` for its own package: writes what your app lacks, and ends with exit code 0 and "Nothing to publish" when it has it all. See [the framework's tables](migrations.md#the-frameworks-tables). |
 
-A generator never writes through a link that leads out of the project. When a file it would create is a link to nothing, it refuses. With `--force`, it refuses to overwrite a generated file that is a link or has other hard links. Adding a module to `bootstrap/app.ts` edits that file where it really lies, as long as that is inside the project.
+A generator never writes through a link that leads out of the project, and neither do `route:types` and `db:types` with `bootstrap/routes.ts` and `bootstrap/database.d.ts`: they stop with an error and write nothing. A link or hard link at either of those two files is refused too, even inside the project: replace it with a regular file. When a file it would create is a link to nothing, it refuses. With `--force`, it refuses to overwrite a generated file that is a link or has other hard links. Adding a module to `bootstrap/app.ts` edits that file where it really lies, as long as that is inside the project.
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Application } from '@marmeon/core';
 import { describe, expect, it, vi } from 'vitest';
@@ -34,6 +34,18 @@ describe('DbTypesCheck', { timeout: 30_000 }, () => {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, source.replace('// @marmeon-format 3\n', ''));
     expect(await check.handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('another version of Marmeon'), code: 'D7', fix: 'marmeon db:types' }]);
+  });
+
+  it('reports a file that is a link out of the project as a finding, without reading it', async () => {
+    const root = workspaceTempDir('marmeon-db-types-link-');
+    const outside = workspaceTempDir('marmeon-db-types-outside-');
+    const app = { root, modules, container: { has: () => false } } as unknown as Application;
+    const generator = typeGenerator(app);
+    const { source } = await generator.render();
+    writeFileSync(join(outside, 'database.d.ts'), source);
+    mkdirSync(join(root, 'bootstrap'), { recursive: true });
+    symlinkSync(join(outside, 'database.d.ts'), join(root, 'bootstrap/database.d.ts'));
+    expect(await new DbTypesCheck(generator, app).handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('leads out of the project'), file: 'bootstrap/database.d.ts' }]);
   });
 
   it('needs no database and runs in production too', async () => {
