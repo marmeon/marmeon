@@ -232,8 +232,30 @@ function eventsOf(workflow: string): string[] | undefined {
   return events;
 }
 
-/** After the checkout of the release commit nothing may move the tree: a second checkout, a switch, a reset, a pull, a merge. */
-const MOVES_THE_TREE = /(?<![\w-])git\s+(?:-\S+\s+(?:(?:[^-\s]\S*|-)\s+)?)*(?:checkout|switch|reset|restore|pull|merge|rebase|cherry-pick|worktree|stash|read-tree|apply|am)\b/;
+const TREE_COMMAND = /^(?:checkout|switch|reset|restore|pull|merge|rebase|cherry-pick|worktree|stash|read-tree|apply|am)\b/;
+
+/**
+ * After the checkout of the release commit nothing may move the tree: a second checkout, a switch, a reset, a pull, a merge.
+ * A scan over the whitespace-separated tokens, not a regex: a pattern restarts at every "git" of the line, and a line of
+ * `git -! git -! …` would make each start read the rest of it.
+ *
+ * A start is a token that ends in "git" not preceded by a word character or "-". After it come options ("-x"), each with one
+ * optional argument (a token that does not start with "-", or a lone "-"), and then the command.
+ */
+export function movesTheTree(text: string): boolean {
+  const tokens = text.split(/\s+/);
+  const isOption = (token: string) => token.length >= 2 && token.startsWith('-');
+  const isArgument = (token: string) => token === '-' || (token !== '' && !token.startsWith('-'));
+  // expectsCommand[j]: from token j on come options and then a command; afterOption[j]: the same, with an optional argument first.
+  const expectsCommand = Array.from({ length: tokens.length + 2 }, () => false);
+  const afterOption = Array.from({ length: tokens.length + 2 }, () => false);
+  for (let j = tokens.length - 1; j >= 0; j--) {
+    const token = tokens[j]!;
+    expectsCommand[j] = TREE_COMMAND.test(token) || (isOption(token) && afterOption[j + 1]!);
+    afterOption[j] = expectsCommand[j]! || (isArgument(token) && expectsCommand[j + 1]!);
+  }
+  return tokens.some((token, i) => token.endsWith('git') && !/[\w-]/.test(token[token.length - 4] ?? ' ') && expectsCommand[i + 1]!);
+}
 
 /** 4 · the release workflow. */
 export function checkWorkflow(repository: string): string[] {
@@ -443,7 +465,7 @@ export function checkWorkflow(repository: string): string[] {
         for (const [index, step] of steps.slice(guard + 1).entries()) {
           const last = guard + 1 + index === steps.length - 1;
           const action = usesOf(step);
-          if (checkoutOf(step) || runScripts(step).some((script) => joined(script).split('\n').some((line) => MOVES_THE_TREE.test(line)))) {
+          if (checkoutOf(step) || runScripts(step).some((script) => joined(script).split('\n').some((line) => movesTheTree(line)))) {
             problems.push(`${where}: the job "${name}" checks out or moves the tree after the guard — the release commit stays the tree that is built, packed and tagged`);
           } else if (action !== undefined && !(last && action.startsWith('actions/upload-artifact@'))) {
             problems.push(`${where}: the job "${name}" uses an action after the guard — only run steps, and the upload of the artifact as the last step: an action could switch the tree or run code of its own`);
@@ -482,7 +504,7 @@ export function checkWorkflow(repository: string): string[] {
         if (runScripts(step).some((script) => /\bpnpm\s+(?:install|i|add|exec|dlx)\b|\bnpm\b|\bnpx\b|\byarn\b/.test(script))) {
           problems.push(`${where}: the job "${name}" installs or runs a package — it holds the write token and runs nothing but the release script`);
         }
-        if (runScripts(step).some((script) => joined(script).split('\n').some((line) => MOVES_THE_TREE.test(line)))) {
+        if (runScripts(step).some((script) => joined(script).split('\n').some((line) => movesTheTree(line)))) {
           problems.push(`${where}: the job "${name}" moves the tree — it tags the release commit it checked out`);
         }
       }
