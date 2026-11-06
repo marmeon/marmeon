@@ -13,7 +13,7 @@ export function llmsHeader(input: { version: string; docsUrl: string; fullUrl: s
   return `# ${LLMS_TITLE}\n\n> ${LLMS_SUMMARY}\n\nThe documentation of Marmeon ${which} each page as Markdown in the order of ${input.docsUrl}. Every page in one file: ${input.fullUrl}\n${older}`;
 }
 
-const escapeTitle = (title: string): string => title.replace(/[[\]]/g, '\\$&');
+const escapeTitle = (title: string): string => title.replace(/[[\]\\]/g, '\\$&');
 
 /** `/llms.txt`: the header, then each non-empty section with a link to every page's Markdown. */
 export function llmsIndex(header: string, sections: readonly { title: string; pages: readonly { title: string; url: string }[] }[]): string {
