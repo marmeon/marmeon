@@ -57,7 +57,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
   `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
   highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
-  The batteries section (`components/landing/BatteriesSection.tsx`) puts nine packages in `Tabs`, each with an `Editor` and a `battery…` snippet (4 to 8 lines of a real file,
+  The batteries section (`components/landing/BatteriesSection.tsx`) puts nine packages in `Tabs`, each with an `Editor` and a `battery…` snippet (4 to 10 lines of a real file, a complete unit with balanced brackets,
   checked like the others); the "Modules" tab also holds the folder of a module.
   Under the tabs, every package is listed with a link to its docs page, from `modules/site/packages.ts` (`PACKAGES`); the count on the page is its length,
   and `site.test.ts` compares its names with the `name` of every `packages/*/package.json`, so a new package without an entry turns the test red.

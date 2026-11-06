@@ -12,5 +12,5 @@ it('composes the mail about a shared note for its recipient', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const t = app.make(Translators).for('en');
   await app.make(Mailer).send(new NoteSharedMail('bob@example.com', 'Groceries', t));
-  app.mail.assertSent(NoteSharedMail, (_mail, message) => message.to[0]!.address === 'bob@example.com' && message.subject === 'A note was shared with you');
+  app.mail.assertSent(NoteSharedMail, (_mail, message) => message.to[0]!.address === 'bob@example.com' && message.subject === 'A note was shared with you' && message.text.includes('Groceries'));
 });

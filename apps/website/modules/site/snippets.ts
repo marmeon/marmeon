@@ -131,19 +131,21 @@ export type NoteChanges = RowUpdate<'notes'>;
 `,
   },
   routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
-  // The batteries section: one excerpt of 4 to 8 lines per package, each a word-for-word piece of the file it names.
+  // The batteries section: one excerpt of 4 to 10 lines per package, a complete unit (balanced brackets) and a word-for-word piece of the file it names.
   batteryAuth: {
-    file: 'modules/notes/policies/NotePolicy.ts',
-    source: { app: 'modules/notes/policies/NotePolicy.ts' },
+    file: 'modules/user-profile/policies/ProfileLinkPolicy.ts',
+    source: { repo: 'apps/web-app/modules/user-profile/policies/ProfileLinkPolicy.ts' },
     lang: 'ts',
-    code: `export class NotePolicy {
-  view(user: AuthUser, record: Row<'notes'>) {
-    return record.user_id === user.id || denyAsNotFound();
-  }
+    code: `/** What the policy needs of a link: whose it is. A bound row has it, and so has a link read for the profile page. */
+type OwnedLink = Pick<Row<'profile_links'>, 'user_id'>;
 
-  update(user: AuthUser, record: Row<'notes'>) {
-    return record.user_id === user.id || denyAsNotFound();
+export class ProfileLinkPolicy {
+  /** Remove a link: only from your own profile. (The route already looks the link up within its user, so this is a second check.) */
+  delete(user: AuthUser, link: OwnedLink) {
+    // The argument is a translation key: the exception handler turns it into the message.
+    return link.user_id === user.id || deny('user-profile.validation.own_profile');
   }
+}
 `,
   },
   batteryDatabase: {
@@ -186,30 +188,30 @@ export const noteFields = r.object({
 `,
   },
   batteryQueue: {
-    file: 'modules/auth/jobs/SendWelcomeMailJob.ts',
-    source: { repo: 'apps/web-app/modules/auth/jobs/SendWelcomeMailJob.ts' },
+    file: 'modules/account-export/jobs/SendAccountExportJob.ts',
+    source: { app: 'modules/account-export/jobs/SendAccountExportJob.ts' },
     lang: 'ts',
-    code: `export class SendWelcomeMailJob {
-  /** Stable — the queue stores this name, never the class name. */
-  static readonly job = 'auth.send-welcome-mail';
-  static readonly schema = r.object({ userId: r.integer() });
-  static readonly tries = 5;
-  /** Seconds before the 2nd, 3rd, … attempt (the last repeats) — an SMTP server that is down for a while. */
-  static readonly backoff = [10, 60, 300];
-  static readonly timeout = 30;
+    code: `  async handle(payload: JobPayload<typeof SendAccountExportJob>, job: JobContext): Promise<void> {
+    const user = await this.#users.find(payload.userId);
+    // The request checked that the address is confirmed; the job checks it again, since the account may have changed since:
+    // a new address is unconfirmed until its owner confirms it. No mail, and no retry that could never succeed.
+    if (!user || user.email_verified_at == null) return job.discard('the account is gone or its address is not confirmed');
+    // job.id stays the same over every attempt and every retry: a record that comes back after the mail went out sends nothing more.
+    await job.once(\`account-export:\${job.id}\`, () => this.#mailer.send(new AccountExportMail(user)));
+  }
 `,
   },
   batteryMail: {
     file: 'modules/notes/mail/NoteSharedMail.ts',
     source: { app: 'modules/notes/mail/NoteSharedMail.ts' },
     lang: 'ts',
-    code: `  envelope() {
-    return { to: this.#to, subject: this.#t.get('notes.mail.shared.subject') };
-  }
-
-  content() {
-    const text = this.#t.get('notes.mail.shared.intro', { title: this.#title });
-    return mjml\`<mjml><mj-body><mj-section><mj-column><mj-text>\${text}</mj-text></mj-column></mj-section></mj-body></mjml>\`;
+    code: `  content() {
+    const t = this.#t;
+    return layout(t, {
+      preview: t.get('notes.mail.shared.subject'),
+      body: mjml\`
+        <mj-text>\${t.get('notes.mail.shared.intro', { title: this.#title })}</mj-text>\`,
+    });
   }
 `,
   },

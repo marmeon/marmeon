@@ -1,4 +1,8 @@
 {
-  "beforeCopy": [],
-  "afterCopy": ["marmeon route:types"]
+  "beforeCopy": [
+    "marmeon make:mail NoteShared --module=notes"
+  ],
+  "afterCopy": [
+    "marmeon route:types"
+  ]
 }

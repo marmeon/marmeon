@@ -86,14 +86,61 @@ function appPathProblem(path: string): string | undefined {
   return undefined;
 }
 
-/** The file of `examples/landing/files` or `examples/notes/files` that holds the app file `path`, unless an edit of those overlays changes it afterwards. */
+/** The overlays of `examples`: the landing, the notes demo and each recipe, as directories. */
+function overlays(repository: string): string[] {
+  const recipes = join(repository, 'examples/recipes');
+  const each = existsSync(recipes) ? readdirSync(recipes, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join(recipes, entry.name)) : [];
+  return [join(repository, 'examples/landing'), join(repository, 'examples/notes'), ...each];
+}
+
+/** The file of an overlay's `files` (the landing, the notes demo, a recipe) that holds the app file `path`, unless an edit of an overlay changes it afterwards. */
 function overlayFile(repository: string, path: string): string | undefined {
-  const edited = ['landing', 'notes'].some((name) => {
-    const overlay = join(repository, 'examples', name);
-    return existsSync(join(overlay, 'edits.json')) && readEdits(overlay).some((edit) => labelMatches(edit.file, path));
-  });
+  const all = overlays(repository);
+  const edited = all.some((overlay) => existsSync(join(overlay, 'edits.json')) && readEdits(overlay).some((edit) => labelMatches(edit.file, path)));
   if (edited) return undefined;
-  return ['landing', 'notes'].map((name) => join(repository, 'examples', name, 'files', path)).find((file) => existsSync(file));
+  return all.map((overlay) => join(overlay, 'files', path)).find((file) => existsSync(file));
+}
+
+/**
+ * The first bracket of `code` that has no partner (`{}`, `()`, `[]`), or a string or template literal that is not closed, as a
+ * sentence; `undefined` when all pair up. Strings, template literals (with what is in their `${…}`) and comments are skipped, so a
+ * bracket in a text does not count. It reads TypeScript: JSX text and regular expression literals are not understood (an apostrophe
+ * in JSX text would start a string).
+ */
+export function bracketProblem(code: string): string | undefined {
+  const closers: Record<string, string> = { '{': '}', '(': ')', '[': ']' };
+  const stack: string[] = [];
+  for (let i = 0; i < code.length; i++) {
+    const char = code[i]!;
+    const next = code[i + 1];
+    if (char === '/' && next === '/') i = (code.indexOf('\n', i) === -1 ? code.length : code.indexOf('\n', i)) - 1;
+    else if (char === '/' && next === '*') i = (code.indexOf('*/', i + 2) === -1 ? code.length : code.indexOf('*/', i + 2) + 1);
+    else if (char === "'" || char === '"' || char === '`') {
+      let depth = 0;
+      let closed = false;
+      for (i++; i < code.length; i++) {
+        const inner = code[i]!;
+        if (inner === '\\') i++;
+        else if (char !== '`' && inner === '\n') break;
+        else if (char === '`' && inner === '$' && code[i + 1] === '{') {
+          depth++;
+          i++;
+        } else if (depth > 0 && inner === '{') depth++;
+        else if (depth > 0 && inner === '}') depth--;
+        else if (inner === char && depth === 0) {
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) return 'a string or template literal is not closed.';
+    } else if (char in closers) stack.push(closers[char]!);
+    else if (char === '}' || char === ')' || char === ']') {
+      const expected = stack.pop();
+      if (expected === undefined) return `a "${char}" has no opening bracket.`;
+      if (expected !== char) return `a "${expected}" is missing before "${char}".`;
+    }
+  }
+  return stack.length > 0 ? `a "${stack.at(-1)}" is missing.` : undefined;
 }
 
 /** The first line of `code` that `text` does not hold, for a message. */
@@ -104,7 +151,7 @@ function firstMissingLine(code: string, text: string): string {
 /**
  * What is wrong with the landing's snippets and typo chain, one message each: a snippet without a source, a `repo` source that
  * is missing or does not hold the code, an `app` path that is absolute, leaves the app or holds more than one `*`, a `file`
- * label that does not fit the source, a `battery…` snippet of fewer than 4 or more than 8 lines, a snippet whose `app` file is one of `examples/landing/files` or `examples/notes/files` (no
+ * label that does not fit the source, a `battery…` snippet of fewer than 4 or more than 10 lines or with brackets that do not pair up, a snippet whose `app` file is one of an overlay's `files` in `examples` (the landing, the notes demo, a recipe; no
  * edit changes it afterwards) and does not hold the code, and a chain step whose `find` is not exactly once, on one line, in its
  * snippet, whose `replace` equals `find` or whose snippet is not from the app. A file a generator writes or an edit changes is for
  * `pnpm pack:smoke`. Empty when all is well.
@@ -149,8 +196,11 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
     }
   }
   for (const [name, snippet] of Object.entries(snippets)) {
+    if (!name.startsWith('battery')) continue;
     const lines = snippet.code.replace(/\n$/, '').split('\n').length;
-    if (name.startsWith('battery') && (lines < 4 || lines > 8)) problems.push(`snippet "${name}": a battery excerpt has 4 to 8 lines, not ${lines}.`);
+    if (lines < 4 || lines > 10) problems.push(`snippet "${name}": a battery excerpt has 4 to 10 lines, not ${lines}.`);
+    const unbalanced = bracketProblem(snippet.code);
+    if (unbalanced) problems.push(`snippet "${name}": a battery excerpt must be a complete unit, ${unbalanced}`);
   }
   for (const step of chain) {
     const snippet = snippets[step.snippet];
