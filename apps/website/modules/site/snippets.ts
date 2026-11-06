@@ -3,9 +3,17 @@
  * is a file of the notes example the docs build up (`docs/migrations.md`, `docs/queries.md`, `docs/controllers.md`, …); when
  * the API changes, these change with it.
  */
+export type SnippetSource =
+  /** A file of the smoke app (starter kit, `examples/notes`, `examples/recipes`, `examples/landing`); a `*` in the last segment stands for one file name, as in an overlay's `edits.json`. */
+  | { readonly app: string }
+  /** A file of this repository, for example `apps/web-app/…`. */
+  | { readonly repo: string };
+
 export interface Snippet {
   /** The file name shown above the code; none for an excerpt. */
   readonly file?: string;
+  /** The type-checked file the code is a word-for-word piece of; `scripts/landing.ts` compares them. */
+  readonly source: SnippetSource;
   readonly lang: 'ts' | 'tsx';
   readonly code: string;
 }
@@ -13,6 +21,7 @@ export interface Snippet {
 export const SNIPPETS = {
   routes: {
     file: 'modules/notes/routes.ts',
+    source: { app: 'modules/notes/routes.ts' },
     lang: 'ts',
     code: `import { authenticate } from '@marmeon/auth';
 import { defineRoutes, everyone } from '@marmeon/http';
@@ -31,6 +40,7 @@ export default defineRoutes((Route) => {
   },
   controller: {
     file: 'modules/notes/controllers/ShowNoteController.ts',
+    source: { app: 'modules/notes/controllers/ShowNoteController.ts' },
     lang: 'ts',
     code: `import { can } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
@@ -50,6 +60,7 @@ export class ShowNoteController extends Controller {
   },
   page: {
     file: 'modules/notes/views/Show.tsx',
+    source: { app: 'modules/notes/views/Show.tsx' },
     lang: 'tsx',
     code: `import type { PageProps } from '@marmeon/http';
 import { Head, Link } from '@marmeon/react';
@@ -68,6 +79,7 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
   },
   migration: {
     file: 'modules/notes/migrations/2026_10_01_120000_create_notes_table.ts',
+    source: { app: 'modules/notes/migrations/*_create_notes_table.ts' },
     lang: 'ts',
     code: `import { defineMigration } from '@marmeon/database';
 
@@ -86,6 +98,7 @@ export default defineMigration({
   },
   tableType: {
     file: 'modules/notes/types.ts',
+    source: { app: 'modules/notes/types.ts' },
     lang: 'ts',
     code: `import type { NewRow, Row, RowUpdate } from '@marmeon/database';
 
@@ -96,6 +109,7 @@ export type NoteChanges = RowUpdate<'notes'>; // what an update takes
   },
   repository: {
     file: 'modules/notes/NoteRepository.ts',
+    source: { app: 'modules/notes/NoteRepository.ts' },
     lang: 'ts',
     code: `import { Repository } from '@marmeon/database';
 
@@ -109,6 +123,7 @@ export class NoteRepository extends Repository<'notes'> {
 `,
   },
   form: {
+    source: { app: 'modules/notes/views/Edit.tsx' },
     lang: 'tsx',
     code: `const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id } });
 form.errors.title
@@ -116,6 +131,7 @@ form.errors.title
   },
   test: {
     file: 'modules/notes/show.test.ts',
+    source: { app: 'modules/notes/show.test.ts' },
     lang: 'ts',
     code: `it('shows a note to its author', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
@@ -131,9 +147,9 @@ form.errors.title
 `,
   },
   // One line of a file above, where a step of the chain points at it.
-  controllerCall: { lang: 'ts', code: `return this.view('notes/Show', { note: ctx.params.note });\n` },
-  pageSignature: { lang: 'tsx', code: `export default function Show({ note }: PageProps<ShowNoteController>)\n` },
-  routeLink: { lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
+  controllerCall: { source: { app: 'modules/notes/controllers/ShowNoteController.ts' }, lang: 'ts', code: `return this.view('notes/Show', { note: ctx.params.note });\n` },
+  pageSignature: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `export default function Show({ note }: PageProps<ShowNoteController>)\n` },
+  routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
 } as const satisfies Record<string, Snippet>;
 
 export type SnippetName = keyof typeof SNIPPETS;
