@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { CHAIN, mistakeLine } from './chain.ts';
 import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
+import { PACKAGES } from './packages.ts';
 import { SNIPPETS } from './snippets.ts';
 
 let server: SsrServer;
@@ -154,7 +155,7 @@ describe('the landing page', () => {
     const labels = [...section.matchAll(/<h3 class="tabs-heading">([^<]*)<\/h3>/g)].map((match) => match[1]);
     expect(labels).toEqual(['Auth', 'Database', 'Migrations', 'Validation', 'Queue', 'Mail', 'Scheduler', 'Storage', 'Modules']);
     // h2 > h3 (the tab) > h4 (the file): no level is skipped, and nothing above the tabs is a heading.
-    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`2${'34'.repeat(9)}`);
+    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`2${'34'.repeat(9)}3444`);
     for (const name of Object.keys(SNIPPETS).filter((key) => key.startsWith('battery'))) {
       const { file } = SNIPPETS[name as keyof typeof SNIPPETS] as { file: string };
       expect(section, name).toContain(`<h4 class="editor-name">${file}</h4>`);
@@ -166,6 +167,26 @@ describe('the landing page', () => {
       expect(section, href).toContain(`href="${href}"`);
     }
     expect(section).not.toMatch(/\sstyle=/);
+  });
+
+  it('lists every package of the repository once, with one link each, and counts them from the list', async () => {
+    const dirs = readdirSync(join(repo, 'packages'), { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(repo, 'packages', entry.name, 'package.json')));
+    const names = dirs.map((entry) => (JSON.parse(readFileSync(join(repo, 'packages', entry.name, 'package.json'), 'utf8')) as { name: string }).name);
+    expect(PACKAGES.map((entry) => entry.name).sort()).toEqual(names.sort());
+    expect(new Set(PACKAGES.map((entry) => entry.docs)).size).toBe(PACKAGES.length);
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<div class="package-list"');
+    const end = body.indexOf('</section>', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const list = body.slice(start, end);
+    expect(list).toContain(`>${PACKAGES.length} packages, one version</h3>`);
+    for (const { name, docs } of PACKAGES) {
+      expect(list.match(new RegExp(`<a [^>]*href="/docs/${docs}"`, 'g')), name).toHaveLength(1);
+      expect(list, name).toContain(name.startsWith('@marmeon/') ? `<span class="package-scope">@marmeon/</span>${name.slice(9)}</code>` : `${name}</code>`);
+    }
+    expect(list.match(/<li><a /g)).toHaveLength(PACKAGES.length);
+    for (const title of ['In every new app', 'Add when you need it', 'Tooling']) expect(list).toContain(title);
   });
 
   it('shows the test snippet', async () => {

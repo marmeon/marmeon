@@ -2,6 +2,7 @@ import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { PACKAGES_URL } from '../../links.ts';
+import { PACKAGE_GROUPS, PACKAGES } from '../../packages.ts';
 import type { SnippetName } from '../../snippets.ts';
 import { Editor } from '../Editor.tsx';
 import { Tabs } from '../Tabs.tsx';
@@ -61,6 +62,36 @@ function ModuleFiles() {
   );
 }
 
+/** Every package of the framework with a link to its page, in groups, from `PACKAGES`. */
+function PackageList() {
+  return (
+    <div className="package-list">
+      <h3 className="group-label">{`${PACKAGES.length} packages, one version`}</h3>
+      {PACKAGE_GROUPS.map(({ group, title }) => (
+        <div key={group} className="package-group">
+          <h4 className="group-label group-label--small">{title}</h4>
+          <ul className="package-grid" aria-label={title}>
+            {PACKAGES.filter((entry) => entry.group === group).map(({ name, docs, text }) => {
+              const scope = name.startsWith('@marmeon/') ? '@marmeon/' : '';
+              return (
+                <li key={name}>
+                  <Link href={`/docs/${docs}`}>
+                    <code>
+                      {scope && <span className="package-scope">{scope}</span>}
+                      {name.slice(scope.length)}
+                    </code>
+                  </Link>
+                  <span>{text}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** "The backend comes with it": one tab per package, each with a piece of real code, and the checks that hold the packages together. */
 export function BatteriesSection({ snippets }: Pick<PageProps<ShowLandingController>, 'snippets'>) {
   return (
@@ -111,6 +142,7 @@ export function BatteriesSection({ snippets }: Pick<PageProps<ShowLandingControl
             };
           })}
         />
+        <PackageList />
       </div>
     </section>
   );

@@ -49,8 +49,14 @@
 }
 
 .landing .batteries-tabs .tabs-list {
-  flex-wrap: wrap;
   margin-bottom: var(--space-4);
+}
+
+/* A narrow screen scrolls the tab bar: wrapped rows would leave the active tab's line floating. */
+@media (min-width: 40rem) {
+  .landing .batteries-tabs .tabs-list {
+    flex-wrap: wrap;
+  }
 }
 
 .landing .battery {
@@ -69,6 +75,54 @@
 
 .landing .battery-docs {
   margin: 0;
+}
+
+.landing .package-list {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.landing .package-list .group-label {
+  margin-bottom: 0;
+}
+
+.landing .package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  list-style: none;
+}
+
+.landing .package-grid li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.landing .package-grid a {
+  align-self: flex-start;
+}
+
+.landing .package-grid code {
+  overflow-wrap: anywhere;
+}
+
+.landing .package-grid li > span {
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.landing .package-scope {
+  color: var(--muted);
 }
 
 /* The "Modules" tab: the module folder */
