@@ -1,4 +1,4 @@
-/** An app's page components, relative to its root: every `.tsx` under a module's `views/`, minus `PAGE_TESTS_GLOB`. See docs/pages.md. */
+/** An app's page components, relative to its root: every `.tsx` under a module's `views/`, minus `PAGE_TESTS_GLOB`. See docs/pages.md#where-pages-live. */
 export const PAGES_GLOB = 'modules/*/views/**/*.tsx';
 
 /**
