@@ -22,7 +22,7 @@ import { compose } from './mailer.ts';
 import { ArrayTransport, LogTransport, SmtpTransport } from './transports.ts';
 import { fromDefaultWarning, LOG_MAILER_WARNING } from './config.ts';
 import { MailFake } from './fake.ts';
-import { textFromHtml } from './html.ts';
+import { textFromHtml, withoutTags } from './html.ts';
 
 class WelcomeMail implements Mailable {
   readonly #name: string;
@@ -77,6 +77,23 @@ describe('html``', () => {
     expect(textFromHtml('<div>\n    <p>one \t </p>\n    <p>two</p>\n  </div>')).toBe('one\n\ntwo');
     expect(textFromHtml('<p>a</p> \t \n \t <p>b</p>')).toBe('a\n\nb');
     expect(textFromHtml('<p>a  b\tc</p>')).toBe('a  b\tc');
+  });
+
+  it('ends a tag at the next `>`, even after a `<` inside it', () => {
+    expect(textFromHtml('<p>x<a<b>y</p>')).toBe('xy');
+    expect(textFromHtml('<p><span title="a < b">Hello</span></p>')).toBe('Hello');
+    expect(textFromHtml('<p>1 <> 2 <</p>')).toBe('1 <> 2 <');
+  });
+
+  it('removes the tags exactly as `/<[^>]+>/g` does', () => {
+    const alphabet = ['<', '>', 'a', ' ', '"', "'"];
+    let seed = 12345;
+    const next = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) >>> 8); // the low bits of this generator cycle
+    for (let round = 0; round < 20_000; round++) {
+      let text = '';
+      for (let length = next() % 14; length > 0; length--) text += alphabet[next() % alphabet.length];
+      expect(withoutTags(text), JSON.stringify(text)).toBe(text.replace(/<[^>]+>/g, ''));
+    }
   });
 
   it('drops a line of blanks between paragraphs', () => {

@@ -94,7 +94,8 @@ export function clientKey(ip: string | undefined): string {
   if (raw === '') return 'unknown';
   const bracketed = /^\[([^\]]+)\](?::\d{1,5})?$/.exec(raw);
   const withoutPort = bracketed ? bracketed[1]! : raw.replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/, '$1');
-  const address = withoutPort.replace(/%.*$/, '');
+  const zone = withoutPort.indexOf('%');
+  const address = zone === -1 ? withoutPort : withoutPort.slice(0, zone);
   const family = isIP(address);
   if (family === 4) return address;
   if (family !== 6) {

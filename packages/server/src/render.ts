@@ -217,9 +217,14 @@ const BOTS =
  */
 const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER].join(', ');
 
+/** The names of a comma-separated header value, trimmed, empty ones left out. Split on the comma: a regex around it backtracks over a long run of blanks. */
+function listedNames(value: string): string[] {
+  return value.split(',').map((token) => token.trim()).filter(Boolean);
+}
+
 /** `Vary` the result already carries (an error's own, or `Accept` from the exception handler), under any spelling. */
 function ownVary(headers: Readonly<Record<string, string>> | undefined): string[] {
-  return Object.entries(headers ?? {}).filter(([name]) => name.toLowerCase() === 'vary').flatMap(([, value]) => value.split(/\s*,\s*/).filter(Boolean));
+  return Object.entries(headers ?? {}).filter(([name]) => name.toLowerCase() === 'vary').flatMap(([, value]) => listedNames(value));
 }
 
 function withoutVary(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
@@ -230,7 +235,7 @@ function withoutVary(headers: Readonly<Record<string, string>> | undefined): Rec
 function pageVary(headers: Readonly<Record<string, string>> | undefined): string {
   const own = ownVary(headers);
   if (own.includes('*')) return '*';
-  const known = new Set(PAGE_VARY.toLowerCase().split(/\s*,\s*/));
+  const known = new Set(listedNames(PAGE_VARY.toLowerCase()));
   return [PAGE_VARY, ...own.filter((name) => !known.has(name.toLowerCase()))].join(', ');
 }
 
@@ -657,7 +662,7 @@ export async function toRegionResponse(response: Response): Promise<Response> {
   // An outcome is about who asked, and the island URL answers otherwise without the header: never kept, kept apart.
   if (!headers.has('cache-control')) headers.set('cache-control', 'no-store');
   const vary = headers.get('vary');
-  if (!vary?.toLowerCase().split(/\s*,\s*/).includes(REGION_HEADER)) headers.set('vary', vary ? `${vary}, ${REGION_HEADER}` : REGION_HEADER);
+  if (!(vary && listedNames(vary.toLowerCase()).includes(REGION_HEADER))) headers.set('vary', vary ? `${vary}, ${REGION_HEADER}` : REGION_HEADER);
   const json = response.headers.get('content-type')?.includes('json') ?? false;
   if (outcome !== 'exception' || !json) {
     await response.body?.cancel();
@@ -681,7 +686,7 @@ export async function toActionResponse(response: Response): Promise<Response> {
   const headers = new Headers(response.headers);
   headers.set('cache-control', 'no-store');
   const vary = headers.get('vary');
-  if (!vary?.toLowerCase().split(/\s*,\s*/).includes(ACTION_HEADER)) headers.set('vary', vary ? `${vary}, ${ACTION_HEADER}` : ACTION_HEADER);
+  if (!(vary && listedNames(vary.toLowerCase()).includes(ACTION_HEADER))) headers.set('vary', vary ? `${vary}, ${ACTION_HEADER}` : ACTION_HEADER);
   const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
   if (location !== null) {
     await response.body?.cancel();
@@ -730,7 +735,7 @@ export async function toLiveValidationResponse(response: Response): Promise<Resp
   const headers = new Headers(response.headers);
   headers.set('cache-control', 'no-store');
   const vary = headers.get('vary');
-  if (!vary?.toLowerCase().split(/\s*,\s*/).includes(VALIDATE_HEADER)) headers.set('vary', vary ? `${vary}, ${VALIDATE_HEADER}` : VALIDATE_HEADER);
+  if (!(vary && listedNames(vary.toLowerCase()).includes(VALIDATE_HEADER))) headers.set('vary', vary ? `${vary}, ${VALIDATE_HEADER}` : VALIDATE_HEADER);
   const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
   if (location !== null) {
     await response.body?.cancel();

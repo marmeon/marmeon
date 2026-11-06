@@ -19,6 +19,15 @@ describe('the time of deriving the text of a mail', () => {
   });
 });
 
+describe('the time of removing the tags of a mail', () => {
+  it('takes linear time for a long run of `<` that never closes', () => {
+    for (const text of ['<', '< ', '<1']) {
+      expect(time(() => textFromHtml(text.repeat(100_000))), text).toBeLessThan(1000);
+      expect(time(() => textFromHtml(`<a href="x">${text.repeat(100_000)}</a>`)), text).toBeLessThan(1000);
+    }
+  });
+});
+
 describe('the time of finding the URLs a mail loads', () => {
   it('takes linear time for many tag starts without an end', () => {
     // Escaped user text (`&lt;link`) is what an attacker controls; a literal `<` is the author's own markup.

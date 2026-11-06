@@ -29,7 +29,8 @@ export function base32Encode(bytes: Uint8Array): string {
 
 /** Decodes RFC 4648 Base32 (any case, optional padding); `undefined` for any other character. */
 export function base32Decode(text: string): Uint8Array | undefined {
-  const clean = text.replace(/=+$/, '').toUpperCase();
+  // The lookbehind starts a match only at the first `=` of a run: linear on a long run that does not reach the end.
+  const clean = text.replace(/(?<!=)=+$/, '').toUpperCase();
   const bytes: number[] = [];
   let buffer = 0;
   let bits = 0;

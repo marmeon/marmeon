@@ -78,7 +78,8 @@ function fence(lines: readonly string[]): string[] {
 }
 
 function oneLine(text: string): string {
-  return text.replace(/\s*\n\s*/g, ' ').trim();
+  // The lookbehind starts a match only at the first character of a run of whitespace: linear on a long run without a line break.
+  return text.replace(/(?<!\s)\s*\n\s*/g, ' ').trim();
 }
 
 function round(ms: number): number {

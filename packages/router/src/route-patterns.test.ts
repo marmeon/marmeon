@@ -34,6 +34,16 @@ describe('tokenizePattern', () => {
   });
 });
 
+describe('matchParams and trailing slashes', () => {
+  it('ignores any number of slashes at the end, and only there', () => {
+    expect(matchParams('/teams/:team', '/teams/7///')).toEqual({ team: '7' });
+    expect(matchParams('/teams/:team', '/teams/7/')).toEqual({ team: '7' });
+    expect(matchParams('/teams/:team', '/teams/7//x')).toBeUndefined();
+    expect(matchParams('/', '///')).toEqual({});
+    expect(matchParams('/files/:path{.+}', '/files/a//b//')).toEqual({ path: 'a//b' });
+  });
+});
+
 describe.each(ROUTE_PATTERNS)('the pattern $pattern', ({ pattern, names, params, filled, matches, misses }) => {
   it('is read by the tokenizer', () => {
     expect(tokenizePattern(pattern).flatMap((token) => ('name' in token ? [token.name] : []))).toEqual(names);
