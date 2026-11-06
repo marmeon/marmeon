@@ -662,6 +662,13 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(installStep, `      - run: |\n          echo hi\n          git checkout main\n${installStep}`))).toContain('checks out or moves the tree after the guard');
     });
 
+    it('reads a line of many options in linear time', () => {
+      const workflow = mutated(installStep, `      - run: git ${'-! -! '.repeat(30)}\n${installStep}`);
+      const started = performance.now();
+      checkWorkflow(repositoryWithWorkflow(workflow));
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+
     it('allows only run steps after the guard', () => {
       expect(problemsOf(mutated(installStep, `      - uses: ${setupNode}\n${installStep}`))).toContain('uses an action after the guard');
     });

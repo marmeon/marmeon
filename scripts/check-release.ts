@@ -233,7 +233,7 @@ function eventsOf(workflow: string): string[] | undefined {
 }
 
 /** After the checkout of the release commit nothing may move the tree: a second checkout, a switch, a reset, a pull, a merge. */
-const MOVES_THE_TREE = /(?<![\w-])git\s+(?:-\S+\s+(?:\S+\s+)?)*(?:checkout|switch|reset|restore|pull|merge|rebase|cherry-pick|worktree|stash|read-tree|apply|am)\b/;
+const MOVES_THE_TREE = /(?<![\w-])git\s+(?:-\S+\s+(?:(?:[^-\s]\S*|-)\s+)?)*(?:checkout|switch|reset|restore|pull|merge|rebase|cherry-pick|worktree|stash|read-tree|apply|am)\b/;
 
 /** 4 · the release workflow. */
 export function checkWorkflow(repository: string): string[] {
@@ -322,14 +322,14 @@ export function checkWorkflow(repository: string): string[] {
   }
   const needs = (key: string) => `needs.${buildName}.outputs.${key}`;
   /** `KEY: ${{ source }}` in a step's env. */
-  const env = (step: string, key: string, source: string) => new RegExp(`^\\s*${key}:\\s*\\$\\{\\{\\s*${source.replace(/\./g, '\\.')}\\s*\\}\\}\\s*$`, 'm').test(step);
+  const env = (step: string, key: string, source: string) => new RegExp(`^\\s*${key}:\\s*\\$\\{\\{\\s*${RegExp.escape(source)}\\s*\\}\\}\\s*$`, 'm').test(step);
   const checkoutOf = (step: string) => /["']?\buses["']?\s*:\s*actions\/checkout\b/.test(step);
   const usesOf = (step: string) => /^\s*(?:- )?["']?uses["']?\s*:\s*(\S+)/m.exec(step)?.[1];
   /** The lines of a step's scripts, trimmed, without the empty ones. */
   const linesOf = (step: string) => runScripts(step).join('\n').split('\n').map((line) => line.trim()).filter((line) => line !== '');
   /** The artifact the build job uploads and the staging job downloads: its name and where it lies. */
   const ARTIFACT = { name: 'tarballs', path: '${{ runner.temp }}/tarballs' };
-  const artifactWith = (step: string) => new RegExp(`^\\s*name:\\s*${ARTIFACT.name}\\s*$`, 'm').test(step) && new RegExp(`^\\s*path:\\s*${ARTIFACT.path.replace(/[$.{}]/g, '\\$&')}\\s*$`, 'm').test(step);
+  const artifactWith = (step: string) => new RegExp(`^\\s*name:\\s*${ARTIFACT.name}\\s*$`, 'm').test(step) && new RegExp(`^\\s*path:\\s*${RegExp.escape(ARTIFACT.path)}\\s*$`, 'm').test(step);
 
   for (const [name, body] of jobs) {
     if (!/^ {4}permissions:\s*$/m.test(body)) problems.push(`${where}: the job "${name}" has no "permissions:" block of its own — a job states what it needs, none inherits a scope`);
@@ -470,7 +470,7 @@ export function checkWorkflow(repository: string): string[] {
     if (releases) {
       if (!/^\s+contents:\s*write\s*$/m.test(body)) problems.push(`${where}: the job "${name}" needs "contents: write" for the tag and the draft`);
       const first = steps[0] ?? '';
-      if (!checkoutOf(first) || !new RegExp(`^\\s*ref:\\s*\\$\\{\\{\\s*${needs('commit').replace(/\./g, '\\.')}\\s*\\}\\}\\s*$`, 'm').test(first)) {
+      if (!checkoutOf(first) || !new RegExp(`^\\s*ref:\\s*\\$\\{\\{\\s*${RegExp.escape(needs('commit'))}\\s*\\}\\}\\s*$`, 'm').test(first)) {
         problems.push(`${where}: the job "${name}" starts by checking out the release commit (ref: \${{ ${needs('commit')} }}) — the guard's, not the branch head`);
       }
       for (const [index, step] of steps.entries()) {
