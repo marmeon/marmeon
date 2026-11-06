@@ -7,7 +7,7 @@
  * GitHub Release only as a draft, and the draft is there; the dist-tag and the prerelease flag come from the release guard's outputs alone, a candidate is staged as `next` only), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
- * reads a checkout, installs nothing, holds no token), `.github/workflows/kysely-canary.yml` (the scheduled Kysely canary: no token, no cache, no pull request) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
+ * reads a checkout, installs nothing, holds no token), `.github/workflows/kysely-canary.yml` (the scheduled Kysely canary: no token, no cache, no pull request), `.github/workflows/codeql.yml` (code scanning: the write-capable job runs no `run:` step, never `pull_request_target`) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
  *
  * Each rule in full: CONTRIBUTING.md, "Pull requests and releases".
  */
@@ -763,6 +763,187 @@ export function checkCanaryWorkflow(repository: string): string[] {
   return problems;
 }
 
+/**
+ * The shape of `codeql.yml` without comments and blank lines, the pinned SHAs as `<sha>`. The job may write code-scanning results,
+ * so it is compared line by line instead of read for what is wrong with it: an input, an `env:`, a `defaults:`, another runner,
+ * a second document or any spelling of YAML a pattern does not see all fail here. A change of the workflow is a change of this.
+ */
+const CODEQL_SHAPE = [
+  'name: CodeQL',
+  'on:',
+  '  push:',
+  '    branches: [main]',
+  '  pull_request:',
+  '  schedule:',
+  '    - cron: \'23 4 * * 2\'',
+  'permissions: {}',
+  'concurrency:',
+  '  group: codeql-${{ github.ref }}',
+  '  cancel-in-progress: ${{ github.event_name == \'pull_request\' }}',
+  'jobs:',
+  '  analyze:',
+  '    name: codeql (${{ matrix.language }})',
+  '    runs-on: ubuntu-latest',
+  '    timeout-minutes: 45',
+  '    permissions:',
+  '      contents: read',
+  '      security-events: write',
+  '    strategy:',
+  '      fail-fast: false',
+  '      matrix:',
+  '        language: [javascript-typescript, actions]',
+  '    steps:',
+  '      - uses: actions/checkout@<sha>',
+  '        with:',
+  '          persist-credentials: false',
+  '      - uses: github/codeql-action/init@<sha>',
+  '        with:',
+  '          languages: ${{ matrix.language }}',
+  '          build-mode: none',
+  '          config-file: ./.github/codeql/codeql-config.yml',
+  '      - uses: github/codeql-action/analyze@<sha>',
+  '        with:',
+  '          category: /language:${{ matrix.language }}',
+];
+
+/**
+ * The lines of a YAML file as YAML reads them: one leading BOM dropped, a comment only after a space or tab (JavaScript's `\s`
+ * would also take a no-break space, which YAML keeps in the value), no trailing blanks, no blank lines.
+ */
+function yamlLines(text: string): string[] {
+  return text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/(^|[ \t])#.*$/, '$1').replace(/[ \t\r]+$/, ''))
+    .filter((line) => !/^[ \t\r]*$/.test(line));
+}
+
+/** The text of a workflow as {@link CODEQL_SHAPE} lists it: no comments, no blank lines, no trailing blanks, the SHAs as `<sha>`. */
+function shapeOf(code: string): string[] {
+  return yamlLines(code).map((line) => line.replace(/@[0-9a-f]{40}\b/g, '@<sha>'));
+}
+
+const CODEQL_CONFIG = './.github/codeql/codeql-config.yml';
+
+/**
+ * The problems of the CodeQL config: its top-level keys are listed, `queries:` is the one suite, and no spelling of YAML that
+ * could hide a remote query or pack (flow collections, quoted or explicit keys, anchors, aliases, tags, block scalars) is read.
+ * `paths-ignore:` and `query-filters:` stay free for what they hold.
+ */
+function configProblems(lines: string[]): string[] {
+  const where = 'codeql-config.yml';
+  const problems: string[] = [];
+  const keys = ['name', 'queries', 'paths-ignore', 'query-filters'];
+  for (const line of lines.filter((candidate) => !/^[ \t]/.test(candidate))) {
+    const key = /^([\w-]+):/.exec(line)?.[1];
+    if (key === undefined || !keys.includes(key)) problems.push(`${where}: top-level "${key ?? line}:" — only ${keys.join(', ')}; "packs:" and "paths:" would add what the suite and the ignore list do not show`);
+  }
+  if (lines.filter((line) => line.startsWith('queries:')).length > 1) problems.push(`${where}: "queries:" twice — one list, so no reader takes the other one`);
+  const start = lines.findIndex((line) => /^queries:[ \t]*$/.test(line));
+  const rest = start < 0 ? [] : lines.slice(start + 1);
+  const end = rest.findIndex((line) => !/^[ \t]/.test(line));
+  const entries = end < 0 ? rest : rest.slice(0, end);
+  if (start < 0 || entries.length !== 1 || !/^[ \t]+-[ \t]+uses:[ \t]*security-extended$/.test(entries[0]!)) {
+    problems.push(`${where}: "queries:" must be exactly one entry, "- uses: security-extended" — nothing other than security-extended (found ${entries.map((entry) => entry.trim()).join(' | ') || 'none'})`);
+  }
+  const plain = lines.map((line) => line.replace(/"[^"]*"|'[^']*'/g, '""'));
+  if (lines.some((line) => /^[ \t]*(?:-[ \t]+)*["'][^"']*["'][ \t]*:/.test(line))) problems.push(`${where}: a quoted key — keys are plain`);
+  if (plain.some((line) => /[{}[\]]/.test(line))) problems.push(`${where}: a flow collection ("{…}" or "[…]") — write the block form`);
+  if (plain.some((line) => /^[ \t]*(?:-[ \t]+)*\?([ \t]|$)/.test(line))) problems.push(`${where}: an explicit key ("? …")`);
+  if (plain.some((line) => /(?:^|[ \t:-])[&*!][^\s]/.test(line))) problems.push(`${where}: an anchor, an alias or a tag ("&x", "*x", "!x")`);
+  if (plain.some((line) => /(?::|-)[ \t]*[|>][+-]?\d?$/.test(line))) problems.push(`${where}: a block scalar ("|" or ">")`);
+  return problems;
+}
+
+/**
+ * The CodeQL workflow: its job may write code-scanning results, so nothing of the repository runs in it — no `run:` step, no
+ * install, no autobuild — and it never runs on `pull_request_target`.
+ */
+export function checkCodeqlWorkflow(repository: string): string[] {
+  const where = 'codeql.yml';
+  const file = join(repository, '.github/workflows/codeql.yml');
+  if (!existsSync(file)) return [`${where}: .github/workflows/codeql.yml is missing`];
+  const problems: string[] = [];
+  const code = yamlLines(readFileSync(file, 'utf8')).join('\n');
+
+  const events = eventsOf(code);
+  if (events?.slice().sort().join() !== 'pull_request,push,schedule') {
+    problems.push(`${where}: "on:" must be exactly pull_request, push and schedule (found ${events?.join(', ') || 'no event block'}) — never pull_request_target, which would hand a fork's pull request the write token`);
+  }
+  if (!/^permissions:\s*\{\}\s*$/m.test(code)) problems.push(`${where}: the workflow's "permissions:" must be "{}" — only the job holds grants`);
+  const grants = grantsOf(code);
+  const extra = grants.filter((grant) => grant !== 'contents: read' && grant !== 'security-events: write');
+  if (extra.length > 0) problems.push(`${where}: a job asks for more than "contents: read" and "security-events: write" (${extra.join(', ')}) — reading the checkout and uploading the results is all it does`);
+  for (const wanted of ['contents: read', 'security-events: write']) {
+    if (!grants.includes(wanted)) problems.push(`${where}: the job must say "permissions: ${wanted}"`);
+  }
+
+  const codeqlShas = new Set<string>();
+  for (const [, action] of code.matchAll(/["']?\buses["']?\s*:\s*["']?([^\s"']+)/g)) {
+    if (!/@[0-9a-f]{40}$/.test(action!)) problems.push(`${where}: "${action}" is not pinned to a commit — every action is pinned by its full SHA`);
+    if (!/^(?:actions\/checkout|github\/codeql-action\/(?:init|analyze))@/.test(action!)) {
+      problems.push(`${where}: "${action}" — only actions/checkout and github/codeql-action/init and analyze; no autobuild, nothing that runs the repository`);
+    }
+    if (action!.startsWith('github/codeql-action/')) codeqlShas.add(action!.slice(action!.indexOf('@') + 1));
+  }
+  if (codeqlShas.size > 1) problems.push(`${where}: init and analyze must use the same commit of github/codeql-action (found ${[...codeqlShas].join(', ')})`);
+  // Every input of a step is listed: `tools`, `packs`, `queries` or `config` would run or load code the pin and the config file do not cover.
+  const allowedInputs: Record<string, readonly string[]> = {
+    'actions/checkout': ['persist-credentials'],
+    'github/codeql-action/init': ['languages', 'build-mode', 'config-file'],
+    'github/codeql-action/analyze': ['category'],
+  };
+  for (const chunk of code.split(/^(?=\s*- )/m)) {
+    const action = /^\s*(?:- )?["']?uses["']?\s*:\s*["']?([^\s"'@]+)/m.exec(chunk)?.[1];
+    if (action === undefined) continue;
+    if (action === 'actions/checkout' && !/^\s*persist-credentials:\s*false\s*$/m.test(chunk)) {
+      problems.push(`${where}: an actions/checkout step without "persist-credentials: false" — the token would stay in the checkout`);
+    }
+    const lines = chunk.split('\n').filter((line) => line.trim() !== '');
+    const stepIndent = lines[0]!.length - lines[0]!.trimStart().length + 2;
+    let inWith = false;
+    for (const line of lines) {
+      const indent = line.length - line.trimStart().length;
+      const key = /^\s*(?:- )?["']?([\w-]+)["']?\s*:(.*)$/.exec(line);
+      if (!key) continue;
+      const own = line.trimStart().startsWith('- ') ? indent + 2 : indent;
+      if (own === stepIndent) {
+        inWith = key[1] === 'with';
+        if (inWith && key[2]!.trim() !== '') problems.push(`${where}: "with:" of ${action} must be a block — its inputs are checked one by one`);
+        else if (!['uses', 'with', 'name', 'id'].includes(key[1]!)) problems.push(`${where}: "${key[1]}:" on a step of ${action} — only uses, with, name and id`);
+      } else if (inWith && own > stepIndent && !(allowedInputs[action] ?? []).includes(key[1]!)) {
+        problems.push(`${where}: the input "${key[1]}" of ${action} — only ${(allowedInputs[action] ?? []).join(', ') || 'no input'}; a bundle, a pack or a query list would run code the pins and the config file do not cover`);
+      }
+    }
+  }
+  if (/^\s*(?:container|services)\s*:/m.test(code)) problems.push(`${where}: "container:" or "services:" — the job runs on the runner itself, in no image nobody pinned`);
+  if (/(?:^|[\s:{[,-])[&*][\w-]+/m.test(code.replace(/\$\{\{[\s\S]*?\}\}/g, '').replace(/'[^'\n]*'|"[^"\n]*"/g, ''))) {
+    problems.push(`${where}: a YAML anchor or alias — it could hide a step or an input from this check`);
+  }
+  if (runScripts(code).length > 0 || /(?:^|[{,\s])["']?run["']?\s*:/m.test(code)) problems.push(`${where}: a "run:" step — in the job that may write code-scanning results nothing of the repository runs`);
+  if (/\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token)|GITHUB_TOKEN/.test(code)) problems.push(`${where}: a secret or the token — the job must hold none beyond its own grants`);
+  const buildModes = [...code.matchAll(/^\s*build-mode\s*:(.*)$/gm)].map((match) => match[1]!.trim());
+  if (buildModes.length === 0 || buildModes.some((mode) => mode !== 'none')) problems.push(`${where}: every "build-mode:" must be "none" — the analysis reads the source and builds nothing`);
+  if (!new RegExp(`^\\s*config-file:\\s*${RegExp.escape(CODEQL_CONFIG)}\\s*$`, 'm').test(code)) {
+    problems.push(`${where}: "config-file: ${CODEQL_CONFIG}" — the scanned paths and the query suite live in the repository`);
+  }
+  const languages = /^\s*language:\s*\[([^\]]*)\]\s*$/m.exec(code)?.[1]?.split(',').map((language) => language.trim()).sort().join();
+  if (languages !== 'actions,javascript-typescript') problems.push(`${where}: the matrix must be exactly javascript-typescript and actions (found ${languages || 'none'})`);
+
+  const shape = shapeOf(readFileSync(file, 'utf8'));
+  if (shape.length !== CODEQL_SHAPE.length || shape.some((line, index) => line !== CODEQL_SHAPE[index])) {
+    const first = shape.findIndex((line, index) => line !== CODEQL_SHAPE[index]);
+    problems.push(`${where}: differs from the expected shape at "${(shape[first] ?? 'the end of the file').trim()}" — anything the checks above do not name (an env, a default, another runner, a second document, an input) fails here; a deliberate change goes into CODEQL_SHAPE too`);
+  }
+
+  const config = join(repository, '.github/codeql/codeql-config.yml');
+  if (!existsSync(config)) problems.push(`${where}: .github/codeql/codeql-config.yml is missing`);
+  else {
+    problems.push(...configProblems(yamlLines(readFileSync(config, 'utf8'))));
+  }
+  return problems;
+}
+
 /** The API label check: it checks out untrusted code, so it holds no token, installs nothing and runs one script of node-only imports. */
 export function checkApiLabelWorkflow(repository: string): string[] {
   const where = 'api-label.yml';
@@ -874,6 +1055,7 @@ export function check(repository: string = root): string[] {
     ...checkLabelWorkflow(repository),
     ...checkApiLabelWorkflow(repository),
     ...checkCanaryWorkflow(repository),
+    ...checkCodeqlWorkflow(repository),
     ...checkReleaseConfig(repository),
     ...checkTrust(repository),
     ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version),
@@ -894,8 +1076,8 @@ if (import.meta.main) {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
-      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, kysely-canary.yml, .github/release.yml, ` +
-        `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
+      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, kysely-canary.yml, codeql.yml, .github/release.yml,` +
+        ` npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }
 }

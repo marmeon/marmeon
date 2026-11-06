@@ -1,0 +1,16 @@
+# What `.github/workflows/codeql.yml` scans. The security-extended suite adds the queries that trade some precision for reach.
+# Tests and fixtures are left out: they hold deliberately unsafe input and never ship. `scripts/`, `examples/`, `apps/` and the
+# template stay in, because people copy them and CI runs them. A query that is wrong across the board is filtered here, with the
+# reason; a single false positive is dismissed on GitHub with one, never suppressed in the code.
+name: marmeon
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.type-test.ts'
+  - '**/__fixtures__/**'
+  # Text of past releases, frozen as it was published.
+  - apps/website/content/lines/**
