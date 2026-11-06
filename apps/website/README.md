@@ -45,7 +45,8 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   Its code lives in `modules/site/snippets.ts` — files of the notes example the docs build up, so keep them in step with the API.
   Every snippet names its `source`, the file it is a piece of (`app`: a file of the smoke app; `repo`: a file of this repository), and
   `scripts/landing.ts` checks it: `pnpm test` the `repo` sources and the files of `examples/landing`, `pnpm pack:smoke` every `app` snippet word
-  for word in the smoke app with `examples/landing` laid over it. The seven typos of "one type, end to end" are `modules/site/chain.ts`; the page
+  for word in the smoke app with `examples/landing` laid over it. A snippet holds no comment lines (the landing shows code without them);
+  it is compared with its file after the file's whole-line comments (as oxc-parser reports them; a file it cannot read fails the check) are dropped. A trailing comment stays on its line, so a line that should be shown without it needs its comment moved onto a line of its own. The seven typos of "one type, end to end" are `modules/site/chain.ts`; the page
   shows each misspelt line from it (`mistakeLine`). `chain.ts` also holds each typo's compiler error (`error`), which `pnpm pack:smoke`
   reproduces word for word, so a TypeScript update that rewords it turns that check red until `chain.ts` follows.
   `SiteSnippets` highlights them once at boot with the docs' Shiki and theme (the browser gets markup, no highlighter), and the

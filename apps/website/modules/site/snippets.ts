@@ -1,7 +1,7 @@
 /**
  * The code on the landing page — server only: `SiteSnippets` highlights it once at boot, the browser gets markup. Every snippet
  * is a file of the notes example the docs build up (`docs/migrations.md`, `docs/queries.md`, `docs/controllers.md`, …); when
- * the API changes, these change with it.
+ * the API changes, these change with it. A snippet shows no comment lines: the file it comes from may have them.
  */
 export type SnippetSource =
   /** A file of the smoke app (starter kit, `examples/notes`, `examples/recipes`, `examples/landing`); a `*` in the last segment stands for one file name, as in an overlay's `edits.json`. */
@@ -23,12 +23,9 @@ export const SNIPPETS = {
     file: 'modules/notes/routes.ts',
     source: { app: 'modules/notes/routes.ts' },
     lang: 'ts',
-    code: `// Signed in, with a confirmed address. A note in the URL is looked up by its id and then checked
-// against the signed-in user by NotePolicy: somebody else's note is a 404.
-export default defineRoutes((Route) => {
+    code: `export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
 
-  // These three never take a note from the path: the list asks for \`ctx.user.id\`, and a new note is created for the signed-in user.
   const mine = notes.authorize(everyone);
   mine.get('/', ListNotesController).name('index');
   mine.get('/create', CreateNoteController).name('create');
@@ -57,7 +54,6 @@ export const ShowNoteRequest = defineRequest({ authorize: can(NotePolicy, 'view'
 export class ShowNoteController extends Controller {
   static request = ShowNoteRequest;
 
-  // \`note\` is bound by the route: a missing one is a 404.
   handle(ctx: ContextOf<typeof ShowNoteRequest>) {
     return this.view('notes/Show', { note: ctx.params.note });
   }
@@ -92,7 +88,6 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 export default defineMigration({
   up: (schema) =>
     schema.create('notes', (table) => {
-      // A UUIDv7 as the primary key: the id is in URLs, and the next one cannot be guessed.
       table.uuidId();
       table.foreignId('user_id').constrained('users').cascadeOnDelete();
       table.string('title', 120);
@@ -111,9 +106,9 @@ export default defineMigration({
     lang: 'ts',
     code: `import type { NewRow, Row, RowUpdate } from '@marmeon/database';
 
-export type Note = Row<'notes'>; // a row as read
-export type NewNote = NewRow<'notes'>; // what an insert takes
-export type NoteChanges = RowUpdate<'notes'>; // what an update takes
+export type Note = Row<'notes'>;
+export type NewNote = NewRow<'notes'>;
+export type NoteChanges = RowUpdate<'notes'>;
 `,
   },
   repository: {
@@ -125,7 +120,6 @@ export type NoteChanges = RowUpdate<'notes'>; // what an update takes
 export class NoteRepository extends Repository<'notes'> {
   static table = 'notes' as const;
 
-  /** One page of a user's notes: the pinned ones first, then the most recently changed. Only what the page shows. */
   pageOf(userId: Row<'notes'>['user_id'], page: PageRequest) {
     const query = this.query()
       .select(['id', 'title', 'body', 'pinned'])

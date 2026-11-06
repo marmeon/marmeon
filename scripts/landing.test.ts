@@ -5,7 +5,7 @@ import { CHAIN, mistakeLine, type ChainStepSpec } from '../apps/website/modules/
 import type { Snippet } from '../apps/website/modules/site/snippets.ts';
 import type { DemoTarget } from './notes-demo.ts';
 import { SmokeError } from './pack-smoke.ts';
-import { checkLanding, checkTypo, landingProblems } from './landing.ts';
+import { checkLanding, checkTypo, landingProblems, withoutCommentLines } from './landing.ts';
 import { tempDir } from './test/temp-dir.js';
 
 describe('the landing of the repository', () => {
@@ -17,7 +17,7 @@ describe('the landing of the repository', () => {
     expect(CHAIN.map((step) => step.id)).toEqual(['migration', 'row', 'repository', 'controller', 'route', 'props', 'form']);
     expect(CHAIN.map(mistakeLine)).toEqual([
       "table.strng('title', 120);",
-      "export type Note = Row<'ntoes'>; // a row as read",
+      "export type Note = Row<'ntoes'>;",
       ".where('user_ud', '=', userId)",
       "return this.view('notes/Show', { note: ctx.params.nte });",
       '<Link route="notes.indx">All notes</Link>',
@@ -39,7 +39,83 @@ function repository(file = 'const a = 1;\n') {
 const app = (extra: Partial<Snippet> & { source?: unknown } = {}) => ({ lang: 'ts', code: 'const a = 1;\n', source: { app: 'modules/a.ts' }, ...extra }) as Snippet;
 const step = (extra: Partial<ChainStepSpec> = {}): ChainStepSpec => ({ id: 'row', title: 'Row', snippet: 'a', typo: { find: 'a', replace: 'b' }, error: { code: 'TS2551', message: 'm' }, ...extra }) as ChainStepSpec;
 
+describe('withoutCommentLines', () => {
+  it('drops whole-line // comments, block comments over several lines and JSDoc, and keeps indentation', () => {
+    const text = ['// head', 'const a = 1;', '  // indented', '  /** one line */', '  /**', '   * Many', '   * lines.', '   */', '  const b = 2;', '/* x', 'y */', 'const c = 3;', ''].join('\n');
+    expect(withoutCommentLines(text, 'a.ts')).toBe('const a = 1;\n  const b = 2;\nconst c = 3;\n');
+  });
+
+  it('keeps a comment after code, a // inside a string and code after a closed block comment', () => {
+    const text = ["const url = 'http://example.com'; // the site", "const note = '// not a comment';", '/* c */ const d = 4;', '  /* c */', 'const e = 5; /* trailing */', ''].join('\n');
+    expect(withoutCommentLines(text, 'a.ts')).toBe(["const url = 'http://example.com'; // the site", "const note = '// not a comment';", '/* c */ const d = 4;', 'const e = 5; /* trailing */', ''].join('\n'));
+  });
+
+  it('drops nothing inside a template literal that runs over several lines, so a fake comment cannot swallow code', () => {
+    const text = ['const sql = `', '/* glob', '`;', 'deleteEverything();', 'const done = true; // */', 'next();', ''].join('\n');
+    expect(withoutCommentLines(text, 'a.ts')).toBe(text);
+    expect(withoutCommentLines(['const t = `a \\` still', '// in the template', '`;', '// a comment', 'x;', ''].join('\n'), 'a.ts')).toBe(['const t = `a \\` still', '// in the template', '`;', 'x;', ''].join('\n'));
+  });
+
+  it('is not fooled by a backtick in a ${} expression or by a regular expression with a quote or a backtick', () => {
+    const lines = (...parts: string[]) => [...parts, ''].join('\n');
+    // The template stays open over `/* x`, so that line is text; `// */` after the closing backtick is a real comment.
+    expect(withoutCommentLines(lines('const sql = `${\'`\'}', '/* x', '`;', 'code();', '// */', 'next();'), 'a.ts')).toBe(lines('const sql = `${\'`\'}', '/* x', '`;', 'code();', 'next();'));
+    expect(withoutCommentLines(lines('const quote = /\'/;', '// gone', 'code();'), 'a.ts')).toBe(lines('const quote = /\'/;', 'code();'));
+    expect(withoutCommentLines(lines('const tick = /\\`/;', '/* gone */', 'code();'), 'a.ts')).toBe(lines('const tick = /\\`/;', 'code();'));
+  });
+
+  it('keeps a // line inside JSX text, which is text and no comment', () => {
+    const text = ['export const a = (', '  <p>', '    // not a comment', '  </p>', ');', ''].join('\n');
+    expect(withoutCommentLines(text, 'a.tsx')).toBe(text);
+  });
+
+  it('refuses a file that does not parse, naming it', () => {
+    expect(() => withoutCommentLines('const a = ;\n// c\n', 'broken.ts')).toThrow(/^broken\.ts: oxc-parser cannot read it/);
+  });
+
+  it('keeps blank lines, so a snippet over a dropped comment needs the blank line of the file', () => {
+    expect(withoutCommentLines('a;\n\n// c\nb;\n', 'a.ts')).toBe('a;\n\nb;\n');
+  });
+});
+
 describe('landingProblems', () => {
+  it('refuses a source that does not parse, and judges a fragment that does not parse by its text', () => {
+    const root = repository('const a = ;\n// c\n');
+    const snippets = {
+      broken: { lang: 'ts', code: 'const a = ;\n', source: { repo: 'apps/web-app/x.ts' } },
+      slashes: { lang: 'ts', code: 'foo(\n// c\n', source: { app: 'modules/a.ts' } },
+      stars: { lang: 'ts', code: 'foo(\n * c\n', source: { app: 'modules/a.ts' } },
+      plain: { lang: 'ts', code: 'foo(\n', source: { app: 'modules/a.ts' } },
+    } as Record<string, Snippet>;
+    const problems = landingProblems(root, snippets, []);
+    expect(problems).toHaveLength(3);
+    expect(problems[0]).toMatch(/^snippet "broken": .*x\.ts: oxc-parser cannot read it/);
+    expect(problems.slice(1)).toEqual([
+      'snippet "slashes": it has a comment line — the landing shows code without comments; the source file may keep them.',
+      'snippet "stars": it has a comment line — the landing shows code without comments; the source file may keep them.',
+    ]);
+  });
+
+  it('accepts a snippet whose line ends with a comment, when the source has the same line', () => {
+    const root = repository('const a = 1; // one\nconst b = 2;\n');
+    const snippets = { a: { lang: 'ts', code: 'const a = 1; // one\nconst b = 2;\n', source: { repo: 'apps/web-app/x.ts' } } } as Record<string, Snippet>;
+    expect(landingProblems(root, snippets, [])).toEqual([]);
+  });
+
+  it('names a snippet with a comment line, and compares a snippet with its source without the source\'s comment lines', () => {
+    const root = repository('// why\nconst a = 1;\n/** more */\nconst b = 2;\n');
+    const snippets = {
+      fine: { lang: 'ts', code: 'const a = 1;\nconst b = 2;\n', source: { repo: 'apps/web-app/x.ts' } },
+      commented: { lang: 'ts', code: '// why\nconst a = 1;\n', source: { repo: 'apps/web-app/x.ts' } },
+      block: { lang: 'ts', code: '/**\n * c\n */\nconst a = 1;\n', source: { app: 'modules/a.ts' } },
+    } as Record<string, Snippet>;
+    expect(landingProblems(root, snippets, [])).toEqual([
+      'snippet "commented": it has a comment line — the landing shows code without comments; the source file may keep them.',
+      'snippet "commented": the code is not in apps/web-app/x.ts.',
+      'snippet "block": it has a comment line — the landing shows code without comments; the source file may keep them.',
+    ]);
+  });
+
   it('accepts snippets whose sources are fine', () => {
     const snippets = { a: app({ file: 'modules/a.ts' }), b: app({ file: 'm/2026_x_create.ts', source: { app: 'm/*_create.ts' } }), c: { lang: 'ts', code: 'const a = 1;\n', file: 'x.ts', source: { repo: 'apps/web-app/x.ts' } } } as Record<string, Snippet>;
     expect(landingProblems(repository(), snippets, [step()])).toEqual([]);
@@ -167,6 +243,11 @@ describe('checkLanding', () => {
     const { repo, target } = smoke();
     writeFileSync(join(target.app, 'a.ts'), "const value: string = 1;\n");
     await expect(checkLanding(target, 'pnpm', repo, generated(), [])).rejects.toThrow(/does not type-check after the typos were put back:\na\.ts\(1,7\): TS2322/);
+  });
+
+  it('finds a snippet in an app file that has comment lines around it', async () => {
+    const { repo, target } = smoke({ generated: '// why\nconst g = 1;\n/** more */\n' });
+    await checkLanding(target, 'pnpm', repo, generated(), []);
   });
 
   it('names a snippet that is not in the app file', async () => {

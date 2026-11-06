@@ -1,6 +1,7 @@
 /**
  * The landing page's code (`apps/website/modules/site/snippets.ts`) and its checks. Every snippet names the file it is a piece of
- * (`source`): a file of the smoke app (`app`) or of this repository (`repo`). `landingProblems` compares what it can without the
+ * (`source`): a file of the smoke app (`app`) or of this repository (`repo`); the code is a verbatim piece of that file once the
+ * file's comment lines are left out (`withoutCommentLines`), for the landing shows no comments. `landingProblems` compares what it can without the
  * smoke app, in `pnpm test`. A function, no command of its own.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -11,8 +12,59 @@ import { SNIPPETS, type Snippet } from '../apps/website/modules/site/snippets.ts
 import { typecheckApp } from '../packages/cli/src/typecheck.ts';
 import { applyOverlay, readEdits, type DemoTarget } from './notes-demo.ts';
 import { SmokeError } from './pack-smoke.ts';
+import { oxc } from './source-files.ts';
 
 const REPOSITORY = fileURLToPath(new URL('..', import.meta.url));
+
+/**
+ * `text` of the file `filename` without its comment lines: every line whose only content (besides white space) lies inside
+ * comments — a `//` line, a JSDoc, each line of a block comment. The other lines stay as they are, indentation included, and so do
+ * blank lines; a comment after code stays on its line. The comments are the ones oxc-parser reports, so a `//` in a string, a
+ * template, a regular expression or JSX text is not taken for one. A file the parser cannot read is an `Error` that names it: nothing
+ * is stripped from a file that did not parse. The extension of `filename` picks TypeScript or TSX.
+ */
+export function withoutCommentLines(text: string, filename: string): string {
+  const { comments, errors } = oxc().parseSync(filename, text);
+  if (errors.length > 0) throw new Error(`${filename}: oxc-parser cannot read it: ${errors[0]!.message}`);
+  const inComment = (offset: number) => comments.some((comment) => offset >= comment.start && offset < comment.end);
+  let offset = 0;
+  return text
+    .split('\n')
+    .filter((line) => {
+      const start = offset;
+      offset += line.length + 1;
+      let comment = false;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i]!.trim() === '') continue;
+        if (!inComment(start + i)) return true;
+        comment = true;
+      }
+      return !comment;
+    })
+    .join('\n');
+}
+
+/**
+ * Whether a snippet's code has a comment line. A snippet that parses on its own is judged like a file (`withoutCommentLines`). A
+ * fragment that does not parse is judged by its text: any line that starts with `//`, `/*` or `*`, or holds `*\/`, counts — that
+ * check can only say "yes" more often, never miss a line it could not read.
+ */
+function hasCommentLine(snippet: Snippet): boolean {
+  try {
+    return withoutCommentLines(snippet.code, `snippet.${snippet.lang}`) !== snippet.code;
+  } catch {
+    return snippet.code.split('\n').some((line) => /^\s*(\/\/|\/\*|\*)/.test(line) || line.includes('*/'));
+  }
+}
+
+/** `withoutCommentLines` of the file `file`, or the message that says it cannot be read. */
+function readWithoutComments(file: string): { text: string } | { problem: string } {
+  try {
+    return { text: withoutCommentLines(readFileSync(file, 'utf8'), file) };
+  } catch (error) {
+    return { problem: (error as Error).message };
+  }
+}
 
 /** How often `part` stands in `text`, without overlaps. */
 function occurrences(text: string, part: string): number {
@@ -65,13 +117,18 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
       problems.push(`snippet "${name}": it has no source — name the file it is a piece of.`);
       continue;
     }
+    if (hasCommentLine(snippet)) problems.push(`snippet "${name}": it has a comment line — the landing shows code without comments; the source file may keep them.`);
     if ('app' in source) {
       const problem = appPathProblem(source.app);
       if (problem) problems.push(`snippet "${name}": ${problem}`);
       else {
         if (snippet.file !== undefined && !labelMatches(source.app, snippet.file)) problems.push(`snippet "${name}": the file label "${snippet.file}" does not fit the source ${source.app}.`);
         const file = source.app.includes('*') ? undefined : overlayFile(repository, source.app);
-        if (file && !readFileSync(file, 'utf8').includes(snippet.code)) problems.push(`snippet "${name}": the code is not in ${relative(repository, file)}: ${JSON.stringify(firstMissingLine(snippet.code, readFileSync(file, 'utf8')))} is not there.`);
+        const read = file ? readWithoutComments(file) : undefined;
+        if (file && read) {
+          if ('problem' in read) problems.push(`snippet "${name}": ${read.problem}`);
+          else if (!read.text.includes(snippet.code)) problems.push(`snippet "${name}": the code is not in ${relative(repository, file)}: ${JSON.stringify(firstMissingLine(snippet.code, read.text))} is not there.`);
+        }
       }
     } else if ('repo' in source) {
       const path = source.repo;
@@ -81,7 +138,11 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
       }
       const file = join(repository, path);
       if (!existsSync(file)) problems.push(`snippet "${name}": the source ${path} does not exist.`);
-      else if (!readFileSync(file, 'utf8').includes(snippet.code)) problems.push(`snippet "${name}": the code is not in ${path}.`);
+      else {
+        const read = readWithoutComments(file);
+        if ('problem' in read) problems.push(`snippet "${name}": ${read.problem}`);
+        else if (!read.text.includes(snippet.code)) problems.push(`snippet "${name}": the code is not in ${path}.`);
+      }
       if (snippet.file !== undefined && snippet.file !== path.replace(/^apps\/[^/]+\//, '')) problems.push(`snippet "${name}": the file label "${snippet.file}" does not fit the source ${path}.`);
     } else {
       problems.push(`snippet "${name}": its source must be { app } or { repo }.`);
@@ -181,7 +242,9 @@ export async function checkLanding(
   for (const [name, snippet] of Object.entries(snippets)) {
     if (!('app' in snippet.source)) continue;
     const file = fileOf(name, snippet.source.app);
-    const text = readFileSync(join(smoke.app, file), 'utf8');
+    const read = readWithoutComments(join(smoke.app, file));
+    if ('problem' in read) throw new SmokeError(`snippet "${name}": ${read.problem}`);
+    const text = read.text;
     if (!text.includes(snippet.code)) throw new SmokeError(`snippet "${name}": the code is not in ${file}: ${JSON.stringify(firstMissingLine(snippet.code, text))} is not there.`);
   }
   const tests = smoke.run(pm, ['run', 'test', '--reporter=verbose']);
