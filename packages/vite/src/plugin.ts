@@ -29,7 +29,13 @@ function privateFiles(root: string): string[] {
     // A root that does not exist yet has nothing to resolve.
   }
   // `resolve.preserveSymlinks` keeps the path as written, otherwise Vite sees the real one.
-  const bases = [...new Set([resolve(root), real])].map((dir) => dir.replaceAll('\\', '/').replace(/[[\]{}()*?!+@]/g, '\\$&'));
+  // Vite matches the absolute path with picomatch. Its middlewares (static files, `/@fs/`, transforms) first turn every `\` into `/`,
+  // while `isFileLoadingAllowed` callers pass the path as is: on POSIX a backslash is a character of a directory's name, so both
+  // forms are denied. In a glob a backslash cannot be escaped reliably (picomatch collapses runs of them), so it becomes `?`, which
+  // denies slightly more and never less.
+  const bases = [...new Set([resolve(root), real].flatMap((dir) => (process.platform === 'win32' ? [dir.replaceAll('\\', '/')] : [dir, dir.replaceAll('\\', '/')])))].map(
+    (dir) => dir.replace(/[\\[\]{}()*?!+@|"]/g, (char) => (char === '\\' ? '?' : `\\${char}`)),
+  );
   return [
     ...VITE_DEFAULT_DENY,
     ...bases.flatMap((base) => [`${base}/storage/**`, `${base}/dist/**`, `${base}/.marmeon/**`]),
