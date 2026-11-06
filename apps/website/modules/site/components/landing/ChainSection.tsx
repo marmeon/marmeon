@@ -116,7 +116,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             mistake={mistakeLine(CHAIN[6]!)}
             where={
               <>
-                <code>views/Edit.tsx</code>
+                <code>views/Form.tsx</code>
                 <p>
                   The form knows its method, URL and field types from the route name, so its errors are typed too. <Link href="/docs/forms">Forms</Link>
                 </p>

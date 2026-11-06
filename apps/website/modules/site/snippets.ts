@@ -23,18 +23,24 @@ export const SNIPPETS = {
     file: 'modules/notes/routes.ts',
     source: { app: 'modules/notes/routes.ts' },
     lang: 'ts',
-    code: `import { authenticate } from '@marmeon/auth';
-import { defineRoutes, everyone } from '@marmeon/http';
-import { ListNotesController } from './controllers/ListNotesController.ts';
-import { ShowNoteController } from './controllers/ShowNoteController.ts';
-import { NoteRepository } from './NoteRepository.ts';
-
+    code: `// Signed in, with a confirmed address. A note in the URL is looked up by its id and then checked
+// against the signed-in user by NotePolicy: somebody else's note is a 404.
 export default defineRoutes((Route) => {
-  const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
+  const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
 
-  // The list asks for the signed-in user's notes; the note route is decided by its request (NotePolicy).
-  notes.authorize(everyone).get('/', ListNotesController).name('index');
-  notes.bind('note', NoteRepository).get('/:note', ShowNoteController).name('show');
+  // These three never take a note from the path: the list asks for \`ctx.user.id\`, and a new note is created for the signed-in user.
+  const mine = notes.authorize(everyone);
+  mine.get('/', ListNotesController).name('index');
+  mine.get('/create', CreateNoteController).name('create');
+  mine.post('/', StoreNoteController).name('store');
+
+  const note = notes.bind('note', NoteRepository);
+  note.get('/:note', ShowNoteController).name('show');
+  note.get('/:note/edit', EditNoteController).name('edit');
+  note.put('/:note', UpdateNoteController).name('update');
+  note.put('/:note/pin', PinNoteController).name('pin');
+  note.delete('/:note/pin', UnpinNoteController).name('unpin');
+  note.delete('/:note', DeleteNoteController).name('destroy');
 });
 `,
   },
@@ -86,11 +92,14 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 export default defineMigration({
   up: (schema) =>
     schema.create('notes', (table) => {
-      table.id();
-      table.foreignId('user_id').constrained().cascadeOnDelete();
-      table.string('title', 200);
+      // A UUIDv7 as the primary key: the id is in URLs, and the next one cannot be guessed.
+      table.uuidId();
+      table.foreignId('user_id').constrained('users').cascadeOnDelete();
+      table.string('title', 120);
       table.text('body');
+      table.boolean('pinned').default(false);
       table.timestamps();
+      table.index('user_id');
     }),
   down: (schema) => schema.drop('notes'),
 });
@@ -111,22 +120,28 @@ export type NoteChanges = RowUpdate<'notes'>; // what an update takes
     file: 'modules/notes/NoteRepository.ts',
     source: { app: 'modules/notes/NoteRepository.ts' },
     lang: 'ts',
-    code: `import { Repository } from '@marmeon/database';
+    code: `import { Repository, type PageRequest, type Row } from '@marmeon/database';
 
 export class NoteRepository extends Repository<'notes'> {
   static table = 'notes' as const;
 
-  latestOf(userId: number) {
-    return this.query().selectAll().where('user_id', '=', userId).orderBy('updated_at', 'desc').limit(10).execute();
+  /** One page of a user's notes: the pinned ones first, then the most recently changed. Only what the page shows. */
+  pageOf(userId: Row<'notes'>['user_id'], page: PageRequest) {
+    const query = this.query()
+      .select(['id', 'title', 'body', 'pinned'])
+      .where('user_id', '=', userId)
+      .orderBy('pinned', 'desc')
+      .orderBy('updated_at', 'desc')
+      .orderBy('id', 'desc');
+    return this.paginate(query, page);
   }
 }
 `,
   },
   form: {
-    source: { app: 'modules/notes/views/Edit.tsx' },
+    source: { app: 'modules/notes/views/Form.tsx' },
     lang: 'tsx',
-    code: `const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id } });
-form.errors.title
+    code: `{form.error('title') && <small role="alert">{form.error('title')}</small>}
 `,
   },
   test: {
@@ -136,7 +151,7 @@ form.errors.title
     code: `it('shows a note to its author', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
-  const note = await app.factory(NoteFactory).create({ user_id: ada.id, title: 'Groceries' });
+  const note = await app.make(NoteRepository).insert({ user_id: ada.id, title: 'Groceries', body: 'Milk' });
   await app
     .actingAs(ada)
     .navigating()
@@ -148,7 +163,7 @@ form.errors.title
   },
   // One line of a file above, where a step of the chain points at it.
   controllerCall: { source: { app: 'modules/notes/controllers/ShowNoteController.ts' }, lang: 'ts', code: `return this.view('notes/Show', { note: ctx.params.note });\n` },
-  pageSignature: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `export default function Show({ note }: PageProps<ShowNoteController>)\n` },
+  pageSignature: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `export default function Show({ note }: PageProps<ShowNoteController>) {\n` },
   routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
 } as const satisfies Record<string, Snippet>;
 

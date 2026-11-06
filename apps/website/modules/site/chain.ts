@@ -13,18 +13,18 @@ export interface ChainStepSpec {
 }
 
 export const CHAIN: readonly ChainStepSpec[] = [
-  { id: 'migration', title: 'Migration', snippet: 'migration', typo: { find: "table.string('title', 200)", replace: "table.strng('title', 200)" } },
+  { id: 'migration', title: 'Migration', snippet: 'migration', typo: { find: "table.string('title', 120)", replace: "table.strng('title', 120)" } },
   { id: 'row', title: 'Row', snippet: 'tableType', typo: { find: "type Note = Row<'notes'>", replace: "type Note = Row<'ntoes'>" } },
-  { id: 'repository', title: 'Repository', snippet: 'repository', typo: { find: "'user_id'", replace: "'user_ud'" } },
+  { id: 'repository', title: 'Repository', snippet: 'repository', typo: { find: ".where('user_id'", replace: ".where('user_ud'" } },
   { id: 'controller', title: 'Controller', snippet: 'controllerCall', typo: { find: 'ctx.params.note', replace: 'ctx.params.nte' } },
   { id: 'route', title: 'Route', snippet: 'routeLink', typo: { find: 'route="notes.index"', replace: 'route="notes.indx"' } },
   { id: 'props', title: 'Props', snippet: 'page', typo: { find: '<h1>{note.title}</h1>', replace: '<h1>{note.titel}</h1>' } },
-  { id: 'form', title: 'Form error', snippet: 'form', typo: { find: 'form.errors.title', replace: 'form.errors.titel' } },
+  { id: 'form', title: 'Form error', snippet: 'form', typo: { find: "{form.error('title') &&", replace: "{form.error('titel') &&" } },
 ];
 
 /** The line of the step's snippet that holds `find`, with the typo in it and its indent cut off: what the page shows as "does not compile". */
 export function mistakeLine(step: ChainStepSpec): string {
   const line = SNIPPETS[step.snippet].code.split('\n').find((candidate) => candidate.includes(step.typo.find));
   if (line === undefined) throw new Error(`The snippet "${step.snippet}" has no line with ${JSON.stringify(step.typo.find)}.`);
-  return line.replace(step.typo.find, step.typo.replace).trim();
+  return line.replace(step.typo.find, () => step.typo.replace).trim();
 }
