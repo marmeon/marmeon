@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
-import { bindingNameOf, parseSync } from '@marmeon/core/internal';
+import { bindingNameOf, parseSync, writeProjectFile } from '@marmeon/core/internal';
 import { CommandArgumentsError, CommandRegistry, isReservedCommand, RESERVED_COMMANDS, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { leavesProject, refusesOverwrite, writeProjectFile } from '../write-guard.ts';
+import { leavesProject, refusesOverwrite } from '../write-guard.ts';
 
 export const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
 export const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;

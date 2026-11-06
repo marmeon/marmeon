@@ -2,7 +2,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { leavesProject, refusesOverwrite, writeProjectFile } from '../write-guard.ts';
+import { leavesProject, refusesOverwrite } from '../write-guard.ts';
+import { writeProjectFile } from '@marmeon/core/internal';
 
 /** The file oxlint reads in the app root. */
 export const LINT_CONFIG_FILE = '.oxlintrc.json';
