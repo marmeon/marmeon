@@ -96,6 +96,22 @@
   overflow-x: auto;
 }
 
+/* Each file fills its column to the bottom, so side-by-side files end, and scroll, at the same height. */
+.editor .editor-file,
+.editor .editor-code,
+.editor .editor-code .code-block,
+.editor .editor-code .code-source {
+  display: flex;
+  flex-direction: column;
+}
+
+.editor .editor-code,
+.editor .editor-code .code-block,
+.editor .editor-code .code-source,
+.editor .editor-code pre.code {
+  flex: 1;
+}
+
 .editor-footer {
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--editor-line);
