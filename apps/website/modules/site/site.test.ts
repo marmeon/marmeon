@@ -61,6 +61,26 @@ describe('the landing page', () => {
     for (const mistake of mistakes) expect(body).toContain(mistake.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("'", '&#x27;').replaceAll('"', '&quot;'));
   });
 
+  it('hands the page every chain step with its highlighted mistake line and the compiler error from chain.ts', async () => {
+    const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props as {
+      chain: { id: string; title: string; snippet: { html: string }; mistake: string; error: unknown }[];
+    };
+    expect(props.chain.map((step) => step.id)).toEqual(CHAIN.map((step) => step.id));
+    props.chain.forEach((step, index) => {
+      expect(step.mistake, step.id).toContain('<pre class="code"');
+      expect(step.mistake, step.id).not.toContain('style=');
+      expect(step.snippet.html, step.id).toContain('<pre class="code"');
+      expect(step.error, step.id).toEqual(CHAIN[index]!.error);
+    });
+  });
+
+  it('shows the compiler error of every chain step, from chain.ts', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("'", '&#x27;').replaceAll('"', '&quot;');
+    for (const { error } of CHAIN) expect(body).toContain(escape(error.message));
+    expect(body).not.toContain('COMPILE ERROR');
+  });
+
   it('says who Marmeon is for: four situations, each with a link to its proof, and who it does not fit', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<section class="audience" aria-labelledby="audience-title"');

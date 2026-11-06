@@ -6,7 +6,7 @@ import { ChainStep } from '../ChainStep.tsx';
 import { CodeBlock } from '../CodeBlock.tsx';
 
 /** "A typo anywhere is a compile error": one type followed in seven steps from the migration to the form error. */
-export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>, 'snippets'>) {
+export function ChainSection({ snippets, chain }: Pick<PageProps<ShowLandingController>, 'snippets' | 'chain'>) {
   return (
     <section className="chain" aria-labelledby="chain-title">
       <div className="landing-inner">
@@ -23,6 +23,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={1}
             title="Migration"
             mistake={mistakeLine(CHAIN[0]!)}
+            error={chain[0]!.error}
             where={
               <>
                 <code>modules/notes/migrations/</code>
@@ -38,6 +39,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={2}
             title="Table type"
             mistake={mistakeLine(CHAIN[1]!)}
+            error={chain[1]!.error}
             where={
               <>
                 <code>Row&lt;'notes'&gt;</code>
@@ -53,6 +55,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={3}
             title="Repository"
             mistake={mistakeLine(CHAIN[2]!)}
+            error={chain[2]!.error}
             where={
               <>
                 <code>NoteRepository.ts</code>
@@ -68,6 +71,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={4}
             title="Controller"
             mistake={mistakeLine(CHAIN[3]!)}
+            error={chain[3]!.error}
             where={
               <>
                 <code>ShowNoteController.ts</code>
@@ -83,6 +87,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={5}
             title="Route name"
             mistake={mistakeLine(CHAIN[4]!)}
+            error={chain[4]!.error}
             where={
               <>
                 <code>routes.ts</code>
@@ -99,6 +104,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={6}
             title="Page props"
             mistake={mistakeLine(CHAIN[5]!)}
+            error={chain[5]!.error}
             where={
               <>
                 <code>views/Show.tsx</code>
@@ -114,6 +120,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
             number={7}
             title="Form error"
             mistake={mistakeLine(CHAIN[6]!)}
+            error={chain[6]!.error}
             where={
               <>
                 <code>views/Form.tsx</code>

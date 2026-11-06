@@ -163,14 +163,15 @@
 }
 
 .landing .chain-error {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  margin: 8px 0 0;
   color: var(--caution-fg);
   font-family: var(--font-mono);
-  font-size: 0.71875rem;
+  font-size: 0.78125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .chain-error-code {
   font-weight: 600;
-  letter-spacing: 0.12em;
 }
 
 @media (max-width: 519px) {

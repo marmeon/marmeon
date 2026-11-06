@@ -2,9 +2,9 @@ import type { ReactNode } from 'react';
 
 /**
  * One step of "one type, end to end": a number on the rail that joins the steps (drawn in CSS), what the step is, the code
- * that uses the type, and — where there is one — the misspelt line that no longer compiles. The code comes as children.
+ * that uses the type, and — where there is one — the misspelt line that no longer compiles with the compiler's answer. The code comes as children.
  */
-export function ChainStep({ number, title, where, mistake, children }: { number: number; title: string; where: ReactNode; mistake?: string; children: ReactNode }) {
+export function ChainStep({ number, title, where, mistake, error, children }: { number: number; title: string; where: ReactNode; mistake?: string; error?: { code: string; message: string }; children: ReactNode }) {
   return (
     <li className="chain-step">
       <div className="chain-rail" aria-hidden="true">
@@ -21,12 +21,11 @@ export function ChainStep({ number, title, where, mistake, children }: { number:
             <p className="chain-mistake">
               <span className="visually-hidden">This does not compile: </span>
               <code>{mistake}</code>
-              <span className="chain-error" aria-hidden="true">
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M1 1l8 8M9 1l-8 8" />
-                </svg>
-                COMPILE ERROR
-              </span>
+            </p>
+          )}
+          {error !== undefined && (
+            <p className="chain-error">
+              <span className="chain-error-code">error {error.code}:</span> {error.message}
             </p>
           )}
         </div>
