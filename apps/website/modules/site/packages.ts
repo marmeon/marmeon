@@ -10,7 +10,7 @@ export interface PackageEntry {
   readonly text: string;
 }
 
-/** Every package of the repository, once: the landing lists them from here, and a test compares the names with `packages/*`. */
+/** Every package of the repository, once: the landing lists them from here (the controller hands the list to the page, so the browser's bundle never imports this file), and a test compares the names with `packages/*`. */
 export const PACKAGES: readonly PackageEntry[] = [
   { name: '@marmeon/core', docs: 'modules', group: 'app', text: 'App, modules, container, config, events, clock.' },
   { name: 'marmeon', docs: 'console', group: 'app', text: 'The CLI: dev, build, start, generators, tinker.' },
@@ -39,10 +39,4 @@ export const PACKAGES: readonly PackageEntry[] = [
   { name: '@marmeon/testing', docs: 'testing', group: 'tooling', text: 'createTestApp(), assertions, fakes.' },
   { name: '@marmeon/devtools', docs: 'devtools', group: 'tooling', text: 'Records requests, queries, jobs and mails. Development only.' },
   { name: 'create-marmeon', docs: 'installation', group: 'tooling', text: 'The creator behind pnpm create marmeon.' },
-];
-
-export const PACKAGE_GROUPS: readonly { readonly group: PackageGroup; readonly title: string }[] = [
-  { group: 'app', title: 'In every new app' },
-  { group: 'add', title: 'Add when you need it' },
-  { group: 'tooling', title: 'Tooling' },
 ];

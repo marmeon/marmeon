@@ -2,7 +2,7 @@ import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { PACKAGES_URL } from '../../links.ts';
-import { PACKAGE_GROUPS, PACKAGES } from '../../packages.ts';
+import type { PackageEntry, PackageGroup } from '../../packages.ts';
 import type { SnippetName } from '../../snippets.ts';
 import { Editor } from '../Editor.tsx';
 import { Tabs } from '../Tabs.tsx';
@@ -62,16 +62,22 @@ function ModuleFiles() {
   );
 }
 
-/** Every package of the framework with a link to its page, in groups, from `PACKAGES`. */
-function PackageList() {
+const PACKAGE_GROUPS: readonly { readonly group: PackageGroup; readonly title: string }[] = [
+  { group: 'app', title: 'In every new app' },
+  { group: 'add', title: 'Add when you need it' },
+  { group: 'tooling', title: 'Tooling' },
+];
+
+/** Every package of the framework with a link to its page, in groups, from the list the server hands over. */
+function PackageList({ packages }: { packages: readonly PackageEntry[] }) {
   return (
     <div className="package-list">
-      <h3 className="group-label">{`${PACKAGES.length} packages, one version`}</h3>
+      <h3 className="group-label">{`${packages.length} packages, one version`}</h3>
       {PACKAGE_GROUPS.map(({ group, title }) => (
         <div key={group} className="package-group">
           <h4 className="group-label group-label--small">{title}</h4>
           <ul className="package-grid" aria-label={title}>
-            {PACKAGES.filter((entry) => entry.group === group).map(({ name, docs, text }) => {
+            {packages.filter((entry) => entry.group === group).map(({ name, docs, text }) => {
               const scope = name.startsWith('@marmeon/') ? '@marmeon/' : '';
               return (
                 <li key={name}>
@@ -93,7 +99,7 @@ function PackageList() {
 }
 
 /** "The backend comes with it": one tab per package, each with a piece of real code, and the checks that hold the packages together. */
-export function BatteriesSection({ snippets }: Pick<PageProps<ShowLandingController>, 'snippets'>) {
+export function BatteriesSection({ snippets, packages }: Pick<PageProps<ShowLandingController>, 'snippets' | 'packages'>) {
   return (
     <section className="batteries" aria-labelledby="batteries-title">
       <div className="landing-inner batteries-inner">
@@ -142,7 +148,7 @@ export function BatteriesSection({ snippets }: Pick<PageProps<ShowLandingControl
             };
           })}
         />
-        <PackageList />
+        <PackageList packages={packages} />
       </div>
     </section>
   );
