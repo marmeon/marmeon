@@ -1,5 +1,40 @@
 # @marmeon/validation
 
+## 1.0.0-rc.7
+
+### Breaking changes
+
+- Log only the recipients and subject of a mail outside development and tests by @maxeckel in https://github.com/marmeon/marmeon/pull/700
+
+### Features
+
+- Tell coding agents which skills and MCP tools the app has in AGENTS.md by @maxeckel in https://github.com/marmeon/marmeon/pull/698
+
+### Fixes
+
+- Resolve a link the way the system does before writing through it by @maxeckel in https://github.com/marmeon/marmeon/pull/701
+- Derive a mail's text and find the URLs it loads in linear time by @maxeckel in https://github.com/marmeon/marmeon/pull/699
+- Mask names added to the redactor in JSON and in quoted values by @maxeckel in https://github.com/marmeon/marmeon/pull/702
+- Decode a Postgres json column loaded through a relation only once by @maxeckel in https://github.com/marmeon/marmeon/pull/703
+- Write control characters out in everything the CLI prints by @maxeckel in https://github.com/marmeon/marmeon/pull/704
+- Write control characters out in the names database commands print by @maxeckel in https://github.com/marmeon/marmeon/pull/705
+- Keep the project's .npmrc out of the image make:docker writes by @maxeckel in https://github.com/marmeon/marmeon/pull/706
+- Resolve real paths with the system's realpath in every containment check by @maxeckel in https://github.com/marmeon/marmeon/pull/707
+- Trim an export's file name in linear time by @maxeckel in https://github.com/marmeon/marmeon/pull/708
+- End a signed-out session's live stream that was still opening by @maxeckel in https://github.com/marmeon/marmeon/pull/709
+- Mask and escape task errors and names in the output of the schedule commands by @maxeckel in https://github.com/marmeon/marmeon/pull/711
+- Log auth errors as errors so the redactor masks their whole message by @maxeckel in https://github.com/marmeon/marmeon/pull/712
+- Escape every key and value in pretty logs and keep child bindings off pino's fields by @maxeckel in https://github.com/marmeon/marmeon/pull/710
+- Mask the errors the CLI prints for a failed command or boot by @maxeckel in https://github.com/marmeon/marmeon/pull/713
+- Keep a log call from throwing on the data it logs by @maxeckel in https://github.com/marmeon/marmeon/pull/715
+- Mask a string cause and string aggregate errors like an error's message by @maxeckel in https://github.com/marmeon/marmeon/pull/714
+- Run the regular expressions that read request text in linear time by @maxeckel in https://github.com/marmeon/marmeon/pull/718
+- Deny an app's private files on the dev server also when its path has a backslash or a glob character by @maxeckel in https://github.com/marmeon/marmeon/pull/723
+- Write bootstrap/routes.ts and bootstrap/database.d.ts only through the project's link guard by @maxeckel in https://github.com/marmeon/marmeon/pull/725
+- Turn a mail's HTML into text in linear time by @maxeckel in https://github.com/marmeon/marmeon/pull/726
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.6...v1.0.0-rc.7
+
 ## 1.0.0-rc.6
 
 ### Breaking changes
