@@ -64,7 +64,7 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body.match(/<li class="principle"/g)).toHaveLength(7);
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
-    const section = body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="modules-title"'));
+    const section = body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="batteries-title"'));
     expect(section.match(/<h3[\s>]/g)).toHaveLength(7);
     // The step bar needs JavaScript; the server's page has no tablist and no dead button.
     expect(section).not.toContain('role="tablist"');
@@ -137,15 +137,35 @@ describe('the landing page', () => {
 
   it('has the six sections after the chain, each named by its heading', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    for (const name of ['modules', 'batteries', 'secure', 'testing', 'devtools', 'start']) {
+    for (const name of ['batteries', 'secure', 'testing', 'islands', 'devtools', 'start']) {
       expect(body, name).toMatch(new RegExp(`<section class="${name}" aria-labelledby="${name}-title"`));
       expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
     }
-    expect(body.match(/<h2[ >]/g)).toHaveLength(10);
+    expect(body.match(/<h2[ >]/g)).toHaveLength(9);
     expect(body).toContain('<nav aria-label="Start reading">');
-    expect(body).toContain('aria-label="Files of the notes module"');
-    for (const group of ['In every new app', 'Add when you need it']) expect(body).toContain(group);
-    expect(body.match(/<li><code>(<span class="package-scope">@marmeon\/<\/span>)?[a-z0-9]+<\/code>/g)).toHaveLength(16 + 3 + 6);
+    expect(body).not.toContain('<section class="modules"');
+  });
+
+  it('shows the nine packages as tabs, each with its code, under h3 headings of the batteries section', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<section class="batteries"');
+    const section = body.slice(start, body.indexOf('<section class="secure"'));
+    expect(section).toContain('aria-labelledby="batteries-title"');
+    const labels = [...section.matchAll(/<h3 class="tabs-heading">([^<]*)<\/h3>/g)].map((match) => match[1]);
+    expect(labels).toEqual(['Auth', 'Database', 'Migrations', 'Validation', 'Queue', 'Mail', 'Scheduler', 'Storage', 'Modules']);
+    // h2 > h3 (the tab) > h4 (the file): no level is skipped, and nothing above the tabs is a heading.
+    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`2${'34'.repeat(9)}`);
+    for (const name of Object.keys(SNIPPETS).filter((key) => key.startsWith('battery'))) {
+      const { file } = SNIPPETS[name as keyof typeof SNIPPETS] as { file: string };
+      expect(section, name).toContain(`<h4 class="editor-name">${file}</h4>`);
+    }
+    expect(section).toContain('aria-label="Files of the notes module"');
+    expect(section).toContain('pnpm add @marmeon/redis');
+    expect(section).toContain('Installed packages register themselves');
+    for (const href of ['/docs/authorization', '/docs/queries', '/docs/migrations', '/docs/validation', '/docs/queues', '/docs/mail', '/docs/scheduling', '/docs/storage', '/docs/modules#discovery']) {
+      expect(section, href).toContain(`href="${href}"`);
+    }
+    expect(section).not.toMatch(/\sstyle=/);
   });
 
   it('shows the test snippet', async () => {

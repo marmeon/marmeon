@@ -57,6 +57,8 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
   `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
   highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
+  The batteries section (`components/landing/BatteriesSection.tsx`) puts nine packages in `Tabs`, each with an `Editor` and a `battery…` snippet (4 to 8 lines of a real file,
+  checked like the others); the "Modules" tab also holds the folder of a module.
   `/islands/render-clock` is a real island the landing page loads (`ShowRenderClockController`, `views/islands/RenderClock.tsx`): public, no session or cookie, outside the sitemap, a 404 when visited directly. `CachePublicly` keeps its answer (recognised by the response header `x-marmeon-region: island`, which only the kernel sets) for `ISLAND_CACHE_MAX_AGE` (5 s, in `config/site.ts`, capped by `SITE_CACHE_MAX_AGE`) instead of the pages' 300 s. `components/landing/IslandSection.tsx` shows it beside its own code (`<Island load="visible" pollMs={10_000}>`): without JavaScript, and before it scrolls into view, the page holds a fallback sentence and the code, and the snippets are checked against the two files.
 - **The landing's devtools section** is a copy of the devtools with invented data (`modules/site/devtools-sample.ts`, drawn by
   `components/landing/DevtoolsReplica.tsx`): its page, tab and column names are read from `packages/devtools` by
