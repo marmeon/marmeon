@@ -9,7 +9,8 @@ export function localizedPath(path: string, supported: readonly string[]): strin
   return path.replace(/^\/:locale/, `/:locale{${supported.map(escapeRegExp).join('|')}}`);
 }
 
-const trimmed = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path);
+// The lookbehind starts a match only at the first slash of a run: linear on a long run that does not reach the end.
+const trimmed = (path: string): string => (path.length > 1 ? path.replace(/(?<!\/)\/+$/, '') : path);
 
 /**
  * Refuses the start when the localized routes cannot work: no locales are bound, a route without `localized()` sits under the

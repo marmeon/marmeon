@@ -256,7 +256,7 @@ export class SetLocale {
     if (localized || locales.supported.length <= 1) return response;
     // The answer depends on the browser's languages (for visitors without a choice): caches must keep them apart.
     const vary = response.headers.get('vary');
-    if (!vary?.toLowerCase().split(/\s*,\s*/).includes('accept-language')) response.headers.set('vary', vary ? `${vary}, accept-language` : 'accept-language');
+    if (!vary?.toLowerCase().split(',').map((token) => token.trim()).includes('accept-language')) response.headers.set('vary', vary ? `${vary}, accept-language` : 'accept-language');
     return response;
   }
 }

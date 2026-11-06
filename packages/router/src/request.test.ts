@@ -221,6 +221,11 @@ describe('addVary', () => {
     expect(addVary({ vary: 'origin, ACCEPT' }, ['Accept', 'X-Requested-With'])).toEqual({ vary: 'origin, ACCEPT, X-Requested-With' });
   });
 
+  it('reads a list with blanks around the commas and empty entries', () => {
+    expect(addVary({ vary: 'a , b,,c ,' }, ['Accept'])).toEqual({ vary: 'a, b, c, Accept' });
+    expect(addVary({ vary: ' accept ' }, ['Accept'])).toEqual({ vary: 'accept' });
+  });
+
   it('leaves * untouched', () => {
     expect(addVary({ vary: '*' }, ['Accept'])).toEqual({ vary: '*' });
   });
