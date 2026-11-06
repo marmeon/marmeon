@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../test/temp-dir.js';
-import { ensureImportable, importProblem, removeNodeModules } from './integrity.ts';
+import { ensureImportable, ensurePrivateDir, importProblem, removeNodeModules } from './integrity.ts';
 
 /** A fixture checkout with one installed package stands in for a bench worktree. */
 function checkout(): string {
@@ -65,5 +65,37 @@ describe('pnpm bench — a checkout is importable before it is measured', () => 
     removeNodeModules(dir);
     expect(['node_modules', 'packages/a/node_modules', 'apps/web/node_modules'].filter((path) => existsSync(join(dir, path)))).toEqual([]);
     expect(existsSync(join(dir, 'packages/a'))).toBe(true);
+  });
+});
+
+describe.skipIf(process.getuid === undefined)('pnpm bench — the checkouts live in a directory only this user can write', () => {
+  it('creates the directory private and accepts it again', () => {
+    const dir = join(tempDir('marmeon-bench-'), 'marmeon-bench');
+    const real = realpathSync.native(dirname(dir));
+    expect(ensurePrivateDir(dir)).toBe(join(real, 'marmeon-bench'));
+    expect(ensurePrivateDir(dir)).toBe(join(real, 'marmeon-bench'));
+  });
+
+  it('refuses a directory other users can write to', () => {
+    const dir = tempDir('marmeon-bench-');
+    for (const mode of [0o770, 0o707, 0o777]) {
+      chmodSync(dir, mode);
+      expect(() => ensurePrivateDir(dir)).toThrow(/writable by other users/);
+    }
+  });
+
+  it('refuses a parent others can write to unless it is sticky', () => {
+    const parent = tempDir('marmeon-bench-');
+    chmodSync(parent, 0o777);
+    expect(() => ensurePrivateDir(join(parent, 'marmeon-bench'))).toThrow(/without the sticky bit/);
+    chmodSync(parent, 0o1777);
+    expect(ensurePrivateDir(join(parent, 'marmeon-bench'))).toBe(join(realpathSync.native(parent), 'marmeon-bench'));
+  });
+
+  it('refuses a link at the path, even to a private directory', () => {
+    const target = tempDir('marmeon-bench-');
+    const link = join(tempDir('marmeon-bench-'), 'marmeon-bench');
+    symlinkSync(target, link);
+    expect(() => ensurePrivateDir(link)).toThrow(/not a plain directory/);
   });
 });

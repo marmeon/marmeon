@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { ensureImportable, importProblem, type ImportProbe } from './integrity.ts';
+import { ensureImportable, ensurePrivateDir, importProblem, type ImportProbe } from './integrity.ts';
 import { SCENARIOS, WORKER_MODULES, type ScenarioName } from './request-worker.ts';
 import { MEASURES, parseMeasures, type Measure } from './shims.ts';
 import { welch } from './stats.ts';
@@ -116,9 +116,7 @@ function git(args: string[], cwd = root): string {
 }
 
 function benchDir(): string {
-  const dir = join(tmpdir(), 'marmeon-bench');
-  mkdirSync(dir, { recursive: true });
-  return realpathSync(dir); // the profiles' file URLs are real paths (macOS: /var → /private/var)
+  return ensurePrivateDir(join(tmpdir(), 'marmeon-bench')); // a real path: the profiles' file URLs are (macOS: /var → /private/var)
 }
 
 function install(checkout: string): void {
