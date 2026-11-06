@@ -33,25 +33,6 @@
     {
       "files": ["**/__fixtures__/**"],
       "rules": { "regexp/no-super-linear-backtracking": "off", "regexp/no-super-linear-move": "off" }
-    },
-    {
-      // The request-text expressions in these files are made linear in a separate change; whichever of the two changes merges
-      // second removes this override.
-      "files": [
-        "packages/auth/src/hashing.ts",
-        "packages/auth/src/two-factor/totp.ts",
-        "packages/cache/src/rate-limiter.ts",
-        "packages/devtools/src/client/bar.ts",
-        "packages/i18n/src/index.ts",
-        "packages/mail/src/html.ts",
-        "packages/react/src/head-fields.ts",
-        "packages/router/src/pattern.ts",
-        "packages/router/src/request.ts",
-        "packages/server/src/error-page/markdown.ts",
-        "packages/server/src/localized-routes.ts",
-        "packages/server/src/render.ts"
-      ],
-      "rules": { "regexp/no-super-linear-backtracking": "off", "regexp/no-super-linear-move": "off" }
     }
   ]
 }
