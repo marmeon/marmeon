@@ -28,6 +28,25 @@ describe('the time of removing the tags of a mail', () => {
   });
 });
 
+describe('the time of dropping the comments, blocks and links of a mail', () => {
+  // Each start repeated without its end: a regex with a lazy `[\s\S]*?` or a `[^>]*` retries the rest of the text at every one.
+  // A trailing `>` only where it still leaves every start open (after `<!--` it makes `-->`, after `<li` it closes the first tag).
+  // `<a href="` runs 1 000 times: a regex is cubic there, so more would hang the run instead of failing it.
+  it('takes linear time for many starts without an end', () => {
+    const cases: [start: string, times: number, ends: string[]][] = [
+      ['<!--', 100_000, ['']],
+      ['<style', 100_000, ['', '>']],
+      ['<a ', 100_000, ['', '>']],
+      ['<a href="', 1_000, ['', '>']],
+      ['<div style="display:none"', 100_000, ['', '>']],
+      ['<li', 100_000, ['']],
+    ];
+    for (const [start, times, ends] of cases) {
+      for (const end of ends) expect(time(() => textFromHtml(`${start.repeat(times)}${end}`)), `${start}…${end}`).toBeLessThan(1000);
+    }
+  });
+});
+
 describe('the time of finding the URLs a mail loads', () => {
   it('takes linear time for many tag starts without an end', () => {
     // Escaped user text (`&lt;link`) is what an attacker controls; a literal `<` is the author's own markup.
