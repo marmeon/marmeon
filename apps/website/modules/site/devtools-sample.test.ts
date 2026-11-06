@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, REDACTED, sampleValues } from './devtools-sample.ts';
+import { redactText, REDACTED } from '@marmeon/core';
+import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
 
 const devtools = resolve(import.meta.dirname, '../../../../packages/devtools/src');
 const read = (file: string) => readFileSync(resolve(devtools, file), 'utf8');
@@ -63,14 +64,15 @@ describe('devtools sample data', () => {
   });
 
   it('uses the statuses, modes and sections the devtools know', () => {
-    const jobStatus = quoted(block(entry, /readonly status: ((?:'[a-z]+' \| )+'[a-z]+');\n\s*\/\*\* `static job`/, 'JobEntryContent status'));
+    const union = (source: string, declaration: RegExp, name: string) => quoted(block(source, declaration, name));
+    const jobStatus = union(entry, /interface JobEntryContent \{[\s\S]*?readonly status: ((?:'[a-z]+' \| )+'[a-z]+');/, 'JobEntryContent status');
+    const mailModes = union(entry, /interface MailEntryContent \{[\s\S]*?readonly mode: ((?:'[a-z]+' \| )+'[a-z]+');/, 'MailEntryContent mode');
     const jobs = DEVTOOLS_PAGES.find((page) => page.name === 'Jobs')!;
     for (const row of jobs.rows) expect(jobStatus).toContain(row[2]);
     const mails = DEVTOOLS_PAGES.find((page) => page.name === 'Mails')!;
-    for (const row of mails.rows) expect(['send', 'queue', 'worker']).toContain(row[4]);
-    const optimistic = DEVTOOLS_BAR_TABS.find((tab) => tab.name === 'Optimistic')!;
-    for (const part of optimistic.blocks) for (const row of part.rows ?? []) expect(['shown', 'committed', 'replaced by the server', 'rolled back']).toContain(row.cells[2]);
-    for (const state of ['replaced by the server', 'rolled back']) expect(bar).toContain(`'${state}'`);
+    for (const row of mails.rows) expect(mailModes).toContain(row[4]);
+    const notes = DEVTOOLS_BAR_TABS.filter((tab) => ['Optimistic', 'SSR'].includes(tab.name)).flatMap((tab) => tab.blocks.map((part) => part.note));
+    for (const note of notes.filter((text): text is string => Boolean(text) && !text!.startsWith('Landing:'))) expect(bar, note).toContain(note);
     for (const heading of DEVTOOLS_BAR_TABS.flatMap((tab) => tab.blocks.map((part) => part.heading)).filter((h) => h && !h.startsWith('Page'))) {
       expect(bar, heading).toMatch(new RegExp(`['\`]${heading!.replace(/ \(\d+\)$/, '')}[' (\`]`));
     }
@@ -87,13 +89,14 @@ describe('devtools sample data', () => {
     for (const value of sampleValues()) expect(value).not.toMatch(/password|secret|token=|bearer|cookie=|app_key|https?:\/\//i);
   });
 
-  it('shows a redacted value exactly as the redactor does, and only where its key is on the redactor list', () => {
-    const redacted = sampleValues().filter((value) => value.includes('redacted'));
+  it('leaves nothing the redactor would still change', () => {
+    for (const value of sampleValues()) expect(redactText(value), value).toBe(value);
+  });
+
+  it('shows a redacted value exactly as the redactor does', () => {
+    const redacted = sampleValues().filter((value) => value.includes('[redacted]'));
     expect(redacted.length).toBeGreaterThan(0);
-    for (const value of redacted) {
-      expect(value).toContain(REDACTED);
-      expect(value).toMatch(/session_id\s*(=|)\s*'?\[redacted\]/);
-    }
+    for (const value of redacted) expect(redactText(value.replaceAll('[redacted]', 'k7Qx9mZ2vB4nR8sT')), value).toBe(value);
     expect(REDACTED).toBe('[redacted]');
   });
 });

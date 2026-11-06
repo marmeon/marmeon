@@ -1,12 +1,8 @@
 /**
  * Invented sample data for the landing page's devtools picture. Page names, tab names and columns follow the real devtools
  * (`packages/devtools`); `devtools-sample.test.ts` fails when the framework renames one. A value the core redactor
- * hides shows as `[redacted]`, as in the devtools.
+ * hides shows as `[redacted]`, as in the devtools (the test checks it against `@marmeon/core`; the browser bundle does not import core).
  */
-
-/** What the devtools show in place of a redacted value (`REDACTED` of `@marmeon/core`). */
-export const REDACTED = '[redacted]';
-
 export interface SampleRequest {
   readonly time: string;
   readonly method: string;
@@ -96,7 +92,6 @@ const QUERIES: readonly SampleQuery[] = [
   { time: '10:41:07.220', statement: 'select * from guests order by id desc limit 50', ms: 2.1, origin: 'request 5d1c9a02' },
   { time: '10:41:07.224', statement: 'select count(*) from guests', ms: 0.8, origin: 'request 5d1c9a02' },
   { time: '10:41:09.552', statement: 'insert into guests (name, email) values (?, ?)', ms: 1.4, origin: 'request 7be40f13' },
-  { time: '10:41:09.602', statement: "select user_id from sessions where session_id = '[redacted]'", ms: 0.4, origin: 'request c28a6e71' },
   { time: '10:41:09.618', statement: 'select * from guests where id = ?', ms: 0.6, origin: 'request c28a6e71' },
 ];
 
@@ -120,7 +115,7 @@ const LOGS: readonly SampleLog[] = [
 ];
 
 const EXCEPTIONS: readonly SampleException[] = [
-  { time: '10:41:20.119', exception: 'TimeoutError', message: 'The sync did not answer within 5 s', where: 'job', origin: 'job 9c71d0aa' },
+  { time: '10:41:20.119', exception: 'TimeoutError', message: 'Pruning did not finish within 5 s', where: 'job', origin: 'job 9c71d0aa' },
   { time: '10:41:15.036', exception: 'ForbiddenError', message: 'Only an admin may remove a guest', where: 'request 403 /guests/7', origin: 'request e4a0b5d6' },
 ];
 
@@ -195,15 +190,7 @@ export const DEVTOOLS_BAR_TABS: readonly DevtoolsSampleBarTab[] = [
   },
   {
     name: 'Optimistic',
-    blocks: [
-      {
-        columns: ['#', 'With', 'State', 'Changed', 'Before', 'Shown'],
-        rows: [
-          row('2', 'island GET /islands/render-clock → 200', 'replaced by the server', 'clock', '{"clock":"10:41:07"}', '{"clock":"10:41:08"}'),
-          row('1', 'island GET /islands/render-clock', 'rolled back', 'clock', '{"clock":"10:41:07"}', '{"clock":"10:41:09"}'),
-        ],
-      },
-    ],
+    blocks: [{ note: 'No optimistic patches yet (useAction, router.optimistic, a form with optimistic).' }],
   },
   {
     name: 'Server',

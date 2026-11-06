@@ -49,6 +49,9 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
   `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
   highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
+- **The landing's devtools section** is a copy of the devtools with invented data (`modules/site/devtools-sample.ts`, drawn by
+  `components/landing/DevtoolsReplica.tsx`): its page, tab and column names are read from `packages/devtools` by
+  `devtools-sample.test.ts`, so a rename there turns the website red. The figure holds no link.
 - **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
