@@ -37,6 +37,7 @@
     "api:usage": "node scripts/api-usage.ts",
     "api:update": "marmeon package:build packages/* --clean && node scripts/api.ts --write",
     "check-release": "node scripts/check-release.ts",
+    "zizmor": "node scripts/zizmor.ts",
     "ci": "node scripts/ci.ts"
   },
   "devDependencies": {
