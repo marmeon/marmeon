@@ -1,0 +1,210 @@
+/* Devtools: a picture of the panel, not the panel */
+.landing .devtools {
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.landing .devtools-panel {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-3);
+  background: var(--bg);
+}
+
+.landing .devtools-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+}
+
+.landing .devtools-bar > span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing .devtools-env {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--warning-fg);
+  border-radius: var(--radius-1);
+  color: var(--warning-fg);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-body {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.landing .devtools-nav {
+  display: flex;
+  flex: 1 1 160px;
+  max-width: 200px;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 12px 8px;
+  border-right: 1px solid var(--line);
+  font-size: 0.9375rem;
+  list-style: none;
+}
+
+.landing .devtools-nav li {
+  padding: 8px 10px;
+  border-radius: var(--radius-2);
+  color: var(--fg-2);
+}
+
+.landing .devtools-nav .is-current {
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.landing .devtools-list {
+  flex: 2 1 360px;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.landing .devtools-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 48px;
+  gap: var(--space-3);
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.landing .devtools-row:last-child {
+  border-bottom: 0;
+}
+
+.landing .devtools-row > span:nth-child(2) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.landing .devtools-row--head {
+  padding-block: 10px;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-row.is-current {
+  background: var(--accent-tint);
+}
+
+.landing .devtools-method {
+  font-weight: 600;
+}
+
+.landing .devtools-route {
+  color: var(--muted);
+}
+
+.landing .devtools-failed {
+  color: var(--caution-fg);
+}
+
+.landing .devtools-detail {
+  display: flex;
+  min-width: 0;
+  flex: 3 1 380px;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 16px 20px 20px;
+  font-size: 0.9375rem;
+}
+
+.landing .devtools-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.landing .devtools-title span {
+  color: var(--muted);
+  font-size: 0.78125rem;
+}
+
+.landing .devtools-detail dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.landing .devtools-detail dt {
+  color: var(--muted);
+}
+
+.landing .devtools-detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.landing .devtools-detail .devtools-masked {
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+
+.landing .devtools-queries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.landing .devtools-queries-label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-queries code {
+  color: var(--fg-2);
+  font-size: 0.78125rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+
+@media (max-width: 519px) {
+  .landing .devtools-nav {
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .landing .devtools-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .landing .devtools-row {
+    grid-template-columns: 52px 1fr 40px;
+  }
+}

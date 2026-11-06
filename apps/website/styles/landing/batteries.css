@@ -1,0 +1,50 @@
+/* Batteries */
+.landing .batteries {
+  border-top: 1px solid var(--line);
+}
+
+.landing .package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 1px;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+  list-style: none;
+}
+
+.landing .group-label--small + .package-grid {
+  margin-bottom: var(--space-7);
+}
+
+.landing .package-grid--added {
+  margin-bottom: 0;
+}
+
+.landing .package-grid li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--bg);
+}
+
+.landing .package-grid--added li {
+  background: var(--bg-raised);
+}
+
+.landing .package-grid code {
+  overflow-wrap: anywhere;
+}
+
+.landing .package-grid li > span {
+  color: var(--fg-2);
+  font-size: 0.96875rem;
+  line-height: 1.5;
+}
+
+.landing .package-scope {
+  color: var(--muted);
+}

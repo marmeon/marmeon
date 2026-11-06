@@ -1,0 +1,186 @@
+/* One type, end to end */
+.landing .chain {
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.landing .chain .landing-inner {
+  padding-block: clamp(64px, 8vw, 112px);
+}
+
+.landing .chain-intro {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: clamp(40px, 5vw, 64px);
+}
+
+.landing .chain-intro .section-label {
+  color: var(--accent);
+}
+
+.landing .chain-intro h2 {
+  font-size: clamp(2.125rem, 1.5rem + 2.6vw, 3.375rem);
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+}
+
+.landing .chain-intro p:last-child {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.landing .chain-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .chain-step {
+  display: flex;
+  gap: clamp(14px, 2vw, 28px);
+}
+
+/* The rail joining the numbers: a line below each number, none under the last. */
+.landing .chain-rail {
+  display: flex;
+  flex: 0 0 36px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.landing .chain-rail::after {
+  flex: 1;
+  width: 1px;
+  margin-block: 6px;
+  background: var(--line-strong);
+  content: '';
+}
+
+.landing .chain-step:last-child .chain-rail::after {
+  display: none;
+}
+
+.landing .chain-number {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-1);
+  background: var(--fg);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.landing .chain-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 14px 40px;
+  padding: 4px 0 var(--space-7);
+}
+
+.landing .chain-step:last-child .chain-body {
+  padding-bottom: 0;
+}
+
+.landing .chain-text {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.landing .chain-text h3 {
+  font-size: var(--text-h3);
+  font-weight: 600;
+}
+
+.landing .chain-text > code {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .chain-text p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.landing .chain-code {
+  display: flex;
+  min-width: 0;
+  flex: 3 1 420px;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.landing .chain-code pre.code {
+  background: var(--bg);
+  font-size: 0.84375rem;
+}
+
+.landing .chain-code figure.code {
+  background: var(--bg);
+}
+
+/* The misspelt line under the code that is right: it names what the compiler says. */
+.landing .chain-mistake {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 10px 16px;
+  border: 1px dashed var(--caution-line);
+  border-radius: var(--radius-3);
+  background: var(--caution-bg);
+  color: var(--fg);
+}
+
+.landing .chain-mistake code {
+  min-width: 0;
+  overflow-x: auto;
+  font-size: 0.84375rem;
+  text-decoration: underline wavy var(--caution-fg);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  white-space: pre;
+}
+
+.landing .chain-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--caution-fg);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+@media (max-width: 519px) {
+  .landing .chain-rail {
+    flex-basis: 28px;
+  }
+
+  .landing .chain-number {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8125rem;
+  }
+}

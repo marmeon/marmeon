@@ -1,0 +1,44 @@
+/* Principles */
+.landing .principles .landing-inner {
+  padding-block: clamp(56px, 7vw, 88px) clamp(56px, 7vw, 96px);
+}
+
+.landing .principle-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  gap: var(--space-6) 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .principles .section-label {
+  margin-bottom: var(--space-6);
+  padding-top: 36px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.landing .principle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.landing .principle-numeral {
+  color: var(--accent);
+  font-size: 1.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.landing .principle strong {
+  color: var(--fg);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.landing .principle-text {
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.5;
+}
