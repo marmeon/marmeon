@@ -116,8 +116,7 @@ function git(args: string[], cwd = root): string {
 }
 
 function benchDir(): string {
-  const dir = ensurePrivateDir(join(tmpdir(), 'marmeon-bench'));
-  return realpathSync(dir); // the profiles' file URLs are real paths (macOS: /var → /private/var)
+  return ensurePrivateDir(join(tmpdir(), 'marmeon-bench')); // a real path: the profiles' file URLs are (macOS: /var → /private/var)
 }
 
 function install(checkout: string): void {

@@ -1,5 +1,5 @@
-import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../test/temp-dir.js';
 import { ensureImportable, ensurePrivateDir, importProblem, removeNodeModules } from './integrity.ts';
@@ -71,8 +71,9 @@ describe('pnpm bench — a checkout is importable before it is measured', () => 
 describe.skipIf(process.getuid === undefined)('pnpm bench — the checkouts live in a directory only this user can write', () => {
   it('creates the directory private and accepts it again', () => {
     const dir = join(tempDir('marmeon-bench-'), 'marmeon-bench');
-    expect(ensurePrivateDir(dir)).toBe(dir);
-    expect(ensurePrivateDir(dir)).toBe(dir);
+    const real = realpathSync.native(dirname(dir));
+    expect(ensurePrivateDir(dir)).toBe(join(real, 'marmeon-bench'));
+    expect(ensurePrivateDir(dir)).toBe(join(real, 'marmeon-bench'));
   });
 
   it('refuses a directory other users can write to', () => {
@@ -81,6 +82,14 @@ describe.skipIf(process.getuid === undefined)('pnpm bench — the checkouts live
       chmodSync(dir, mode);
       expect(() => ensurePrivateDir(dir)).toThrow(/writable by other users/);
     }
+  });
+
+  it('refuses a parent others can write to unless it is sticky', () => {
+    const parent = tempDir('marmeon-bench-');
+    chmodSync(parent, 0o777);
+    expect(() => ensurePrivateDir(join(parent, 'marmeon-bench'))).toThrow(/without the sticky bit/);
+    chmodSync(parent, 0o1777);
+    expect(ensurePrivateDir(join(parent, 'marmeon-bench'))).toBe(join(realpathSync.native(parent), 'marmeon-bench'));
   });
 
   it('refuses a link at the path, even to a private directory', () => {

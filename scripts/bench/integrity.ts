@@ -5,8 +5,8 @@
  * modules first; a missing module removes every `node_modules` of the checkout and installs again, once.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 /** How a checkout is probed: Node with these arguments in `cwd`, importing every specifier. */
 export interface ImportProbe {
@@ -66,14 +66,26 @@ export function ensureImportable(checkout: string, probe: ImportProbe, { install
  * Creates `dir` for the bench's checkouts and refuses it unless only this user can write to it. The checkouts are reused between
  * runs and Node loads code from them (`--import`), so on a shared `/tmp` a directory another user pre-created, a link they
  * planted or a tree they can write to would run their code as this user. Everything the bench puts under `dir` is made by this
- * process, so checking `dir` itself is enough. Without `process.getuid` (Windows) the temp directory is per user and the check is skipped.
+ * process, so checking `dir` and its ancestors is enough: every ancestor of the real path must belong to root or this user, and one
+ * others can write to needs the sticky bit, or they could rename `dir` away after the check and put their own in its place.
+ * Returns the real path of `dir`. Without `process.getuid` (Windows) the temp directory is per user and the owner and mode checks are skipped.
  */
 export function ensurePrivateDir(dir: string): string {
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const stat = lstatSync(dir);
-  if (!stat.isDirectory()) throw new Error(`${dir} is not a plain directory (a link or a file); remove it and run the benchmark again`);
-  if (process.getuid === undefined) return dir;
-  if (stat.uid !== process.getuid()) throw new Error(`${dir} belongs to another user; remove it or point TMPDIR elsewhere`);
-  if ((stat.mode & 0o022) !== 0) throw new Error(`${dir} is writable by other users; remove it or run chmod go-w on it`);
-  return dir;
+  mkdirSync(dirname(dir), { recursive: true });
+  const target = join(realpathSync.native(dirname(dir)), basename(dir));
+  mkdirSync(target, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(target);
+  if (!stat.isDirectory()) throw new Error(`${target} is not a plain directory (a link or a file); remove it and run the benchmark again`);
+  const uid = process.getuid?.();
+  if (uid === undefined) return target;
+  if (stat.uid !== uid) throw new Error(`${target} belongs to another user; remove it or point TMPDIR elsewhere`);
+  if ((stat.mode & 0o022) !== 0) throw new Error(`${target} is writable by other users; remove it or run chmod go-w on it`);
+  for (let ancestor = dirname(target); ; ancestor = dirname(ancestor)) {
+    const { uid: owner, mode } = lstatSync(ancestor);
+    if (owner !== 0 && owner !== uid) throw new Error(`${ancestor} belongs to another user, so ${target} could be replaced; point TMPDIR elsewhere`);
+    if ((mode & 0o022) !== 0 && (mode & 0o1000) === 0) {
+      throw new Error(`${ancestor} is writable by other users without the sticky bit, so ${target} could be replaced; run chmod +t or go-w on it`);
+    }
+    if (dirname(ancestor) === ancestor) return target;
+  }
 }
