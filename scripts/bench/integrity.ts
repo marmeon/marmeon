@@ -5,7 +5,7 @@
  * modules first; a missing module removes every `node_modules` of the checkout and installs again, once.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** How a checkout is probed: Node with these arguments in `cwd`, importing every specifier. */
@@ -60,4 +60,20 @@ export function ensureImportable(checkout: string, probe: ImportProbe, { install
   install(checkout);
   const again = importProblem(probe);
   if (again !== undefined) throw new Error(`${checkout} still cannot import what the measurement needs after a fresh install:\n${again}`);
+}
+
+/**
+ * Creates `dir` for the bench's checkouts and refuses it unless only this user can write to it. The checkouts are reused between
+ * runs and Node loads code from them (`--import`), so on a shared `/tmp` a directory another user pre-created, a link they
+ * planted or a tree they can write to would run their code as this user. Everything the bench puts under `dir` is made by this
+ * process, so checking `dir` itself is enough. Without `process.getuid` (Windows) the temp directory is per user and the check is skipped.
+ */
+export function ensurePrivateDir(dir: string): string {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(dir);
+  if (!stat.isDirectory()) throw new Error(`${dir} is not a plain directory (a link or a file); remove it and run the benchmark again`);
+  if (process.getuid === undefined) return dir;
+  if (stat.uid !== process.getuid()) throw new Error(`${dir} belongs to another user; remove it or point TMPDIR elsewhere`);
+  if ((stat.mode & 0o022) !== 0) throw new Error(`${dir} is writable by other users; remove it or run chmod go-w on it`);
+  return dir;
 }
