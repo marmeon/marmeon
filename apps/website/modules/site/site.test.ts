@@ -13,6 +13,16 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 
+/** The text of some markup: tags cut, entities turned back. */
+const textOf = (markup: string) =>
+  markup
+    .replace(/<[^>]*>/g, '')
+    .replaceAll(/&(?:lt|#x3C);/gi, '<')
+    .replaceAll(/&(?:gt|#x3E);/gi, '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#x27;', "'")
+    .replaceAll(/&(?:amp|#x26);/gi, '&');
+
 const repo = resolve(import.meta.dirname, '../../../..');
 const document = { headers: { accept: 'text/html' } };
 const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.json'), 'utf8')) as { version: string }).version;
@@ -54,31 +64,33 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body.match(/<li class="principle"/g)).toHaveLength(7);
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
-    expect(body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="modules-title"')).match(/<h3>/g)).toHaveLength(7);
-    const mistakes = CHAIN.map(mistakeLine);
-    expect(mistakes).toHaveLength(7);
-    // The page escapes the quotes and angle brackets of the lines it shows.
-    for (const mistake of mistakes) expect(body).toContain(mistake.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("'", '&#x27;').replaceAll('"', '&quot;'));
+    const section = body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="modules-title"'));
+    expect(section.match(/<h3[\s>]/g)).toHaveLength(7);
+    // The step bar needs JavaScript; the server's page has no tablist and no dead button.
+    expect(section).not.toContain('role="tablist"');
+    // The page shows the misspelt lines and the compiler's answers as text, whatever the markup around them.
+    const text = textOf(section);
+    for (const step of CHAIN) {
+      expect(text, step.id).toContain(mistakeLine(step));
+      expect(text, step.id).toContain(`error ${step.error.code}: ${step.error.message}`);
+    }
   });
 
   it('hands the page every chain step with its highlighted mistake line and the compiler error from chain.ts', async () => {
     const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props as {
-      chain: { id: string; title: string; snippet: { html: string }; mistake: string; error: unknown }[];
+      snippets: Record<string, unknown>;
+      chain: { id: string; title: string; snippet: string; file: string; mistake: string; error: unknown }[];
     };
     expect(props.chain.map((step) => step.id)).toEqual(CHAIN.map((step) => step.id));
     props.chain.forEach((step, index) => {
       expect(step.mistake, step.id).toContain('<pre class="code"');
       expect(step.mistake, step.id).not.toContain('style=');
-      expect(step.snippet.html, step.id).toContain('<pre class="code"');
+      expect(textOf(step.mistake), step.id).toBe(mistakeLine(CHAIN[index]!));
+      // The code travels once: the step names its snippet, the page looks it up.
+      expect(step.snippet, step.id).toBe(CHAIN[index]!.snippet);
+      expect(props.snippets[step.snippet], step.id).toBeDefined();
       expect(step.error, step.id).toEqual(CHAIN[index]!.error);
     });
-  });
-
-  it('shows the compiler error of every chain step, from chain.ts', async () => {
-    const body = (await app.get('/', document).assertOk()).body;
-    const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("'", '&#x27;').replaceAll('"', '&quot;');
-    for (const { error } of CHAIN) expect(body).toContain(escape(error.message));
-    expect(body).not.toContain('COMPILE ERROR');
   });
 
   it('says who Marmeon is for: four situations, each with a link to its proof, and who it does not fit', async () => {

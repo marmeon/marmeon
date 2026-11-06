@@ -19,28 +19,6 @@ export interface Snippet {
 }
 
 export const SNIPPETS = {
-  routes: {
-    file: 'modules/notes/routes.ts',
-    source: { app: 'modules/notes/routes.ts' },
-    lang: 'ts',
-    code: `export default defineRoutes((Route) => {
-  const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
-
-  const mine = notes.authorize(everyone);
-  mine.get('/', ListNotesController).name('index');
-  mine.get('/create', CreateNoteController).name('create');
-  mine.post('/', StoreNoteController).name('store');
-
-  const note = notes.bind('note', NoteRepository);
-  note.get('/:note', ShowNoteController).name('show');
-  note.get('/:note/edit', EditNoteController).name('edit');
-  note.put('/:note', UpdateNoteController).name('update');
-  note.put('/:note/pin', PinNoteController).name('pin');
-  note.delete('/:note/pin', UnpinNoteController).name('unpin');
-  note.delete('/:note', DeleteNoteController).name('destroy');
-});
-`,
-  },
   controller: {
     file: 'modules/notes/controllers/ShowNoteController.ts',
     source: { app: 'modules/notes/controllers/ShowNoteController.ts' },
@@ -79,25 +57,17 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 }
 `,
   },
-  migration: {
+  // The columns of the migration, as a piece of it.
+  migrationColumns: {
     file: 'modules/notes/migrations/2026_10_01_120000_create_notes_table.ts',
     source: { app: 'modules/notes/migrations/*_create_notes_table.ts' },
     lang: 'ts',
-    code: `import { defineMigration } from '@marmeon/database';
-
-export default defineMigration({
-  up: (schema) =>
-    schema.create('notes', (table) => {
-      table.uuidId();
-      table.foreignId('user_id').constrained('users').cascadeOnDelete();
+    code: `      table.foreignId('user_id').constrained('users').cascadeOnDelete();
       table.string('title', 120);
       table.text('body');
       table.boolean('pinned').default(false);
       table.timestamps();
       table.index('user_id');
-    }),
-  down: (schema) => schema.drop('notes'),
-});
 `,
   },
   tableType: {
@@ -111,25 +81,18 @@ export type NewNote = NewRow<'notes'>;
 export type NoteChanges = RowUpdate<'notes'>;
 `,
   },
-  repository: {
+  // The query of the repository's method, as a piece of it.
+  repositoryQuery: {
     file: 'modules/notes/NoteRepository.ts',
     source: { app: 'modules/notes/NoteRepository.ts' },
     lang: 'ts',
-    code: `import { Repository, type PageRequest, type Row } from '@marmeon/database';
-
-export class NoteRepository extends Repository<'notes'> {
-  static table = 'notes' as const;
-
-  pageOf(userId: Row<'notes'>['user_id'], page: PageRequest) {
-    const query = this.query()
+    code: `    const query = this.query()
       .select(['id', 'title', 'body', 'pinned'])
       .where('user_id', '=', userId)
       .orderBy('pinned', 'desc')
       .orderBy('updated_at', 'desc')
       .orderBy('id', 'desc');
     return this.paginate(query, page);
-  }
-}
 `,
   },
   form: {
@@ -155,9 +118,17 @@ export class NoteRepository extends Repository<'notes'> {
 });
 `,
   },
-  // One line of a file above, where a step of the chain points at it.
+  // A piece of a file above, where a step of the chain points at it.
   controllerCall: { source: { app: 'modules/notes/controllers/ShowNoteController.ts' }, lang: 'ts', code: `return this.view('notes/Show', { note: ctx.params.note });\n` },
-  pageSignature: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `export default function Show({ note }: PageProps<ShowNoteController>) {\n` },
+  pageBody: {
+    file: 'modules/notes/views/Show.tsx',
+    source: { app: 'modules/notes/views/Show.tsx' },
+    lang: 'tsx',
+    code: `      <Head title={note.title} />
+      <h1>{note.title}</h1>
+      <Link route="notes.index">All notes</Link>
+`,
+  },
   routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
 } as const satisfies Record<string, Snippet>;
 

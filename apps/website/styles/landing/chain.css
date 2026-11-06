@@ -34,137 +34,109 @@
   text-wrap: pretty;
 }
 
-.landing .chain-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.landing .chain-tabs {
+  min-width: 0;
 }
 
-.landing .chain-step {
-  display: flex;
-  gap: clamp(14px, 2vw, 28px);
+/* Without JavaScript the steps stand one under the other, each under its number and title. */
+.landing .chain-tabs.tabs--stack {
+  gap: var(--space-7);
 }
 
-/* The rail joining the numbers: a line below each number, none under the last. */
-.landing .chain-rail {
+.landing .chain-tabs .tabs-heading {
   display: flex;
-  flex: 0 0 36px;
-  flex-direction: column;
   align-items: center;
-}
-
-.landing .chain-rail::after {
-  flex: 1;
-  width: 1px;
-  margin-block: 6px;
-  background: var(--line-strong);
-  content: '';
-}
-
-.landing .chain-step:last-child .chain-rail::after {
-  display: none;
+  gap: var(--space-3);
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .landing .chain-number {
-  display: flex;
-  width: 36px;
-  height: 36px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: none;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-1);
   background: var(--fg);
   color: var(--bg);
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
+}
+
+/* The step bar: the numbers and titles side by side, scrolling sideways on a narrow screen. */
+.landing .chain-tabs .tabs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg-2);
+}
+
+.landing .chain-tabs .tabs-tab[aria-selected='true'] {
+  color: var(--fg);
+}
+
+.landing .chain-tabs .tabs-tab:not([aria-selected='true']) .chain-number {
+  background: var(--bg-sunken);
+  color: var(--fg-2);
 }
 
 .landing .chain-body {
   display: flex;
   min-width: 0;
-  flex: 1;
   flex-wrap: wrap;
-  gap: 14px 40px;
-  padding: 4px 0 var(--space-7);
-}
-
-.landing .chain-step:last-child .chain-body {
-  padding-bottom: 0;
+  gap: var(--space-4) var(--space-7);
 }
 
 .landing .chain-text {
-  display: flex;
   flex: 1 1 240px;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.landing .chain-text h3 {
-  font-size: var(--text-h3);
-  font-weight: 600;
-}
-
-.landing .chain-text > code {
-  color: var(--muted);
-  font-size: 0.8125rem;
-  overflow-wrap: anywhere;
-}
-
-.landing .chain-text p {
   margin: 0;
   color: var(--fg-2);
   font-size: 1rem;
   line-height: 1.55;
 }
 
-.landing .chain-code {
-  display: flex;
-  min-width: 0;
+.landing .chain-editor {
   flex: 3 1 420px;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 
-.landing .chain-code pre.code {
-  background: var(--bg);
+/* The window holds one file: it takes the whole width the split layout would share. */
+@media (min-width: 960px) {
+  .landing .chain-editor.editor--split .editor-files {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A step's code is an excerpt of at most eight lines; the limit only keeps a longer one from stretching the window. */
+.landing .chain-editor .editor-code pre.code {
+  max-height: calc(8 * 1.75em + var(--space-4) + var(--space-5));
+  overflow-y: auto;
   font-size: 0.84375rem;
 }
 
-.landing .chain-code figure.code {
-  background: var(--bg);
+.landing .chain-editor .editor-name {
+  overflow-wrap: anywhere;
 }
 
-/* The misspelt line under the code that is right: it names what the compiler says. */
-.landing .chain-mistake {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 16px;
-  margin: 0;
-  padding: 10px 16px;
-  border: 1px dashed var(--caution-line);
-  border-radius: var(--radius-3);
-  background: var(--caution-bg);
-  color: var(--fg);
-}
-
-.landing .chain-mistake code {
-  min-width: 0;
-  overflow-x: auto;
+/* The misspelt line, whole and underlined in waves: what the compiler objects to. */
+.landing .chain-mistake pre.code {
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--editor-fg);
   font-size: 0.84375rem;
-  text-decoration: underline wavy var(--caution-fg);
+  text-decoration: underline wavy var(--editor-error);
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
-  white-space: pre;
 }
 
 .landing .chain-error {
-  margin: 8px 0 0;
-  color: var(--caution-fg);
+  margin: var(--space-2) 0 0;
+  padding-inline: var(--space-4);
+  color: var(--editor-error);
   font-family: var(--font-mono);
   font-size: 0.78125rem;
   overflow-wrap: anywhere;
@@ -172,16 +144,4 @@
 
 .landing .chain-error-code {
   font-weight: 600;
-}
-
-@media (max-width: 519px) {
-  .landing .chain-rail {
-    flex-basis: 28px;
-  }
-
-  .landing .chain-number {
-    width: 28px;
-    height: 28px;
-    font-size: 0.8125rem;
-  }
 }

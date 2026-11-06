@@ -8,11 +8,14 @@ export interface HighlightedSnippet {
   readonly html: string;
 }
 
-/** One step of the typo chain as the page shows it: the snippet, the misspelt line, and the compiler's answer from `chain.ts`. */
+/** One step of the typo chain as the page shows it: the misspelt line and the compiler's answer from `chain.ts`. */
 export interface HighlightedChainStep {
   readonly id: ChainStepSpec['id'];
   readonly title: string;
-  readonly snippet: HighlightedSnippet;
+  /** The snippet that holds the typo; its markup travels once, in `snippets`. */
+  readonly snippet: SnippetName;
+  /** The file the snippet is a piece of, for the editor's title bar. */
+  readonly file: string;
   /** The misspelt line, highlighted in the snippet's language. */
   readonly mistake: string;
   readonly error: ChainStepSpec['error'];
@@ -34,13 +37,17 @@ export class SiteSnippets {
     });
     const snippets = Object.fromEntries(entries) as Record<SnippetName, HighlightedSnippet>;
     this.#snippets = snippets;
-    this.#chain = CHAIN.map((step) => ({
-      id: step.id,
-      title: step.title,
-      snippet: snippets[step.snippet],
-      mistake: highlight(mistakeLine(step), SNIPPETS[step.snippet].lang),
-      error: step.error,
-    }));
+    this.#chain = CHAIN.map((step) => {
+      const snippet: Snippet = SNIPPETS[step.snippet];
+      return {
+        id: step.id,
+        title: step.title,
+        snippet: step.snippet,
+        file: snippet.file ?? ('app' in snippet.source ? snippet.source.app : snippet.source.repo),
+        mistake: highlight(mistakeLine(step), snippet.lang),
+        error: step.error,
+      };
+    });
   }
 
   /** The highlighted snippets; throws before `load()`. */
