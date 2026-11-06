@@ -1,0 +1,48 @@
+# Static analysis with CodeQL: the TypeScript of the framework and the apps, and the workflows themselves, on every pull request,
+# on every push to main and once a week (new queries find old code). Alerts show in the Security tab, which only maintainers see.
+# Not a required check: a red run is a reminder, never a block for a pull request.
+#
+# The job holds the right to write code-scanning results, hence the shape, which `scripts/check-release.ts` keeps: `pull_request`,
+# never `pull_request_target`; the workflow's permissions empty, the job's exactly `contents: read` and `security-events: write`;
+# a checkout that leaves no credentials behind; actions pinned by SHA, nothing but the checkout and CodeQL's init and analyze (no
+# autobuild); no `run:` step, so nothing of the repository runs in the job; no secret. `build-mode: none` extracts the source
+# without a build, so nothing is installed either.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 4 * * 2'
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}

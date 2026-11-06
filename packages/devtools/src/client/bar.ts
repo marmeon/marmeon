@@ -60,6 +60,7 @@ function readState(win: Window): StoredState {
 }
 
 /** `0.16 ms`, `12 ms`. */
+// oxlint-disable-next-line regexp/no-super-linear-move -- the text is toFixed(2) of a duration, a few characters
 const ms = (value: number) => `${value < 10 ? value.toFixed(2).replace(/\.?0+$/, '') : Math.round(value)} ms`;
 const since = (at: number, from: number) => `+${((at - from) / 1000).toFixed(2)}s`;
 const duration = (entry: TimelineEntry) => (entry.end === undefined ? '…' : `${entry.end - entry.at} ms`);

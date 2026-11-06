@@ -9,24 +9,45 @@ export { interpolateHtml as interpolate } from '@marmeon/core/internal';
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#96': '`', nbsp: ' ' };
 
 /**
+ * `markup` without its tags, each running from a `<` to the next `>` (`<>` is none). A scan, not `/<[^>]+>/g`: that retries the
+ * rest of the text from every `<` of a long run without a `>`, which is quadratic.
+ */
+export function withoutTags(markup: string): string {
+  let out = '';
+  let from = 0;
+  let open = markup.indexOf('<');
+  while (open !== -1) {
+    const end = markup.indexOf('>', open + 1);
+    if (end === -1) break; // no `>` is left: nothing further can match
+    if (end === open + 1) {
+      open = markup.indexOf('<', end);
+      continue;
+    }
+    out += markup.slice(from, open);
+    from = end + 1;
+    open = markup.indexOf('<', from);
+  }
+  return out + markup.slice(from);
+}
+
+/**
  * A plain-text version of an HTML mail: block elements become line breaks, links keep their URL
  * (`Reset password (https://…)`), tags and styles go. Good enough for transactional mails.
  */
 export function textFromHtml(markup: string): string {
-  const text = markup
+  const marked = markup
     .replace(/<!--[\s\S]*?-->/g, '') // comments, Outlook's conditional ones included
     .replace(/<(style|script|head|title)[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<(div|span)\b[^>]*display:\s*none[^>]*>[\s\S]*?<\/\1>/gi, '') // hidden preheaders
     .replace(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_match, href: string, label: string) => {
-      const text = label.replace(/<[^>]+>/g, '').trim();
+      const text = withoutTags(label).trim();
       return text && text !== href ? `${text} (${href})` : href;
     })
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/li>/gi, '\n')
     .replace(/<\/(p|div|h[1-6]|ul|ol|tr|table|blockquote|section|header|footer)>/gi, '\n\n')
-    .replace(/<li\b[^>]*>/gi, '- ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&(#\d+|\w+);/g, (match, entity: string) => ENTITIES[entity] ?? (entity.startsWith('#') ? codePointText(Number(entity.slice(1))) ?? match : match));
+    .replace(/<li\b[^>]*>/gi, '- ');
+  const text = withoutTags(marked).replace(/&(#\d+|\w+);/g, (match, entity: string) => ENTITIES[entity] ?? (entity.startsWith('#') ? codePointText(Number(entity.slice(1))) ?? match : match));
   // Blanks around a line break go in one pass over the lines: a regex that retries a run of spaces at each of its characters is quadratic.
   return text
     .split('\n')
