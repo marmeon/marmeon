@@ -1,0 +1,25 @@
+/* The live island's clock: its box flashes petrol on each new answer. Two identical keyframes under two class names restart the animation without a timer. */
+.island-clock {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  padding: 1rem 1.25rem;
+}
+.island-clock p { margin: 0 0 0.5rem; }
+.island-age strong { font-variant-numeric: tabular-nums; }
+.island-at,
+.island-loads,
+.island-request { color: var(--muted); font-size: 0.875rem; }
+.island-request { font-family: var(--font-mono); }
+
+@keyframes island-flash-a { from { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); } to { border-color: var(--line); box-shadow: none; } }
+@keyframes island-flash-b { from { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); } to { border-color: var(--line); box-shadow: none; } }
+.island-clock--flash-a { animation: island-flash-a 900ms ease-out; }
+.island-clock--flash-b { animation: island-flash-b 900ms ease-out; }
+
+/* No motion: the class swap alternates the border colour between the two accent shades on each answer. */
+@media (prefers-reduced-motion: reduce) {
+  .island-clock--flash-a,
+  .island-clock--flash-b { animation: none; }
+  .island-clock--flash-a { border-color: var(--accent); }
+  .island-clock--flash-b { border-color: var(--accent-strong); }
+}
