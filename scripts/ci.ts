@@ -61,6 +61,8 @@ export const parts: readonly Part[] = [
   // The release rules: one version and the changelogs that go with it,
   // release.yml (staged publishing with OIDC), npm-trust.sh, UPGRADING.md (its entries from the first release on), LICENSE and policies.
   { name: 'check-release', command: pnpm('check-release') },
+  // The workflows through zizmor, offline (CI runs it online). Without zizmor installed it is skipped (exit 75), never green.
+  { name: 'zizmor', command: pnpm('zizmor') },
 ];
 
 /** `i/n` of `--shard`: both whole numbers from 1, `i` not above `n`; undefined for anything else. */
@@ -194,7 +196,7 @@ async function main(): Promise<number> {
     if (problem) console.error(`ci: ${problem}`);
     const status: Status = code === 0 ? 'passed' : !problem && code === SKIPPED_EXIT ? 'skipped' : 'failed';
     if (status !== 'passed') red.add(part.name);
-    const note = problem ?? (status === 'skipped' ? 'could not run here (no network, store or Docker)' : code === 0 ? undefined : `exit ${code}`);
+    const note = problem ?? (status === 'skipped' ? 'could not run here (no network, store, Docker or zizmor)' : code === 0 ? undefined : `exit ${code}`);
     results.push({ part, status, ms, note });
     console.log(`${{ passed: '✓', failed: '✗', skipped: '–' }[status]} ci: ${part.name} ${seconds(ms)}${note ? ` (${note})` : ''}`);
     if (github && status === 'failed') console.log(`::error title=ci: ${part.name}::${command.join(' ')} — ${problem ?? `exit ${code}`}`);

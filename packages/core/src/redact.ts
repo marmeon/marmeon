@@ -342,7 +342,7 @@ export class Redactor {
    *   also inside lists, maps and sets; deeper than six levels, a value is written as `[…]`;
    * - **errors under any key** as `{ type, message, stack, …own fields }` — the message and stack name the causes
    *   (`: cause`, `caused by: …`), are masked as text ({@link text}) and their own fields are redacted by key; an aggregate
-   *   error's errors go to `aggregateErrors`;
+   *   error's errors go to `aggregateErrors`; a string there or as a cause is masked as text like a message;
    * - **URLs** — `URL` objects and strings with one in them (`scheme://…`) — as masked text; dates, buffers and other strings as
    *   they are (otherwise only keys are checked in a context).
    */
@@ -387,12 +387,14 @@ export class Redactor {
     };
     const nested = (value: unknown): unknown =>
       value instanceof Error ? (seen.has(value) || depth >= MAX_DEPTH ? '[…]' : this.#logError(value, depth + 1, seen)) : this.#logValue(value, depth);
+    // Where an error's message sits (a cause, an aggregate's item), a string is a message too: masked as text, not only when it is a URL.
+    const asMessage = (value: unknown): unknown => (typeof value === 'string' ? this.text(value) : nested(value));
     const errors = (error as { errors?: unknown }).errors;
-    if (Array.isArray(errors)) out.aggregateErrors = errors.map(nested);
+    if (Array.isArray(errors)) out.aggregateErrors = errors.map(asMessage);
     // A cause that is no error is not in the message: written as a field.
-    if (error.cause !== undefined && !(error.cause instanceof Error)) out.cause = this.isSensitive('cause') ? REDACTED : nested(error.cause);
+    if (error.cause !== undefined && !(error.cause instanceof Error)) out.cause = this.isSensitive('cause') ? REDACTED : asMessage(error.cause);
     for (const [key, value] of Object.entries(error)) {
-      if (key in out || key === 'cause') continue;
+      if (key in out || key === 'cause' || (key === 'errors' && Array.isArray(errors))) continue;
       out[key] = this.#isSensitiveField(key, value) ? REDACTED : nested(value);
     }
     return out;

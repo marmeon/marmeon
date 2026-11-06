@@ -1,0 +1,11 @@
+# zizmor's rules for the workflows. ci.yml runs it online with the regular persona; `pnpm run ci` runs it offline.
+rules:
+  # Every action by its full commit SHA, as check-release holds ci.yml and release.yml to; Dependabot moves the pins.
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin
+  # Three days, the same wait as the install policy for npm packages (pnpm-workspace.yaml); change both together.
+  dependabot-cooldown:
+    config:
+      days: 3
