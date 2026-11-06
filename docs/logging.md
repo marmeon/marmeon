@@ -133,7 +133,8 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 - A child logger's bindings pass the redaction as well.
 - An error is written as its `type`, `message` and `stack` under any key and at any depth, not only under `err`. The message
   and the stack name its causes, after `: ` and `caused by:`, and are masked as text. Its own fields are redacted by key, and
-  the errors of an `AggregateError` go to `aggregateErrors`.
+  the errors of an `AggregateError` go to `aggregateErrors`. A string among them, or a string `cause`, is masked as text like
+  the message (and cut at the same length).
 - A `URL` or `URLSearchParams` is written as text, masked: neither a `?token=` nor a token in the path survives. So is a string
   under any key that starts like a URL (`postgres://user:password@host/db?password=…`): the password of the URL and the values of
   sensitive query parameters go. The password goes to the last `@` before the query string, so one with a raw `@` or `/`
