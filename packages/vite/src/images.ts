@@ -75,7 +75,7 @@ export function images(options: ImageOptions = {}, internals: ImagesInternals = 
       if (!source.endsWith(QUERY)) return undefined;
       const resolved = await this.resolve(source.slice(0, -QUERY.length), importer, { ...resolveOptions, skipSelf: true });
       if (!resolved || resolved.external) this.error(`images: cannot find \`${source}\`${importer ? ` imported by ${shorten(root, importer)}` : ''}.`);
-      return `${resolved.id.replace(/[?#].*$/, '')}${QUERY}`;
+      return `${withoutQuery(resolved.id)}${QUERY}`;
     },
     async load(id) {
       if (!id.endsWith(QUERY)) return undefined;
@@ -181,8 +181,14 @@ function inside(root: string, file: string): boolean {
   return path !== '' && !path.startsWith('..') && !path.includes(`..${sep}`) && resolve(root, path) === file;
 }
 
+/** A module id without its `?query` or `#fragment`. */
+function withoutQuery(id: string): string {
+  const cut = id.search(/[?#]/);
+  return cut === -1 ? id : id.slice(0, cut);
+}
+
 function shorten(root: string, file: string): string {
-  const path = relative(root, file.replace(/[?#].*$/, ''));
+  const path = relative(root, withoutQuery(file));
   return path.startsWith('..') ? basename(file) : normalizePath(path);
 }
 

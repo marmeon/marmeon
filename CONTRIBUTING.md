@@ -954,6 +954,15 @@ brands such as `readonly #event = true`, deliberate copies before deleting while
 chain. The apps carry the preset of `marmeon make:lint-config` — `apps/web-app` with `--boundaries`, `apps/blank-app` without —
 which oxlint takes for their files instead: nested configs replace, they do not merge.
 
+Two rules of `eslint-plugin-regexp` (loaded as an oxlint JS plugin) refuse regular expressions that run in super-linear time:
+`no-super-linear-backtracking` and `no-super-linear-move`, the latter catching trims such as `/^[. ]+|[. ]+$/g`, which restart at every
+character of a long run. They apply to `packages/*/{src,bin,stubs}` only — code an app runs, where text from a request or a user
+must not tie up the event loop — not to tests, fixtures, `scripts/` or the apps. Rewrite before allowing: `(?<!x)x+$` starts a
+match only at the first character of a run, and `indexOf` and `slice` or `split(',')` and `trim()` replace the rest. Allow only where
+the rewrite makes the pattern unreadable, with a reason that names where the text comes from (`-- the heading comes from a
+markdown file of the app`). The plugin is alpha in oxlint, so `scripts/lint.test.ts` lints sample files with a copy of the root
+config and compares the exact hits: a plugin that loads but stops reporting turns that test red.
+
 A lint-disable comment gives its reason after ` -- `; `check:source` refuses one without ([rule 13](#rules-over-the-source-pnpm-checksource)).
 
 The generated preset is long on purpose. oxlint matches import specifiers as text, so whether an import leaves its module

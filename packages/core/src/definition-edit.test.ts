@@ -49,6 +49,11 @@ describe('appending to a list', () => {
     expect(added(source)).toContain('    A,\n    B,\n    SendInvoiceReminderJob\n  ],');
   });
 
+  it('keeps a trailing comma with blanks around it and the comment after it', () => {
+    const source = `${head}export default defineModule({\n  jobs: [\n    A,\n    B \t, \t// runs nightly\n  ],\n});\n`;
+    expect(added(source)).toContain('    B \t, \t// runs nightly\n    SendInvoiceReminderJob,\n  ],');
+  });
+
   it('keeps a comment on the last element and puts the comma before it', () => {
     const source = `${head}export default defineModule({\n  jobs: [\n    A,\n    B // runs nightly\n  ],\n});\n`;
     expect(added(source)).toContain('    B, // runs nightly\n    SendInvoiceReminderJob\n  ],');

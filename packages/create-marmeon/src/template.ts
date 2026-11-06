@@ -146,7 +146,7 @@ export function packageName(directory: string): string {
   const name = directory
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^[._-]+|[-]+$/g, '');
+    .replace(/^[._-]+|(?<!-)-+$/g, '');
   return name === '' ? 'marmeon-app' : name.slice(0, 214);
 }
 
@@ -225,13 +225,19 @@ export function installedClosure(manifest: Record<string, any>, source: { tarbal
   return installed;
 }
 
+/** A tar header field up to its first NUL byte. */
+function beforeNul(field: string): string {
+  const end = field.indexOf('\0');
+  return end === -1 ? field : field.slice(0, end);
+}
+
 /** One file of a `.tgz` (gzip, then tar: 512-byte headers, the size in octal) — Node's zlib, no tar package. */
 export function readTarEntry(tarball: string, path: string): string {
   const tar = gunzipSync(readFileSync(tarball));
   for (let offset = 0; offset + 512 <= tar.length; ) {
-    const name = tar.toString('utf8', offset, offset + 100).replace(/\0.*$/s, '');
+    const name = beforeNul(tar.toString('utf8', offset, offset + 100));
     if (name === '') break;
-    const size = Number.parseInt(tar.toString('utf8', offset + 124, offset + 136).replace(/\0.*$/s, '').trim() || '0', 8);
+    const size = Number.parseInt(beforeNul(tar.toString('utf8', offset + 124, offset + 136)).trim() || '0', 8);
     if (name === path) return tar.toString('utf8', offset + 512, offset + 512 + size);
     offset += 512 + Math.ceil(size / 512) * 512;
   }

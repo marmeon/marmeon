@@ -66,6 +66,11 @@ describe('RedisConnections without a server', () => {
     expect(() => defineRedisConnection('default', { env: env({}), resolve: () => ({ url: 'redis://x', prefix: '' }) })).toThrow(/REDIS_URL/);
   });
 
+  it('makes the prefix from the app name without dashes at its ends', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { APP_NAME: '--a--', REDIS_URL: 'redis://cache.internal:6380/2' } });
+    expect(app.container.make(RedisConfig).default).toEqual({ url: 'redis://cache.internal:6380/2', prefix: 'a:' });
+  });
+
   it('stops the start for a named connection with an empty prefix, listing it with the other problems', async () => {
     const Queue = defineRedisConnection('queue', {
       env: env({ QUEUE_PREFIX: env.string().default('') }),

@@ -7,6 +7,7 @@ import { escapeControl, type CheckProblem, type SilencedProblem } from './report
 /** The checks a comment can silence. `internal-imports` is not among them: a framework internal is never an exception. */
 export type SilenceableCheck = 'raw-sql' | 'inner-html' | 'throttle';
 
+// oxlint-disable-next-line regexp/no-super-linear-backtracking -- the comment is in the app's own source
 const DIRECTIVE = /^\s*marmeon-check-ignore\s+([a-z0-9-]+(?:\s*,\s*[a-z0-9-]+)*)\s*(?::\s*(.*?))?\s*$/;
 const MAX_REASON = 200;
 const DOCS = 'docs/check.md#silencing-a-finding';

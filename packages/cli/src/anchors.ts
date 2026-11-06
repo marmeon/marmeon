@@ -28,6 +28,7 @@ export function anchorOf(heading: string): string {
 
 const DROPPED = /[^\p{L}\p{M}\p{N}\p{Pc}\- ]/gu;
 
+/* oxlint-disable regexp/no-super-linear-move, regexp/no-super-linear-backtracking -- the headings come from the docs and from markdown files of the app */
 /** The words of a heading: images and links by their text, code spans without their backticks, emphasis and escapes resolved. */
 export function plainHeading(heading: string): string {
   const text = heading.replace(/\s+#+\s*$/, '');
@@ -49,6 +50,8 @@ function markup(text: string): string {
     .replace(/\\([!-/:-@[-`{-~])/g, '$1');
 }
 
+/* oxlint-enable regexp/no-super-linear-move, regexp/no-super-linear-backtracking */
+
 /** A heading of a markdown page, in the order of the page. */
 export interface Heading {
   /** The index of its line. */
@@ -60,6 +63,7 @@ export interface Heading {
   readonly anchor: string;
 }
 
+// oxlint-disable-next-line regexp/no-super-linear-backtracking -- the line comes from the docs or from a markdown file of the app
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 

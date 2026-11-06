@@ -386,7 +386,7 @@ function appendSplices(source: string, items: Node[], container: Node, text: str
   const after = last.end + comma[0].length;
   const fallback = (): Splice[] => (hasComma ? [[after, after, ` ${text}`]] : [[last.end, last.end, `, ${text}`]]);
   if (multiline) {
-    const rest = /^[ \t]*(,)?[ \t]*(?:\/\/[^\r\n]*|\/\*(?:(?!\*\/)[^\r\n])*\*\/)?(?=\r?\n|$)/.exec(source.slice(last.end));
+    const rest = /^[ \t]*(?:(,)[ \t]*)?(?:\/\/[^\r\n]*|\/\*(?:(?!\*\/)[^\r\n])*\*\/)?(?=\r?\n|$)/.exec(source.slice(last.end));
     if (rest) {
       const at = last.end + rest[0].length;
       // Backstop: never insert at or behind the container's closing bracket.

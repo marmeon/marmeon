@@ -48,7 +48,7 @@ export class LocalDisk implements Disk {
     this.name = config.name;
     this.visibility = config.visibility;
     this.#root = config.root;
-    this.#url = config.url?.replace(/\/+$/, '');
+    this.#url = config.url?.replace(/(?<!\/)\/+$/, '');
     this.#temporaryUrls = config.temporaryUrls;
   }
 

@@ -287,6 +287,7 @@ function importStyles(file: string): 'added' | 'present' | 'manual' {
   if (!existsSync(file)) return 'manual';
   const source = readFileSync(file, 'utf8');
   if (source.includes('modules/auth/auth.css')) return 'present';
+  // oxlint-disable-next-line regexp/no-super-linear-backtracking -- the text is the app's source that the generator edits
   const lastImport = [...source.matchAll(/^import .*;.*$/gm)].at(-1);
   if (!lastImport) return 'manual';
   const at = lastImport.index + lastImport[0].length;

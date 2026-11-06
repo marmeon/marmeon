@@ -154,6 +154,12 @@ describe('serving public disks', () => {
     expect(() => storage.disk('local').url('exports/7.json')).toThrow('use temporaryUrl(key, { expiresIn })');
   });
 
+  it('a url with trailing slashes is used without them', async () => {
+    const base = freshDirectory();
+    const { storage } = await boot(defineStorage({ default: 'public', disks: { public: { driver: 'local', root: join(base, 'public'), visibility: 'public', url: '/storage///' } } }));
+    expect(storage.disk('public').url('a.png')).toBe('/storage/a.png');
+  });
+
   it('a public disk with an absolute url (a CDN) is not served by the app', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
