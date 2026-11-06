@@ -49,6 +49,11 @@ describe('/llms.txt', () => {
     expect(text).not.toContain('Empty');
     expect(text).toContain('- [A \\[b\\]](http://x/y.md)');
   });
+
+  it('escapes a backslash in a title so it cannot escape the closing bracket', () => {
+    const text = llmsIndex('H\n', [{ title: 'S', pages: [{ title: 'a\\', url: 'http://x/y.md' }] }]);
+    expect(text).toContain('- [a\\\\](http://x/y.md)');
+  });
 });
 
 describe('/llms-full.txt', () => {
