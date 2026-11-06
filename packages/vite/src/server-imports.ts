@@ -41,7 +41,7 @@ export const SERVER_MODULES: readonly ServerModule[] = [
 
 /** Client code by convention — where the check starts in a server environment (SSR, tests), besides the pages. */
 const CLIENT_LAYOUTS = ['layouts/**', 'modules/*/layouts/**'];
-const TEST_FILE = /\.(?:type-)?test\.[cm]?[jt]sx?$/;
+const TEST_FILE = /\.(?:test|spec|type-test)\.[cm]?[jt]sx?$/;
 
 export interface ServerImportsOptions {
   /** The page glob (`modules/*\/views/**\/*.tsx`), client code. */

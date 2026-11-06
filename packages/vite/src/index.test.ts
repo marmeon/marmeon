@@ -170,7 +170,7 @@ describe('marmeon()', () => {
 
   it('pre-bundles from the client entry and the pages — and the devtools\' bar when an installed package brings it (no reload on the first request)', () => {
     const dev = configFor(marmeon(), { command: 'serve', mode: 'development' });
-    expect(dev.optimizeDeps?.entries).toEqual(['bootstrap/client.tsx', 'modules/*/views/**/*.tsx']);
+    expect(dev.optimizeDeps?.entries).toEqual(['bootstrap/client.tsx', 'modules/*/views/**/*.tsx', '!modules/*/views/**/*.{test,spec,type-test}.tsx']);
     expect(dev.optimizeDeps?.include).toEqual([]); // no devtools installed
     const withDevtools = tree({ 'package.json': {}, 'node_modules/@marmeon/devtools/package.json': { name: '@marmeon/devtools' } });
     const hook = main(marmeon()).config as (config: UserConfig, env: ConfigEnv) => UserConfig;
@@ -221,6 +221,11 @@ describe('marmeon()', () => {
       'marmeon:server-imports',
       'marmeon:images',
     ]);
+    // A test beside a page is no page.
+    const pages = plugins.find((plugin) => plugin.name === 'marmeon:virtual-pages')!;
+    expect((pages.load as (id: string) => unknown)('\0virtual:marmeon/pages')).toBe(
+      'export default import.meta.glob(["/modules/*/views/**/*.tsx","!/modules/*/views/**/*.{test,spec,type-test}.tsx"]);\n',
+    );
     const lang = plugins.find((plugin) => plugin.name === 'marmeon:virtual-lang')!;
     // Lazy: one chunk per language file, the browser loads only its locale's.
     expect((lang.load as (id: string) => unknown)('\0virtual:marmeon/lang')).toBe('export default import.meta.glob(["/modules/*/lang/*.ts","/lang/*.ts"]);\n');

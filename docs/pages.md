@@ -37,7 +37,8 @@ A page's name is its path below `views/`, prefixed with the module: `modules/not
 
 Only files under `modules/<module>/views/` of the app are pages. A path with `::` is reserved for the pages of packages
 (`package::Page`): `marmeon route:types`, and with it `marmeon build`, fails and names each such file, and the app never
-registers such a page, neither in the browser nor in server rendering. Rename the file or its folder.
+registers such a page, neither in the browser nor in server rendering. Rename the file or its folder. A test may sit next to the
+page it checks: a file ending in `.test.tsx`, `.spec.tsx` or `.type-test.tsx` is no page, so it has no name and no build ships it.
 
 A name with no file behind it is a compile error in the controller, because `marmeon route:types` lists every view in
 `bootstrap/routes.ts`. The error names the file to create. A view you have just added is not in that file yet: run
