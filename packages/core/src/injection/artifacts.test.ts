@@ -132,7 +132,7 @@ describe('injection artifacts', () => {
     expect(precomputed.transform(module, Buffer.from(changed), decode)).toBe(injectConstructorDependencies(changed, 'modules/users/ShowUserController.ts'));
     expect(precomputed.stale).toEqual(['modules/users/ShowUserController.ts']);
     expect(precomputed.warning()).toBe(
-      'Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since marmeon build, so their injection lists were derived at start, with oxc-parser — run marmeon build again.',
+      'Build artifacts are stale (1 file: modules/users/ShowUserController.ts): it changed since marmeon build, so it was analysed at start (injection lists with oxc-parser, mail views with oxc-transform) — run marmeon build again.',
     );
   });
 
@@ -153,7 +153,7 @@ describe('injection artifacts', () => {
     const missing = PrecomputedInjections.load(root);
     expect(missing.transform(join(root, 'modules/users/ShowUserController.ts'), controller, decode)).toContain('static inject = [UserRepository];');
     expect(missing.warning()).toBe(
-      'Build artifacts are missing (.marmeon/injections.json): the injection lists of 1 file (modules/users/ShowUserController.ts) were derived at start, with oxc-parser — run marmeon build before starting.',
+      'Build artifacts are missing (.marmeon/injections.json): 1 file (modules/users/ShowUserController.ts) was analysed at start (injection lists with oxc-parser, mail views with oxc-transform) — run marmeon build before starting.',
     );
   });
 

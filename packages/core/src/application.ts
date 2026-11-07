@@ -399,7 +399,7 @@ export async function createApplication(definition: ApplicationDefinition, optio
     // An out-of-date manifest in a read-only .marmeon/: discovered in memory — said once per process, in the app's log.
     if (discovered?.warning) container.make(Logger).warn(discovered.warning);
     for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);
-    // Modules that changed since `marmeon build`: their injection lists were derived at start — said once per process.
+    // Modules that changed since `marmeon build`: they were analysed at start — said once per process.
     const staleInjections = takeInjectionWarning();
     if (staleInjections) container.make(Logger).warn(staleInjections);
   } finally {

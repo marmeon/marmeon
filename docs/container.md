@@ -54,11 +54,11 @@ command install it, and the `marmeon()` Vite plugin does the same for the tests 
 packages carry their lists already.
 
 `marmeon build` writes the lists of the app's classes in advance. In production the start applies them without reading the code
-again, so it stays fast. A file that changed since the build is read as in development, and the app logs once that the build is
+again, so it stays fast. A file that changed since the build is read as in development (a mail view is compiled again), and the app logs once that the build is
 out of date:
 
 ```text
-Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since marmeon build, so their injection lists were derived at start, with oxc-parser — run marmeon build again.
+Build artifacts are stale (1 file: modules/users/ShowUserController.ts): it changed since marmeon build, so it was analysed at start (injection lists with oxc-parser, mail views with oxc-transform) — run marmeon build again.
 ```
 
 ### Default values are never injected

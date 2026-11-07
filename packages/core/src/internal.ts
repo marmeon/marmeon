@@ -23,6 +23,7 @@ export { withFileGuard } from './file-guard.ts';
 export { browserSources } from './injection/browser.ts';
 export { embedPackageInjections } from './injection/embed.ts';
 export { writeInjectionArtifacts } from './injection/artifacts.ts';
+export { writeMailViewArtifacts } from './mail-view-artifacts.ts';
 export { HTML_KEY, interpolateHtml } from './html.ts';
 export { loadEnv } from './config/config.ts';
 export { consoleLogsGoToStderr, redactedFrameworkFields, redactedLogPart, sendConsoleLogsToStderr, UNREADABLE_PART, withoutFrameworkFields } from './logger.ts';

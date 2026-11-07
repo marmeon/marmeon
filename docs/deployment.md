@@ -53,7 +53,7 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 
 `marmeon build` prepares the app for production. In this order, it:
 
-1. precomputes the injection lists of the app's classes,
+1. precomputes the injection lists of the app's classes and compiles the app's mail views (the `.tsx` files below `modules/<module>/mail/`) into `.marmeon/mail-views.json` (the build stops if there are any and `oxc-transform` is not installed),
 2. writes the route types, `bootstrap/routes.ts` (and stops if the app cannot be registered, e.g. two commands with one name),
 3. writes the schema the migrations describe, `.marmeon/schema.json` (and stops if a migration's plan cannot be projected, e.g. two migrations creating one table),
 4. type-checks the app against them, so a renamed route or a missing view fails the build,
@@ -62,6 +62,8 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 7. writes the list of installed packages, `.marmeon/manifest.json`.
 
 `marmeon build` also warns about every import of a framework internal (`@marmeon/*/internal`) in your code, and builds anyway; [`marmeon check`](check.md#imports-of-framework-internals) fails on them.
+
+`marmeon build` runs with the development dependencies, so `oxc-transform` (an optional peer of `@marmeon/core`) can stay out of the production image: a start loads the compiled mail views and never `oxc-transform`. A mail view that changed after the build is compiled at start when `oxc-transform` is installed, and counted in the "stale" warning; without it the start fails with "changed since marmeon build — run marmeon build", and the file is never loaded as written.
 
 `.marmeon/schema.json` holds the projection of all migration files with the SHA-256 of each and the version of `@marmeon/database`. The build
 always computes it from the migrations, whatever file is there, and writes it over; a directory that cannot be written is no failure. Code that

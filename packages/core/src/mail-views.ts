@@ -137,13 +137,24 @@ function oxcTransform(): typeof OxcTransform {
   return transformer;
 }
 
+/** Whether oxc-transform can be loaded here — a production start without it must not compile a mail view that changed since the build. */
+export function mailViewTransformerAvailable(): boolean {
+  try {
+    oxcTransform();
+    return true;
+  } catch (error) {
+    if (error instanceof ConfigError) return false;
+    throw error;
+  }
+}
+
 /**
  * The JavaScript of a mail view: TypeScript types erased (`import type` only, as with `verbatimModuleSyntax`), JSX compiled with the
  * automatic runtime of `importSource`, an inline source map appended. oxc-transform is loaded on the first call and synchronously — the load
- * hook cannot await. A syntax error becomes a `SyntaxError` that names `file:line:column`.
+ * hook cannot await. A syntax error becomes a `SyntaxError` that names `file:line:column`. `sourceName` is what the source map calls the source (default `file`): the build passes the file's own name, which resolves beside the script, so no build-machine path ends up in an artifact.
  */
-export function compileMailView(file: string, source: string, { importSource }: { importSource: string }): string {
-  const result = oxcTransform().transformSync(file, source, {
+export function compileMailView(file: string, source: string, { importSource, sourceName }: { importSource: string; sourceName?: string }): string {
+  const result = oxcTransform().transformSync(sourceName ?? file, source, {
     lang: 'tsx',
     sourceType: 'module',
     typescript: { onlyRemoveTypeImports: true },
