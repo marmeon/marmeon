@@ -1213,7 +1213,7 @@ describe('checkApiLabelWorkflow — the API label check', () => {
   });
 
   it('wants every action pinned by SHA and only the checkout and setup-node', () => {
-    expect(problemsOf(mutated(/actions\/checkout@[0-9a-f]{40}/.exec(real)![0], 'actions/checkout@v7'))).toContain('"actions/checkout@v7" is not pinned');
+    expect(problemsOf(mutated(pinOf(real, 'actions/checkout').split(' #')[0]!, 'actions/checkout@v7'))).toContain('"actions/checkout@v7" is not pinned');
     expect(problemsOf(mutated(/actions\/setup-node@[0-9a-f]{40}/.exec(real)![0], 'actions/setup-node@v7'))).toContain('"actions/setup-node@v7" is not pinned');
     const pinned = '      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413\n      - uses: actions/setup-node';
     expect(problemsOf(mutated('      - uses: actions/setup-node', pinned))).toContain('only actions/checkout and actions/setup-node');
@@ -1327,8 +1327,8 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
   });
 
   it('wants every action pinned by its full SHA', () => {
-    expect(problemsOf(mutated('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', 'actions/checkout@v7'))).toContain('is not pinned to a commit');
-    expect(problemsOf(mutated('pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413', 'pnpm/action-setup@ea17c68'))).toContain('is not pinned to a commit');
+    expect(problemsOf(mutated(pinOf(real, 'actions/checkout').split(' #')[0]!, 'actions/checkout@v7'))).toContain('is not pinned to a commit');
+    expect(problemsOf(mutated(pinOf(real, 'pnpm/action-setup').split(' #')[0]!, 'pnpm/action-setup@ea17c68'))).toContain('is not pinned to a commit');
   });
 
   it('refuses a cache action, saving or restoring, and any other action', () => {
@@ -1357,9 +1357,10 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
   });
 
   it('refuses a cache input of any action, pnpm/action-setup included', () => {
-    const pnpmSetup = 'pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413';
-    expect(problemsOf(mutated(`${pnpmSetup} # v6.1.0, the version from "packageManager"\n`, `${pnpmSetup}\n        with:\n          cache: true\n`))).toContain('may not read or write a cache');
-    expect(problemsOf(mutated(`${pnpmSetup} # v6.1.0, the version from "packageManager"\n`, `${pnpmSetup}\n        with:\n          cache_save: true\n`))).toContain('may not read or write a cache');
+    const pinned = pinOf(real, 'pnpm/action-setup');
+    const pnpmSetup = pinned.slice(0, pinned.indexOf(' #'));
+    expect(problemsOf(mutated(`${pinned}\n`, `${pnpmSetup}\n        with:\n          cache: true\n`))).toContain('may not read or write a cache');
+    expect(problemsOf(mutated(`${pinned}\n`, `${pnpmSetup}\n        with:\n          cache_save: true\n`))).toContain('may not read or write a cache');
     expect(problemsOf(mutated('package-manager-cache: false', 'package-manager-cache: true'))).toContain('may not read or write a cache');
   });
 
@@ -1394,7 +1395,7 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
 describe('checkCodeqlWorkflow — code scanning', () => {
   const real = readFileSync(join(root, '.github/workflows/codeql.yml'), 'utf8');
   const realConfig = readFileSync(join(root, '.github/codeql/codeql-config.yml'), 'utf8');
-  const codeqlSha = '9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
+  const codeqlSha = pinOf(real, 'github/codeql-action/init').split(/[@ ]/)[1]!;
 
   function repositoryWithCodeql(workflow: string, config: string | null = realConfig): string {
     const directory = repositoryWith(unreleased);
@@ -1438,7 +1439,7 @@ describe('checkCodeqlWorkflow — code scanning', () => {
   });
 
   it('wants every action pinned by its full SHA', () => {
-    expect(problemsOf(mutated('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', 'actions/checkout@v7'))).toContain('is not pinned to a commit');
+    expect(problemsOf(mutated(pinOf(real, 'actions/checkout').split(' #')[0]!, 'actions/checkout@v7'))).toContain('is not pinned to a commit');
     expect(problemsOf(mutated(`codeql-action/init@${codeqlSha}`, 'codeql-action/init@v4'))).toContain('is not pinned to a commit');
   });
 
@@ -1502,7 +1503,7 @@ describe('checkCodeqlWorkflow — code scanning', () => {
   });
 
   it('refuses what only the shape sees: a quoted flow step, a wide dash, an explicit key, an env, defaults, another runner, two documents', () => {
-    const sha = '9b3254085494b55a0f7c4c2b3d2d52cc712ce370';
+    const sha = codeqlSha;
     const init = /      - uses: github\/codeql-action\/init@[\s\S]*?config-file: \S+\n/.exec(real)![0];
     const shaped = (replacement: string) => mutated(init, replacement);
     const cases: Record<string, string> = {
