@@ -420,7 +420,7 @@ class Smoke {
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
     const urls = read();
     if (!urls) throw new SmokeError(`marmeon start wrote no module list (did it exit cleanly?):\n${output()}`);
-    const unwanted = ['oxc-parser', 'pino-pretty'].filter((name) => urls.some((url) => url.includes(`/node_modules/${name}/`)));
+    const unwanted = ['oxc-parser', 'oxc-transform', 'pino-pretty'].filter((name) => urls.some((url) => url.includes(`/node_modules/${name}/`)));
     if (unwanted.length > 0) throw new SmokeError(`marmeon start loaded ${unwanted.join(' and ')} (${urls.length} modules) — the injection lists of marmeon build and JSON logs should keep them out.`);
     if (output().includes('Build artifacts are')) throw new SmokeError(`marmeon start found the build artifacts stale or missing:\n${output()}`);
   }
@@ -829,10 +829,36 @@ async function main(): Promise<number> {
     // The landing page's code (examples/landing) on the same app, after the recipes: every snippet word for word in a file that type checks, and each typo of the chain with the compiler's error.
     await pnpmApp.step('landing snippets (examples/landing): overlay, every snippet in the app, test, typecheck, lint, every typo of the chain fails with its error', () => checkLanding(pnpmApp, 'pnpm'));
     // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
+    // A mail view, built with oxc-transform (a dev dependency here, as in an image's build stage) and started without it.
+    await pnpmApp.step('marmeon build with a mail view (oxc-transform as a dev dependency) → .marmeon/mail-views.json', () => {
+      pnpmApp.run('pnpm', ['add', '-D', 'oxc-transform@>=0.157.0 <1.0.0', ...pnpmFlags, '--reporter', 'append-only']);
+      mkdirSync(join(app, 'modules/home/mail'), { recursive: true });
+      writeFileSync(join(app, 'modules/home/mail/Probe.tsx'), "export default function Probe() {\n  return <p>mail-view-probe</p>;\n}\n");
+      pnpmApp.buildWithoutEnv();
+      const views = JSON.parse(readFileSync(join(app, '.marmeon/mail-views.json'), 'utf8')) as { files: Record<string, unknown> };
+      if (!Object.hasOwn(views.files, 'modules/home/mail/Probe.tsx')) throw new SmokeError('marmeon build did not precompile modules/home/mail/Probe.tsx into .marmeon/mail-views.json.');
+    });
     await pnpmApp.step('pnpm install --prod → node_modules/.bin/marmeon', () => {
       pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);
       if (existsSync(join(app, 'node_modules/vitest'))) throw new SmokeError('pnpm install --prod left the dev dependency vitest in node_modules.');
       if (!existsSync(join(app, 'node_modules/.bin/marmeon'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/marmeon — marmeon must be a dependency of the app.');
+    });
+    await pnpmApp.step('production install without oxc-transform → the precompiled mail view renders, nothing loads oxc-transform', () => {
+      if (existsSync(join(app, 'node_modules/oxc-transform'))) throw new SmokeError('pnpm install --prod left the dev dependency oxc-transform in node_modules.');
+      const script = join(app, 'probe-mail-view.mjs');
+      writeFileSync(
+        script,
+        "import { renderToStaticMarkup } from 'react-dom/server';\nimport { createElement } from 'react';\nconst { default: Probe } = await import('./modules/home/mail/Probe.tsx');\nconsole.log(renderToStaticMarkup(createElement(Probe)));\n",
+      );
+      try {
+        const output = pnpmApp.run('node', ['--import', '@marmeon/core/register', script], { NODE_ENV: 'production' });
+        // Without oxc-transform a stale or unknown view throws instead of loading, so the render proves it came from the artifact.
+        if (!output.includes('<p>mail-view-probe</p>')) throw new SmokeError(`the precompiled mail view did not render without oxc-transform:\n${output}`);
+      } finally {
+        rmSync(script, { force: true });
+        // Later steps build again without oxc-transform: an app with no mail view needs none.
+        rmSync(join(app, 'modules/home/mail'), { recursive: true, force: true });
+      }
     });
     await pnpmApp.step('marmeon start (production install) → GET /login 200', () => pnpmApp.serve('/login'));
     // ── The driver rule as an app meets it ──

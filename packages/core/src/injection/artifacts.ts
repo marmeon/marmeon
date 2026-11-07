@@ -83,6 +83,11 @@ export function writeInjectionArtifacts({ root }: { root: string }): { path: str
   return { path, modules: names.length, classes: names.reduce((sum, name) => sum + files[name]!.insert.length, 0) };
 }
 
+/** The mail views `marmeon build` precompiles (see `mail-view-artifacts.ts`): the `.tsx` files {@link appModules} yields. */
+export function* mailViewFiles(root: string): Generator<string> {
+  for (const file of appModules(root)) if (file.endsWith('.tsx')) yield file;
+}
+
 function* appModules(root: string, dir = root): Generator<string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
@@ -144,7 +149,12 @@ export class PrecomputedInjections {
     return injectConstructorDependencies(text, name);
   }
 
-  /** The modules of the app whose lists were derived at start (in load order). */
+  /** Counts a mail view that was compiled at start for the stale warning (once, whatever else counted it). */
+  noteStale(name: string): void {
+    if (!this.#stale.includes(name)) this.#stale.push(name);
+  }
+
+  /** The modules and mail views of the app that were analysed at start (in load order). */
   get stale(): readonly string[] {
     return this.#stale;
   }
@@ -156,8 +166,8 @@ export class PrecomputedInjections {
     const modules = `${count} file${count === 1 ? '' : 's'}`;
     const names = this.#stale.slice(0, 3).join(', ') + (count > 3 ? ', …' : '');
     return this.#missing
-      ? `Build artifacts are missing (${INJECTIONS_FILE}): the injection lists of ${modules} (${names}) were derived at start, with oxc-parser — run marmeon build before starting.`
-      : `Build artifacts are stale (${modules}: ${names}): they changed since marmeon build, so their injection lists were derived at start, with oxc-parser — run marmeon build again.`;
+      ? `Build artifacts are missing (${INJECTIONS_FILE}): ${modules} (${names}) ${count === 1 ? 'was' : 'were'} analysed at start (injection lists with oxc-parser, mail views with oxc-transform) — run marmeon build before starting.`
+      : `Build artifacts are stale (${modules}: ${names}): ${count === 1 ? 'it changed' : 'they changed'} since marmeon build, so ${count === 1 ? 'it was' : 'they were'} analysed at start (injection lists with oxc-parser, mail views with oxc-transform) — run marmeon build again.`;
   }
 }
 

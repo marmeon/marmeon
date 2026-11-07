@@ -484,7 +484,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     rmSync(join(app, '.marmeon/injections.json'), { force: true });
     const { output } = await startOnce();
     expect(output).toContain('greeter: SystemClock');
-    expect(output).toContain('Build artifacts are missing (.marmeon/injections.json): the injection lists of 1 file (services/Greeter.ts)');
+    expect(output).toContain('Build artifacts are missing (.marmeon/injections.json): 1 file (services/Greeter.ts) was analysed at start');
   }, 30_000);
 
   it('starts without the compile cache when its directory cannot be written', async () => {

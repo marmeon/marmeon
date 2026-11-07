@@ -10,26 +10,40 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { environment } from './environment.ts';
+import { ConfigError, environment } from './environment.ts';
 import { injectConstructorDependencies } from './injection/analyze.ts';
 import { PrecomputedInjections, usePrecomputedInjections } from './injection/artifacts.ts';
 import { isBrowserSource } from './injection/browser.ts';
-import { compileMailView, jsxOptions, mailViewPath, tsxFileOf } from './mail-views.ts';
+import { PrecomputedMailViews, mailViewName } from './mail-view-artifacts.ts';
+import { compileMailView, jsxOptions, mailViewPath, mailViewTransformerAvailable, tsxFileOf } from './mail-views.ts';
 
 const decoder = new TextDecoder();
 const decode = (source: Uint8Array) => decoder.decode(source);
 
 const precomputed = environment.isProtected() ? PrecomputedInjections.load(process.cwd()) : undefined;
 if (precomputed) usePrecomputedInjections(precomputed);
+const precompiledViews = precomputed ? PrecomputedMailViews.load(process.cwd()) : undefined;
 
-/** A mail view: refused unless it is one, then the injection lists, then the JSX. Before `nextLoad`, which cannot load `.tsx`. */
+/**
+ * A mail view: refused unless it is one, then the injection lists, then the JSX. Before `nextLoad`, which cannot load `.tsx`. Where the
+ * app is protected, the code `marmeon build` compiled is used when the source is unchanged; a changed one is compiled and counted as stale,
+ * and without oxc-transform the start fails — the source is never loaded as written.
+ */
 function loadMailView(file: string) {
   const root = process.cwd();
   const path = mailViewPath(root, file);
   const bytes = readFileSync(path);
+  const realRoot = realpathSync.native(root);
+  if (precompiledViews) {
+    const name = mailViewName(realRoot, path);
+    const code = precompiledViews.code(name, bytes, jsxOptions(realRoot).importSource);
+    if (code !== undefined) return { format: 'module' as const, source: code, shortCircuit: true };
+    if (!mailViewTransformerAvailable()) throw new ConfigError(`${name} changed since marmeon build (or is not part of it) — run marmeon build.`);
+    precomputed?.noteStale(name);
+  }
   const text = decode(bytes);
   const injected = precomputed ? precomputed.transform(file, bytes, decode) : text.includes('constructor') ? injectConstructorDependencies(text, file) : text;
-  return { format: 'module' as const, source: compileMailView(path, injected, jsxOptions(realpathSync.native(root))), shortCircuit: true };
+  return { format: 'module' as const, source: compileMailView(path, injected, jsxOptions(realRoot)), shortCircuit: true };
 }
 
 registerHooks({
