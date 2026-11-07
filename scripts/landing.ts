@@ -4,9 +4,10 @@
  * file's comment lines are left out (`withoutCommentLines`), for the landing shows no comments. `landingProblems` compares what it can without the
  * smoke app, in `pnpm test`. A function, no command of its own.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MODULE_FILES, type ModuleFile } from '../apps/website/modules/site/module-files.ts';
 import { CHAIN, type ChainStepSpec } from '../apps/website/modules/site/chain.ts';
 import { SNIPPETS, type Snippet } from '../apps/website/modules/site/snippets.ts';
 import { typecheckApp } from '../packages/cli/src/typecheck.ts';
@@ -156,8 +157,19 @@ function firstMissingLine(code: string, text: string): string {
  * snippet, whose `replace` equals `find` or whose snippet is not from the app. A file a generator writes or an edit changes is for
  * `pnpm pack:smoke`. Empty when all is well.
  */
-export function landingProblems(repository: string = REPOSITORY, snippets: Readonly<Record<string, Snippet>> = SNIPPETS, chain: readonly ChainStepSpec[] = CHAIN): string[] {
+export function landingProblems(repository: string = REPOSITORY, snippets: Readonly<Record<string, Snippet>> = SNIPPETS, chain: readonly ChainStepSpec[] = CHAIN, moduleFiles: readonly ModuleFile[] = MODULE_FILES): string[] {
   const problems: string[] = [];
+  const seen = new Set<string>();
+  if (moduleFiles.length === 0) problems.push('module files: the list is empty.');
+  for (const { name, folder } of moduleFiles) {
+    if (!isModuleEntryName(name)) {
+      problems.push(`module file "${name}": a name is one file or folder name directly in modules/notes/.`);
+      continue;
+    }
+    if (seen.has(name)) problems.push(`module file "${name}": it is listed twice.`);
+    seen.add(name);
+    if ((folder === true) !== name.endsWith('/')) problems.push(`module file "${name}": a folder has \`folder: true\` and a name ending in "/", a file neither.`);
+  }
   for (const [name, snippet] of Object.entries(snippets)) {
     const source = (snippet as { source?: Snippet['source'] }).source;
     if (source === undefined || typeof source !== 'object' || source === null) {
@@ -219,6 +231,27 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
   return problems;
 }
 
+/** Whether `name` is one file or folder name directly in `modules/notes/`, a folder with its trailing "/". */
+function isModuleEntryName(name: string): boolean {
+  return /^(?!\.\.?\/?$)[^/\\]+\/?$/.test(name);
+}
+
+/** The entries of `files` that are missing in `modules/notes/` of `app`, or are a symlink, or a file where a folder is listed and the other way round. */
+function moduleFileProblems(app: string, files: readonly ModuleFile[]): string[] {
+  const problems: string[] = [];
+  for (const { name, folder } of files) {
+    if (!isModuleEntryName(name)) {
+      problems.push(`module file "${name}": a name is one file or folder name directly in modules/notes/.`);
+      continue;
+    }
+    const stat = lstatSync(join(app, 'modules/notes', name.replace(/\/$/, '')), { throwIfNoEntry: false });
+    if (stat === undefined) problems.push(`module file "${name}": modules/notes/${name} does not exist in the app.`);
+    else if (stat.isSymbolicLink()) problems.push(`module file "${name}": modules/notes/${name} is a symlink.`);
+    else if (stat.isDirectory() !== (folder === true)) problems.push(`module file "${name}": modules/notes/${name} is a ${folder === true ? 'file' : 'directory'}, the landing lists a ${folder === true ? 'folder' : 'file'}.`);
+  }
+  return problems;
+}
+
 /** The files of the app that `path` names: one, or those a `*` in its last segment matches. */
 function appFiles(app: string, path: string): string[] {
   if (!path.includes('*')) return existsSync(resolve(app, path)) ? [path] : [];
@@ -275,7 +308,7 @@ export async function checkTypo(app: string, file: string, step: ChainStepSpec):
  * The landing on the smoke app after the notes demo (and the recipes): `examples/landing` applied; every `app` snippet word for
  * word in its file of the app (a `*` finds exactly one); the overlay's tests run; type check; lint; then each typo of the chain
  * fails with the error the page names (`checkTypo`), and the app type-checks again. A difference is a `SmokeError` with the
- * snippet's or step's name.
+ * snippet's or step's name. The files of the notes module's tree (`MODULE_FILES`) must exist in `modules/notes/` of the app, folders as directories.
  */
 export async function checkLanding(
   smoke: DemoTarget,
@@ -284,9 +317,10 @@ export async function checkLanding(
   snippets: Readonly<Record<string, Snippet>> = SNIPPETS,
   chain: readonly ChainStepSpec[] = CHAIN,
   overlay: string = join(repository, 'examples/landing'),
+  moduleFiles: readonly ModuleFile[] = MODULE_FILES,
 ): Promise<void> {
-  const problems = landingProblems(repository, snippets, chain);
-  if (problems.length > 0) throw new SmokeError(`the landing's snippets are wrong:\n${problems.join('\n')}`);
+  const problems = landingProblems(repository, snippets, chain, moduleFiles);
+  if (problems.length > 0) throw new SmokeError(`the landing's snippets or module tree are wrong:\n${problems.join('\n')}`);
   applyOverlay(smoke.app, (args) => void smoke.run(pm, ['exec', 'marmeon', ...args]), overlay);
   const fileOf = (name: string, path: string) => {
     const found = appFiles(smoke.app, path);
@@ -301,6 +335,8 @@ export async function checkLanding(
     const text = read.text;
     if (!text.includes(snippet.code)) throw new SmokeError(`snippet "${name}": the code is not in ${file}: ${JSON.stringify(firstMissingLine(snippet.code, text))} is not there.`);
   }
+  const missing = moduleFileProblems(smoke.app, moduleFiles);
+  if (missing.length > 0) throw new SmokeError(`the landing's module tree is wrong:\n${missing.join('\n')}`);
   const tests = smoke.run(pm, ['run', 'test', '--reporter=verbose']);
   for (const file of testFilesBelow(join(overlay, 'files'))) if (!tests.includes(file)) throw new SmokeError(`vitest did not run ${file}, a test of the landing:\n${tests}`);
   if (!/Tests\s+\d+ passed/.test(tests)) throw new SmokeError(`the landing's tests did not pass:\n${tests}`);

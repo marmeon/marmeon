@@ -2,6 +2,7 @@ import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { PACKAGES_URL } from '../../links.ts';
+import type { ModuleFile } from '../../module-files.ts';
 import type { PackageEntry, PackageGroup } from '../../packages.ts';
 import type { SnippetName } from '../../snippets.ts';
 import { Editor } from '../Editor.tsx';
@@ -27,16 +28,6 @@ const BATTERIES: readonly Battery[] = [
   { id: 'modules', label: 'Modules', snippet: 'batteryModules', docs: { href: '/docs/modules#discovery', text: 'Modules and discovery' } },
 ];
 
-const MODULE_FILES: { name: string; folder?: boolean; role: string }[] = [
-  { name: 'routes.ts', role: 'routes and their names' },
-  { name: 'controllers/', folder: true, role: 'one class per endpoint' },
-  { name: 'views/', folder: true, role: 'React pages' },
-  { name: 'migrations/', folder: true, role: "the module's tables" },
-  { name: 'jobs/', folder: true, role: 'queued work' },
-  { name: 'notes.test.ts', role: 'tests, next to the code' },
-  { name: 'index.ts', role: 'the definition, and what other modules may import' },
-];
-
 const CHECKS = [
   'Installed packages register themselves',
   'Mail, the queue, storage and the schedule each have a fake for tests',
@@ -46,12 +37,12 @@ const CHECKS = [
 ];
 
 /** The module's folder, for the "Modules" tab. */
-function ModuleFiles() {
+function ModuleFiles({ files }: { files: readonly ModuleFile[] }) {
   return (
     <figure className="file-tree">
       <figcaption>modules/notes/</figcaption>
       <ul aria-label="Files of the notes module">
-        {MODULE_FILES.map(({ name, folder, role }) => (
+        {files.map(({ name, folder, role }) => (
           <li key={name}>
             <span className={folder ? 'file-tree-folder' : undefined}>{name}</span>
             <span className="file-tree-role">{role}</span>
@@ -99,7 +90,7 @@ function PackageList({ packages }: { packages: readonly PackageEntry[] }) {
 }
 
 /** "The backend comes with it": one tab per package, each with a piece of real code, and the checks that hold the packages together. */
-export function BatteriesSection({ snippets, packages }: Pick<PageProps<ShowLandingController>, 'snippets' | 'packages'>) {
+export function BatteriesSection({ snippets, packages, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'packages' | 'moduleFiles'>) {
   return (
     <section className="batteries" aria-labelledby="batteries-title">
       <div className="landing-inner batteries-inner">
@@ -136,7 +127,7 @@ export function BatteriesSection({ snippets, packages }: Pick<PageProps<ShowLand
                   <Editor label={`${label}: ${file!.split('/').at(-1)!}`} files={[{ name: file!, html }]} headingLevel={4} />
                   {id === 'modules' && (
                     <div className="battery-extra">
-                      <ModuleFiles />
+                      <ModuleFiles files={moduleFiles} />
                       <Terminal commands={['pnpm add @marmeon/redis']} />
                     </div>
                   )}

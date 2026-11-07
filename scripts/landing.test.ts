@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CHAIN, mistakeLine, type ChainStepSpec } from '../apps/website/modules/site/chain.ts';
+import { MODULE_FILES } from '../apps/website/modules/site/module-files.ts';
 import type { Snippet } from '../apps/website/modules/site/snippets.ts';
 import type { DemoTarget } from './notes-demo.ts';
 import { SmokeError } from './pack-smoke.ts';
@@ -79,6 +80,23 @@ describe('withoutCommentLines', () => {
 });
 
 describe('landingProblems', () => {
+  it('refuses names that are not directly in modules/notes/, and an empty list', () => {
+    const names = ['../x', '/x', '/', 'a/b', '.', '..', '../'];
+    const problems = landingProblems(repository(''), {}, [], names.map((name) => ({ name, role: 'r' })));
+    expect(problems).toEqual(names.map((name) => `module file "${name}": a name is one file or folder name directly in modules/notes/.`));
+    expect(landingProblems(repository(''), {}, [], [])).toEqual(['module files: the list is empty.']);
+  });
+
+  it('accepts the module tree of the landing and refuses a name listed twice or a folder without its slash', () => {
+    expect(landingProblems(repository(''), {}, [], MODULE_FILES)).toEqual([]);
+    const files = [{ name: 'a/', folder: true, role: 'r' }, { name: 'a/', folder: true, role: 'r' }, { name: 'b', folder: true, role: 'r' }, { name: 'c/', role: 'r' }];
+    expect(landingProblems(repository(''), {}, [], files)).toEqual([
+      'module file "a/": it is listed twice.',
+      'module file "b": a folder has `folder: true` and a name ending in "/", a file neither.',
+      'module file "c/": a folder has `folder: true` and a name ending in "/", a file neither.',
+    ]);
+  });
+
   it('refuses a source that does not parse, and judges a fragment that does not parse by its text', () => {
     const root = repository('const a = ;\n// c\n');
     const snippets = {
@@ -237,6 +255,13 @@ function smoke(options: { generated?: string; extra?: string[]; tests?: string }
   mkdirSync(join(app, 'modules/dir'), { recursive: true });
   writeFileSync(join(app, 'modules/gen.ts'), options.generated ?? 'const g = 1;\n');
   for (const name of options.extra ?? []) writeFileSync(join(app, 'modules/dir', name), 'const g = 1;\n');
+  for (const { name, folder } of MODULE_FILES) {
+    if (folder) mkdirSync(join(app, 'modules/notes', name), { recursive: true });
+    else {
+      mkdirSync(join(app, 'modules/notes'), { recursive: true });
+      writeFileSync(join(app, 'modules/notes', name), '');
+    }
+  }
   const ran: string[] = [];
   const target: DemoTarget = {
     app,
@@ -288,6 +313,30 @@ describe('checkLanding', () => {
     await expect(checkLanding(target, 'pnpm', repo, generated('modules/gone.ts'), [])).rejects.toThrow(/snippet "g": modules\/gone\.ts must match exactly one file of the app, it matches 0\./);
     await expect(checkLanding(target, 'pnpm', repo, generated('modules/dir/*_one.ts'), [])).rejects.toThrow(/snippet "g": modules\/dir\/\*_one\.ts must match exactly one file of the app, it matches 2 \(/);
     await expect(checkLanding(target, 'pnpm', repo, generated('modules/dir/*_two.ts'), [])).rejects.toThrow(/it matches 0\./);
+  });
+
+  it('names an entry of the module tree that is missing, or of the wrong kind', async () => {
+    const { repo, target } = smoke();
+    const run = () => checkLanding(target, 'pnpm', repo, generated(), [], join(repo, 'examples/landing'), MODULE_FILES);
+    await run();
+    rmSync(join(target.app, 'modules/notes/routes.ts'));
+    await expect(run()).rejects.toThrow('module file "routes.ts": modules/notes/routes.ts does not exist in the app.');
+    rmSync(join(target.app, 'modules/notes/views'), { recursive: true });
+    writeFileSync(join(target.app, 'modules/notes/views'), '');
+    await expect(run()).rejects.toThrow(/module file "views\/": modules\/notes\/views\/ is a file, the landing lists a folder\./);
+    rmSync(join(target.app, 'modules/notes/index.ts'));
+    mkdirSync(join(target.app, 'modules/notes/index.ts'));
+    await expect(run()).rejects.toThrow(/module file "index\.ts": modules\/notes\/index\.ts is a directory, the landing lists a file\./);
+  });
+
+  it('refuses a symlink and a name outside modules/notes/, even when the entry would exist', async () => {
+    const { repo, target } = smoke();
+    const run = (files: Parameters<typeof checkLanding>[6]) => checkLanding(target, 'pnpm', repo, generated(), [], join(repo, 'examples/landing'), files);
+    rmSync(join(target.app, 'modules/notes/routes.ts'));
+    symlinkSync(join(target.app, 'modules/gen.ts'), join(target.app, 'modules/notes/routes.ts'));
+    await expect(run(MODULE_FILES)).rejects.toThrow('module file "routes.ts": modules/notes/routes.ts is a symlink.');
+    await expect(run([{ name: '../gen.ts', role: 'r' }])).rejects.toThrow(/module file "\.\.\/gen\.ts": a name is one file or folder name directly in modules\/notes\//);
+    await expect(run([{ name: '/', folder: true, role: 'r' }])).rejects.toThrow(/module file "\/": a name is one/);
   });
 
   it('fails when a test file of the overlay did not run or the tests did not pass', async () => {
