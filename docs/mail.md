@@ -211,12 +211,31 @@ export function NoteSharedView({ t, title, url }: { t: Translator; title: string
 ```
 
 ```ts title="modules/notes/mail/NoteSharedMail.ts"
+import type { Translator } from '@marmeon/i18n';
+import type { Mailable } from '@marmeon/mail';
 import { toMjml } from '@marmeon/react/mail';
 import { NoteSharedView } from './NoteSharedView.tsx';
 
-// in the class:
-content() {
-  return toMjml(NoteSharedView, { t: this.#t, title: this.#title, url: this.#url });
+export class NoteSharedMail implements Mailable {
+  readonly #recipient: { readonly email: string; readonly name: string };
+  readonly #title: string;
+  readonly #url: string;
+  readonly #t: Translator;
+
+  constructor(recipient: { readonly email: string; readonly name: string }, title: string, url: string, t: Translator) {
+    this.#recipient = recipient;
+    this.#title = title;
+    this.#url = url;
+    this.#t = t;
+  }
+
+  envelope() {
+    return { to: { address: this.#recipient.email, name: this.#recipient.name }, subject: this.#t.get('notes.mail.shared.subject') };
+  }
+
+  content() {
+    return toMjml(NoteSharedView, { t: this.#t, title: this.#title, url: this.#url });
+  }
 }
 ```
 
