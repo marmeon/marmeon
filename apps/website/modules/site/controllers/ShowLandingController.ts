@@ -11,6 +11,6 @@ export class ShowLandingController extends Controller {
   }
 
   handle() {
-    return this.view('site/Landing', { snippets: this.#snippets.all() });
+    return this.view('site/Landing', { snippets: this.#snippets.all(), chain: this.#snippets.chain() });
   }
 }
