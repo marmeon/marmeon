@@ -424,7 +424,6 @@ details[open] > summary .nav-sign::before {
 @media (max-width: 760px) {
   .docs-top {
     position: static;
-    flex-wrap: wrap;
     gap: var(--space-3);
   }
   .docs-search-box,

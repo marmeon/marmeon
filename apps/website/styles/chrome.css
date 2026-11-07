@@ -155,12 +155,23 @@
 }
 
 @media (max-width: 719px) {
+  .site-header-inner {
+    flex-wrap: nowrap;
+  }
+
   .site-nav {
     display: none;
   }
 
   .site-menu {
     display: block;
+  }
+}
+
+/* A phone: the header keeps one line for the wordmark and the menu or search; the landing's hero and the docs' first page name the version. */
+@media (max-width: 479px) {
+  .version-badge {
+    display: none;
   }
 }
 

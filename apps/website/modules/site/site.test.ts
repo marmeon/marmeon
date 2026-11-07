@@ -265,7 +265,7 @@ describe('the shared chrome', () => {
     expect(body).toContain('<a class="skip-link" href="#content">');
     expect(body).toMatch(/<nav aria-label="Main"[^>]*>.*href="\/docs".*<\/nav>/);
     expect(body).toMatch(/<a href="https:\/\/github\.com\/marmeon\/marmeon" rel="noopener">GitHub<\/a>/);
-    expect(body).toContain(`<span class="badge">${coreVersion}</span>`);
+    expect(body).toContain(`<span class="badge version-badge">${coreVersion}</span>`);
     expect(body).toContain('<details class="site-menu"');
     const footer = body.slice(body.indexOf('<footer'));
     for (const href of ['/docs', '/docs/security-policy', '/docs/releases', 'https://github.com/marmeon/marmeon/blob/main/LICENSE']) expect(footer).toContain(`href="${href}"`);
@@ -288,7 +288,7 @@ describe('the shared chrome', () => {
     expect(response.status).toBe(404);
     expect(response.body).toContain('class="site-header"');
     expect(response.body).toContain('class="site-footer"');
-    expect(response.body).not.toContain('class="badge"');
+    expect(response.body).not.toContain('version-badge');
   });
 
   it('keeps the docs layout for the docs pages', async () => {
