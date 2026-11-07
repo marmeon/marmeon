@@ -373,6 +373,9 @@ command, and the [package development](docs/package-development.md#dependencies-
    the protocol `marmeon mcp` speaks, loaded only by that command (`import()` after the check for `NODE_ENV=development`, only
    from `packages/cli/src/mcp/`). The tool schemas and the protocol negotiation are tested against one version. An update is a
    pull request of its own; `@modelcontextprotocol/client` at the same version is a devDependency of the repository for the tests.
+8. Decided exception: **`oxc-transform` is an optional peer of `@marmeon/core`**, at `>=0.157.0 <1.0.0` — it compiles the mail views of an
+   app (`modules/*/mail/**/*.tsx`) in development and in `marmeon build`; a production start runs the build's output and never
+   loads it. An app that has mail views installs it as a devDependency; without it the load hook names the install command.
 
 A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
 peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different

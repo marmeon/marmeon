@@ -7,6 +7,9 @@ events, the clock, the context of a request or job, results for expected failure
 
 Part of every new Marmeon app: `pnpm create marmeon` installs it.
 
+Mail views (`.tsx` files under `modules/*/mail/`) are compiled by `oxc-transform`, an optional peer:
+`pnpm add -D "oxc-transform@>=0.157.0 <1.0.0"`. Without it, the first mail view names that command.
+
 ## A module and its configuration
 
 ```ts title="modules/notes/config.ts"
