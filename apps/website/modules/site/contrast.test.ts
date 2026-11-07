@@ -60,6 +60,7 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ...['--tip-fg', '--accent-strong', '--warning-fg', '--caution-fg'].map((text) => [text, '--bg', 4.5] as const),
   ...['--editor-fg', '--editor-dim', '--editor-error', ...SYNTAX_ROLES.map((role) => `--editor-syn-${role}`)].map((text) => [text, '--editor-bg', 4.5] as const),
   ['--editor-accent', '--editor-chrome', 3],
+  ['--editor-accent', '--editor-bg', 3],
 ];
 
 describe('contrast', () => {
