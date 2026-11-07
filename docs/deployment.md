@@ -63,7 +63,7 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 
 `marmeon build` also warns about every import of a framework internal (`@marmeon/*/internal`) in your code, and builds anyway; [`marmeon check`](check.md#imports-of-framework-internals) fails on them.
 
-`marmeon build` runs with the development dependencies, so `oxc-transform` (an optional peer of `@marmeon/core`) can stay out of the production image: a start loads the compiled mail views and never `oxc-transform`. A mail view that changed after the build is compiled at start when `oxc-transform` is installed, and counted in the "stale" warning; without it the start fails with "changed since marmeon build — run marmeon build", and the file is never loaded as written.
+`marmeon build` runs with the development dependencies. `oxc-transform` is an optional peer of `@marmeon/core`, so it can stay out of the production image. A start loads the compiled mail views and never `oxc-transform`. A mail view that changed after the build is compiled at start when `oxc-transform` is installed, and counted in the "stale" warning. Without it the start fails with "changed since marmeon build — run marmeon build". The file is never loaded as written.
 
 `.marmeon/schema.json` holds the projection of all migration files with the SHA-256 of each and the version of `@marmeon/database`. The build
 always computes it from the migrations, whatever file is there, and writes it over; a directory that cannot be written is no failure. Code that

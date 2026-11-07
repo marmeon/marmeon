@@ -32,19 +32,24 @@ export function mailViewName(realRoot: string, realFile: string): string {
   return relative(realRoot, realFile).split(sep).join('/');
 }
 
-/** Compiles every mail view of the app in `root` (what {@link writeMailViewArtifacts} writes, without writing). Throws the `ConfigError` of a missing or unusable oxc-transform. */
+/**
+ * Compiles every mail view of the app in `root` (what {@link writeMailViewArtifacts} writes, without writing). The JSX settings are read only when
+ * there is a view, so only then a `ConfigError` of an unusable tsconfig.json or a missing oxc-transform; without views `jsxImportSource` is `''`.
+ */
 export function computeMailViewArtifacts(root: string): MailViewsFile {
   const realRoot = realpathSync.native(root);
   const files: Record<string, { sha256: string; code: string }> = {};
+  let jsx: { importSource: string } | undefined; // read with the first view: an app without one has no use for the setting
   for (const file of mailViewFiles(root)) {
+    jsx ??= jsxOptions(realRoot);
     const real = mailViewPath(root, file);
     const bytes = readFileSync(real);
     const name = mailViewName(realRoot, real);
     const source = bytes.toString('utf8');
     const injected = source.includes('constructor') ? injectConstructorDependencies(source, name) : source;
-    files[name] = { sha256: sha256(bytes), code: compileMailView(name, injected, { ...jsxOptions(realRoot), sourceName: basename(real) }) };
+    files[name] = { sha256: sha256(bytes), code: compileMailView(name, injected, { ...jsx, sourceName: basename(real) }) };
   }
-  return { format: FORMAT, jsxImportSource: jsxOptions(realRoot).importSource, files };
+  return { format: FORMAT, jsxImportSource: jsx?.importSource ?? '', files };
 }
 
 /**

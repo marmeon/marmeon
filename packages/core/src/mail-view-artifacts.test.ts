@@ -62,6 +62,18 @@ describe('mail views precompiled by marmeon build', () => {
     expect(existsSync(join(root, MAIL_VIEWS_FILE))).toBe(false);
   });
 
+  it('ignores the JSX setting of an app without mail views, and fails closed for one with a view', () => {
+    rmSync(join(root, VIEW));
+    for (const tsconfig of [JSON.stringify({ compilerOptions: { jsx: 'preserve' } }), '{ not json']) {
+      write('tsconfig.json', tsconfig);
+      expect(writeMailViewArtifacts({ root }).views).toBe(0);
+      expect(existsSync(join(root, MAIL_VIEWS_FILE))).toBe(false);
+      write(VIEW, 'export default <p>Hi</p>;\n');
+      expect(() => writeMailViewArtifacts({ root })).toThrow(ConfigError);
+      rmSync(join(root, VIEW));
+    }
+  });
+
   it('starts in production and renders without ever loading oxc-transform', () => {
     writeMailViewArtifacts({ root });
     const { stdout, warning } = start({ hide: true });
