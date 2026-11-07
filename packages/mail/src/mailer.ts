@@ -1,7 +1,7 @@
 import { token, type Application, type Duration } from '@marmeon/core';
+import { RENDER_MAIL, rendersMail } from './content.ts';
 import { fromHtml, Html } from './html.ts';
 import type { Address, Mailable, MailContent, MailMessage } from './message.ts';
-import { fromMjml, Mjml } from './mjml.ts';
 import { toQueued, type QueuedMailPayload } from './queued.ts';
 import { traceMail } from './trace.ts';
 import type { MailReceipt, MailTransport } from './transports.ts';
@@ -142,12 +142,16 @@ function checkLinks(mailable: Mailable, html: string): void {
 
 async function contentOf(mailable: Mailable): Promise<MailContent> {
   const content = await mailable.content();
-  if (content instanceof Mjml) return fromMjml(content);
-  if (content instanceof Html) return fromHtml(content);
-  if (typeof content?.html !== 'string' || typeof content?.text !== 'string') {
+  // An engine first: an Mjml is an Html, and would otherwise go out uncompiled and unchecked.
+  const engine = rendersMail(content);
+  const rendered = engine ? await content[RENDER_MAIL]() : content instanceof Html ? fromHtml(content) : content;
+  if (engine && (typeof rendered?.html !== 'string' || typeof rendered?.text !== 'string')) {
+    throw new MailError(`${mailable.constructor.name}'s template rendered no { html, text } strings.`);
+  }
+  if (typeof rendered?.html !== 'string' || typeof rendered?.text !== 'string') {
     throw new MailError(`${mailable.constructor.name}.content() must return mjml\`…\`, html\`…\` or { html, text } strings.`);
   }
-  return content;
+  return rendered;
 }
 
 function addresses(value: Address | readonly Address[] | undefined): { address: string; name?: string }[] {
