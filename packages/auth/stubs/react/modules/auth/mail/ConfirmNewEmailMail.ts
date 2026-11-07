@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { ConfirmNewEmailView } from './ConfirmNewEmailView.tsx';
 
 /**
  * Private registration: to the new address of a pending change — the link that makes it the account's (signed, for this
@@ -34,14 +35,6 @@ export class ConfirmNewEmailMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.confirm_new_email.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, null)}</mj-text>
-        <mj-text>${t.get('auth.mail.confirm_new_email.intro', { email: this.#email })}</mj-text>
-        <mj-button href="${this.#url}">${t.get('auth.mail.confirm_new_email.button')}</mj-button>
-        <mj-text>${t.get('auth.mail.confirm_new_email.outro')}</mj-text>`,
-    });
+    return toMjml(ConfirmNewEmailView, { t: this.#t, email: this.#email, url: this.#url });
   }
 }

@@ -1,8 +1,9 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { TwoFactorView } from './TwoFactorView.tsx';
 import type { User } from '../users.ts';
 
 /** What happened to the account's second factor. */
@@ -38,17 +39,6 @@ export class TwoFactorMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    const notice = this.#notice;
-    const key = `auth.mail.two_factor.${notice.kind}` as const;
-    // Only what the kind has to say is passed on; the others ignore the values.
-    const values = { remaining: notice.kind === 'recovery_used' ? notice.remaining : 0, at: notice.kind === 'failed' ? `${notice.at.slice(0, 16).replace('T', ' ')} UTC` : '', from: notice.kind === 'failed' && notice.ip !== null ? t.get('auth.mail.two_factor.failed.from', { ip: notice.ip }) : '' };
-    return layout(t, {
-      preview: t.get(`${key}.preview`),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get(`${key}.intro`, values)}</mj-text>
-        <mj-text>${t.get(`${key}.outro`)}</mj-text>`,
-    });
+    return toMjml(TwoFactorView, { t: this.#t, user: this.#user, notice: this.#notice });
   }
 }

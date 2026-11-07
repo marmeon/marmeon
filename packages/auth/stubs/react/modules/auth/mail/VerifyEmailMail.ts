@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { VerifyEmailView } from './VerifyEmailView.tsx';
 
 /**
  * After registration and after a change of address: a signed link to confirm the address — in the user's language. Without the
@@ -31,14 +32,6 @@ export class VerifyEmailMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.verify.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, null)}</mj-text>
-        <mj-text>${t.get('auth.mail.verify.intro')}</mj-text>
-        <mj-button href="${this.#url}">${t.get('auth.mail.verify.button')}</mj-button>
-        <mj-text>${t.get('auth.mail.verify.outro')}</mj-text>`,
-    });
+    return toMjml(VerifyEmailView, { t: this.#t, url: this.#url });
   }
 }

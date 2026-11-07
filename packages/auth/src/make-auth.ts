@@ -156,6 +156,8 @@ export class MakeAuthCommand {
     if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add -E ${exact(runtime)}`);
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -E -D ${exact(forTests)}`);
     if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add -E ${exact(devOnly)}`);
+    // The kit's mails are TSX views: the server compiles them with oxc-transform, `marmeon build` ahead of time. Not a framework package, so no exact version.
+    if (!('oxc-transform' in installed(input.root))) input.output.line('And what compiles its mail views: pnpm add -D oxc-transform');
     if (!typed) input.output.line('Then: marmeon route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: marmeon migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');

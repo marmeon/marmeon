@@ -287,6 +287,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.5(@types/node@26.6.6))
+      oxc-transform:
+        specifier: ^0.157.0
+        version: 0.157.0
       oxlint:
         specifier: ^1.90.0
         version: 1.90.0

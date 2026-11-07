@@ -47,14 +47,14 @@ function expectNamed(message: MailMessage, address: string, name: string) {
 }
 
 /** The mails to the account's own address. */
-const ownMails = (user: User, t: Translator): Mailable[] => [
+const ownMails = (user: User, t: Translator, passkeyName = NAME): Mailable[] => [
   new AccountExistsMail(user, LINK, LINK, t),
   new EmailInUseMail(user, t),
   new LockoutMail(user, LINK, LINK, t),
   new PasskeyMail(user, { kind: 'removed' }, t),
-  new PasskeyMail(user, { kind: 'added', name: NAME }, t),
-  new PasskeyMail(user, { kind: 'suspended', name: NAME }, t),
-  new PasskeyMail(user, { kind: 'after_reset', names: [NAME] }, t),
+  new PasskeyMail(user, { kind: 'added', name: passkeyName }, t),
+  new PasskeyMail(user, { kind: 'suspended', name: passkeyName }, t),
+  new PasskeyMail(user, { kind: 'after_reset', names: [passkeyName] }, t),
   new ResetPasswordMail(user, LINK, 60, t),
   new SignInMail(user, { kind: 'remember_reused', at: new Date().toISOString(), ip: null, userAgent: null, sessionsEnded: true }, t),
   new TwoFactorMail(user, { kind: 'enabled' }, t),
@@ -142,5 +142,24 @@ describe('the note to the old address after a change', { timeout: 30_000 }, () =
       const [verify] = app.mail.queued(VerifyEmailMail);
       expectNameless(verify!.message, 'elsewhere@example.com');
     });
+  });
+});
+
+describe('a name and a link in the views of the mails', { timeout: 30_000 }, () => {
+  it('arrive escaped in every mail to the account\'s own address: markup in the name is text, a quote cannot leave an attribute', async () => {
+    const hostile = '<img src=x> "q"';
+    const link = 'http://localhost/reset?token=a"onmouseover="x&email=ada%40example.com';
+    const user = await app.factory(UserFactory).create({ name: hostile, email: 'ada@example.com' });
+    const t = app.make(Translators).for('en');
+    const list = ownMails(user, t, hostile);
+    for (const mail of list) {
+      const { html } = await app.make(Mailer).send(mail);
+      expect(html, mail.constructor.name).not.toContain('<img src=x>');
+      expect(html, mail.constructor.name).toContain('&lt;img src=x&gt;');
+      expect(html, mail.constructor.name).toContain('&quot;q&quot;');
+    }
+    const { html } = await app.make(Mailer).send(new ResetPasswordMail(user, link, 60, t));
+    expect(html).not.toContain('"onmouseover="');
+    expect(html).toMatch(/href="http:\/\/localhost\/reset\?token=a&quot;onmouseover=&quot;x&amp;email=ada%40example\.com"/);
   });
 });

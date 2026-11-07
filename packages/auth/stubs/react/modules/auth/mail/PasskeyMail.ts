@@ -1,8 +1,9 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { PasskeyView } from './PasskeyView.tsx';
 import type { User } from '../users.ts';
 
 /** What happened to the account's passkeys. */
@@ -39,27 +40,6 @@ export class PasskeyMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    const notice = this.#notice;
-    const key = `auth.mail.passkey.${notice.kind}` as const;
-    // A passkey's name is its holder's own text and can be changed while the address is unconfirmed: to such an address no name goes out
-    // (`confirmedName`), neither in the intro nor in the list.
-    const named = confirmedName(this.#user) !== null;
-    // Only what the kind has to say is passed on; the others ignore the values. Names are the user's own text: mjml escapes them.
-    const values = {
-      name: named && (notice.kind === 'added' || notice.kind === 'suspended') ? (notice.name ?? '') : '',
-      from: notice.kind === 'sign_in_failed' && notice.ip !== null ? t.get('auth.mail.passkey.sign_in_failed.from', { ip: notice.ip }) : '',
-    };
-    // A suspended passkey that is gone by now has no name to give.
-    const unnamed = !named && (notice.kind === 'added' || notice.kind === 'suspended' || notice.kind === 'after_reset');
-    const intro = unnamed || (notice.kind === 'suspended' && notice.name === null) ? t.get(`auth.mail.passkey.${notice.kind}.intro_unnamed` as 'auth.mail.passkey.suspended.intro_unnamed') : t.get(`${key}.intro`, values);
-    return layout(t, {
-      preview: t.get(`${key}.preview`),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${intro}</mj-text>
-        ${notice.kind === 'after_reset' && named ? mjml`<mj-text><ul>${notice.names.map((name) => mjml`<li>${name}</li>`)}</ul></mj-text>` : ''}
-        <mj-text>${t.get(`${key}.outro`)}</mj-text>`,
-    });
+    return toMjml(PasskeyView, { t: this.#t, user: this.#user, notice: this.#notice });
   }
 }

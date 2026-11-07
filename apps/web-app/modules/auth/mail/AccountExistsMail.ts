@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { AccountExistsView } from './AccountExistsView.tsx';
 
 /**
  * Private registration: someone signed up with the address of this account — instead of telling the form "taken", the
@@ -33,15 +34,6 @@ export class AccountExistsMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.account_exists.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get('auth.mail.account_exists.intro')}</mj-text>
-        <mj-button href="${this.#login}">${t.get('auth.mail.account_exists.button')}</mj-button>
-        <mj-text>${t.get('auth.mail.account_exists.forgot')} <a href="${this.#forgot}">${this.#forgot}</a></mj-text>
-        <mj-text>${t.get('auth.mail.account_exists.outro')}</mj-text>`,
-    });
+    return toMjml(AccountExistsView, { t: this.#t, user: this.#user, login: this.#login, forgot: this.#forgot });
   }
 }

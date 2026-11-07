@@ -149,24 +149,28 @@ Some MJML components would load an image from a host of someone else when you gi
 
 MJML is a library of its own. A new app has it, and an app without it gets `pnpm add mjml@^5` in the error of its first MJML mail.
 
-The starter kit's mails share a frame: a function that returns `` mjml`…` `` and takes the translator and the body. Each mail
-nests its own body into it. Here is a shorter version of its `layout.ts`, without the styles and the footer:
+The starter kit's mails are React views with a shared frame: `modules/auth/mail/Layout.tsx`, a component that takes the translator, the preview text
+and the mail's body as children. Each `*View.tsx` nests its own body into it, and the mail classes call `toMjml(ResetPasswordView, props)` from
+`@marmeon/react/mail`. Here is a shorter version of the frame, without the styles and the footer:
 
-```ts title="modules/auth/mail/layout.ts"
+```tsx title="modules/auth/mail/Layout.tsx"
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Html } from '@marmeon/mail';
+import { MjmlBody, MjmlColumn, MjmlDocument, MjmlHead, MjmlPreview, MjmlSection } from '@marmeon/react/mail';
+import type { ReactNode } from 'react';
 
-export function layout(t: Translator, { preview, body }: { preview: string; body: Html }) {
-  return mjml`<mjml lang="${t.locale}">
-  <mj-head>
-    <mj-preview>${preview}</mj-preview>
-  </mj-head>
-  <mj-body>
-    <mj-section>
-      <mj-column>${body}</mj-column>
-    </mj-section>
-  </mj-body>
-</mjml>`;
+export function Layout({ t, preview, children }: { t: Translator; preview: string; children: ReactNode }) {
+  return (
+    <MjmlDocument lang={t.locale}>
+      <MjmlHead>
+        <MjmlPreview>{preview}</MjmlPreview>
+      </MjmlHead>
+      <MjmlBody>
+        <MjmlSection>
+          <MjmlColumn>{children}</MjmlColumn>
+        </MjmlSection>
+      </MjmlBody>
+    </MjmlDocument>
+  );
 }
 ```
 

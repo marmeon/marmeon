@@ -634,6 +634,23 @@ describe('make:auth', () => {
     expect(lines.filter((line) => line.startsWith('Install what the module uses'))).toEqual([]);
   });
 
+  it('names what compiles the kit\'s mail views, oxc-transform, only while the app lacks it', async () => {
+    const line = 'And what compiles its mail views: pnpm add -D oxc-transform';
+    const root = blankApp();
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { devDependencies: Record<string, string> };
+    const version = pkg.devDependencies['oxc-transform']!;
+    delete pkg.devDependencies['oxc-transform'];
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const without = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
+    expect(without.lines).toContain(line);
+    pkg.devDependencies['oxc-transform'] = version;
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const withIt = fakeInput(root, { force: true });
+    expect(await new MakeAuthCommand().handle(withIt.input)).toBe(0);
+    expect(withIt.lines).not.toContain(line);
+  });
+
   it('knows its adapters', async () => {
     const { input, lines } = fakeInput(blankApp(), { adapter: 'vue' });
     await expect(new MakeAuthCommand().handle(input)).rejects.toMatchObject({
