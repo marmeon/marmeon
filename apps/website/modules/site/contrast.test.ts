@@ -34,6 +34,8 @@ export function contrast(a: string, b: string): number {
   return (high + 0.05) / (low + 0.05);
 }
 
+const SYNTAX_ROLES = ['text', 'keyword', 'type', 'string', 'function', 'comment', 'tag', 'punctuation'];
+
 /** [text, ground, minimum ratio] */
 const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ...['--fg', '--fg-body', '--fg-2', '--muted'].flatMap((text) => ['--bg', '--bg-raised'].map((ground) => [text, ground, 4.5] as const)),
@@ -51,8 +53,12 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--button-fg', '--button-bg', 4.5],
   ['--button-hover-fg', '--button-hover-bg', 4.5],
   ...['note', 'tip', 'important', 'warning', 'caution'].map((kind) => [`--${kind}-fg`, `--${kind}-bg`, 4.5] as const),
-  ...['text', 'keyword', 'type', 'string', 'function', 'comment', 'tag', 'punctuation'].map((role) => [`--syn-${role}`, '--bg-raised', 4.5] as const),
+  ...SYNTAX_ROLES.map((role) => [`--syn-${role}`, '--bg-raised', 4.5] as const),
   ['--control-line', '--bg', 3],
+  ['--accent-bright', '--bg', 3],
+  ...['--editor-fg', '--editor-dim', '--editor-error', ...SYNTAX_ROLES.map((role) => `--editor-syn-${role}`)].map((text) => [text, '--editor-bg', 4.5] as const),
+  ['--editor-accent', '--editor-chrome', 3],
+  ['--editor-accent', '--editor-bg', 3],
 ];
 
 describe('contrast', () => {

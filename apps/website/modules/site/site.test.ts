@@ -25,11 +25,27 @@ describe('the landing page', () => {
   it('answers / rendered on the server, with one h1 and the three ways in', async () => {
     const response = await app.get('/', document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
-    expect(response.body).toContain('One type, from the database column to the form error.');
+    expect(response.body).toContain('The whole app, typed and included.');
     expect(response.body).toMatch(/<a [^>]*class="button"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button"/);
     expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--secondary"|<a [^>]*class="button button--secondary"[^>]*href="\/docs"/);
     expect(response.body).toMatch(/<a [^>]*class="button button--text"[^>]*href="https:\/\/github\.com\/marmeon\/marmeon"/);
     expect(response.body).toContain('pnpm create marmeon my-app');
+  });
+
+  it('shows the facts and the controller beside the page in the hero, with nothing that needs JavaScript', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<section class="hero"');
+    const end = body.indexOf('</section>', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const hero = body.slice(start, end);
+    expect(hero).toMatch(/<p class="hero-facts">[^<]*MIT licence[^<]*<\/p>/);
+    expect(hero).not.toContain('release in preparation');
+    expect(hero).toContain('class="editor editor--split"');
+    expect(hero).toContain('<p class="editor-name">modules/notes/controllers/ShowNoteController.ts</p>');
+    expect(hero).toContain('<p class="editor-name">modules/notes/views/Show.tsx</p>');
+    expect(hero).not.toMatch(/<h[3-6]/);
+    expect(hero).not.toContain('role="tablist"');
   });
 
   it('lists the seven principles and the seven steps of the chain', async () => {

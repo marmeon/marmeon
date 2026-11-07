@@ -40,11 +40,15 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   and `.env` files; rule 7 refuses decision numbers, wave references, personal dates and paths into the maintainers' notes in
   every tracked file. Rule 6 reads the strings of the packages' code and launchers — messages, solutions, command output — for a
   decision number, a wave or another framework.
-- **The landing** (`/`, `modules/site`) is the app's own: the hero, the seven principles and "one type, end to end" (`views/Landing.tsx`).
+- **The landing** (`/`, `modules/site`) is the app's own: `views/Landing.tsx` lists its sections (`components/landing/*Section.tsx`),
+  each with its own stylesheet in `styles/landing/` (`base.css` holds what they share).
   Its code lives in `modules/site/snippets.ts` — files of the notes example the docs build up, so keep them in step with the API.
   `SiteSnippets` highlights them once at boot with the docs' Shiki and theme (the browser gets markup, no highlighter), and the
   controller hands them to the page. `modules/site` owns the `public` group, the answers' headers and the Content-Security-Policy;
   the version of the framework it shows comes from `@marmeon/core`'s manifest (shared once as `site.version`).
+  `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
+  `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
+  highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
 - **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading

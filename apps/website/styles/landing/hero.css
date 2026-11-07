@@ -1,0 +1,55 @@
+/* Hero */
+.landing .hero {
+  padding-top: clamp(48px, 7vw, 96px);
+}
+
+.landing .hero-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
+  gap: clamp(32px, 4vw, 56px);
+  align-items: end;
+}
+
+.landing .hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.landing .hero h1 {
+  font-size: clamp(2.625rem, 1.4rem + 4.6vw, 5.125rem);
+  line-height: 1.03;
+  letter-spacing: -0.018em;
+}
+
+.landing .hero-start {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.landing .hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.landing .hero-facts {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  letter-spacing: 0.04em;
+}
+
+.landing .hero-code {
+  margin-top: clamp(40px, 5vw, 64px);
+}
+
+.landing .hero-note {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
