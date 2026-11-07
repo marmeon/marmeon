@@ -193,17 +193,16 @@ export const noteFields = r.object({
 `,
   },
   batteryMail: {
-    file: 'modules/notes/mail/NoteSharedMail.ts',
-    source: { app: 'modules/notes/mail/NoteSharedMail.ts' },
-    lang: 'ts',
-    code: `  content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('notes.mail.shared.subject'),
-      body: mjml\`
-        <mj-text>\${t.get('notes.mail.shared.intro', { title: this.#title })}</mj-text>\`,
-    });
-  }
+    file: 'modules/notes/mail/NoteSharedView.tsx',
+    source: { app: 'modules/notes/mail/NoteSharedView.tsx' },
+    lang: 'tsx',
+    code: `export function NoteSharedView({ t, title }: { t: Translator; title: string }) {
+  return (
+    <Layout t={t} preview={t.get('notes.mail.shared.subject')}>
+      <MjmlText>{t.get('notes.mail.shared.intro', { title })}</MjmlText>
+    </Layout>
+  );
+}
 `,
   },
   batteryScheduler: {
