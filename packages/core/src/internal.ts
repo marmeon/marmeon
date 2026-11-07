@@ -6,6 +6,7 @@
 export { CLUSTER_WORKER } from './application.ts';
 export { messageBase, publishEnded, trace } from './channels.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
+export { PAGES_GLOB, PAGE_TESTS_GLOB } from './pages.ts';
 export { coreSolutions } from './core-solutions.ts';
 export { environmentChecks } from './environment.ts';
 export { exitAfterShutdown } from './exit-after-shutdown.ts';

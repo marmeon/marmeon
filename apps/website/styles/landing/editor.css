@@ -1,0 +1,133 @@
+/* The dark code window: its own syntax palette, file names in a title bar, a soft petrol shadow. */
+.editor {
+  --syn-text: var(--editor-syn-text);
+  --syn-keyword: var(--editor-syn-keyword);
+  --syn-type: var(--editor-syn-type);
+  --syn-string: var(--editor-syn-string);
+  --syn-function: var(--editor-syn-function);
+  --syn-comment: var(--editor-syn-comment);
+  --syn-tag: var(--editor-syn-tag);
+  --syn-punctuation: var(--editor-syn-punctuation);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--editor-line);
+  border-radius: var(--radius-3);
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+  box-shadow: var(--editor-shadow);
+}
+
+.editor .editor-code pre.code {
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--editor-fg);
+}
+
+.editor .editor-name,
+.editor .tabs-heading {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--editor-line);
+  border-top: 2px solid transparent;
+  background: var(--editor-chrome);
+  color: var(--editor-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Without JavaScript the files stand one under the other, each with its name; the split layout does the same until it has room. */
+.editor .tabs--stack {
+  gap: 0;
+}
+
+.editor .editor-file + .editor-file {
+  border-top: 1px solid var(--editor-line);
+}
+
+.editor .tabs-panel {
+  padding-top: 0;
+}
+
+.editor .tabs-list {
+  background: var(--editor-chrome);
+  box-shadow: inset 0 -1px 0 var(--editor-line);
+}
+
+.editor .tabs-tab {
+  padding: var(--space-2) var(--space-4);
+  border-top: 2px solid transparent;
+  border-bottom: 0;
+  color: var(--editor-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+.editor .tabs-tab:hover {
+  color: var(--editor-fg);
+}
+
+.editor .tabs-tab[aria-selected='true'] {
+  border-top-color: var(--editor-accent);
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+}
+
+.editor .tabs-tab:focus-visible,
+.editor .tabs-panel:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--editor-accent);
+}
+
+.editor .tabs-panel .tabs-heading.visually-hidden {
+  padding: 0;
+  border: 0;
+}
+
+.editor .editor-file,
+.editor .editor-code {
+  min-width: 0;
+}
+
+/* A long line scrolls inside its column. */
+.editor .editor-code pre.code {
+  overflow-x: auto;
+}
+
+/* Each file fills its column to the bottom, so side-by-side files end, and scroll, at the same height. */
+.editor .editor-file,
+.editor .editor-code,
+.editor .editor-code .code-block,
+.editor .editor-code .code-source {
+  display: flex;
+  flex-direction: column;
+}
+
+.editor .editor-code,
+.editor .editor-code .code-block,
+.editor .editor-code .code-source,
+.editor .editor-code pre.code {
+  flex: 1;
+}
+
+.editor-footer {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--editor-line);
+  background: var(--editor-chrome);
+  color: var(--editor-dim);
+  font-size: var(--text-sm);
+}
+
+@media (min-width: 960px) {
+  .editor--split .editor-files {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor--split .editor-file + .editor-file {
+    border-top: 0;
+    border-left: 1px solid var(--editor-line);
+  }
+}

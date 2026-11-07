@@ -1,0 +1,111 @@
+/* The landing page's shared rules: the section frame, labels, headings and the introduction with its columns. Each section has its own stylesheet beside this one. */
+.landing .landing-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-inline: clamp(20px, 4vw, 48px);
+}
+
+.landing .eyebrow,
+.landing .section-label {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.landing h1,
+.landing h2,
+.landing h3 {
+  margin: 0;
+  color: var(--fg);
+  font-weight: 560;
+  text-wrap: balance;
+}
+
+.landing .lead {
+  max-width: 34em;
+  margin: 0;
+  color: var(--fg-2);
+  font-size: clamp(1.125rem, 1rem + 0.5vw, 1.3125rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.landing :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+/* Most sections share an introduction and a two-column layout. */
+.landing .islands .landing-inner,
+.landing .batteries .landing-inner,
+.landing .secure .landing-inner,
+.landing .testing .landing-inner,
+.landing .devtools .landing-inner,
+.landing .start .landing-inner {
+  padding-block: clamp(64px, 8vw, 112px);
+}
+
+.landing .landing-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+}
+
+.landing .landing-columns > * {
+  min-width: 0;
+}
+
+.landing .section-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.landing .section-intro--wide {
+  max-width: 760px;
+  margin-bottom: clamp(32px, 4vw, 48px);
+}
+
+.landing .section-intro .section-label {
+  color: var(--accent);
+}
+
+.landing .section-intro h2 {
+  font-size: clamp(2.125rem, 1.5rem + 2.6vw, 3.375rem);
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+}
+
+.landing .section-intro > p:not(.section-label) {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.landing .section-intro > .terminal {
+  align-self: stretch;
+}
+
+.landing .group-label {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.landing .group-label--small {
+  margin-bottom: var(--space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+}

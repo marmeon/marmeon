@@ -651,9 +651,13 @@ async function islandResponse(
  * 401 or a 423 is `unauthorized`, a 403 `forbidden` — `204` with `x-marmeon-region-status`, the redirect never followed,
  * so the island shows its fallback and the page never navigates. Anything else is an `exception`, with its status (an
  * error's JSON body, from the kernel, stays for development).
+ *
+ * A `304` that carries the island header passes too: an app's own ETag middleware answered the browser's revalidation of
+ * a cached island, and the browser hands `fetch` that cached answer, not the 304. Without the header a 304 is a redirect-like
+ * outcome, `unauthorized`.
  */
 export async function toRegionResponse(response: Response): Promise<Response> {
-  if (response.ok && response.headers.get(REGION_HEADER) === 'island') return response;
+  if ((response.ok || response.status === 304) && response.headers.get(REGION_HEADER) === 'island') return response;
   if (response.status === 409 && response.headers.has(LOCATION_HEADER)) return response;
   const outcome = regionOutcome(response.status);
   const headers = new Headers(response.headers);

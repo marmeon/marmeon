@@ -1,3 +1,4 @@
+import { RENDER_MAIL } from './content.ts';
 import { Html, interpolate, textFromHtml } from './html.ts';
 import type { MailContent } from './message.ts';
 import { HTML_KEY, withCode } from '@marmeon/core/internal';
@@ -15,6 +16,11 @@ export class Mjml extends Html {
   private constructor(markup: string, key: symbol) {
     if (key !== MJML_KEY) throw new TypeError('An Mjml is made by the mjml template — new Mjml(markup) is mjml`${raw(markup)}`, for markup you trust.');
     super(markup, HTML_KEY);
+  }
+
+  /** @internal — the MJML engine: compiles with the checks of `fromMjml`. */
+  [RENDER_MAIL](): Promise<MailContent> {
+    return fromMjml(this);
   }
 }
 
@@ -176,6 +182,8 @@ export async function fromMjml(source: Mjml, options: { text?: string } = {}): P
     result = await compile(markup, {
       validationLevel: 'strict',
       keepComments: false,
+      // An `mj-include` would read a file of the server; mjml 5 turns it off by default, but the mail does not rely on that.
+      ignoreIncludes: true,
       // An empty list turns off mjml's built-in one, which imports a Google font for a known family name; only an `<mj-font>` of the app loads a font. Each call needs a new object: mjml writes every `<mj-font>` into it, so a shared one would carry one mail's font into the next.
       fonts: {},
     });

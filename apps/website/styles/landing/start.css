@@ -1,0 +1,55 @@
+/* Get started */
+.landing .start-reading nav ul {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.landing .start-reading nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 22px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.landing .start-reading nav a:hover .start-reading-title {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.landing .start-reading-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.landing .start-reading-title {
+  color: var(--fg);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.landing .start-reading-arrow {
+  color: var(--accent);
+  font-size: 1.375rem;
+}
+
+.landing .start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: 28px;
+}
+
+.landing .start-community {
+  margin: var(--space-5) 0 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
+}

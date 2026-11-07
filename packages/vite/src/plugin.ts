@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { marmeonInjection, CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
+import { marmeonInjection, CSP_NONCE_PLACEHOLDER, PAGE_TESTS_GLOB, PAGES_GLOB } from '@marmeon/core/internal';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { checkFonts, fontFallbacks, preloadFonts, type MarmeonFont } from './fonts.ts';
 import { images, type ImageOptions } from './images.ts';
@@ -116,7 +116,7 @@ export const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions = {
 const ENV_OWNED = 'marmeon(): `envDir` and `envPrefix` are set by the plugin, so no variable reaches the client bundle by its name. Remove them from the config, or pass `marmeon({ viteEnv: true })` to manage them yourself. See docs/vite.md#environment-variables.';
 const NO_PUBLIC_ENV_PREFIX = '__MARMEON_NO_PUBLIC_ENV__';
 const DEFAULT_ENTRIES: MarmeonEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
-const PAGES = 'modules/*/views/**/*.tsx';
+const PAGES = [PAGES_GLOB, `!${PAGE_TESTS_GLOB}`];
 const LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
 const REMOVED_OPTIONS: Record<string, string> = {
   pages: 'page components live in `modules/<module>/views/`',
@@ -179,7 +179,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       if (command === 'serve' && !options.test) {
         // Vite scans index.html as written, which lacks the client entry and the devtools' bar: found only on the first request,
         // each re-bundling reloads the page (a 504 "Outdated Optimize Dep").
-        result.optimizeDeps = { entries: [entries.client, PAGES], include: installedModules(root, PREBUNDLED) };
+        result.optimizeDeps = { entries: [entries.client, ...PAGES], include: installedModules(root, PREBUNDLED) };
       }
       // An app's own `server.fs.deny` is extended by this list, not replaced (Vite concatenates arrays). A pattern
       // with a slash is matched against the absolute path, so the app's directories carry the root.
@@ -238,7 +238,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     ...(options.fonts?.length ? [fontFallbacks(options.fonts)] : []),
     ...(options.fonts?.length && !options.test ? [preloadFonts(options.fonts)] : []),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
-    serverImports({ pages: [PAGES], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
+    serverImports({ pages: [PAGES_GLOB], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
     images(options.images),
   ];
 }

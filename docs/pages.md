@@ -39,6 +39,10 @@ Only files under `modules/<module>/views/` of the app are pages. A path with `::
 (`package::Page`): `marmeon route:types`, and with it `marmeon build`, fails and names each such file, and the app never
 registers such a page, neither in the browser nor in server rendering. Rename the file or its folder.
 
+A test may sit next to the page it checks. A file below `views/` ending in `.test.tsx`, `.spec.tsx` or `.type-test.tsx` is no
+page: it has no name, and no build ships it. Which test files run is up to the app's `vitest.config.ts`; the starter's runs
+`modules/**/*.test.ts` ([running tests](testing.md#running-tests)).
+
 A name with no file behind it is a compile error in the controller, because `marmeon route:types` lists every view in
 `bootstrap/routes.ts`. The error names the file to create. A view you have just added is not in that file yet: run
 `marmeon route:types`, or keep `marmeon dev` running, which rewrites the file when a view appears. Each page is a chunk of its own, loaded the first time the browser shows it.

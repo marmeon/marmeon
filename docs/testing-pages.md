@@ -352,7 +352,8 @@ expect(html).toMatch(/data-island="notes\.recent" data-status="ready"/);
 ## Components on their own
 
 Tests run in Node, without a browser. A component that needs no request can render to a string with React's server renderer.
-A test file ends in `.test.ts`, so build the element with `createElement`:
+A test file ends in `.test.ts`, so build the element with `createElement`. It may sit next to the component, in `views/` too: a
+test there is no page.
 
 ```ts title="modules/notes/note-title.test.ts"
 import { createElement } from 'react';

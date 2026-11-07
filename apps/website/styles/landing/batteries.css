@@ -1,0 +1,183 @@
+/* Batteries: the text and its checks side by side, the package tabs under them. */
+.landing .batteries {
+  border-top: 1px solid var(--line);
+}
+
+.landing .batteries-inner {
+  display: grid;
+  gap: clamp(32px, 5vw, 56px);
+}
+
+.landing .batteries-inner > * {
+  min-width: 0;
+}
+
+.landing .batteries-head {
+  display: grid;
+  gap: var(--space-6);
+  align-items: end;
+}
+
+@media (min-width: 56rem) {
+  .landing .batteries-head {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: clamp(32px, 5vw, 72px);
+  }
+}
+
+.landing .check-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  color: var(--fg-2);
+  list-style: none;
+}
+
+/* The tick is decoration: the second value of `content` is its empty text alternative. */
+.landing .check-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3);
+}
+
+.landing .check-list li::before {
+  color: var(--accent);
+  content: '\2713';
+  content: '\2713' / '';
+  font-weight: 700;
+}
+
+.landing .batteries-tabs .tabs-list {
+  margin-bottom: var(--space-4);
+}
+
+/* A narrow screen scrolls the tab bar: wrapped rows would leave the active tab's line floating. */
+@media (min-width: 40rem) {
+  .landing .batteries-tabs .tabs-list {
+    flex-wrap: wrap;
+  }
+}
+
+.landing .battery {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.landing .battery .editor-name {
+  overflow-wrap: anywhere;
+}
+
+.landing .battery-extra {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.landing .battery-docs {
+  margin: 0;
+}
+
+.landing .package-list {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.landing .package-list .group-label {
+  margin-bottom: 0;
+}
+
+.landing .package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  list-style: none;
+}
+
+.landing .package-grid li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.landing .package-grid a {
+  align-self: flex-start;
+}
+
+.landing .package-grid code {
+  overflow-wrap: anywhere;
+}
+
+.landing .package-grid li > span {
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.landing .package-scope {
+  color: var(--muted);
+}
+
+/* The "Modules" tab: the module folder */
+.landing .file-tree {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--bg-raised);
+}
+
+.landing .file-tree figcaption {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+}
+
+.landing .file-tree ul {
+  margin: 0;
+  padding: 10px 0 14px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  list-style: none;
+}
+
+.landing .file-tree li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 8px 18px;
+}
+
+/* The branch glyphs are decoration: the second value of `content` is their empty text alternative. */
+.landing .file-tree li > span:first-child::before {
+  color: var(--line-strong);
+  content: '├─ ';
+  content: '├─ ' / '';
+  white-space: pre;
+}
+
+.landing .file-tree li:last-child > span:first-child::before {
+  content: '└─ ';
+  content: '└─ ' / '';
+}
+
+.landing .file-tree-folder {
+  color: var(--accent);
+}
+
+.landing .file-tree-role {
+  color: var(--muted);
+  font-family: var(--font-text);
+  font-size: 0.9375rem;
+}
