@@ -35,7 +35,8 @@ export const PAGE_VARY = [
 /**
  * Public pages for browsers and shared caches: `Cache-Control: public, max-age=…` (in development `no-cache`) and an
  * `ETag` from the body — a revalidation that finds the same page answers `304` without it. Only for a successful GET that
- * sets no cookie and says nothing about caching itself (a `no-store` answer stays one).
+ * sets no cookie and says nothing about caching itself (a `no-store` answer stays one). An island's answer — recognised by the
+ * `x-marmeon-region: island` header only the kernel sets on a response — is kept for `islandCacheMaxAge` instead: it is the living part of a page.
  */
 export class CachePublicly {
   readonly #config: SiteConfig;
@@ -53,7 +54,7 @@ export class CachePublicly {
     const body = await response.arrayBuffer();
     const etag = `"${createHash('sha256').update(new Uint8Array(body)).digest('base64url').slice(0, 27)}"`;
     const headers = new Headers(response.headers);
-    headers.set('cache-control', this.#config.development ? 'no-cache' : `public, max-age=${this.#config.cacheMaxAge}`);
+    headers.set('cache-control', this.#config.development ? 'no-cache' : `public, max-age=${response.headers.get(REGION_HEADER) === 'island' ? this.#config.islandCacheMaxAge : this.#config.cacheMaxAge}`);
     headers.set('etag', etag);
     headers.set('vary', vary(headers.get('vary')));
     if (matches(ctx.request.headers.get('if-none-match'), etag)) {

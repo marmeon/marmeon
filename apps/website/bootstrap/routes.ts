@@ -16,6 +16,7 @@ import type { ShowLineLlmsFullController } from '../modules/docs/controllers/Sho
 import type { ShowLlmsController } from '../modules/docs/controllers/ShowLlmsController.ts';
 import type { ShowLlmsFullController } from '../modules/docs/controllers/ShowLlmsFullController.ts';
 import type { ShowPrivacyController } from '../modules/site/controllers/ShowPrivacyController.ts';
+import type { ShowRenderClockController } from '../modules/site/controllers/ShowRenderClockController.ts';
 import type { ShowRobotsController } from '../modules/site/controllers/ShowRobotsController.ts';
 
 declare module '@marmeon/router' {
@@ -34,6 +35,7 @@ declare module '@marmeon/router' {
     'site.home': { method: 'get'; path: '/'; controller: typeof ShowLandingController };
     'site.imprint': { method: 'get'; path: '/imprint'; controller: typeof ShowImprintController };
     'site.privacy': { method: 'get'; path: '/privacy'; controller: typeof ShowPrivacyController };
+    'site.render-clock': { method: 'get'; path: '/islands/render-clock'; controller: typeof ShowRenderClockController };
     'site.robots': { method: 'get'; path: '/robots.txt'; controller: typeof ShowRobotsController };
   }
 }
@@ -47,6 +49,7 @@ declare module '@marmeon/http/page' {
     'docs/Search': true;
     'site/Landing': true;
     'site/Legal': true;
+    'site/islands/RenderClock': true;
     'system/errors/Error': true;
   }
 }

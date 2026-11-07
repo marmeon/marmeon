@@ -1,0 +1,41 @@
+/* The live island's clock: its box flashes petrol on each new answer. Two identical keyframes under two class names restart the animation without a timer. */
+.island-clock {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  padding: 1rem 1.25rem;
+}
+.island-clock p { margin: 0 0 0.5rem; }
+.island-age strong { font-variant-numeric: tabular-nums; }
+.island-at,
+.island-loads,
+.island-request { color: var(--muted); font-size: 0.875rem; }
+.island-request { font-family: var(--font-mono); }
+
+@keyframes island-flash-a { from { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); } to { border-color: var(--line); box-shadow: none; } }
+@keyframes island-flash-b { from { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); } to { border-color: var(--line); box-shadow: none; } }
+.island-clock--flash-a { animation: island-flash-a 900ms ease-out; }
+.island-clock--flash-b { animation: island-flash-b 900ms ease-out; }
+
+/* No motion: the class swap alternates the border colour between the two accent shades on each answer. */
+@media (prefers-reduced-motion: reduce) {
+  .island-clock--flash-a,
+  .island-clock--flash-b { animation: none; }
+  .island-clock--flash-a { border-color: var(--accent); }
+  .island-clock--flash-b { border-color: var(--accent-strong); }
+}
+
+.island-clock .button { min-height: 36px; padding: 0 14px; font-size: var(--text-sm); }
+.island-clock .button[aria-disabled='true'] { opacity: 0.6; cursor: progress; }
+
+/* Around the clock: the frame the section hands to <Island>, its fallback sentence, and the code column beside it (the island stacks under the code below 1200px). */
+.island-frame { min-width: 0; }
+.island-fallback { margin: 0; padding: 1rem 1.25rem; border: 1px dashed var(--line-strong); border-radius: var(--radius-3); color: var(--muted); }
+.island-stage { align-self: center; }
+.landing .island-columns { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 75rem) {
+  .landing .island-columns { grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem); }
+}
+
+.island-at time {
+  white-space: nowrap;
+}
