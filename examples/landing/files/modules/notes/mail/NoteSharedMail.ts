@@ -1,6 +1,7 @@
 import { Translators, type Translator } from '@marmeon/i18n';
-import { mjml, type Address, type Mailable, type MailPreviewContext } from '@marmeon/mail';
-import { layout } from './layout.ts';
+import type { Address, Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
+import { NoteSharedView } from './NoteSharedView.tsx';
 
 /** Tells somebody that a note was shared with them, in their language. */
 export class NoteSharedMail implements Mailable {
@@ -24,11 +25,6 @@ export class NoteSharedMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('notes.mail.shared.subject'),
-      body: mjml`
-        <mj-text>${t.get('notes.mail.shared.intro', { title: this.#title })}</mj-text>`,
-    });
+    return toMjml(NoteSharedView, { t: this.#t, title: this.#title });
   }
 }
