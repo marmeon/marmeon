@@ -1,6 +1,9 @@
 import { Html } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
+import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { join, relative } from 'node:path';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { raw } from './html.ts';
 import { fromMjml, loadedUrls, Mjml, mjml } from './mjml.ts';
 
@@ -19,6 +22,18 @@ describe('mjml', () => {
       }
     }
     expect(() => new Forged('<x>')).toThrow(TypeError);
+  });
+
+  it('reads no file of the server through mj-include', async () => {
+    // mjml itself refuses absolute paths and paths outside the working directory, so the file lies under it and the path is relative.
+    const dir = workspaceTempDir('marmeon-mail-include');
+    const file = join(dir, 'part.mjml');
+    writeFileSync(file, '<mj-section><mj-column><mj-text>INCLUDE-MARKER</mj-text></mj-column></mj-section>');
+    const path = relative(process.cwd(), file);
+    expect(path.startsWith('..')).toBe(false);
+    const { html } = await fromMjml(mjml`<mjml><mj-body><mj-include path="${path}" /><mj-section><mj-column><mj-text>Hi</mj-text></mj-column></mj-section></mj-body></mjml>`);
+    expect(html).toContain('Hi');
+    expect(html).not.toContain('INCLUDE-MARKER');
   });
 
   describe('web fonts', () => {
