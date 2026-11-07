@@ -80,6 +80,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-5);
+  /* Keeps the menu at the right when enlarged text wraps the header onto a second line. */
+  margin-left: auto;
 }
 
 .site-nav {
@@ -155,10 +157,6 @@
 }
 
 @media (max-width: 719px) {
-  .site-header-inner {
-    flex-wrap: nowrap;
-  }
-
   .site-nav {
     display: none;
   }
@@ -168,7 +166,7 @@
   }
 }
 
-/* A phone: the header keeps one line for the wordmark and the menu or search; the landing's hero and the docs' first page name the version. */
+/* A phone: the wordmark and the menu or search share the header's line; the landing's hero and the docs' first page name the version. */
 @media (max-width: 479px) {
   .version-badge {
     display: none;
