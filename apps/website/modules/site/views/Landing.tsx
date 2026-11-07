@@ -1,4 +1,5 @@
 import type { PageProps } from '@marmeon/http';
+import { HOME_TITLE } from '../../../bootstrap/head.ts';
 import { AudienceSection } from '../components/landing/AudienceSection.tsx';
 import { BatteriesSection } from '../components/landing/BatteriesSection.tsx';
 import { ChainSection } from '../components/landing/ChainSection.tsx';
@@ -17,7 +18,7 @@ import { DESCRIPTIONS } from '../descriptions.ts';
 export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
-      <SiteHead title="" description={DESCRIPTIONS.landing} path="/" />
+      <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" />
       <HeroSection snippets={snippets} />
       <PrinciplesSection />
       <AudienceSection />
