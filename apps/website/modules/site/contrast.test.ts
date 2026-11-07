@@ -56,6 +56,8 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ...SYNTAX_ROLES.map((role) => [`--syn-${role}`, '--bg-raised', 4.5] as const),
   ['--control-line', '--bg', 3],
   ['--accent-bright', '--bg', 3],
+  // The devtools copy colours a status, a level or a state on its window.
+  ...['--tip-fg', '--accent-strong', '--warning-fg', '--caution-fg'].map((text) => [text, '--bg', 4.5] as const),
   ...['--editor-fg', '--editor-dim', '--editor-error', ...SYNTAX_ROLES.map((role) => `--editor-syn-${role}`)].map((text) => [text, '--editor-bg', 4.5] as const),
   ['--editor-accent', '--editor-chrome', 3],
   ['--editor-accent', '--editor-bg', 3],

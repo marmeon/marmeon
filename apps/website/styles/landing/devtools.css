@@ -1,18 +1,25 @@
-/* Devtools: a picture of the panel, not the panel */
+/* Devtools: a copy with sample data. Sizes and status colours follow the real pages, through the website's tokens. */
 .landing .devtools {
   border-block: 1px solid var(--line);
   background: var(--bg-raised);
 }
 
-.landing .devtools-panel {
+.landing .devtools-replica {
+  display: grid;
+  gap: var(--space-5);
   margin: 0;
+}
+
+.landing .devtools-replica-window,
+.landing .devtools-replica-bar {
+  min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-3);
   background: var(--bg);
 }
 
-.landing .devtools-bar {
+.landing .devtools-replica-chrome {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -23,7 +30,9 @@
   font-size: 0.78125rem;
 }
 
-.landing .devtools-bar > span:first-of-type {
+.landing .devtools-replica-title {
+  margin: 0;
+  font: inherit;
   min-width: 0;
   overflow: hidden;
   color: var(--fg-2);
@@ -31,7 +40,7 @@
   white-space: nowrap;
 }
 
-.landing .devtools-env {
+.landing .devtools-replica-env {
   margin-left: auto;
   padding: 1px 6px;
   border: 1px solid var(--warning-fg);
@@ -41,170 +50,164 @@
   letter-spacing: 0.12em;
 }
 
-.landing .devtools-body {
+.landing .devtools-replica-pill {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
-.landing .devtools-nav {
-  display: flex;
-  flex: 1 1 160px;
-  max-width: 200px;
-  flex-direction: column;
-  gap: 2px;
+/* The tabs: the pages' sidebar and the bar's tab row. */
+.landing .devtools-replica-tabs {
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.landing .devtools-replica-tabs.tabs--vertical {
+  gap: var(--space-4);
+}
+
+.landing .devtools-replica-tabs .tabs-heading {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.landing .devtools-replica-tabs .tabs-list {
+  max-width: 100%;
+}
+
+.landing .devtools-replica-tabs.tabs--vertical .tabs-list {
+  min-width: 120px;
+}
+
+.landing .devtools-replica-tabs .tabs-panel {
+  min-width: 0;
+  padding-top: var(--space-2);
+}
+
+.landing .devtools-replica-page {
+  min-width: 0;
+}
+
+.landing .devtools-replica-tabs.tabs--stack {
+  gap: var(--space-4);
+}
+
+.landing .devtools-replica-lines {
   margin: 0;
-  padding: 12px 8px;
-  border-right: 1px solid var(--line);
-  font-size: 0.9375rem;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
   list-style: none;
 }
 
-.landing .devtools-nav li {
-  padding: 8px 10px;
-  border-radius: var(--radius-2);
-  color: var(--fg-2);
-}
-
-.landing .devtools-nav .is-current {
-  background: var(--accent-tint);
-  color: var(--accent-strong);
-  font-weight: 600;
-}
-
-.landing .devtools-list {
-  flex: 2 1 360px;
-  min-width: 0;
-  border-right: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-}
-
-.landing .devtools-row {
-  display: grid;
-  grid-template-columns: 64px 1fr 48px;
-  gap: var(--space-3);
-  padding: 11px 16px;
+.landing .devtools-replica-lines li {
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
 }
 
-.landing .devtools-row:last-child {
+.landing .devtools-replica-lines li:last-child {
   border-bottom: 0;
 }
 
-.landing .devtools-row > span:nth-child(2) {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* Tables: mono, small, as the real lists. */
+.landing .devtools-replica-scroll {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-.landing .devtools-row--head {
-  padding-block: 10px;
-  color: var(--muted);
-  font-size: 0.6875rem;
-  letter-spacing: 0.12em;
+.landing .devtools-replica-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-.landing .devtools-row.is-current {
-  background: var(--accent-tint);
-}
-
-.landing .devtools-method {
-  font-weight: 600;
-}
-
-.landing .devtools-route {
-  color: var(--muted);
-}
-
-.landing .devtools-failed {
-  color: var(--caution-fg);
-}
-
-.landing .devtools-detail {
-  display: flex;
-  min-width: 0;
-  flex: 3 1 380px;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: 16px 20px 20px;
-  font-size: 0.9375rem;
-}
-
-.landing .devtools-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 14px;
-  margin: 0;
+.landing .devtools-replica table {
+  width: 100%;
+  border-collapse: collapse;
   font-family: var(--font-mono);
-}
-
-.landing .devtools-title span {
-  color: var(--muted);
   font-size: 0.78125rem;
 }
 
-.landing .devtools-detail dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 18px;
-  margin: 0;
+.landing .devtools-replica th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.landing .devtools-replica td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.landing .devtools-replica tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.landing .devtools-replica td.is-ok {
+  color: var(--tip-fg);
+}
+
+.landing .devtools-replica td.is-accent {
+  color: var(--accent-strong);
+}
+
+.landing .devtools-replica td.is-warn {
+  color: var(--warning-fg);
+}
+
+.landing .devtools-replica td.is-bad {
+  color: var(--caution-fg);
+}
+
+.landing .devtools-replica-block + .devtools-replica-block {
+  margin-top: var(--space-4);
+}
+
+.landing .devtools-replica-heading {
+  margin: 0 0 var(--space-2);
+  padding-inline: 12px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.landing .devtools-replica-note {
+  margin: 0 0 var(--space-2);
+  padding-inline: 12px;
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
 }
 
-.landing .devtools-detail dt {
-  color: var(--muted);
-}
-
-.landing .devtools-detail dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.landing .devtools-detail .devtools-masked {
-  color: var(--muted);
-  letter-spacing: 0.1em;
-}
-
-.landing .devtools-queries {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
-
-.landing .devtools-queries-label {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.12em;
-}
-
-.landing .devtools-queries code {
-  color: var(--fg-2);
-  font-size: 0.78125rem;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-
 @media (max-width: 519px) {
-  .landing .devtools-nav {
-    max-width: none;
+  .landing .devtools-replica-tabs.tabs--vertical {
+    grid-template-columns: 1fr;
+  }
+
+  .landing .devtools-replica-tabs.tabs--vertical .tabs-list {
     flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    box-shadow: inset 0 -1px 0 var(--line);
   }
 
-  .landing .devtools-list {
+  .landing .devtools-replica-tabs.tabs--vertical .tabs-tab {
     border-right: 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 2px solid transparent;
   }
 
-  .landing .devtools-row {
-    grid-template-columns: 52px 1fr 40px;
+  .landing .devtools-replica-tabs.tabs--vertical .tabs-tab[aria-selected='true'] {
+    border-color: var(--accent-bright);
   }
 }

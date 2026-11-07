@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
 import { SNIPPETS } from './snippets.ts';
 
 let server: SsrServer;
@@ -93,15 +94,28 @@ describe('the landing page', () => {
     expect(body.match(/<li><code>(<span class="package-scope">@marmeon\/<\/span>)?[a-z0-9]+<\/code>/g)).toHaveLength(16 + 3 + 6);
   });
 
-  it('shows the test snippet and masks every secret in the devtools picture', async () => {
+  it('shows the test snippet', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('modules/notes/show.test.ts');
-    const start = body.indexOf('<figure class="devtools-panel"');
-    const panel = body.slice(start, body.indexOf('</figure>', start));
-    expect(panel).toContain('aria-label="Devtools panel, illustration"');
-    expect(panel.match(/••••/g)).toHaveLength(2);
-    expect(panel).not.toMatch(/<a [^>]*href/);
-    for (const secret of ['password', 'secret', 'token=', 'bearer', 'cookie=', 'app_key']) expect(panel.toLowerCase(), secret).not.toContain(secret);
+  });
+
+  it('shows the devtools as a copy with sample data: every page and tab in the HTML, no link, nothing secret', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<figure class="devtools-replica"');
+    expect(start).toBeGreaterThan(-1);
+    const figure = body.slice(start, body.indexOf('</figure>', start));
+    expect(figure).toMatch(/^<figure class="devtools-replica" aria-label="Devtools, illustration with sample data"/);
+    expect(figure).not.toMatch(/<a[\s>]/);
+    expect(figure).not.toMatch(/<form[\s>]/);
+    for (const secret of ['password', 'secret', 'token=', 'bearer', 'cookie=', 'app_key']) expect(figure.toLowerCase(), secret).not.toContain(secret);
+    expect(figure.split('[redacted]').length - 1).toBe(sampleValues().filter((value) => value.includes('[redacted]')).length);
+    const text = figure.replaceAll('&amp;', '&');
+    for (const name of [...DEVTOOLS_PAGES.map((page) => page.name), ...DEVTOOLS_BAR_TABS.map((tab) => tab.name)]) expect(text, name).toContain(`>${name}<`);
+    expect(figure.match(/<table[\s>]/g)?.length).toBeGreaterThanOrEqual(DEVTOOLS_PAGES.length);
+    const outline = [...figure.matchAll(/<h([34])[ >][^]*?<\/h\1>/g)].map((match) => Number(match[1]));
+    expect(outline).toEqual([3, ...Array(6).fill(4), 3, ...Array(6).fill(4)]);
+    const intro = body.slice(body.indexOf('id="devtools-title"'), start);
+    expect(intro).toContain('href="/docs/devtools"');
   });
 
   it('highlights every snippet on the server, with classes and without a style attribute', async () => {
