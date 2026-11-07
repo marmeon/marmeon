@@ -119,12 +119,13 @@ export function BatteriesSection({ snippets, packages, moduleFiles }: Pick<PageP
           itemClassName="battery"
           items={BATTERIES.map(({ id, label, snippet, docs }) => {
             const { file, html } = snippets[snippet];
+            if (file === undefined) throw new Error(`The landing's battery snippet "${snippet}" has no file name.`);
             return {
               id,
               label,
               content: (
                 <>
-                  <Editor label={`${label}: ${file!.split('/').at(-1)!}`} files={[{ name: file!, html }]} headingLevel={4} />
+                  <Editor label={`${label}: ${file.split('/').at(-1)}`} files={[{ name: file, html }]} headingLevel={4} />
                   {id === 'modules' && (
                     <div className="battery-extra">
                       <ModuleFiles files={moduleFiles} />

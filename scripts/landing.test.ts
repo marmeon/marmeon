@@ -189,11 +189,22 @@ describe('landingProblems', () => {
 
   it('names a battery excerpt of fewer than 4 or more than 10 lines, and lets other snippets be any length', () => {
     const lines = (count: number) => `${Array.from({ length: count }, (_, index) => `const a${index} = 1;`).join('\n')}\n`;
-    const snippets = { batteryShort: app({ code: lines(3) }), batteryLong: app({ code: lines(11) }), batteryFour: app({ code: lines(4) }), batteryTen: app({ code: lines(10) }), long: app({ code: lines(12) }) };
+    const file = 'modules/a.ts';
+    const snippets = { batteryShort: app({ file, code: lines(3) }), batteryLong: app({ file, code: lines(11) }), batteryFour: app({ file, code: lines(4) }), batteryTen: app({ file, code: lines(10) }), long: app({ code: lines(12) }) };
     const root = repository();
     mkdirSync(join(root, 'examples/notes/files/modules'), { recursive: true });
     writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), `${lines(12)}`);
     expect(landingProblems(root, snippets, [])).toEqual(['snippet "batteryShort": a battery excerpt has 4 to 10 lines, not 3.', 'snippet "batteryLong": a battery excerpt has 4 to 10 lines, not 11.']);
+  });
+
+  it('names a battery excerpt without a file name, and lets other snippets go without one', () => {
+    const snippets = { batteryNone: app(), batteryEmpty: app({ file: '' }), batteryBlank: app({ file: ' ' }), batteryDir: app({ file: 'modules/' }), batteryFile: app({ file: 'modules/a.ts' }), plain: app() };
+    expect(landingProblems(repository(), snippets, []).filter((problem) => problem.includes('names its file'))).toEqual([
+      'snippet "batteryNone": a battery excerpt names its file — the editor\'s title bar shows it.',
+      'snippet "batteryEmpty": a battery excerpt names its file — the editor\'s title bar shows it.',
+      'snippet "batteryBlank": a battery excerpt names its file — the editor\'s title bar shows it.',
+      'snippet "batteryDir": a battery excerpt names its file — the editor\'s title bar shows it.',
+    ]);
   });
 
   it('looks an app snippet up in the files of a recipe, unless an edit of it changes the file', () => {
@@ -212,7 +223,7 @@ describe('landingProblems', () => {
     mkdirSync(join(root, 'examples/notes/files/modules'), { recursive: true });
     const cut = 'export class A {\n  a() {\n    return 1;\n  }\n\n  b() {\n    return 2;\n  }\n';
     writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), `${cut}}\n`);
-    expect(landingProblems(root, { batteryCut: app({ code: cut }), other: app({ code: cut }) }, [])).toEqual(['snippet "batteryCut": a battery excerpt must be a complete unit, a "}" is missing.']);
+    expect(landingProblems(root, { batteryCut: app({ file: 'modules/a.ts', code: cut }), other: app({ code: cut }) }, [])).toEqual(['snippet "batteryCut": a battery excerpt must be a complete unit, a "}" is missing.']);
   });
 
   it('names a chain step whose error has no TS code or no one-line message', () => {

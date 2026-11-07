@@ -209,6 +209,7 @@ export function landingProblems(repository: string = REPOSITORY, snippets: Reado
   }
   for (const [name, snippet] of Object.entries(snippets)) {
     if (!name.startsWith('battery')) continue;
+    if (typeof snippet.file !== 'string' || (snippet.file.split('/').at(-1) ?? '').trim() === '') problems.push(`snippet "${name}": a battery excerpt names its file — the editor's title bar shows it.`);
     const lines = snippet.code.replace(/\n$/, '').split('\n').length;
     if (lines < 4 || lines > 10) problems.push(`snippet "${name}": a battery excerpt has 4 to 10 lines, not ${lines}.`);
     const unbalanced = bracketProblem(snippet.code);
