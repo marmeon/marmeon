@@ -1,11 +1,12 @@
-import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CHAIN, mistakeLine, type ChainStepSpec } from '../apps/website/modules/site/chain.ts';
+import { MODULE_FILES } from '../apps/website/modules/site/module-files.ts';
 import type { Snippet } from '../apps/website/modules/site/snippets.ts';
 import type { DemoTarget } from './notes-demo.ts';
 import { SmokeError } from './pack-smoke.ts';
-import { checkLanding, checkTypo, landingProblems, withoutCommentLines } from './landing.ts';
+import { bracketProblem, checkLanding, checkTypo, landingProblems, withoutCommentLines } from './landing.ts';
 import { tempDir } from './test/temp-dir.js';
 
 describe('the landing of the repository', () => {
@@ -79,6 +80,23 @@ describe('withoutCommentLines', () => {
 });
 
 describe('landingProblems', () => {
+  it('refuses names that are not directly in modules/notes/, and an empty list', () => {
+    const names = ['../x', '/x', '/', 'a/b', '.', '..', '../'];
+    const problems = landingProblems(repository(''), {}, [], names.map((name) => ({ name, role: 'r' })));
+    expect(problems).toEqual(names.map((name) => `module file "${name}": a name is one file or folder name directly in modules/notes/.`));
+    expect(landingProblems(repository(''), {}, [], [])).toEqual(['module files: the list is empty.']);
+  });
+
+  it('accepts the module tree of the landing and refuses a name listed twice or a folder without its slash', () => {
+    expect(landingProblems(repository(''), {}, [], MODULE_FILES)).toEqual([]);
+    const files = [{ name: 'a/', folder: true, role: 'r' }, { name: 'a/', folder: true, role: 'r' }, { name: 'b', folder: true, role: 'r' }, { name: 'c/', role: 'r' }];
+    expect(landingProblems(repository(''), {}, [], files)).toEqual([
+      'module file "a/": it is listed twice.',
+      'module file "b": a folder has `folder: true` and a name ending in "/", a file neither.',
+      'module file "c/": a folder has `folder: true` and a name ending in "/", a file neither.',
+    ]);
+  });
+
   it('refuses a source that does not parse, and judges a fragment that does not parse by its text', () => {
     const root = repository('const a = ;\n// c\n');
     const snippets = {
@@ -169,6 +187,45 @@ describe('landingProblems', () => {
     ]);
   });
 
+  it('names a battery excerpt of fewer than 4 or more than 10 lines, and lets other snippets be any length', () => {
+    const lines = (count: number) => `${Array.from({ length: count }, (_, index) => `const a${index} = 1;`).join('\n')}\n`;
+    const file = 'modules/a.ts';
+    const snippets = { batteryShort: app({ file, code: lines(3) }), batteryLong: app({ file, code: lines(11) }), batteryFour: app({ file, code: lines(4) }), batteryTen: app({ file, code: lines(10) }), long: app({ code: lines(12) }) };
+    const root = repository();
+    mkdirSync(join(root, 'examples/notes/files/modules'), { recursive: true });
+    writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), `${lines(12)}`);
+    expect(landingProblems(root, snippets, [])).toEqual(['snippet "batteryShort": a battery excerpt has 4 to 10 lines, not 3.', 'snippet "batteryLong": a battery excerpt has 4 to 10 lines, not 11.']);
+  });
+
+  it('names a battery excerpt without a file name, and lets other snippets go without one', () => {
+    const snippets = { batteryNone: app(), batteryEmpty: app({ file: '' }), batteryBlank: app({ file: ' ' }), batteryDir: app({ file: 'modules/' }), batteryFile: app({ file: 'modules/a.ts' }), plain: app() };
+    expect(landingProblems(repository(), snippets, []).filter((problem) => problem.includes('names its file'))).toEqual([
+      'snippet "batteryNone": a battery excerpt names its file — the editor\'s title bar shows it.',
+      'snippet "batteryEmpty": a battery excerpt names its file — the editor\'s title bar shows it.',
+      'snippet "batteryBlank": a battery excerpt names its file — the editor\'s title bar shows it.',
+      'snippet "batteryDir": a battery excerpt names its file — the editor\'s title bar shows it.',
+    ]);
+  });
+
+  it('looks an app snippet up in the files of a recipe, unless an edit of it changes the file', () => {
+    const root = repository();
+    for (const file of ['a.ts', 'b.ts']) {
+      mkdirSync(join(root, 'examples/recipes/jobs/files/modules'), { recursive: true });
+      writeFileSync(join(root, 'examples/recipes/jobs/files/modules', file), 'const a = 1;\n');
+    }
+    writeFileSync(join(root, 'examples/recipes/jobs/edits.json'), JSON.stringify([{ file: 'modules/b.ts', find: 'a', replace: 'b' }]));
+    const snippets = { a: app({ code: 'const q = 2;\n' }), b: app({ code: 'const q = 2;\n', source: { app: 'modules/b.ts' } }) };
+    expect(landingProblems(root, snippets, [])).toEqual(['snippet "a": the code is not in examples/recipes/jobs/files/modules/a.ts: "const q = 2;" is not there.']);
+  });
+
+  it('names a battery excerpt whose brackets do not pair up', () => {
+    const root = repository();
+    mkdirSync(join(root, 'examples/notes/files/modules'), { recursive: true });
+    const cut = 'export class A {\n  a() {\n    return 1;\n  }\n\n  b() {\n    return 2;\n  }\n';
+    writeFileSync(join(root, 'examples/notes/files/modules/a.ts'), `${cut}}\n`);
+    expect(landingProblems(root, { batteryCut: app({ file: 'modules/a.ts', code: cut }), other: app({ code: cut }) }, [])).toEqual(['snippet "batteryCut": a battery excerpt must be a complete unit, a "}" is missing.']);
+  });
+
   it('names a chain step whose error has no TS code or no one-line message', () => {
     const snippets = { a: app({ code: 'a a\n' }) };
     const typo = { find: 'a a', replace: 'b' };
@@ -209,6 +266,13 @@ function smoke(options: { generated?: string; extra?: string[]; tests?: string }
   mkdirSync(join(app, 'modules/dir'), { recursive: true });
   writeFileSync(join(app, 'modules/gen.ts'), options.generated ?? 'const g = 1;\n');
   for (const name of options.extra ?? []) writeFileSync(join(app, 'modules/dir', name), 'const g = 1;\n');
+  for (const { name, folder } of MODULE_FILES) {
+    if (folder) mkdirSync(join(app, 'modules/notes', name), { recursive: true });
+    else {
+      mkdirSync(join(app, 'modules/notes'), { recursive: true });
+      writeFileSync(join(app, 'modules/notes', name), '');
+    }
+  }
   const ran: string[] = [];
   const target: DemoTarget = {
     app,
@@ -260,6 +324,30 @@ describe('checkLanding', () => {
     await expect(checkLanding(target, 'pnpm', repo, generated('modules/gone.ts'), [])).rejects.toThrow(/snippet "g": modules\/gone\.ts must match exactly one file of the app, it matches 0\./);
     await expect(checkLanding(target, 'pnpm', repo, generated('modules/dir/*_one.ts'), [])).rejects.toThrow(/snippet "g": modules\/dir\/\*_one\.ts must match exactly one file of the app, it matches 2 \(/);
     await expect(checkLanding(target, 'pnpm', repo, generated('modules/dir/*_two.ts'), [])).rejects.toThrow(/it matches 0\./);
+  });
+
+  it('names an entry of the module tree that is missing, or of the wrong kind', async () => {
+    const { repo, target } = smoke();
+    const run = () => checkLanding(target, 'pnpm', repo, generated(), [], join(repo, 'examples/landing'), MODULE_FILES);
+    await run();
+    rmSync(join(target.app, 'modules/notes/routes.ts'));
+    await expect(run()).rejects.toThrow('module file "routes.ts": modules/notes/routes.ts does not exist in the app.');
+    rmSync(join(target.app, 'modules/notes/views'), { recursive: true });
+    writeFileSync(join(target.app, 'modules/notes/views'), '');
+    await expect(run()).rejects.toThrow(/module file "views\/": modules\/notes\/views\/ is a file, the landing lists a folder\./);
+    rmSync(join(target.app, 'modules/notes/index.ts'));
+    mkdirSync(join(target.app, 'modules/notes/index.ts'));
+    await expect(run()).rejects.toThrow(/module file "index\.ts": modules\/notes\/index\.ts is a directory, the landing lists a file\./);
+  });
+
+  it('refuses a symlink and a name outside modules/notes/, even when the entry would exist', async () => {
+    const { repo, target } = smoke();
+    const run = (files: Parameters<typeof checkLanding>[6]) => checkLanding(target, 'pnpm', repo, generated(), [], join(repo, 'examples/landing'), files);
+    rmSync(join(target.app, 'modules/notes/routes.ts'));
+    symlinkSync(join(target.app, 'modules/gen.ts'), join(target.app, 'modules/notes/routes.ts'));
+    await expect(run(MODULE_FILES)).rejects.toThrow('module file "routes.ts": modules/notes/routes.ts is a symlink.');
+    await expect(run([{ name: '../gen.ts', role: 'r' }])).rejects.toThrow(/module file "\.\.\/gen\.ts": a name is one file or folder name directly in modules\/notes\//);
+    await expect(run([{ name: '/', folder: true, role: 'r' }])).rejects.toThrow(/module file "\/": a name is one/);
   });
 
   it('fails when a test file of the overlay did not run or the tests did not pass', async () => {
@@ -339,5 +427,27 @@ describe('checkTypo', () => {
   it('refuses a find that is not exactly once in the file', async () => {
     const { root } = project();
     await expect(checkTypo(root, 'a.ts', { ...TYPO, typo: { find: 'value', replace: 'v' } })).rejects.toThrow(/must stand exactly once in a\.ts, not 2 times/);
+  });
+});
+
+describe('bracketProblem', () => {
+  it('accepts brackets that pair up, whatever strings, templates and comments hold', () => {
+    expect(bracketProblem('f(a, [1, { b: 2 }]);\n')).toBeUndefined();
+    expect(bracketProblem("const s = '{ (' + \"]\" + `${a({ b: 1 })} {`; // ) }\n/* { */\n")).toBeUndefined();
+    expect(bracketProblem('const a = `x\\`{`;\n')).toBeUndefined();
+  });
+
+  it('names a missing closer and a closer without opener', () => {
+    expect(bracketProblem('f(a, [1)\n')).toBe('a "]" is missing before ")".');
+    expect(bracketProblem('class A {\n  a() {}\n')).toBe('a "}" is missing.');
+  });
+
+  it('names a string or template literal that is not closed', () => {
+    expect(bracketProblem('body: mjml`\n  <mj-text>${t.get("a", { b: 1 })}</mj-text>\n')).toBe('a string or template literal is not closed.');
+    expect(bracketProblem("return 'abc;\n")).toBe('a string or template literal is not closed.');
+    // A quote string ends at its line: only that rule catches this one.
+    expect(bracketProblem("f('a\n', 'b');\n")).toBe('a string or template literal is not closed.');
+    expect(bracketProblem('const a = `${b(`c`)} d`;\n')).toBeUndefined();
+    expect(bracketProblem('a);\n')).toBe('a ")" has no opening bracket.');
   });
 });

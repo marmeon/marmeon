@@ -5,7 +5,6 @@ import { ChainSection } from '../components/landing/ChainSection.tsx';
 import { DevtoolsSection } from '../components/landing/DevtoolsSection.tsx';
 import { HeroSection } from '../components/landing/HeroSection.tsx';
 import { IslandSection } from '../components/landing/IslandSection.tsx';
-import { ModulesSection } from '../components/landing/ModulesSection.tsx';
 import { PrinciplesSection } from '../components/landing/PrinciplesSection.tsx';
 import { SecureSection } from '../components/landing/SecureSection.tsx';
 import { StartSection } from '../components/landing/StartSection.tsx';
@@ -14,8 +13,8 @@ import { SiteHead } from '../components/SiteHead.tsx';
 import type { ShowLandingController } from '../controllers/ShowLandingController.ts';
 import { DESCRIPTIONS } from '../descriptions.ts';
 
-/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in six sections. */
-export default function Landing({ snippets, chain }: PageProps<ShowLandingController>) {
+/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in five sections. */
+export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
       <SiteHead title="" description={DESCRIPTIONS.landing} path="/" />
@@ -23,8 +22,7 @@ export default function Landing({ snippets, chain }: PageProps<ShowLandingContro
       <PrinciplesSection />
       <AudienceSection />
       <ChainSection snippets={snippets} chain={chain} />
-      <ModulesSection />
-      <BatteriesSection />
+      <BatteriesSection snippets={snippets} packages={packages} moduleFiles={moduleFiles} />
       <SecureSection />
       <TestingSection snippet={snippets.test} />
       <IslandSection snippets={snippets} />
