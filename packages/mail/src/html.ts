@@ -209,7 +209,7 @@ export function textFromHtml(markup: string): string {
       .replace(/<\/li>/gi, '\n')
       .replace(/<\/(p|div|h[1-6]|ul|ol|tr|table|blockquote|section|header|footer)>/gi, '\n\n'),
   );
-  const text = withoutTags(marked).replace(/&(#\d+|\w+);/g, (match, entity: string) => ENTITIES[entity] ?? (entity.startsWith('#') ? codePointText(Number(entity.slice(1))) ?? match : match));
+  const text = withoutTags(marked).replace(/&(#[xX][\da-fA-F]+|#\d+|\w+);/g, (match, entity: string) => ENTITIES[entity] ?? (entity.startsWith('#') ? codePointText(entity[1] === 'x' || entity[1] === 'X' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1))) ?? match : match));
   // Blanks around a line break go in one pass over the lines: a regex that retries a run of spaces at each of its characters is quadratic.
   return text
     .split('\n')
@@ -221,7 +221,9 @@ export function textFromHtml(markup: string): string {
 
 /** The character of a numeric entity; `undefined` beyond Unicode, where `String.fromCodePoint` would throw. */
 function codePointText(code: number): string | undefined {
-  return code <= 0x10ffff ? String.fromCodePoint(code) : undefined;
+  if (code > 0x10ffff) return undefined;
+  // NUL and a lone surrogate are no text: U+FFFD, as an HTML parser reads them.
+  return code === 0 || (code >= 0xd800 && code <= 0xdfff) ? '\uFFFD' : String.fromCodePoint(code);
 }
 
 /** `line` without the spaces and tabs at both ends. */

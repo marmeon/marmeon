@@ -104,6 +104,11 @@ describe('html``', () => {
   it('leaves an entity beyond Unicode as written instead of throwing', () => {
     expect(textFromHtml('<p>a &#99999999; b &#128512;</p>')).toBe('a &#99999999; b \u{1F600}');
   });
+
+  it('reads a hexadecimal entity, the way React writes an apostrophe', () => {
+    expect(textFromHtml('<p>O&#x27;Brien &#X1F600; &#x110000;</p>')).toBe("O'Brien \u{1F600} &#x110000;");
+    expect(textFromHtml('<p>a&#x0;b&#xD800;c&#0;d&#56320;e</p>')).toBe('a\uFFFDb\uFFFDc\uFFFDd\uFFFDe');
+  });
 });
 
 class ResetMail implements Mailable {
