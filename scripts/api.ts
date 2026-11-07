@@ -20,6 +20,7 @@ import { parseArgs } from 'node:util';
 import { SAME_VALUE } from './api-names.ts';
 import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
 import { exportProblems, type ExportLists } from './api-exports.ts';
+import { implementationProblems, type ImplementationLists } from './api-implementation.ts';
 import { MEMBER_EXCEPTIONS } from './api-members.ts';
 import { SPAN_EXCEPTIONS, SPAN_WORDS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
@@ -1657,7 +1658,7 @@ export interface ApiRun {
 }
 
 /** Compares (or, with `write`, rewrites) the `api.md` of every package under `root`. */
-export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists; internal?: InternalLists; members?: MemberLists; exports?: ExportLists | false; files?: readonly SourceFile[] } = {}): Promise<ApiRun> {
+export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists; internal?: InternalLists; members?: MemberLists; exports?: ExportLists | false; implementation?: ImplementationLists; files?: readonly SourceFile[] } = {}): Promise<ApiRun> {
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
@@ -1725,6 +1726,11 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
   if (members.length > 0) {
     failed = true;
     lines.push('members:', ...members.map((problem) => `  ${problem}`));
+  }
+  const implementation = implementationProblems(packages, repository(), options.implementation);
+  if (implementation.length > 0) {
+    failed = true;
+    lines.push('implementation only:', ...implementation.map((problem) => `  ${problem}`));
   }
   const exported = options.exports === false ? [] : exportProblems(root, repository(), options.exports);
   if (exported.length > 0) {

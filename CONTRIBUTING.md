@@ -376,6 +376,11 @@ command, and the [package development](docs/package-development.md#dependencies-
 8. Decided exception: **`oxc-transform` is an optional peer of `@marmeon/core`**, at `>=0.157.0 <1.0.0` — it compiles the mail views of an
    app (`modules/*/mail/**/*.tsx`) in development and in `marmeon build`; a production start runs the build's output and never
    loads it. An app that has mail views installs it as a devDependency; without it the load hook names the install command.
+9. Decided exception: **`@faire/mjml-react` is an exact dependency of `@marmeon/react`**, imported only by `src/mail/implementation.ts`;
+   no name or type of it is public. The components of `@marmeon/react/mail` are Marmeon's own wrappers with their own prop types
+   and run-time checks, so a fork or another library replaces it without an app noticing. An update is a pull request of its own;
+   `packages/react/src/mail/implementation.type-test.ts` and `scripts/mail-implementation.test.ts` hold the version to the props and
+   to the `mjml` range the framework is tested against, and `pnpm api:check` refuses a name of it in a declaration or the snapshot.
 
 A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
 peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different
@@ -463,6 +468,10 @@ The same goes for a function, a constant and a type: `pnpm api:check` (the `expo
 An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `scripts/api.ts` lists for its package (Node's
 built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the
 app installs, or the change that removes it. Add an entry only for a peer, and give a type of your own to anything else.
+
+A library a package builds on and never shows stands in `IMPLEMENTATION_ONLY` of `scripts/api-implementation.ts` (`@faire/mjml-react` for
+`@marmeon/react`): `pnpm api:check` fails when any `.d.ts` under the package's `dist/` names it, also one no entry point reaches, when
+the `api.md` lists it under "Types from other packages", or when a source file other than the listed adapter imports it.
 
 The same file ends with the package's **Environment** and **Commands**, read from the built code of the providers its
 `package.json` lists under `marmeon.providers` (`static config`, `static commands`) and, for the CLI, its built-in commands.

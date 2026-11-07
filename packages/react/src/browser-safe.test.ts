@@ -41,6 +41,8 @@ describe('@marmeon/react in the browser', () => {
     const allowed = (id: string) => id.startsWith('react/src/') || id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/page-support.ts' || id === 'http/src/protocol.ts' || id === 'http/src/sensitive-fields.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts' || id === 'router/src/pattern.ts';
     expect(modules.filter((id) => !allowed(id))).toEqual([]);
     expect(modules).toEqual(expect.arrayContaining(['react/src/app.tsx', 'http/src/client/navigation.ts']));
+    // The mail components are server code (the mailer, the MJML library): the browser entry never reaches them.
+    expect(modules.filter((id) => id.startsWith('react/src/mail'))).toEqual([]);
   }, 30_000);
 
   it('the table subpaths: the table’s browser half and the client core, no server code — TanStack only in the bridge, and only as an import', async () => {

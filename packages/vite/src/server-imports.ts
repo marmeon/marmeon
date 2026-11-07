@@ -39,6 +39,12 @@ export const SERVER_MODULES: readonly ServerModule[] = [
   { pattern: 'middleware/**', what: 'a middleware' },
 ];
 
+/**
+ * Packages that compose a mail on the server: client code importing one as a value would bundle the mailer (and, with it,
+ * the MJML compiler and the transports) into the browser. Their types are fine.
+ */
+export const SERVER_PACKAGES: readonly string[] = ['@marmeon/mail', '@marmeon/react/mail'];
+
 /** Client code by convention — where the check starts in a server environment (SSR, tests), besides the pages. */
 const CLIENT_LAYOUTS = ['layouts/**', 'modules/*/layouts/**'];
 const TEST_FILE = /\.(?:type-)?test\.[cm]?[jt]sx?$/;
@@ -59,6 +65,8 @@ interface Edge {
   readonly column: number;
   readonly specifier: string;
   readonly hint: string;
+  /** Set when the import names a package of `SERVER_PACKAGES`: `target` is then the specifier, not a file. */
+  readonly serverPackage?: boolean;
 }
 
 interface Problem {
@@ -154,6 +162,10 @@ export function serverImports(options: ServerImportsOptions): Plugin {
       const edgesOf = async (file: string, source: string): Promise<Edge[]> => {
         const edges: Edge[] = [];
         for (const found of valueImports(source, file)) {
+          if (SERVER_PACKAGES.some((name) => found.specifier === name || found.specifier.startsWith(`${name}/`))) {
+            edges.push({ ...found, target: found.specifier, serverPackage: true, hint: PACKAGE_HINT });
+            continue;
+          }
           if (!resolvable(found.specifier)) continue;
           const resolved = await this.resolve(found.specifier, file, { skipSelf: true });
           if (!resolved || resolved.external) continue;
@@ -170,6 +182,10 @@ export function serverImports(options: ServerImportsOptions): Plugin {
       const problems: Problem[] = [];
       const visit = async (file: string): Promise<void> => {
         for (const edge of state.edges.get(file) ?? []) {
+          if (edge.serverPackage) {
+            problems.push({ file, edge, what: 'the mail package' });
+            continue;
+          }
           const target = own(edge.target)!;
           const server = serverModule(target);
           if (server) {
@@ -198,12 +214,14 @@ export function serverImports(options: ServerImportsOptions): Plugin {
         const at = own(file)!;
         const chain = isClientRoot(at) ? [] : chainOf(file, state.parents, own);
         const via = chain.length > 1 ? ` (${at} is client code: ${chain.join(' → ')})` : '';
-        return `[marmeon] ${at}:${edge.line}:${edge.column} — imports ${own(edge.target)} as a value${via}: ${what} is server code, and a value import bundles it — with everything it imports — into the browser. ${edge.hint}`;
+        return `[marmeon] ${at}:${edge.line}:${edge.column} — imports ${edge.serverPackage ? edge.target : own(edge.target)} as a value${via}: ${what} is server code, and a value import bundles it — with everything it imports — into the browser. ${edge.hint}`;
       });
       this.error(lines.join('\n'));
     },
   };
 }
+
+const PACKAGE_HINT = 'A mail is composed on the server: render it in modules/<module>/mail/, and import its types only (import type).';
 
 /** `a → b → c`: the client modules from the first one that imported `file` down to it. */
 function chainOf(file: string, parents: ReadonlyMap<string, string>, name: (path: string) => string | undefined): string[] {

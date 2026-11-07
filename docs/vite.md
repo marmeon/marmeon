@@ -249,6 +249,10 @@ export default defineConfig({
 });
 ```
 
+Two packages count as server modules too: `@marmeon/mail` and `@marmeon/react/mail`. A mail is composed on the server, and a value
+import of either in client code would bundle the mailer and the MJML compiler into the browser; the error says to render it in
+`modules/<module>/mail/`. `import type` from them stays fine.
+
 The check reads the source while building and adds no code to any chunk. The lint preset, which `marmeon make:lint-config`
 writes, flags the common case in the editor already. The [console](console.md#lint) page lists the command.
 

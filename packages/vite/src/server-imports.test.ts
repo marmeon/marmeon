@@ -154,4 +154,26 @@ describe('server imports while serving', () => {
     expect(message(other)).toContain('modules/demo/views/Home.tsx:1:1 — imports modules/demo/services/Billing.ts as a value: a module matching modules/*/services/** is server code');
     expect(message(other)).not.toContain('labels.ts');
   });
+
+  it('refuses a value import of @marmeon/mail or @marmeon/react/mail in client code — and lets import type through', async () => {
+    for (const specifier of ['@marmeon/mail', '@marmeon/react/mail']) {
+      const root = app({ 'modules/demo/views/Home.tsx': `import { toMjml } from '${specifier}';\nexport default () => toMjml;\n` });
+      const server = await serve(root);
+      const error = await server.environments.client!.transformRequest('/modules/demo/views/Home.tsx').catch((caught: unknown) => caught);
+      expect(message(error)).toContain(`[marmeon] modules/demo/views/Home.tsx:1:1 — imports ${specifier} as a value: the mail package is server code`);
+      expect(message(error)).toContain('A mail is composed on the server: render it in modules/<module>/mail/');
+
+      const types = app({ 'modules/demo/views/Home.tsx': `import type { Mailable } from '${specifier}';\nexport type { Mailable } from '${specifier}';\nexport default (props: Mailable) => props;\n` });
+      await expect((await serve(types)).environments.client!.transformRequest('/modules/demo/views/Home.tsx')).resolves.toBeTruthy();
+    }
+  });
+
+  it('refuses the mail packages behind a helper that a page imports, and in a server environment too', async () => {
+    const files = {
+      'modules/demo/helpers.ts': "import { Mailer } from '@marmeon/mail';\nexport const label = () => Mailer.name;\n",
+      'modules/demo/views/Home.tsx': "import { label } from '../helpers.ts';\nexport default () => label();\n",
+    };
+    const server = await serve(app(files), { test: true });
+    await expect(ssrImport(server, '/modules/demo/views/Home.tsx')).rejects.toThrow('[marmeon] modules/demo/helpers.ts:1:1 — imports @marmeon/mail as a value');
+  });
 });

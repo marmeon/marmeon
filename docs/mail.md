@@ -113,13 +113,15 @@ It creates `modules/notes/mail/NoteSharedMail.ts` (`Mail` is added to the name) 
 `MAIL_FROM_ADDRESS`. A mail without a recipient, an invalid address, or a line break in the subject, a name or a header fails
 when the mail is composed: a line break there could add recipients.
 
-`content()` returns one of three things:
+`content()` returns one of four things:
 
+- **A React view**, `toMjml(OrderView, props)` from `@marmeon/react/mail` — the recommended way: a component renders the mail, and
+  [Mail views in React](#mail-views-in-react) shows how. It becomes MJML like the next one, with the same checks.
 - **`` mjml`…` ``**, compiled by [MJML](https://mjml.io) into HTML that mail clients render. Every value is escaped, and a nested
   `` mjml`…` `` or `` html`…` `` is kept, so a layout can be a function that takes the body. A mistyped tag is an `MjmlError`.
-  The text version is made from the compiled HTML, or `fromMjml(body, { text })` gives your own.
-- **`` html`…` ``**, the escaping template of `@marmeon/core`, which the mail package exports too. `fromHtml(body, text?)` adds a
-  text version of your own. A link keeps its URL in the derived text.
+  The text version is made from the compiled HTML, or `fromMjml(body, { text })` gives your own. This is the way without React.
+- **`` html`…` ``**, the escaping template of `@marmeon/core`, which the mail package exports too — the fallback for a mail that
+  needs no table layout. `fromHtml(body, text?)` adds a text version of your own. A link keeps its URL in the derived text.
 - **`{ html, text }`**, both as you made them.
 
 `envelope()`, `content()` and `attachments()` may each be `async`.
@@ -182,6 +184,104 @@ written anyway and the command prints the line above for you to add; it never ed
 
 A mail class is found by its folder, so `modules/ui/mail/` is scanned for previews like any other, and a file with a function only
 adds none.
+
+## Mail views in React
+
+A mail can be a React component. The class stays a `.ts` file, the view is a `.tsx` file next to it, and `toMjml` renders the view to
+the same MJML that a template would hold:
+
+```tsx title="modules/notes/mail/NoteSharedView.tsx"
+import type { Translator } from '@marmeon/i18n';
+import { MjmlBody, MjmlButton, MjmlColumn, MjmlDocument, MjmlSection, MjmlText } from '@marmeon/react/mail';
+
+export function NoteSharedView({ t, title, url }: { t: Translator; title: string; url: string }) {
+  return (
+    <MjmlDocument lang={t.locale}>
+      <MjmlBody>
+        <MjmlSection paddingTop={24}>
+          <MjmlColumn>
+            <MjmlText>{t.get('notes.mail.shared.intro', { title })}</MjmlText>
+            <MjmlButton href={url}>{t.get('notes.mail.shared.button')}</MjmlButton>
+          </MjmlColumn>
+        </MjmlSection>
+      </MjmlBody>
+    </MjmlDocument>
+  );
+}
+```
+
+```ts title="modules/notes/mail/NoteSharedMail.ts"
+import { toMjml } from '@marmeon/react/mail';
+import { NoteSharedView } from './NoteSharedView.tsx';
+
+// in the class:
+content() {
+  return toMjml(NoteSharedView, { t: this.#t, title: this.#title, url: this.#url });
+}
+```
+
+Pass the view and its props, `toMjml(View, props)`, not a call of it: the props are the signature of your view, and a view that
+uses hooks in its own body runs inside React's renderer only that way. Inside a `.tsx`, `toMjml(<NoteSharedView … />)` takes the
+element too. The result is a `Mjml`, so everything that follows from a template holds for a view: the mail compiles with strict
+validation when it is sent, a component that would load an image from a host of someone else is refused with Q7, a relative link is
+refused, and the text version is derived from the HTML. A view may be the body of a frame instead of a whole mail: it then renders the
+tags inside `<mj-body>`, and the frame nests it, `layout(t, { preview, body: toMjml(NoteSharedView, props) })`.
+
+Mail views live in `modules/<module>/mail/`. That is where the server compiles `.tsx` files, so a view is never client code, and
+Vite refuses a page that imports `@marmeon/react/mail` or `@marmeon/mail` as a value ([Server code in the
+browser](vite.md#server-code-in-the-browser)). A mail view is TSX that Node cannot read by itself: the server compiles it with
+`oxc-transform`, which an app that has mail views installs as a development dependency (`pnpm add -D oxc-transform`), and
+`marmeon build` compiles the views ahead of time, so a production start loads no transformer. The compiler reads the `jsx` setting
+of your `tsconfig.json`: `react-jsx` and `react-jsxdev` both compile as `react-jsx`, since a mail needs no development helpers, and
+any other `jsx` mode is refused.
+
+### The components
+
+The components are MJML's tags under the names of the tags (`mj-text` is `MjmlText`; the root `mjml` is `MjmlDocument`, because `Mjml` is the class of `@marmeon/mail`), and every one has the props of
+its tag, written in camelCase (`paddingTop` is `padding-top`), with each `MjmlXProps` type exported next to it:
+
+| Components | MJML tags |
+| --- | --- |
+| `MjmlDocument`, `MjmlHead`, `MjmlBody` | The root, `mj-head` and `mj-body` |
+| `MjmlTitle`, `MjmlPreview`, `MjmlFont`, `MjmlBreakpoint`, `MjmlStyle` | What the head holds |
+| `MjmlAttributes`, `MjmlAll`, `MjmlClass`, `MjmlHtmlAttributes`, `MjmlHtmlAttribute`, `MjmlSelector` | Defaults, classes and HTML attributes in the head |
+| `MjmlWrapper`, `MjmlSection`, `MjmlGroup`, `MjmlColumn`, `MjmlHero` | Layout |
+| `MjmlText`, `MjmlButton`, `MjmlImage`, `MjmlDivider`, `MjmlSpacer`, `MjmlTable`, `MjmlRaw` | Content |
+| `MjmlSocial`, `MjmlSocialElement`, `MjmlNavbar`, `MjmlNavbarLink` | Social links and navigation |
+| `MjmlAccordion`, `MjmlAccordionElement`, `MjmlAccordionTitle`, `MjmlAccordionText`, `MjmlCarousel`, `MjmlCarouselImage` | Accordion and carousel |
+
+A number is `px` wherever a value has a unit, the props typed `string | number`: `paddingTop={8}` is `padding-top="8px"`. A number
+for any other prop throws a `TypeError` (`fontWeight` takes `'700'`), and so does `lineHeight={1.5}`: it is a string (`'1.5'` or `'24px'`). `fullWidth` and `inline` write the attribute
+when `true` and leave it out when `false`. The two ways to name a class are `cssClass` (`css-class`) and `mjmlClass` (`mj-class`);
+`className` throws, so there is one way. `MjmlAll` and `MjmlClass` take any attribute. There is no component for `mj-include` (it
+reads a file of the server), and none that writes a comment or an HTML tag of any name: markup of your own goes into `MjmlRaw`.
+
+A few attributes of MJML have no prop yet: `gutter` on `mj-section` and `mj-wrapper`, `border` on `mj-social` and
+`mj-social-element`, `dir` on `mjml`. An attribute a component does not know fails the strict validation when the mail is sent.
+
+### What React escapes
+
+React escapes every text and every attribute value: a name that holds `<img src="https://tracker.example/p.gif">` or a `"` arrives
+as text, in a child and in an attribute alike. Only two places write what you give them as it is, which is `raw()` of the templates:
+`MjmlRaw` with `dangerouslySetInnerHTML`, and the child of `MjmlStyle`, one string of CSS, which holds no `<` (CSS needs none, and `</mj-style>` would let the rest in as markup; a `<` throws a `TypeError`). Put into them only markup and CSS that
+you wrote, never data. No other component takes `dangerouslySetInnerHTML`, also not through `{...data}`; it throws a `TypeError`, as
+does anything but one string as the child of `MjmlStyle`.
+
+React moves a JSX `<title>`, `<meta>` or `<link>` out of the tree, in front of the root, where MJML drops it without a word. It does so
+also from inside `MjmlRaw`, and it adds a `<link>` to preload a JSX `<img>`. `toMjml` throws an `MjmlError` when the view's markup does
+not start with `<mjml` or an `<mj-` tag, or when anything comes in front of `<MjmlDocument>`. Use `MjmlTitle` for the title, an
+`MjmlRaw` with `dangerouslySetInnerHTML={{ __html: '<meta …>' }}` for a `<meta>` or `<link>`, and `MjmlImage` for an image.
+
+### Hooks, context and Suspense
+
+A view is rendered by React, so `useState`, `useContext` and a context provider around the view work. `Suspense` renders its
+fallback and nothing else: the render does not wait, so load the data before `toMjml` and pass it in.
+
+### The library under the components
+
+The components stand on `@faire/mjml-react`, in a version Marmeon pins exactly. Your app never installs or imports it, and the API is
+that of `@marmeon/react/mail`: the names, the prop types and the checks above are Marmeon's own, so replacing the library is no
+change an app has to follow. [Releases](releases.md#libraries-the-framework-builds-on) lists what is promised.
 
 ## Sending mails
 

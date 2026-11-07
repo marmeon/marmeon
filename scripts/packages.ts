@@ -72,6 +72,7 @@ export type DriverKind = 'dependency' | 'exact dependency' | 'optional peer' | '
  *      `kysely` is an exact dependency of `@marmeon/database` only (docs/database.md#kysely-and-its-version);
  *      `@modelcontextprotocol/server` is an exact dependency of `marmeon`, loaded only by `marmeon mcp`;
  *      `oxc-transform` is an optional peer of `@marmeon/core` (it compiles mail views in development and in `marmeon build`);
+ *      `@faire/mjml-react` is an exact dependency of `@marmeon/react`, imported only by `src/mail/implementation.ts`; no name or type of it is public (docs/mail.md#mail-views-in-react);
  *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
  *      exact install command with the major (`pnpm add pg@^8`);
  *   3. a library whose instance or types the app must share (the OpenTelemetry API, React, Vite) is a peer — and no framework package
@@ -94,7 +95,8 @@ export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, Driver
   otel: { '@opentelemetry/api': 'peer' },
   server: { vite: 'peer' },
   vite: { vite: 'peer' },
-  react: { react: 'peer', 'react-dom': 'peer', '@tanstack/react-table': 'optional peer' },
+  // The components of `@marmeon/react/mail` stand on it, in the one version their props are tested against; an app never installs or imports it.
+  react: { react: 'peer', 'react-dom': 'peer', '@tanstack/react-table': 'optional peer', '@faire/mjml-react': 'exact dependency' },
 };
 
 /** Libraries the app and the framework must share one instance of (rule 3): a dependency of no framework package. */

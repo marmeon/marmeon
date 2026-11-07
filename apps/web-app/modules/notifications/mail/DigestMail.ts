@@ -1,7 +1,9 @@
 import { UrlSigner } from '@marmeon/http';
 import { Translators, type Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import { AppConfig } from '../../../config/app.ts';
+import { DigestView } from './DigestView.tsx';
 
 /**
  * A mail that can be left with one click: `List-Unsubscribe` holds the signed link, and `List-Unsubscribe-Post` tells the mail client it
@@ -11,11 +13,14 @@ export class DigestMail implements Mailable {
   readonly #to: string;
   readonly #unsubscribe: string;
   readonly #t: Translator;
+  readonly #items: readonly string[];
 
-  constructor(to: string, unsubscribe: string, t: Translator) {
+  /** `items`: what is new, one line each. */
+  constructor(to: string, unsubscribe: string, t: Translator, items: readonly string[] = []) {
     this.#to = to;
     this.#unsubscribe = unsubscribe;
     this.#t = t;
+    this.#items = items;
   }
 
   /** The link a mail to `user` carries: absolute, signed, valid for good. */
@@ -25,7 +30,7 @@ export class DigestMail implements Mailable {
 
   /** The preview (`/_marmeon/mail/notifications/DigestMail`, development only). */
   static preview({ make, locale }: MailPreviewContext): DigestMail {
-    return new DigestMail('ada@example.com', DigestMail.unsubscribeUrl(make(UrlSigner), make(AppConfig), 'ada'), make(Translators).for(locale));
+    return new DigestMail('ada@example.com', DigestMail.unsubscribeUrl(make(UrlSigner), make(AppConfig), 'ada'), make(Translators).for(locale), ['New sign-in to your account', 'A note was shared with you']);
   }
 
   envelope() {
@@ -37,17 +42,8 @@ export class DigestMail implements Mailable {
     };
   }
 
+  /** The view is `DigestView.tsx`; `toMjml` renders it, and sending compiles and checks it like an `mjml` template. */
   content() {
-    const t = this.#t;
-    return mjml`<mjml lang="${t.locale}">
-  <mj-body>
-    <mj-section>
-      <mj-column>
-        <mj-text>${t.get('notifications.mail.digest.intro')}</mj-text>
-        <mj-text><a href="${this.#unsubscribe}">${t.get('notifications.mail.digest.unsubscribe')}</a></mj-text>
-      </mj-column>
-    </mj-section>
-  </mj-body>
-</mjml>`;
+    return toMjml(DigestView, { t: this.#t, url: this.#unsubscribe, items: this.#items });
   }
 }

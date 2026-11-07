@@ -924,6 +924,688 @@ type WithDefaults<In, Out> = Flatten<In & {
 }>;
 ```
 
+## `@marmeon/react/mail`
+
+Types from other packages: `react`
+
+### Stable
+
+```ts
+// MjmlAccordion
+export declare function MjmlAccordion(props: MjmlAccordionProps): ReactElement;
+// MjmlAccordionElement
+export declare function MjmlAccordionElement(props: MjmlAccordionElementProps): ReactElement;
+// MjmlAccordionElementProps
+export interface MjmlAccordionElementProps {
+    backgroundColor?: string;
+    border?: string;
+    fontFamily?: string;
+    iconAlign?: 'top' | 'middle' | 'bottom';
+    iconWidth?: string | number;
+    iconHeight?: string | number;
+    iconWrappedUrl?: string;
+    iconWrappedAlt?: string;
+    iconUnwrappedUrl?: string;
+    iconUnwrappedAlt?: string;
+    iconPosition?: 'left' | 'right';
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlAccordionProps
+export interface MjmlAccordionProps {
+    containerBackgroundColor?: string;
+    border?: string;
+    fontFamily?: string;
+    iconAlign?: 'top' | 'middle' | 'bottom';
+    iconWidth?: string | number;
+    iconHeight?: string | number;
+    iconWrappedUrl?: string;
+    iconWrappedAlt?: string;
+    iconUnwrappedUrl?: string;
+    iconUnwrappedAlt?: string;
+    iconPosition?: 'left' | 'right';
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlAccordionText
+export declare function MjmlAccordionText(props: MjmlAccordionTextProps): ReactElement;
+// MjmlAccordionTextProps
+export interface MjmlAccordionTextProps {
+    backgroundColor?: string;
+    fontSize?: string | number;
+    fontFamily?: string;
+    fontWeight?: string;
+    letterSpacing?: string | number;
+    lineHeight?: string;
+    color?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlAccordionTitle
+export declare function MjmlAccordionTitle(props: MjmlAccordionTitleProps): ReactElement;
+// MjmlAccordionTitleProps
+export interface MjmlAccordionTitleProps {
+    backgroundColor?: string;
+    color?: string;
+    fontSize?: string | number;
+    fontFamily?: string;
+    fontWeight?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlAll
+export declare function MjmlAll(props: MjmlAllProps): ReactElement;
+// MjmlAllProps
+export interface MjmlAllProps {
+    cssClass?: string;
+    mjmlClass?: string;
+    [attribute: string]: string | undefined;
+}
+// MjmlAttributes
+export declare function MjmlAttributes(props: MjmlAttributesProps): ReactElement;
+// MjmlAttributesProps
+export interface MjmlAttributesProps {
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlBody
+export declare function MjmlBody(props: MjmlBodyProps): ReactElement;
+// MjmlBodyProps
+export interface MjmlBodyProps {
+    width?: string | number;
+    backgroundColor?: string;
+    id?: string;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlBreakpoint
+export declare function MjmlBreakpoint(props: MjmlBreakpointProps): ReactElement;
+// MjmlBreakpointProps
+export interface MjmlBreakpointProps {
+    width?: string;
+}
+// MjmlButton
+export declare function MjmlButton(props: MjmlButtonProps): ReactElement;
+// MjmlButtonProps
+export interface MjmlButtonProps {
+    align?: 'left' | 'center' | 'right';
+    backgroundColor?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRadius?: string | number;
+    borderRight?: string;
+    borderTop?: string;
+    border?: string;
+    color?: string;
+    containerBackgroundColor?: string;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontStyle?: string;
+    fontWeight?: string;
+    height?: string | number;
+    href?: string;
+    name?: string;
+    title?: string;
+    innerPadding?: string | number;
+    letterSpacing?: string | number;
+    lineHeight?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    rel?: string;
+    target?: string;
+    textDecoration?: string;
+    textTransform?: string;
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    textAlign?: 'left' | 'right' | 'center';
+    width?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlCarousel
+export declare function MjmlCarousel(props: MjmlCarouselProps): ReactElement;
+// MjmlCarouselImage
+export declare function MjmlCarouselImage(props: MjmlCarouselImageProps): ReactElement;
+// MjmlCarouselImageProps
+export interface MjmlCarouselImageProps {
+    alt?: string;
+    href?: string;
+    rel?: string;
+    target?: string;
+    title?: string;
+    src?: string;
+    thumbnailsSrc?: string;
+    borderRadius?: string | number;
+    tbBorder?: string;
+    tbBorderRadius?: string;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlCarouselProps
+export interface MjmlCarouselProps {
+    align?: 'left' | 'center' | 'right';
+    borderRadius?: string | number;
+    containerBackgroundColor?: string;
+    iconWidth?: string | number;
+    leftIcon?: string;
+    padding?: string | number;
+    paddingTop?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    rightIcon?: string;
+    thumbnails?: 'visible' | 'hidden' | 'supported';
+    tbBorder?: string;
+    tbBorderRadius?: string;
+    tbHoverBorderColor?: string;
+    tbSelectedBorderColor?: string;
+    tbWidth?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlClass
+export declare function MjmlClass(props: MjmlClassProps): ReactElement;
+// MjmlClassProps
+export interface MjmlClassProps {
+    name?: string;
+    [attribute: string]: string | undefined;
+}
+// MjmlColumn
+export declare function MjmlColumn(props: MjmlColumnProps): ReactElement;
+// MjmlColumnProps
+export interface MjmlColumnProps {
+    backgroundColor?: string;
+    border?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRadius?: string | number;
+    borderRight?: string;
+    borderTop?: string;
+    direction?: 'ltr' | 'rtl';
+    innerBackgroundColor?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    innerBorder?: string;
+    innerBorderBottom?: string;
+    innerBorderLeft?: string;
+    innerBorderRadius?: string;
+    innerBorderRight?: string;
+    innerBorderTop?: string;
+    padding?: string | number;
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    width?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlDivider
+export declare function MjmlDivider(props: MjmlDividerProps): ReactElement;
+// MjmlDividerProps
+export interface MjmlDividerProps {
+    borderColor?: string;
+    borderStyle?: string;
+    borderWidth?: string | number;
+    containerBackgroundColor?: string;
+    padding?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    width?: string | number;
+    align?: 'left' | 'center' | 'right';
+    cssClass?: string;
+    mjmlClass?: string;
+}
+// MjmlDocument
+export declare function MjmlDocument(props: MjmlDocumentProps): ReactElement;
+// MjmlDocumentProps
+export interface MjmlDocumentProps {
+    children?: ReactNode;
+    owa?: string;
+    lang?: string;
+}
+// MjmlFont
+export declare function MjmlFont(props: MjmlFontProps): ReactElement;
+// MjmlFontProps
+export interface MjmlFontProps {
+    name?: string;
+    href?: string;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlGroup
+export declare function MjmlGroup(props: MjmlGroupProps): ReactElement;
+// MjmlGroupProps
+export interface MjmlGroupProps {
+    backgroundColor?: string;
+    direction?: 'ltr' | 'rtl';
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    width?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlHead
+export declare function MjmlHead(props: MjmlHeadProps): ReactElement;
+// MjmlHeadProps
+export interface MjmlHeadProps {
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlHero
+export declare function MjmlHero(props: MjmlHeroProps): ReactElement;
+// MjmlHeroProps
+export interface MjmlHeroProps {
+    mode?: string;
+    height?: string | number;
+    backgroundUrl?: string;
+    backgroundWidth?: string | number;
+    backgroundHeight?: string | number;
+    backgroundPosition?: string;
+    borderRadius?: string | number;
+    innerBackgroundColor?: string;
+    innerPadding?: string | number;
+    innerPaddingTop?: string | number;
+    innerPaddingLeft?: string | number;
+    innerPaddingRight?: string | number;
+    innerPaddingBottom?: string | number;
+    padding?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    backgroundColor?: string;
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlHtmlAttribute
+export declare function MjmlHtmlAttribute(props: MjmlHtmlAttributeProps): ReactElement;
+// MjmlHtmlAttributeProps
+export interface MjmlHtmlAttributeProps {
+    children?: ReactNode;
+    name?: string;
+}
+// MjmlHtmlAttributes
+export declare function MjmlHtmlAttributes(props: MjmlHtmlAttributesProps): ReactElement;
+// MjmlHtmlAttributesProps
+export interface MjmlHtmlAttributesProps {
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlImage
+export declare function MjmlImage(props: MjmlImageProps): ReactElement;
+// MjmlImageProps
+export interface MjmlImageProps {
+    alt?: string;
+    href?: string;
+    name?: string;
+    src?: string;
+    srcset?: string;
+    sizes?: string;
+    title?: string;
+    rel?: string;
+    align?: 'left' | 'center' | 'right';
+    border?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRight?: string;
+    borderTop?: string;
+    borderRadius?: string | number;
+    containerBackgroundColor?: string;
+    fluidOnMobile?: boolean;
+    padding?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    target?: string;
+    width?: string | number;
+    height?: string | number;
+    maxHeight?: string | number;
+    fontSize?: string | number;
+    usemap?: string;
+    cssClass?: string;
+    mjmlClass?: string;
+}
+// MjmlNavbar
+export declare function MjmlNavbar(props: MjmlNavbarProps): ReactElement;
+// MjmlNavbarLink
+export declare function MjmlNavbarLink(props: MjmlNavbarLinkProps): ReactElement;
+// MjmlNavbarLinkProps
+export interface MjmlNavbarLinkProps {
+    color?: string;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontStyle?: string;
+    fontWeight?: string;
+    href?: string;
+    name?: string;
+    target?: string;
+    rel?: string;
+    letterSpacing?: string | number;
+    lineHeight?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    textDecoration?: string;
+    textTransform?: string;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlNavbarProps
+export interface MjmlNavbarProps {
+    align?: 'left' | 'center' | 'right';
+    baseUrl?: string;
+    hamburger?: string;
+    icoAlign?: 'left' | 'center' | 'right';
+    icoOpen?: string;
+    icoClose?: string;
+    icoColor?: string;
+    icoFontSize?: string | number;
+    icoFontFamily?: string;
+    icoTextTransform?: string;
+    icoPadding?: string | number;
+    icoPaddingLeft?: string | number;
+    icoPaddingTop?: string | number;
+    icoPaddingRight?: string | number;
+    icoPaddingBottom?: string | number;
+    padding?: string | number;
+    paddingLeft?: string | number;
+    paddingTop?: string | number;
+    paddingRight?: string | number;
+    paddingBottom?: string | number;
+    icoTextDecoration?: string;
+    icoLineHeight?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlPreview
+export declare function MjmlPreview(props: MjmlPreviewProps): ReactElement;
+// MjmlPreviewProps
+export interface MjmlPreviewProps {
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlRaw
+export declare function MjmlRaw(props: MjmlRawProps): ReactElement;
+// MjmlRawProps
+export interface MjmlRawProps {
+    position?: 'file-start';
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+    dangerouslySetInnerHTML?: {
+        __html: string;
+    };
+}
+// MjmlSection
+export declare function MjmlSection(props: MjmlSectionProps): ReactElement;
+// MjmlSectionProps
+export interface MjmlSectionProps {
+    backgroundColor?: string;
+    backgroundUrl?: string;
+    backgroundRepeat?: 'repeat' | 'no-repeat';
+    backgroundSize?: string | number;
+    backgroundPosition?: string;
+    backgroundPositionX?: string;
+    backgroundPositionY?: string;
+    border?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRadius?: string | number;
+    borderRight?: string;
+    borderTop?: string;
+    direction?: 'ltr' | 'rtl';
+    fullWidth?: boolean;
+    padding?: string | number;
+    paddingTop?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    textAlign?: 'left' | 'center' | 'right';
+    textPadding?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlSelector
+export declare function MjmlSelector(props: MjmlSelectorProps): ReactElement;
+// MjmlSelectorProps
+export interface MjmlSelectorProps {
+    children?: ReactNode;
+    path?: string;
+}
+// MjmlSocial
+export declare function MjmlSocial(props: MjmlSocialProps): ReactElement;
+// MjmlSocialElement
+export declare function MjmlSocialElement(props: MjmlSocialElementProps): ReactElement;
+// MjmlSocialElementProps
+export interface MjmlSocialElementProps {
+    align?: 'left' | 'center' | 'right';
+    iconPosition?: 'left' | 'right';
+    backgroundColor?: string;
+    color?: string;
+    borderRadius?: string | number;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontStyle?: string;
+    fontWeight?: string;
+    href?: string;
+    iconSize?: string | number;
+    iconHeight?: string | number;
+    iconPadding?: string | number;
+    lineHeight?: string;
+    name?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    textPadding?: string | number;
+    rel?: string;
+    src?: string;
+    srcset?: string;
+    sizes?: string;
+    alt?: string;
+    title?: string;
+    target?: string;
+    textDecoration?: string;
+    verticalAlign?: 'top' | 'middle' | 'bottom';
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlSocialProps
+export interface MjmlSocialProps {
+    align?: 'left' | 'right' | 'center';
+    borderRadius?: string | number;
+    containerBackgroundColor?: string;
+    color?: string;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontStyle?: string;
+    fontWeight?: string;
+    iconSize?: string | number;
+    iconHeight?: string | number;
+    iconPadding?: string | number;
+    innerPadding?: string | number;
+    lineHeight?: string;
+    mode?: 'horizontal' | 'vertical';
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    tableLayout?: 'auto' | 'fixed';
+    textPadding?: string | number;
+    textDecoration?: string;
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlSpacer
+export declare function MjmlSpacer(props: MjmlSpacerProps): ReactElement;
+// MjmlSpacerProps
+export interface MjmlSpacerProps {
+    border?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRight?: string;
+    borderTop?: string;
+    containerBackgroundColor?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    height?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+}
+// MjmlStyle
+export declare function MjmlStyle(props: MjmlStyleProps): ReactElement;
+// MjmlStyleProps
+export interface MjmlStyleProps {
+    inline?: boolean;
+    children?: string;
+}
+// MjmlTable
+export declare function MjmlTable(props: MjmlTableProps): ReactElement;
+// MjmlTableProps
+export interface MjmlTableProps {
+    align?: 'left' | 'right' | 'center';
+    border?: string;
+    cellpadding?: string;
+    cellspacing?: string;
+    containerBackgroundColor?: string;
+    color?: string;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontWeight?: string;
+    lineHeight?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    role?: 'none' | 'presentation';
+    tableLayout?: 'auto' | 'fixed' | 'initial' | 'inherit';
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    width?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlText
+export declare function MjmlText(props: MjmlTextProps): ReactElement;
+// MjmlTextProps
+export interface MjmlTextProps {
+    align?: 'left' | 'right' | 'center' | 'justify';
+    backgroundColor?: string;
+    color?: string;
+    containerBackgroundColor?: string;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontStyle?: string;
+    fontWeight?: string;
+    height?: string | number;
+    letterSpacing?: string | number;
+    lineHeight?: string;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    padding?: string | number;
+    textDecoration?: string;
+    textTransform?: string;
+    verticalAlign?: 'top' | 'bottom' | 'middle';
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlTitle
+export declare function MjmlTitle(props: MjmlTitleProps): ReactElement;
+// MjmlTitleProps
+export interface MjmlTitleProps {
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// MjmlWrapper
+export declare function MjmlWrapper(props: MjmlWrapperProps): ReactElement;
+// MjmlWrapperProps
+export interface MjmlWrapperProps {
+    backgroundColor?: string;
+    backgroundUrl?: string;
+    backgroundRepeat?: 'repeat' | 'no-repeat';
+    backgroundSize?: string | number;
+    backgroundPosition?: string;
+    backgroundPositionX?: string;
+    backgroundPositionY?: string;
+    border?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRadius?: string | number;
+    borderRight?: string;
+    borderTop?: string;
+    direction?: 'ltr' | 'rtl';
+    fullWidth?: boolean;
+    padding?: string | number;
+    paddingTop?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    textAlign?: 'left' | 'center' | 'right';
+    textPadding?: string | number;
+    gap?: string | number;
+    cssClass?: string;
+    mjmlClass?: string;
+    children?: ReactNode;
+}
+// toMjml
+export declare function toMjml<P extends object>(view: (props: P) => ReactNode, props: P): Mjml;
+export declare function toMjml(element: ReactElement): Mjml;
+```
+
 ## `@marmeon/react/server`
 
 Types from other packages: `react`
