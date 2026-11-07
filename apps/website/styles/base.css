@@ -95,9 +95,11 @@ kbd {
   border-radius: var(--radius-2);
   background: var(--button-bg);
   color: var(--button-fg);
+  font: inherit;
   font-size: 1.0625rem;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
   transition: background-color var(--duration-fast), color var(--duration-fast);
 }
 

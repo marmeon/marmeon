@@ -1,0 +1,21 @@
+/* Testing */
+.landing .fake-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .fake-list li {
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2);
+}
+
+.landing .testing .section-intro .group-label {
+  margin: var(--space-2) 0 calc(-1 * var(--space-2));
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+}

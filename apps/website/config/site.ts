@@ -1,6 +1,9 @@
 import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 import { FATHOM_SITE_PATTERN } from '../modules/site/fathom.ts';
 
+/** How long a public island answer may be kept, in seconds: the landing page polls it, so a cache in front serves one request per interval. Not an env variable — it follows the polling interval. */
+export const ISLAND_CACHE_MAX_AGE = 5;
+
 /** How long browsers and caches may keep a public page of the website. */
 export const SiteConfig = defineConfig('site', {
   env: env({
@@ -18,6 +21,8 @@ export const SiteConfig = defineConfig('site', {
   }),
   resolve: (e) => ({
     cacheMaxAge: e.SITE_CACHE_MAX_AGE,
+    /** Island answers: never longer than the pages' time, so `SITE_CACHE_MAX_AGE=0` turns caching off for them too. */
+    islandCacheMaxAge: Math.min(ISLAND_CACHE_MAX_AGE, e.SITE_CACHE_MAX_AGE),
     /** No long caching, and the strict nonce policy for Vite's inline scripts. */
     development: e.NODE_ENV === 'development',
     /** The Fathom site id, only where protections apply (production) and when one is set. */

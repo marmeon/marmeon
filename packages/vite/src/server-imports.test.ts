@@ -138,6 +138,18 @@ describe('server imports while serving', () => {
     }
   });
 
+  it('lets a test beside a page import a controller in a server environment — unless a page imports the test', async () => {
+    const test = "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport const name = ShowHomeController.name;\n";
+    const tests = { 'modules/demo/views/Home.test.tsx': test, 'modules/demo/views/Home.spec.tsx': test, 'modules/demo/views/Home.type-test.tsx': test };
+    const server = await serve(app(tests), { test: true });
+    for (const file of Object.keys(tests)) await expect(ssrImport(server, `/${file}`), file).resolves.toBeTruthy();
+
+    const imported = await serve(app({ ...tests, 'modules/demo/views/Home.tsx': "import { name } from './Home.spec.tsx';\nexport default () => name;\n" }), { test: true });
+    await expect(ssrImport(imported, '/modules/demo/views/Home.tsx')).rejects.toThrow(
+      '(modules/demo/views/Home.spec.tsx is client code: modules/demo/views/Home.tsx → modules/demo/views/Home.spec.tsx)',
+    );
+  });
+
   it('takes more server modules from marmeon({ serverModules }) — and fewer with !glob', async () => {
     const root = app({
       'modules/demo/services/Billing.ts': "export const billing = 'server-only';\n",

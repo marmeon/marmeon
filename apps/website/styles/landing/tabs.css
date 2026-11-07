@@ -1,0 +1,95 @@
+/* Tabs: stacked entries without JavaScript, a tablist after hydration. */
+.tabs--stack {
+  display: grid;
+  gap: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tabs .tabs-heading {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-h3);
+}
+
+.tabs .tabs-heading.visually-hidden {
+  margin: -1px;
+}
+
+.tabs-list {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.tabs--vertical {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-5);
+}
+
+.tabs--vertical .tabs-list {
+  flex-direction: column;
+  overflow-x: visible;
+  box-shadow: inset -1px 0 0 var(--line);
+}
+
+.tabs-tab {
+  appearance: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.tabs--vertical .tabs-tab {
+  margin: 0;
+  border-right: 2px solid transparent;
+  border-bottom: 0;
+  text-align: left;
+}
+
+.tabs-tab:hover {
+  color: var(--fg);
+}
+
+.tabs-tab[aria-selected='true'] {
+  border-color: var(--accent-bright);
+  color: var(--fg);
+}
+
+.tabs-tab:focus-visible,
+.tabs-panel:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tabs-panel {
+  padding-top: var(--space-4);
+}
+
+/* A class that sets `display` on a panel (the chain's steps do) would otherwise beat the browser's rule for `hidden`. */
+.tabs .tabs-panel[hidden] {
+  display: none;
+}
+
+.tabs--vertical .tabs-panel {
+  padding-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs-tab {
+    transition: none;
+  }
+}

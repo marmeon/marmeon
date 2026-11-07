@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
   <style>
-    .face { fill: #16181b; }
-    .groove { stroke: #f6f6f3; }
+    .face { fill: #0d1012; }
+    .groove { stroke: #ffffff; }
     @media (prefers-color-scheme: dark) {
-      .face { fill: #e8e9e5; }
-      .groove { stroke: #111315; }
+      .face { fill: #e8ecee; }
+      .groove { stroke: #0e1113; }
     }
   </style>
   <rect class="face" width="16" height="16" rx="1.5"/>

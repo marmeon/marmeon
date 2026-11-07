@@ -1,0 +1,213 @@
+/* Devtools: a copy with sample data. Sizes and status colours follow the real pages, through the website's tokens. */
+.landing .devtools {
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.landing .devtools-replica {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+}
+
+.landing .devtools-replica-window,
+.landing .devtools-replica-bar {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-3);
+  background: var(--bg);
+}
+
+.landing .devtools-replica-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+}
+
+.landing .devtools-replica-title {
+  margin: 0;
+  font: inherit;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing .devtools-replica-env {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--warning-fg);
+  border-radius: var(--radius-1);
+  color: var(--warning-fg);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-replica-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* The tabs: the pages' sidebar and the bar's tab row. */
+.landing .devtools-replica-tabs {
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.landing .devtools-replica-tabs.tabs--vertical {
+  gap: var(--space-4);
+}
+
+.landing .devtools-replica-tabs .tabs-heading {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.landing .devtools-replica-tabs .tabs-list {
+  max-width: 100%;
+}
+
+.landing .devtools-replica-tabs.tabs--vertical .tabs-list {
+  min-width: 120px;
+}
+
+.landing .devtools-replica-tabs .tabs-panel {
+  min-width: 0;
+  padding-top: var(--space-2);
+}
+
+.landing .devtools-replica-page {
+  min-width: 0;
+}
+
+.landing .devtools-replica-tabs.tabs--stack {
+  gap: var(--space-4);
+}
+
+.landing .devtools-replica-lines {
+  margin: 0;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  list-style: none;
+}
+
+.landing .devtools-replica-lines li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.landing .devtools-replica-lines li:last-child {
+  border-bottom: 0;
+}
+
+/* Tables: mono, small, as the real lists. */
+.landing .devtools-replica-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.landing .devtools-replica-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.landing .devtools-replica table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+}
+
+.landing .devtools-replica th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.landing .devtools-replica td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.landing .devtools-replica tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.landing .devtools-replica td.is-ok {
+  color: var(--tip-fg);
+}
+
+.landing .devtools-replica td.is-accent {
+  color: var(--accent-strong);
+}
+
+.landing .devtools-replica td.is-warn {
+  color: var(--warning-fg);
+}
+
+.landing .devtools-replica td.is-bad {
+  color: var(--caution-fg);
+}
+
+.landing .devtools-replica-block + .devtools-replica-block {
+  margin-top: var(--space-4);
+}
+
+.landing .devtools-replica-heading {
+  margin: 0 0 var(--space-2);
+  padding-inline: 12px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.landing .devtools-replica-note {
+  margin: 0 0 var(--space-2);
+  padding-inline: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 519px) {
+  .landing .devtools-replica-tabs.tabs--vertical {
+    grid-template-columns: 1fr;
+  }
+
+  .landing .devtools-replica-tabs.tabs--vertical .tabs-list {
+    flex-direction: row;
+    overflow-x: auto;
+    box-shadow: inset 0 -1px 0 var(--line);
+  }
+
+  .landing .devtools-replica-tabs.tabs--vertical .tabs-tab {
+    border-right: 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  .landing .devtools-replica-tabs.tabs--vertical .tabs-tab[aria-selected='true'] {
+    border-color: var(--accent-bright);
+  }
+}

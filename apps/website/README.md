@@ -40,11 +40,31 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   and `.env` files; rule 7 refuses decision numbers, wave references, personal dates and paths into the maintainers' notes in
   every tracked file. Rule 6 reads the strings of the packages' code and launchers — messages, solutions, command output — for a
   decision number, a wave or another framework.
-- **The landing** (`/`, `modules/site`) is the app's own: the hero, the seven principles and "one type, end to end" (`views/Landing.tsx`).
+- **The landing** (`/`, `modules/site`) is the app's own: `views/Landing.tsx` lists its sections (`components/landing/*Section.tsx`),
+  each with its own stylesheet in `styles/landing/` (`base.css` holds what they share).
   Its code lives in `modules/site/snippets.ts` — files of the notes example the docs build up, so keep them in step with the API.
+  Every snippet names its `source`, the file it is a piece of (`app`: a file of the smoke app; `repo`: a file of this repository), and
+  `scripts/landing.ts` checks it: `pnpm test` the `repo` sources and the files of `examples/landing`, `pnpm pack:smoke` every `app` snippet word
+  for word in the smoke app with `examples/landing` laid over it. A snippet holds no comment lines (the landing shows code without them);
+  it is compared with its file after the file's whole-line comments (as oxc-parser reports them; a file it cannot read fails the check) are dropped. A trailing comment stays on its line, so a line that should be shown without it needs its comment moved onto a line of its own. The folder tree of the "Modules" tab (`modules/site/module-files.ts`) is checked too: `pnpm test` checks its shape (unique entries, each one name directly in the folder, a folder ending in `/`), and `pnpm pack:smoke` checks that each entry is in `modules/notes/` of the smoke app, a folder as a directory and nothing a symlink. The seven typos of "one type, end to end" are `modules/site/chain.ts`: each names its snippet, the misspelt line
+  (`mistakeLine`) and the compiler's error (`error`), which `pnpm pack:smoke` reproduces word for word, so a TypeScript update that rewords it
+  turns that check red until `chain.ts` follows. `components/landing/ChainSection.tsx` shows them as a step bar (`Tabs`) of editor windows: the
+  snippet, and under it the misspelt line highlighted at boot (`SiteSnippets.chain()`) with the error printed from `chain.ts`; without JavaScript
+  the seven steps stand one under the other with the same content.
   `SiteSnippets` highlights them once at boot with the docs' Shiki and theme (the browser gets markup, no highlighter), and the
   controller hands them to the page. `modules/site` owns the `public` group, the answers' headers and the Content-Security-Policy;
   the version of the framework it shows comes from `@marmeon/core`'s manifest (shared once as `site.version`).
+  `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
+  `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
+  highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
+  The batteries section (`components/landing/BatteriesSection.tsx`) puts nine packages in `Tabs`, each with an `Editor` and a `battery…` snippet (4 to 10 lines of a real file, a complete unit with balanced brackets,
+  checked like the others); the "Modules" tab also holds the folder of a module.
+  Under the tabs, every package is listed with a link to its docs page, from `modules/site/packages.ts` (`PACKAGES`); the count on the page is its length,
+  and `site.test.ts` compares its names with the `name` of every `packages/*/package.json`, so a new package without an entry turns the test red.
+  `/islands/render-clock` is a real island the landing page loads (`ShowRenderClockController`, `views/islands/RenderClock.tsx`): public, no session or cookie, outside the sitemap, a 404 when visited directly. `CachePublicly` keeps its answer (recognised by the response header `x-marmeon-region: island`, which only the kernel sets) for `ISLAND_CACHE_MAX_AGE` (5 s, in `config/site.ts`, capped by `SITE_CACHE_MAX_AGE`) instead of the pages' 300 s. `components/landing/IslandSection.tsx` shows it beside its own code (`<Island load="visible" pollMs={10_000}>`): without JavaScript, and before it scrolls into view, the page holds a fallback sentence and the code, and the snippets are checked against the two files.
+- **The landing's devtools section** is a copy of the devtools with invented data (`modules/site/devtools-sample.ts`, drawn by
+  `components/landing/DevtoolsReplica.tsx`): its page, tab and column names are read from `packages/devtools` by
+  `devtools-sample.test.ts`, so a rename there turns the website red. The figure holds no link.
 - **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading

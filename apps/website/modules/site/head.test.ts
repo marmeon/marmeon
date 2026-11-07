@@ -28,6 +28,8 @@ function tags(body: string, kind: 'meta' | 'link', key: string, value: string): 
 }
 const canonicalOf = (body: string) => tags(body, 'link', 'rel', 'canonical');
 const og = (body: string, property: string) => tags(body, 'meta', 'property', `og:${property}`);
+/** The text of the `<title>` element, entities decoded. */
+const titleOf = (body: string) => decode(/<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1] ?? '');
 const descriptionOf = (body: string) => tags(body, 'meta', 'name', 'description');
 
 let app: TestApp;
@@ -38,7 +40,7 @@ afterAll(() => app?.close());
 
 describe('the head of a page', () => {
   const docs = () => app.make(DocsRepository).pages().filter((page) => !page.pending);
-  const fixed = [['/', 'Marmeon', 'website'], ['/docs', 'Documentation', 'website'], ['/imprint', 'Site Notice', 'website'], ['/privacy', 'Privacy Policy', 'website']] as const;
+  const fixed = [['/', 'Marmeon — Full-stack TypeScript framework for Node.js', 'website'], ['/docs', 'Documentation', 'website'], ['/imprint', 'Site Notice', 'website'], ['/privacy', 'Privacy Policy', 'website']] as const;
 
   it.each(fixed)('%s names its description, canonical URL and Open Graph data', async (path, title, type) => {
     const body = (await app.get(path, html).assertOk().assertServerRendered()).body;
@@ -52,6 +54,7 @@ describe('the head of a page', () => {
     expect(og(body, 'type')).toEqual([type]);
     expect(og(body, 'site_name')).toEqual(['Marmeon']);
     expect(og(body, 'title')).toEqual([title]);
+    expect(titleOf(body)).toEqual(path === '/' ? title : `${title} — Marmeon`);
     expect(body).not.toMatch(/twitter:|og:image/);
   });
 
@@ -90,6 +93,7 @@ describe('the head of a page', () => {
     const body = (await app.get('/no/such/page', html).assertNotFound()).body;
     expect(canonicalOf(body)).toEqual([]);
     expect(og(body, 'url')).toEqual([]);
+    expect(titleOf(body)).toEqual('Marmeon');
   });
 
   it('takes the origin from APP_URL, not from the request', async () => {
