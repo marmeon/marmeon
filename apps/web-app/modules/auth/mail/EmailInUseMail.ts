@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { EmailInUseView } from './EmailInUseView.tsx';
 
 /**
  * Private registration: someone asked to change the address of their account to this account's — instead of telling them
@@ -29,13 +30,6 @@ export class EmailInUseMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.email_in_use.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get('auth.mail.email_in_use.intro')}</mj-text>
-        <mj-text>${t.get('auth.mail.email_in_use.outro')}</mj-text>`,
-    });
+    return toMjml(EmailInUseView, { t: this.#t, user: this.#user });
   }
 }

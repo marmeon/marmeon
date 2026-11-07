@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { ResetPasswordView } from './ResetPasswordView.tsx';
 
 /**
  * The "forgot password" link — composed and queued by a job (SendPasswordResetLinkJob), so the answer does not tell
@@ -33,15 +34,6 @@ export class ResetPasswordMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    // Texts and values are escaped by mjml`…` — a name like "<b>" arrives as text.
-    return layout(t, {
-      preview: t.get('auth.mail.reset.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get('auth.mail.reset.intro')}</mj-text>
-        <mj-button href="${this.#url}">${t.get('auth.mail.reset.button')}</mj-button>
-        <mj-text>${t.get('auth.mail.reset.outro', { minutes: this.#minutes })}</mj-text>`,
-    });
+    return toMjml(ResetPasswordView, { t: this.#t, user: this.#user, url: this.#url, minutes: this.#minutes });
   }
 }

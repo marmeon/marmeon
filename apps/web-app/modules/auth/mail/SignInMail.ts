@@ -1,9 +1,9 @@
-import { describeDevice } from '@marmeon/auth';
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { SignInView } from './SignInView.tsx';
 import type { User } from '../users.ts';
 
 /** What happened to the account's sign-ins. */
@@ -42,23 +42,6 @@ export class SignInMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    const { at, ip, userAgent, sessionsEnded } = this.#notice;
-    const key = `auth.mail.sign_in.${this.#notice.kind}` as const;
-    const { browser, system } = describeDevice(userAgent ?? undefined);
-    // In UTC: a worker has no time zone of the user's.
-    const when = `${t.format.date(at, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`;
-    const device = browser && system ? t.get(`${key}.device`, { browser, system }) : (browser ?? system);
-    // Only what is known is said, like the address of the failed second factor.
-    const from = ip === null ? '' : t.get(`${key}.from`, { ip });
-    const using = device === undefined ? '' : t.get(`${key}.with`, { device });
-    return layout(t, {
-      preview: t.get(`${key}.preview`),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get(`${key}.intro`)} ${t.get(sessionsEnded ? `${key}.ended` : `${key}.not_ended`)}</mj-text>
-        <mj-text>${t.get(`${key}.details`, { at: when, from, with: using })}</mj-text>
-        <mj-text>${t.get(sessionsEnded ? `${key}.outro` : `${key}.outro_not_ended`)}</mj-text>`,
-    });
+    return toMjml(SignInView, { t: this.#t, user: this.#user, notice: this.#notice });
   }
 }

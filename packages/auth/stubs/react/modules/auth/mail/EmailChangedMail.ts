@@ -1,8 +1,9 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
-import { greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
+import { recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { EmailChangedView } from './EmailChangedView.tsx';
 
 /**
  * To the old address when the address changes — if it was not you, you learn about it. In the user's language. `name` is `null` where
@@ -32,13 +33,6 @@ export class EmailChangedMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.email_changed.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, this.#name)}</mj-text>
-        <mj-text>${t.get('auth.mail.email_changed.intro', { email: this.#newEmail })}</mj-text>
-        <mj-text>${t.get('auth.mail.email_changed.outro')}</mj-text>`,
-    });
+    return toMjml(EmailChangedView, { t: this.#t, name: this.#name, email: this.#newEmail });
   }
 }

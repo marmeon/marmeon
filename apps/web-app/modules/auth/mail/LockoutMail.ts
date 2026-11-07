@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { LockoutView } from './LockoutView.tsx';
 
 /**
  * To the owner when the account stopped taking passwords after too many failed sign-ins in a day. Who guessed is not known; the
@@ -33,15 +34,6 @@ export class LockoutMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.lockout.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get('auth.mail.lockout.intro')}</mj-text>
-        <mj-button href="${this.#forgot}">${t.get('auth.mail.lockout.button')}</mj-button>
-        <mj-text>${t.get('auth.mail.lockout.passkey')} <a href="${this.#login}">${this.#login}</a></mj-text>
-        <mj-text>${t.get('auth.mail.lockout.outro')}</mj-text>`,
-    });
+    return toMjml(LockoutView, { t: this.#t, user: this.#user, forgot: this.#forgot, login: this.#login });
   }
 }

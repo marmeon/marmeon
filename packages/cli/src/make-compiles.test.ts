@@ -207,20 +207,33 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     rmSync(join(app, 'modules/billing/packages.ts'));
   }, 30_000);
 
-  it('generates a mail that compiles against the starter kit\'s layout', () => {
+  it('generates a mail that compiles and renders against the starter kit\'s frame', async () => {
+    const manifest = readFileSync(join(app, 'package.json'), 'utf8');
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ ...JSON.parse(manifest), dependencies: { ...JSON.parse(manifest).dependencies, '@marmeon/react': 'workspace:*' }, devDependencies: { 'oxc-transform': '^0.157.0' } }));
     mkdirSync(join(app, 'modules/kitmail/mail'), { recursive: true });
     writeFileSync(join(app, 'modules/kitmail/index.ts'), "import { defineModule } from '@marmeon/core';\nexport default defineModule({ name: 'kitmail' });\n");
-    // The kit's frame takes the translator, a preview and a body, and finds the app's name itself.
+    // The kit's frame is a component of the translator, a preview and the body as children.
     // Its footer reads a message of the kit's own lang files, which this app does not have: a literal stands in.
-    const kitLayout = readFileSync(join(repo, 'packages/auth/stubs/react/modules/auth/mail/layout.ts'), 'utf8').replace("t.get('auth.mail.app')", "'Shop'");
-    writeFileSync(join(app, 'modules/kitmail/mail/layout.ts'), kitLayout);
+    const kitFrame = readFileSync(join(repo, 'packages/auth/stubs/react/modules/auth/mail/Layout.tsx'), 'utf8').replace("t.get('auth.mail.app')", "'Shop'");
+    expect(kitFrame).toContain("'Shop'");
+    writeFileSync(join(app, 'modules/kitmail/mail/Layout.tsx'), kitFrame);
     const made = marmeon(app, ['make:mail', 'Welcome', '--module=kitmail']);
     expect([made.code, made.stderr]).toEqual([0, '']);
-    expect(made.stdout).not.toContain('Created modules/kitmail/mail/layout.ts');
-    expect(readFileSync(join(app, 'modules/kitmail/mail/layout.ts'), 'utf8')).toBe(kitLayout);
+    expect(made.stdout).not.toContain('Created modules/kitmail/mail/Layout.tsx');
+    expect(readFileSync(join(app, 'modules/kitmail/mail/Layout.tsx'), 'utf8')).toBe(kitFrame);
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
+
+    writeFileSync(join(app, 'modules/kitmail/packages.ts'), "export { fromMjml } from '@marmeon/mail';\n");
+    const { fromMjml } = (await import(join(app, 'modules/kitmail/packages.ts'))) as { fromMjml: (content: unknown) => Promise<{ html: string; text: string }> };
+    const { WelcomeMail } = (await import(join(app, 'modules/kitmail/mail/WelcomeMail.ts'))) as { WelcomeMail: new (to: unknown, t: unknown) => Mailable };
+    const { html } = await fromMjml(await new WelcomeMail({ address: 'ada@example.com', name: '<b>Ada</b>' }, { locale: 'de' }).content());
+    expect(html).toContain('<html lang="de"');
+    expect(html).toContain('Shop');
+    expect(html).toContain('&lt;b&gt;Ada&lt;/b&gt;');
+    expect(html).not.toContain('<b>Ada</b>');
+    writeFileSync(join(app, 'package.json'), manifest);
     rmSync(join(app, 'modules/kitmail'), { recursive: true });
   }, 30_000);
 

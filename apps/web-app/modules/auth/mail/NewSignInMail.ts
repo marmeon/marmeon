@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { NewSignInView } from './NewSignInView.tsx';
 
 /** What the mail says about a sign-in. */
 export interface SignIn {
@@ -37,18 +38,6 @@ export class NewSignInMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    const { at, ip, browser } = this.#signIn;
-    // In UTC: a worker has no time zone of the user's.
-    const when = t.format.date(at, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
-    return layout(t, {
-      preview: t.get('auth.mail.new_sign_in.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get('auth.mail.new_sign_in.intro', { app: t.get('app.name') })}</mj-text>
-        <mj-text>${t.get('auth.mail.new_sign_in.details', { at: `${when} UTC`, ip: ip ?? '—', browser: browser ?? '—' })}</mj-text>
-        <mj-text>${t.get('auth.mail.new_sign_in.outro')}</mj-text>
-        <mj-button href="${this.#url}">${t.get('auth.mail.new_sign_in.button')}</mj-button>`,
-    });
+    return toMjml(NewSignInView, { t: this.#t, user: this.#user, signIn: this.#signIn, url: this.#url });
   }
 }

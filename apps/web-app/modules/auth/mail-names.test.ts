@@ -144,3 +144,22 @@ describe('the note to the old address after a change', () => {
     });
   });
 });
+
+describe('a name and a link in the views of the mails', () => {
+  it('arrive escaped in every mail to the account\'s own address: markup in the name is text, a quote cannot leave an attribute', async () => {
+    const hostile = '<img src=x> "q"';
+    const link = 'http://localhost/reset?token=a"onmouseover="x&email=ada%40example.com';
+    const user = await app.factory(UserFactory).create({ name: hostile, email: 'ada@example.com' });
+    const t = app.make(Translators).for('en');
+    const list = ownMails(user, t);
+    for (const mail of list) {
+      const { html } = await app.make(Mailer).send(mail);
+      expect(html, mail.constructor.name).not.toContain('<img src=x>');
+      expect(html, mail.constructor.name).toContain('&lt;img src=x&gt;');
+      expect(html, mail.constructor.name).toContain('&quot;q&quot;');
+    }
+    const { html } = await app.make(Mailer).send(new ResetPasswordMail(user, link, 60, t));
+    expect(html).not.toContain('"onmouseover="');
+    expect(html).toMatch(/href="http:\/\/localhost\/reset\?token=a&quot;onmouseover=&quot;x&amp;email=ada%40example\.com"/);
+  });
+});

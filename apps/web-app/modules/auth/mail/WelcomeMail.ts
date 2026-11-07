@@ -1,9 +1,10 @@
 import type { Translator } from '@marmeon/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+import type { Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
 import type { User } from '../users.ts';
-import { confirmedName, greeting, recipient } from './greeting.ts';
-import { layout } from './layout.ts';
+import { confirmedName, recipient } from './greeting.ts';
 import { previewData } from './preview-data.ts';
+import { WelcomeView } from './WelcomeView.tsx';
 
 /** After registration, from the queue: hello, and where to start — in the user's language. */
 export class WelcomeMail implements Mailable {
@@ -28,14 +29,6 @@ export class WelcomeMail implements Mailable {
   }
 
   content() {
-    const t = this.#t;
-    return layout(t, {
-      preview: t.get('auth.mail.welcome.preview'),
-      body: mjml`
-        <mj-text>${greeting(t, confirmedName(this.#user))}</mj-text>
-        <mj-text>${t.get('auth.mail.welcome.intro', { app: t.get('app.name') })}</mj-text>
-        <mj-button href="${this.#url}">${t.get('auth.mail.welcome.button')}</mj-button>
-        <mj-text>${t.get('auth.mail.welcome.outro')}</mj-text>`,
-    });
+    return toMjml(WelcomeView, { t: this.#t, user: this.#user, url: this.#url });
   }
 }
