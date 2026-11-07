@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { CHAIN, mistakeLine } from './chain.ts';
 import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
 import { SNIPPETS } from './snippets.ts';
 
@@ -54,7 +55,10 @@ describe('the landing page', () => {
     expect(body.match(/<li class="principle"/g)).toHaveLength(7);
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
     expect(body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="modules-title"')).match(/<h3>/g)).toHaveLength(7);
-    for (const mistake of ['user_ud', 'ctx.params.nte', 'notes.indx', 'note.titel', 'form.errors.titel']) expect(body).toContain(mistake);
+    const mistakes = CHAIN.map(mistakeLine);
+    expect(mistakes).toHaveLength(7);
+    // The page escapes the quotes and angle brackets of the lines it shows.
+    for (const mistake of mistakes) expect(body).toContain(mistake.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("'", '&#x27;').replaceAll('"', '&quot;'));
   });
 
   it('says who Marmeon is for: four situations, each with a link to its proof, and who it does not fit', async () => {

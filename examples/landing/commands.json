@@ -1,0 +1,4 @@
+{
+  "beforeCopy": [],
+  "afterCopy": ["marmeon route:types"]
+}

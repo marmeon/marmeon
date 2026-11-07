@@ -1,5 +1,6 @@
 import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
+import { CHAIN, mistakeLine } from '../../chain.ts';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { ChainStep } from '../ChainStep.tsx';
 import { CodeBlock } from '../CodeBlock.tsx';
@@ -21,6 +22,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={1}
             title="Migration"
+            mistake={mistakeLine(CHAIN[0]!)}
             where={
               <>
                 <code>modules/notes/migrations/</code>
@@ -35,6 +37,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={2}
             title="Table type"
+            mistake={mistakeLine(CHAIN[1]!)}
             where={
               <>
                 <code>Row&lt;'notes'&gt;</code>
@@ -49,7 +52,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={3}
             title="Repository"
-            mistake=".where('user_ud', '=', userId)"
+            mistake={mistakeLine(CHAIN[2]!)}
             where={
               <>
                 <code>NoteRepository.ts</code>
@@ -64,7 +67,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={4}
             title="Controller"
-            mistake="{ note: ctx.params.nte }"
+            mistake={mistakeLine(CHAIN[3]!)}
             where={
               <>
                 <code>ShowNoteController.ts</code>
@@ -79,7 +82,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={5}
             title="Route name"
-            mistake='<Link route="notes.indx">'
+            mistake={mistakeLine(CHAIN[4]!)}
             where={
               <>
                 <code>routes.ts</code>
@@ -95,7 +98,7 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={6}
             title="Page props"
-            mistake="<h1>{note.titel}</h1>"
+            mistake={mistakeLine(CHAIN[5]!)}
             where={
               <>
                 <code>views/Show.tsx</code>
@@ -110,10 +113,10 @@ export function ChainSection({ snippets }: Pick<PageProps<ShowLandingController>
           <ChainStep
             number={7}
             title="Form error"
-            mistake="form.errors.titel"
+            mistake={mistakeLine(CHAIN[6]!)}
             where={
               <>
-                <code>views/Edit.tsx</code>
+                <code>views/Form.tsx</code>
                 <p>
                   The form knows its method, URL and field types from the route name, so its errors are typed too. <Link href="/docs/forms">Forms</Link>
                 </p>

@@ -15,7 +15,7 @@ export interface SourceFile {
 export interface OxcParser {
   parseSync(filename: string, text: string): {
     program: unknown;
-    comments: readonly { type: string; value: string; start: number }[];
+    comments: readonly { type: string; value: string; start: number; end: number }[];
     errors: readonly { message: string }[];
   };
 }
