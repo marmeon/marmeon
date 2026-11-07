@@ -111,6 +111,10 @@ An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `era
   that changes it comes only in a Marmeon major version, with an entry in the [upgrade guide](../UPGRADING.md). An update an app
   does not notice comes in a minor version, with a `Low` entry there. Security fixes of Kysely are taken into every supported
   line. Which version that is: [database](database.md#kysely-and-its-version).
+- **`@faire/mjml-react`**: the components of `@marmeon/react/mail` stand on it, in an exact version that is a dependency of
+  `@marmeon/react`. You never install or import it. The promise covers the API of `@marmeon/react/mail`: the names of its components,
+  their prop types, their checks and what `toMjml` returns. The library under them may be updated, forked or replaced in a minor
+  version when an app notices nothing. See [mail](mail.md#the-library-under-the-components).
 
 ## What is public API
 

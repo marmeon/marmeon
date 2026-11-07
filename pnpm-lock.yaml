@@ -420,6 +420,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.5(@types/node@26.6.6))
+      oxc-transform:
+        specifier: ^0.157.0
+        version: 0.157.0
       oxlint:
         specifier: ^1.90.0
         version: 1.90.0
@@ -937,6 +940,9 @@ importers:
 
   packages/react:
     dependencies:
+      '@faire/mjml-react':
+        specifier: 4.0.1
+        version: 4.0.1(mjml@5.4.1(svgo@4.1.0)(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@marmeon/http':
         specifier: workspace:*
         version: link:../http
@@ -944,6 +950,9 @@ importers:
       '@marmeon/i18n':
         specifier: workspace:*
         version: link:../i18n
+      '@marmeon/mail':
+        specifier: workspace:*
+        version: link:../mail
       '@marmeon/table':
         specifier: workspace:*
         version: link:../table
@@ -959,6 +968,9 @@ importers:
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4
+      mjml:
+        specifier: ^5.4.1
+        version: 5.4.1(svgo@4.1.0)(typescript@7.0.2)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -1389,6 +1401,13 @@ packages:
   '@eslint/plugin-kit@0.7.3':
     resolution: {integrity: sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@faire/mjml-react@4.0.1':
+    resolution: {integrity: sha512-rCTgYNeA2JmAGB+XCx90mRU71GlPKXxfO84rzXDYTPkOQvljLHbcNy7sbKKBN2jQSiB8x637ypg2uN4ukVkBRQ==}
+    peerDependencies:
+      mjml: ^5.0.0
+      react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   '@fontsource-variable/ibm-plex-sans@5.3.0':
     resolution: {integrity: sha512-agG8tXFEo0hD9+J7npa4vbbWult52eMLVaQ6WQRlhs/iCAojrMAoejru85W9HTVXHfyUj96KM7gp/KGAS87XaQ==}
@@ -3317,6 +3336,9 @@ packages:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
 
+  lodash.kebabcase@4.1.1:
+    resolution: {integrity: sha512-N8XRTIMMqqDgSy4VLKPnJ/+hpGZN+PHQiJnSenYqPaVV/NCqEogTnAdZLQiGKhxX+JCs8waWq2t1XHWKOmlY8g==}
+
   lodash.memoize@4.1.2:
     resolution: {integrity: sha512-t7j+NzmgnQzTAYXcsHYLgimltOV1MXHtlOWf6GjL9Kj8GK5FInw5JotxvbOs+IvV1/Dzo04/fCGfLVs7aXb4Ag==}
 
@@ -4655,6 +4677,13 @@ snapshots:
     dependencies:
       '@eslint/core': 1.2.1
       levn: 0.4.1
+
+  '@faire/mjml-react@4.0.1(mjml@5.4.1(svgo@4.1.0)(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      lodash.kebabcase: 4.1.1
+      mjml: 5.4.1(svgo@4.1.0)(typescript@7.0.2)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   '@fontsource-variable/ibm-plex-sans@5.3.0': {}
 
@@ -6267,6 +6296,8 @@ snapshots:
   locate-path@6.0.0:
     dependencies:
       p-locate: 5.0.0
+
+  lodash.kebabcase@4.1.1: {}
 
   lodash.memoize@4.1.2: {}
 

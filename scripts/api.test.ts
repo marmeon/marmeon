@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FOREIGN_TYPES, foreignPackage, internalProblems, memberProblems, memberStatus, memberUsage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems, staleHiddenInApi } from './api.ts';
+import { IMPLEMENTATION_IMPORTERS, IMPLEMENTATION_ONLY, implementationProblems } from './api-implementation.ts';
 import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
 import { SAME_VALUE } from './api-names.ts';
 import { SPAN_EXCEPTIONS } from './api-spans.ts';
@@ -463,6 +464,68 @@ describe('pnpm api:check', () => {
     expect((await runApi(root)).code).toBe(1);
     expect((await runApi(root, { write: true, allowed: { demo: ['hono'] } })).code).toBe(0);
     expect((await runApi(root, { allowed: { demo: ['hono'] } })).code).toBe(0);
+  });
+});
+
+describe('libraries for the implementation only', () => {
+  const LISTS = { only: { '@marmeon/demo': ['some-lib'] }, importers: { '@marmeon/demo': ['packages/demo/src/adapter.ts'] } };
+  const packages = (dir: string) => [{ name: '@marmeon/demo', short: 'demo', dir }];
+  const check = (files: Record<string, string>, sources: Record<string, string> = {}, apiMd?: string) => {
+    const { dir } = demo(files);
+    if (apiMd !== undefined) writeFileSync(join(dir, 'api.md'), apiMd);
+    return implementationProblems(packages(dir), Object.entries(sources).map(([path, text]) => ({ path, text })), LISTS);
+  };
+
+  it('accepts declarations that do not name the library, and its adapter importing it', () => {
+    expect(check({ 'index.d.ts': 'export declare const a: 1;\n' }, { 'packages/demo/src/adapter.ts': "import { x } from 'some-lib';" })).toEqual([]);
+  });
+
+  it('refuses a declaration file that imports it, re-exports it or names it in import(), also one no entry point reaches', () => {
+    for (const text of ["import type { X } from 'some-lib';\nexport declare const a: X;\n", "export type { X } from 'some-lib/deep';\n", "export declare const a: import('some-lib').X;\n"]) {
+      expect(check({ 'index.d.ts': 'export declare const b: 1;\n', 'inner/hidden.d.ts': text })).toEqual([
+        '@marmeon/demo: packages/demo/dist/inner/hidden.d.ts names some-lib, which is for the implementation only — no name or type of it may be public',
+      ]);
+    }
+  });
+
+  it('refuses a snapshot that lists it under "Types from other packages"', () => {
+    const problems = check({ 'index.d.ts': 'export declare const a: 1;\n' }, {}, '## @marmeon/demo\n\nTypes from other packages: `react`, `some-lib`\n');
+    expect(problems).toEqual(['@marmeon/demo: packages/demo/api.md lists some-lib under "Types from other packages" — it is for the implementation only']);
+  });
+
+  it('refuses a source file of the package, other than its adapter, that imports it — a test and a re-export too', () => {
+    const problems = check(
+      { 'index.d.ts': 'export declare const a: 1;\n' },
+      {
+        'packages/demo/src/other.ts': "import { x } from 'some-lib';",
+        'packages/demo/src/more.ts': "export { y } from 'some-lib/deep';",
+        'packages/demo/src/more.test.ts': "const lib = await import('some-lib');",
+        'packages/elsewhere/src/free.ts': "import { x } from 'some-lib';",
+      },
+    );
+    expect(problems.sort()).toEqual([
+      'packages/demo/src/more.test.ts imports some-lib, which only packages/demo/src/adapter.ts may — the rest of @marmeon/demo goes through that adapter',
+      'packages/demo/src/more.ts imports some-lib, which only packages/demo/src/adapter.ts may — the rest of @marmeon/demo goes through that adapter',
+      'packages/demo/src/other.ts imports some-lib, which only packages/demo/src/adapter.ts may — the rest of @marmeon/demo goes through that adapter',
+    ]);
+  });
+
+  it('fails pnpm api:check on it, and passes without it', async () => {
+    const { root } = demo({ 'index.d.ts': 'export declare const a: 1;\n' });
+    await runApi(root, { write: true });
+    const run = (extra: Parameters<typeof runApi>[1] = {}) => runApi(root, { implementation: LISTS, ...extra });
+    expect((await run()).code).toBe(0);
+    writeFileSync(join(root, 'packages/demo/dist/index.d.ts'), "import type { X } from 'some-lib';\nexport declare const a: X;\n");
+    const result = await run({ allowed: { demo: ['some-lib'] } });
+    expect(result.lines.join('\n')).toContain('implementation only:');
+    expect(result.lines.join('\n')).toContain('packages/demo/dist/index.d.ts names some-lib');
+    expect(result.code).toBe(1);
+  });
+
+  it('lists packages and adapters that exist', () => {
+    const live = new Set(frameworkPackages(repository).map((pkg) => pkg.name));
+    expect(Object.keys(IMPLEMENTATION_ONLY).filter((name) => !live.has(name))).toEqual([]);
+    for (const files of Object.values(IMPLEMENTATION_IMPORTERS)) for (const file of files) expect(existsSync(join(repository, file)), file).toBe(true);
   });
 });
 
