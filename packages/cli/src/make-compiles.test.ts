@@ -249,6 +249,51 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     rmSync(join(app, 'modules/shared'), { recursive: true });
   }, 30_000);
 
+  it('generates a mail with a React view, in its own frame and in the frame another module exports, that compiles and renders', async () => {
+    const manifest = readFileSync(join(app, 'package.json'), 'utf8');
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ ...JSON.parse(manifest), imports: { '#modules/*': './modules/*/index.ts' }, dependencies: { ...JSON.parse(manifest).dependencies, '@marmeon/react': 'workspace:*' }, devDependencies: { 'oxc-transform': '^0.157.0' } }),
+    );
+    for (const module of ['views', 'ui', 'bodies', 'shared']) {
+      mkdirSync(join(app, 'modules', module), { recursive: true });
+      writeFileSync(join(app, 'modules', module, 'index.ts'), `import { defineModule } from '@marmeon/core';\n${module === 'ui' ? "export { Layout } from './mail/Layout.tsx';\n" : ''}export default defineModule({ name: '${module}' });\n`);
+    }
+    const made = marmeon(app, ['make:mail', 'Welcome', '--module=views']);
+    expect([made.code, made.stderr]).toEqual([0, '']);
+    expect(made.stdout).toContain('Created modules/views/mail/WelcomeView.tsx');
+    expect(made.stdout).toContain('Created modules/views/mail/Layout.tsx');
+    expect(marmeon(app, ['make:mail', 'Frame', '--module=ui']).code).toBe(0);
+    const shared = marmeon(app, ['make:mail', 'Receipt', '--module=shared', '--layout=ui']);
+    expect([shared.code, shared.stderr]).toEqual([0, '']);
+    expect(existsSync(join(app, 'modules/shared/mail/Layout.tsx'))).toBe(false);
+    // A module with a template frame (written by --template): the view is the body, the class nests it.
+    expect(marmeon(app, ['make:mail', 'Notice', '--module=bodies', '--template']).code).toBe(0);
+    const body = marmeon(app, ['make:mail', 'Digest', '--module=bodies']);
+    expect([body.code, body.stderr]).toEqual([0, '']);
+    expect(marmeon(app, ['make:mail', 'Plain', '--module=bodies', '--html']).code).toBe(0);
+
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+
+    // The app's own copies of the packages, so the keys are the ones the generated files import.
+    writeFileSync(join(app, 'modules/views/packages.ts'), "export { fromMjml } from '@marmeon/mail';\n");
+    const { fromMjml } = (await import(join(app, 'modules/views/packages.ts'))) as { fromMjml: (content: unknown) => Promise<{ html: string; text: string }> };
+    const translator = { locale: 'de' };
+    for (const [module, mailName] of [['views', 'WelcomeMail'], ['shared', 'ReceiptMail'], ['bodies', 'DigestMail']] as const) {
+      const loaded = (await import(join(app, `modules/${module}/mail/${mailName}.ts`))) as Record<string, new (to: unknown, t: unknown) => Mailable>;
+      const mail = new loaded[mailName]!({ address: 'ada@example.com', name: '<b>Ada</b>' }, translator);
+      const { html } = await fromMjml(await mail.content());
+      expect(html).toContain('&lt;b&gt;Ada&lt;/b&gt;');
+      expect(html).not.toContain('<b>Ada</b>');
+      expect(html).toContain('This is the text of ');
+      expect(html).toContain('<html lang="de"');
+    }
+    writeFileSync(join(app, 'package.json'), manifest);
+    for (const module of ['views', 'ui', 'bodies', 'shared']) rmSync(join(app, 'modules', module), { recursive: true });
+  }, 30_000);
+
   it('generates a policy that lets the owner in and answers everyone else with a 404', async () => {
     // The Gate comes through the app's own resolution, so it is the module instance the policy's answers belong to.
     writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");

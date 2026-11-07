@@ -418,16 +418,21 @@ export class MakeNotificationCommand {
 
 export class MakeMailCommand {
   static command = 'make:mail';
-  static description = 'Create a mail (envelope(), content() in the app\'s layout and a static preview()); the layout too, once';
-  static usage = '<Name> --module=<module> [--layout=<module>]';
-  static options = { ...moduleOption, layout: { type: 'string' } } as const;
+  static description = 'Create a mail (envelope(), content() in the app\'s layout and a static preview()); with a React view in an app that has @marmeon/react';
+  static usage = '<Name> --module=<module> [--layout=<module>] [--template | --html]';
+  static options = { ...moduleOption, layout: { type: 'string' }, template: { type: 'boolean' }, html: { type: 'boolean' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
     const dir = moduleDir(input);
     const name = className(input, 'Mail');
     if (!dir || !name) return 1;
-    const shared = sharedLayoutModule(input);
+    if (input.options.html === true && (input.options.layout !== undefined || input.options.template === true)) {
+      throw new CommandArgumentsError('--html writes a mail without a frame: it cannot be combined with --layout or --template');
+    }
+    // A React view when the app has the adapter, the template (MJML without React) when it has not or --template says so.
+    const kind = input.options.html === true ? 'html' : input.options.template === true || !dependsOn(input.root, '@marmeon/react') ? 'template' : 'react';
+    const shared = sharedLayoutModule(input, kind === 'react');
     if (shared === null) return 1;
     for (const [name, why] of [['@marmeon/mail', 'A mail is sent by the Mailer of'], ['@marmeon/i18n', 'A mail speaks the language of its recipient with the Translators of']] as const) {
       if (!dependsOn(input.root, name)) {
@@ -436,24 +441,57 @@ export class MakeMailCommand {
       }
     }
     const module = input.options.module as string;
-    // The mail goes first: when it exists and is not overwritten, nothing else is written either.
-    if (!write(input, join(dir, 'mail', `${name}.ts`), MAIL(name, shared === undefined ? './layout.ts' : `#modules/${shared}`))) return 1;
+    const mailDir = join(dir, 'mail');
+    const file = join(mailDir, `${name}.ts`);
+    if (kind === 'html') {
+      if (!write(input, file, MAIL_HTML(name))) return 1;
+    } else if (kind === 'template') {
+      // The mail goes first: when it exists and is not overwritten, nothing else is written either.
+      if (!write(input, file, MAIL(name, shared === undefined ? './layout.ts' : `#modules/${shared.module}`))) return 1;
+    } else {
+      const view = `${name.slice(0, -'Mail'.length)}View`;
+      const viewFile = join(mailDir, `${view}.tsx`);
+      // Both files are checked first, so a mail that is there is never left with a view of the new one.
+      for (const existing of [file, viewFile]) {
+        if (input.options.force !== true && existsSync(existing)) {
+          input.output.error(`${relative(input.root, existing)} already exists (use --force to overwrite).`);
+          return 1;
+        }
+      }
+      // The frame as the module has it: a `Layout.tsx` is a component the view wraps itself in; a template `layout.ts` a function
+      // the class nests the view's body into. A module without either gets the component.
+      const own = existsSync(join(mailDir, 'Layout.tsx')) ? 'component' : existsSync(join(mailDir, 'layout.ts')) ? 'function' : undefined;
+      const frame = shared ?? { module: undefined, kind: own ?? 'component' };
+      // The guards of every file this writes run before the first of them is written.
+      const frameFile = join(mailDir, frame.kind === 'component' ? 'Layout.tsx' : 'layout.ts');
+      const files = shared === undefined && own === undefined ? [file, viewFile, frameFile] : [file, viewFile];
+      if (leavesProject(input, files) || (input.options.force === true && refusesOverwrite(input, files))) return 1;
+      const from = shared === undefined ? (frame.kind === 'component' ? './Layout.tsx' : './layout.ts') : `#modules/${shared.module}`;
+      if (!write(input, file, MAIL_CLASS_VIEW(name, view, frame.kind === 'function' ? from : undefined))) return 1;
+      if (!write(input, viewFile, frame.kind === 'function' ? MAIL_VIEW_BODY(name, view) : MAIL_VIEW(name, view, from))) return 1;
+      if (!dependsOn(input.root, 'oxc-transform')) {
+        input.output.warn('Mail views are compiled by oxc-transform, which this app does not list: pnpm add -D oxc-transform');
+      }
+    }
     if (shared !== undefined) {
-      const exported = exportsName(join(input.root, 'modules', shared, 'index.ts'), 'layout');
+      const exportName = shared.kind === 'component' ? 'Layout' : 'layout';
+      const line = shared.kind === 'component' ? "  export { Layout } from './mail/Layout.tsx';" : "  export { layout } from './mail/layout.ts';";
+      const exported = exportsName(join(input.root, 'modules', shared.module, 'index.ts'), exportName);
       if (exported === 'unparsable') {
         input.output.line();
-        input.output.warn(`modules/${shared}/index.ts does not parse; check that it exports layout:`);
-        input.output.line(style('dim', "  export { layout } from './mail/layout.ts';"));
+        input.output.warn(`modules/${shared.module}/index.ts does not parse; check that it exports ${exportName}:`);
+        input.output.line(style('dim', line));
       } else if (exported === 'missing') {
         input.output.line();
-        input.output.warn(`modules/${shared}/index.ts does not export layout. Add it yourself:`);
-        input.output.line(style('dim', "  export { layout } from './mail/layout.ts';"));
+        input.output.warn(`modules/${shared.module}/index.ts does not export ${exportName}. Add it yourself:`);
+        input.output.line(style('dim', line));
       }
-    } else {
+    } else if (kind !== 'html') {
       // The layout belongs to the app, not to the mail: a layout that is there stays, even with --force.
-      const layout = join(dir, 'mail', 'layout.ts');
+      const component = kind === 'react' && (existsSync(join(mailDir, 'Layout.tsx')) || !existsSync(join(mailDir, 'layout.ts')));
+      const layout = join(mailDir, component ? 'Layout.tsx' : 'layout.ts');
       if (existsSync(layout)) input.output.line(style('dim', `Using ${relative(input.root, layout)}`));
-      else if (!write(input, layout, MAIL_LAYOUT)) return 1;
+      else if (!write(input, layout, component ? MAIL_LAYOUT_COMPONENT : MAIL_LAYOUT)) return 1;
     }
     input.output.line(style('dim', `Preview it in development: /_marmeon/mail/${module}/${name}`));
     input.output.line(style('dim', `Send it: await mailer.send(new ${name}({ address: user.email, name: user.name }, translators.for(user.locale)));   (Mailer from @marmeon/mail, Translators from @marmeon/i18n)`));
@@ -462,11 +500,17 @@ export class MakeMailCommand {
   }
 }
 
+/** A frame another module exports: a React component (`Layout.tsx`) or a function over a template (`layout.ts`). */
+interface SharedLayout {
+  readonly module: string;
+  readonly kind: 'component' | 'function';
+}
+
 /**
  * The module named by `--layout` whose frame the mail imports, `undefined` without the option (or when it names the mail's own
- * module), `null` after an error — checked before anything is written.
+ * module), `null` after an error — checked before anything is written. A React view takes either kind of frame, preferring the component.
  */
-function sharedLayoutModule(input: CommandInput): string | undefined | null {
+function sharedLayoutModule(input: CommandInput, react: boolean): SharedLayout | undefined | null {
   const shared = input.options.layout;
   if (shared === undefined) return undefined;
   if (typeof shared !== 'string' || !KEBAB.test(shared)) throw new CommandArgumentsError('Pass the module of the frame: --layout=<kebab-case-name>');
@@ -476,11 +520,14 @@ function sharedLayoutModule(input: CommandInput): string | undefined | null {
     input.output.error(`Module "${shared}" does not exist, so there is no frame to import. Create it first: marmeon make:module ${shared}`);
     return null;
   }
-  if (!existsSync(join(dir, 'mail', 'layout.ts')) && exportsName(join(dir, 'index.ts'), 'layout') !== 'exported') {
-    input.output.error(`Module "${shared}" has no frame: marmeon make:mail <Mail> --module=${shared} writes the frame there first.`);
-    return null;
-  }
-  return shared;
+  const entry = join(dir, 'index.ts');
+  // The files of the module's mail/ decide; the entry's exports only when neither is there (`Layout` is also a common page's name).
+  if (react && existsSync(join(dir, 'mail', 'Layout.tsx'))) return { module: shared, kind: 'component' };
+  if (existsSync(join(dir, 'mail', 'layout.ts'))) return { module: shared, kind: 'function' };
+  if (react && exportsName(entry, 'Layout') === 'exported') return { module: shared, kind: 'component' };
+  if (exportsName(entry, 'layout') === 'exported') return { module: shared, kind: 'function' };
+  input.output.error(`Module "${shared}" has no frame: marmeon make:mail <Mail> --module=${shared} writes the frame there first.`);
+  return null;
 }
 
 /** Whether a file exports `name` as a value. Type-only exports do not count, and `export *` is not followed: it counts as missing, and the generator prints the line to add. */
@@ -980,6 +1027,157 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
     </mj-section>
   </mj-body>
 </mjml>\`;
+}
+`;
+
+/** The class of a mail whose body is a React view. With `layoutFrom` the module has a template `layout()`, and the class nests the view's body into it. */
+const MAIL_CLASS_VIEW = (name: string, view: string, layoutFrom: string | undefined) => `import { Translators, type Translator } from '@marmeon/i18n';
+import type { Address, Mailable, MailPreviewContext } from '@marmeon/mail';
+import { toMjml } from '@marmeon/react/mail';
+${layoutFrom === undefined ? '' : `import { layout } from '${layoutFrom}';\n`}import { ${view} } from './${view}.tsx';
+
+/**
+ * A mail: \`envelope()\` says to whom and about what, \`content()\` renders the view \`${view}.tsx\`. \`t\` speaks the
+ * recipient's language — \`translators.for(user.locale)\`, not the request's.
+ * Send it with \`mailer.send(new ${name}(…))\`, or \`mailer.queue(…)\` from a request.
+ */
+export class ${name} implements Mailable {
+  readonly #to: Address;
+  readonly #t: Translator;
+
+  constructor(to: Address, t: Translator) {
+    this.#to = to;
+    this.#t = t;
+  }
+
+  /** The preview (\`/_marmeon/mail/<module>/${name}\`, development only), with sample data: nothing is stored. */
+  static preview({ make, locale }: MailPreviewContext): ${name} {
+    return new ${name}({ address: 'ada@example.com', name: 'Ada Lovelace' }, make(Translators).for(locale));
+  }
+
+  envelope() {
+    // Texts that differ by language: \`this.#t.get('<module>.mail.<name>.subject')\`, with the keys in lang/.
+    return { to: this.#to, subject: 'A message for you' };
+  }
+
+  content() {
+    const to = this.#to;
+    const name = typeof to === 'string' ? to : (to.name ?? to.address);
+${
+  layoutFrom === undefined
+    ? `    return toMjml(${view}, { t: this.#t, name });`
+    : `    return layout(this.#t, { preview: 'A message for you', body: toMjml(${view}, { name }) });`
+}
+  }
+}
+`;
+
+/** The view of a mail, inside the module's `Layout` component. React escapes the name. */
+const MAIL_VIEW = (name: string, view: string, layoutFrom: string) => `import type { Translator } from '@marmeon/i18n';
+import { MjmlText } from '@marmeon/react/mail';
+import { Layout } from '${layoutFrom}';
+
+export interface ${view}Props {
+  readonly t: Translator;
+  readonly name: string;
+}
+
+/** The body of \`${name}\`: a React component, rendered to MJML by \`toMjml\`. See docs/mail.md#mail-views-in-react. */
+export function ${view}({ t, name }: ${view}Props) {
+  return (
+    <Layout t={t} preview="A message for you">
+      <MjmlText>Hello {name},</MjmlText>
+      <MjmlText>This is the text of ${name}.</MjmlText>
+    </Layout>
+  );
+}
+`;
+
+/** The view for a module whose frame is a template `layout()`: only the tags inside `mj-body`, which the class nests into it. */
+const MAIL_VIEW_BODY = (name: string, view: string) => `import { MjmlText } from '@marmeon/react/mail';
+
+export interface ${view}Props {
+  readonly name: string;
+}
+
+/** The body of \`${name}\`, nested into the module's \`layout()\` by the class. See docs/mail.md#mail-views-in-react. */
+export function ${view}({ name }: ${view}Props) {
+  return (
+    <>
+      <MjmlText>Hello {name},</MjmlText>
+      <MjmlText>This is the text of ${name}.</MjmlText>
+    </>
+  );
+}
+`;
+
+const MAIL_LAYOUT_COMPONENT = `import type { Translator } from '@marmeon/i18n';
+import { MjmlAll, MjmlAttributes, MjmlBody, MjmlButton, MjmlColumn, MjmlDocument, MjmlHead, MjmlPreview, MjmlSection, MjmlText } from '@marmeon/react/mail';
+import type { ReactNode } from 'react';
+
+export interface LayoutProps {
+  readonly t: Translator;
+  /** The line a mail client shows next to the subject. */
+  readonly preview: string;
+  readonly children: ReactNode;
+}
+
+/**
+ * The frame of the app's mails — a component, so each view wraps its content in it. \`t\` speaks the recipient's language, which
+ * also goes into \`<mjml lang>\`. The mail loads no font and no image of someone else's host: serve what you add yourself.
+ * See docs/mail.md#writing-mails.
+ */
+export function Layout({ t, preview, children }: LayoutProps) {
+  return (
+    <MjmlDocument lang={t.locale}>
+      <MjmlHead>
+        <MjmlPreview>{preview}</MjmlPreview>
+        <MjmlAttributes>
+          <MjmlAll fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" />
+          <MjmlText fontSize={15} lineHeight="1.5" color="#1f2933" />
+          <MjmlButton backgroundColor="#1f2933" color="#ffffff" borderRadius={6} fontSize={15} />
+        </MjmlAttributes>
+      </MjmlHead>
+      <MjmlBody backgroundColor="#f4f5f7" width={560}>
+        <MjmlSection backgroundColor="#ffffff" padding={24}>
+          <MjmlColumn>{children}</MjmlColumn>
+        </MjmlSection>
+      </MjmlBody>
+    </MjmlDocument>
+  );
+}
+`;
+
+const MAIL_HTML = (name: string) => `import { Translators, type Translator } from '@marmeon/i18n';
+import { html, type Address, type Mailable, type MailPreviewContext } from '@marmeon/mail';
+
+/**
+ * A mail in plain HTML, with no frame. MJML — a React view or an \`mjml\` template — is the way to a mail that renders the same
+ * in Outlook; \`make:mail\` without \`--html\` writes it. \`t\` speaks the recipient's language — \`translators.for(user.locale)\`.
+ * Send it with \`mailer.send(new ${name}(…))\`, or \`mailer.queue(…)\` from a request.
+ */
+export class ${name} implements Mailable {
+  readonly #to: Address;
+  readonly #t: Translator;
+
+  constructor(to: Address, t: Translator) {
+    this.#to = to;
+    this.#t = t;
+  }
+
+  /** The preview (\`/_marmeon/mail/<module>/${name}\`, development only), with sample data: nothing is stored. */
+  static preview({ make, locale }: MailPreviewContext): ${name} {
+    return new ${name}({ address: 'ada@example.com', name: 'Ada Lovelace' }, make(Translators).for(locale));
+  }
+
+  envelope() {
+    return { to: this.#to, subject: 'A message for you' };
+  }
+
+  content() {
+    return html\`<p lang="\${this.#t.locale}">Hello,</p>
+<p>This is the text of ${name}.</p>\`;
+  }
 }
 `;
 

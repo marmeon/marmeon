@@ -100,13 +100,30 @@ do not control. Prefer port 465 with `MAIL_SECURE=true` where your provider offe
 
 ## Writing mails
 
-`make:mail` writes a mail class with a preview, and a frame for it when the module has none:
+`make:mail` writes a mail class with a preview, its view, and a frame for it when the module has none:
 
 ```sh
 pnpm marmeon make:mail NoteShared --module=notes
 ```
 
-It creates `modules/notes/mail/NoteSharedMail.ts` (`Mail` is added to the name) and `modules/notes/mail/layout.ts`, and never overwrites either: the mail needs `--force`, and a layout that is there stays. The class has the `envelope()`, a `content()` that nests its body into the layout and a `static preview()`; it takes the recipient and a translator for the recipient's language. A mail is found by its folder, so the module's `index.ts` stays as it is. The command needs `@marmeon/mail` and `@marmeon/i18n` in the app's dependencies; `/_marmeon/mail/notes/NoteSharedMail` previews the result in development.
+In an app with `@marmeon/react` it creates `modules/notes/mail/NoteSharedMail.ts` (`Mail` is added to the name), the view
+`NoteSharedView.tsx` and the frame `Layout.tsx`; without it, the mail and a template frame `layout.ts`. It never overwrites a file: the
+mail and the view need `--force` (and are written together or not at all), and a frame that is there stays. The class has the
+`envelope()`, a `content()` that renders the view and a `static preview()`; it takes the recipient and a translator for the
+recipient's language. A mail is found by its folder, so the module's `index.ts` stays as it is. The command needs `@marmeon/mail` and
+`@marmeon/i18n` in the app's dependencies, and, for a React view, `oxc-transform` as a development dependency (the command warns when it is
+missing); `/_marmeon/mail/notes/NoteSharedMail` previews the result in development.
+
+Three options choose the form:
+
+| Option | Writes |
+| --- | --- |
+| none | A React view and `Layout.tsx` in an app that has `@marmeon/react`, the template form otherwise. |
+| `--template` | The template form in any app: `` mjml`…` `` in the class and a template frame `mail/layout.ts`. |
+| `--html` | A class whose `content()` is `` html`…` ``, with no frame. It cannot be combined with `--layout` or `--template`. |
+
+When the module has a template `layout.ts` and no `Layout.tsx`, the view renders only the body and the class nests it,
+`layout(t, { preview, body: toMjml(NoteSharedView, props) })`; the template frame stays the module's frame.
 
 `envelope()` returns `to` and `subject`, and optionally `from`, `cc`, `bcc`, `replyTo` and `headers`. An address is a string,
 `'ada@example.com'`, or `{ address, name }`, and `to`, `cc` and `bcc` also take a list. Without `from`, the mail comes from
@@ -155,32 +172,36 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
 
 ### One frame for several modules
 
-`make:mail` writes a `mail/layout.ts` into every module it makes a mail for, as long as that module has none. An app whose modules
-all send mail would have as many frames as modules, and a change of the brand colour would be made in each. To share one, keep it in
-a module the others may import, such as `ui`, and export it through that module's entry:
+`make:mail` writes a frame into every module it makes a mail for, as long as that module has none: `mail/Layout.tsx` for a React
+view, `mail/layout.ts` for a template. An app whose modules all send mail would have as many frames as modules, and a change of the
+brand colour would be made in each. To share one, keep it in a module the others may import, such as `ui`, and export it through that
+module's entry:
 
 ```ts title="modules/ui/index.ts"
-export { layout } from './mail/layout.ts';
+export { Layout } from './mail/Layout.tsx';
 ```
 
-`modules/ui/mail/layout.ts` is the file shown above; `marmeon make:mail <Name> --module=ui` writes it. Then name that module when you
-make the mails of the others:
+`modules/ui/mail/Layout.tsx` is the component `marmeon make:mail <Name> --module=ui` writes: it takes `t`, a `preview` and the
+`children` the view puts into it. Then name that module when you make the mails of the others:
 
 ```sh
 pnpm marmeon make:mail NoteShared --module=notes --layout=ui
 ```
 
-It writes only the mail, and the mail imports the frame from the other module; `notes` gets no `mail/layout.ts`. The function has the
-same signature as the module's own, so nothing else in the mail changes:
+It writes only the mail and its view, and the view imports the frame from the other module; `notes` gets no frame of its own:
 
-```ts title="modules/notes/mail/NoteSharedMail.ts"
-import { layout } from '#modules/ui';
+```tsx title="modules/notes/mail/NoteSharedView.tsx"
+import { Layout } from '#modules/ui';
 ```
 
+A template frame is shared the same way, with `export { layout } from './mail/layout.ts';` in the entry: the mail then imports
+`layout` instead, and its view is the body (above). A module that has both is used through `Layout.tsx`.
+
 `--layout` takes the name of a module that exists; naming the mail's own module is the same as leaving the option out. The command
-does not search for "the" frame and remembers none: every mail names it. If `modules/ui/index.ts` does not export `layout`, the mail is
+does not search for "the" frame and remembers none: every mail names it. If `modules/ui/index.ts` does not export the frame, the mail is
 written anyway and the command prints the line above for you to add; it never edits another module's entry. If `ui` has no
-`mail/layout.ts` either, nothing is written and the command says to make a mail in `ui` first.
+`mail/Layout.tsx` or `mail/layout.ts` either, nothing is written and the command says to make a mail in `ui` first. With `--template`
+only a `layout.ts` counts as a frame.
 
 A mail class is found by its folder, so `modules/ui/mail/` is scanned for previews like any other, and a file with a function only
 adds none.
