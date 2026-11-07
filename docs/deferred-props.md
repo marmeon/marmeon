@@ -319,6 +319,7 @@ route's controller knows that it answers with `this.island()`. Build the `href` 
 a module registered. Never build it from the request (its query, parameters or body) or from content a user stored, since whoever controls the
 `href` chooses which `GET` route of your app runs for the visitor, with the visitor's cookies. The route's middleware and controller run first;
 only then does the server see that the route is no island. The island shows its `error`. Only the route's outcome reaches the page: `unauthorized` for a redirect or a 401, `forbidden` for a 403, or an error with its status and, for a JSON error, its `message`. A success that is no island becomes a 404 with nothing of its body.
+A route behind your own ETag middleware may answer a revalidation with a `304` that keeps the island's `x-marmeon-region: island` and `vary` headers: it passes unchanged, and the browser hands the island its cached answer. Compare the tag only after the route's other middleware and controller have run, so a visitor who lost access gets the refusal, not the cached island. A `304` without the island header is `unauthorized`, as a redirect is.
 Who may see an island is decided by the island's own route, and its `unauthorized` prop shows what a refusal leaves.
 
 An island embedded by `href` has no route name in the browser's route manifest, so the build cannot preload its view before the response

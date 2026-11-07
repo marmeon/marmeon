@@ -5,6 +5,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
+import type { Next } from '@marmeon/router';
 
 const ISLAND = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
 
@@ -26,7 +27,23 @@ describe('createHttpKernel — islands', async () => {
       container.singleton(Logger, () => new CollectingLogger());
     }
   }
+  /** An app's own ETag middleware: a fixed tag over the 200, a matching `If-None-Match` answered with a 304 that keeps the 200's headers. */
+  class ETagged {
+    async handle(ctx: HttpContext, next: Next<{}>) {
+      const response = await next();
+      if (response.status !== 200) return response;
+      const headers = new Headers(response.headers);
+      headers.set('etag', '"feed-v1"');
+      headers.set('cache-control', 'private, max-age=0, must-revalidate');
+      if (ctx.request.headers.get('if-none-match') === '"feed-v1"') {
+        await response.body?.cancel();
+        return new Response(null, { status: 304, headers });
+      }
+      return new Response(response.body, { status: 200, headers });
+    }
+  }
   const routes = openRoutes((Route) => {
+    Route.middleware(ETagged).get('/islands/etagged', () => island('dashboard/Feed', { items: ['a'] }));
     Route.get('/islands/feed', (ctx: HttpContext) =>
       island('dashboard/Feed', { items: merge(['a', 'b']), more: defer(() => ['later']), at: new URL(ctx.request.url).search }),
     );
@@ -81,6 +98,15 @@ describe('createHttpKernel — islands', async () => {
     // Its deferred props, by a partial reload of the island's component.
     const partial = await app.request('/islands/feed', { headers: { ...ISLAND, 'x-marmeon-partial-component': 'dashboard/Feed', 'x-marmeon-partial-data': 'more' } });
     expect((await json(partial)).props).toEqual({ more: ['later'] });
+  });
+
+  it('an island behind an ETag middleware revalidates: its 304 passes with the island header, not as an outcome', async () => {
+    const first = await app.request('/islands/etagged', { headers: ISLAND });
+    expect([first.status, first.headers.get('etag'), first.headers.get('x-marmeon-region')]).toEqual([200, '"feed-v1"', 'island']);
+    expect((await json(first)).component).toBe('dashboard/Feed');
+    const second = await app.request('/islands/etagged', { headers: { ...ISLAND, 'if-none-match': '"feed-v1"' } });
+    expect([second.status, second.headers.get('x-marmeon-region'), second.headers.get('etag')]).toEqual([304, 'island', '"feed-v1"']);
+    expect(second.headers.has('x-marmeon-region-status')).toBe(false);
   });
 
   it('a direct hit is a 404 — and so is a page visit or a prefetch of the island’s URL', async () => {

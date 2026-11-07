@@ -17,4 +17,17 @@ describe('what an island request’s response becomes', () => {
     expect(await toRegionResponse(island)).toBe(island);
     expect((await toRegionResponse(new Response('boom', { status: 502 }))).status).toBe(502);
   });
+
+  it('a 304 that carries the island header passes as it is — the browser turns it into its cached 200', async () => {
+    const revalidated = new Response(null, { status: 304, headers: { [REGION_HEADER]: 'island', etag: '"v1"', 'cache-control': 'private, max-age=0' } });
+    const response = await toRegionResponse(revalidated);
+    expect(response.status).toBe(304);
+    expect([response.headers.get('etag'), response.headers.get('cache-control'), response.headers.get(REGION_HEADER)]).toEqual(['"v1"', 'private, max-age=0', 'island']);
+    expect(response.headers.has(REGION_STATUS_HEADER)).toBe(false);
+  });
+
+  it('a 304 without the island header is still the island’s `unauthorized`', async () => {
+    const response = await toRegionResponse(new Response(null, { status: 304, headers: { etag: '"v1"' } }));
+    expect([response.status, response.headers.get(REGION_STATUS_HEADER)]).toEqual([204, 'unauthorized']);
+  });
 });
