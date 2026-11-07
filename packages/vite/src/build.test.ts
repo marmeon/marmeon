@@ -118,6 +118,27 @@ describe('marmeon build with the marmeon() plugin', () => {
     expect(ssr.stdout.trim()).toBe('from-dist');
   }, 60_000);
 
+  it('ships no test beside a page — neither to the browser nor in the server bundle', () => {
+    const root = app({
+      files: {
+        'bootstrap/ssr.ts': "import pages from 'virtual:marmeon/pages';\nexport const render = async () => ({ html: Object.keys(pages).join(',') });\n",
+        'modules/demo/views/islands/Clock.test.tsx': "export default 'clock test';\n",
+        'modules/demo/views/Clock.spec.tsx': "export default 'clock spec';\n",
+        'modules/demo/views/Clock.type-test.tsx': "export default 'clock type test';\n",
+      },
+    });
+    const { code, out } = build(root);
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(code).toBe(0);
+    const client = bundle(join(root, 'dist/client'));
+    const server = bundle(join(root, 'dist/server'));
+    expect(client).toContain('/modules/demo/views/Home.tsx');
+    expect(server).toContain('/modules/demo/views/Home.tsx');
+    expect(`${client}${server}`).not.toContain('Clock');
+    expect(`${client}${server}`).not.toMatch(/clock (?:test|spec|type test)/);
+    expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.startsWith('Clock'))).toBe(false);
+  }, 60_000);
+
   it('keeps .env files and VITE_ variables out of the client bundle — unless the app asks with viteEnv', () => {
     const files = (viteEnv: boolean): Record<string, string> => ({
       '.env': 'VITE_SECRET=file-secret-value\n',

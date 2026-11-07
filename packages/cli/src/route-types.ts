@@ -1,8 +1,8 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, matchesGlob, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
-import { escapesRoot, refuseLeavingProject, withCode, writeGeneratedFile } from '@marmeon/core/internal';
+import { escapesRoot, PAGE_TESTS_GLOB, PAGES_GLOB, refuseLeavingProject, withCode, writeGeneratedFile } from '@marmeon/core/internal';
 import { BROWSER_ROUTES_FILE, ERROR_PAGE, legacyFrameworkPage, matchesRoutePatterns, pageName, writeBrowserRoutes, browserRoutes, type BrowserRoutes } from '@marmeon/http/internal';
 import { Router, type RouteDefinition } from '@marmeon/router';
 import { isControllerClass } from '@marmeon/router/internal';
@@ -12,9 +12,6 @@ export const ROUTES_FILE = 'bootstrap/routes.ts';
 
 /** The format of the generated file, as its third header line: `--check` tells a file of another Marmeon version from one that is merely stale. */
 const FORMAT_MARK = '// @marmeon-format 1';
-
-/** The page components — the default of `marmeon({ pages })` in @marmeon/vite and of `resolveModulePages`. */
-export const PAGES_GLOB = 'modules/*/views/**/*.tsx';
 
 interface Located {
   readonly file: string;
@@ -166,7 +163,11 @@ export class RouteTypes {
   }
 
   #views(): string[] {
-    const files = globSync(PAGES_GLOB, { cwd: this.#app.root }).map((file) => ({ file: file.replaceAll('\\', '/'), name: pageName(file) }));
+    // Matched against the relative path: `globSync`'s `exclude` patterns take in the app root, whose `[` or `{` would break them.
+    const files = globSync(PAGES_GLOB, { cwd: this.#app.root })
+      .map((file) => file.replaceAll('\\', '/'))
+      .filter((file) => !matchesGlob(file, PAGE_TESTS_GLOB))
+      .map((file) => ({ file, name: pageName(file) }));
     // `::` separates a package from its page (`package::Page`): an app page must not take such a name.
     const reserved = files.filter(({ name }) => name?.includes('::')).map(({ file }) => file);
     if (reserved.length > 0) {

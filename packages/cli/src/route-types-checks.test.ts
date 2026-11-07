@@ -9,8 +9,8 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 describe('marmeon route:types (reserved page names)', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
 
-  function appWith(views: string[]): string {
-    const app = realpathSync(tempDir('marmeon-views-'));
+  function appWith(views: string[], folder = ''): string {
+    const app = join(realpathSync(tempDir('marmeon-views-')), folder);
     cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
     symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
     mkdirSync(join(app, 'storage'));
@@ -44,6 +44,15 @@ describe('marmeon route:types (reserved page names)', { timeout: 30_000 }, () =>
     const app = appWith(['modules/a/views/Fine.tsx']);
     expect(marmeon(app, ['route:types']).code).toBe(0);
     expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'a/Fine': true;");
+  });
+
+  it('gives a test beside a page no view name — also in an app whose path has glob characters', () => {
+    const views = ['modules/a/views/Fine.tsx', 'modules/a/views/islands/Clock.test.tsx', 'modules/a/views/Clock.spec.tsx', 'modules/a/views/Clock.type-test.tsx'];
+    const app = appWith(views, 'app[ab]{1,2}');
+    expect(marmeon(app, ['route:types']).code).toBe(0);
+    const routes = readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8');
+    expect(routes).toContain("'a/Fine': true;");
+    expect(routes).not.toContain('Clock');
   });
 });
 
