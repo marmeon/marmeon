@@ -7,3 +7,8 @@ updates:
       interval: weekly
     cooldown:
       default-days: 3
+    # init and analyze must stay on one commit; the group keeps their updates in one pull request.
+    groups:
+      codeql:
+        patterns:
+          - github/codeql-action*
