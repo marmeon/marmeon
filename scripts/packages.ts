@@ -71,12 +71,15 @@ export type DriverKind = 'dependency' | 'exact dependency' | 'optional peer' | '
  *      of the tested major (`@marmeon/redis` → `redis`); decided exceptions: `nodemailer` in `@marmeon/mail`, `@simplewebauthn/server` in `@marmeon/auth` (loaded only by `@marmeon/auth/passkeys`);
  *      `kysely` is an exact dependency of `@marmeon/database` only (docs/database.md#kysely-and-its-version);
  *      `@modelcontextprotocol/server` is an exact dependency of `marmeon`, loaded only by `marmeon mcp`;
+ *      `oxc-transform` is an optional peer of `@marmeon/core` (it compiles mail views in development and in `marmeon build`);
  *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
  *      exact install command with the major (`pnpm add pg@^8`);
  *   3. a library whose instance or types the app must share (the OpenTelemetry API, React, Vite) is a peer — and no framework package
  *      lists it as a dependency: a second copy would be a second instance.
  */
 export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, DriverKind>>>> = {
+  // Compiles an app's mail views (TSX) in development and in `marmeon build`; a production start runs the build's output and never loads it.
+  core: { 'oxc-transform': 'optional peer' },
   redis: { redis: 'dependency' },
   // The engine under `rules`: internal, never re-exported — the app installs nothing for its validation.
   validation: { valibot: 'dependency' },

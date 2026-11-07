@@ -122,7 +122,16 @@
   "dependencies": {
     "oxc-parser": "^0.155.0"
   },
+  "peerDependencies": {
+    "oxc-transform": ">=0.157.0 <1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "oxc-transform": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "valibot": "^1.5.0"
+    "valibot": "^1.5.0",
+    "oxc-transform": "^0.157.0"
   }
 }

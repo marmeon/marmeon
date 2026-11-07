@@ -1035,6 +1035,11 @@ describe('the driver rule', () => {
     expect(checkDriverRule('auth', { dependencies: {} })).toEqual(['@simplewebauthn/server must be a dependency (the one driver this package wraps — the app installs nothing else)']);
     expect(checkDriverRule('auth', { dependencies: { '@simplewebauthn/server': '^14.0.3' } })).toEqual([]);
     expect(checkDriverRule('redis', { dependencies: { redis: '6.2.1' } })).toEqual(['dependencies.redis is "6.2.1" — a caret range of the tested major (^6.2.1)']);
+    expect(checkDriverRule('core', { dependencies: { 'oxc-transform': '^0.157.0' } })).toEqual([
+      'oxc-transform must stay an optional peer, not a dependency — one of several drivers; every app would install it',
+      'oxc-transform must be an optional peer of this package',
+    ]);
+    expect(checkDriverRule('core', { peerDependencies: { 'oxc-transform': '>=0.157.0 <1.0.0' }, peerDependenciesMeta: { 'oxc-transform': { optional: true } } })).toEqual([]);
     expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0', kysely: '0.29.6' } })).toEqual([
       'pg must stay an optional peer, not a dependency — one of several drivers; every app would install it',
       'pg must be an optional peer of this package',

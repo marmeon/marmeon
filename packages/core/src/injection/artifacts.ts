@@ -4,6 +4,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { analyzeInjections, applyInsertions, injectConstructorDependencies, insertionsOf, type Insertion } from './analyze.ts';
 import { isBrowserSource } from './browser.ts';
 import { ConfigError } from '../environment.ts';
+import { isMailView } from '../mail-views.ts';
 import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 
 /**
@@ -26,9 +27,9 @@ export interface InjectionsFile {
 /** Directories of an app that hold no module a start loads through the hook. */
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'storage', 'coverage']);
 
-/** A module the hook transforms: TypeScript Node runs (not `.tsx`, not declarations), no tests. */
-const MODULE = /(?<!\.d)\.[cm]?ts$/;
-const TEST = /\.(test|spec)\.[cm]?ts$/;
+/** A module the hook transforms: TypeScript Node runs (not declarations) or a mail view (`.tsx`, see {@link isMailView}), no tests. */
+const MODULE = /(?<!\.d)\.(?:[cm]?ts|tsx)$/;
+const TEST = /\.(test|spec)\.(?:[cm]?ts|tsx)$/;
 
 /**
  * The name the analysis gives a module of the app in its messages ("Cannot inject modules/…/X.ts:12 — …"): the path
@@ -82,12 +83,13 @@ export function writeInjectionArtifacts({ root }: { root: string }): { path: str
   return { path, modules: names.length, classes: names.reduce((sum, name) => sum + files[name]!.insert.length, 0) };
 }
 
-function* appModules(dir: string): Generator<string> {
+function* appModules(root: string, dir = root): Generator<string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!entry.name.startsWith('.') && !SKIPPED_DIRECTORIES.has(entry.name)) yield* appModules(join(dir, entry.name));
+      if (!entry.name.startsWith('.') && !SKIPPED_DIRECTORIES.has(entry.name)) yield* appModules(root, join(dir, entry.name));
     } else if (entry.isFile() && MODULE.test(entry.name) && !TEST.test(entry.name)) {
-      yield join(dir, entry.name);
+      const file = join(dir, entry.name);
+      if (!entry.name.endsWith('.tsx') || isMailView(root, file)) yield file;
     }
   }
 }

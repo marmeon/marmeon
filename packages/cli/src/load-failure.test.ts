@@ -158,6 +158,12 @@ describe('appFrameOf', () => {
     expect(appFrameOf(error, root)).toBe('modules/a/bad.ts:4:19');
   });
 
+  it('reads the place of a mail view the load hook failed to compile, given in the head of its stack', () => {
+    const error = new SyntaxError('/srv/app/modules/a/mail/V.tsx:2:15 — Unexpected token');
+    error.stack = `/srv/app/modules/a/mail/V.tsx:2\nexport default <p>;\n              ^\n\n${error.name}: ${error.message}\n    at compileMailView (/srv/node_modules/@marmeon/core/dist/mail-views.js:1:1)`;
+    expect(appFrameOf(error, root)).toBe('modules/a/mail/V.tsx:2:15');
+  });
+
   const compileError = (stack?: string): SyntaxError => {
     const error = new SyntaxError('Duplicate export');
     error.stack = stack ?? 'SyntaxError: Duplicate export\n    at compileSourceTextModule (node:internal/modules/esm/utils:355:16)';
