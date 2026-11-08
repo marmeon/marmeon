@@ -11,7 +11,7 @@ export function AgentsSection() {
           <p className="section-label">Agents</p>
           <h2 id="agents-title">Your coding agent sees what you see.</h2>
           <p>
-            It reads the app's real routes, the last server error and the docs of exactly the installed version instead of guessing. The MCP server starts only in development, and its tools look things up: none of them edits your code.
+            It reads the app's real routes, the last server error and the docs of exactly the installed version instead of guessing. The MCP server starts only in development, and its tools look things up: none of them edits your code, and the one file they keep current is the generated <code>.marmeon/schema.json</code>.
           </p>
           <Terminal commands={[AGENTS_INSTALL_COMMAND]} output={AGENTS_INSTALL_OUTPUT} />
         </div>
