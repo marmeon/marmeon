@@ -599,6 +599,7 @@ describe('marmeon agents:install and the block of AGENTS.md', () => {
     expect(result.code).toBe(0);
     const docs = readFileSync(new URL('../../../docs/agents.md', import.meta.url), 'utf8');
     const shown = /pnpm marmeon agents:install\n```\n\n```txt\n([\s\S]*?)\n```/.exec(docs)?.[1];
+    expect(shown, 'docs/agents.md shows the output of agents:install').toBeDefined();
     expect(result.text).toBe(shown);
   });
 
