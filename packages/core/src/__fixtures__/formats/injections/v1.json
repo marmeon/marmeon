@@ -1,0 +1,6 @@
+{
+ "format": 1,
+ "files": {
+  "modules/users/ShowUserController.ts": {"sha256":"0de4ec9de3525d2963019a95f520ef1c0ad4092a92059d9a6e5b8a3d17b85be6","insert":[[88," static inject = [UserRepository];"]]}
+ }
+}

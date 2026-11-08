@@ -43,6 +43,12 @@ describe('marmeon (in the web app)', () => {
     expect(routes.routes.find((route) => route.path === '/users/:user' && route.methods.includes('PUT'))?.publicBindings).toEqual([]);
   });
 
+  it('marks an island route of the app through the launcher, and a page route not', () => {
+    const routes = (JSON.parse(marmeon(webApp, ['route:list', '--json']).stdout) as { routes: { path: string; island: boolean }[] }).routes;
+    expect(routes.find((route) => route.path === '/dashboard/islands/sign-ins')?.island).toBe(true);
+    expect(routes.find((route) => route.path === '/dashboard')?.island).toBe(false);
+  });
+
   it('prints route:list and list as one JSON document with the format first', () => {
     const routes = marmeon(webApp, ['route:list', '--json']);
     expect(routes.code).toBe(0);

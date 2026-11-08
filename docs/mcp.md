@@ -62,7 +62,7 @@ the code on disk now, not the code of a server that started earlier.
 | `limit` | At most this many routes, 1 to 500. Default 200. |
 
 The document: `{ "format": 1, "routes": […], "total": 39, "truncated": true, "warnings": [] }`. `routes` holds the entries of
-[`route:list --json`](console.md#machine-readable-output) as they are. `total` counts the routes that matched, `truncated` says that `limit` cut the list.
+[`route:list --json`](console.md#machine-readable-output) as they are, including `island`, which says that the route answers an island's request. `total` counts the routes that matched, `truncated` says that `limit` cut the list.
 When the app does not start, the answer is an error that carries the end of its stderr, with secrets masked.
 
 ### `last_error`

@@ -85,8 +85,8 @@ export type IslandElementProps<N extends string = string> =
   | (IslandOptions & {
       /**
        * The URL of an island route the server chose: a path of this site, query included, built with `router.url()` from a
-       * route name the server picks — never from the request or from stored user content, since the route behind it runs for
-       * the visitor before the server finds out it is no island (a 404). A URL that is no path of this site is an error in
+       * route name the server picks — never from the request or from stored user content. A route that is no island is refused with a
+       * 404 before its middleware runs, but whoever controls the `href` chooses which island loads with the visitor's cookies. A URL that is no path of this site is an error in
        * development and an island in its error state in production, before any request.
        * See docs/deferred-props.md#islands-the-server-chooses.
        */

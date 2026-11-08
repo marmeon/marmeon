@@ -3,6 +3,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ExceptionHandler, HttpServiceProvider, island, SharedData, view, type HttpContext, type SsrRender } from '@marmeon/http';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { islandRoute } from './test-helpers/island-route.ts';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -64,13 +65,13 @@ class SharesAFailingProp {
 describe('createHttpKernel — what its error lines write', async () => {
   const routes = openRoutes((Route) => {
     Route.get('/page', (ctx: HttpContext) => view('pages/Show', { islands: (new URL(ctx.request.url).searchParams.get('islands') ?? '').split(',').filter(Boolean) }));
-    Route.get('/islands/never/:token', () => new Promise(() => {}));
+    Route.get('/islands/never/:token', islandRoute(() => new Promise(() => {})));
     // Answers as an island but not with an island's JSON: reading it fails.
-    Route.get('/islands/garbled/:token', () => new Response(failingBody(), { headers: { 'x-marmeon-region': 'island', 'content-type': 'application/json' } }));
-    Route.get('/islands/writes/:token', (ctx: HttpContext) => {
+    Route.get('/islands/garbled/:token', islandRoute(() => new Response(failingBody(), { headers: { 'x-marmeon-region': 'island', 'content-type': 'application/json' } })));
+    Route.get('/islands/writes/:token', islandRoute((ctx) => {
       ctx.cookies.set('tracking', 'yes');
       return island('log/Island', {});
-    });
+    }));
     // Answers as a page but not with a page's JSON: reading the layer's base fails.
     Route.get('/bases/:token', () => new Response(failingBody(), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'content-type': 'application/json' } })).name('bases.show');
     Route.get('/bases/:token/edit', (ctx: HttpContext<{}, { token: string }>) => view('bases/Edit', {}).layer({ base: 'bases.show', params: { token: ctx.params.token } }));

@@ -7,6 +7,7 @@ import { messageBase, publishEnded } from '@marmeon/core/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, HttpServiceProvider, view, type HttpContext, type Next, type PageObject } from '@marmeon/http';
 import { defineMiddleware } from '@marmeon/router';
+import { islandRoute } from './test-helpers/island-route.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
@@ -71,6 +72,9 @@ const routes = openRoutes((Route) => {
   Route.get('/unbound', SendWelcomeController);
   Route.get('/forbidden', () => abort(403, 'Only admins.'));
   Route.get('/home', () => view('Home', {}));
+  Route.get('/islands/explodes', islandRoute(() => {
+    throw new Error('The island failed');
+  }));
   // Two requests at once: the slow one waits until the other one ran its queries, then fails.
   Route.get('/slow', async () => {
     query('select 1 -- the slow request');
@@ -397,12 +401,12 @@ describe('the development details of an island and of server rendering — only 
     const { application, kernel } = await boot();
     try {
       const island = { headers: { accept: 'application/json', 'x-marmeon-region': 'island', [PAGE_HEADER]: PROTOCOL_VERSION } };
-      const own = await (await kernel.request('/unrouted/1', { headers: { ...island.headers, host: 'localhost:3000' } })).text();
-      expect(own).toContain('The middleware failed');
-      const foreign = await kernel.request('/unrouted/1', { headers: { ...island.headers, host: 'evil.example' } });
+      const own = await (await kernel.request('/islands/explodes', { headers: { ...island.headers, host: 'localhost:3000' } })).text();
+      expect(own).toContain('The island failed');
+      const foreign = await kernel.request('/islands/explodes', { headers: { ...island.headers, host: 'evil.example' } });
       expect(foreign.status).toBe(500);
       const text = await foreign.text();
-      for (const leak of ['The middleware failed', 'error-page.test.ts', 'trace']) expect(text).not.toContain(leak);
+      for (const leak of ['The island failed', 'error-page.test.ts', 'trace']) expect(text).not.toContain(leak);
     } finally {
       await application.shutdown();
     }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -57,6 +57,15 @@ describe('marmeon package:build --clean', () => {
     expect(build(dir, { clean: true })).toBe(0);
     expect(existsSync(join(dir, 'dist/orphan.js'))).toBe(false);
     expect(existsSync(join(dir, 'dist/kept.js'))).toBe(true);
+  });
+
+  it('marks an island controller in the compiled JavaScript — one without a constructor or injections too', () => {
+    writeFileSync(join(dir, 'src/panel.ts'), 'export class PanelController {\n  island(view: unknown, props: object) {\n    return [view, props];\n  }\n  handle() {\n    return this.island(null, {});\n  }\n}\n');
+    expect(build(dir)).toBe(0);
+    const compiled = readFileSync(join(dir, 'dist/panel.js'), 'utf8');
+    expect(compiled).toContain('static [Symbol.for("marmeon.island-controller")] = true;');
+    expect(compiled).not.toContain('static inject');
+    expect(readFileSync(join(dir, 'dist/kept.js'), 'utf8')).not.toContain('marmeon.island-controller');
   });
 
   it('fails for a directory without a tsconfig.json — before building any, never "Built 0 package(s)"', () => {

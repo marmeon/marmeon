@@ -26,3 +26,12 @@ describe('routes when route:list answers oddly', () => {
     expect(await ROUTES_TOOL.run({}, context)).toEqual({ failure: 'The app did not start: boom' });
   });
 });
+
+describe('routes that are islands', () => {
+  it('passes the island field of route:list on, for an island and for a route that is none', async () => {
+    const entry = (path: string, island: boolean) => ({ methods: ['GET'], path, name: null, island });
+    answer({ document: { format: 1, routes: [entry('/islands/sign-ins', true), entry('/dashboard', false)] } });
+    const result = (await ROUTES_TOOL.run({}, context)) as unknown as { routes: { path: string; island: boolean }[] };
+    expect(result.routes.map((route) => [route.path, route.island])).toEqual([['/islands/sign-ins', true], ['/dashboard', false]]);
+  });
+});

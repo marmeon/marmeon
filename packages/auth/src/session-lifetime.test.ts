@@ -60,8 +60,36 @@ class ScopeController extends Controller {
   }
 }
 
+/** {@link WhoController} as an island's route: only a controller that calls `this.island()` answers an island's request. */
+class WhoIsland extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    return this.island('auth/Who', { id: (await this.#auth.user())?.id ?? null, viaRemember: this.#auth.viaRemember() });
+  }
+}
+
+/** {@link ScopeController} as an island's route. */
+class ScopeIsland extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  handle() {
+    return this.island('auth/Scope', { session: this.#auth.passwordCheckScope().session });
+  }
+}
+
+const ISLAND = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
+
 const routes = openRoutes((Route) => {
   Route.get('/scope', ScopeController);
+  Route.get('/scope-island', ScopeIsland);
+  Route.get('/who-island', WhoIsland);
   Route.post('/login', LoginController);
   Route.get('/who', WhoController);
 });
@@ -108,7 +136,9 @@ async function boot(env: Record<string, string> = {}) {
       change(data);
       await store.write(key, JSON.stringify(data), { expectedVersion: read.version, lifetimeSeconds: 7200 });
     };
-    return { send, who, jar, stored, edit };
+    /** What the island route of {@link who} answers with: its props, from a request that reads the session as an island does. */
+    const whoAsIsland = async () => ((await (await send('/who-island', { headers: ISLAND })).json()) as { props: { id: number | null; viaRemember: boolean } }).props;
+    return { send, who, whoAsIsland, jar, stored, edit };
   };
   const setTokenEnd = (inMs: number) =>
     application.container.make(Connections).get<any>().updateTable('sign_ins').set({ remember_until: new Date(Date.now() + inMs) }).execute();
@@ -225,7 +255,7 @@ describe('the absolute lifetime of a sign-in', () => {
     await signIn(b);
     await b.edit((data) => delete data[AUTH_SESSION_KEYS.signedInAt]);
     const stored = await b.stored();
-    expect(await b.who({ [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' })).toMatchObject({ id: 1 });
+    expect(await b.whoAsIsland()).toMatchObject({ id: 1 });
     expect(await b.stored()).toEqual(stored);
     expect(await b.who()).toMatchObject({ id: 1 });
     expect((await b.stored())[AUTH_SESSION_KEYS.signedInAt]).toBe(Math.floor(Date.now() / 1000));
@@ -246,11 +276,10 @@ describe('the absolute lifetime of a sign-in', () => {
     await signIn(b);
     const cookie = b.jar.get('marmeon_remember');
     // An island's request: read-only, it sees the session as the page left it.
-    const island = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
-    expect(await b.who(island)).toEqual({ id: 1, viaRemember: false });
+    expect(await b.whoAsIsland()).toEqual({ id: 1, viaRemember: false });
     await b.edit((data) => (data[AUTH_SESSION_KEYS.signedInAt] = Math.floor(Date.now() / 1000) - 25 * 3600));
     const stored = await b.stored();
-    expect(await b.who(island)).toEqual({ id: null, viaRemember: false });
+    expect(await b.whoAsIsland()).toEqual({ id: null, viaRemember: false });
     expect(b.jar.get('marmeon_remember')).toBe(cookie);
     expect(await b.stored()).toEqual(stored);
     expect(await b.who()).toEqual({ id: 1, viaRemember: true }); // the page's request signs in, with the token still unused
@@ -262,8 +291,7 @@ describe('the absolute lifetime of a sign-in', () => {
     await signIn(b);
     await b.edit((data) => delete data[AUTH_SESSION_KEYS.throttleKey]); // a session from before the key existed
     const id = await application.container.make(Encrypter).decrypt(decodeURIComponent(b.jar.get('marmeon_session')!), 'cookie:marmeon_session');
-    const island = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
-    const scope = (await (await b.send('/scope', { headers: island })).json()) as { session: string };
+    const scope = ((await (await b.send('/scope-island', { headers: ISLAND })).json()) as { props: { session: string } }).props;
     expect(scope.session).toMatch(/^[\w-]{22}$/);
     expect(sessionKey(id).includes(scope.session) || scope.session.includes(sessionKey(id))).toBe(false);
     expect(scope.session).not.toBe(sessionKey(id));

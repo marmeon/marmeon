@@ -4,6 +4,7 @@ import { abort, DefaultExceptionHandler, ExceptionHandler, HttpServiceProvider, 
 import { describe, expect, it } from 'vitest';
 import { protocolHeaders, VALIDATE_HEADER } from '@marmeon/http/internal';
 import { createHttpKernel } from './kernel.ts';
+import { islandRoute } from './test-helpers/island-route.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const PASSWORD = 'hunter2-s3cr3t';
@@ -37,6 +38,9 @@ const routes = openRoutes((Route) => {
   Route.get('/boom', () => {
     throw new Error(`connect failed: postgres://app:${PASSWORD}@db.internal/shop`, { cause: new Error(`refused token=${TOKEN}`) });
   });
+  Route.get('/islands/boom', islandRoute(() => {
+    throw new Error(`connect failed: postgres://app:${PASSWORD}@db.internal/shop`, { cause: new Error(`refused token=${TOKEN}`) });
+  }));
   Route.get('/gone', () => abort(404));
   Route.get('/teapot', () => abort(500, 'broken'));
   Route.get('/users/:token', (ctx: HttpContext<{}, { token: string }>) => {
@@ -114,7 +118,7 @@ describe('createHttpKernel — error reporters', () => {
   it('reports the error of an island request, masked', async () => {
     reports.length = 0;
     const app = await boot();
-    const response = await app.request('/boom', { headers: { ...protocolHeaders(), 'x-marmeon-region': 'island', accept: 'application/json' } });
+    const response = await app.request('/islands/boom', { headers: { ...protocolHeaders(), 'x-marmeon-region': 'island', accept: 'application/json' } });
     expect(response.status).toBe(500);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(reports).toHaveLength(1);

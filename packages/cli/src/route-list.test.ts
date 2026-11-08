@@ -1,3 +1,4 @@
+import { Controller } from '@marmeon/http';
 import { defineRoutes, describeAccess, everyone, Router } from '@marmeon/router';
 import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -63,7 +64,27 @@ describe('route:list --json', () => {
   );
 
   // One router per stored file: a fixture in the directory that no router here matches fails the test.
-  const routers: Record<string, Router> = { 'v1.json': router, 'v1-public.json': publicRouter };
+  class ShowRecentSignIns extends Controller {
+    handle() {
+      return this.island('dashboard/RecentSignIns' as never, {});
+    }
+  }
+  class ShowDashboard extends Controller {
+    handle() {
+      return 'page';
+    }
+  }
+  const islandRouter = new Router();
+  islandRouter.load(
+    {} as never,
+    defineRoutes((Route) => [
+      Route.get('/islands/sign-ins', ShowRecentSignIns as never),
+      Route.get('/dashboard', ShowDashboard as never),
+      Route.get('/closure', () => 'x'),
+    ]),
+  );
+
+  const routers: Record<string, Router> = { 'v1.json': router, 'v1-public.json': publicRouter, 'v1-island.json': islandRouter };
   const directory = new URL('./__fixtures__/formats/cli-route-list/', import.meta.url);
 
   it('prints exactly one document with the format first, matching every stored file', () => {
@@ -91,6 +112,19 @@ describe('route:list --json', () => {
     expect(out).toMatch(/\/about\s.*\severyone\s+Closure/);
     expect(out).not.toMatch(/\/about\s.*public/);
     expect(out).toMatch(/\/teams\/:team\/notes\/:note\s.*\scan Team\.view\(team\) \(public: note\)\s/);
+  });
+
+  it('marks a controller that calls this.island() and never a page controller or a closure', () => {
+    const routes = (JSON.parse(list(islandRouter, { json: true })) as { routes: { path: string; island: boolean }[] }).routes;
+    expect(routes.map((route) => [route.path, route.island])).toEqual([['/islands/sign-ins', true], ['/dashboard', false], ['/closure', false]]);
+    expect((JSON.parse(list(router, { json: true })) as { routes: { island: boolean }[] }).routes.every((route) => !route.island)).toBe(true);
+  });
+
+  it('appends (island) to the action in the table', () => {
+    const out = list(islandRouter);
+    expect(out).toMatch(/\/islands\/sign-ins\s.*\sShowRecentSignIns \(island\)/);
+    expect(out).toMatch(/\/dashboard\s.*\sShowDashboard\s*$/m);
+    expect(out).toMatch(/\/closure\s.*\sClosure\s*$/m);
   });
 
   it('prints the table without --json', () => {

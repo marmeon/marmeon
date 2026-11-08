@@ -14,6 +14,7 @@ import {
 import { PageSession, ResponseLifecycle } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { islandRoute } from './test-helpers/island-route.ts';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -107,7 +108,7 @@ describe('islands resolved in-process while the page streams', async () => {
       }),
     );
     const islands = Route.middleware(Counts);
-    islands.get('/islands/echo', (ctx: HttpContext) =>
+    islands.get('/islands/echo', islandRoute((ctx) =>
       island('islands/Echo', {
         cookie: ctx.request.headers.get('cookie'),
         language: ctx.request.headers.get('accept-language'),
@@ -116,24 +117,27 @@ describe('islands resolved in-process while the page streams', async () => {
         ip: ctx.ip ?? null,
         at: new Date('2026-10-02T12:00:00.000Z'),
       }),
-    );
-    islands.get('/islands/slow', async () => {
+    ));
+    islands.get('/islands/slow', islandRoute(async () => {
       await slow.gate.promise;
       return island('islands/Slow', { done: true });
-    });
-    islands.get('/islands/never', () => new Promise(() => {}));
-    islands.get('/islands/guarded', () => new Response(null, { status: 302, headers: { location: '/login' } }));
-    islands.get('/islands/forbidden', () => abort(403, 'Admins only.'));
-    islands.get('/islands/boom', () => {
+    }));
+    islands.get('/islands/never', islandRoute(() => new Promise(() => {})));
+    islands.get('/islands/guarded', islandRoute(() => new Response(null, { status: 302, headers: { location: '/login' } })));
+    islands.get('/islands/forbidden', islandRoute(() => abort(403, 'Admins only.')));
+    islands.get('/islands/boom', islandRoute(() => {
       throw new Error('database password is hunter2');
-    });
-    islands.get('/islands/stale', () => new Response(null, { status: 409, headers: { 'x-marmeon-location': '/page' } }));
-    islands.get('/islands/cookie', (ctx: HttpContext) => {
+    }));
+    islands.get('/islands/stale', islandRoute(() => new Response(null, { status: 409, headers: { 'x-marmeon-location': '/page' } })));
+    islands.get('/islands/cookie', islandRoute((ctx) => {
       ctx.cookies.set('tracking', 'yes');
       return island('islands/Echo', {});
-    });
+    }));
     Route.get('/not-an-island', () => view('pages/Show', {}));
     Route.get('/api/status', () => Response.json({ message: 'internal status text', users: 12 }));
+    // Marked controllers that answer something that is no island, past the gate.
+    Route.get('/marked/status', islandRoute(() => Response.json({ message: 'internal status text', users: 12 })));
+    Route.get('/marked/page', islandRoute(() => view('pages/Show', {})));
   });
   /** Gives the deferred thunk of `/page/deferred` the request's lifecycle (to see when it runs). */
   class ExposesLifecycle {
@@ -164,10 +168,10 @@ describe('islands resolved in-process while the page streams', async () => {
     }
   }
   const sessionRoutes = openRoutes((Route) => {
-    Route.middleware(StartsSession).get('/session-islands/echo', (ctx: HttpContext) => {
+    Route.middleware(StartsSession).get('/session-islands/echo', islandRoute((ctx) => {
       passed.push(`route ${new URL(ctx.request.url).pathname}`);
       return island('islands/Echo', { cookie: ctx.request.headers.get('cookie') });
-    });
+    }));
   });
   const application = await createApplication({
     root: import.meta.dirname,
@@ -240,8 +244,16 @@ describe('islands resolved in-process while the page streams', async () => {
 
   it('an href naming a page or a JSON endpoint is no island: its error, with nothing of what the route answered', async () => {
     const html = await (await page(['/not-an-island', '/api/status'])).text();
-    expect(islandsOf(html)['/not-an-island']).toEqual({ status: 'exception', failure: { status: 404, message: expect.any(String) } });
-    expect(islandsOf(html)['/api/status']).toEqual({ status: 'exception', failure: { status: 404 } });
+    expect(islandsOf(html)['/not-an-island']).toEqual({ status: 'exception', failure: { status: 404, message: expect.stringContaining('GET /not-an-island is no island') } });
+    expect(islandsOf(html)['/api/status']).toEqual({ status: 'exception', failure: { status: 404, message: expect.stringContaining('GET /api/status is no island') } });
+    expect(html).not.toContain('internal status text');
+    expect(html).not.toContain('"users"');
+  });
+
+  it('a marked controller that answers JSON or a page is no island: a 404, with nothing of its body relayed', async () => {
+    const html = await (await page(['/marked/status', '/marked/page'])).text();
+    expect(islandsOf(html)['/marked/status']).toEqual({ status: 'exception', failure: { status: 404 } });
+    expect(islandsOf(html)['/marked/page']).toMatchObject({ status: 'exception', failure: { status: 404 } });
     expect(html).not.toContain('internal status text');
     expect(html).not.toContain('"users"');
   });

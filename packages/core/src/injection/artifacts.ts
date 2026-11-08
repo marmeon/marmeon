@@ -1,7 +1,7 @@
 import { hash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { analyzeInjections, applyInsertions, injectConstructorDependencies, insertionsOf, type Insertion } from './analyze.ts';
+import { analyzeInjections, applyInsertions, injectConstructorDependencies, insertionsOf, mayHaveInsertions, type Insertion } from './analyze.ts';
 import { isBrowserSource } from './browser.ts';
 import { ConfigError } from '../environment.ts';
 import { isMailView } from '../mail-views.ts';
@@ -16,7 +16,7 @@ import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
  */
 export const INJECTIONS_FILE = '.marmeon/injections.json';
 
-const FORMAT = 1;
+const FORMAT = 2;
 
 export interface InjectionsFile {
   readonly format: typeof FORMAT;
@@ -44,7 +44,7 @@ function sha256(source: string | Uint8Array): string {
 }
 
 /**
- * What {@link writeInjectionArtifacts} writes, without writing it: every module of the app that mentions `constructor` (the
+ * What {@link writeInjectionArtifacts} writes, without writing it: every module of the app that mentions `constructor` or calls `island(` (the
  * analysis has nothing to do for the others), also those whose lists are empty, so a start can tell "derived, nothing to
  * insert" from "not derived".
  */
@@ -53,7 +53,7 @@ export function computeInjectionArtifacts(root: string): InjectionsFile {
   for (const file of appModules(root)) {
     const bytes = readFileSync(file);
     const source = bytes.toString('utf8');
-    if (!source.includes('constructor') || isBrowserSource(file)) continue;
+    if (!mayHaveInsertions(source) || isBrowserSource(file)) continue;
     const name = moduleName(root, file);
     files[name] = { sha256: sha256(bytes), insert: insertionsOf(analyzeInjections(source, name)).filter(([, text]) => text !== '') };
   }
@@ -140,8 +140,8 @@ export class PrecomputedInjections {
     if (name.startsWith('../') || name.startsWith('/')) return injectConstructorDependencies(text, file);
     const entry = Object.hasOwn(this.#files, name) ? this.#files[name] : undefined;
     if (entry && entry.sha256 === sha256(source)) return applyInsertions(text, entry.insert);
-    // Without `constructor` the analysis has nothing to derive (and would not parse): only a listed module that changed is stale.
-    if (!text.includes('constructor')) {
+    // Without `constructor`, `island(` or `island as` the analysis has nothing to derive: only a listed module that changed is stale.
+    if (!mayHaveInsertions(text)) {
       if (entry) this.#stale.push(name);
       return text;
     }

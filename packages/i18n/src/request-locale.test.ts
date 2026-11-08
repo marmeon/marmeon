@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, HttpServiceProvider, island, view, type HttpContext } from '@marmeon/http';
+import { Controller, HttpServiceProvider, view, type HttpContext } from '@marmeon/http';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { defineRequest, defineRoutes, everyone, type RouteBinder } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
@@ -43,6 +43,12 @@ class ShowEventController extends Controller {
   }
 }
 
+class PanelIsland extends Controller {
+  handle() {
+    return this.island('shop/Panel', {});
+  }
+}
+
 class RegisterController extends Controller {
   static request = defineRequest({ schema: r.object({ name: r.string().required() }) });
   handle() {
@@ -72,7 +78,7 @@ const routes = defineRoutes((Root) => {
     if (!session.readOnly) session.put('last_event', ctx.params.event.id);
   });
   noted.get('/notes/:event', ShowEventController).name('notes.show');
-  noted.get('/notes/:event/panel', () => island('shop/Panel', {})).name('notes.panel');
+  noted.get('/notes/:event/panel', PanelIsland).name('notes.panel');
   open.localized().bind('event', Events, { public: true }).afterAuthorize((ctx, resolve) => {
       resolve(RequestLocale).use(ctx.params.event.locale);
     }).get('/guide/:event', ShowEventController).name('events.guide');

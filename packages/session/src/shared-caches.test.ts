@@ -75,14 +75,18 @@ const routes = openRoutes((Route) => {
   // A page of the session group that embeds both kinds of island.
   Route.get('/private-page', () => view('pages/Show', { islands: ['/name-island', '/api/cookie-island'] }));
 });
+class CookieIsland {
+  handle(ctx: HttpContext) {
+    ran.push(`route ${new URL(ctx.request.url).pathname}`);
+    return island('islands/Cookie', { cookie: ctx.request.headers.get('cookie') });
+  }
+}
+
 const apiRoutes = openRoutes((Route) => {
   // A public layer route whose base belongs to the session.
   Route.middleware(cacheControl('public, s-maxage=600')).get('/public-page', () => view('pages/Show', { islands: ['/name-island', '/api/cookie-island'] }));
   // An island without the session: it reports whether a cookie reached it.
-  Route.get('/cookie-island', (ctx: HttpContext) => {
-    ran.push(`route ${new URL(ctx.request.url).pathname}`);
-    return island('islands/Cookie', { cookie: ctx.request.headers.get('cookie') });
-  });
+  Route.get('/cookie-island', CookieIsland);
   Route.middleware(cacheControl('public, s-maxage=600')).get('/note', () => view('profile/Note', {}).layer({ base: 'profile.show' }));
 });
 

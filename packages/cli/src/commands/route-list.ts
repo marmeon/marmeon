@@ -1,8 +1,8 @@
 import { Router, type AnyAction, type AnyMiddleware, type RouteDefinition } from '@marmeon/router';
-import { accessLabel, isMiddlewareClass, routeAccess } from '@marmeon/router/internal';
+import { accessLabel, isIslandAction, isMiddlewareClass, routeAccess } from '@marmeon/router/internal';
 import type { CommandInput } from '../command.ts';
 
-/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, who may call it, action. */
+/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, who may call it, action (marked `(island)` for a route that answers an island's request). */
 export class RouteListCommand {
   static command = 'route:list';
   static description = 'List all registered routes';
@@ -28,6 +28,7 @@ export class RouteListCommand {
           access: this.#accessList(route),
           publicBindings: publicBindings(route),
           action: actionName(route.action),
+          island: isIslandAction(route.action),
         })),
         warnings: [],
       });
@@ -41,7 +42,7 @@ export class RouteListCommand {
       route.group ?? '',
       this.#router.middlewareFor(route).map(middlewareName).join(', '),
       this.#access(route),
-      actionName(route.action),
+      isIslandAction(route.action) ? `${actionName(route.action)} (island)` : actionName(route.action),
     ]);
     output.table(['METHOD', 'PATH', 'NAME', 'GROUP', 'MIDDLEWARE', 'ACCESS', 'ACTION'], rows);
     output.line();

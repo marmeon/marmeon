@@ -1,5 +1,5 @@
 import { Html, Redactor } from '@marmeon/core';
-import { withCode } from '@marmeon/core/internal';
+import { ISLAND_CONTROLLER, withCode } from '@marmeon/core/internal';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { buildWithNew } from './default-resolver.ts';
 import { HttpError } from './errors.ts';
@@ -601,6 +601,15 @@ async function bindParams(route: RouteDefinition, ctx: HttpContext, resolve: Cla
  */
 export function isControllerClass(action: AnyAction): action is ControllerClass {
   return typeof action.prototype?.handle === 'function';
+}
+
+/**
+ * Whether a route's action is a controller the loader marked as answering with an island (it calls `this.island()` or
+ * `island()` from `@marmeon/http`, see docs/deferred-props.md#the-islands-route). Closures are never islands. A subclass
+ * inherits the mark.
+ */
+export function isIslandAction(action: AnyAction): boolean {
+  return isControllerClass(action) && (action as unknown as Record<symbol, unknown>)[Symbol.for(ISLAND_CONTROLLER)] === true;
 }
 
 /** `error` with the request's labels, when it is a `ValidationError` of issues that has none of its own. */

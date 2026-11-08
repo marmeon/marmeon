@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseSync } from '../oxc.ts';
-import { analyzeInjections, classesOf, InjectionError, insertInjections, UNRESOLVABLE, WARNINGS, type InjectionSite } from './analyze.ts';
+import { analyzeInjections, classesOf, InjectionError, insertInjections, ISLAND_CONTROLLER, UNRESOLVABLE, WARNINGS, type InjectionSite } from './analyze.ts';
 import { matchesBrowserSource } from './browser.ts';
 
 type Node = { type: string; start: number; [key: string]: any };
@@ -34,14 +34,26 @@ export function embedInjections(tsSource: string, tsFile: string, jsSource: stri
   }
 
   const jsSites: InjectionSite[] = [];
-  for (const site of sites) {
+  for (const found of sites) {
+    let site = found;
     const js = jsClasses[site.classIndex];
     if (!js || js.name !== site.className) {
       throw new InjectionError(`${jsFile}: compiled output has no class "${site.className}" at position ${site.classIndex + 1}.`);
     }
     const { node } = js;
     // Idempotent: `tsc -b` skips up-to-date projects, so dist/ may already carry the field.
-    if (alreadyEmbedded(node, jsSource)) continue;
+    // A class with a list of its own still gets the island marker, once.
+    const embedded = alreadyEmbedded(node, jsSource);
+    const marked = node.body.body.some((member: Node) => member.static && isIslandMarker(member, jsSource));
+    if (embedded && (!site.island || marked)) continue;
+    if (marked && !embedded) {
+      const { island: _, ...unmarked } = site;
+      site = unmarked;
+    }
+    if (embedded) {
+      jsSites.push({ className: site.className, classIndex: site.classIndex, bodyStart: node.body.start, dependencies: [], island: true });
+      continue;
+    }
     for (const dependency of 'dependencies' in site ? site.dependencies : []) {
       const root = dependency.split('.')[0]!;
       if (!jsValues.has(root)) {
@@ -58,14 +70,18 @@ export function embedInjections(tsSource: string, tsFile: string, jsSource: stri
 }
 
 function alreadyEmbedded(classNode: Node, source: string): boolean {
-  return classNode.body.body.some((member: Node) => isInjectionField(member, source));
+  return classNode.body.body.some((member: Node) => isInjectionField(member, source) && !isIslandMarker(member, source));
 }
 
 function isInjectionField(member: Node, source: string): boolean {
   if (!member.static) return false;
   if (member.key?.name === 'inject') return true;
   const key = member.computed ? source.slice(member.key.start, member.key.end) : '';
-  return key.includes(UNRESOLVABLE) || key.includes(WARNINGS);
+  return key.includes(UNRESOLVABLE) || key.includes(WARNINGS) || key.includes(ISLAND_CONTROLLER);
+}
+
+function isIslandMarker(member: Node, source: string): boolean {
+  return member.computed && source.slice(member.key.start, member.key.end).includes(ISLAND_CONTROLLER);
 }
 
 /**
@@ -74,7 +90,7 @@ function isInjectionField(member: Node, source: string): boolean {
  * (`tsc -b` leaves up-to-date output untouched).
  */
 export function removeEmbeddedInjections(jsSource: string, jsFile: string): string {
-  if (!jsSource.includes('static inject') && !jsSource.includes(UNRESOLVABLE) && !jsSource.includes(WARNINGS)) return jsSource;
+  if (!jsSource.includes('static inject') && !jsSource.includes(UNRESOLVABLE) && !jsSource.includes(WARNINGS) && !jsSource.includes(ISLAND_CONTROLLER)) return jsSource;
   const { program } = parseSync(jsFile, jsSource);
   const spans: [number, number][] = [];
   for (const { node } of classesOf(program)) {

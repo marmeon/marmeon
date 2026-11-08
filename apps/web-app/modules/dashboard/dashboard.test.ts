@@ -27,10 +27,15 @@ class WritesSessionIsland extends Controller {
   }
 }
 
-/** An island that flashes (a redirect with data) — a write too. */
+/** An island that flashes (a redirect with data) — a write too. Only the `island()` call makes the route an island's. */
 class FlashesIsland extends Controller {
   handle() {
+    if (this.#neverTrue()) return this.island('dashboard/RecentSignIns', { entries: [], now: new Date() });
     return this.redirect('/dashboard').flash('toast', { kind: 'info', message: 'from an island' });
+  }
+
+  #neverTrue(): boolean {
+    return false;
   }
 }
 
@@ -126,6 +131,23 @@ describe('the dashboard: a page of islands', () => {
     await app.actingAs(ada).get('/dashboard/islands/sign-ins', { headers: { accept: 'text/html' } }).assertNotFound();
     await app.actingAs(ada).navigating().get('/dashboard/islands/sign-ins').assertNotFound();
     await app.actingAs(ada).prefetching().get('/dashboard/islands/sign-ins').assertNotFound();
+  });
+
+  it('a guest who opens an island’s URL directly gets a 404, not the login — and nothing is remembered for after it', async () => {
+    for (const request of [app.get('/dashboard/islands/sign-ins', { headers: { accept: 'text/html' } }), app.navigating().get('/dashboard/islands/sign-ins'), app.prefetching().get('/dashboard/islands/sign-ins')]) {
+      const response = await request.assertNotFound();
+      expect(response.headers.get('location')).toBeNull();
+      expect(response.headers.getSetCookie()).toEqual([]);
+    }
+  });
+
+  it('an island’s request to a route that is no island is a 404 before the route’s middleware — a guest is not asked to sign in', async () => {
+    // `/dashboard` is a page behind `authenticate()`: a guest's page request is redirected, an island request never gets that far.
+    const guest = await app.islanding().get('/dashboard').assertNotFound();
+    expect(guest.headers.get('x-marmeon-region-status')).toBe('exception');
+    expect(guest.headers.getSetCookie()).toEqual([]);
+    const signedIn = await app.actingAs(ada).islanding().get('/dashboard').assertNotFound();
+    expect(signedIn.headers.getSetCookie()).toEqual([]);
   });
 
   it('a guest’s island is `unauthorized` (204) — no redirect to the login, nothing remembered for after it', async () => {

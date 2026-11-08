@@ -22,6 +22,7 @@ export { startedByReporter } from './error-reports.ts';
 export { isQueuedListener } from './events.ts';
 export { withFileGuard } from './file-guard.ts';
 export { browserSources } from './injection/browser.ts';
+export { ISLAND_CONTROLLER } from './injection/analyze.ts';
 export { embedPackageInjections } from './injection/embed.ts';
 export { writeInjectionArtifacts } from './injection/artifacts.ts';
 export { writeMailViewArtifacts } from './mail-view-artifacts.ts';
