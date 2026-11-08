@@ -84,4 +84,12 @@ describe('LiveConfig: the deprecated redisConnection', () => {
     expect(await warningsOf(() => void { ...config })).toEqual([]);
     expect(Object.keys(config)).not.toContain('redisConnection');
   });
+
+  it('stays assignable: a later read returns the assigned value, and connection is unaffected', async () => {
+    const config = await resolve({ LIVE_CONNECTION: 'live' });
+    (config as { redisConnection: string }).redisConnection = 'mine';
+    expect(config.redisConnection).toBe('mine');
+    expect(config.connection).toBe('live');
+    expect(Object.keys(config)).not.toContain('redisConnection');
+  });
 });

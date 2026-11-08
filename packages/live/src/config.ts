@@ -39,6 +39,11 @@ export const LiveConfig = defineConfig('live', {
     // Not enumerable: copying or printing the config does not read it. Reading it warns once, in development and tests.
     return Object.defineProperty(resolved, 'redisConnection', {
       enumerable: false,
+      configurable: true,
+      // An app that assigns it keeps a plain value: later reads neither warn nor see the environment's.
+      set(value: string) {
+        Object.defineProperty(resolved, 'redisConnection', { value, writable: true, enumerable: false, configurable: true });
+      },
       get() {
         deprecated('live.redis-connection', 'LiveConfig.redisConnection is deprecated, use LiveConfig.connection instead.', '2.0');
         return e.LIVE_CONNECTION;
