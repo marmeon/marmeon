@@ -136,6 +136,54 @@ describe('injection artifacts', () => {
     );
   });
 
+  describe('island controllers', () => {
+    const island = 'export class ShowPanelController {\n  handle() {\n    return this.island(Panel, {});\n  }\n}\n';
+    const marked = 'marmeon.island-controller';
+
+    it('lists an island controller without a constructor, and a precomputed start marks it without analysis', () => {
+      write('modules/panel/ShowPanelController.ts', island);
+      write('modules/panel/Other.ts', 'export const x = 1;\n');
+      const { files } = computeInjectionArtifacts(root);
+      expect(Object.keys(files)).toEqual(['modules/panel/ShowPanelController.ts']);
+      expect(files['modules/panel/ShowPanelController.ts']!.insert[0]![1]).toContain(marked);
+
+      writeInjectionArtifacts({ root });
+      const precomputed = PrecomputedInjections.load(root);
+      const module = join(root, 'modules/panel/ShowPanelController.ts');
+      expect(precomputed.transform(module, Buffer.from(island), decode)).toContain(marked);
+      expect(precomputed.stale).toEqual([]);
+    });
+
+    it('lists an island controller whose call has type arguments and which has no constructor', () => {
+      write('modules/panel/Typed.ts', "export class Typed {\n  handle() {\n    return this.island<'x', {}>(Panel, {});\n  }\n}\n");
+      expect(computeInjectionArtifacts(root).files['modules/panel/Typed.ts']!.insert[0]![1]).toContain(marked);
+    });
+
+    it('writes format 2, and a format 1 file counts as missing: the controller is analysed and marked', () => {
+      write('modules/panel/ShowPanelController.ts', island);
+      writeInjectionArtifacts({ root });
+      const path = join(root, INJECTIONS_FILE);
+      const file = JSON.parse(readFileSync(path, 'utf8'));
+      expect(file.format).toBe(2);
+
+      writeFileSync(path, JSON.stringify({ ...file, format: 1, files: { 'modules/panel/ShowPanelController.ts': { ...file.files['modules/panel/ShowPanelController.ts'], insert: [] } } }));
+      const precomputed = PrecomputedInjections.load(root);
+      const module = join(root, 'modules/panel/ShowPanelController.ts');
+      expect(precomputed.transform(module, Buffer.from(island), decode)).toContain(marked);
+      expect(precomputed.stale).toEqual(['modules/panel/ShowPanelController.ts']);
+      expect(precomputed.warning()).toMatch(/Build artifacts are missing/);
+    });
+
+    it('marks a changed island controller that has no constructor when the file lists it', () => {
+      write('modules/panel/ShowPanelController.ts', island);
+      writeInjectionArtifacts({ root });
+      const precomputed = PrecomputedInjections.load(root);
+      const changed = `${island}// edited\n`;
+      expect(precomputed.transform(join(root, 'modules/panel/ShowPanelController.ts'), Buffer.from(changed), decode)).toContain(marked);
+      expect(precomputed.stale).toEqual(['modules/panel/ShowPanelController.ts']);
+    });
+  });
+
   it('analyses a module the file does not know, a missing file and modules outside the app — counting only the app', () => {
     write('modules/users/ShowUserController.ts', controller);
     writeInjectionArtifacts({ root });

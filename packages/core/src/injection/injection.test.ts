@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { analyzeInjections, injectConstructorDependencies, InjectionError } from './analyze.ts';
+import { analyzeInjections, injectConstructorDependencies, InjectionError, ISLAND_CONTROLLER } from './analyze.ts';
 import { browserSources, isBrowserSource } from './browser.ts';
 import { marmeonInjection } from '../vite.ts';
 import { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './embed.ts';
@@ -165,6 +165,72 @@ describe('injectConstructorDependencies', () => {
   });
 });
 
+describe('island controllers', () => {
+  const marker = ` static [Symbol.for("${ISLAND_CONTROLLER}")] = true;`;
+  const http = "import { island } from '@marmeon/http';\n";
+
+  it('marks a class that calls this.island(…), also without a constructor', () => {
+    expect(inject('class A { handle() { return this.island(View, {}); } }')).toBe(`class A {${marker} handle() { return this.island(View, {}); } }`);
+  });
+
+  it('writes the list and the mark for a class with constructor dependencies', () => {
+    const output = inject("import { X } from './x.ts';\nclass A { constructor(x: X) {} handle() { return this.island(V, {}); } }");
+    expect(output).toContain(`class A { static inject = [X];${marker}`);
+  });
+
+  it('marks a class whose island call sits in a helper method', () => {
+    expect(inject('class A { handle() { return this.render(); } render() { return this.island(V, {}); } }')).toContain(marker);
+  });
+
+  it('marks a class with its own static inject, and leaves the list alone', () => {
+    const output = inject("class A { static inject = []; handle() { return this.island(V, {}); } }");
+    expect(output).toBe(`class A {${marker} static inject = []; handle() { return this.island(V, {}); } }`);
+  });
+
+  it('marks calls of island() imported from @marmeon/http, also under another name', () => {
+    expect(inject(`${http}class A { handle() { return island(V, {}); } }`)).toContain(marker);
+    expect(inject("import { island as isl } from '@marmeon/http';\nclass A { handle() { return isl(V, {}); } }")).toContain(marker);
+  });
+
+  it('does not mark a local island function, one from another module or a type-only import', () => {
+    expect(inject('function island() {}\nclass A { handle() { return island(); } }')).not.toContain(marker);
+    expect(inject("import { island } from './helpers.ts';\nclass A { handle() { return island(); } }")).not.toContain(marker);
+    expect(inject("import type { island } from '@marmeon/http';\nclass A { handle() { return island(); } }")).not.toContain(marker);
+    expect(inject('class A { handle() { return other.island(V, {}); } }')).not.toContain(marker);
+  });
+
+  it('does not mark a class for this.island( in a string or a comment', () => {
+    expect(inject("class A { handle() { return 'this.island(x)'; } }")).not.toContain(marker);
+    expect(inject('class A { handle() { /* this.island(x) */ return 1; } }')).not.toContain(marker);
+    expect(analyzeInjections('// this.island(x)\nclass A { handle() { return 1; } }', 'm.ts')).toEqual([]);
+  });
+
+  it('marks only the nested class that calls island', () => {
+    const sites = analyzeInjections('class Outer { handle() { return class Inner { handle() { return this.island(V, {}); } }; } }', 'm.ts');
+    expect(sites.map((site) => [site.className, site.island])).toEqual([['Inner', true]]);
+  });
+
+  it('marks calls with type arguments, without a constructor', () => {
+    expect(inject("class A { handle() { return this.island<'x', P>(V, {}); } }")).toContain(marker);
+    expect(inject(`${http}class A { handle() { return island<'x', P>(V, {}); } }`)).toContain(marker);
+  });
+
+  it('keeps this in arrow functions, but not in function expressions, object methods, static blocks or decorators', () => {
+    expect(inject('class A { handle() { return [1].map(() => this.island(V, {})); } }')).toContain(marker);
+    expect(inject('class A { render = () => this.island(V, {}); }')).toContain(marker);
+    expect(inject('class A { handle() { return [1].map(function () { return this.island(V, {}); }); } }')).not.toContain(marker);
+    expect(inject('class A { handle() { return { run() { return this.island(V, {}); } }; } }')).not.toContain(marker);
+    expect(inject('class A { static { this.island(V, {}); } }')).not.toContain(marker);
+    expect(inject('class A { @on(this.island(V, {})) handle() {} }')).not.toContain(marker);
+    expect(inject(`${http}class A { handle() { return [1].map(function () { return island(V, {}); }); } }`)).toContain(marker);
+  });
+
+  it('keeps the line count', () => {
+    const source = 'class A {\n  handle() {\n    return this.island(V, {});\n  }\n}\n';
+    expect(inject(source).split('\n')).toHaveLength(source.split('\n').length);
+  });
+});
+
 describe('embedInjections (marmeon package:build)', () => {
   const ts = [
     "import { Clock } from '@acme/clock';",
@@ -197,6 +263,29 @@ describe('embedInjections (marmeon package:build)', () => {
     const money = 'export class Money { constructor(amount: number) {} }';
     const moneyOnce = embedInjections(money, 'src/money.ts', 'export class Money {\n    constructor(amount) {}\n}', 'dist/money.js');
     expect(embedInjections(money, 'src/money.ts', moneyOnce, 'dist/money.js')).toBe(moneyOnce);
+  });
+
+  it('writes the island mark into the compiled JavaScript, once', () => {
+    const island = 'export class Panel { handle() { return this.island(View, {}); } }';
+    const compiled = 'export class Panel {\n    handle() { return this.island(View, {}); }\n}';
+    const once = embedInjections(island, 'src/panel.ts', compiled, 'dist/panel.js');
+    expect(once).toContain(`export class Panel { static [Symbol.for("${ISLAND_CONTROLLER}")] = true;`);
+    expect(embedInjections(island, 'src/panel.ts', once, 'dist/panel.js')).toBe(once);
+    expect(removeEmbeddedInjections(once, 'dist/panel.js')).toBe(compiled);
+  });
+
+  it('still checks the compiled imports of a class that already carries the island mark', () => {
+    const ts = "import { Clock } from '@acme/clock';\nexport class Panel { constructor(c: Clock) {} handle() { return this.island(V, {}); } }";
+    const js = `export class Panel { static [Symbol.for("${ISLAND_CONTROLLER}")] = true;\n    constructor(c) {}\n}`;
+    expect(() => embedInjections(ts, 'src/panel.ts', js, 'dist/panel.js')).toThrow(/"Clock".*verbatimModuleSyntax/);
+  });
+
+  it('marks an island controller that has a list of its own, once', () => {
+    const island = 'export class Panel { static inject = []; handle() { return this.island(View, {}); } }';
+    const compiled = 'export class Panel {\n    static inject = [];\n    handle() { return this.island(View, {}); }\n}';
+    const once = embedInjections(island, 'src/panel.ts', compiled, 'dist/panel.js');
+    expect(once).toContain(ISLAND_CONTROLLER);
+    expect(embedInjections(island, 'src/panel.ts', once, 'dist/panel.js')).toBe(once);
   });
 
   it('fails when tsc elided an import the list needs', () => {

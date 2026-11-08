@@ -1,6 +1,6 @@
 /**
  * Node loader hook for app code (`node --import @marmeon/core/register app.ts`): reads constructor parameter types before
- * Node strips them and inserts the `static inject` list; node_modules is left alone. Where the app is protected, the
+ * Node strips them and inserts the `static inject` list and marks island controllers; node_modules is left alone. Where the app is protected, the
  * precomputed lists of `marmeon build` are used for every unchanged module (oxc-parser is never loaded); a changed one is
  * analysed and counted for the "stale" warning. See docs/container.md#where-the-lists-come-from.
  *
@@ -11,7 +11,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, environment } from './environment.ts';
-import { injectConstructorDependencies } from './injection/analyze.ts';
+import { injectConstructorDependencies, mayHaveInsertions } from './injection/analyze.ts';
 import { PrecomputedInjections, usePrecomputedInjections } from './injection/artifacts.ts';
 import { isBrowserSource } from './injection/browser.ts';
 import { PrecomputedMailViews, mailViewName } from './mail-view-artifacts.ts';
@@ -42,7 +42,7 @@ function loadMailView(file: string) {
     precomputed?.noteStale(name);
   }
   const text = decode(bytes);
-  const injected = precomputed ? precomputed.transform(file, bytes, decode) : text.includes('constructor') ? injectConstructorDependencies(text, file) : text;
+  const injected = precomputed ? precomputed.transform(file, bytes, decode) : mayHaveInsertions(text) ? injectConstructorDependencies(text, file) : text;
   return { format: 'module' as const, source: compileMailView(path, injected, jsxOptions(realRoot)), shortCircuit: true };
 }
 

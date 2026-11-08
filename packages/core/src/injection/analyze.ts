@@ -10,6 +10,8 @@ interface SiteBase {
   readonly classIndex: number;
   /** Offset of the class body's `{` — insertions go right after it, on the same line. */
   readonly bodyStart: number;
+  /** The class calls `this.island(…)` or `island(…)` from `@marmeon/http`: it gets the island marker ({@link ISLAND_CONTROLLER}). */
+  readonly island?: true;
 }
 
 /**
@@ -38,6 +40,9 @@ export const UNRESOLVABLE = 'marmeon.injection.unresolvable';
 /** Static, symbol-keyed field carrying a class's injection warnings. */
 export const WARNINGS = 'marmeon.injection.warnings';
 
+/** Static, symbol-keyed field marking a controller that answers with an island (`true`). */
+export const ISLAND_CONTROLLER = 'marmeon.island-controller';
+
 export class InjectionError extends Error {
   override name = 'InjectionError';
 
@@ -56,24 +61,38 @@ interface ModuleBindings {
 }
 
 /**
+ * Whether {@link analyzeInjections} can have anything to do for a module: it mentions `constructor`, calls `island(` / `island<…>(` or imports `island as …`
+ * (an alias is called under another name). A cheap text test, so the other modules are never parsed.
+ */
+export function mayHaveInsertions(source: string): boolean {
+  return source.includes('constructor') || /\bisland\s*[(<]|\bisland\s+as\b/.test(source);
+}
+
+/**
  * Finds the classes of a TypeScript module, at any depth, that take constructor parameters and resolves each parameter type
- * to a runtime expression (against the module's imports and declarations). Never throws for a class: a parameter that cannot
+ * to a runtime expression (against the module's imports and declarations); a class that calls `this.island(…)` or `island(…)`
+ * from `@marmeon/http` is marked as an island controller (docs/deferred-props.md#the-islands-route). Never throws for a class: a parameter that cannot
  * be injected is only a problem once the container is asked for that class. A class with its own `static inject` is left
  * alone; optional and defaulted parameters end the list, with a warning when their type could be injected
  * (docs/container.md#default-values-are-never-injected).
  */
 export function analyzeInjections(source: string, filename: string): InjectionSite[] {
-  if (!source.includes('constructor')) return [];
+  if (!mayHaveInsertions(source)) return [];
 
   const { program, errors } = parseSync(filename, source);
   if (errors.length > 0) return []; // let the runtime report syntax errors with its own diagnostics
 
   const bindings = collectBindings(program.body);
+  const islandFunctions = islandImports(program.body);
   const sites: InjectionSite[] = [];
 
   for (const { node, name, index } of classesOf(program)) {
     const members: Node[] = node.body.body;
-    if (members.some((member) => member.static && member.key?.name === 'inject')) continue;
+    const island = callsIsland(node.body, islandFunctions) ? ({ island: true } as const) : {};
+    if (members.some((member) => member.static && member.key?.name === 'inject')) {
+      if (island.island) sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies: [], ...island });
+      continue;
+    }
 
     const ctor = members.find((member) => member.kind === 'constructor');
     const allParams: Node[] = ctor?.value.params ?? [];
@@ -82,16 +101,18 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
     const context = { source, filename, className: name, bindings };
     const warnings = firstOptional === -1 ? [] : allParams.slice(firstOptional).flatMap((param) => optionalWarning(param, context) ?? []);
     if (params.length === 0) {
-      if (warnings.length > 0) sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies: [], warnings });
+      if (warnings.length > 0 || island.island) {
+        sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies: [], ...(warnings.length > 0 ? { warnings } : {}), ...island });
+      }
       continue;
     }
 
     try {
       const dependencies = params.map((param) => dependencyOf(param, context));
-      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies, ...(warnings.length > 0 ? { warnings } : {}) });
+      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies, ...(warnings.length > 0 ? { warnings } : {}), ...island });
     } catch (error) {
       if (!(error instanceof InjectionError)) throw error;
-      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, unresolvable: withoutCode(error.message) });
+      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, unresolvable: withoutCode(error.message), ...island });
     }
   }
 
@@ -112,7 +133,8 @@ export function insertionsOf(sites: readonly InjectionSite[]): Insertion[] {
         ? (site.dependencies.length > 0 ? ` static inject = [${site.dependencies.join(', ')}];` : '') +
           (site.warnings?.length ? ` static [Symbol.for(${JSON.stringify(WARNINGS)})] = ${JSON.stringify(site.warnings)};` : '')
         : ` static [Symbol.for(${JSON.stringify(UNRESOLVABLE)})] = ${JSON.stringify(site.unresolvable)};`;
-    return [site.bodyStart + 1, field] as const;
+    const marker = site.island ? ` static [Symbol.for(${JSON.stringify(ISLAND_CONTROLLER)})] = true;` : '';
+    return [site.bodyStart + 1, field + marker] as const;
   });
 }
 
@@ -126,14 +148,14 @@ export function applyInsertions(source: string, insertions: readonly Insertion[]
 }
 
 /**
- * Inserts `static inject = [...]` (or the unresolvable reason) into each site —
+ * Inserts `static inject = [...]` (or the unresolvable reason, the island marker) into each site —
  * on the line of the class body's `{`, so line numbers never shift.
  */
 export function insertInjections(source: string, sites: readonly InjectionSite[]): string {
   return applyInsertions(source, insertionsOf(sites));
 }
 
-/** Source transform for app code: derive and insert the injection lists. */
+/** Source transform for app code: derive and insert the injection lists, and mark island controllers. */
 export function injectConstructorDependencies(source: string, filename: string): string {
   const sites = analyzeInjections(source, filename);
   return sites.length === 0 ? source : insertInjections(source, sites);
@@ -164,6 +186,46 @@ export function classesOf(program: Node): { node: Node; name: string; index: num
   };
   visit(program, undefined);
   return found.sort((a, b) => a.node.start - b.node.start).map((entry, index) => ({ ...entry, index }));
+}
+
+/** The local names `island` from `@marmeon/http` is imported as. */
+function islandImports(body: Node[]): Set<string> {
+  const names = new Set<string>();
+  for (const statement of body) {
+    if (statement.type !== 'ImportDeclaration' || statement.source.value !== '@marmeon/http' || statement.importKind === 'type') continue;
+    for (const specifier of statement.specifiers) {
+      if (specifier.type === 'ImportSpecifier' && specifier.importKind !== 'type' && specifier.imported.name === 'island') names.add(specifier.local.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Whether a class body calls `this.island(…)` or one of `islandFunctions`. Arrow functions keep `this`; a `function` inside a
+ * method, an object literal's method, a `static {}` block and decorators do not count for `this.island`. A nested class is its
+ * own site. A local variable that shadows an imported `island` is not noticed. A call in a helper method of the class counts;
+ * one in a function outside the class does not.
+ */
+function callsIsland(body: Node, islandFunctions: ReadonlySet<string>): boolean {
+  const children = (current: Node, inner: boolean): boolean =>
+    Object.entries(current).some(([key, value]) => key !== 'type' && key !== 'decorators' && typeof value === 'object' && visit(value, inner));
+  const visit = (node: unknown, thisIsClass: boolean): boolean => {
+    if (Array.isArray(node)) return node.some((child) => visit(child, thisIsClass));
+    if (typeof node !== 'object' || node === null || typeof (node as Node).type !== 'string') return false;
+    const current = node as Node;
+    if (current.type === 'ClassDeclaration' || current.type === 'ClassExpression') return false;
+    if (current.type === 'CallExpression') {
+      const callee: Node = current.callee;
+      if (callee.type === 'Identifier' && islandFunctions.has(callee.name)) return true;
+      if (thisIsClass && callee.type === 'MemberExpression' && !callee.computed && callee.object.type === 'ThisExpression' && callee.property.name === 'island') return true;
+    }
+    return children(current, thisIsClass && current.type !== 'FunctionExpression' && current.type !== 'FunctionDeclaration');
+  };
+  return (body.body as Node[]).some((member) => {
+    if (member.type === 'StaticBlock') return visit(member, false);
+    if (member.type === 'MethodDefinition') return children(member.value, true);
+    return visit(member.value, !member.static);
+  });
 }
 
 function className(node: Node, parent: Node | undefined): string {
