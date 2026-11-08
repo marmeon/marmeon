@@ -41,6 +41,8 @@ export interface MemoryLiveOptions {
   readonly ttlMs?: number | undefined;
   /** The clock (tests). */
   readonly now?: (() => number) | undefined;
+  /** Called when a hint or an end is sent while nothing in this process listens — no server is serving here, so no stream can hear it. */
+  readonly onUnheard?: (() => void) | undefined;
 }
 
 /**
@@ -58,10 +60,12 @@ export class MemoryLiveBackend implements LiveBackend {
   readonly #max: number;
   readonly #ttl: number;
   readonly #now: () => number;
+  readonly #onUnheard: (() => void) | undefined;
   /** The highest sequence forgotten — a channel that starts again counts on from here. */
   #floor = 0;
 
-  constructor({ maxChannels = 10_000, ttlMs = 86_400_000, now = Date.now }: MemoryLiveOptions = {}) {
+  constructor({ maxChannels = 10_000, ttlMs = 86_400_000, now = Date.now, onUnheard }: MemoryLiveOptions = {}) {
+    this.#onUnheard = onUnheard;
     this.#max = maxChannels;
     this.#ttl = ttlMs;
     this.#now = now;
@@ -114,6 +118,7 @@ export class MemoryLiveBackend implements LiveBackend {
   }
 
   #send(message: LiveMessage): void {
+    if (this.#listeners.size === 0) this.#onUnheard?.();
     for (const listener of [...this.#listeners]) listener(message);
   }
 }

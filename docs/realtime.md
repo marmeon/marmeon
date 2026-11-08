@@ -306,7 +306,9 @@ counts are each process's own: with four processes, a session may hold 16 stream
   other workers — use LIVE_DRIVER=database … or LIVE_DRIVER=redis". A hint would reach the tabs of one server only. `database` and
   `redis` start.
 - **Queue workers and the scheduler** send hints too, such as a queued notification. They publish, and the web processes deliver.
-  That works through `database` or `redis`.
+  That works through `database` or `redis`. With `memory` such a process has no stream to deliver to, so its hint reaches no web
+  process and is lost. It logs one warning, at its first hint: set `LIVE_DRIVER=database` or `redis`. In development and tests,
+  where one process serves everything, there is no warning, and neither in a process that handles requests, whichever server it uses.
 - **Several containers or machines** need one of them for the same reason.
 
 ### The database driver

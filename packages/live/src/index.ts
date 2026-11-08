@@ -1,6 +1,6 @@
 import cluster from 'node:cluster';
 import type { ProviderMigrations } from '@marmeon/database';
-import { afterCommit, afterRollback, Application, Clock, HealthChecks, Logger, outsideTransaction, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { afterCommit, afterRollback, Application, Clock, currentRequest, EnvironmentConfig, HealthChecks, Logger, outsideTransaction, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { CLUSTER_WORKER, withCode } from '@marmeon/core/internal';
 import type { CommandClass } from 'marmeon';
 import { EncryptionConfig } from '@marmeon/encryption';
@@ -120,6 +120,9 @@ const LIVE_INFRASTRUCTURE = {
     'Give live updates their own SQLite file — LIVE_CONNECTION=system with a connection for storage/system.sqlite, then marmeon migrate (the migration of `marmeon make:live-table` follows LIVE_CONNECTION) — or use Redis (LIVE_DRIVER=redis).',
 };
 
+const MEMORY_UNHEARD =
+  'A live hint was sent from a process that serves no streams (a queue worker, the scheduler, a command) with LIVE_DRIVER=memory: it reaches no web process and is lost. Set LIVE_DRIVER=database (one machine, or a shared Postgres) or LIVE_DRIVER=redis. See docs/realtime.md#more-than-one-process.';
+
 /**
  * The connection the `live_hints` table belongs on — for the migration `marmeon make:live-table` writes (`connection` in
  * `defineMigration`): `LIVE_CONNECTION` with the database driver, else `default`.
@@ -152,7 +155,21 @@ export class LiveServiceProvider implements ServiceProvider {
     });
     container.singleton(LiveBackend, (c) => {
       const config = c.make(LiveConfig);
-      if (config.driver === 'memory') return new MemoryLiveBackend();
+      if (config.driver === 'memory') {
+        // A queue worker or the scheduler never serves, so nothing listens in its process: the hint is lost, silently. Said once, where it happens
+        // — not in development or tests, where the hints are in-process by design.
+        const logger = c.make(Logger).child({ channel: 'live' });
+        const { node } = c.make(EnvironmentConfig);
+        let warned = node === 'development' || node === 'test';
+        return new MemoryLiveBackend({
+          onUnheard: () => {
+            // A process that handles requests is a server, whichever one starts it: its hub listens once the first stream opens.
+            if (warned || currentRequest()) return;
+            warned = true;
+            logger.warn(MEMORY_UNHEARD);
+          },
+        });
+      }
       if (config.driver === 'database') {
         const database = this.#database;
         if (!database) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
