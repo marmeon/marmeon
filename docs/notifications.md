@@ -7,7 +7,7 @@ by mail, in a list inside the app, and live in their open tabs. `@marmeon/notifi
 stable name, the schema of its data, the channels it takes and what it says on each. You send it to a recipient as data, a kind
 and an id, and a worker delivers it.
 
-Add the package and the table its database channel writes:
+A new app has the package and the table its database channel writes. Otherwise add both:
 
 ```sh
 pnpm add -E @marmeon/notifications@<version of your app>

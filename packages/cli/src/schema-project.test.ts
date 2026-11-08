@@ -22,8 +22,8 @@ describe('marmeon schema:project (the schema projection of the migrations)', { t
     expect(stdout).toContain('→ .marmeon/schema.json');
     const file = JSON.parse(readFileSync(join(dir, '.marmeon/schema.json'), 'utf8')) as { format: number; migrations: unknown[]; tables: Record<string, unknown> };
     expect(file.format).toBe(2);
-    expect(file.migrations).toHaveLength(1);
-    expect(Object.keys(file.tables)).toEqual(['jobs', 'failed_jobs']);
+    expect(file.migrations).toHaveLength(2);
+    expect(Object.keys(file.tables)).toEqual(['jobs', 'failed_jobs', 'notifications']);
     expect(marmeon(dir, ['list']).stdout).not.toContain('schema:project');
   });
 

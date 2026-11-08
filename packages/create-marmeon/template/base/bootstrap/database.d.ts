@@ -2,7 +2,7 @@
 // Regenerated after `marmeon migrate`; CI checks it with `marmeon db:types --check`.
 // @marmeon-format 3
 
-import type { Generated } from '@marmeon/database';
+import type { Generated, JsonColumn, Timestamp } from '@marmeon/database';
 
 declare module '@marmeon/database' {
   interface Tables {
@@ -32,15 +32,30 @@ declare module '@marmeon/database' {
       available_at: number;
       created_at: number;
     };
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
+    notifications: {
+      id: string;
+      recipient_type: string;
+      recipient_id: string;
+      type: string;
+      data: JsonColumn<'notifications.data'>;
+      read_at: Timestamp | null;
+      created_at: Timestamp;
+    };
   }
   interface Relations {}
   interface PrimaryKeys {
     failed_jobs: 'uuid';
     jobs: 'id';
+    notifications: 'id';
   }
   interface TableOwners {
     failed_jobs: 'system';
     jobs: 'system';
+    notifications: 'system';
   }
   interface ExposedTables {}
   interface Modules {

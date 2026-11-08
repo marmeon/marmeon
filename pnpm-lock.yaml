@@ -226,12 +226,18 @@ importers:
       '@marmeon/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@marmeon/live':
+        specifier: workspace:*
+        version: link:../../packages/live
       '@marmeon/log':
         specifier: workspace:*
         version: link:../../packages/log
       '@marmeon/mail':
         specifier: workspace:*
         version: link:../../packages/mail
+      '@marmeon/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
       '@marmeon/queue':
         specifier: workspace:*
         version: link:../../packages/queue
@@ -250,6 +256,9 @@ importers:
       '@marmeon/session':
         specifier: workspace:*
         version: link:../../packages/session
+      '@marmeon/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@marmeon/validation':
         specifier: workspace:*
         version: link:../../packages/validation
