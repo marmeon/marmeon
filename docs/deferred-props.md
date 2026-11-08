@@ -223,7 +223,9 @@ export class ShowRecentNotesController extends Controller {
 notes.get('/islands/recent', ShowRecentNotesController).name('recent'); // `notes` is a registrar with a decision
 ```
 
-An island's route answers only an island's request. Opened directly, visited, linked or prefetched, it is a 404, and a route of
+An island's route answers only an island's request. Opened directly, visited, linked or prefetched, it is a 404 before its
+middleware runs (only the global middleware does), so a guest is not sent to the login first and nothing is remembered for after it.
+A controller that answers a page from one branch and an island from another loses the page: write two routes. A route of
 another method refuses an island's controller at compile time. An island gets no shared props: the page around it has them.
 
 ### Embedding an island

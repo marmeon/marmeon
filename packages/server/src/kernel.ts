@@ -81,7 +81,7 @@ import {
 import { Hono, type Context } from 'hono';
 import { getPath } from 'hono/utils/url';
 import { overrideMethod } from './method-override.ts';
-import { islandRefusalMessage, refuseIslandRequest } from './island-gate.ts';
+import { islandOpenedByItself, islandRefusalMessage, refuseIslandRequest } from './island-gate.ts';
 import { protocolGate } from './protocol-gate.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
@@ -289,6 +289,8 @@ export function createHttpKernel(
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
   const matched = new WeakMap<Request, RouteDefinition>();
+  /** The pattern of a route that refused the request before it matched: the log line masks the path by it, nothing else reads it. */
+  const refusedBy = new WeakMap<Request, string>();
   const sharedCacheWarnings = new SharedCacheWarnings();
   const routeHandlers = new Map<unknown, RouteDefinition>();
 
@@ -482,7 +484,7 @@ export function createHttpKernel(
     if (typeof error === 'object' && error !== null) reported.set(failed, (reported.get(failed) ?? new WeakSet()).add(error));
     container.make(ErrorReports).report(error, {
       source: 'request',
-      context: { method: failed.method, route: route?.routeName ?? '', path: redactor.url(pathname, route?.path), ...(phase ? { phase } : {}) },
+      context: { method: failed.method, route: route?.routeName ?? '', path: redactor.url(pathname, route?.path ?? refusedBy.get(failed)), ...(phase ? { phase } : {}) },
       // Late work logs its own line (the caller's); a request error logs here.
       ...(phase ? { log: false as const } : {}),
     });
@@ -674,7 +676,7 @@ export function createHttpKernel(
         if (logger.enabled?.('info') === false) return;
         const definition = matched.get(c.req.raw);
         const route = definition?.routeName;
-        logger.info(`${c.req.method} ${redactor.path(c.req.path, definition?.path)} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
+        logger.info(`${c.req.method} ${redactor.path(c.req.path, definition?.path ?? refusedBy.get(c.req.raw))} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
       };
       // Traced only while something listens: otherwise no message is built at all.
       if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, run, () => c.res);
@@ -924,8 +926,22 @@ export function createHttpKernel(
   const register = (route: RouteDefinition) => {
     const handler = async (c: Context) => {
       // Before the route's middleware, the global ones included: see refuseIslandRequest.
+      refusedBy.set(c.req.raw, route.path);
       const refused = await refuseIslandRequest(c.req.raw, route, showsDebug(c.req.raw), refuseWith(c.req.raw));
       if (refused) return refused;
+      // An island's route opened by itself: the global middleware, then a 404 like an unknown path — see islandOpenedByItself.
+      const byItself = islandOpenedByItself(c.req.raw, route, showsDebug(c.req.raw));
+      if (byItself) {
+        return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
+          router.dispatchGlobal(c.req.raw, () => Promise.reject(new HttpError(404, byItself.message === undefined ? undefined : redactor.text(byItself.message))), {
+            resolve: (Class) => scope.make(Class),
+            state,
+            onTerminable,
+            onError: (error) => renderError(error, c.req.raw, scope),
+          }),
+          islandParent(c.env),
+        );
+      }
       matched.set(c.req.raw, route);
       if (debug) parameters.set(c.req.raw, c.req.param());
       return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>

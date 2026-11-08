@@ -115,7 +115,7 @@ describe('createHttpKernel — islands', async () => {
   it('a direct hit is a 404 — and so is a page visit or a prefetch of the island’s URL', async () => {
     const direct = await app.request('/islands/feed', { headers: { accept: 'text/html' } });
     expect(direct.status).toBe(404);
-    expect(await direct.text()).toContain('[dashboard/Feed] is an island: it is loaded by');
+    expect(await direct.text()).toContain('GET /islands/feed is an island: it is loaded by');
     expect((await app.request('/islands/feed', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).status).toBe(404);
     expect((await app.request('/islands/feed', { headers: { ...ISLAND, purpose: 'prefetch' } })).status).toBe(404);
     // In production, a plain 404 — no hint.
@@ -147,8 +147,8 @@ describe('createHttpKernel — islands', async () => {
     expect([forbidden.status, forbidden.headers.get('x-marmeon-region-status'), await forbidden.text()]).toEqual([204, 'forbidden', '']);
     // Never cached, and kept apart from the answer without the header.
     expect([redirect.headers.get('cache-control'), redirect.headers.get('vary')]).toEqual(['no-store', 'x-marmeon-region']);
-    // Without the island header the same routes answer as always.
-    expect((await app.request('/islands/redirects')).status).toBe(302);
+    // Without the island header the island's route is a 404 before its controller can redirect.
+    expect((await app.request('/islands/redirects')).status).toBe(404);
   });
 
   it('a failure is the island’s `exception`, with its status — the message only in development, no error page', async () => {
@@ -196,9 +196,9 @@ describe('createHttpKernel — islands', async () => {
     await production.settle();
     expect(logged).not.toContain('deferred work ran');
     expect(logged.filter((message) => message.includes('an island is read-only'))).toHaveLength(2);
-    // Outside an island the same routes may write.
+    // Outside an island the route is a 404 before its controller runs: nothing is deferred.
     expect((await production.request('/islands/defers', { headers: { accept: 'text/html' } })).status).toBe(404);
     await production.settle();
-    expect(logged).toContain('deferred work ran');
+    expect(logged).not.toContain('deferred work ran');
   });
 });

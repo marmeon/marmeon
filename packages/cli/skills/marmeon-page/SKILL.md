@@ -117,8 +117,9 @@ return this.island('notes/ShowRecentNotes', { notes: await this.#notes.recent(ct
 ```
 
 - The route is a `GET` route (a compile error on any other method), and its controller calls `this.island()` (or `island()` from
-  `@marmeon/http`) in its own class: a closure, or an island built by a function outside the class, is no island route and answers 404. Opened directly, linked or prefetched it is a 404: it answers an
-  island's request only (`docs/deferred-props.md#the-islands-route`).
+  `@marmeon/http`) in its own class: a closure, or an island built by a function outside the class, is no island route and answers 404. Opened directly, visited, linked or prefetched it is a 404 before its
+  middleware runs, so a guest is not sent to the login: it answers an island's request only, and a controller that answers a page or an
+  island by branch becomes two routes (`docs/deferred-props.md#the-islands-route`).
 - Embed it with `<Island route>` and a literal route name; `query` is typed by the island's query schema. Use `fallback` for the
   wait and `unauthorized` for a redirect, a 401 or a 403 of the island's route; `error` for a failure
   (`docs/deferred-props.md#embedding-an-island`). `href` is the second way, for an island the server chooses: build it with `router.url()` from a

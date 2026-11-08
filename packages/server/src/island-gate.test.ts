@@ -16,7 +16,12 @@ const ISLAND = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' }
 
 /** What the kernel logged, at any level. */
 const logged: string[] = [];
+/** The request log lines (`info`). */
+const lines: string[] = [];
 class RecordingLogger extends ConsoleLogger {
+  override info(message: string): void {
+    lines.push(message);
+  }
   override error(message: string): void {
     logged.push(message);
   }
@@ -89,6 +94,8 @@ describe('an island request to a route that is no island', async () => {
       return island('islands/Closure', {});
     });
     counted.get('/island', RealIsland);
+    Route.get('/invite/:token', PageController);
+    Route.get('/islands/invite/:token', RealIsland);
     Route.get('/about', PageController).sitemap();
     Route.middleware(StartsSession).get('/sessioned', PageController);
     Route.get('/embeds-session', () => view('pages/Embeds', { islands: ['/sessioned'] }));
@@ -157,6 +164,26 @@ describe('an island request to a route that is no island', async () => {
     expect(ran.global).toBe(1);
   });
 
+  it('masks the parameters of the route it refuses in the request log line, for an island request to a page and a page request to an island', async () => {
+    lines.length = 0;
+    await app.request('/invite/abc123', { headers: ISLAND });
+    await app.request('/islands/invite/abc123', { headers: { accept: 'text/html' } });
+    expect(lines).toEqual(['GET /invite/[redacted] 404', 'GET /islands/invite/[redacted] 404']);
+  });
+
+  it('answers a request without accept and one for html exactly as it does an unknown path in production, the nonce aside', async () => {
+    // The page object names the requested URL: the one thing that differs by the path asked for.
+    const answer = async (path: string, headers: Record<string, string>) => {
+      const response = await production.request(path, { headers });
+      return [response.status, response.headers.get('content-type'), (await response.text()).replace(/nonce="[^"]*"/g, 'nonce=""').replaceAll(`"url":"${path}"`, '"url":"/"')];
+    };
+    for (const accept of [{} as Record<string, string>, { accept: 'text/html' }]) {
+      const unknown = await answer('/nowhere', accept);
+      expect(await answer('/page', { ...ISLAND, ...accept })).toEqual(await answer('/nowhere', { ...ISLAND, ...accept }));
+      expect(await answer('/island', accept)).toEqual(unknown);
+    }
+  });
+
   it('logs nothing in production when it refuses a browser’s island request — the path is the requester’s to choose', async () => {
     logged.length = 0;
     for (const path of ['/page', '/nowhere', '/sitemap.xml']) await production.request(path, { headers: ISLAND });
@@ -177,6 +204,28 @@ describe('an island request to a route that is no island', async () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-marmeon-region')).toBe('island');
     expect(ran).toEqual({ global: 1, group: 1, route: 1, controller: 1 });
+  });
+
+  it.each([
+    ['a direct request', { accept: 'text/html' }],
+    ['a visit', { [PAGE_HEADER]: PROTOCOL_VERSION }],
+    ['a prefetch', { [PAGE_HEADER]: PROTOCOL_VERSION, 'sec-purpose': 'prefetch' }],
+    ['a prefetch of an island request', { ...ISLAND, 'sec-purpose': 'prefetch' }],
+  ])('answers %s of an island’s route with a 404 after the global middleware alone', async (_name, headers) => {
+    reset();
+    const response = await app.request('/island', { headers });
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-marmeon-region')).toBeNull();
+    // The global middleware runs (headers of the error document); neither the group's, the route's nor the controller.
+    expect(ran).toEqual({ global: 1, group: 0, route: 0, controller: 0 });
+  });
+
+  it('says in development why an island’s route is a 404 when opened by itself, and nothing in production', async () => {
+    const hint = await app.request('/island', { headers: { accept: 'application/json' } });
+    expect(((await hint.json()) as { message: string }).message).toContain('GET /island is an island: it is loaded by <Island route> on a page');
+    const quiet = await production.request('/island', { headers: { accept: 'application/json' } });
+    const unknown = await production.request('/nowhere', { headers: { accept: 'application/json' } });
+    expect([quiet.status, await quiet.text()]).toEqual([unknown.status, await unknown.text()]);
   });
 
   it('leaves a request without the island header alone: the page route runs', async () => {

@@ -1,4 +1,4 @@
-import { regionOf } from '@marmeon/http';
+import { isPrefetch, regionOf } from '@marmeon/http';
 import type { RouteDefinition } from '@marmeon/router';
 import { isIslandAction } from '@marmeon/router/internal';
 import { toRegionResponse } from './render.ts';
@@ -31,4 +31,22 @@ export async function refuseIslandRequest(
   // The exception handler's own answer to a 404, as for an unknown path: in production no request tells the two apart.
   const message = debug ? islandRefusalMessage(request.method, new URL(request.url).pathname, route) : undefined;
   return toRegionResponse(await render(message));
+}
+
+/**
+ * The 404 for a visit, link, prefetch or direct request to an island's route (a marked controller): the island is loaded by
+ * `<Island route>` on a page, never opened itself. Undefined for an island request and for a route that is no island.
+ *
+ * The kernel answers it as it does an unknown path: through the global middleware (headers, CSP of the error document), but
+ * before the route's and its group's middleware and before the controller, so a guest is not sent to the login first and no
+ * session or "intended URL" is written. `message` is for a debugging app only.
+ */
+export function islandOpenedByItself(request: Request, route: RouteDefinition, debug: boolean): { readonly message: string | undefined } | undefined {
+  if (!isIslandAction(route.action) || (regionOf(request) === 'island' && !isPrefetch(request))) return undefined;
+  const path = new URL(request.url).pathname;
+  return {
+    message: debug
+      ? `${request.method} ${path} is an island: it is loaded by <Island route> on a page (x-marmeon-region: island), never visited, linked, prefetched or opened by itself — it is a 404 before its middleware runs (docs/deferred-props.md#the-islands-route).`
+      : undefined,
+  };
 }

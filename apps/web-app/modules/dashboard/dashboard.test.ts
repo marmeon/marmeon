@@ -133,6 +133,14 @@ describe('the dashboard: a page of islands', () => {
     await app.actingAs(ada).prefetching().get('/dashboard/islands/sign-ins').assertNotFound();
   });
 
+  it('a guest who opens an island’s URL directly gets a 404, not the login — and nothing is remembered for after it', async () => {
+    for (const request of [app.get('/dashboard/islands/sign-ins', { headers: { accept: 'text/html' } }), app.navigating().get('/dashboard/islands/sign-ins'), app.prefetching().get('/dashboard/islands/sign-ins')]) {
+      const response = await request.assertNotFound();
+      expect(response.headers.get('location')).toBeNull();
+      expect(response.headers.getSetCookie()).toEqual([]);
+    }
+  });
+
   it('an island’s request to a route that is no island is a 404 before the route’s middleware — a guest is not asked to sign in', async () => {
     // `/dashboard` is a page behind `authenticate()`: a guest's page request is redirected, an island request never gets that far.
     const guest = await app.islanding().get('/dashboard').assertNotFound();
