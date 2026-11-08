@@ -1,4 +1,5 @@
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
+import { deprecated } from '@marmeon/core/deprecation';
 
 /**
  * Live props: how hints travel (`memory` in one process, `database` through the app's database, `redis` to every process), the
@@ -21,18 +22,28 @@ export const LiveConfig = defineConfig('live', {
     .renamed('LIVE_REDIS_CONNECTION', 'LIVE_CONNECTION')
     .renamed('LIVE_HEARTBEAT', 'LIVE_HEARTBEAT_SECONDS')
     .renamed('LIVE_RETRY', 'LIVE_RETRY_MILLISECONDS'),
-  resolve: (e) => ({
-    driver: e.LIVE_DRIVER,
-    connection: e.LIVE_CONNECTION,
-    /** @deprecated Use `connection`, the same value: it names the `database` driver's connection too. Removed in 2.0; docs/realtime.md#configuration. */
-    redisConnection: e.LIVE_CONNECTION,
-    pollMs: e.LIVE_POLL_MILLISECONDS,
-    heartbeatSeconds: e.LIVE_HEARTBEAT_SECONDS,
-    retryMs: e.LIVE_RETRY_MILLISECONDS,
-    maxStreams: e.LIVE_MAX_STREAMS,
-    maxStreamsPerSession: e.LIVE_MAX_STREAMS_PER_SESSION,
-    maxStreamSeconds: e.LIVE_MAX_STREAM_SECONDS,
-    maxChannels: e.LIVE_MAX_CHANNELS,
-  }),
+  resolve: (e) => {
+    const resolved = {
+      driver: e.LIVE_DRIVER,
+      connection: e.LIVE_CONNECTION,
+      /** @deprecated Use `connection`, the same value: it names the `database` driver's connection too. Removed in 2.0; docs/realtime.md#configuration. */
+      redisConnection: e.LIVE_CONNECTION,
+      pollMs: e.LIVE_POLL_MILLISECONDS,
+      heartbeatSeconds: e.LIVE_HEARTBEAT_SECONDS,
+      retryMs: e.LIVE_RETRY_MILLISECONDS,
+      maxStreams: e.LIVE_MAX_STREAMS,
+      maxStreamsPerSession: e.LIVE_MAX_STREAMS_PER_SESSION,
+      maxStreamSeconds: e.LIVE_MAX_STREAM_SECONDS,
+      maxChannels: e.LIVE_MAX_CHANNELS,
+    };
+    // Not enumerable: copying or printing the config does not read it. Reading it warns once, in development and tests.
+    return Object.defineProperty(resolved, 'redisConnection', {
+      enumerable: false,
+      get() {
+        deprecated('live.redis-connection', 'LiveConfig.redisConnection is deprecated, use LiveConfig.connection instead.', '2.0');
+        return e.LIVE_CONNECTION;
+      },
+    });
+  },
 });
 export type LiveConfig = ConfigOf<typeof LiveConfig>;

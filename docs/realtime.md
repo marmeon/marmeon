@@ -327,7 +327,8 @@ a row when it sends a hint, and polls the table every `LIVE_POLL_MILLISECONDS` f
 
 - **In the process that sends a hint** its streams hear it at once. **In every other process** a hint arrives within the poll
   interval (500 milliseconds by default), and so does the end of a session. Lower the interval for a faster reaction at the price of
-  more queries; one query per process runs each time, not one per stream.
+  more queries. They are per process, not per stream: a poll reads the new rows, and one that finds none also reads the table's id
+  counter, which takes two small queries on SQLite and one on Postgres.
 - **On SQLite**, every process of **one machine** shares the file: `marmeon start --workers`, `marmeon queue:work` and the
   scheduler. The file is written in WAL mode, and a poll only reads. Give the hints a SQLite file of their own with
   `LIVE_CONNECTION=system`, as [the database page](database.md#infrastructure-connections) describes for the other drivers.
