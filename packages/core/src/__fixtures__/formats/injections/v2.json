@@ -1,0 +1,7 @@
+{
+ "format": 2,
+ "files": {
+  "modules/panel/ShowPanelController.ts": {"sha256":"f033e190abca51817319d8cbd945716cc42325b71740680dda8fb47a64481425","insert":[[34," static [Symbol.for(\"marmeon.island-controller\")] = true;"]]},
+  "modules/users/ShowUserController.ts": {"sha256":"0de4ec9de3525d2963019a95f520ef1c0ad4092a92059d9a6e5b8a3d17b85be6","insert":[[88," static inject = [UserRepository];"]]}
+ }
+}

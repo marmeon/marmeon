@@ -214,3 +214,69 @@ describe('injection artifacts', () => {
     expect(precomputed.stale).toEqual(['modules/users/ShowUserController.ts']);
   });
 });
+
+describe('the format of injections.json', () => {
+  const fixtures = new URL('../__fixtures__/formats/injections/', import.meta.url);
+  const sources: Record<string, string> = {
+    'modules/users/ShowUserController.ts': controller + '\n',
+    'modules/panel/ShowPanelController.ts': 'export class ShowPanelController {\n  handle() {\n    return this.island(Panel, {});\n  }\n}\n',
+  };
+  const app = () => {
+    const root = realpathSync(tempDir('marmeon-injections-format-'));
+    for (const [path, source] of Object.entries(sources)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), source);
+    }
+    mkdirSync(join(root, '.marmeon'));
+    return root;
+  };
+  const transformed = (root: string) => {
+    const precomputed = PrecomputedInjections.load(root);
+    return {
+      precomputed,
+      output: Object.fromEntries(Object.entries(sources).map(([path, source]) => [path, precomputed.transform(join(root, path), Buffer.from(source), decode)])),
+    };
+  };
+
+  it('reads every fixture of a version it supports, and treats any other as missing: analysed, never interpreted', () => {
+    const names = readdirSync(fixtures);
+    expect(names.length).toBeGreaterThan(1);
+    for (const name of names) {
+      const root = app();
+      const bytes = readFileSync(new URL(name, fixtures), 'utf8');
+      writeFileSync(join(root, INJECTIONS_FILE), bytes);
+      const { precomputed, output } = transformed(root);
+      expect(output['modules/panel/ShowPanelController.ts'], name).toContain('marmeon.island-controller');
+      expect(output['modules/users/ShowUserController.ts'], name).toContain('static inject = [UserRepository];');
+      if (JSON.parse(bytes).format === 2) {
+        expect(precomputed.stale, name).toEqual([]);
+        // The writer produces what the fixture holds, byte for byte.
+        const written = app();
+        writeInjectionArtifacts({ root: written });
+        expect(readFileSync(join(written, INJECTIONS_FILE), 'utf8'), name).toBe(bytes);
+      } else {
+        // An older version is not interpreted: even an entry that fits the source is analysed again.
+        expect(precomputed.stale.slice().sort(), name).toEqual(Object.keys(sources).sort());
+        expect(precomputed.warning(), name).toMatch(/Build artifacts are missing/);
+      }
+    }
+  });
+
+  it('does not interpret a version after the newest it knows, and leaves the file untouched', () => {
+    const root = app();
+    const next = { format: 3, files: { 'modules/panel/ShowPanelController.ts': { sha256: 'x', insert: [[34, ' static fromTheFuture = 1;']] } } };
+    const bytes = JSON.stringify(next);
+    writeFileSync(join(root, INJECTIONS_FILE), bytes);
+    const { precomputed, output } = transformed(root);
+    expect(output['modules/panel/ShowPanelController.ts']).not.toContain('fromTheFuture');
+    expect(output['modules/panel/ShowPanelController.ts']).toContain('marmeon.island-controller');
+    expect(precomputed.warning()).toMatch(/Build artifacts are missing/);
+    expect(readFileSync(join(root, INJECTIONS_FILE), 'utf8')).toBe(bytes);
+  });
+
+  it('treats data without a mark as missing', () => {
+    const root = app();
+    writeFileSync(join(root, INJECTIONS_FILE), JSON.stringify({ files: {} }));
+    expect(transformed(root).precomputed.stale.length).toBe(2);
+  });
+});
