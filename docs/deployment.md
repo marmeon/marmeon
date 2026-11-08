@@ -139,7 +139,7 @@ ends with 0 once all of them ended with 0. A server that ends while the others r
 ends before it listened, such as on a taken port, stops all of them with its exit code. `marmeon dev` refuses the option.
 
 The servers share nothing in memory, so they need the same shared drivers as [more than one instance](#more-than-one-instance).
-Live updates need `LIVE_DRIVER=redis`: with `memory` the start fails. The warnings of the start are said once, by the process you
+Live updates need `LIVE_DRIVER=database` (SQLite on this machine, or a shared Postgres) or `LIVE_DRIVER=redis`: with `memory` the start fails. The warnings of the start are said once, by the process you
 started.
 
 ## The Docker image
@@ -458,7 +458,7 @@ store:
 | Sessions, `SESSION_DRIVER` | `memory`, or `file` across machines | `redis`, `database` |
 | Cache, rate limits and locks, `CACHE_DRIVER` | `memory`, or `file` across machines | `redis`, `database` |
 | Queue, `QUEUE_DRIVER` | `sync` for real work, or `database` on SQLite across machines | `redis`, or `database` on Postgres |
-| Live updates, `LIVE_DRIVER` | `memory` | `redis` |
+| Live updates, `LIVE_DRIVER` | `memory` | `database` on one machine or on Postgres, `redis` |
 | Database | SQLite across machines | Postgres |
 | Uploads and files | the local disks across machines | an S3 disk |
 

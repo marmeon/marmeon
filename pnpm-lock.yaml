@@ -801,6 +801,9 @@ importers:
       '@marmeon/session':
         specifier: workspace:*
         version: link:../session
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/log:
     dependencies:

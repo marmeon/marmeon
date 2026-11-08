@@ -215,7 +215,7 @@ connection too.
 Some writes must never be part of your app's transaction. A failed sign-in counted inside a transaction that rolls back would be
 uncounted, and the next guess would get through. A lock taken inside one would be invisible to other processes until the commit.
 So the database drivers of the [cache](cache.md#the-database-driver-and-transactions), the
-[sessions](session.md#the-database-driver) and [uploads](storage.md#the-uploads-table) write on a connection that never joins a
+[sessions](session.md#the-database-driver), [uploads](storage.md#the-uploads-table) and [live updates](realtime.md#the-database-driver) write on a connection that never joins a
 transaction:
 
 | Their connection | What they get | Inside an open transaction of the app |
@@ -227,7 +227,7 @@ transaction:
 The pool of its own on Postgres keeps transactions that wait for a rate limit from taking every connection that the rate limit
 needs. On SQLite a second connection to the app's file would wait for the open transaction's lock, forever if the transaction
 waits for it. So on SQLite give the cache, the sessions and uploads a file of their own, as `config/database.ts` above does,
-and point them at it with `CACHE_CONNECTION=system`, `SESSION_CONNECTION=system` and `UPLOADS_CONNECTION=system`. Outside a
+and point them at it with `CACHE_CONNECTION=system`, `SESSION_CONNECTION=system`, `LIVE_CONNECTION=system` and `UPLOADS_CONNECTION=system`. Outside a
 transaction the app's own file works as well. Never point two connection names at the same SQLite file: a transaction of either
 holds the file for both. On Postgres there is nothing to configure.
 

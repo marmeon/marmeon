@@ -16,7 +16,7 @@ describe('the entry point of the live package', () => {
   });
 
   it('drops the hub, the backends and the wire constants', () => {
-    for (const name of ['LiveHub', 'MemoryLiveBackend', 'RedisLiveBackend', 'LiveTokens', 'LiveStreamController', 'LiveBackend', 'LiveMessage', 'LIVE_PATH', 'CONNECTION_HEADER', 'STREAM_HEADERS']) {
+    for (const name of ['LiveHub', 'MemoryLiveBackend', 'RedisLiveBackend', 'DatabaseLiveBackend', 'LiveTokens', 'LiveStreamController', 'LiveBackend', 'LiveMessage', 'LIVE_PATH', 'CONNECTION_HEADER', 'STREAM_HEADERS']) {
       expect(live, name).not.toHaveProperty(name);
     }
   });

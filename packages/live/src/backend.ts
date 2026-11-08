@@ -41,6 +41,8 @@ export interface MemoryLiveOptions {
   readonly ttlMs?: number | undefined;
   /** The clock (tests). */
   readonly now?: (() => number) | undefined;
+  /** Called when a hint or an end is sent while nothing in this process listens — no server is serving here, so no stream can hear it. */
+  readonly onUnheard?: (() => void) | undefined;
 }
 
 /**
@@ -58,10 +60,12 @@ export class MemoryLiveBackend implements LiveBackend {
   readonly #max: number;
   readonly #ttl: number;
   readonly #now: () => number;
+  readonly #onUnheard: (() => void) | undefined;
   /** The highest sequence forgotten — a channel that starts again counts on from here. */
   #floor = 0;
 
-  constructor({ maxChannels = 10_000, ttlMs = 86_400_000, now = Date.now }: MemoryLiveOptions = {}) {
+  constructor({ maxChannels = 10_000, ttlMs = 86_400_000, now = Date.now, onUnheard }: MemoryLiveOptions = {}) {
+    this.#onUnheard = onUnheard;
     this.#max = maxChannels;
     this.#ttl = ttlMs;
     this.#now = now;
@@ -114,12 +118,22 @@ export class MemoryLiveBackend implements LiveBackend {
   }
 
   #send(message: LiveMessage): void {
+    if (this.#listeners.size === 0) this.#onUnheard?.();
     for (const listener of [...this.#listeners]) listener(message);
   }
 }
 
 /** The version of the message between nodes, the first field of its JSON: a reader takes only this one. */
 export const LIVE_MESSAGE_VERSION = 1;
+
+/** What a backend sends of a message between nodes: the hint without its `seq` (the backend adds it), or the end. */
+export type LiveMessageBody = Omit<Extract<LiveMessage, { kind: 'refresh' }>, 'seq'> | Extract<LiveMessage, { kind: 'end' }>;
+
+/** The JSON of a message between nodes, without `seq` — the one text every backend writes (a refresh's `seq` follows it or is the row id). */
+export function messageText(message: LiveMessageBody): string {
+  if (message.kind === 'end') return JSON.stringify({ v: LIVE_MESSAGE_VERSION, kind: 'end', scope: message.scope });
+  return JSON.stringify({ v: LIVE_MESSAGE_VERSION, kind: 'refresh', channel: message.channel, only: message.only, ...(message.except === undefined ? {} : { except: message.except }) });
+}
 
 /** A message as JSON — refused (undefined) when it is not one this package sends. */
 export function parseMessage(text: string): LiveMessage | undefined {

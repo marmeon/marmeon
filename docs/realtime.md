@@ -268,8 +268,9 @@ screen.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `LIVE_DRIVER` | `memory` | How hints travel: `memory` within one process, `redis` to every process. |
-| `LIVE_CONNECTION` | `default` | The Redis connection of the `redis` driver. |
+| `LIVE_DRIVER` | `memory` | How hints travel: `memory` within one process, `database` through a table of the app's database, `redis` to every process. |
+| `LIVE_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
+| `LIVE_POLL_MILLISECONDS` | `500` | How often the `database` driver looks for hints of other processes, from 50 to 10000. |
 | `LIVE_HEARTBEAT_SECONDS` | `20` | Seconds between heartbeats on an idle stream, from 1 to 300. |
 | `LIVE_RETRY_MILLISECONDS` | `3000` | Milliseconds before a browser opens a broken stream again, from 100 to 600000. |
 | `LIVE_MAX_STREAMS` | `1000` | Open streams per process. Beyond it, `503` with `Retry-After: 10`. |
@@ -278,8 +279,14 @@ screen.
 | `LIVE_MAX_CHANNELS` | `20` | Channels per stream, at most 200. Beyond it, `400`. |
 
 The app fails at the start without an `APP_KEY`, with `LIVE_DRIVER=redis` but no `@marmeon/redis`, with a Redis client that does
-not load, or with an unknown Redis connection. It does not connect to Redis at the start: an unreachable server shows with the
+not load, or with an unknown Redis connection. It fails likewise with `LIVE_DRIVER=database` but no `@marmeon/database` (or its
+provider), or with an unknown database connection. It does not connect to Redis at the start: an unreachable server shows with the
 first hint.
+
+The `database` driver needs its table. Without it the app starts, but `/up/ready` and `marmeon check` (readiness) are red and say
+`marmeon make:live-table && marmeon migrate`. They are red as well for a `live_hints` table whose `id` does not count up for good
+(`AUTOINCREMENT` on SQLite, an identity or serial column on Postgres): a table made by hand with a plain `integer primary key` would hand out
+the id of a deleted row again, and a process would skip the new hint. Create the table again from the migration of the command.
 
 ### Limits
 
@@ -293,15 +300,56 @@ counts are each process's own: with four processes, a session may hold 16 stream
 
 ## More than one process
 
-`LIVE_DRIVER=memory` reaches the streams of its own process only. Use `LIVE_DRIVER=redis` as soon as there is more than one:
+`LIVE_DRIVER=memory` reaches the streams of its own process only. Choose `database` or `redis` as soon as there is more than one:
 
 - **`marmeon start --workers`** fails at the start with `memory`, with a `LiveSetupError`: "memory pub/sub never reaches the
-  other workers — use LIVE_DRIVER=redis". A hint would reach the tabs of one server only.
+  other workers — use LIVE_DRIVER=database … or LIVE_DRIVER=redis". A hint would reach the tabs of one server only. `database` and
+  `redis` start.
 - **Queue workers and the scheduler** send hints too, such as a queued notification. They publish, and the web processes deliver.
-  That works only through Redis.
-- **Several containers or machines** need it for the same reason.
+  That works through `database` or `redis`. With `memory` such a process has no stream to deliver to, so its hint reaches no web
+  process and is lost. It logs one warning, at its first hint: set `LIVE_DRIVER=database` or `redis`. In development and tests,
+  where one process serves everything, there is no warning, and neither in a process that handles requests, whichever server it uses.
+- **Several containers or machines** need one of them for the same reason.
 
-`@marmeon/redis` brings the Redis client, and the [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
+### The database driver
+
+`LIVE_DRIVER=database` carries the hints in a table of the app's database, `live_hints`. Create it once:
+
+```sh
+pnpm marmeon make:live-table
+pnpm marmeon migrate
+```
+
+The command writes the migration into `modules/system` (`--module=<name>` picks another module), like the tables of the
+[queue](queues.md) and the [sessions](session.md#the-database-driver). The table is the app's, and `marmeon db:types` sees it.
+A row holds a channel and the names of the props to reload (or the scope of a session that ended), never data. Each process writes
+a row when it sends a hint, and polls the table every `LIVE_POLL_MILLISECONDS` for the rows of the others, so:
+
+- **In the process that sends a hint** its streams hear it at once. **In every other process** a hint arrives within the poll
+  interval (500 milliseconds by default), and so does the end of a session. Lower the interval for a faster reaction at the price of
+  more queries. They are per process, not per stream: a poll reads the new rows, and one that finds none also reads the table's id
+  counter, which takes two small queries on SQLite and one on Postgres.
+- **On SQLite**, every process of **one machine** shares the file: `marmeon start --workers`, `marmeon queue:work` and the
+  scheduler. The file is written in WAL mode, and a poll only reads. Give the hints a SQLite file of their own with
+  `LIVE_CONNECTION=system`, as [the database page](database.md#infrastructure-connections) describes for the other drivers.
+  SQLite cannot reach another machine.
+- **On Postgres**, processes on **several machines** share the database. Hints use the small pool for infrastructure
+  (`DB_INFRA_POOL_MAX`) and never join a transaction of your code. A serverless Postgres that sleeps when idle stays awake
+  while a process polls it: use `redis` or `memory` there.
+- A hint is written after the transaction that caused it committed, like with Redis. A rollback sends nothing.
+- Each polling process deletes the rows nobody needs: those of ended sessions after five minutes, rows a newer hint of their
+  channel replaced after five minutes, everything after a day. There is no command to run.
+
+While polls fail, such as when the database is down, the streams stay open, the failure is logged, and the process catches up when
+polling works again. The end of a session (signed out) or of an account's sign-ins, announced meanwhile, reaches the
+streams of a process whose polls failed for more than five minutes only when the stream's maximum time (`LIVE_MAX_STREAM_SECONDS`)
+runs out and its browser is checked again, the same as during a Redis outage.
+
+### The Redis driver
+
+Choose `LIVE_DRIVER=redis` for many machines, a high volume of hints or the lowest latency: Redis delivers to every process at
+once and needs no table. `@marmeon/redis` brings the Redis client, and the [Redis](redis.md#which-connection-a-driver-uses) page
+covers its connection.
 
 A server subscribes to the backend before its port accepts connections (for up to five seconds, then it starts anyway), so a stream never misses the end of its session. An app that serves through its own server built on `createHttpKernel`, not `startServer`, has its first streams connect once more after the start.
 
@@ -309,8 +357,9 @@ A server subscribes to the backend before its port accepts connections (for up t
 
 Every hint carries its channel's sequence number. When a stream opens it says each channel's number, and the tab compares. A
 channel that moved while the tab was away reloads **once**, however many hints it missed: after a broken connection, a frozen tab
-or a restart of the server. Sequence numbers live a day after a channel's last hint, so a tab away longer reloads once anyway. The
-`memory` driver also forgets the channels hinted longest ago beyond 10 000, and counts on above every number it forgot.
+or a restart of the server. Sequence numbers live a day after a channel's last hint, so a tab away longer reloads once anyway. With
+the `database` driver a channel's number is the id of its last row in `live_hints`; it rises across channels and skips numbers,
+which is all a tab compares. The `memory` driver also forgets the channels hinted longest ago beyond 10 000, and counts on above every number it forgot.
 
 A number that starts again, because its Redis key expired or was flushed, never silences a stream: an open stream delivers every
 hint whatever its number, and a reconnect that finds another number than it knew reloads that channel once. When the server stops,
@@ -344,7 +393,7 @@ Real-time updates are the hints on this page. These are not part of the framewor
 - **Data events:** a stream never carries data. A tab always reloads through its route.
 - **Presence channels:** no list of who is on a page.
 - **Client events:** tabs never send each other anything through the server.
-- **Encrypted channels**, a Postgres `LISTEN/NOTIFY` driver, and a retry for a hint lost while Redis was down.
+- **Encrypted channels**, a `LISTEN/NOTIFY` wake-up for the `database` driver, and a retry for a hint lost while Redis was down.
 
 ## Testing
 

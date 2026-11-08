@@ -11,6 +11,10 @@ declare const shared: SharedData;
 // The heartbeat and the reconnect delay say their unit in the name.
 export const heartbeat: LiveConfig['heartbeatSeconds'] = 20;
 export const retry: LiveConfig['retryMs'] = 3000;
+// The driver is one of three.
+export const driver: LiveConfig['driver'] = 'database';
+// @ts-expect-error — no other driver
+export const other: LiveConfig['driver'] = 'mysql';
 // @ts-expect-error — the old name is gone
 export type Old = LiveConfig['heartbeat'];
 // Namespace '"…/live/src/index"' has no exported member 'LiveBackend'.

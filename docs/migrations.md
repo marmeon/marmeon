@@ -1140,6 +1140,7 @@ pnpm marmeon migrate
 | `make:notifications-table` | `publish @marmeon/notifications` | `notifications`, on the notifications' connection |
 | `make:uploads-table` | `publish @marmeon/storage` | `temporary_uploads`, on the uploads' connection |
 | `make:sign-ins-table` | `publish @marmeon/auth` | `sign_ins`, on the default connection |
+| `make:live-table` | `publish @marmeon/live` | `live_hints`, on the live connection |
 
 Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-migrations-of-a-package) for its own package. It
 writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap
@@ -1154,7 +1155,7 @@ is not one the app did not ask for. (`publish <package>` is stricter, see below.
 or the module's `index.ts` has another shape (a list kept in a variable, say), it leaves the file as it is and says what to add. A migration that any module already has
 under the same name is not written again. Each migration
 reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `SESSION_CONNECTION`, `QUEUE_DATABASE_CONNECTION`,
-`NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
+`NOTIFICATIONS_CONNECTION`, `UPLOADS_CONNECTION` and `LIVE_CONNECTION`. So its tables land on the
 [connection](database.md#infrastructure-connections) the driver reads and writes.
 
 The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops

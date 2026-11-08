@@ -511,6 +511,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `LIVE_MAX_STREAMS` | live | value | `1000` | [Real-time Updates](realtime.md#configuration) |
 | `LIVE_MAX_STREAMS_PER_SESSION` | live | value | `16` | [Real-time Updates](realtime.md#configuration) |
 | `LIVE_MAX_STREAM_SECONDS` | live | duration | `900` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_POLL_MILLISECONDS` | live | duration | `500` | [Real-time Updates](realtime.md#configuration) |
 | `LIVE_RETRY_MILLISECONDS` | live | duration | `3000` | [Real-time Updates](realtime.md#configuration) |
 | `LOG_FORMAT` | log | value | optional | [Logging](logging.md#configuration) |
 | `LOG_LEVEL` | log | value | `"info"` | [Logging](logging.md#configuration) |

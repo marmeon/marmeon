@@ -1,9 +1,11 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
 import { Redactor } from '@marmeon/core';
 import { LIVE_VERSION } from '@marmeon/http/internal';
 import { describe, expect, it } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { connectionsAt, migrate, openBackend, rows, sqliteTarget } from './__fixtures__/database.ts';
 import { MemoryLiveBackend, parseMessage } from './backend.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { END_FRAME, LiveHub } from './hub.ts';
@@ -119,5 +121,27 @@ describe('the live message between nodes: the fixtures of every version it once 
     const all = published();
     await all.backend.refresh('dashboard.sign-ins', null, undefined);
     expect(all.sent).toEqual([named('v1-refresh-all.json')]);
+  });
+
+  it('the database backend stores the fixtures without their sequence, and the sequence is the row id', async () => {
+    const directory = tempDir('marmeon-live-formats-');
+    const connections = connectionsAt(sqliteTarget(directory));
+    try {
+      await migrate(connections);
+      const backend = openBackend(connections, 'sqlite');
+      const ids = [await backend.refresh('users.1', ['posts', 'comments'], CONNECTION), await backend.refresh('dashboard.sign-ins', null, undefined)];
+      await backend.end(ADA);
+      const stored = (await rows(connections)).map((row) => row.message);
+      const withoutSeq = (name: string) => named(name).replace(',"seq":7', '');
+      expect(stored).toEqual([withoutSeq('v1-refresh.json'), withoutSeq('v1-refresh-all.json'), named('v1-end.json')]);
+      expect(stored.map((message, index) => parseMessage(index < 2 ? `${message.slice(0, -1)},"seq":${ids[index]}}` : message))).toEqual([
+        { kind: 'refresh', channel: 'users.1', only: ['posts', 'comments'], seq: ids[0], except: CONNECTION },
+        { kind: 'refresh', channel: 'dashboard.sign-ins', only: null, seq: ids[1] },
+        { kind: 'end', scope: ADA },
+      ]);
+    } finally {
+      await connections.destroy();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
