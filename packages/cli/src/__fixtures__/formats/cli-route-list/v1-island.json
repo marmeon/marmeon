@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "routes": [
+    { "methods": ["GET"], "path": "/islands/sign-ins", "name": null, "group": null, "middleware": [], "access": "none", "publicBindings": [], "action": "ShowRecentSignIns", "island": true },
+    { "methods": ["GET"], "path": "/dashboard", "name": null, "group": null, "middleware": [], "access": "none", "publicBindings": [], "action": "ShowDashboard", "island": false },
+    { "methods": ["GET"], "path": "/closure", "name": null, "group": null, "middleware": [], "access": "none", "publicBindings": [], "action": "Closure", "island": false }
+  ],
+  "warnings": []
+}

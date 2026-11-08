@@ -116,12 +116,16 @@ return this.island('notes/ShowRecentNotes', { notes: await this.#notes.recent(ct
 <Island route="notes.recent" query={{ limit: 3 }} fallback={<p aria-busy="true">Loading…</p>} unauthorized={<p>Sign in to see your notes.</p>} />
 ```
 
-- The route is a `GET` route (a compile error on any other method). Opened directly, linked or prefetched it is a 404: it answers an
+- The route is a `GET` route (a compile error on any other method), and its controller calls `this.island()` (or `island()` from
+  `@marmeon/http`) in its own class: a closure, or an island built by a function outside the class, is no island route and answers 404. Opened directly, linked or prefetched it is a 404: it answers an
   island's request only (`docs/deferred-props.md#the-islands-route`).
 - Embed it with `<Island route>` and a literal route name; `query` is typed by the island's query schema. Use `fallback` for the
   wait and `unauthorized` for a redirect, a 401 or a 403 of the island's route; `error` for a failure
-  (`docs/deferred-props.md#embedding-an-island`). `href` is only for an island the server chooses, built with `router.url()` from a
-  route name the server picks, never from the request or stored content (`docs/deferred-props.md#islands-the-server-chooses`).
+  (`docs/deferred-props.md#embedding-an-island`). `href` is the second way, for an island the server chooses: build it with `router.url()` from a
+  route name the server picks, never from the request or stored content. The server answers an island's request only for a route
+  whose controller calls `this.island()`; any other route is refused before its middleware runs. That keeps a wrong `href` from
+  running a page, but a `href` that names another island still loads it with the visitor's cookies
+  (`docs/deferred-props.md#islands-the-server-chooses`). `marmeon route:list` marks island routes `(island)`.
 - The island's view takes `IslandProps<Controller>`, and `useIsland<Controller>()` reloads it. It has no shared props of its own, but
   `usePage()` is the page's. A `<Head>` inside it throws in development (`docs/deferred-props.md#inside-an-island`).
 - An island only reads. A write to the session, a cookie, a flash message or work after the response throws in development and tests

@@ -1030,7 +1030,8 @@ pnpm marmeon route:list
 ```
 
 It shows each route's method, path, name, group, the middleware in the order it runs, who may call it, and the controller, or
-`Closure`. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
+`Closure`. A controller that answers an [island's](deferred-props.md#the-islands-route) request, one that calls `this.island()` or `island()` from `@marmeon/http`,
+carries `(island)` after its name; a closure never does. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
 for a policy (the parameter it asks about in brackets, `(…)` for a function, none for an ability without a resource), and
 `check` for a function of your own. `none` marks a route that does not say who may call it; `framework` marks the framework's
 own routes, which guard themselves. A route that binds a record with `{ public: true }` names the parameter after its checks:
@@ -1038,8 +1039,9 @@ own routes, which guard themselves. A route that binds a record with `{ public: 
 framework's own routes, so it also answers which middleware a request really passes.
 
 `--json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format`, `routes` (each with
-`methods`, `path`, `name`, `group`, `middleware`, `access`, `publicBindings` and `action`; `access` is a list of checks, or
-`"framework"` or `"none"`; `publicBindings` lists the parameters bound with `{ public: true }`, `[]` for none) and `warnings`.
+`methods`, `path`, `name`, `group`, `middleware`, `access`, `publicBindings`, `action` and `island`; `access` is a list of checks, or
+`"framework"` or `"none"`; `publicBindings` lists the parameters bound with `{ public: true }`, `[]` for none; `island` is `true` for a route whose controller
+calls `this.island()` or `island()` from `@marmeon/http`, see [the island's route](deferred-props.md#the-islands-route)) and `warnings`.
 
 ## Testing
 

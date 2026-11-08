@@ -9,7 +9,7 @@ const MAX_CHILD_STDOUT_BYTES = 16 * 1024 * 1024;
 /** The routes of the app, as `marmeon route:list --json` prints them, filtered and cut. */
 export const ROUTES_TOOL: McpTool = {
   name: 'routes',
-  description: `List the routes the app registers: methods, path, name, group, middleware, who may call it and the action. Starts the app once. ${DATA_NOTICE}`,
+  description: `List the routes the app registers: methods, path, name, group, middleware, who may call it, the action and whether the route is an island. Starts the app once. ${DATA_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {

@@ -114,6 +114,12 @@ describe('marmeon mcp', { timeout: 60_000 }, () => {
       }
     });
 
+    it('says for every route whether it is an island, and no route of the blank app is', async () => {
+      const all = (await call(session, 'routes', {})).structuredContent;
+      expect(all.routes.length).toBeGreaterThan(0);
+      for (const route of all.routes) expect(route.island, route.path).toBe(false);
+    });
+
     it('filters by path, by the start of the name and by method, and cuts at the limit', async () => {
       const all = (await call(session, 'routes', {})).structuredContent;
       expect(all.total).toBe(all.routes.length);
