@@ -1,5 +1,41 @@
 # @marmeon/otel
 
+## 1.0.0-rc.8
+
+### Breaking changes
+
+- Refuse an island request to a route that is no island before any middleware runs by @maxeckel in https://github.com/marmeon/marmeon/pull/754
+
+### Features
+
+- Write mails as React views with @marmeon/react/mail by @maxeckel in https://github.com/marmeon/marmeon/pull/742
+- Let make:mail write a React view and its frame when the app has @marmeon/react by @maxeckel in https://github.com/marmeon/marmeon/pull/743
+- Send the starter kit's auth mails from React views by @maxeckel in https://github.com/marmeon/marmeon/pull/744
+- Accept a @graph block in &lt;Head jsonLd> by @maxeckel in https://github.com/marmeon/marmeon/pull/755
+- Add LIVE_DRIVER=database for live updates without Redis by @maxeckel in https://github.com/marmeon/marmeon/pull/756
+- Give every new app storage, live updates and notifications by @maxeckel in https://github.com/marmeon/marmeon/pull/752
+
+### Fixes
+
+- Pass an island's 304 on, so a revalidated island keeps its content by @maxeckel in https://github.com/marmeon/marmeon/pull/737
+- Treat tests next to a page as no page by @maxeckel in https://github.com/marmeon/marmeon/pull/738
+- Write the landing's NoteSharedMail as a React view, as make:mail now does by @maxeckel in https://github.com/marmeon/marmeon/pull/749
+- Keep the site and docs headers on one line on a phone by @maxeckel in https://github.com/marmeon/marmeon/pull/748
+
+### Documentation
+
+- Give the website a white look with a petrol accent and rebuild the landing's hero by @maxeckel in https://github.com/marmeon/marmeon/pull/728
+- Rebuild the devtools picture as a clickable copy with sample data by @maxeckel in https://github.com/marmeon/marmeon/pull/732
+- Let readers click through the typo chain and see each compile error by @maxeckel in https://github.com/marmeon/marmeon/pull/734
+- Show a live island on the landing page by @maxeckel in https://github.com/marmeon/marmeon/pull/735
+- Show each part of the framework with its code on the landing page by @maxeckel in https://github.com/marmeon/marmeon/pull/736
+- Say what Marmeon is in the home page's title by @maxeckel in https://github.com/marmeon/marmeon/pull/745
+- Say "Typed end to end. Batteries included." in the landing's headline by @maxeckel in https://github.com/marmeon/marmeon/pull/750
+- Add an Agents section to the landing page by @maxeckel in https://github.com/marmeon/marmeon/pull/751
+- Describe the website's pages to search engines with JSON-LD by @maxeckel in https://github.com/marmeon/marmeon/pull/753
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0-rc.7...v1.0.0-rc.8
+
 ## 1.0.0-rc.7
 
 ### Breaking changes
