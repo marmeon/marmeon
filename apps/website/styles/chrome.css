@@ -352,3 +352,9 @@ figure.code pre.code {
   color: var(--term-dim);
   user-select: none;
 }
+
+.terminal .terminal-output {
+  color: var(--term-dim-text);
+  font: inherit;
+  white-space: pre-wrap;
+}

@@ -1,5 +1,6 @@
 import type { PageProps } from '@marmeon/http';
 import { HOME_TITLE } from '../../../bootstrap/head.ts';
+import { AgentsSection } from '../components/landing/AgentsSection.tsx';
 import { AudienceSection } from '../components/landing/AudienceSection.tsx';
 import { BatteriesSection } from '../components/landing/BatteriesSection.tsx';
 import { ChainSection } from '../components/landing/ChainSection.tsx';
@@ -14,7 +15,7 @@ import { SiteHead } from '../components/SiteHead.tsx';
 import type { ShowLandingController } from '../controllers/ShowLandingController.ts';
 import { DESCRIPTIONS } from '../descriptions.ts';
 
-/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in five sections. */
+/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in six sections. */
 export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
@@ -28,6 +29,7 @@ export default function Landing({ snippets, chain, packages, moduleFiles }: Page
       <TestingSection snippet={snippets.test} />
       <IslandSection snippets={snippets} />
       <DevtoolsSection />
+      <AgentsSection />
       <StartSection />
     </div>
   );

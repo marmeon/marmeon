@@ -1,0 +1,53 @@
+/* Agents: the install terminal and the skills side by side, the MCP tools in a grid below */
+.landing .agents .landing-inner.landing-columns {
+  padding-bottom: 0;
+}
+
+.landing .agents .agents-tools {
+  padding-top: clamp(32px, 4vw, 48px);
+}
+
+.landing .agents-list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.landing .agents-list--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  column-gap: var(--space-6);
+}
+
+.landing .agents-list li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.landing .agents-list code {
+  color: var(--fg);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.landing .agents-list span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.landing .agents-clients {
+  margin: var(--space-5) 0 0;
+  color: var(--fg-2);
+  line-height: 1.6;
+}
+
+.landing .agents-clients a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}

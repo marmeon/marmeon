@@ -98,6 +98,7 @@ pnpm marmeon agents:install
 ✓ Wrote .claude/skills/marmeon-security-review/SKILL.md.
 ✓ Wrote .claude/skills/marmeon-testing/SKILL.md.
 ✓ Wrote .mcp.json.
+✓ Updated the block of AGENTS.md.
 Your agent asks you to approve the server marmeon the next time it starts.
 ```
 
