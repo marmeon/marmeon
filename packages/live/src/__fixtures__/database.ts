@@ -64,3 +64,16 @@ export async function rows(connections: Connections): Promise<{ id: number; chan
   const result = await sql<{ id: number | string; channel: string | null; message: string }>`select id, channel, message from live_hints order by id`.execute(connections.get());
   return result.rows.map((row) => ({ ...row, id: Number(row.id) }));
 }
+
+/** A logger that keeps what it is told. */
+export function recorder(): { logger: Logger; logs: { level: string; message: string }[] } {
+  const logs: { level: string; message: string }[] = [];
+  const logger: Logger = {
+    debug() {},
+    info: (message) => void logs.push({ level: 'info', message }),
+    warn: (message) => void logs.push({ level: 'warn', message }),
+    error: (message) => void logs.push({ level: 'error', message }),
+    child: () => logger,
+  };
+  return { logger, logs };
+}
