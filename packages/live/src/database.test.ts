@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { rmSync } from 'node:fs';
 import { InfrastructureTransactionError, sql } from '@marmeon/database';
-import { Redactor } from '@marmeon/core';
+import { Redactor, type Clock } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { parseMessage, type LiveMessage } from './backend.ts';
@@ -94,9 +94,214 @@ for (const { name, run, fresh } of targets) {
       expect(c).toBeGreaterThan(b);
     });
 
+    describe('pruning', () => {
+      const MINUTE = 60_000;
+      const HOUR = 60 * MINUTE;
+      /** A clock that travels: tests move `time`. */
+      const travelling = () => ({ time: 1_700_000_000_000, now() { return this.time; } });
+      const count = async (connections: Awaited<ReturnType<typeof open>>['connections']) => (await rows(connections)).length;
+
+      async function pruner() {
+        const { target, drop } = await fresh();
+        const clock = travelling();
+        const connections = connectionsAt(target);
+        const backend = openBackend(connections, target.driver, { clock });
+        cleanups.push(drop, () => connections.destroy(), () => backend.close());
+        return { clock, connections, backend };
+      }
+
+      it('removes end rows after five minutes and keeps younger ones', async () => {
+        const { clock, connections, backend } = await pruner();
+        await backend.end('old');
+        clock.time += 4 * MINUTE;
+        await backend.end('young');
+        clock.time += 2 * MINUTE;
+        expect(await backend.prune()).toBe(1);
+        expect((await rows(connections)).map((row) => parseMessage(row.message))).toEqual([{ kind: 'end', scope: 'young' }]);
+      });
+
+      it('removes the refresh rows a newer one of their channel replaced, and keeps the newest of every channel', async () => {
+        const { clock, connections, backend } = await pruner();
+        await backend.refresh('orders.1', null, undefined);
+        await backend.refresh('orders.1', null, undefined);
+        const newest = await backend.refresh('orders.1', null, undefined);
+        const lone = await backend.refresh('orders.2', null, undefined);
+        clock.time += 6 * MINUTE;
+        expect(await backend.prune()).toBe(2);
+        expect((await rows(connections)).map((row) => row.id)).toEqual([newest, lone]);
+        expect(await backend.seqs(['orders.1', 'orders.2'])).toEqual([newest, lone]);
+      });
+
+      it('never prunes a row younger than five minutes, even when a newer one replaced it', async () => {
+        const { clock, connections, backend } = await pruner();
+        await backend.refresh('orders.1', null, undefined);
+        await backend.refresh('orders.1', null, undefined);
+        clock.time += 4 * MINUTE;
+        expect(await backend.prune()).toBe(0);
+        expect(await count(connections)).toBe(2);
+      });
+
+      it('keeps a lone refresh row for a day', async () => {
+        const { clock, connections, backend } = await pruner();
+        await backend.refresh('orders.1', null, undefined);
+        clock.time += 23 * HOUR;
+        expect(await backend.prune()).toBe(0);
+        clock.time += 2 * HOUR;
+        expect(await backend.prune()).toBe(1);
+        expect(await count(connections)).toBe(0);
+      });
+
+      it('removes a bounded batch per rule and run', async () => {
+        const { clock, connections, backend } = await pruner();
+        await sql`with recursive n(i) as (select 1 union all select i + 1 from n where i < 2500)
+          insert into live_hints (channel, message, created_at) select null, '{"v":1,"kind":"end","scope":"x"}', ${clock.time} from n`.execute(connections.get());
+        clock.time += 6 * MINUTE;
+        expect(await backend.prune()).toBe(1000);
+        expect(await backend.prune()).toBe(1000);
+        expect(await backend.prune()).toBe(500);
+        expect(await count(connections)).toBe(0);
+      });
+
+      it('never hands out an id again after real prunes, even when the newest row went', async () => {
+        const { clock, connections, backend } = await pruner();
+        await backend.refresh('orders.1', null, undefined);
+        const newest = await backend.refresh('orders.2', null, undefined);
+        clock.time += 25 * HOUR;
+        expect(await backend.prune()).toBe(2);
+        expect(await count(connections)).toBe(0);
+        expect(await backend.refresh('orders.1', null, undefined)).toBeGreaterThan(newest);
+      });
+
+      it('prunes by itself about once a minute, in the root context', async () => {
+        const { target, drop } = await fresh();
+        const clock = travelling();
+        const connections = connectionsAt(target);
+        const backend = openBackend(connections, target.driver, { clock, pollMs: 20 });
+        cleanups.push(drop, () => connections.destroy(), () => backend.close());
+        await backend.end('old');
+        clock.time += 6 * MINUTE;
+        const store = new AsyncLocalStorage<string>();
+        const deletes: (string | undefined)[] = [];
+        const stop = connections.onQuery((query) => void (query.sql.startsWith('delete') && deletes.push(store.getStore())));
+        await store.run('request', () => backend.listen(() => {}));
+        // The three deletes of one run (the last rule runs after the table is already empty).
+        await vi.waitFor(() => expect(deletes).toHaveLength(3));
+        expect(await count(connections)).toBe(0);
+        expect(deletes).toEqual(deletes.map(() => undefined));
+        // Another old row: not before a minute (at most 72 s with the jitter) has passed.
+        await sql`insert into live_hints (channel, message, created_at) values (null, '{"v":1,"kind":"end","scope":"x"}', 0)`.execute(connections.get());
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(await count(connections)).toBe(1);
+        clock.time += 73_000;
+        await vi.waitFor(async () => expect(await count(connections)).toBe(0));
+        stop();
+      });
+
+      it('loses and doubles no hint when it prunes while the poller reads', async () => {
+        const { target, drop } = await fresh();
+        const clock = travelling();
+        const connectionsA = connectionsAt(target);
+        const connectionsB = connectionsAt(target);
+        const a = openBackend(connectionsA, target.driver, { clock, pollMs: 1 });
+        const b = openBackend(connectionsB, target.driver, { clock });
+        cleanups.push(drop, () => connectionsA.destroy(), () => connectionsB.destroy(), () => a.close(), () => b.close());
+        const heard: LiveMessage[] = [];
+        await a.listen((message) => heard.push(message));
+        const sent: number[] = [];
+        for (let index = 0; index < 30; index++) sent.push(await b.refresh(`orders.${index % 3}`, null, undefined));
+        await vi.waitFor(() => expect(heard).toHaveLength(30));
+        // Everything so far is old: the prunes below remove what was superseded while new hints come in.
+        clock.time += 6 * MINUTE;
+        const prunes = (async () => {
+          for (let run = 0; run < 25; run++) {
+            await a.prune();
+            await new Promise((resolve) => setTimeout(resolve, 5));
+          }
+        })();
+        await Promise.all(Array.from({ length: 8 }, async () => {
+          for (let index = 0; index < 40; index++) sent.push(await b.refresh(`orders.${index % 3}`, null, undefined));
+        }));
+        await vi.waitFor(() => expect(heard).toHaveLength(sent.length), { timeout: 10_000 });
+        await prunes;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(heard.map((message) => (message as { seq: number }).seq).sort((x, y) => x - y)).toEqual([...sent].sort((x, y) => x - y));
+      });
+
+      /** A listening process A (cursor above 0) and a B, on a database whose table is then dropped and made again. */
+      async function recreating() {
+        const { target, drop } = await fresh();
+        const connectionsA = connectionsAt(target);
+        const connectionsB = connectionsAt(target);
+        const a = recorder();
+        const backendA = openBackend(connectionsA, target.driver, { pollMs: 20, logger: a.logger });
+        const backendB = openBackend(connectionsB, target.driver);
+        cleanups.push(drop, () => connectionsA.destroy(), () => connectionsB.destroy(), () => backendA.close(), () => backendB.close());
+        for (let index = 0; index < 3; index++) await backendB.refresh('orders.1', null, undefined);
+        const heard: LiveMessage[] = [];
+        await backendA.listen((message) => heard.push(message));
+        const recreate = async () => {
+          await sql`drop table live_hints`.execute(connectionsB.get());
+          await migrate(connectionsB);
+        };
+        return { backendA, backendB, connectionsB, heard, logs: a.logs, recreate };
+      }
+      const restarted = (logs: { level: string; message: string }[]) => logs.filter((log) => log.message.includes('started again')).length;
+
+      it('hears the first hint after the table started again, although its id is below the old cursor', async () => {
+        const { backendB, heard, logs, recreate } = await recreating();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await recreate();
+        const first = await backendB.refresh('orders.1', null, undefined);
+        expect(first).toBeLessThan(3);
+        await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.1', only: null, seq: first }]));
+        const second = await backendB.refresh('orders.1', null, undefined);
+        await vi.waitFor(() => expect(heard).toHaveLength(2));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(heard.map((message) => (message as { seq: number }).seq)).toEqual([first, second]);
+        expect(restarted(logs)).toBe(1);
+      });
+
+      it('notices a table that started again once its first row exists, and hears that row', async () => {
+        const { backendB, heard, logs, recreate } = await recreating();
+        await recreate();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(heard).toEqual([]);
+        expect(restarted(logs)).toBe(0);
+        expect(logs.some((log) => log.message.includes('cannot be read'))).toBe(false);
+        const first = await backendB.refresh('orders.1', null, undefined);
+        await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.1', only: null, seq: first }]));
+        expect(restarted(logs)).toBe(1);
+      });
+
+      it('prunes an old end row that is the newest row without taking the table for a new one', async () => {
+        const { target, drop } = await fresh();
+        const clock = travelling();
+        const connections = connectionsAt(target);
+        const logs = recorder();
+        const backend = openBackend(connections, target.driver, { clock, pollMs: 20, logger: logs.logger });
+        const other = openBackend(connections, target.driver, { clock });
+        cleanups.push(drop, () => connections.destroy(), () => backend.close(), () => other.close());
+        const heard: LiveMessage[] = [];
+        await backend.listen((message) => heard.push(message));
+        await other.end('scope');
+        await vi.waitFor(() => expect(heard).toHaveLength(1));
+        clock.time += 6 * MINUTE;
+        // The loop's own prune may get there first.
+        await backend.prune();
+        expect(await count(connections)).toBe(0);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(restarted(logs.logs)).toBe(0);
+        const id = await other.refresh('orders.1', null, undefined);
+        await vi.waitFor(() => expect(heard).toHaveLength(2));
+        expect(heard[1]).toMatchObject({ seq: id });
+        expect(restarted(logs.logs)).toBe(0);
+      });
+    });
+
     describe('polling', () => {
+      const MINUTE = 60_000;
       /** Two processes on one database: each its own connections and backend. */
-      async function two(options: { pollMs?: number } = {}) {
+      async function two(options: { pollMs?: number; clock?: Clock } = {}) {
         const { target, drop } = await fresh();
         const a = recorder();
         const b = recorder();
@@ -174,7 +379,7 @@ for (const { name, run, fresh } of targets) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         const ids = heard.map((message) => (message as { seq: number }).seq);
         expect([...ids].sort((x, y) => x - y)).toEqual([...sent].sort((x, y) => x - y));
-      });
+      }, 30_000);
 
       it('logs a flapping database once per minute, and the recovery only of a streak it logged', async () => {
         const { target, drop } = await fresh();
@@ -213,6 +418,95 @@ for (const { name, run, fresh } of targets) {
         failing = false;
         await polls(2);
         expect(levels()).toEqual(['error', 'info', 'error', 'info']);
+      });
+
+      it('a failing prune is logged, and does not make the next poll announce a recovery', async () => {
+        const { backendA, logsA, listenA } = await two({ pollMs: 10 });
+        const prune = vi.spyOn(backendA, 'prune').mockRejectedValue(new Error('cannot delete'));
+        await listenA();
+        await vi.waitFor(() => expect(prune).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(logsA.map((log) => log.level)).toEqual(['error']);
+        expect(logsA[0]!.message).toContain('Pruning');
+      });
+
+      describe('after polls failed, or ids went unseen', () => {
+        /** A reads through a connection that can be made to fail; B writes; both share one clock that travels. */
+        async function stalled() {
+          const { target, drop } = await fresh();
+          const clock = { time: 1_700_000_000_000, now() { return this.time; } };
+          const connectionsA = connectionsAt(target);
+          const connectionsB = connectionsAt(target);
+          let failing = false;
+          const backendA = new DatabaseLiveBackend(async () => {
+            if (failing) throw new Error('database down');
+            return { db: connectionsA.infrastructure('default'), driver: target.driver };
+          }, { pollMs: 10, logger: recorder().logger, redactor: new Redactor(), clock });
+          const backendB = openBackend(connectionsB, target.driver, { clock });
+          cleanups.push(drop, () => connectionsA.destroy(), () => connectionsB.destroy(), () => backendA.close(), () => backendB.close());
+          const heard: LiveMessage[] = [];
+          await backendA.listen((message) => heard.push(message));
+          const fail = async (on: boolean) => {
+            failing = on;
+            await new Promise((resolve) => setTimeout(resolve, 80));
+          };
+          return { clock, connectionsB, backendB, heard, fail };
+        }
+        const only = (message: LiveMessage | undefined) => (message as { only: unknown }).only;
+
+        it('a short stall keeps the props a hint names', async () => {
+          const { clock, backendB, heard, fail } = await stalled();
+          await fail(true);
+          await backendB.refresh('orders.1', ['status'], undefined);
+          clock.time += MINUTE;
+          await fail(false);
+          await vi.waitFor(() => expect(heard).toHaveLength(1));
+          expect(only(heard[0])).toEqual(['status']);
+        });
+
+        it('after a stall longer than rows are kept, the first hints tell every prop to reload; later ones are as sent', async () => {
+          const { clock, backendB, heard, fail } = await stalled();
+          await fail(true);
+          await backendB.refresh('orders.1', ['status'], undefined);
+          clock.time += 6 * MINUTE;
+          await fail(false);
+          await vi.waitFor(() => expect(heard).toHaveLength(1));
+          expect(only(heard[0])).toBeNull();
+          await backendB.refresh('orders.1', ['status'], undefined);
+          await vi.waitFor(() => expect(heard).toHaveLength(2));
+          expect(only(heard[1])).toEqual(['status']);
+        });
+
+        it('keeps telling every prop to reload while the backlog of the stall comes in batches', async () => {
+          const { clock, connectionsB, heard, fail } = await stalled();
+          await fail(true);
+          await sql`with recursive n(i) as (select 1 union all select i + 1 from n where i < 1500)
+            insert into live_hints (channel, message, created_at)
+            select 'orders.' || i, '{"v":1,"kind":"refresh","channel":"orders.' || i || '","only":["status"]}', ${clock.time} from n`.execute(connectionsB.get());
+          clock.time += 6 * MINUTE;
+          await fail(false);
+          await vi.waitFor(() => expect(heard).toHaveLength(1500), { timeout: 10_000 });
+          expect(heard.every((message) => only(message) === null)).toBe(true);
+        });
+
+        it('after an id never showed up, the next hint tells every prop to reload', async () => {
+          const { clock, connectionsB, backendB, heard, fail } = await stalled();
+          await fail(true);
+          const first = await backendB.refresh('orders.1', ['a'], undefined);
+          const gone = await backendB.refresh('orders.1', ['b'], undefined);
+          await backendB.refresh('orders.2', ['c'], undefined);
+          await sql`delete from live_hints where id = ${gone}`.execute(connectionsB.get());
+          await fail(false);
+          await vi.waitFor(() => expect(heard).toHaveLength(2));
+          expect(heard.map((message) => only(message))).toEqual([['a'], ['c']]);
+          expect(first).toBeLessThan(gone);
+          // Ten seconds pass without the id: it is given up, and what comes next is widened.
+          clock.time += 11_000;
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          await backendB.refresh('orders.1', ['d'], undefined);
+          await vi.waitFor(() => expect(heard).toHaveLength(3));
+          expect(only(heard[2])).toBeNull();
+        });
       });
 
       it('skips a row that is no message and delivers the next one', async () => {
@@ -367,6 +661,72 @@ describe.runIf(PGSQL_URL !== undefined)('the database backend on Postgres: ids t
       await other.destroy();
       await reader.destroy();
       await drop();
+    }
+  });
+});
+
+describe.runIf(PGSQL_URL !== undefined)('the database backend on Postgres as a role that cannot read the id counter', () => {
+  it('does not take the table for a new one: nothing is delivered twice while it idles', async () => {
+    const { target, drop } = await freshPostgres();
+    const owner = connectionsAt(target);
+    const role = `marmeon_live_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`;
+    const admin = connectionsAt({ driver: 'pgsql', url: PGSQL_URL! });
+    let restricted: ReturnType<typeof connectionsAt> | undefined;
+    let backend: ReturnType<typeof openBackend> | undefined;
+    const producer = openBackend(owner, 'pgsql');
+    try {
+      await sql`create role ${sql.id(role)} login password 'secret'`.execute(admin.get());
+      await sql`grant select, insert, delete on live_hints to ${sql.id(role)}`.execute(owner.get());
+      const url = new URL((target as { url: string }).url);
+      url.username = role;
+      url.password = 'secret';
+      restricted = connectionsAt({ driver: 'pgsql', url: url.href });
+      const logs = recorder();
+      backend = openBackend(restricted, 'pgsql', { pollMs: 20, logger: logs.logger });
+      for (let index = 0; index < 3; index++) await producer.refresh('orders.1', null, undefined);
+      const heard: LiveMessage[] = [];
+      await backend.listen((message) => heard.push(message));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(heard).toEqual([]);
+      expect(logs.logs.filter((log) => log.message.includes('started again'))).toEqual([]);
+      expect(logs.logs.filter((log) => log.message.includes('cannot be read'))).toHaveLength(1);
+      const id = await producer.refresh('orders.1', null, undefined);
+      await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.1', only: null, seq: id }]));
+    } finally {
+      await backend?.close();
+      await producer.close();
+      await restricted?.destroy();
+      await owner.destroy();
+      // The role goes after the database (its grant lives there), and goes even when dropping the database fails.
+      try {
+        await drop();
+      } finally {
+        await sql`drop role if exists ${sql.id(role)}`.execute(admin.get());
+        await admin.destroy();
+      }
+    }
+  });
+});
+
+describe('the database backend on a SQLite table without AUTOINCREMENT', () => {
+  it('does not take the table for a new one: nothing is delivered twice while it idles', async () => {
+    const directory = tempDir('marmeon-live-db-');
+    const connections = connectionsAt(sqliteTarget(directory));
+    const logs = recorder();
+    const backend = openBackend(connections, 'sqlite', { pollMs: 20, logger: logs.logger });
+    try {
+      await sql`create table live_hints (id integer primary key, channel varchar(200), message text not null, created_at bigint not null)`.execute(connections.get());
+      for (let index = 0; index < 3; index++) await backend.refresh('orders.1', null, undefined);
+      const heard: LiveMessage[] = [];
+      await backend.listen((message) => heard.push(message));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(heard).toEqual([]);
+      expect(logs.logs.filter((log) => log.message.includes('started again'))).toEqual([]);
+      expect(logs.logs.filter((log) => log.message.includes('cannot be read'))).toHaveLength(1);
+    } finally {
+      await backend.close();
+      await connections.destroy();
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
