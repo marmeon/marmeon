@@ -81,6 +81,8 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(compose).toContain("command: ['schedule:work']");
     expect(compose.match(/healthcheck:\n {6}disable: true/g)).toHaveLength(2);
     expect(compose).toContain("      - '3000:3000'");
+    // The header names the driver the worker's and scheduler's live hints need to reach the web container.
+    expect(compose).toContain('LIVE_DRIVER=database in .env.production');
     expect(existsSync(join(root, 'deploy'))).toBe(false);
   });
 
@@ -252,6 +254,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(result.file('deploy/systemd/worker.service')).toMatch(/^ExecStart=\/srv\/shop\/node_modules\/\.bin\/marmeon queue:work$/m);
     expect(result.file('deploy/systemd/worker.service')).toContain('Restart=always');
     expect(result.file('deploy/systemd/scheduler.service')).toContain('marmeon schedule:work');
+    for (const role of ['web', 'worker', 'scheduler']) expect(result.file(`deploy/systemd/${role}.service`)).toContain('LIVE_DRIVER=database');
     // Each unit names the file it is copied to after its role's key — never with a space ("shop-web server.service").
     for (const role of ['web', 'worker', 'scheduler']) {
       const unit = result.file(`deploy/systemd/${role}.service`);

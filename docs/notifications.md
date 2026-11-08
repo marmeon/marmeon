@@ -224,7 +224,7 @@ row or another channel. The channel needs `@marmeon/mail` and a queue. The [mail
 
 With `@marmeon/live` installed, `via()` may return `'live'`. Once the delivery committed, the recipient's open tabs hear a hint
 on `notificationsChannel(recipient)`, and what follows that channel, such as a bell, reloads. A hint from a worker reaches the
-web servers only with `LIVE_DRIVER=redis`. The [real-time updates](realtime.md#sending-hints) page explains hints.
+web servers with `LIVE_DRIVER=database` or `LIVE_DRIVER=redis`, not with `memory`. The [real-time updates](realtime.md#sending-hints) page explains hints.
 
 ### A channel of your own
 

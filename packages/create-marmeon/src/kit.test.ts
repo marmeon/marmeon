@@ -112,11 +112,14 @@ it(
     expect(migrated.out).toContain('create_passkeys_table');
     expect(migrated.out).toContain('create_sign_ins_table');
     expect(migrated.out).toContain('create_email_changes_table');
+    // A new app runs LIVE_DRIVER=database: its own migration creates the table of the live hints.
+    expect(migrated.out).toContain('create_live_hints_table');
     expect(migrated.code).toBe(0);
     // The kit creates its tables in their current form: nothing renames a table.
     expect(readdirSync(join(root, 'modules/auth/migrations')).filter((file) => /rename/.test(file))).toEqual([]);
     const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
     expect(tables).toContain('password: Secret<string>;');
+    expect(tables).toMatch(/live_hints: \{/);
     // A change of address waits in its own table, whose token hash and session key are secret — `users` holds no address its owner has not confirmed.
     expect(tables).toMatch(/email_changes: \{[^}]*token_hash: Secret<string>;[^}]*session_key: Secret<string \| null>;/);
     expect(tables).not.toContain('pending_email');

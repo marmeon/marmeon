@@ -36,6 +36,16 @@ declare module '@marmeon/database' {
      * Owned by `system`.
      * Primary key: id.
      */
+    live_hints: {
+      id: Generated<number>;
+      channel: string | null;
+      message: string;
+      created_at: number;
+    };
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
     notifications: {
       id: string;
       recipient_type: string;
@@ -50,11 +60,13 @@ declare module '@marmeon/database' {
   interface PrimaryKeys {
     failed_jobs: 'uuid';
     jobs: 'id';
+    live_hints: 'id';
     notifications: 'id';
   }
   interface TableOwners {
     failed_jobs: 'system';
     jobs: 'system';
+    live_hints: 'system';
     notifications: 'system';
   }
   interface ExposedTables {}

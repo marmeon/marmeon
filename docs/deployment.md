@@ -30,12 +30,15 @@ its settings into `.env.production` next to the files:
 APP_NAME="My App"
 APP_URL=https://example.com
 APP_KEY=base64:…
+LIVE_DRIVER=database
 MAIL_DRIVER=smtp
 MAIL_HOST=smtp.example.com
 MAIL_USERNAME=…
 MAIL_PASSWORD=…
 MAIL_FROM_ADDRESS=hello@example.com
 ```
+
+`LIVE_DRIVER=database` carries the live hints of the worker and the scheduler (a notification's bell, for one) to the web container: they travel through the `live_hints` table in the shared `storage` volume (SQLite), or through a shared Postgres. With the default `memory` they stay in the process that sent them. An app without the table needs `marmeon make:live-table`, then `migrate`; a new app has it.
 
 Then build the image, create the tables and start the services:
 
@@ -594,6 +597,8 @@ The units restart always, a worker's exit code 70 included, and give each role 3
 app's folder is read-only except `storage/`. The web server listens on `127.0.0.1` and trusts the proxy on the same machine.
 Node must be on the service's `PATH`, so install it as a system package rather than through a version manager.
 
+Put `LIVE_DRIVER=database` into `/etc/<name>/env`: the three units share `/srv/<name>/storage`, and the hints of the worker and the scheduler reach the web server through the `live_hints` table there. With `memory` they stay in their own process.
+
 ## One server with Compose
 
 A single server with Docker Compose is enough for many apps. A few things matter there beyond the template:
@@ -615,6 +620,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `SERVER_TRUSTED_PROXIES` names it.
 - `HOST=0.0.0.0` where another machine reaches the app directly. `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` above the proxy's idle timeout to the app.
 - `MAIL_DRIVER=smtp`.
+- `LIVE_DRIVER=database` (or `redis`) in the production environment: a new app's `.env.example` sets it and its migrations create the table (an older app: `marmeon make:live-table`, then `migrate`), a hand-written `.env.production` does not, and the hints of the worker and the scheduler are lost with `memory`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
 - A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.
 - The drivers the settings name are installed as `dependencies`.

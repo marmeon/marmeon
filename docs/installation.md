@@ -112,7 +112,7 @@ The starter kit's registration is private: it never tells anyone whether an addr
 
 ### A blank app
 
-`--minimal` creates a blank app. It has one module, `system`, that holds the tables of the framework's queue and notifications. You add your own
+`--minimal` creates a blank app. It has one module, `system`, that holds the tables of the framework's queue, notifications and live updates. You add your own
 modules from there.
 
 Both kinds of app share the rest: `bootstrap/`, the configuration, the security headers, the devtools that record what the app

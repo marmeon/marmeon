@@ -250,9 +250,10 @@ async function main(): Promise<number> {
       if (/EROFS|EACCES|read-only|stale|missing/i.test(output)) throw new SmokeError(`the read-only start complained:\n${output}`);
       docker.remove(name);
     });
+    // The image has no .env: a deployment sets LIVE_DRIVER=database (this machine's processes share the SQLite file) or redis itself.
     await step('start --workers=2 → /up 200; SIGTERM → both drain, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`marmeon-image-smoke-${id}-cluster`, ['-p', `127.0.0.1:${port}:3000`, ...common, image, 'start', '--workers=2']);
+      const name = docker.detached(`marmeon-image-smoke-${id}-cluster`, ['-p', `127.0.0.1:${port}:3000`, '-e', 'LIVE_DRIVER=database', ...common, image, 'start', '--workers=2']);
       await until('two workers listening', () => (logs(name)().split('Marmeon in production').length - 1 >= 2 ? true : undefined), 30_000, logs(name));
       if ((await status(`http://127.0.0.1:${port}/up`)) !== 200) throw new SmokeError(`GET /up did not answer 200:\n${logs(name)()}`);
       docker.run(['kill', '--signal', 'SIGTERM', name]);

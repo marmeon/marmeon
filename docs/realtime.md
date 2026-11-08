@@ -313,7 +313,7 @@ counts are each process's own: with four processes, a session may hold 16 stream
 
 ### The database driver
 
-`LIVE_DRIVER=database` carries the hints in a table of the app's database, `live_hints`. Create it once:
+`LIVE_DRIVER=database` carries the hints in a table of the app's database, `live_hints`. A new app already has the table in `modules/system` and sets `LIVE_DRIVER=database` in `.env.example`; an older app creates it once:
 
 ```sh
 pnpm marmeon make:live-table

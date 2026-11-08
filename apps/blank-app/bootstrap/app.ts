@@ -4,7 +4,7 @@ import { contentSecurityPolicy, securityHeaders } from '@marmeon/http';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
 
-/** The modules the app runs: `system` holds the tables of the queue and the notifications (`marmeon make:queue-table`, `make:notifications-table`); `marmeon make:auth` adds `auth` to the list. */
+/** The modules the app runs: `system` holds the tables of the queue, the notifications and live updates (`marmeon make:queue-table`, `make:notifications-table`, `make:live-table`); `marmeon make:auth` adds `auth` to the list. */
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
