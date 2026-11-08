@@ -3,6 +3,7 @@ import { findPackageJSON } from 'node:module';
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions, securityHeaders } from '@marmeon/http';
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
+import { AppConfig } from '../../config/app.ts';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
 import { FATHOM_SCRIPT } from './fathom.ts';
@@ -19,7 +20,7 @@ export const PUBLIC_GROUP = 'public';
  * The Content-Security-Policy in production: scripts and styles from this origin only — no `style` attribute, no inline
  * `<style>`; the fonts and the stylesheet come from `/assets/`. The pages are cached publicly
  * (`CachePublicly`), and a nonce — one per response — must never reach a shared cache, where everybody would get the
- * same one. They need none: the server renders no inline script (the page object is inert JSON, nothing streams, the code
+ * same one. They need none: the server renders no inline script (the page object and the structured data are inert JSON, which `script-src` does not govern; nothing streams, the code
  * blocks are spans), and the entry, its chunks and tab sync's chunk come from `/assets/` — `'self'`.
  */
 export const SITE_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], styleSrc: ["'self'"], frameAncestors: ["'none'"] };
@@ -46,7 +47,10 @@ export class SiteServiceProvider implements ServiceProvider {
   register(container: Container): void {
     // The routes while registering, not in boot(): `marmeon build` writes the route types from an app that boots nothing.
     container.make(Router).load({ group: PUBLIC_GROUP }, routes);
-    container.singleton(SiteInfo, () => new SiteInfo(frameworkVersion()));
+    container.singleton(SiteInfo, () => {
+      const { version, license } = frameworkManifest();
+      return new SiteInfo(version, license, new URL(container.make(AppConfig).url).origin);
+    });
     container.singleton(SiteSnippets, () => new SiteSnippets());
   }
 
@@ -69,9 +73,17 @@ export class SiteServiceProvider implements ServiceProvider {
   }
 }
 
-/** The version of the framework this website runs on, from `@marmeon/core`'s manifest. */
-function frameworkVersion(): string {
+/** The version and license of the framework this website runs on, from `@marmeon/core`'s manifest. */
+function frameworkManifest(): { version: string; license: string } {
   const manifest = findPackageJSON('@marmeon/core', import.meta.url);
   if (manifest === undefined) throw new Error('The version of @marmeon/core could not be found.');
-  return (JSON.parse(readFileSync(manifest, 'utf8')) as { version: string }).version;
+  return parseManifest(JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown; license?: unknown });
+}
+
+/** The `version` and `license` of a manifest; throws unless the version is a string and the license a single SPDX identifier, because the license becomes a URL on spdx.org (an expression has none). */
+export function parseManifest({ version, license }: { version?: unknown; license?: unknown }): { version: string; license: string } {
+  if (typeof version !== 'string' || typeof license !== 'string' || !/^[\w.+-]+$/.test(license)) {
+    throw new Error('The manifest of @marmeon/core needs a string "version" and a "license" that is a single SPDX identifier (no expression).');
+  }
+  return { version, license };
 }

@@ -13,12 +13,13 @@ import { TestingSection } from '../components/landing/TestingSection.tsx';
 import { SiteHead } from '../components/SiteHead.tsx';
 import type { ShowLandingController } from '../controllers/ShowLandingController.ts';
 import { DESCRIPTIONS } from '../descriptions.ts';
+import { landingNodes } from '../structured-data.ts';
 
 /** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in five sections. */
 export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
-      <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" />
+      <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" nodes={(site) => landingNodes(site, DESCRIPTIONS.landing)} />
       <HeroSection snippets={snippets} />
       <PrinciplesSection />
       <AudienceSection />

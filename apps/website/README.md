@@ -53,7 +53,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   the seven steps stand one under the other with the same content.
   `SiteSnippets` highlights them once at boot with the docs' Shiki and theme (the browser gets markup, no highlighter), and the
   controller hands them to the page. `modules/site` owns the `public` group, the answers' headers and the Content-Security-Policy;
-  the version of the framework it shows comes from `@marmeon/core`'s manifest (shared once as `site.version`).
+  the version of the framework it shows comes from `@marmeon/core`'s manifest (shared once as `site.version`, with the license and the origin of `APP_URL`). `modules/site/structured-data.ts` builds each page's JSON-LD graph from these (rendered by `SiteHead` through `<Head jsonLd>`).
   `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
   `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
   highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
