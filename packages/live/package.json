@@ -52,6 +52,7 @@
   "files": [
     "dist",
     "src",
+    "stubs",
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
@@ -75,11 +76,15 @@
     "@marmeon/http": "workspace:*"
   },
   "peerDependencies": {
+    "@marmeon/database": "workspace:*",
     "@marmeon/notifications": "workspace:*",
     "@marmeon/redis": "workspace:*",
     "@marmeon/session": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "@marmeon/database": {
+      "optional": true
+    },
     "@marmeon/notifications": {
       "optional": true
     },

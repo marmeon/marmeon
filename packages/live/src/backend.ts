@@ -121,6 +121,15 @@ export class MemoryLiveBackend implements LiveBackend {
 /** The version of the message between nodes, the first field of its JSON: a reader takes only this one. */
 export const LIVE_MESSAGE_VERSION = 1;
 
+/** What a backend sends of a message between nodes: the hint without its `seq` (the backend adds it), or the end. */
+export type LiveMessageBody = Omit<Extract<LiveMessage, { kind: 'refresh' }>, 'seq'> | Extract<LiveMessage, { kind: 'end' }>;
+
+/** The JSON of a message between nodes, without `seq` — the one text every backend writes (a refresh's `seq` follows it or is the row id). */
+export function messageText(message: LiveMessageBody): string {
+  if (message.kind === 'end') return JSON.stringify({ v: LIVE_MESSAGE_VERSION, kind: 'end', scope: message.scope });
+  return JSON.stringify({ v: LIVE_MESSAGE_VERSION, kind: 'refresh', channel: message.channel, only: message.only, ...(message.except === undefined ? {} : { except: message.except }) });
+}
+
 /** A message as JSON — refused (undefined) when it is not one this package sends. */
 export function parseMessage(text: string): LiveMessage | undefined {
   try {
