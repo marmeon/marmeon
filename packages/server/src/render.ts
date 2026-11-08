@@ -671,7 +671,7 @@ export async function toRegionResponse(response: Response): Promise<Response> {
   if (outcome !== 'exception' || !json) {
     await response.body?.cancel();
     headers.delete('content-type');
-    // A success without the island header is a route that is no island (an `href` named a page or a JSON endpoint): a 404.
+    // A success without the island header is a marked controller that answered without an island: no island, a 404.
     return ownResponse(new Response(null, { status: outcome === 'exception' ? (response.ok ? 404 : response.status >= 400 ? response.status : 500) : 204, headers }));
   }
   // A JSON success stays a 2xx: the readers of an island's answer (the kernel, the browser's transport) take a 2xx without the

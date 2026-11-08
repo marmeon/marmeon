@@ -83,12 +83,12 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
   if (errors.length > 0) return []; // let the runtime report syntax errors with its own diagnostics
 
   const bindings = collectBindings(program.body);
-  const islandFunctions = islandImports(program.body);
+  const islandNames = islandImports(program.body);
   const sites: InjectionSite[] = [];
 
   for (const { node, name, index } of classesOf(program)) {
     const members: Node[] = node.body.body;
-    const island = callsIsland(node.body, islandFunctions) ? ({ island: true } as const) : {};
+    const island = callsIsland(node.body, islandNames) ? ({ island: true } as const) : {};
     if (members.some((member) => member.static && member.key?.name === 'inject')) {
       if (island.island) sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies: [], ...island });
       continue;
@@ -188,25 +188,32 @@ export function classesOf(program: Node): { node: Node; name: string; index: num
   return found.sort((a, b) => a.node.start - b.node.start).map((entry, index) => ({ ...entry, index }));
 }
 
-/** The local names `island` from `@marmeon/http` is imported as. */
-function islandImports(body: Node[]): Set<string> {
-  const names = new Set<string>();
+/** How `island` from `@marmeon/http` is reachable in a module: the local names of the function, and of namespace imports (`http.island(…)`). */
+interface IslandNames {
+  readonly functions: ReadonlySet<string>;
+  readonly namespaces: ReadonlySet<string>;
+}
+
+function islandImports(body: Node[]): IslandNames {
+  const functions = new Set<string>();
+  const namespaces = new Set<string>();
   for (const statement of body) {
     if (statement.type !== 'ImportDeclaration' || statement.source.value !== '@marmeon/http' || statement.importKind === 'type') continue;
     for (const specifier of statement.specifiers) {
-      if (specifier.type === 'ImportSpecifier' && specifier.importKind !== 'type' && specifier.imported.name === 'island') names.add(specifier.local.name);
+      if (specifier.type === 'ImportNamespaceSpecifier') namespaces.add(specifier.local.name);
+      else if (specifier.type === 'ImportSpecifier' && specifier.importKind !== 'type' && specifier.imported.name === 'island') functions.add(specifier.local.name);
     }
   }
-  return names;
+  return { functions, namespaces };
 }
 
 /**
- * Whether a class body calls `this.island(…)` or one of `islandFunctions`. Arrow functions keep `this`; a `function` inside a
+ * Whether a class body calls `this.island(…)`, `island(…)` imported from `@marmeon/http` or `island` of a namespace import of it. An `island` a module of the app re-exports is not noticed. Arrow functions keep `this`; a `function` inside a
  * method, an object literal's method, a `static {}` block and decorators do not count for `this.island`. A nested class is its
  * own site. A local variable that shadows an imported `island` is not noticed. A call in a helper method of the class counts;
  * one in a function outside the class does not.
  */
-function callsIsland(body: Node, islandFunctions: ReadonlySet<string>): boolean {
+function callsIsland(body: Node, names: IslandNames): boolean {
   const children = (current: Node, inner: boolean): boolean =>
     Object.entries(current).some(([key, value]) => key !== 'type' && key !== 'decorators' && typeof value === 'object' && visit(value, inner));
   const visit = (node: unknown, thisIsClass: boolean): boolean => {
@@ -216,7 +223,8 @@ function callsIsland(body: Node, islandFunctions: ReadonlySet<string>): boolean 
     if (current.type === 'ClassDeclaration' || current.type === 'ClassExpression') return false;
     if (current.type === 'CallExpression') {
       const callee: Node = current.callee;
-      if (callee.type === 'Identifier' && islandFunctions.has(callee.name)) return true;
+      if (callee.type === 'Identifier' && names.functions.has(callee.name)) return true;
+      if (callee.type === 'MemberExpression' && !callee.computed && callee.object.type === 'Identifier' && names.namespaces.has(callee.object.name) && callee.property.name === 'island') return true;
       if (thisIsClass && callee.type === 'MemberExpression' && !callee.computed && callee.object.type === 'ThisExpression' && callee.property.name === 'island') return true;
     }
     return children(current, thisIsClass && current.type !== 'FunctionExpression' && current.type !== 'FunctionDeclaration');

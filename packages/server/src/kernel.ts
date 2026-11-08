@@ -289,7 +289,7 @@ export function createHttpKernel(
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
   const matched = new WeakMap<Request, RouteDefinition>();
-  /** The pattern of a route that refused the request before it matched: the log line masks the path by it, nothing else reads it. */
+  /** The pattern of the route a request reached; the log line and the error report mask the path by it when the request was refused before it matched. */
   const refusedBy = new WeakMap<Request, string>();
   const sharedCacheWarnings = new SharedCacheWarnings();
   const routeHandlers = new Map<unknown, RouteDefinition>();

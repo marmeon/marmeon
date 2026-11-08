@@ -210,6 +210,17 @@ describe('island controllers', () => {
     expect(sites.map((site) => [site.className, site.island])).toEqual([['Inner', true]]);
   });
 
+  it('marks island called through a namespace import of @marmeon/http, also an aliased one', () => {
+    expect(inject("import * as http from '@marmeon/http';\nclass A { handle() { return http.island(V, {}); } }")).toContain(marker);
+    expect(inject("import * as h from '@marmeon/http';\nclass A { handle() { return h.island<'x', P>(V, {}); } }")).toContain(marker);
+    expect(inject("import * as http from './http.ts';\nclass A { handle() { return http.island(V, {}); } }")).not.toContain(marker);
+    expect(inject("import * as http from '@marmeon/http';\nclass A { handle() { return http.other(V, {}); } }")).not.toContain(marker);
+  });
+
+  it('does not notice an island that a module of the app re-exports', () => {
+    expect(inject("import { island } from './islands.ts';\nclass A { handle() { return island(V, {}); } }")).not.toContain(marker);
+  });
+
   it('marks calls with type arguments, without a constructor', () => {
     expect(inject("class A { handle() { return this.island<'x', P>(V, {}); } }")).toContain(marker);
     expect(inject(`${http}class A { handle() { return island<'x', P>(V, {}); } }`)).toContain(marker);

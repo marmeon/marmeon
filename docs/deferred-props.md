@@ -189,7 +189,7 @@ so one island can sit on several pages, and a slow or forbidden part never holds
 ### The island's route
 
 An island's controller answers with `this.island()`. Its route is a `GET` route like any other. The server recognises an island's route by
-that call: a class that calls `this.island()` (or `island()` from `@marmeon/http`) in one of its methods is marked when it is loaded
+that call: a class that calls `this.island()` (or `island()` imported from `@marmeon/http`, also as `http.island()` of a namespace import, and not re-exported through a module of your app) in one of its methods is marked when it is loaded
 ([where the lists come from](container.md#where-the-lists-come-from)). A closure, or a controller whose `island()` call sits in a function outside
 the class, is no island's route: an island's request to it is a 404, in every mode, so keep the call in the controller class.
 

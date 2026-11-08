@@ -52,8 +52,8 @@ definition](configuration.md#defining-configuration) and inject that, or wrap th
 The lists are made by a loader that reads your classes as Node loads them. `marmeon dev`, `marmeon start` and every `marmeon`
 command install it, and the `marmeon()` Vite plugin does the same for the tests and for server rendering. The framework's
 packages carry their lists already. The same loader marks a controller that answers with an island (it calls `this.island()`, or
-`island()` from `@marmeon/http`), and `marmeon build` does that in advance too; see
-[the island's route](deferred-props.md#the-islands-route).
+`island()` from `@marmeon/http`, not re-exported through a module of the app), and `marmeon build` does that in advance too, as
+`marmeon package:build` does for a package; see [the island's route](deferred-props.md#the-islands-route).
 
 `marmeon build` writes the lists of the app's classes in advance. In production the start applies them without reading the code
 again, so it stays fast. A file that changed since the build is read as in development (a mail view is compiled again), and the app logs once that the build is

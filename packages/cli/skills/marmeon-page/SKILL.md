@@ -116,8 +116,8 @@ return this.island('notes/ShowRecentNotes', { notes: await this.#notes.recent(ct
 <Island route="notes.recent" query={{ limit: 3 }} fallback={<p aria-busy="true">Loading…</p>} unauthorized={<p>Sign in to see your notes.</p>} />
 ```
 
-- The route is a `GET` route (a compile error on any other method), and its controller calls `this.island()` (or `island()` from
-  `@marmeon/http`) in its own class: a closure, or an island built by a function outside the class, is no island route and answers 404. Opened directly, visited, linked or prefetched it is a 404 before its
+- The route is a `GET` route (a compile error on any other method), and its controller calls `this.island()` (or `island()` imported from
+  `@marmeon/http`, not re-exported through a module of the app) in its own class: a closure, or an island built by a function outside the class, is no island route and answers 404. Opened directly, visited, linked or prefetched it is a 404 before its
   middleware runs, so a guest is not sent to the login: it answers an island's request only, and a controller that answers a page or an
   island by branch becomes two routes (`docs/deferred-props.md#the-islands-route`).
 - Embed it with `<Island route>` and a literal route name; `query` is typed by the island's query schema. Use `fallback` for the

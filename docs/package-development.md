@@ -190,7 +190,9 @@ The app builds a package's classes through the container like its own. Their con
 what to inject come from the build: `marmeon package:build` writes them into the compiled files. Without it, the app derives them
 at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export. Every parameter
 must be a class or a token, as the [service container](container.md#constructor-injection) page explains. A class in a `browser`
-glob gets no list, so no injection code reaches a client bundle.
+glob gets no list, so no injection code reaches a client bundle. `marmeon package:build` also marks a controller that answers with an
+[island](deferred-props.md#the-islands-route); a package built before that mark existed answers an island's request with a 404 until
+it is built again, because the app's loader leaves `node_modules` alone.
 
 ## Drivers
 
@@ -564,7 +566,7 @@ Build with `marmeon package:build`:
 pnpm marmeon package:build --clean
 ```
 
-It runs `tsc -b` for each directory you name, or the current one, and writes the injection lists into the compiled files. Each
+It runs `tsc -b` for each directory you name, or the current one, and writes the injection lists and the island marks into the compiled files. Each
 directory needs a `tsconfig.json` and TypeScript installed. A directory without a `tsconfig.json` stops the command before it builds
 anything, with exit code 1 and the directory's name.
 `--clean` empties `dist/` and the build info first, because `tsc -b` never deletes what a removed source left behind. A package
