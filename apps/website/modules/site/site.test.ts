@@ -38,7 +38,7 @@ describe('the landing page', () => {
   it('answers / rendered on the server, with one h1 and the three ways in', async () => {
     const response = await app.get('/', document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
-    expect(response.body).toContain('The whole app, typed and included.');
+    expect(response.body).toContain('<span class="hero-line">Typed end to end.</span> <span class="hero-line">Batteries included.</span>');
     expect(response.body).toMatch(/<a [^>]*class="button"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button"/);
     expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--secondary"|<a [^>]*class="button button--secondary"[^>]*href="\/docs"/);
     expect(response.body).toMatch(/<a [^>]*class="button button--text"[^>]*href="https:\/\/github\.com\/marmeon\/marmeon"/);
