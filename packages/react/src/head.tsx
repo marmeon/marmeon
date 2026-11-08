@@ -5,7 +5,7 @@ import { headTags, mergeHead, type HeadEntry, type HeadFields, type HeadLanguage
 
 export { defaultTitle } from '@marmeon/http/client/adapter';
 export type { TitleTemplate } from '@marmeon/http/client';
-export type { JsonLd, OpenGraph, TwitterCard } from './head-fields.ts';
+export type { JsonLd, JsonLdGraph, JsonLdNode, OpenGraph, TwitterCard } from './head-fields.ts';
 
 /** Server rendering: where `<Head>`s record themselves for the document head. */
 export interface HeadCollector {
@@ -77,7 +77,7 @@ function PageHead({ title, children, ...fields }: HeadProps) {
     else collector.entries.push({ title, ...fields, tags });
   }
 
-  // A block JSON.stringify cannot write is reported where the head is built (`headTags`), with its @type.
+  // A block JSON.stringify cannot write is reported where the head is built (`headTags`), with its @type (or the size of its @graph).
   const { jsonLd, ...simple } = fields;
   let blocks: string | undefined;
   try {

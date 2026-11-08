@@ -81,7 +81,23 @@ A path stays on the app's own origin: `//other.example/x` and `/\other.example/x
 />
 ```
 
-A block is plain JSON with an `@type`. The type `JsonLd` refuses a `Date`, a function and `undefined`, so write a date as its ISO string.
+A block is plain JSON: a node with an `@type`, or a `@graph` of such nodes that link to each other by their `@id`:
+
+```tsx
+<Head
+  title="Notes"
+  jsonLd={{
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'Organization', '@id': 'https://notes.example/#org', name: 'Notes' },
+      { '@type': 'WebSite', '@id': 'https://notes.example/#site', publisher: { '@id': 'https://notes.example/#org' } },
+    ],
+  }}
+/>
+```
+
+The type `JsonLd` refuses a `Date`, a function and `undefined`, so write a date as its ISO string. `JsonLdNode` types a node you build
+on its own, `JsonLdGraph` a whole graph.
 A layout and its page both contribute: the blocks of every `<Head>` are written in render order, so a layout can say
 `{ '@type': 'Organization', … }` and the page its article. They do not replace each other.
 
@@ -94,7 +110,7 @@ The block carries the response's [CSP nonce](csp.md) like the server's other scr
 never runs and `script-src` does not govern it. The escaping does.
 
 A block that `JSON.stringify` cannot write (a cycle, a `bigint`) is a bug in the app: development throws an error that names the
-block's `@type`, and production leaves the block out.
+block's `@type` (or, for a graph, how many nodes it has), and production leaves the block out.
 
 Under `require-trusted-types-for 'script'` a browser refuses to set a script's text. The browser then removes the block
 instead of writing it, and development logs a warning. The first document, as the server sent it, still has the block, and crawlers read that one.
