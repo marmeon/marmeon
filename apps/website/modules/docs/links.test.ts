@@ -44,10 +44,10 @@ function scan(body: string): { hrefs: string[]; ids: Set<string> } {
 
 const decode = (value: string) => value.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
-/** The scripts of a document the browser would run: every `<script>` but inert data blocks — and every `on…=` handler. */
+/** The scripts of a document the browser would run: every `<script>` but inert data blocks (JSON, and the structured data) — and every `on…=` handler. */
 function executableInline(body: string): string[] {
   const scripts = [...body.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
-    .filter(([, attributes = '']) => !/\bsrc=/.test(attributes) && !/\btype="application\/json"/.test(attributes))
+    .filter(([, attributes = '']) => !/(?:^|\s)src=/.test(attributes) && !/(?:^|\s)type="application\/(?:ld\+)?json"/.test(attributes))
     .map(([script]) => script.slice(0, 120));
   const handlers = [...body.matchAll(/<[a-z][^>]*\son[a-z]+=/gi)].map(([tag]) => tag.slice(0, 120));
   return [...scripts, ...handlers];
@@ -110,6 +110,12 @@ describe('every page', () => {
     // One policy for every page, without a nonce: the body — and so the ETag — is the same for everybody.
     expect([...policies]).toEqual(["script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'"]);
     expect(SITE_CSP.scriptSrc).toEqual(["'self'"]);
+  });
+
+  it('finds the scripts it is meant to refuse', () => {
+    expect(executableInline('<script type="application/ld+json">{}</script><script src="/a.js"></script>')).toEqual([]);
+    expect(executableInline('<script data-type="application/ld+json">alert(1)</script>')).toHaveLength(1);
+    expect(executableInline('<script data-src="/a.js">alert(1)</script>')).toHaveLength(1);
   });
 
   it("carries no style attribute and no inline <style> — the 'self' style policy holds", () => {

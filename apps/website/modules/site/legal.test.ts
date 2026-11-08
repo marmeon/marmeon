@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import application from '../../bootstrap/app.ts';
 import { LegalPages } from './LegalPages.ts';
+import { COMPANY_NAME } from './links.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
@@ -44,7 +45,7 @@ describe.each([
 describe('the legal texts', () => {
   it('keep the line breaks of the address and the external links as links', async () => {
     const imprint = (await app.get('/imprint', document).assertOk()).body;
-    expect(imprint).toContain('BespokeCode UG (haftungsbeschränkt)<br/>Mauthäuslstraße 25a<br/>81379 München');
+    expect(imprint).toContain(`${COMPANY_NAME}<br/>Mauthäuslstraße 25a<br/>81379 München`);
     expect(imprint).toContain('<strong>Represented by:</strong>');
     const privacy = (await app.get('/privacy', document).assertOk()).body;
     expect(privacy).toContain('<a href="https://www.hetzner.com/de/legal/privacy-policy/" rel="noopener">');

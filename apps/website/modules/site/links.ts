@@ -3,6 +3,7 @@ export const GITHUB_URL = 'https://github.com/marmeon/marmeon';
 export const DISCORD_URL = 'https://discord.gg/Kv9hvscd9';
 export const DISCUSSIONS_URL = `${GITHUB_URL}/discussions`;
 
+export const COMPANY_NAME = 'BespokeCode UG (haftungsbeschränkt)';
 export const COMPANY_URL = 'https://bespokecode.de';
 
 export const DOCS_URL = '/docs';
