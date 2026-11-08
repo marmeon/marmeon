@@ -1,4 +1,4 @@
-import type { JsonLd } from '@marmeon/react';
+import type { JsonLd, JsonLdNode } from '@marmeon/react';
 import { COMPANY_NAME, COMPANY_URL, GITHUB_URL } from './links.ts';
 
 /** What the pages know about the site: from the `site` once-prop. */
@@ -10,9 +10,8 @@ export interface SiteFacts {
   readonly license: string;
 }
 
-type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json };
 /** One entity of a `@graph`. */
-export type GraphNode = { readonly [key: string]: Json };
+export type GraphNode = JsonLdNode;
 
 const NPM_URL = 'https://www.npmjs.com/package/marmeon';
 
@@ -107,9 +106,8 @@ export function docsNodes(site: SiteFacts, page: { title: string; description: s
 }
 
 /**
- * The nodes as one `<Head jsonLd>` block with a `@graph`. `JsonLd` demands an `@type` that a graph does not have, so the type is
- * asserted; the head writes the block like any other (`<` escaped, see docs/seo.md#structured-data).
+ * The nodes as one `<Head jsonLd>` block with a `@graph`. The head writes the block like any other (`<` escaped, see docs/seo.md#structured-data).
  */
 export function graphBlock(nodes: readonly GraphNode[]): JsonLd {
-  return { '@context': 'https://schema.org', '@graph': nodes } as unknown as JsonLd;
+  return { '@context': 'https://schema.org', '@graph': nodes };
 }

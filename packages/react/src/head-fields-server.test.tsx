@@ -213,11 +213,32 @@ describe('<Head jsonLd> on the server', () => {
     expect(blocksOf(head).map((block) => JSON.parse(block)['@type'])).toEqual(['Organization', 'Article', 'Person']);
   });
 
+  it('writes a @graph block like a node: escaped, and parsing back to the object', async () => {
+    const graph: JsonLd = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@type': 'Organization', '@id': 'https://app.example/#org', name: '</script><script>alert(1)</script>' },
+        { '@type': 'WebSite', '@id': 'https://app.example/#site', publisher: { '@id': 'https://app.example/#org' } },
+      ],
+    };
+    const head = await headOf([{ jsonLd: graph }]);
+    const [block] = blocksOf(head);
+    expect(head).toContain('<script type="application/ld+json" data-marmeon-head="ssr">');
+    expect(block).toContain('\\u003c/script>');
+    expect(block).not.toContain('</script');
+    expect(JSON.parse(block!)).toEqual(graph);
+  });
+
   it('names the block that is no JSON in development, and leaves it out in production', async () => {
     const cycle: Record<string, unknown> = { '@type': 'Article' };
     cycle.self = cycle;
     await expect(headOf([{ jsonLd: cycle as never }])).rejects.toThrow('@type "Article"');
     await expect(headOf([{ jsonLd: { '@type': ['Thing', 'Event'], count: 1n as never } }])).rejects.toThrow('["Thing","Event"]');
+    const graph = { '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization' }, { '@type': 'WebSite', count: 1n }] } as never as JsonLd;
+    await expect(headOf([{ jsonLd: graph }])).rejects.toThrow('@graph of 2 nodes');
+    await expect(headOf([{ jsonLd: graph }])).rejects.not.toThrow('undefined');
+    const shapeless = { '@graph': { '@type': 'WebSite', count: 1n } } as never as JsonLd;
+    await expect(headOf([{ jsonLd: shapeless }])).rejects.toThrow('block 0 (without @type or @graph array)');
     vi.stubEnv('NODE_ENV', 'production');
     try {
       const head = await headOf([{ jsonLd: [cycle as never, { '@type': 'Person' }] }]);

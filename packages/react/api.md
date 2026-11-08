@@ -308,7 +308,16 @@ export interface IslandState<C extends IslandAction = IslandAction> {
     }): readonly Reloading[];
 }
 // JsonLd
-export type JsonLd = {
+export type JsonLd = JsonLdNode | JsonLdGraph;
+// JsonLdGraph
+export type JsonLdGraph = {
+    readonly '@context'?: string;
+    readonly '@graph': readonly JsonLdNode[];
+} & {
+    readonly [key: string]: JsonLdValue;
+};
+// JsonLdNode
+export type JsonLdNode = {
     readonly '@context'?: string;
     readonly '@type': string | readonly string[];
 } & {

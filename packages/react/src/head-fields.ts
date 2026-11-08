@@ -35,10 +35,23 @@ export interface TwitterCard {
 /** A value JSON can hold: no `Date`, function, `bigint` or `undefined`. */
 type JsonLdValue = string | number | boolean | null | readonly JsonLdValue[] | { readonly [key: string]: JsonLdValue };
 
-/**
- * One block of structured data (schema.org): any JSON, with the `@type` every block needs. See docs/seo.md#structured-data.
- */
-export type JsonLd = { readonly '@context'?: string; readonly '@type': string | readonly string[] } & { readonly [key: string]: JsonLdValue };
+/** One schema.org node: any JSON, with the `@type` every node needs. */
+export type JsonLdNode = { readonly '@context'?: string; readonly '@type': string | readonly string[] } & { readonly [key: string]: JsonLdValue };
+
+/** Several nodes in one block, linked by their `@id`s. */
+export type JsonLdGraph = { readonly '@context'?: string; readonly '@graph': readonly JsonLdNode[] } & { readonly [key: string]: JsonLdValue };
+
+/** One block of structured data (schema.org): a node, or a `@graph` of nodes. See docs/seo.md#structured-data. */
+export type JsonLd = JsonLdNode | JsonLdGraph;
+
+/** Names a block in a message: a node by its `@type`, a graph by the number of its nodes; a cast block may have neither. */
+function describeBlock(block: JsonLd): string {
+  if ('@graph' in block && Array.isArray(block['@graph'])) {
+    const count = block['@graph'].length;
+    return `@graph of ${count} ${count === 1 ? 'node' : 'nodes'}`;
+  }
+  return '@type' in block ? `@type ${JSON.stringify(block['@type'])}` : 'without @type or @graph array';
+}
 
 /** The fields of `<Head>` besides the title and its children. */
 export interface HeadFields {
@@ -218,7 +231,7 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
       JSON.stringify(block);
     } catch (cause) {
       if (!isDevelopment()) return;
-      throw new Error(`[marmeon] <Head jsonLd> block ${index} (@type ${JSON.stringify(block['@type'])}) is not JSON: ${(cause as Error).message}`, { cause });
+      throw new Error(`[marmeon] <Head jsonLd> block ${index} (${describeBlock(block)}) is not JSON: ${(cause as Error).message}`, { cause });
     }
     tags.push({ element: 'script', key: `jsonld:${index}`, attributes: [['type', 'application/ld+json']], json: block });
   });
@@ -285,7 +298,7 @@ export class HeadRegistry {
     } catch (cause) {
       if (isDevelopment()) {
         this.#warn?.(
-          `[marmeon] <Head jsonLd> (@type ${JSON.stringify(json['@type'])}) was removed: the page's Content-Security-Policy (require-trusted-types-for) does not allow setting a script's text (${(cause as Error).message}).`,
+          `[marmeon] <Head jsonLd> (${describeBlock(json)}) was removed: the page's Content-Security-Policy (require-trusted-types-for) does not allow setting a script's text (${(cause as Error).message}).`,
         );
       }
       return false;

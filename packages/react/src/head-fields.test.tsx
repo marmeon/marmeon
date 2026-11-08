@@ -203,6 +203,23 @@ describe('<Head jsonLd> in the browser', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('require-trusted-types-for'));
   });
 
+  it('names a @graph block by its size when Trusted Types refuses its text', async () => {
+    Object.defineProperty(HTMLScriptElement.prototype, 'textContent', {
+      configurable: true,
+      get: () => '',
+      set() {
+        throw new TypeError('This document requires TrustedScript assignment.');
+      },
+    });
+    try {
+      await show({ jsonLd: { '@graph': [{ '@type': 'Article' }] } });
+    } finally {
+      delete (HTMLScriptElement.prototype as { textContent?: string }).textContent;
+    }
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('@graph of 1 node'));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('undefined'));
+  });
+
   it('names a block that is no JSON in development', async () => {
     const cycle: Record<string, unknown> = { '@type': 'Article' };
     cycle.self = cycle;
