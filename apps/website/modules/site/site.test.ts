@@ -142,9 +142,22 @@ describe('the landing page', () => {
       expect(body, name).toMatch(new RegExp(`<section class="${name}" aria-labelledby="${name}-title"`));
       expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
     }
-    expect(body.match(/<h2[ >]/g)).toHaveLength(9);
+    expect(body.match(/<h2[ >]/g)).toHaveLength(10);
     expect(body).toContain('<nav aria-label="Start reading">');
     expect(body).not.toContain('<section class="modules"');
+  });
+
+  it('puts the agents section after the devtools and before the start section', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).toMatch(/<section class="agents" aria-labelledby="agents-title"/);
+    expect(body.indexOf('id="devtools-title"')).toBeLessThan(body.indexOf('id="agents-title"'));
+    expect(body.indexOf('id="agents-title"')).toBeLessThan(body.indexOf('id="start-title"'));
+    const section = body.slice(body.indexOf('<section class="agents"'), body.indexOf('<section class="start"'));
+    expect(textOf(section)).toContain('Your coding agent sees what you see.');
+    expect(section).toContain('href="/docs/agents"');
+    expect(section).toContain('href="/docs/mcp"');
+    expect(section).toContain('<samp class="terminal-output">✓ Wrote .mcp.json.');
+    expect(section).not.toContain('<span class="prompt" aria-hidden="true">$ </span>✓');
   });
 
   it('shows the nine packages as tabs, each with its code, under h3 headings of the batteries section', async () => {

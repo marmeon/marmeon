@@ -45,6 +45,7 @@
 .landing .secure .landing-inner,
 .landing .testing .landing-inner,
 .landing .devtools .landing-inner,
+.landing .agents .landing-inner,
 .landing .start .landing-inner {
   padding-block: clamp(64px, 8vw, 112px);
 }
