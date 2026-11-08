@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -27,6 +27,8 @@ describe('migrations in an app', { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     app = mcpApp();
+    // The format fixture pins the migrations of the app's tables; the blank app's other migrations are not part of the format.
+    for (const file of readdirSync(join(app, 'modules/system/migrations'))) if (file.endsWith('_create_notifications_table.ts')) rmSync(join(app, 'modules/system/migrations', file));
     // The tests' .env has an in-memory database, which would forget what ran; a file keeps it between processes.
     const dir = realpathSync(tempDir('marmeon-mcp-migrations-'));
     bootLog = join(dir, 'boots.log');
@@ -40,8 +42,8 @@ describe('migrations in an app', { timeout: 120_000 }, () => {
   it('lists everything as pending before marmeon migrate, and as ran after it', async () => {
     const before = await call(session, {});
     expect(before.isError).toBeUndefined();
-    expect(before.structuredContent).toMatchObject({ database: true, connections: [{ name: 'default', ran: 0, pending: 3 }], total: 3 });
-    expect(before.structuredContent.migrations.map((entry: { status: string }) => entry.status)).toEqual(['pending', 'pending', 'pending']);
+    expect(before.structuredContent).toMatchObject({ database: true, connections: [{ name: 'default', ran: 0, pending: 2 }], total: 2 });
+    expect(before.structuredContent.migrations.map((entry: { status: string }) => entry.status)).toEqual(['pending', 'pending']);
 
     // Bounded: the migration of a small SQLite app takes seconds.
     const migrated = spawnSync(process.execPath, [bin, 'migrate'], { cwd: app, env, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -55,17 +57,17 @@ describe('migrations in an app', { timeout: 120_000 }, () => {
 
   it('filters by status, module and connection, and cuts at the limit', async () => {
     const ran = (await call(session, { status: 'ran' })).structuredContent;
-    expect(ran.total).toBe(3);
+    expect(ran.total).toBe(2);
     expect((await call(session, { status: 'pending' })).structuredContent).toMatchObject({ total: 0, migrations: [] });
-    expect((await call(session, { module: 'system' })).structuredContent.total).toBe(3);
+    expect((await call(session, { module: 'system' })).structuredContent.total).toBe(2);
     expect((await call(session, { module: 'other' })).structuredContent.total).toBe(0);
-    expect((await call(session, { connection: 'default' })).structuredContent.total).toBe(3);
+    expect((await call(session, { connection: 'default' })).structuredContent.total).toBe(2);
     expect((await call(session, { connection: 'reporting' })).structuredContent.total).toBe(0);
     const cut = (await call(session, { limit: 1 })).structuredContent;
-    expect(cut).toMatchObject({ total: 3, truncated: true });
+    expect(cut).toMatchObject({ total: 2, truncated: true });
     expect(cut.migrations).toHaveLength(1);
     // The counts per connection are those of all migrations, not of the filter.
-    expect((await call(session, { module: 'other' })).structuredContent.connections).toEqual([{ name: 'default', ran: 3, pending: 0 }]);
+    expect((await call(session, { module: 'other' })).structuredContent.connections).toEqual([{ name: 'default', ran: 2, pending: 0 }]);
   });
 
   // Argument injection: the input is checked before any child process starts (the app records each boot).

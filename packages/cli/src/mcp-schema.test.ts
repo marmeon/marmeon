@@ -23,6 +23,8 @@ describe('schema in an app', { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     app = mcpApp();
+    // The format fixture pins the migrations of the app's tables; the blank app's other migrations are not part of the format.
+    for (const file of readdirSync(join(app, 'modules/system/migrations'))) if (file.endsWith('_create_notifications_table.ts')) rmSync(join(app, 'modules/system/migrations', file));
     bootLog = join(tempDir('marmeon-mcp-schema-boots-'), 'boots.log');
     session = mcpSession(app, mcpEnv({ NODE_ENV: 'development', MCP_BOOT_LOG: bootLog }));
     await initialize(session);
@@ -54,11 +56,11 @@ describe('schema in an app', { timeout: 120_000 }, () => {
   it('gives one table when asked for it, and names the tables when it is unknown', async () => {
     const one = await call(session, { table: 'jobs' });
     expect(Object.keys(one.structuredContent.projection.tables)).toEqual(['jobs']);
-    expect(one.structuredContent.projection.migrations).toHaveLength(2);
+    expect(one.structuredContent.projection.migrations).toHaveLength(1);
 
     const unknown = await call(session, { table: 'nothing' });
     expect(unknown.isError).toBe(true);
-    expect(unknown.content[0].text).toBe('The migrations describe no table "nothing". Tables: jobs, failed_jobs, notifications.');
+    expect(unknown.content[0].text).toBe('The migrations describe no table "nothing". Tables: jobs, failed_jobs.');
     // A name that exists on every object is still no table.
     expect((await call(session, { table: 'constructor' })).isError).toBe(true);
   });

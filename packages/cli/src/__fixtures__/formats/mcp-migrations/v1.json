@@ -1,13 +1,12 @@
 {
   "format": 1,
   "database": true,
-  "connections": [{ "name": "default", "ran": 3, "pending": 0 }],
+  "connections": [{ "name": "default", "ran": 2, "pending": 0 }],
   "migrations": [
     { "name": "2026_10_03_002234_create_jobs_table", "module": "system", "connection": "default", "batch": 1, "status": "ran" },
-    { "name": "2026_11_08_124605_create_notifications_table", "module": "system", "connection": "default", "batch": 1, "status": "ran" },
     { "name": "2099_01_01_000000_create_notes_table", "module": "system", "connection": "default", "batch": 1, "status": "ran" }
   ],
-  "total": 3,
+  "total": 2,
   "truncated": false,
   "warnings": []
 }

@@ -7,10 +7,6 @@
       {
         "name": "2026_10_03_002234_create_jobs_table",
         "module": "system"
-      },
-      {
-        "name": "2026_11_08_124605_create_notifications_table",
-        "module": "system"
       }
     ],
     "tables": {
