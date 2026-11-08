@@ -13,7 +13,9 @@ export function HeroSection({ snippets }: Pick<PageProps<ShowLandingController>,
       <div className="landing-inner hero-inner">
         <div className="hero-copy">
           <p className="eyebrow">A TypeScript framework for the whole app, server first</p>
-          <h1 id="hero-title">The whole app, typed and included.</h1>
+          <h1 id="hero-title">
+            <span className="hero-line">Typed end to end.</span> <span className="hero-line">Batteries included.</span>
+          </h1>
           <p className="lead">
             Routes, controllers, pages and forms share one type, from the database column to the form error. Authorization, migrations, validation, a queue, mail, a
             scheduler and storage are part of the framework and work together. Every page renders on the server first.

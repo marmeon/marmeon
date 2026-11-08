@@ -108,7 +108,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   };
 
   // The landing, the docs' start page and the legal pages: all public, cacheable, revalidated with 304.
-  for (const [path, heading] of [['/', 'The whole app, typed and included.'], ['/docs', '>Marmeon</h1>'], ['/imprint', '>Site Notice</h1>'], ['/privacy', '>Privacy Policy</h1>']] as const) {
+  for (const [path, heading] of [['/', '>Batteries included.</span></h1>'], ['/docs', '>Marmeon</h1>'], ['/imprint', '>Site Notice</h1>'], ['/privacy', '>Privacy Policy</h1>']] as const) {
     const home = await publicPage(path, heading);
     expect(/^public, max-age=\d+$/.test(home.headers.get('cache-control') ?? ''), `${path}: Cache-Control is "${home.headers.get('cache-control')}"`);
     const vary = (home.headers.get('vary') ?? '').toLowerCase();

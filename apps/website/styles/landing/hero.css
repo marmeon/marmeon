@@ -22,6 +22,11 @@
   letter-spacing: -0.018em;
 }
 
+/* Each sentence of the heading starts its own line, so a phone does not break it after "Typed end to". */
+.landing .hero-line {
+  display: block;
+}
+
 .landing .hero-start {
   display: flex;
   min-width: 0;
