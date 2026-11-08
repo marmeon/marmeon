@@ -237,6 +237,8 @@ describe('<Head jsonLd> on the server', () => {
     const graph = { '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization' }, { '@type': 'WebSite', count: 1n }] } as never as JsonLd;
     await expect(headOf([{ jsonLd: graph }])).rejects.toThrow('@graph of 2 nodes');
     await expect(headOf([{ jsonLd: graph }])).rejects.not.toThrow('undefined');
+    const shapeless = { '@graph': { '@type': 'WebSite', count: 1n } } as never as JsonLd;
+    await expect(headOf([{ jsonLd: shapeless }])).rejects.toThrow('block 0 (without @type or @graph array)');
     vi.stubEnv('NODE_ENV', 'production');
     try {
       const head = await headOf([{ jsonLd: [cycle as never, { '@type': 'Person' }] }]);

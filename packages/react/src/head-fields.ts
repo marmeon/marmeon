@@ -44,13 +44,13 @@ export type JsonLdGraph = { readonly '@context'?: string; readonly '@graph': rea
 /** One block of structured data (schema.org): a node, or a `@graph` of nodes. See docs/seo.md#structured-data. */
 export type JsonLd = JsonLdNode | JsonLdGraph;
 
-/** Names a block in a message: a node by its `@type`, a graph by the number of its nodes. */
+/** Names a block in a message: a node by its `@type`, a graph by the number of its nodes; a cast block may have neither. */
 function describeBlock(block: JsonLd): string {
   if ('@graph' in block && Array.isArray(block['@graph'])) {
     const count = block['@graph'].length;
     return `@graph of ${count} ${count === 1 ? 'node' : 'nodes'}`;
   }
-  return `@type ${JSON.stringify((block as JsonLdNode)['@type'])}`;
+  return '@type' in block ? `@type ${JSON.stringify(block['@type'])}` : 'without @type or @graph array';
 }
 
 /** The fields of `<Head>` besides the title and its children. */
