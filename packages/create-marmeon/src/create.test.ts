@@ -257,6 +257,8 @@ describe('create-marmeon — the app', () => {
     const cwd = workspace();
     for (const name of ['one', 'two']) expect((await create(cwd, [name, '--minimal', '--no-install', '--no-git'])).code).toBe(0);
     const key = (app: string, file: string) => /^APP_KEY=(.*)$/m.exec(readFileSync(join(cwd, app, file), 'utf8'))?.[1];
+    // A new app shares live hints between its processes: the database driver, with its table from modules/system.
+    expect(readFileSync(join(cwd, 'one/.env'), 'utf8')).toMatch(/^LIVE_DRIVER=database$/m);
     expect(key('one', '.env')).toMatch(/^base64:[A-Za-z0-9+/]{43}=$/);
     expect(key('one', '.env.example')).toBe('');
     expect(key('one', '.env')).not.toBe(key('two', '.env'));

@@ -36,6 +36,9 @@ finds a package in another version, and `marmeon dev` warns about it at the star
 | `@marmeon/mail` | Mails as classes, queued sending and previews. | [Mail](mail.md) |
 | `@marmeon/queue` | Jobs, workers, retries and failed jobs. | [Queues](queues.md) |
 | `@marmeon/scheduler` | Scheduled tasks. | [Task scheduling](scheduling.md) |
+| `@marmeon/storage` | Disks on the local file system or S3, signed URLs and uploads. | [File storage](storage.md) |
+| `@marmeon/live` | Live updates: pages reload their data when the server hints a change. | [Real-time updates](realtime.md) |
+| `@marmeon/notifications` | Notifications over mail, the database and live updates. | [Notifications](notifications.md) |
 | `@marmeon/log` | The logger: readable in development, JSON in production. | [Logging](logging.md) |
 | `@marmeon/react` | The React side: pages, layouts, `<Link>`, forms, islands and dialogs. | [Pages](pages.md), [navigation](navigation.md), [forms](forms.md) |
 
@@ -52,9 +55,6 @@ As dev dependencies, a new app has three more:
 | Package | What it brings | Read more |
 | --- | --- | --- |
 | `@marmeon/redis` | Redis connections for the cache, sessions, the queue and live updates. | [Redis](redis.md) |
-| `@marmeon/storage` | Disks on the local file system or S3, signed URLs and uploads. | [File storage](storage.md) |
-| `@marmeon/live` | Live updates: pages reload their data when the server hints a change. | [Real-time updates](realtime.md) |
-| `@marmeon/notifications` | Notifications over mail, the database and live updates. | [Notifications](notifications.md) |
 | `@marmeon/table` | Data tables driven by the server: columns, sorting, filters, actions and CSV export. | [Data tables](tables.md) |
 | `@marmeon/otel` | OpenTelemetry traces of requests, queries, jobs and mails. | [Observability](observability.md) |
 

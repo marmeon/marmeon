@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -27,6 +27,8 @@ describe('migrations in an app', { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     app = mcpApp();
+    // The format fixture pins the migrations of the app's tables; the blank app's other migrations are not part of the format.
+    for (const file of readdirSync(join(app, 'modules/system/migrations'))) if (/_create_(notifications|live_hints)_table\.ts$/.test(file)) rmSync(join(app, 'modules/system/migrations', file));
     // The tests' .env has an in-memory database, which would forget what ran; a file keeps it between processes.
     const dir = realpathSync(tempDir('marmeon-mcp-migrations-'));
     bootLog = join(dir, 'boots.log');

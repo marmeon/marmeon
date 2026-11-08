@@ -23,6 +23,8 @@ describe('schema in an app', { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     app = mcpApp();
+    // The format fixture pins the migrations of the app's tables; the blank app's other migrations are not part of the format.
+    for (const file of readdirSync(join(app, 'modules/system/migrations'))) if (/_create_(notifications|live_hints)_table\.ts$/.test(file)) rmSync(join(app, 'modules/system/migrations', file));
     bootLog = join(tempDir('marmeon-mcp-schema-boots-'), 'boots.log');
     session = mcpSession(app, mcpEnv({ NODE_ENV: 'development', MCP_BOOT_LOG: bootLog }));
     await initialize(session);

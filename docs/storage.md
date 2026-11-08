@@ -7,7 +7,7 @@ the same methods, so code that writes an avatar does not care where it lands. A 
 the files of a public disk, with headers that keep them from running as pages of your app. A private disk's files leave only
 through signed links that expire.
 
-Add the package to an app, in the version of its other framework packages:
+A new app has the package. Otherwise add it in the version of the app's other framework packages:
 
 ```sh
 pnpm add -E @marmeon/storage@<version of your app>

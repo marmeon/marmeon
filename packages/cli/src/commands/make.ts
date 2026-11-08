@@ -411,7 +411,7 @@ export class MakeNotificationCommand {
     input.output.line(
       style('dim', `Send it: await notifications.send({ type: 'user', id: user.id }, ${name}, { id: 1 });   (constructor(notifications: Notifications), from @marmeon/notifications)`),
     );
-    input.output.line(style('dim', 'The database channel needs its table once: marmeon make:notifications-table && marmeon migrate'));
+    input.output.line(style('dim', 'An app without the notifications table: marmeon make:notifications-table && marmeon migrate'));
     return 0;
   }
 }

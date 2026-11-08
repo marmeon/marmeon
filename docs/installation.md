@@ -3,7 +3,7 @@
 ## Introduction
 
 Marmeon is a full-stack framework for TypeScript. One command creates a new app: a server that renders React pages, a
-database, sessions, mail, a queue and a scheduler, already wired together. You run it with one more command and register your
+database, sessions, mail, a queue, a scheduler, file storage, live updates and notifications, already wired together. You run it with one more command and register your
 first account a few seconds later.
 
 ```sh
@@ -112,7 +112,7 @@ The starter kit's registration is private: it never tells anyone whether an addr
 
 ### A blank app
 
-`--minimal` creates a blank app. It has one module, `system`, that holds the tables of the framework's queue. You add your own
+`--minimal` creates a blank app. It has one module, `system`, that holds the tables of the framework's queue, notifications and live updates. You add your own
 modules from there.
 
 Both kinds of app share the rest: `bootstrap/`, the configuration, the security headers, the devtools that record what the app

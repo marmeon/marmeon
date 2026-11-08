@@ -40,13 +40,16 @@ describe('the notifications table', () => {
 });
 
 describe('the migrations in the apps', () => {
-  it("the web app's table of the notifications comes from the stub, the blank app's and the starter's have none", () => {
+  it("the notifications table of the web app, the blank app and the starter comes from the stub", () => {
     const repo = new URL('../../../', import.meta.url);
     const filesOf = (dir: string) => readdirSync(new URL(dir, repo)).filter((file) => /notifications_table/.test(file));
-    const web = 'apps/web-app/modules/system/migrations/';
-    const files = filesOf(web);
-    expect(files).toEqual(['2026_10_03_094821_create_notifications_table.ts']);
-    expect(readFileSync(new URL(web + files[0], repo), 'utf8')).toBe(readFileSync(NOTIFICATIONS_MIGRATION, 'utf8'));
-    for (const dir of ['apps/blank-app/modules/system/migrations/', 'packages/create-marmeon/template/base/modules/system/migrations/']) expect(filesOf(dir), dir).toEqual([]);
+    for (const [dir, file] of [
+      ['apps/web-app/modules/system/migrations/', '2026_10_03_094821_create_notifications_table.ts'],
+      ['apps/blank-app/modules/system/migrations/', '2026_11_08_124605_create_notifications_table.ts'],
+      ['packages/create-marmeon/template/base/modules/system/migrations/', '2026_11_08_124605_create_notifications_table.ts'],
+    ] as const) {
+      expect(filesOf(dir), dir).toEqual([file]);
+      expect(readFileSync(new URL(dir + file, repo), 'utf8'), dir).toBe(readFileSync(NOTIFICATIONS_MIGRATION, 'utf8'));
+    }
   });
 });
