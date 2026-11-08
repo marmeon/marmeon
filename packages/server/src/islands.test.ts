@@ -2,6 +2,7 @@ import { ConsoleLogger, createApplication, defineModule, Logger, type Container 
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, AfterResponse, defer, HttpServiceProvider, island, merge, view, type HttpContext } from '@marmeon/http';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { islandRoute } from './test-helpers/island-route.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
@@ -43,24 +44,26 @@ describe('createHttpKernel — islands', async () => {
     }
   }
   const routes = openRoutes((Route) => {
-    Route.middleware(ETagged).get('/islands/etagged', () => island('dashboard/Feed', { items: ['a'] }));
-    Route.get('/islands/feed', (ctx: HttpContext) =>
+    Route.middleware(ETagged).get('/islands/etagged', islandRoute(() => island('dashboard/Feed', { items: ['a'] })));
+    Route.get('/islands/feed', islandRoute((ctx) =>
       island('dashboard/Feed', { items: merge(['a', 'b']), more: defer(() => ['later']), at: new URL(ctx.request.url).search }),
-    );
-    Route.get('/islands/redirects', () => new Response(null, { status: 302, headers: { location: '/login' } }));
-    Route.get('/islands/unauthenticated', () => Response.json({ message: 'Unauthenticated.' }, { status: 401 }));
-    Route.get('/islands/forbidden', () => abort(403, 'Only admins.'));
-    Route.get('/islands/missing', () => abort(404));
-    Route.get('/islands/boom', () => {
+    ));
+    Route.get('/islands/redirects', islandRoute(() => new Response(null, { status: 302, headers: { location: '/login' } })));
+    Route.get('/islands/unauthenticated', islandRoute(() => Response.json({ message: 'Unauthenticated.' }, { status: 401 })));
+    Route.get('/islands/forbidden', islandRoute(() => abort(403, 'Only admins.')));
+    Route.get('/islands/missing', islandRoute(() => abort(404)));
+    Route.get('/islands/boom', islandRoute(() => {
       throw new Error('database password is hunter2');
-    });
-    Route.get('/islands/cookie', (ctx: HttpContext) => {
+    }));
+    Route.get('/islands/cookie', islandRoute((ctx) => {
       ctx.cookies.set('tracking', 'yes');
       return island('dashboard/Feed', { items: [] });
-    });
+    }));
     Route.get('/page', () => view('pages/Show', {}));
+    // A marked controller that answers a page from a branch: the second line of defence, past the gate.
+    Route.get('/islands/answers-page', islandRoute(() => view('pages/Show', {})));
     // A route built without the types (plain JS): `Route.post` refuses an island's action at compile time.
-    (Route.post as (path: string, action: unknown) => unknown)('/islands/post', () => island('dashboard/Feed', {}));
+    (Route.post as (path: string, action: unknown) => unknown)('/islands/post', islandRoute(() => island('dashboard/Feed', {})));
   });
   class DeferringIsland {
     readonly #after: AfterResponse;
@@ -120,11 +123,19 @@ describe('createHttpKernel — islands', async () => {
     expect(await json(quiet)).toEqual({ message: 'Not Found' });
   });
 
-  it('a page is no island: asked for as one, a 404 (marked `exception` for the island)', async () => {
+  it('a page is no island: asked for as one, a 404 (marked `exception` for the island) that says why in development', async () => {
     const response = await app.request('/page', { headers: ISLAND });
     expect(response.status).toBe(404);
     expect(response.headers.get('x-marmeon-region-status')).toBe('exception');
+    expect((await json(response)).message).toContain('GET /page is no island');
+  });
+
+  it('a marked controller that answers a page is no island either: a 404 that names the page, in development only', async () => {
+    const response = await app.request('/islands/answers-page', { headers: ISLAND });
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-marmeon-region-status')).toBe('exception');
     expect((await json(response)).message).toContain('[pages/Show] is a page, not an island');
+    expect(await json(await production.request('/islands/answers-page', { headers: ISLAND }))).not.toHaveProperty('message', expect.stringContaining('page'));
   });
 
   it('a redirect, a 401 or a 403 becomes the island’s outcome (204), never a redirect the browser follows', async () => {

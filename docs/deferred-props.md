@@ -188,7 +188,10 @@ so one island can sit on several pages, and a slow or forbidden part never holds
 
 ### The island's route
 
-An island's controller answers with `this.island()`. Its route is a `GET` route like any other:
+An island's controller answers with `this.island()`. Its route is a `GET` route like any other. The server recognises an island's route by
+that call: a class that calls `this.island()` (or `island()` from `@marmeon/http`) in one of its methods is marked when it is loaded
+([where the lists come from](container.md#where-the-lists-come-from)). A closure, or a controller whose `island()` call sits in a function outside
+the class, is no island's route: an island's request to it is a 404, in every mode, so keep the call in the controller class.
 
 ```ts title="modules/notes/controllers/ShowRecentNotesController.ts"
 import type { Authenticated } from '@marmeon/auth';
@@ -314,11 +317,12 @@ URL that starts with `//` or `/\`, a scheme such as `javascript:`, a path withou
 path that dot segments fold into `//host`. In development and in tests a refused `href` throws `[marmeon:R21]` while rendering; in
 production the island shows its `error` and sends no request.
 
-That check only keeps the request on your site. It cannot tell an island's route from any other `GET` route, because only the
-route's controller knows that it answers with `this.island()`. Build the `href` with `router.url()` from a route name the server picks, such as one
+That check only keeps the request on your site. The server then lets an island's request reach only a route whose controller calls
+`this.island()`; any other route (a page, a JSON endpoint, a closure) and any path no route answers is a 404 before the first middleware
+runs, so a wrong `href` runs nothing. Still, build the `href` with `router.url()` from a route name the server picks, such as one
 a module registered. Never build it from the request (its query, parameters or body) or from content a user stored, since whoever controls the
-`href` chooses which `GET` route of your app runs for the visitor, with the visitor's cookies. The route's middleware and controller run first;
-only then does the server see that the route is no island. The island shows its `error`. Only the route's outcome reaches the page: `unauthorized` for a redirect or a 401, `forbidden` for a 403, or an error with its status and, for a JSON error, its `message`. A success that is no island becomes a 404 with nothing of its body.
+`href` chooses which island loads for the visitor, with the visitor's cookies, and runs its middleware and controller.
+Only the route's outcome reaches the page: `unauthorized` for a redirect or a 401, `forbidden` for a 403, or an error with its status and, for a JSON error, its `message`. A success that is no island (a controller that answered a page from one of its branches) becomes a 404 with nothing of its body.
 A route behind your own ETag middleware may answer a revalidation with a `304` that keeps the island's `x-marmeon-region: island` and `vary` headers: it passes unchanged, and the browser hands the island its cached answer. Compare the tag only after the route's other middleware and controller have run, so a visitor who lost access gets the refusal, not the cached island. A `304` without the island header is `unauthorized`, as a redirect is.
 Who may see an island is decided by the island's own route, and its `unauthorized` prop shows what a refusal leaves.
 

@@ -13,6 +13,7 @@ import { writeLastError, type LastErrorWriter } from './last-error.ts';
 import { ServerServiceProvider } from './provider.ts';
 import { createDocumentRenderer } from './render.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { islandRoute } from './test-helpers/island-route.ts';
 
 /** A UI-free SSR entry that resolves each island of the page (`props.islands`) in-process. */
 const render: SsrRender = async (page, options = {}) => {
@@ -43,10 +44,10 @@ describe('an island asks for the host its page was asked for', async () => {
   const root = tempDir('marmeon-island-host-');
   const routes = openRoutes((Route) => {
     Route.get('/page', (ctx: HttpContext) => view('pages/Show', { islands: (new URL(ctx.request.url).searchParams.get('islands') ?? '').split(',').filter(Boolean) }));
-    Route.get('/islands/boom', () => {
+    Route.get('/islands/boom', islandRoute(() => {
       throw new Error('text of the attacker’s choice');
-    });
-    Route.middleware(DevelopmentOnly).get('/islands/dev', () => island('islands/Dev', {}));
+    }));
+    Route.middleware(DevelopmentOnly).get('/islands/dev', islandRoute(() => island('islands/Dev', {})));
   });
   const application = await createApplication({
     root,

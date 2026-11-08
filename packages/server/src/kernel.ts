@@ -69,6 +69,7 @@ import {
   formatAccessProblems,
   isLiveValidation,
   keepFromSharedCaches,
+  isIslandAction,
   keptFromSharedCaches,
   liveValidationFields,
   SharedCacheWarnings,
@@ -80,6 +81,7 @@ import {
 import { Hono, type Context } from 'hono';
 import { getPath } from 'hono/utils/url';
 import { overrideMethod } from './method-override.ts';
+import { islandRefusalMessage, refuseIslandRequest } from './island-gate.ts';
 import { protocolGate } from './protocol-gate.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
@@ -356,14 +358,24 @@ export function createHttpKernel(
       logger.error(`An island is the path of a route of this site (${redactor.text(url)})`);
       return { status: 'exception', failure: {} };
     }
+    // Only a route whose controller answers with `island()` is an island. Decided here too — before the session decision below,
+    // which would hand any route to the browser — and before the request is made; the kernel's route handler refuses it as well.
+    // The target was checked against the page's own URL above; the page's `Host` header may differ from it behind a proxy.
+    const route = routeAt(target);
+    if (route === undefined || !isIslandAction(route.action)) {
+      // This adds no line outside debugging (whoever steers the `href` could fill the log); the page's renderer logs the
+      // failed island as for any other, and the answer is the unknown path's.
+      if (!showsDebug(parent.request)) return { status: 'exception', failure: { status: 404 } };
+      const message = redactor.text(islandRefusalMessage('GET', target.pathname, route));
+      logger.error(message);
+      return { status: 'exception', failure: { status: 404, message } };
+    }
     // A page without a session may be kept by a shared cache and handed to every visitor: an island whose route starts the
     // session then loads in the browser (decided before anything runs, so nothing runs twice). A page with a session, even a
     // guest's, lets such an island adopt it: it needs no cookie.
     const pageHasSession = parent.scope.has(PageSession) && parent.scope.make(PageSession).started();
     if (!pageHasSession) {
-      // The target was checked against the page's own URL above; the page's `Host` header may differ from it behind a proxy.
-      const route = routeAt(target);
-      if (route && startsSession(route)) {
+      if (startsSession(route)) {
         const pageRoute = matched.get(parent.request);
         if (debug && pageRoute && sharedCacheWarnings.first(`island ${pageRoute.path} ${route.path}`)) {
           logger.warn(`The island ${route.path} on ${pageRoute.path} loads in the browser: its route starts the session and the page does not. A page without the session may be kept by a shared cache (docs/deferred-props.md#how-islands-load).`);
@@ -892,8 +904,13 @@ export function createHttpKernel(
     return final;
   };
 
-  // Unknown paths still pass the global middleware, then end in the exception handler's 404.
-  const notFound = (c: Context) =>
+  /** The exception handler's own 404 for a refused island request; the path in a debugging message goes through the redactor. */
+  const refuseWith = (request: Request) => (message: string | undefined) =>
+    renderError(new HttpError(404, message === undefined ? undefined : redactor.text(message)), request);
+
+  // Unknown paths still pass the global middleware, then end in the exception handler's 404 — an island's request excepted, see refuseIslandRequest.
+  const notFound = async (c: Context) =>
+    (await refuseIslandRequest(c.req.raw, undefined, showsDebug(c.req.raw), refuseWith(c.req.raw))) ??
     handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
       router.dispatchNotFound(c.req.raw, {
         resolve: (Class) => scope.make(Class),
@@ -905,7 +922,10 @@ export function createHttpKernel(
     );
 
   const register = (route: RouteDefinition) => {
-    const handler = (c: Context) => {
+    const handler = async (c: Context) => {
+      // Before the route's middleware, the global ones included: see refuseIslandRequest.
+      const refused = await refuseIslandRequest(c.req.raw, route, showsDebug(c.req.raw), refuseWith(c.req.raw));
+      if (refused) return refused;
       matched.set(c.req.raw, route);
       if (debug) parameters.set(c.req.raw, c.req.param());
       return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
@@ -940,7 +960,8 @@ export function createHttpKernel(
   // route (`/:page`) would otherwise take `/sitemap.xml`. Only when a route asks for it, and behind the global middleware alone.
   if (listed.length > 0) {
     const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
-    const answer = (answerWith: () => Response | Promise<Response>) => (c: Context) =>
+    const answer = (answerWith: () => Response | Promise<Response>) => async (c: Context) =>
+      (await refuseIslandRequest(c.req.raw, undefined, showsDebug(c.req.raw), refuseWith(c.req.raw))) ??
       handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {
         // A public answer carries no cookie, whatever a global middleware queued: a shared cache would hand it to everyone.
         state.cookies.lock(() => false);
@@ -1023,7 +1044,8 @@ async function regionResultOf(response: Response): Promise<RegionResult> {
     await response.body?.cancel();
     return { status: outcome };
   }
-  // A success that is no island (a page or a JSON endpoint an `href` named): it is no island, and nothing of its body is relayed.
+  // A success that is no island: only a marked controller with a 200 or JSON answer of its own gets here (a page it returns throws
+  // in render.ts first). It is no island, and nothing of its body is relayed.
   if (response.ok) {
     await response.body?.cancel();
     return { status: 'exception', failure: { status: 404 } };

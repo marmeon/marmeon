@@ -17,8 +17,14 @@ describe('a guest without a session follows a channel (no guest sessions)', asyn
       defineModule({
         name: 'board',
         routes: openRoutes((Route) => {
+          // A class: only a controller that calls island() is an island's route.
+          class CardsIsland {
+            handle() {
+              return island('board/Cards', { cards: [] }).live('board.cards');
+            }
+          }
           Route.get('/board', () => view('board/Show', {}).live('board.1'));
-          Route.get('/islands/cards', () => island('board/Cards', { cards: [] }).live('board.cards'));
+          Route.get('/islands/cards', CardsIsland);
         }),
       }),
     ],
