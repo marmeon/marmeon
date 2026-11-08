@@ -67,7 +67,7 @@ Each driver names the Redis connection it uses, `default` unless you set another
 | `QUEUE_REDIS_CONNECTION` | `default` | The queue, with `QUEUE_DRIVER=redis`. |
 | `LIVE_CONNECTION` | `default` | Live updates, with `LIVE_DRIVER=redis`. |
 
-`CACHE_CONNECTION` and `SESSION_CONNECTION` name a database connection instead when their driver is `database`. A driver whose
+`CACHE_CONNECTION`, `SESSION_CONNECTION` and `LIVE_CONNECTION` name a database connection instead when their driver is `database`. A driver whose
 connection does not exist stops the app at the start, with the names it knows.
 
 ### More connections

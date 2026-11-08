@@ -76,12 +76,16 @@
     "@marmeon/http": "workspace:*"
   },
   "peerDependencies": {
+    "marmeon": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/notifications": "workspace:*",
     "@marmeon/redis": "workspace:*",
     "@marmeon/session": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "marmeon": {
+      "optional": true
+    },
     "@marmeon/database": {
       "optional": true
     },
@@ -96,6 +100,7 @@
     }
   },
   "devDependencies": {
+    "marmeon": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/notifications": "workspace:*",
     "@marmeon/redis": "workspace:*",

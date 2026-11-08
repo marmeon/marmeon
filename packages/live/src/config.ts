@@ -1,14 +1,16 @@
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 /**
- * Live props: how hints travel (`memory` in one process, `redis` to every process), the heartbeat, the reconnect delay
- * and the stream limits. See `docs/realtime.md#configuration`.
+ * Live props: how hints travel (`memory` in one process, `database` through the app's database, `redis` to every process), the
+ * heartbeat, the reconnect delay and the stream limits. See `docs/realtime.md#configuration`.
  */
 export const LiveConfig = defineConfig('live', {
   env: env({
-    LIVE_DRIVER: env.in(['memory', 'redis'], 'Expected memory or redis').default('memory'),
-    /** The Redis connection of the `redis` driver. */
+    LIVE_DRIVER: env.in(['memory', 'database', 'redis'], 'Expected memory, database or redis').default('memory'),
+    /** The database or Redis connection of the `database` and `redis` drivers. */
     LIVE_CONNECTION: env.string().default('default'),
+    /** How often the `database` driver looks for hints of other processes, in milliseconds. */
+    LIVE_POLL_MILLISECONDS: env.integer().min(50).max(10_000).default(500),
     LIVE_HEARTBEAT_SECONDS: env.integer().min(1).max(300).default(20),
     LIVE_RETRY_MILLISECONDS: env.integer().min(100).max(600_000).default(3000),
     LIVE_MAX_STREAMS: env.integer().min(1).default(1000),
@@ -21,7 +23,10 @@ export const LiveConfig = defineConfig('live', {
     .renamed('LIVE_RETRY', 'LIVE_RETRY_MILLISECONDS'),
   resolve: (e) => ({
     driver: e.LIVE_DRIVER,
+    connection: e.LIVE_CONNECTION,
+    /** @deprecated Use `connection`, the same value: it names the `database` driver's connection too. Removed in 2.0; docs/realtime.md#configuration. */
     redisConnection: e.LIVE_CONNECTION,
+    pollMs: e.LIVE_POLL_MILLISECONDS,
     heartbeatSeconds: e.LIVE_HEARTBEAT_SECONDS,
     retryMs: e.LIVE_RETRY_MILLISECONDS,
     maxStreams: e.LIVE_MAX_STREAMS,

@@ -16,8 +16,10 @@ export interface Broadcaster {
 export declare const Broadcaster: import("@marmeon/core").Token<Broadcaster>;
 // LiveConfig
 export declare const LiveConfig: import("@marmeon/core").ConfigDefinition<{
-    driver: "memory" | "redis";
+    driver: "database" | "memory" | "redis";
+    connection: string;
     redisConnection: string;
+    pollMs: number;
     heartbeatSeconds: number;
     retryMs: number;
     maxStreams: number;
@@ -35,8 +37,10 @@ export interface LiveHello {
 export declare class LiveServiceProvider implements ServiceProvider {
     #private;
     static config: import("@marmeon/core").ConfigDefinition<{
-        driver: "memory" | "redis";
+        driver: "database" | "memory" | "redis";
+        connection: string;
         redisConnection: string;
+        pollMs: number;
         heartbeatSeconds: number;
         retryMs: number;
         maxStreams: number;
@@ -44,6 +48,11 @@ export declare class LiveServiceProvider implements ServiceProvider {
         maxStreamSeconds: number;
         maxChannels: number;
     }>[];
+    static commands: readonly CommandClass[];
+    static migrations: {
+        from: import("node:url").URL;
+        module: string;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;
@@ -56,6 +65,8 @@ export declare class LiveSetupError extends Error {
 export interface RefreshOptions {
     readonly only?: readonly string[];
 }
+// liveTableConnection
+export declare function liveTableConnection(container: Resolver): string;
 // notificationsChannel
 export declare function notificationsChannel(recipient: {
     readonly type: string;
@@ -158,10 +169,20 @@ export interface LiveHello {
 `LIVE_MAX_STREAMS_PER_SESSION` = `16`
 // LIVE_MAX_STREAM_SECONDS
 `LIVE_MAX_STREAM_SECONDS` = `900`
+// LIVE_POLL_MILLISECONDS
+`LIVE_POLL_MILLISECONDS` = `500`
 // LIVE_REDIS_CONNECTION
 `LIVE_REDIS_CONNECTION` → `LIVE_CONNECTION` (renamed)
 // LIVE_RETRY
 `LIVE_RETRY` → `LIVE_RETRY_MILLISECONDS` (renamed)
 // LIVE_RETRY_MILLISECONDS
 `LIVE_RETRY_MILLISECONDS` = `3000`
+```
+
+## Commands
+
+```ts
+// make:live-table
+marmeon make:live-table [--module=system]
+--module (string, short m)
 ```

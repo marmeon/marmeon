@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { Logger } from '@marmeon/core';
 import { Connections, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
+import { LIVE_HINTS_MIGRATION } from '../commands/make-live-table.ts';
 import { DatabaseLiveBackend, type DatabaseLiveOptions } from '../database.ts';
 import { Redactor } from '@marmeon/core';
 
@@ -10,8 +11,7 @@ export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 
 export const silent: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => console.error(message, context), child: () => silent };
 
-/** The migration `marmeon make:live-table` will copy. */
-export const LIVE_HINTS_MIGRATION = new URL('../../stubs/migrations/0001_01_01_000000_create_live_hints_table.ts', import.meta.url);
+export { LIVE_HINTS_MIGRATION };
 
 export function databaseConnections(options: ConnectionOptions): Connections {
   return new Connections({ connections: { default: { ...options, managed: false } }, root: '/', logger: silent });

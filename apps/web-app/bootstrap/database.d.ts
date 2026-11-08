@@ -108,6 +108,16 @@ declare module '@marmeon/database' {
       options: JsonColumn<'lab_survey_questions.options'> | null;
     };
     /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
+    live_hints: {
+      id: Generated<number>;
+      channel: string | null;
+      message: string;
+      created_at: number;
+    };
+    /**
      * Owned by `user-profile`.
      * Primary key: user_id.
      * Foreign key: user_id -> users.id (on delete cascade).
@@ -366,6 +376,7 @@ declare module '@marmeon/database' {
     jobs: 'id';
     lab_one_time_links: 'id';
     lab_survey_questions: 'id';
+    live_hints: 'id';
     login_activity: 'user_id';
     notification_opt_outs: 'user_id';
     notifications: 'id';
@@ -389,6 +400,7 @@ declare module '@marmeon/database' {
     jobs: 'system';
     lab_one_time_links: 'lab';
     lab_survey_questions: 'lab';
+    live_hints: 'system';
     login_activity: 'user-profile';
     notification_opt_outs: 'notifications';
     notifications: 'system';

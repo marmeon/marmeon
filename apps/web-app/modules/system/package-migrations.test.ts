@@ -19,8 +19,8 @@ it('has every migration of the packages it uses', async () => {
   expect(run.code).toBe(0);
 });
 
-// Each of the six packages that ship tables is found by its provider and has every migration in the app.
-it.each(['@marmeon/auth', '@marmeon/cache', '@marmeon/notifications', '@marmeon/queue', '@marmeon/session', '@marmeon/storage'])('has every migration of %s', async (name) => {
+// Each of the seven packages that ship tables is found by its provider and has every migration in the app.
+it.each(['@marmeon/auth', '@marmeon/cache', '@marmeon/live', '@marmeon/notifications', '@marmeon/queue', '@marmeon/session', '@marmeon/storage'])('has every migration of %s', async (name) => {
   const run = await app.command('publish', { args: [name], options: { check: true } });
   expect(run.lines).toEqual([`✓ Every migration of ${name} is in your app`]);
   expect(run.code).toBe(0);
@@ -33,10 +33,11 @@ const MAKE_COMMANDS = [
   ['@marmeon/notifications', 'notifications', 'make:notifications-table'],
   ['@marmeon/storage', 'storage', 'make:uploads-table'],
   ['@marmeon/auth', 'auth', 'make:sign-ins-table'],
+  ['@marmeon/live', 'live', 'make:live-table'],
 ] as const;
 
 // A make:*-table command is publish for its own package: both write the same files, into the same module (only the packages of
-// the workspace are all here, so the comparison of the six lives in this app).
+// the workspace are all here, so the comparison of the seven lives in this app).
 it.each(MAKE_COMMANDS)('%s: its make command writes the same bytes as publish, to the same path', async (name, directory, command) => {
   const appRoot = (): string => {
     const root = tempDir('marmeon-make-or-publish-');
@@ -72,13 +73,13 @@ it.each(MAKE_COMMANDS.map(([name, , command]) => [name, command] as const))('has
   expect(run.code).toBe(0);
 });
 
-// The six packages declare their directory on their provider. The reader that assigns a declaration to a package is tested in the
+// The seven packages declare their directory on their provider. The reader that assigns a declaration to a package is tested in the
 // database package; this app shows what the framework's providers declare: always `stubs/migrations`, into `system`.
 it('has every provider that declares migrations be one of the framework\'s, from stubs/migrations into system', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
   const declared = app.application.providers.flatMap((Provider) => (Provider.migrations !== undefined ? [{ provider: Provider.name, ...Provider.migrations }] : []));
   expect(declared.map((entry) => entry.provider).sort()).toEqual(
-    ['AuthServiceProvider', 'CacheServiceProvider', 'NotificationServiceProvider', 'QueueServiceProvider', 'SessionServiceProvider', 'StorageServiceProvider'],
+    ['AuthServiceProvider', 'CacheServiceProvider', 'LiveServiceProvider', 'NotificationServiceProvider', 'QueueServiceProvider', 'SessionServiceProvider', 'StorageServiceProvider'],
   );
   const claimed: string[] = [];
   for (const [name] of MAKE_COMMANDS) {

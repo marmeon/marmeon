@@ -1,12 +1,17 @@
 import cluster from 'node:cluster';
-import { Application, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import type { ProviderMigrations } from '@marmeon/database';
+import { afterCommit, afterRollback, Application, Clock, HealthChecks, Logger, outsideTransaction, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { CLUSTER_WORKER, withCode } from '@marmeon/core/internal';
+import type { CommandClass } from 'marmeon';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { defineRoutes, LiveAudience, Router, type LiveAuthorizerClass } from '@marmeon/http';
 import { FRAMEWORK_ROUTES, IncomingRequest, CONNECTION_HEADER, LIVE_PATH, LiveSigner, PageSession, ReadOnly, ServerClosing, ServerServing } from '@marmeon/http/internal';
 import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
+import { MakeLiveTableCommand } from './commands/make-live-table.ts';
 import { LiveConfig } from './config.ts';
+import { DatabaseLiveBackend, LIVE_HINTS_COLUMNS, LIVE_HINTS_TABLE } from './database.ts';
+import { LiveTableHealthCheck } from './table-check.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub } from './hub.ts';
 import { LiveChannel } from './notifications.ts';
@@ -26,6 +31,9 @@ declare module '@marmeon/core' {
     readonly liveAuthorizers?: readonly LiveAuthorizerClass[];
   }
 }
+
+const DATABASE_NEEDED =
+  'LIVE_DRIVER=database needs @marmeon/database and its provider (pnpm add -E @marmeon/database@<version of your app>; marmeon discover), and the live_hints table: marmeon make:live-table && marmeon migrate.';
 
 /** Live props need a piece the app does not have. */
 export class LiveSetupError extends Error {
@@ -81,7 +89,45 @@ function connectionOf(container: Resolver): string | undefined {
   }
 }
 
+/**
+ * Runs `send` once the transaction around the caller is over — committed or rolled back, since a session that ended stays ended
+ * (as `Auth` announces it) — and at once outside a transaction. A failure goes to `onError`, never to the caller's `transaction()`. Written on the infrastructure connection, which an open
+ * transaction on SQLite would refuse. Only once, though a savepoint's rollback and the final commit both come.
+ */
+async function afterTransaction(send: () => Promise<void>, onError: (error: unknown) => void): Promise<void> {
+  let done = false;
+  const run = async () => {
+    if (done) return;
+    try {
+      await outsideTransaction(send);
+      done = true;
+    } catch (error) {
+      // Logged, never thrown: a hook that throws would replace the error of the app's own rollback.
+      onError(error);
+    }
+  };
+  await afterRollback(run);
+  await afterCommit(run);
+}
+
 type RedisModule = typeof import('@marmeon/redis');
+type DatabaseModule = typeof import('@marmeon/database');
+
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file. */
+const LIVE_INFRASTRUCTURE = {
+  system: 'Live updates (LIVE_DRIVER=database)',
+  remedy:
+    'Give live updates their own SQLite file — LIVE_CONNECTION=system with a connection for storage/system.sqlite, then marmeon migrate (the migration of `marmeon make:live-table` follows LIVE_CONNECTION) — or use Redis (LIVE_DRIVER=redis).',
+};
+
+/**
+ * The connection the `live_hints` table belongs on — for the migration `marmeon make:live-table` writes (`connection` in
+ * `defineMigration`): `LIVE_CONNECTION` with the database driver, else `default`.
+ */
+export function liveTableConnection(container: Resolver): string {
+  const config = container.make(LiveConfig);
+  return config.driver === 'database' ? config.connection : 'default';
+}
 
 /**
  * Registers the `Broadcaster`, the signer of `PageObject.live`, the stream endpoint `GET /_marmeon/live` (web group,
@@ -91,8 +137,12 @@ type RedisModule = typeof import('@marmeon/redis');
  */
 export class LiveServiceProvider implements ServiceProvider {
   static config = [LiveConfig];
+  static commands: readonly CommandClass[] = [MakeLiveTableCommand];
+  /** The migration for the `live_hints` table, which `marmeon publish` and `make:live-table` copy into the app. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   #redis: RedisModule | undefined;
+  #database: DatabaseModule | undefined;
   #hub: LiveHub | undefined;
 
   register(container: Container): void {
@@ -103,9 +153,20 @@ export class LiveServiceProvider implements ServiceProvider {
     container.singleton(LiveBackend, (c) => {
       const config = c.make(LiveConfig);
       if (config.driver === 'memory') return new MemoryLiveBackend();
+      if (config.driver === 'database') {
+        const database = this.#database;
+        if (!database) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
+        return new DatabaseLiveBackend(
+          async () => {
+            const connections = c.make(database.Connections);
+            return { db: connections.infrastructure(config.connection, LIVE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
+          },
+          { pollMs: config.pollMs, logger: c.make(Logger).child({ channel: 'live' }), redactor: c.make(Redactor), clock: c.make(Clock) },
+        );
+      }
       const redis = this.#redis;
       if (!redis) throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis (pnpm add -E @marmeon/redis@<version of your app>; marmeon discover).'));
-      return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
+      return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.connection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
       const { heartbeatSeconds, retryMs, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
@@ -133,9 +194,18 @@ export class LiveServiceProvider implements ServiceProvider {
       throw new LiveSetupError(
         withCode(
           'H7',
-          'LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
+          'LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=database (one machine, or a shared Postgres) or LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
         ),
       );
+    }
+    if (config.driver === 'database') {
+      this.#database = await importOptional(() => import('@marmeon/database'), '@marmeon/database');
+      if (!this.#database || !container.has(this.#database.Connections)) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
+      // An unknown connection name fails the start, with the known ones (D11). A missing table does not: /up/ready is red and
+      // `marmeon check` says so, until `marmeon make:live-table && marmeon migrate`.
+      container.make(this.#database.Connections).options(config.connection);
+      container.make(this.#database.SchemaRequirements).require({ connection: config.connection, table: LIVE_HINTS_TABLE, columns: LIVE_HINTS_COLUMNS });
+      container.make(HealthChecks).add([LiveTableHealthCheck]);
     }
     if (config.driver === 'redis') {
       this.#redis = await importOptional(() => import('@marmeon/redis'), '@marmeon/redis');
@@ -145,7 +215,7 @@ export class LiveServiceProvider implements ServiceProvider {
       // An unknown connection name fails the start, with the known ones — and so does a client that cannot load (a broken
       // install), as for the cache, the sessions and the queue: not the first hint.
       const connections = container.make(this.#redis.RedisConnections);
-      connections.options(config.redisConnection);
+      connections.options(config.connection);
       await connections.verify();
     }
     // Subscribed before the process takes requests: an end that comes while a stream opens is then heard. If the backend is down now
@@ -184,10 +254,11 @@ export class LiveServiceProvider implements ServiceProvider {
       const logger = container.make(Logger).child({ channel: 'live' });
       const redactor = container.make(Redactor);
       container.make(session.SessionEndings).listen(async (scope) => {
+        const failed = (error: unknown) => logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
         try {
-          await container.make(LiveBackend).end(scope);
+          await afterTransaction(() => container.make(LiveBackend).end(scope), failed);
         } catch (error) {
-          logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
+          failed(error);
         }
       });
     }
@@ -198,12 +269,13 @@ export class LiveServiceProvider implements ServiceProvider {
       const logger = container.make(Logger).child({ channel: 'live' });
       const redactor = container.make(Redactor);
       container.make(session.SessionEndings).listenAccounts(async (scope) => {
+        const failed = (error: unknown) => logger.error('The streams of an account could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
         try {
           // One message per key (`APP_KEY` and the previous ones): streams are filed under every key too, so a process on another key of a rollout hears it, whichever way round.
           const scopes = scope === '*' ? ['*'] : container.make(LiveTokens).accountScopes(scope);
-          for (const keyed of scopes) await container.make(LiveBackend).end(keyed);
+          for (const keyed of scopes) await afterTransaction(() => container.make(LiveBackend).end(keyed), failed);
         } catch (error) {
-          logger.error('The streams of an account could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
+          failed(error);
         }
       });
     }

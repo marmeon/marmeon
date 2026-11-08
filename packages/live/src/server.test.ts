@@ -206,10 +206,10 @@ describe('a session that ends after it was read', () => {
 
 describe('the memory backend and marmeon start --workers', () => {
   const fixture = fileURLToPath(new URL('./__fixtures__/cluster-boot.ts', import.meta.url));
-  const run = (mode: string) => {
+  const run = (mode: string, driver = 'memory') => {
     const { NODE_OPTIONS: _options, MARMEON_CLUSTER_WORKER: _mark, ...env } = process.env;
     const mark = mode === 'single' ? { MARMEON_CLUSTER_WORKER: '1' } : {};
-    const result = spawnSync(process.execPath, ['--conditions=@marmeon/source', fixture, root, mode], { cwd: dirname(fixture), encoding: 'utf8', env: { ...env, ...mark }, timeout: 20_000 });
+    const result = spawnSync(process.execPath, ['--conditions=@marmeon/source', fixture, root, mode, driver], { cwd: dirname(fixture), encoding: 'utf8', env: { ...env, ...mark }, timeout: 20_000 });
     return { code: result.status, output: `${result.stdout}${result.stderr}`.trim() };
   };
 
@@ -217,8 +217,12 @@ describe('the memory backend and marmeon start --workers', () => {
     expect(run('worker')).toEqual({
       code: 70,
       output:
-        'failed: [marmeon:H7] LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
+        'failed: [marmeon:H7] LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=database (one machine, or a shared Postgres) or LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
     });
+  }, 30_000);
+
+  it('a worker of a cluster starts with LIVE_DRIVER=database — every worker polls the same table', () => {
+    expect(run('worker', 'database')).toEqual({ code: 0, output: 'booted' });
   }, 30_000);
 
   it('one process starts with it — also with the workers\' mark left in its environment', () => {
