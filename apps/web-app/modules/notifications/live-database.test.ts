@@ -46,7 +46,7 @@ describe('LIVE_DRIVER=database in the web app', () => {
     expect(tab.hints[1]!.seq).toBeGreaterThan(tab.hints[0]!.seq);
   });
 
-  it('signing out closes the streams of the session — through the table, not the process', async () => {
+  it('signing out closes the streams of the session and leaves one end row in the table', async () => {
     await using app = await createTestApp(application, { database: 'isolated', env });
     const ada = await app.factory(UserFactory).create();
     const view = app.actingAs(ada);

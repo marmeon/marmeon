@@ -87,8 +87,8 @@ export class DatabaseLiveBackend implements LiveBackend {
   #nextPrune = 0;
   /** Ids the loop jumped over → when it noticed. */
   readonly #pending = new Map<number, number>();
-  /** Whether the streak of failed polls going on was logged (its recovery is announced only then). */
-  #streakLogged: boolean | undefined;
+  /** Whether a loop error (a failed poll or prune) was logged since the last poll that went through; a streak's recovery is announced only then. */
+  #streakLogged = false;
   /** When the streak of failed polls began (by the clock). */
   #failingSince: number | undefined;
   /** Whether the log line about an unreadable id counter was written (once per process). */
@@ -200,12 +200,12 @@ export class DatabaseLiveBackend implements LiveBackend {
     let full = false;
     try {
       full = await this.#read();
-      if (this.#streakLogged) this.#options.logger.info('Polling the live_hints table works again');
-      this.#streakLogged = undefined;
+      if (this.#streakLogged && this.#failingSince !== undefined) this.#options.logger.info('Polling the live_hints table works again');
+      this.#streakLogged = false;
       this.#failingSince = undefined;
     } catch (error) {
       this.#failingSince ??= this.#clock.now();
-      this.#streakLogged = this.#failed(error, 'Polling the live_hints table failed; hints of other processes wait until it works again') || (this.#streakLogged ?? false);
+      this.#failed(error, 'Polling the live_hints table failed; hints of other processes wait until it works again');
     }
     if (!this.#stopped && this.#clock.now() >= this.#nextPrune) {
       this.#nextPrune = this.#clock.now() + PRUNE_EVERY_MS * (0.8 + Math.random() * 0.4);
@@ -223,6 +223,7 @@ export class DatabaseLiveBackend implements LiveBackend {
     const now = this.#clock.now();
     if (now - this.#lastFailureLog < LOG_EVERY_MS) return false;
     this.#lastFailureLog = now;
+    this.#streakLogged = true;
     this.#options.logger.error(message, { exception: this.#options.redactor.text(String(error)) });
     return true;
   }

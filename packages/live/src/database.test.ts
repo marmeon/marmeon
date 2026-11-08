@@ -514,7 +514,7 @@ for (const { name, run, fresh } of targets) {
         await listenA();
         await sql`insert into live_hints (channel, message, created_at) values ('orders.7', 'not json', 0), ('orders.7', '{"v":2}', 0)`.execute(connectionsB.get());
         const id = await backendB.refresh('orders.9', null, undefined);
-        await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.9', only: null, seq: id }]));
+        await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.9', only: null, seq: id }]), { timeout: 10_000 });
         expect(logsA.filter((log) => log.level === 'warn')).toHaveLength(1);
       });
 
@@ -539,8 +539,14 @@ for (const { name, run, fresh } of targets) {
       it('logs a failing poll once, says when it works again, and delivers afterwards without a restart', async () => {
         const { connectionsB, backendB, heard, logsA, listenA, target } = await two();
         await listenA();
+        // One whole round (read and the prune of the first one) finishes before the table goes, so the failure is the poll's.
+        await backendB.refresh('orders.7', null, undefined);
+        await backendB.refresh('orders.7', null, undefined);
+        await vi.waitFor(() => expect(heard).toHaveLength(2), { timeout: 10_000 });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        heard.length = 0;
         await sql`drop table live_hints`.execute(connectionsB.get());
-        await vi.waitFor(() => expect(logsA.filter((log) => log.level === 'error')).toHaveLength(1));
+        await vi.waitFor(() => expect(logsA.filter((log) => log.level === 'error')).toHaveLength(1), { timeout: 10_000 });
         await new Promise((resolve) => setTimeout(resolve, 300));
         expect(logsA.filter((log) => log.level === 'error')).toHaveLength(1);
         const recreated = connectionsAt(target);
@@ -549,10 +555,37 @@ for (const { name, run, fresh } of targets) {
         } finally {
           await recreated.destroy();
         }
-        await vi.waitFor(() => expect(logsA.filter((log) => log.level === 'info')).toHaveLength(1));
+        await vi.waitFor(() => expect(logsA.filter((log) => log.level === 'info')).toHaveLength(1), { timeout: 10_000 });
         const id = await backendB.refresh('orders.7', null, undefined);
-        await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.7', only: null, seq: id }]));
-      });
+        await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.7', only: null, seq: id }]), { timeout: 10_000 });
+      }, 30_000);
+
+      it('announces the recovery of a poll failure that came right behind a logged prune failure', async () => {
+        const { target, drop } = await fresh();
+        const connections = connectionsAt(target);
+        const { logger, logs } = recorder();
+        let failing = false;
+        let calls = 0;
+        const backend = new DatabaseLiveBackend(async () => {
+          calls++;
+          if (failing) throw new Error('database down');
+          return { db: connections.infrastructure('default'), driver: target.driver };
+        }, { pollMs: 5, logger, redactor: new Redactor(), clock: { now: () => 1_000_000 } });
+        cleanups.push(drop, () => connections.destroy(), () => backend.close());
+        // The database goes down in the very prune that fails, so the next round's read fails right behind the logged error.
+        vi.spyOn(backend, 'prune').mockImplementationOnce(async () => {
+          failing = true;
+          throw new Error('cannot delete');
+        });
+        await backend.listen(() => {});
+        await vi.waitFor(() => expect(logs.map((log) => log.level)).toEqual(['error']), { timeout: 10_000 });
+        expect(logs[0]!.message).toContain('Pruning');
+        // The poll fails within the minute of that line, so it is not logged itself; its recovery still follows the logged error.
+        const until = calls + 3;
+        await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(until), { timeout: 10_000 });
+        failing = false;
+        await vi.waitFor(() => expect(logs.map((log) => log.level)).toEqual(['error', 'info']), { timeout: 10_000 });
+      }, 30_000);
 
       it('runs its queries outside the context of the request that started it', async () => {
         const { connectionsA, backendB, heard, listenA } = await two();

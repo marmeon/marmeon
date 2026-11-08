@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { connectionsAt, freshPostgres, migrate, PGSQL_URL, sqliteTarget, type LiveTarget } from './__fixtures__/database.ts';
 import { LiveHub } from './hub.ts';
+import { LiveTokens } from './signer.ts';
 import { Broadcaster, LiveServiceProvider } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
 
@@ -132,6 +133,34 @@ describe('LIVE_DRIVER=database: the backend the provider builds', () => {
       }),
     ).rejects.toBeInstanceOf(Rollback);
     expect(await count()).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  it.each(['endAccount', 'endEverySession'] as const)('SessionEndings.%s in a transaction that commits writes its end rows after the commit and closes the account streams of another app', async (way) => {
+    const { target } = sqliteDirectory();
+    const setup = connectionsAt(target);
+    await migrate(setup);
+    await setup.destroy();
+    const key = generateKey();
+    const a = await boot(envOf(target, { APP_KEY: key }));
+    const b = await boot(envOf(target, { APP_KEY: key }));
+    const keys = b.container.make(LiveTokens).accountScopes('account-of-ada');
+    const hub = b.container.make(LiveHub);
+    await hub.listen();
+    const reader = new LiveStreamReader(await hub.open({ channels: ['orders.7'], scope: 'scope-of-adas-session', accounts: keys, connection: 'tab-a-0001' }));
+    cleanups.push(() => reader.close());
+    await reader.hello();
+    const connections = a.container.make(Connections);
+    const ends = async () => (await sql<{ message: string }>`select message from live_hints where channel is null`.execute(connections.get())).rows.map((row) => JSON.parse(row.message) as { kind: string; scope: string });
+    const endings = a.container.make(SessionEndings);
+    await connections.transaction(async () => {
+      if (way === 'endAccount') await endings.endAccount('account-of-ada');
+      else await endings.endEverySession();
+      expect(await ends()).toEqual([]);
+    });
+    expect((await ends()).map((end) => end.scope)).toEqual(way === 'endAccount' ? keys : ['*']);
+    await reader.closed;
+    expect(reader.ended).toBe(true);
     expect(errors).toEqual([]);
   });
 
