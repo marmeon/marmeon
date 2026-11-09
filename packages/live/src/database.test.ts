@@ -397,28 +397,28 @@ for (const { name, run, fresh } of targets) {
         await backend.listen(() => {});
         const polls = async (count: number) => {
           const until = calls + count;
-          await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(until));
+          await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(until), { timeout: 10_000 });
         };
         const levels = () => logs.map((log) => log.level);
         failing = true;
         await polls(3);
         expect(levels()).toEqual(['error']);
         failing = false;
-        await polls(2);
-        expect(levels()).toEqual(['error', 'info']);
+        // A round that works asks for the connection twice (the read, then the id counter) and logs after both: wait for the line itself.
+        await vi.waitFor(() => expect(levels()).toEqual(['error', 'info']), { timeout: 10_000 });
         // Down again within the minute: not logged, and its recovery is not announced.
         failing = true;
         await polls(3);
         failing = false;
-        await polls(2);
+        // The third call comes after the first good round has read, so whatever that round logs is logged by then.
+        await polls(3);
         expect(levels()).toEqual(['error', 'info']);
         time += 60_000;
         failing = true;
         await polls(3);
         failing = false;
-        await polls(2);
-        expect(levels()).toEqual(['error', 'info', 'error', 'info']);
-      });
+        await vi.waitFor(() => expect(levels()).toEqual(['error', 'info', 'error', 'info']), { timeout: 10_000 });
+      }, 30_000);
 
       it('a failing prune is logged, and does not make the next poll announce a recovery', async () => {
         const { backendA, logsA, listenA } = await two({ pollMs: 10 });
@@ -512,7 +512,11 @@ for (const { name, run, fresh } of targets) {
       it('skips a row that is no message and delivers the next one', async () => {
         const { connectionsB, backendB, heard, logsA, listenA } = await two();
         await listenA();
-        await sql`insert into live_hints (channel, message, created_at) values ('orders.7', 'not json', 0), ('orders.7', '{"v":2}', 0)`.execute(connectionsB.get());
+        const now = Date.now();
+        await sql`insert into live_hints (channel, message, created_at) values ('orders.7', 'not json', ${now}), ('orders.7', '{"v":2}', ${now})`.execute(connectionsB.get());
+        // A's first round prunes, possibly before it reads these rows; pruned here too, so that window is tested every run: young rows survive it.
+        await backendB.prune();
+        expect((await rows(connectionsB)).map((row) => row.message)).toEqual(['not json', '{"v":2}']);
         const id = await backendB.refresh('orders.9', null, undefined);
         await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.9', only: null, seq: id }]), { timeout: 10_000 });
         expect(logsA.filter((log) => log.level === 'warn')).toHaveLength(1);
@@ -673,7 +677,7 @@ describe.runIf(PGSQL_URL !== undefined)('the database backend on Postgres: ids t
       const message = '{"v":1,"kind":"refresh","channel":"orders.1","only":null}';
       // Takes id N inside a transaction it does not commit yet.
       const slowTransaction = slow.transaction(async () => {
-        await sql`insert into live_hints (channel, message, created_at) values ('orders.1', ${message}, 0)`.execute(slow.get());
+        await sql`insert into live_hints (channel, message, created_at) values ('orders.1', ${message}, ${Date.now()})`.execute(slow.get());
         inserted();
         await held;
       });
@@ -684,6 +688,9 @@ describe.runIf(PGSQL_URL !== undefined)('the database backend on Postgres: ids t
       expect(heard[0]).toMatchObject({ channel: 'orders.2', seq: newer });
       commit();
       await slowTransaction;
+      // A prune of the reader may come first: N is young, so it stays.
+      await b.prune();
+      expect((await rows(other)).map((row) => row.id)).toEqual([newer - 1, newer]);
       // N is visible now, below the cursor: the poller asks for it again.
       await vi.waitFor(() => expect(heard).toHaveLength(2));
       expect(heard[1]).toMatchObject({ channel: 'orders.1', seq: newer - 1 });
