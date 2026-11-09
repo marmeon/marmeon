@@ -53,8 +53,8 @@ The command stops before it writes anything when `modules/bookmarks` exists or w
 ## The code
 
 The routes sort themselves into two groups. The list and the two routes that create a bookmark never take one from the path, so
-they say `everyone`: any signed-in user. The other three bind `:bookmark` through the repository, and the request of each asks the
-policy.
+they say `everyone`: any signed-in user. The other four bind `:bookmark` through the repository, and the request of each asks the
+policy. The last of them, `share`, is explained [below](#a-lookup-by-address-answers-the-same).
 
 ```ts title="modules/bookmarks/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
@@ -63,6 +63,7 @@ import { CreateBookmarkController } from './controllers/CreateBookmarkController
 import { DeleteBookmarkController } from './controllers/DeleteBookmarkController.ts';
 import { EditBookmarkController } from './controllers/EditBookmarkController.ts';
 import { ListBookmarksController } from './controllers/ListBookmarksController.ts';
+import { ShareBookmarkController } from './controllers/ShareBookmarkController.ts';
 import { StoreBookmarkController } from './controllers/StoreBookmarkController.ts';
 import { UpdateBookmarkController } from './controllers/UpdateBookmarkController.ts';
 import { BookmarkRepository } from './BookmarkRepository.ts';
@@ -82,6 +83,7 @@ export default defineRoutes((Route) => {
   bookmark.get('/:bookmark/edit', EditBookmarkController).name('edit');
   bookmark.put('/:bookmark', UpdateBookmarkController).name('update');
   bookmark.delete('/:bookmark', DeleteBookmarkController).name('destroy');
+  bookmark.post('/:bookmark/share', ShareBookmarkController).name('share');
 });
 ```
 
@@ -201,9 +203,42 @@ export class ShareBookmarkController extends Controller {
 }
 ```
 
-The route sits under the `bookmark` binding of `routes.ts`, next to `update`:
-`bookmark.post('/:bookmark/share', ShareBookmarkController).name('share')`. Never add `exists(UserRepository, 'email')` to the
+The route is the `share` line of `routes.ts` above, under the `bookmark` binding next to `update`. Never add `exists(UserRepository, 'email')` to the
 schema, and let a unique index decide the rest ([the unique index is the truth](validation.md#the-unique-index-is-the-truth)).
+A test sends the form with a confirmed account's address, an unconfirmed one, an unknown one, the user's own and a repeat, and expects the same redirect and flash every time:
+
+```ts title="modules/bookmarks/share.test.ts"
+import { createTestApp, type TestApp } from '@marmeon/testing';
+import { beforeEach, describe, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '../auth/index.ts';
+import { BookmarkRepository } from './BookmarkRepository.ts';
+
+let app: TestApp;
+beforeEach(async () => {
+  app = await createTestApp(application, { database: 'refresh' });
+}, 30_000);
+
+describe('sharing a bookmark', { timeout: 30_000 }, () => {
+  it('answers the same for every address, and refuses a stranger', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const bob = await app.factory(UserFactory).create();
+    const kj = await app.factory(UserFactory).state('unverified').create();
+    const bookmark = await app.make(BookmarkRepository).insert({ user_id: ada.id, title: 'Shared' });
+    const message = 'If that address has an account, the bookmark is shared.';
+    const share = (email: string) =>
+      app.actingAs(ada).post(`/bookmarks/${bookmark.id}/share`, { form: { email } }).assertRedirect('/bookmarks').assertFlashed('toast', { kind: 'success', message });
+
+    await share(bob.email);
+    await share(kj.email);
+    await share('nobody@example.com');
+    await share(ada.email);
+    await share(bob.email);
+    await app.actingAs(bob).post(`/bookmarks/${bookmark.id}/share`, { form: { email: ada.email } }).assertNotFound();
+  });
+});
+```
+
 If the owner sees the shares, record each one under the typed address in both branches, outside the `if`, and list it the same
 way whether or not it has an account; only the recipient's mail or acceptance may reveal more. The
 [private registration](starter-kit.md#private-registration) of the starter kit works this way. Keep the time of both paths alike
@@ -249,7 +284,7 @@ pnpm marmeon route:list
 so a route you add to `routes.ts` without a policy or `everyone` fails the `boot` check. `raw-sql` warns when you sort the list by
 a value from the request with `sql.raw(input)`; the [check](check.md#raw-sql) page shows the fix. `throttle` warns about a route that
 anyone may call to change something and nothing limits. `route:list` prints the `ACCESS` column of each route: `everyone` for the list and the two
-routes that create, `can BookmarkPolicy.update(bookmark)` for edit and update, and `can BookmarkPolicy.delete(bookmark)` for destroy.
+routes that create, `can BookmarkPolicy.update(bookmark)` for edit, update and share, and `can BookmarkPolicy.delete(bookmark)` for destroy.
 
 To add a field, write a second migration with `pnpm marmeon make:migration add_url_to_bookmarks_table --module=bookmarks`. Then
 add the field in every place that names fields one by one: the schemas of `StoreBookmarkRequest` and `UpdateBookmarkRequest`, the
