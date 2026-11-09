@@ -418,7 +418,7 @@ for (const { name, run, fresh } of targets) {
         await polls(3);
         failing = false;
         await vi.waitFor(() => expect(levels()).toEqual(['error', 'info', 'error', 'info']), { timeout: 10_000 });
-      });
+      }, 30_000);
 
       it('a failing prune is logged, and does not make the next poll announce a recovery', async () => {
         const { backendA, logsA, listenA } = await two({ pollMs: 10 });
@@ -516,6 +516,7 @@ for (const { name, run, fresh } of targets) {
         await sql`insert into live_hints (channel, message, created_at) values ('orders.7', 'not json', ${now}), ('orders.7', '{"v":2}', ${now})`.execute(connectionsB.get());
         // A's first round prunes, possibly before it reads these rows; pruned here too, so that window is tested every run: young rows survive it.
         await backendB.prune();
+        expect((await rows(connectionsB)).map((row) => row.message)).toEqual(['not json', '{"v":2}']);
         const id = await backendB.refresh('orders.9', null, undefined);
         await vi.waitFor(() => expect(heard).toEqual([{ kind: 'refresh', channel: 'orders.9', only: null, seq: id }]), { timeout: 10_000 });
         expect(logsA.filter((log) => log.level === 'warn')).toHaveLength(1);
@@ -689,6 +690,7 @@ describe.runIf(PGSQL_URL !== undefined)('the database backend on Postgres: ids t
       await slowTransaction;
       // A prune of the reader may come first: N is young, so it stays.
       await b.prune();
+      expect((await rows(other)).map((row) => row.id)).toEqual([newer - 1, newer]);
       // N is visible now, below the cursor: the poller asks for it again.
       await vi.waitFor(() => expect(heard).toHaveLength(2));
       expect(heard[1]).toMatchObject({ channel: 'orders.1', seq: newer - 1 });
