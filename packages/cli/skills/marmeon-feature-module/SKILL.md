@@ -73,6 +73,12 @@ the folder yourself).
   record is public by design and the route only reads it (`docs/authorization.md#records-nobody-owns`).
 - **A record from the path is bound through its repository and then asked of a policy.** The policy answers a stranger with a 404
   (`denyAsNotFound()`), as it does for an id that does not exist, so nobody can probe ids.
+- **A form that looks someone up by an address or a name answers the same for a known and an unknown value**: the same status,
+  redirect and flash. A validation error such as "No user has this e-mail address." tells a stranger who has an account. Do the
+  work for a known value (invite, share, send a mail to that address) and give the person typing the same answer either way,
+  also when the value is already shared or is the user's own (write with `tryInsert()`, treat `duplicate` as success). Never
+  validate the field with `exists(UserRepository, 'email')`, and treat an account with no `email_verified_at` as not found
+  (`docs/recipe-resource.md#a-lookup-by-address-answers-the-same`, `docs/starter-kit.md#private-registration`).
 - **A list asks the repository for the user's records**, never for all of them and then filters in code.
 - **The owner comes from the session**, never from the body. The request's schema lists the fields the form may send; the
   controller writes those and nothing else, so a `user_id` or `approved_at` in the form reaches nothing.

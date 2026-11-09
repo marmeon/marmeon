@@ -157,6 +157,58 @@ arrived:
   }
 ```
 
+## A lookup by address answers the same
+
+A form that finds a user by what someone types, such as an e-mail address to share a bookmark with, must not tell a known
+address from an unknown one. A validation error like "No user has this address" lets a stranger test a list of addresses
+against your users. Do the work only when the user exists, and answer with the same redirect and flash in both cases:
+
+```ts title="modules/bookmarks/controllers/ShareBookmarkController.ts"
+import { UserRepository } from '#modules/auth';
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+import { BookmarkPolicy } from '../policies/BookmarkPolicy.ts';
+
+export const ShareBookmarkRequest = defineRequest({
+  // Only the format of the address is checked here, never whether an account has it.
+  schema: r.object({ email: r.string().trim().lowercase().required().max(255).email() }),
+  authorize: can(BookmarkPolicy, 'update', 'bookmark'),
+});
+
+/** Shares one of the user's bookmarks with the person who has this address, if there is one. */
+export class ShareBookmarkController extends Controller {
+  static request = ShareBookmarkRequest;
+
+  readonly #users: UserRepository;
+
+  constructor(users: UserRepository) {
+    super();
+    this.#users = users;
+  }
+
+  async handle(ctx: ContextOf<typeof ShareBookmarkRequest>) {
+    const user = await this.#users.findByEmail(ctx.body.email);
+    // An account whose address is not confirmed counts as not found: private registration lets anybody sign up with somebody
+    // else's address. The bookmark is `ctx.params.bookmark`. Write the share with `tryInsert()` and treat its `duplicate` as
+    // success, so an address that already has it, or the user's own, gets the same answer.
+    if (user?.email_verified_at) {
+      // Share the bookmark with `user`, or queue a mail to their address.
+    }
+    // The same answer, found or not.
+    return this.redirect().route('bookmarks.index').flash('toast', { kind: 'success', message: 'If that address has an account, the bookmark is shared.' });
+  }
+}
+```
+
+The route sits under the `bookmark` binding of `routes.ts`, next to `update`:
+`bookmark.post('/:bookmark/share', ShareBookmarkController).name('share')`. Never add `exists(UserRepository, 'email')` to the
+schema, and let a unique index decide the rest ([the unique index is the truth](validation.md#the-unique-index-is-the-truth)).
+If the owner sees the shares, record each one under the typed address in both branches, outside the `if`, and list it the same
+way whether or not it has an account; only the recipient's mail or acceptance may reveal more. The
+[private registration](starter-kit.md#private-registration) of the starter kit works this way. Keep the time of both paths alike
+too: queue the slow work (a mail) instead of doing it inline.
+
 ## The test
 
 `bookmarks.test.ts` tries every route as the owner and as a stranger. This is the part for the stranger: Ada asks for Bob's
