@@ -22,26 +22,24 @@ other.
 
 ## What a version promises
 
-### Before 1.0
-
-Marmeon is at 0.x. Anything may change while the major version is 0, but never silently:
-
-- A **minor** version, such as 0.1 to 0.2, may break. Every break has an entry in the [upgrade guide](../UPGRADING.md) with its
-  impact, the time it takes, the code before and after, and the way back where there is one.
-- A **patch**, such as 0.1.0 to 0.1.1, never breaks, except for a [security hardening](#what-is-public-api).
-
-Pin the exact version, as `create-marmeon` does, or use `~0.1.0`. A caret range such as `^0.1.0` already stops before 0.2.0.
-
-A fix for an older line is published under the npm dist-tag `latest-<line>` (`latest-0.1`) and never moves `latest`. An app that
-stays on that line gets it through `pnpm up "@marmeon/*" marmeon` when its range allows the version (`^0.1.0`, `~0.1.0`), or
-installs it by name (`pnpm add @marmeon/core@latest-0.1`, then the same for the other packages); an exact pin changes by hand.
-
 ### From 1.0 on
 
 Breaking changes come only in a major version, except for a [security hardening](#what-is-public-api). A feature to be
 removed is [deprecated](#deprecations) first, in a minor version, and goes in the next major version, with its entry in the
-upgrade guide. What is outside the [public API](#what-is-public-api) is outside this promise. [Which versions get
-fixes](#which-versions-get-fixes) is a separate question.
+upgrade guide. A minor version adds, a patch fixes; neither breaks. What is outside the [public API](#what-is-public-api) is outside
+this promise. [Which versions get fixes](#which-versions-get-fixes) is a separate question.
+
+Pin the exact version, as `create-marmeon` does.
+
+A fix for an older line is published under the npm dist-tag `latest-<major>` (`latest-1`) and never moves `latest`. An app that
+stays on that line gets it through `pnpm up "@marmeon/*" marmeon` when its range allows the version (`^1.0.0`), or installs it by
+name (`pnpm add @marmeon/core@latest-1`, then the same for the other packages); an exact pin changes by hand.
+
+### Before 1.0
+
+Up to 0.4, Marmeon was at 0.x. A minor version, such as 0.3 to 0.4, could break, and every break has an entry in the
+[upgrade guide](../UPGRADING.md); a patch never broke, except for a security hardening. 0.x gets no fixes any more: the way forward
+is [Upgrading to 1.0.0 from 0.4.0](../UPGRADING.md#upgrading-to-100-from-040).
 
 ## Release candidates
 
@@ -58,22 +56,19 @@ release with `latest`, because `next` may still point at the last candidate. Rep
 
 ## Which versions get fixes
 
-Before 1.0, fixes are promised only for the latest 0.x minor version; a maintenance release for an older line is possible but not
-promised. From 1.0 on, the current major version gets them in its latest minor version. The previous major version still gets
+The current major version gets fixes in its latest minor version. The previous major version still gets
 **security fixes for 12 months** after the next major version is released, as patches on its last minor version, published under
-the dist-tag `latest-<major>` like [any older line](#before-10).
+the dist-tag `latest-<major>` like [any older line](#from-10-on).
 
-Once 1.0.0 is released, 0.x gets no fixes at all. It never had a support window, and the way forward is the section "0.x to 1.0"
-of the [upgrade guide](../UPGRADING.md).
+0.x gets no fixes at all. It never had a support window, and the way forward is
+[Upgrading to 1.0.0 from 0.4.0](../UPGRADING.md#upgrading-to-100-from-040).
 
 | Version | Fixes | Security fixes |
 |---|---|---|
 | Current major | latest minor version | latest minor version |
 | Previous major | no | 12 months after the next major is released |
 | Older majors | no | no |
-| 0.x, before 1.0 | latest minor version | latest minor version |
-| Older 0.x minors | no | no |
-| 0.x, after 1.0.0 | no | no |
+| 0.x | no | no |
 
 The docs of every release line from 1.0 on stay at `https://marmeon.com/docs/<line>/` (`/docs/1.x/`), and the docs of the version you have installed
 are in `node_modules/marmeon/docs/`.
