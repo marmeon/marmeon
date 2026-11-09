@@ -43,8 +43,7 @@ this section lists, and on nothing else: not on the order in which the framework
 
 **The version of the protocol is the major version of `@marmeon/core`**, the one your package's range for `@marmeon/core` (or for
 `marmeon`, which has the same version) accepts. There is no second version field in `package.json`, since it could only contradict
-the range. While the major version is 0, the minor version takes its place, as [the release policy](releases.md#before-10) says
-for the whole framework.
+the range.
 
 The rule for change is the one of the public API:
 

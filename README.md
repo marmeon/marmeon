@@ -27,7 +27,7 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 }
 ```
 
-Status: 0.x on npm — a minor version may still break ([release policy](docs/releases.md#before-10)). MIT licence (`LICENSE`, copyright [BespokeCode](https://bespokecode.de)). Node 26.10 or newer, pnpm 12.
+Status: 1.0 on npm — breaking changes come only in a major version ([release policy](docs/releases.md#from-10-on)). MIT licence (`LICENSE`, copyright [BespokeCode](https://bespokecode.de)). Node 26.10 or newer, pnpm 12.
 
 ## Principles
 
@@ -68,9 +68,9 @@ next.
 ## Versions and deprecations
 
 Every `@marmeon/*` package, the CLI `marmeon` and `create-marmeon` are released together and always have the same version —
-upgrade them together. In 0.x a minor version may break, and every break has an entry in [UPGRADING.md](UPGRADING.md); a patch
-never breaks. From 1.0 on, breaking changes come only in a major version, after a deprecation. The
-[release policy](docs/releases.md) has the details.
+upgrade them together. Breaking changes come only in a major version, after a deprecation, and every break has an entry in
+[UPGRADING.md](UPGRADING.md); a minor version or a patch never breaks, except for a
+security hardening. The [release policy](docs/releases.md) has the details.
 
 ## Contributing and security
 
