@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { LINT_CONFIG_FILE, lintConfig, MakeLintConfigCommand } from './commands/make-lint-config.ts';
+import { LINT_CONFIG_FILE, lintConfig, MakeLintConfigCommand, serverModulesFingerprint, specifierPatterns } from './commands/make-lint-config.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -166,5 +166,161 @@ describe('marmeon make:lint-config', () => {
     const root = app({ 'modules/auth/1/2/3/4/5/6/7/8/9/Deep.ts': "import { totals } from '../../../../../../../../../../billing/deep/er/Totals.ts';\nexport const x = totals;\n" });
     generate(root, { boundaries: true });
     expect(lint(root)).toEqual(['modules/auth/1/2/3/4/5/6/7/8/9/Deep.ts:1 eslint(no-restricted-imports)']);
+  });
+});
+
+describe('specifierPatterns — a server glob as the specifiers that reach it from a folder', () => {
+  it('cuts the glob at every folder the importing file shares with it', () => {
+    expect(specifierPatterns(['modules', '*', '*'], 'modules/*/jobs/**')).toEqual(['../../../modules/*/jobs/**', '../../*/jobs/**', '../jobs/**']);
+    expect(specifierPatterns(['modules', '*', '*'], 'modules/billing/invoices/**')).toEqual(['../../../modules/billing/invoices/**', '../../billing/invoices/**']);
+    expect(specifierPatterns(['modules', 'billing', '*'], 'modules/billing/invoices/**')).toEqual([
+      '../../../modules/billing/invoices/**',
+      '../../billing/invoices/**',
+      '../invoices/**',
+    ]);
+    expect(specifierPatterns(['bootstrap'], 'bootstrap/app.ts')).toEqual(['../bootstrap/app.ts', './app.ts']);
+  });
+
+  it('keeps a glob that starts with ** as it is: it matches at any depth', () => {
+    expect(specifierPatterns(['layouts', '*'], '**/*Gateway.ts')).toEqual(['**/*Gateway.ts']);
+  });
+});
+
+describe('marmeon make:lint-config — the server folders of package.json and the conventions, per depth', () => {
+  const declared = ['modules/billing/invoices/**', '!modules/auth/jobs/labels.ts'];
+  const withDeclaration = (files: Record<string, string>, serverModules: unknown = declared) =>
+    app({
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', imports: { '#modules/*': './modules/*/index.ts' }, marmeon: { serverModules } }),
+      'modules/billing/invoices/ShowInvoiceController.ts': 'export class ShowInvoiceController {}\n',
+      'modules/billing/invoices/InvoiceTable.tsx': 'export const InvoiceTable = 1;\n',
+      'modules/auth/jobs/labels.ts': 'export const labels = 1;\n',
+      'modules/notes/jobs/labels.ts': 'export const labels = 1;\n',
+      'modules/auth/jobs/SendWelcome.ts': 'export const SendWelcome = 1;\n',
+      'modules/billing/views/subscriptions/Index.tsx': "import { InvoiceTable } from '../invoices/InvoiceTable.tsx';\nexport default InvoiceTable;\n",
+      'modules/todo/tasks/List.tsx': 'export const List = 1;\n',
+      'modules/todo/views/tasks/List.tsx': 'export const List = 1;\n',
+      'modules/todo/views/Index.tsx': "import { List } from './tasks/List.tsx';\nexport default List;\n",
+      'bootstrap/app.ts': 'export const app = 1;\n',
+      ...files,
+    });
+
+  const VALUE = {
+    'modules/billing/views/invoices/Show.tsx': "import { ShowInvoiceController } from '../../invoices/ShowInvoiceController.ts';\nexport const c = ShowInvoiceController;\n",
+    'layouts/App.tsx': "import { ShowInvoiceController } from '../modules/billing/invoices/ShowInvoiceController.ts';\nexport const c = ShowInvoiceController;\n",
+    'modules/auth/views/Other.tsx': "import { ShowInvoiceController } from '../../billing/invoices/ShowInvoiceController.ts';\nexport const c = ShowInvoiceController;\n",
+    'modules/billing/views/Direct.tsx': "import { ShowInvoiceController } from '../invoices/ShowInvoiceController.ts';\nexport const c = ShowInvoiceController;\n",
+    // The conventions the preset did not know: jobs, a module's entry, config, the app's definition.
+    'modules/auth/views/Job.tsx': "import { SendWelcome } from '../jobs/SendWelcome.ts';\nexport const c = SendWelcome;\n",
+    'modules/auth/views/Entry.tsx': "import { UserRepository } from '../index.ts';\nexport const c = UserRepository;\n",
+    'modules/auth/views/Config.tsx': "import { AppConfig } from '../../../config/app.ts';\nexport const c = AppConfig;\n",
+    'modules/auth/views/App.tsx': "import { app } from '../../../bootstrap/app.ts';\nexport const c = app;\n",
+    'bootstrap/client.tsx': "import { app } from './app.ts';\nexport const c = app;\n",
+    // The negation holds for auth only.
+    'modules/notes/views/X.tsx': "import { labels } from '../jobs/labels.ts';\nexport const c = labels;\n",
+  };
+  const TYPES = {
+    'modules/billing/views/invoices/Typed.tsx': "import type { ShowInvoiceController } from '../../invoices/ShowInvoiceController.ts';\nexport type C = ShowInvoiceController;\n",
+    'modules/auth/views/Typed.tsx': "import type { SendWelcome } from '../jobs/SendWelcome.ts';\nexport type C = typeof SendWelcome;\n",
+    'modules/auth/views/Negated.tsx': "import { labels } from '../jobs/labels.ts';\nexport const c = labels;\n",
+    // Not server code: a view folder named like a feature folder, a view folder named like a convention, another module's folder.
+    'modules/auth/views/Y.tsx': "import { InvoiceTable } from '../invoices/InvoiceTable.tsx';\nexport default InvoiceTable;\n",
+  };
+
+  for (const boundaries of [false, true]) {
+    it(`flags a value import of a declared folder or a convention from views, layouts and the client entry — and no view folder (boundaries: ${boundaries})`, () => {
+      const root = withDeclaration({
+        ...VALUE,
+        ...TYPES,
+        'modules/auth/views/Y.tsx': "import { InvoiceTable } from '../invoices/InvoiceTable.tsx';\nexport default InvoiceTable;\n",
+        'modules/billing/views/invoices/Fine.tsx': "export default 1;\n",
+      });
+      expect(generate(root, { boundaries }).code).toBe(0);
+      // An import reported by the boundary rule and the server rule counts once.
+      const flagged = [...new Set(lint(root).filter((line) => !line.includes('no-import-type-side-effects')).map((line) => line.split(':')[0]))];
+      expect(flagged).toEqual(Object.keys(VALUE).sort());
+    });
+  }
+
+  it('--boundaries: a negated file does not open the way out of the module — an import across modules stays a boundary error', () => {
+    const files = {
+      'modules/notes/views/Across.tsx': "import { labels } from '../../auth/jobs/labels.ts';\nexport const c = labels;\n",
+      'modules/notes/views/ViaRoot.tsx': "import { labels } from '../../../modules/auth/jobs/labels.ts';\nexport const c = labels;\n",
+      'modules/auth/views/Own.tsx': "import { labels } from '../jobs/labels.ts';\nexport const c = labels;\n",
+    };
+    const flagged = (boundaries: boolean) => {
+      const root = withDeclaration(files);
+      generate(root, { boundaries });
+      return [...new Set(lint(root).map((line) => line.split(':')[0]))];
+    };
+    expect(flagged(true)).toEqual(['modules/notes/views/Across.tsx', 'modules/notes/views/ViaRoot.tsx']);
+    expect(flagged(false)).toEqual([]);
+  });
+
+  it('reaches a declared folder through #modules/ too, and keeps the conventions it always flagged', () => {
+    const root = withDeclaration({
+      'modules/billing/views/invoices/Entry.tsx': "import { Invoices } from '#modules/billing';\nexport const c = Invoices;\n",
+      'modules/auth/views/Repo.tsx': "import { UserRepository } from '../UserRepository.ts';\nexport const c = UserRepository;\n",
+      'modules/auth/views/Provider.tsx': "import { P } from '../AuthServiceProvider.ts';\nexport const c = P;\n",
+      'modules/auth/views/Ctl.tsx': "import { ShowLoginController } from '../controllers/ShowLoginController.ts';\nexport const c = ShowLoginController;\n",
+    });
+    generate(root);
+    expect([...new Set(lint(root).map((line) => line.split(':')[0]))]).toEqual([
+      'modules/auth/views/Ctl.tsx',
+      'modules/auth/views/Provider.tsx',
+      'modules/auth/views/Repo.tsx',
+      'modules/billing/views/invoices/Entry.tsx',
+    ]);
+  });
+
+  it('keeps flagging controllers in a view deeper than the overrides cover (the fallback)', () => {
+    const root = withDeclaration({ 'modules/auth/views/1/2/3/4/5/6/7/8/9/Deep.tsx': "import { c } from '../../../../../../../../../../../controllers/X.ts';\nexport const x = c;\n" });
+    generate(root);
+    expect(lint(root).map((line) => line.split(':')[0])).toContain('modules/auth/views/1/2/3/4/5/6/7/8/9/Deep.tsx');
+  });
+
+  for (const boundaries of [false, true]) {
+    it(`flags a declared folder at the app root from every depth, and lets a test import the app's definition (boundaries: ${boundaries})`, () => {
+      const root = withDeclaration(
+        {
+          'domain/pricing/Rates.ts': 'export const rates = 1;\n',
+          'domain/Gateway.ts': 'export const gateway = 1;\n',
+          'modules/billing/views/Domain.tsx': "import { rates } from '../../../domain/pricing/Rates.ts';\nexport const c = rates;\n",
+          'modules/billing/views/deep/er/Domain.tsx': "import { rates } from '../../../../../domain/pricing/Rates';\nexport const c = rates;\n",
+          'modules/billing/views/Gateway.tsx': "import { gateway } from '../../../domain/Gateway.ts';\nexport const c = gateway;\n",
+          'modules/billing/views/Typed.tsx': "import type { rates } from '../../../domain/pricing/Rates.ts';\nexport type C = typeof rates;\n",
+          'modules/billing/views/Docs.tsx': "import { x } from '../../../documents/Rates.ts';\nexport const c = x;\n",
+          'documents/Rates.ts': 'export const x = 1;\n',
+          'modules/billing/layouts/Frame.test.ts': "import { app } from '../../../bootstrap/app.ts';\nexport const c = app;\n",
+          'modules/billing/views/Page.test.ts': "import { app } from '../../../bootstrap/app.ts';\nexport const c = app;\n",
+          'layouts/App.test.ts': "import { app } from '../bootstrap/app.ts';\nexport const c = app;\n",
+        },
+        ['domain/**', '**/*Gateway.ts'],
+      );
+      generate(root, { boundaries });
+      expect([...new Set(lint(root).map((line) => line.split(':')[0]))]).toEqual([
+        'modules/billing/views/Domain.tsx',
+        'modules/billing/views/Gateway.tsx',
+        'modules/billing/views/deep/er/Domain.tsx',
+      ]);
+    });
+  }
+
+  it('writes no file for a broken declaration, and says H14', () => {
+    const root = withDeclaration({}, 'modules/billing/invoices/**');
+    const result = generate(root);
+    expect(result.code).toBe(1);
+    expect(result.lines.join('\n')).toMatch(/^✗ \[marmeon:H14\] package\.json: "marmeon"\."serverModules" is not a list of globs/);
+    expect(existsSync(join(root, LINT_CONFIG_FILE))).toBe(false);
+  });
+
+  it('names what the preset was written for in its header: a fingerprint that follows the declaration', () => {
+    const header = (root: string) => /\/\/ marmeon:server-modules ([0-9a-f]{16}) /.exec(readFileSync(join(root, LINT_CONFIG_FILE), 'utf8'))?.[1];
+    const one = withDeclaration({});
+    generate(one);
+    const two = withDeclaration({}, ['modules/billing/payments/**']);
+    generate(two);
+    expect(header(one)).toBe(serverModulesFingerprint(declared));
+    expect(header(two)).toBe(serverModulesFingerprint(['modules/billing/payments/**']));
+    expect(header(one)).not.toBe(header(two));
   });
 });

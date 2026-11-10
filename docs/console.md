@@ -454,8 +454,13 @@ import { ShowNoteController } from '../controllers/ShowNoteController.ts';      
 ```
 
 A value import would bundle the controller, and everything it imports, into the browser. In views, layouts and the client
-entry, the preset refuses value imports of controllers, repositories, service providers and module entries. Everywhere it asks
-for `import type { X }` instead of `import { type X }`, since the inline form still loads the module.
+entry, the preset refuses value imports of server modules: the conventions that [Server code in the browser](vite.md#server-code-in-the-browser)
+lists and the folders package.json declares under [Server folders of your own](vite.md#server-folders-of-your-own). After you
+change that declaration, run `marmeon make:lint-config --force` (with `--boundaries`, if you use it) to write the preset anew.
+The option `serverModules` of `marmeon()` is not in the preset. With `--boundaries`, a `!glob` does not take back a folder outside
+`modules/`, such as `config/` or `domain/`, and a `!` on a file in `modules/<name>/` holds only inside that module: from another
+module the import is a boundary error anyway. Everywhere it asks for `import type { X }` instead of `import { type X }`, since the
+inline form still loads the module.
 
 The lint sees what an import says, not the file it resolves to. The `marmeon()` Vite plugin is the stricter check: it follows
 every import of client code, also through a helper in between, and fails the build with the file and the line. The preset shows

@@ -59,6 +59,7 @@ function flaw(entry: string, negated: boolean): string | undefined {
   if (entry.startsWith('/')) return 'it starts with "/" — globs are relative to the app root';
   if (entry.includes('\\')) return 'it uses "\\" — separate folders with "/"';
   if (/[{}]/.test(entry)) return 'it uses braces — list each alternative as its own entry';
+  if (/[?[\]]/.test(entry)) return 'it uses "?" or "[…]" — the build and the lint preset would read them differently; spell the names out or use "*"';
   if (/[()|]/.test(entry)) return 'it uses "(", ")" or "|" (an extglob) — list each alternative as its own entry';
   if (entry.includes('!')) return 'it has "!" after its start — only a leading "!" takes files out';
   const segments = entry.split('/');

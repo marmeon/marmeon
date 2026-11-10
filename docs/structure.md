@@ -245,18 +245,15 @@ The folder names still say one thing: `controllers/`, `jobs/`, `listeners/` and 
 A feature folder is not one of them. Name the feature folders as server code, so a page that imports
 `ShowInvoiceController.ts` as a value stops the build instead of shipping the controller to the browser:
 
-```ts title="vite.config.ts"
-import { marmeon } from '@marmeon/vite';
-import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  plugins: [marmeon({ serverModules: ['modules/billing/invoices/**', 'modules/billing/subscriptions/**'] }), react()],
-});
+```json title="package.json"
+{
+  "marmeon": {
+    "serverModules": ["modules/billing/invoices/**", "modules/billing/subscriptions/**"]
+  }
+}
 ```
 
-Pass the same list to `marmeon({ test: true })` in `vitest.config.ts`, so the tests check it too. The lint preset knows only the
-folders of the conventions and does not flag such an import in the editor; the build and the tests do.
+The build, the tests and the lint preset read this one list (the preset once `marmeon make:lint-config --force` has written it anew). See [Server folders of your own](vite.md#server-folders-of-your-own).
 
 A few things stay where they are, because the framework finds them by their path:
 

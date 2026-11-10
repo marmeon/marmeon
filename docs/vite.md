@@ -267,11 +267,15 @@ root:
 - `!glob` takes files out of the conventions and out of the list, such as `!modules/notes/jobs/labels.ts`.
 - Write a folder as `folder/**`; a name with no `*` and no file extension matches no file.
 - No leading `/`, no `\`, no `.` or `..` segment, no empty segment, no space at either end and no leading `#`.
-- No braces, `(`, `)` or `|`: list each alternative as its own entry.
+- No braces, `(`, `)` or `|`: list each alternative as its own entry. No `?` and no `[…]` either: the build and the lint preset
+  would read them differently, so spell the name out or use `*`.
 
 An entry that does not hold to this, an unreadable package.json or a misspelt key in `"marmeon"` stops the dev server, the build
 and the tests with `H14`. A declaration that is silently skipped would leave a folder unchecked, which is why it is an error.
 Restart `marmeon dev` after you change the list.
+
+The lint preset takes the list over when `marmeon make:lint-config --force` (with `--boundaries`, if you use it) writes it anew. See
+[lint](console.md#lint).
 
 The `serverModules` option of the plugin adds patterns for one config only. It takes globs too, but they are not checked against
 these rules, and the lint preset does not see them, so declare folders in package.json.
