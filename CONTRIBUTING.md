@@ -104,7 +104,7 @@ scripts/test      the test suite's temporary directory per run, tempDir() and wo
 deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next
 .github           workflows/ (ci.yml: pnpm run ci in parallel jobs; release.yml: started by hand, staged publishing; pr-label.yml: the release label
-                  check; codeql.yml and codeql/: code scanning), zizmor.yml (the rules of the zizmor job), release.yml (the notes' categories,
+                  check; codeql.yml and codeql/: code scanning; scorecard.yml: the OpenSSF Scorecard), zizmor.yml (the rules of the zizmor job), release.yml (the notes' categories,
                   generated) and release-base (the commit a release was prepared from)
 ```
 
@@ -992,6 +992,12 @@ step of the repository — no install, no build — and `pnpm check-release` hol
 
 A false positive is dismissed on GitHub with its reason, never suppressed in the code. A real finding becomes its own `fix`
 pull request; one an attacker can exploit goes through a private advisory first ([SECURITY.md](SECURITY.md)).
+
+### The OpenSSF Scorecard
+
+`.github/workflows/scorecard.yml` runs the [OpenSSF Scorecard](https://scorecard.dev) on every push to `main`, once a week and
+when the branch protection changes, publishes the score to the public Scorecard API (the README's badge) and uploads the SARIF to
+code scanning. It is not a required check. Publishing limits the job: no top-level `env` or `defaults`, no container, only approved actions.
 
 ### The workflows: zizmor
 
