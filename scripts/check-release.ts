@@ -30,6 +30,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * listed entry must stand under its release.
  */
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {
+  '1.1.0': ['low-a-passkey-with-an-rsa-key-under-2048-bits-or-an-unlisted-algorithm-no-longer-signs-in'],
   '1.0.0': [
     'high-before-you-upgrade',
     'high-apps-made-with-the-starter-kit-take-its-auth-module-once-more',
