@@ -152,7 +152,7 @@ describe('marmeon()', () => {
     const root = join(parent, 'a\\b', 'app');
     for (const file of ['package.json', 'storage/x.txt', 'dist/x.txt', '.marmeon/x.txt', 'src/x.txt']) {
       mkdirSync(dirname(join(root, file)), { recursive: true });
-      writeFileSync(join(root, file), 'secret');
+      writeFileSync(join(root, file), file === 'package.json' ? '{}' : 'secret'); // the app's package.json is read: it must be valid JSON
     }
     const server = await createServer({ root, configFile: false, logLevel: 'silent', plugins: [marmeon()], server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
     try {

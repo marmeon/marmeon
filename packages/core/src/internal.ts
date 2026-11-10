@@ -30,6 +30,7 @@ export { HTML_KEY, interpolateHtml } from './html.ts';
 export { loadEnv } from './config/config.ts';
 export { consoleLogsGoToStderr, redactedFrameworkFields, redactedLogPart, sendConsoleLogsToStderr, UNREADABLE_PART, withoutFrameworkFields } from './logger.ts';
 export { runWithJob, runWithRequest, runWithTask } from './request-context.ts';
+export { declaredServerModules, SERVER_MODULES, type ServerModule } from './server-modules.ts';
 export { staticNames } from './static-names.ts';
 export { parseSync } from './oxc.ts';
 export { sourceComments, stringLiterals } from './string-literals.ts';

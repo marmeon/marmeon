@@ -167,6 +167,53 @@ describe('server imports while serving', () => {
     expect(message(other)).not.toContain('labels.ts');
   });
 
+  it('takes the server folders package.json declares — in the browser environment and in tests (test: true) — and honours import type and !glob', async () => {
+    const declared = ['modules/*/invoices/**', '!modules/demo/jobs/labels.ts'];
+    const root = app({
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', marmeon: { serverModules: declared } }),
+      'modules/demo/invoices/Ctl.ts': "export const invoice = 'server-only';\n",
+      'modules/demo/jobs/labels.ts': "export const labels = ['shared'];\n",
+      'modules/demo/views/Home.tsx': "import { invoice } from '../invoices/Ctl.ts';\nexport default () => invoice;\n",
+      'modules/demo/views/Labels.tsx': "import { labels } from '../jobs/labels.ts';\nexport default () => labels;\n",
+      'modules/demo/views/Typed.tsx': "import type { invoice } from '../invoices/Ctl.ts';\nexport default (value?: typeof invoice) => value;\n",
+    });
+    const wanted = 'imports modules/demo/invoices/Ctl.ts as a value: a module of package.json\'s "serverModules" (modules/*/invoices/**) is server code';
+    const browser = await serve(root);
+    const error = await browser.environments.client!.transformRequest('/modules/demo/views/Home.tsx').catch((caught: unknown) => caught);
+    expect(message(error)).toContain(wanted);
+    await expect(browser.environments.client!.transformRequest('/modules/demo/views/Labels.tsx')).resolves.toBeTruthy();
+    await expect(browser.environments.client!.transformRequest('/modules/demo/views/Typed.tsx')).resolves.toBeTruthy();
+
+    const testing = await serve(root, { test: true });
+    await expect(ssrImport(testing, '/modules/demo/views/Home.tsx')).rejects.toThrow(wanted);
+    await expect(ssrImport(testing, '/modules/demo/views/Typed.tsx')).resolves.toBeTruthy();
+    await expect(ssrImport(testing, '/modules/demo/views/Labels.tsx')).resolves.toBeTruthy();
+  });
+
+  it('adds the declaration and the option: both patterns apply', async () => {
+    const root = app({
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', marmeon: { serverModules: ['modules/*/invoices/**'] } }),
+      'modules/demo/invoices/Ctl.ts': "export const invoice = 'a';\n",
+      'modules/demo/services/Billing.ts': "export const billing = 'b';\n",
+      'modules/demo/views/A.tsx': "import { invoice } from '../invoices/Ctl.ts';\nexport default () => invoice;\n",
+      'modules/demo/views/B.tsx': "import { billing } from '../services/Billing.ts';\nexport default () => billing;\n",
+    });
+    const server = await serve(root, { serverModules: ['modules/*/services/**'] });
+    const a = await server.environments.client!.transformRequest('/modules/demo/views/A.tsx').catch((caught: unknown) => caught);
+    const b = await server.environments.client!.transformRequest('/modules/demo/views/B.tsx').catch((caught: unknown) => caught);
+    expect(message(a)).toContain('a module of package.json\'s "serverModules" (modules/*/invoices/**) is server code');
+    expect(message(b)).toContain('a module matching modules/*/services/** is server code');
+  });
+
+  it('stops the server, in every mode, for a broken declaration (H14)', async () => {
+    const invalid = app({ 'package.json': '{ "marmeon": nonsense' });
+    await expect(serve(invalid)).rejects.toThrow('[marmeon:H14] package.json: is not valid JSON');
+    await expect(serve(invalid, { test: true })).rejects.toThrow('[marmeon:H14]');
+    const typo = app({ 'package.json': JSON.stringify({ name: 'fixture', marmeon: { serverModules: 'x' } }) });
+    await expect(serve(typo)).rejects.toThrow('[marmeon:H14] package.json: "marmeon"."serverModules" is not a list of globs');
+    await expect(serve(typo, { test: true })).rejects.toThrow('[marmeon:H14]');
+  });
+
   it('refuses a value import of @marmeon/mail or @marmeon/react/mail in client code — and lets import type through', async () => {
     for (const specifier of ['@marmeon/mail', '@marmeon/react/mail']) {
       const root = app({ 'modules/demo/views/Home.tsx': `import { toMjml } from '${specifier}';\nexport default () => toMjml;\n` });

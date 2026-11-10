@@ -369,4 +369,25 @@ describe('server imports in a build', () => {
     expect(bundle(join(root, 'dist/client'))).not.toContain('server-only-secret');
     expect(bundle(join(root, 'dist/server'))).toContain('server-only-secret');
   }, 60_000);
+
+  it('fails the build for a value import from a folder package.json declares, and stops early on a broken declaration', () => {
+    const declared = serverCodeApp({
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { '@marmeon/fake': '*' }, marmeon: { serverModules: ['modules/*/invoices/**'] } }),
+      'modules/demo/invoices/Table.ts': "export const table = 'server-only-invoices';\n",
+      'modules/demo/views/Home.tsx': "import { table } from '../invoices/Table.ts';\nexport default () => table;\n",
+    });
+    const refused = build(declared, '--no-typecheck');
+    expect(refused.out).toContain('a module of package.json\'s "serverModules" (modules/*/invoices/**) is server code');
+    expect(refused.out).toContain('✗ Not built: 1 import brings server code into the browser.');
+    expect(refused.code).toBe(1);
+
+    const broken = serverCodeApp({
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { '@marmeon/fake': '*' }, marmeon: { serverModules: 'modules/x/**' } }),
+      'modules/demo/views/Home.tsx': 'export default () => 1;\n',
+    });
+    const stopped = build(broken, '--no-typecheck');
+    expect(stopped.out).toContain('Not built: [marmeon:H14]');
+    expect(stopped.out).not.toMatch(/\n\s+at /);
+    expect(stopped.code).toBe(1);
+  }, 60_000);
 });

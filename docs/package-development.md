@@ -61,13 +61,14 @@ The tables below list every part.
 | `providers` | The names of service provider classes that the package's entry exports, each a JavaScript identifier. |
 | `browser` | Globs of the package's files that run only in the browser, relative to the package, such as `["src/client/**"]`. |
 | `experimental` | `true`, or a list of the package's `exports` subpaths: marks the package, or those entries, as [experimental](releases.md#experimental). |
+| `serverModules` | Only in the app's own package.json: globs of server code beyond the conventions. Ignored in a dependency. See [Server folders of your own](vite.md#server-folders-of-your-own). |
 
 The field is an object with these keys and no others. The app finds it when it walks its dependencies, the dev dependencies
 included, and the dependencies of those, and a field that does not hold to this stops the app, because the package's `package.json`
 is someone else's file and a key that is silently skipped hides a mistake:
 
 - A key that is not listed, such as `provider` for `providers`, ends discovery with `K7`: `@acme/marmeon-request-log has an unknown key
-  "provider" in its "marmeon" field (known: providers, browser, experimental) — a misspelt key would leave its providers out.`
+  "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules) — a misspelt key would leave its providers out.`
   The message names the package and the key, and the key only if it is a plain identifier; it never repeats a value of the field.
   The same holds for a `migrations` key, since migrations are a static of the provider (below).
 - A field that is not an object (an array, a string, `null`), a `providers` that is not a list of class names, or a `browser` that
