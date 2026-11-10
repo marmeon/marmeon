@@ -1,0 +1,327 @@
+# Database: Getting Started
+
+## Introduction
+
+Almost every app keeps its data in a database. Marmeon talks to it through [Kysely](https://kysely.dev), a query builder that
+knows every table and column of your app as a type. A new app runs on SQLite, which Node brings along, so there is nothing to
+install and no server to start. Postgres works the same way once you install its driver.
+
+The default connection is a service. Ask for `Database` in a constructor and query it:
+
+```ts title="modules/notes/controllers/ListNotesController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Database } from '@marmeon/database';
+import { Controller, type HttpContext } from '@marmeon/http';
+
+export class ListNotesController extends Controller {
+  readonly #db: Database;
+
+  constructor(db: Database) {
+    super();
+    this.#db = db;
+  }
+
+  async handle(ctx: HttpContext<Authenticated>) {
+    const notes = await this.#db
+      .selectFrom('notes')
+      .select(['id', 'title', 'updated_at'])
+      .where('user_id', '=', ctx.user.id)
+      .orderBy('updated_at', 'desc')
+      .execute();
+    return this.view('notes/Index', { notes });
+  }
+}
+```
+
+The table names, the columns and the result's type come from your [migrations](migrations.md). A misspelt column is a compile
+error, and `notes` is typed as a list of `{ id, title, updated_at }`. The [repositories and queries](queries.md) page shows how to
+write queries, and how a repository keeps them in one place.
+
+## Configuration
+
+The default connection reads these variables, checked when the app starts like all [configuration](configuration.md):
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `DB_DRIVER` | `sqlite` | The driver: `sqlite` or `pgsql`. |
+| `DB_DATABASE` | `storage/database.sqlite` for SQLite, none for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name, required unless `DB_URL` is set. |
+| `DB_HOST` | `127.0.0.1` | Postgres: the server: a name, an IPv4 or IPv6 address (`::1`), or the directory of a Unix socket (`/var/run/postgresql`). |
+| `DB_PORT` | `5432` | Postgres: its port. |
+| `DB_USERNAME` | `postgres` | Postgres: the user. |
+| `DB_PASSWORD` | empty | Postgres: the password. |
+| `DB_URL` | none | Postgres: the whole address instead, `postgres://user:secret@host:5432/app`. |
+| `DB_POOL_MAX` | `10` | Postgres: the most connections the app's pool opens. |
+| `DB_INFRA_POOL_MAX` | `4` | Postgres: the most connections of the small pool the cache, the sessions and uploads use. See [infrastructure connections](#infrastructure-connections). |
+| `DB_MANAGED` | `true` | `false` when another tool manages the database's tables. See [a database another tool manages](#a-database-another-tool-manages). |
+
+Opening a Postgres connection fails after ten seconds, instead of waiting for a host that does not answer; this holds for the app's pools and for the connection `marmeon migrate` takes its lock on. Set `?connect_timeout=<seconds>` in `DB_URL` for a server that needs longer: whole seconds from 0 to 2147483, anything else fails the start naming `DB_URL`; `0` waits without a limit, as before. The error is `D11` with the connection named. The same limit applies to the wait for a free connection of a full pool: that failure says that no connection was free within the timeout, and the cure is a larger `DB_POOL_MAX` or shorter transactions, not the network. A connection always runs in UTC: options in the URL (`?options=-c%20search_path%3Dapp`) are kept, and a `TimeZone` among them is replaced by UTC.
+
+A Postgres server is either the five variables `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or its
+whole address in `DB_URL`. When `DB_URL` is set, it wins: the five are not read. `DB_URL` must start with `postgres://` or
+`postgresql://`, and the start fails with every wrong value named at once.
+
+Postgres has no default database name: without `DB_DATABASE`, or a `DB_URL` with the database's name in its path, the start fails with
+`K6`, because two apps on one server that fell back to the same name would share every table, from users and sessions to the cache.
+An empty `DB_DATABASE=` counts as not set.
+
+```text
+[marmeon:K6] Invalid configuration — the application cannot start:
+  • database: DB_DATABASE — set DB_DATABASE, or DB_URL with the database's name in its path — apps on one Postgres server share their tables otherwise (docs/database.md#configuration)
+```
+
+An app whose tables are in a database named `marmeon` sets `DB_DATABASE=marmeon`.
+
+```sh title=".env"
+DB_DRIVER=pgsql
+DB_HOST=db.internal
+DB_PORT=5432
+DB_DATABASE=notes
+DB_USERNAME=notes
+DB_PASSWORD=secret
+```
+
+### SQLite
+
+SQLite runs on `node:sqlite`, which is part of Node: no native addon, nothing to build. The file is created on the first query.
+Its directory must exist, so the app checks it when it starts and stops with the path when it is missing:
+
+```text
+[marmeon:D11] The directory of the SQLite database for connection "default" does not exist: /srv/app/storage (sqlite storage/database.sqlite).
+```
+
+A file database runs in WAL mode, so the development server and a command such as `migrate` can work at the same time. A
+statement that finds the file locked waits up to five seconds before it fails. A transaction takes the write lock when it begins
+(`begin immediate`), so a worker, a scheduler and a web process on one file wait for each other instead of failing midway with
+`SQLITE_BUSY`. That lock is taken even by a transaction that only reads, and other processes' writes wait for it, up to the busy
+timeout: keep transactions short, and read outside a transaction when nothing is written. `DB_DATABASE=:memory:` keeps the database in
+memory, which the `.env.test` of a new app does for its tests.
+
+SQLite has one writer at a time, and the app's file has one connection. The [transactions](transactions.md) page explains what
+that means inside a transaction.
+
+### Postgres
+
+Postgres needs the `pg` driver in your app:
+
+```sh
+pnpm add pg@^8
+```
+
+Install it as a dependency, not a dev dependency. Without it, the first query fails and names the command. With
+`DB_URL=postgres://app:secret@db:5432/app`, the message reads:
+
+```text
+[marmeon:D11] Could not connect to the database connection "default" (pgsql postgres://app:***@db:5432/app): DB_DRIVER=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8
+```
+
+A connection of your own names itself instead: `The Postgres connection "reporting" needs the "pg" package, …`.
+
+The app does not connect to Postgres when it starts, so a command that sends no query works without a running server. The first
+query connects, and a deployment's `marmeon migrate --force` is that first query, so it finds a missing driver or a wrong address
+before any request does. The [deployment](deployment.md#drivers-what-an-app-installs) page lists every driver an app may need.
+
+Values come back as the same JavaScript types on both drivers, so code and tests do not change with the database:
+
+- A `bigint` column is read as a `number`. A value beyond `Number.MAX_SAFE_INTEGER` throws a `RangeError` instead of losing
+  digits. Cast it to text in the query if you need such numbers.
+- A timestamp is read as an ISO-8601 string in UTC, such as `2026-10-01T12:00:00.000Z`. The connection runs in UTC.
+- A `date` is read as `YYYY-MM-DD`, as stored.
+
+An error message names the connection and where it points, with the password masked. When the server drops an idle connection,
+the pool replaces it and the log says so with a warning.
+
+## More connections
+
+Another database is a definition with a name. It reads its own variables, which are checked at the start like all
+configuration. This one gives the cache and the sessions a SQLite file of their own:
+
+```ts title="config/database.ts"
+import { env } from '@marmeon/core';
+import { defineConnection } from '@marmeon/database';
+
+export const SystemDatabase = defineConnection('system', {
+  env: env({
+    SYSTEM_DB_DATABASE: env.string().default('storage/system.sqlite'),
+  }),
+  resolve: (e) => ({ driver: 'sqlite', database: e.SYSTEM_DB_DATABASE }),
+});
+```
+
+List the definition in `config` of `defineApplication()` in `bootstrap/app.ts`, or of the module that needs it. `resolve`
+returns `{ driver: 'sqlite', database }` or a Postgres server. Like the default connection, a Postgres server is its parts, `host`,
+`port`, `database`, `username` and `password`, or the whole address in `url`, which wins when both are given. Without `url`, the
+parts default to `127.0.0.1`, `5432`, `postgres` and no password, and `database` is required. `poolMax` and
+`infrastructurePoolMax` size its pools, 10 and 4 by default. A reporting database that reads both ways:
+
+```ts title="config/reporting.ts"
+import { env } from '@marmeon/core';
+import { defineConnection } from '@marmeon/database';
+
+export const ReportingDatabase = defineConnection('reporting', {
+  env: env({
+    REPORTING_DB_HOST: env.string().default('127.0.0.1'),
+    REPORTING_DB_PORT: env.port().default(5432),
+    REPORTING_DB_DATABASE: env.string().default('reporting'),
+    REPORTING_DB_USERNAME: env.string().default('postgres'),
+    REPORTING_DB_PASSWORD: env.string().default(''),
+    REPORTING_DB_URL: env.url({ protocols: ['postgres', 'postgresql'] }).optional(),
+  }),
+  resolve: (e) => ({
+    driver: 'pgsql',
+    url: e.REPORTING_DB_URL,
+    host: e.REPORTING_DB_HOST,
+    port: e.REPORTING_DB_PORT,
+    database: e.REPORTING_DB_DATABASE,
+    username: e.REPORTING_DB_USERNAME,
+    password: e.REPORTING_DB_PASSWORD,
+    poolMax: 5,
+  }),
+});
+```
+
+`default` is the name of the connection of `DB_DRIVER`, and `defineConnection('default', …)` throws. Ask `Connections` for any
+connection by its name:
+
+```ts title="modules/reports/MonthlyReport.ts"
+import { Connections, type Connection } from '@marmeon/database';
+import type { ReportingTables } from './tables.ts';
+
+export class MonthlyReport {
+  readonly #reporting: Connection<ReportingTables>;
+
+  constructor(connections: Connections) {
+    this.#reporting = connections.get<ReportingTables>('reporting');
+  }
+
+  totals() {
+    return this.#reporting.selectFrom('orders').select(['month', 'total']).orderBy('month').execute();
+  }
+}
+```
+
+Without a type argument, `get()` types the connection with your app's tables. A name that no definition has throws at once, with
+the names it knows:
+
+```text
+[marmeon:D11] Database connection "reporting" is not configured. Known: default, system. Add one with defineConnection('reporting', …) in the app's config.
+```
+
+Connections open on their first query and close when the app shuts down.
+[Migrations](migrations.md#migrations-on-another-connection) and [repositories](queries.md#another-connection) can work on another
+connection too.
+
+## Infrastructure connections
+
+Some writes must never be part of your app's transaction. A failed sign-in counted inside a transaction that rolls back would be
+uncounted, and the next guess would get through. A lock taken inside one would be invisible to other processes until the commit.
+So the database drivers of the [cache](cache.md#the-database-driver-and-transactions), the
+[sessions](session.md#the-database-driver), [uploads](storage.md#the-uploads-table) and [live updates](realtime.md#the-database-driver) write on a connection that never joins a
+transaction:
+
+| Their connection | What they get | Inside an open transaction of the app |
+| --- | --- | --- |
+| Postgres | A small pool of its own to the same database, opened on first use: `DB_INFRA_POOL_MAX` connections, or `infrastructurePoolMax` of a `defineConnection()`. | Works. Their writes are committed at once and survive a rollback. |
+| SQLite, a file of its own | That file. | Works. |
+| SQLite, the app's own file | The file's one connection, shared. | Every statement throws an `InfrastructureTransactionError`, which says what to do. |
+
+The pool of its own on Postgres keeps transactions that wait for a rate limit from taking every connection that the rate limit
+needs. On SQLite a second connection to the app's file would wait for the open transaction's lock, forever if the transaction
+waits for it. So on SQLite give the cache, the sessions and uploads a file of their own, as `config/database.ts` above does,
+and point them at it with `CACHE_CONNECTION=system`, `SESSION_CONNECTION=system`, `LIVE_CONNECTION=system` and `UPLOADS_CONNECTION=system`. Outside a
+transaction the app's own file works as well. Never point two connection names at the same SQLite file: a transaction of either
+holds the file for both. On Postgres there is nothing to configure.
+
+## Kysely and its version
+
+The query builder is [Kysely](https://kysely.dev), and the framework pins it to one exact version. You write its builder through
+`@marmeon/database` and never install or import the `kysely` package yourself, so the app and the framework use the same copy. Only `@marmeon/database` depends on it; the other packages of the framework take the
+builder and its types from there, as your app does.
+A Kysely update that changes the builder's shape comes only in a major version of Marmeon. The
+[releases](releases.md#libraries-the-framework-builds-on) page lists what else it promises.
+
+## Inspecting a connection
+
+`marmeon db:show` prints where a connection points, its server's version and its tables with their number of columns and rows:
+
+```sh
+pnpm marmeon db:show
+pnpm marmeon db:show --database=system
+```
+
+The password in the address is masked. `--database` names a connection, `default` without it.
+
+The target shows the host, port and database, the user name, and of the query string only `host`, `port`, `sslmode` and
+`application_name`. The password, every other parameter (a key path, an `options` string) and the fragment never reach the output,
+whether the address came from `DB_URL`, from `DB_PASSWORD` or from a connection's `password` option.
+
+`--json` prints a [machine-readable document](console.md#machine-readable-output): `format`, `connection`, `driver` (`sqlite` or
+`pgsql`), `target` (as in the text, without the driver in front), `server`, `tables` (each with `name`, `schema` — `null` for
+SQLite — `columns` and `rows`) and `warnings`.
+
+## When a table is missing
+
+A query on a table that does not exist yet fails like any error. In development, the error page names the cause: the migrations
+that have not run yet, and the command that runs them, `marmeon migrate`. When every migration has run, it suggests a migration
+that creates the table. The [migrations](migrations.md) page explains both commands.
+
+## Where the secret columns and soft deletes come from
+
+A connection learns which columns are secret and which tables have soft deletes and timestamps from your migrations: the schema they
+describe is computed from the migration files ([what the migrations describe](migrations.md#what-the-migrations-describe)), not
+read from tables of the database. The database is asked which migrations ran, and only that. When it lacks one the code has, because the
+app started before `marmeon migrate` or after a rollback, the connection refuses every query with a `MigrationStateError` (D2) that
+names the missing migrations, and it answers again within a second of `marmeon migrate`. When the record of migrations is of a newer
+release, or there is none next to tables, it refuses with D1. [How the migrator keeps track](migrations.md#how-the-migrator-keeps-track)
+lists the states: a password hash or a deleted row is never shown because a migration was missing.
+
+## A database another tool manages
+
+Marmeon refuses to guess. A connection that has tables but no record of migrations, which Marmeon's own `migrate` writes, is
+refused with error D1: without the migrations the app cannot tell which columns are secret or which rows are soft-deleted, and it never
+reads that as "none". That includes a database whose tables are made by another tool, a restore
+that lost the record, and a Postgres role without privileges on it.
+
+For your own database that Marmeon is to migrate from now on, do not use `managed: false`: run `marmeon migrate`, which writes the
+record of migrations and runs the migrations. Tables it did not make stay as they are and unknown to Marmeon: `migrate` names
+them, and a table has no secret columns, soft deletes or timestamps unless a migration creates it. For a database that another tool owns,
+say so on the connection:
+
+```ts title="bootstrap/app.ts"
+defineConnection('legacy', {
+  env: env({ LEGACY_URL: env.url() }),
+  resolve: (e) => ({ driver: 'pgsql', url: e.LEGACY_URL, managed: false }),
+});
+```
+
+The default connection takes `DB_MANAGED=false` instead. With `managed: false` the connection reads no migrations, but the database's
+catalog, as it always did: it knows every table and column that exists, their foreign keys and unique indexes, and no secret
+columns, no soft deletes, no timestamps; the query builder treats every column as an ordinary one. A change another tool makes to the
+tables is known to the connection after the schema change it made itself, or after a restart. `marmeon migrate`,
+`migrate:fresh` and the other migration commands refuse to touch it, and a migration cannot run on it. A connection that Marmeon
+migrates and reads through a role with privileges on the record of migrations stays the default. A connection that has the record of migrations
+Marmeon writes (a table `migrations` with the columns `batch, checksum, id, module, name`, or `batch, id, module, name` as 0.3 wrote them) is refused with `managed: false` as well (D1): Marmeon
+migrates it, so the option would hide its secret columns. A `migrations` table of another shape is another tool's.
+
+The generated file knows no table of such a connection, so `PrimaryKeyOf<'orders'>` is `never` and a repository's `find()` refuses
+every key until you declare it, once per table, next to your types for the tables:
+
+```ts title="bootstrap/keys.d.ts"
+declare module '@marmeon/database' {
+  interface PrimaryKeys {
+    orders: 'id';
+  }
+}
+```
+
+At run time the repository reads the key from the database's catalog. See [primary keys](queries.md#table-types).
+
+## Readiness
+
+The app's readiness check, `/up/ready`, sends `select 1` to every configured connection. One that does not answer makes the
+instance "not ready" and is named in the answer, also when the database lacks migrations the code has (D2) or its record of migrations cannot be
+read (D1). The [health checks](health.md#liveness-and-readiness) page explains readiness.
+
+## Testing
+
+`createTestApp(application, { database: 'refresh' })` of `@marmeon/testing` gives each test a real database, migrated once and
+rolled back after every test. The [database testing](database-testing.md#how-the-database-is-reset) page explains it.

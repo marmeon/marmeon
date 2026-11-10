@@ -1,0 +1,334 @@
+# Releases and Support
+
+## Introduction
+
+This page says how Marmeon is versioned, what a version number promises, which versions get fixes and security fixes, which platforms
+are supported, what is public API, what a release candidate is, and how you upgrade. Every package of the framework
+carries the same version, so one number describes the whole framework:
+
+```sh
+pnpm up --latest "@marmeon/*" marmeon
+```
+
+That command moves every framework package of an app to the newest version at once. The changes of each version are in the
+[upgrade guide](../UPGRADING.md), and each release adds the merged pull requests that change something for users to the packages' `CHANGELOG.md` files and to the GitHub Release.
+
+## One version for the whole framework
+
+Every `@marmeon/*` package, the command `marmeon` and `create-marmeon` are released together, always with the same version. The
+packages name each other at exactly that version. A new app gets them that way, and you keep it so: upgrade them together, never
+one alone. Two versions of a framework package in one app would bring two containers and two sets of tokens that do not know each
+other.
+
+## What a version promises
+
+### Before 1.0
+
+Marmeon is at 0.x. Anything may change while the major version is 0, but never silently:
+
+- A **minor** version, such as 0.1 to 0.2, may break. Every break has an entry in the [upgrade guide](../UPGRADING.md) with its
+  impact, the time it takes, the code before and after, and the way back where there is one.
+- A **patch**, such as 0.1.0 to 0.1.1, never breaks, except for a [security hardening](#what-is-public-api).
+
+Pin the exact version, as `create-marmeon` does, or use `~0.1.0`. A caret range such as `^0.1.0` already stops before 0.2.0.
+
+A fix for an older line is published under the npm dist-tag `latest-<line>` (`latest-0.1`) and never moves `latest`. An app that
+stays on that line gets it through `pnpm up "@marmeon/*" marmeon` when its range allows the version (`^0.1.0`, `~0.1.0`), or
+installs it by name (`pnpm add @marmeon/core@latest-0.1`, then the same for the other packages); an exact pin changes by hand.
+
+### From 1.0 on
+
+Breaking changes come only in a major version, except for a [security hardening](#what-is-public-api). A feature to be
+removed is [deprecated](#deprecations) first, in a minor version, and goes in the next major version, with its entry in the
+upgrade guide. What is outside the [public API](#what-is-public-api) is outside this promise. [Which versions get
+fixes](#which-versions-get-fixes) is a separate question.
+
+## Release candidates
+
+A release candidate, `x.y.z-rc.N`, is a preview of the release `x.y.z`. It comes under the npm dist-tag `next` and never moves `latest`,
+so an app only gets one when it asks: `pnpm add -E @marmeon/core@next`, and the same for every other framework package, all in the same version.
+To start an app from a candidate, run `pnpm create marmeon@next my-app`; on the day a candidate appears, [pnpm installs an older version](installation.md#the-first-day-after-a-release) unless you let the framework through. A package added later takes the version of the app (`pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
+[`marmeon check`](check.md#the-packages-check) finds a package that is not.
+
+From the first candidate to its release, only bug fixes, documentation and internals change; the public API is the one the release
+will have. The exception is a security hardening: it may come all the same and brings the next candidate. A hardening
+that breaks an app can move the release to the next breaking version. A candidate gets no fixes once its release has appeared: move to the
+release with `latest`, because `next` may still point at the last candidate. Report a bug in the issues, and a vulnerability as the
+[security policy](../SECURITY.md) describes.
+
+## Which versions get fixes
+
+Before 1.0, fixes are promised only for the latest 0.x minor version; a maintenance release for an older line is possible but not
+promised. From 1.0 on, the current major version gets them in its latest minor version. The previous major version still gets
+**security fixes for 12 months** after the next major version is released, as patches on its last minor version, published under
+the dist-tag `latest-<major>` like [any older line](#before-10).
+
+Once 1.0.0 is released, 0.x gets no fixes at all. It never had a support window, and the way forward is the section "0.x to 1.0"
+of the [upgrade guide](../UPGRADING.md).
+
+| Version | Fixes | Security fixes |
+|---|---|---|
+| Current major | latest minor version | latest minor version |
+| Previous major | no | 12 months after the next major is released |
+| Older majors | no | no |
+| 0.x, before 1.0 | latest minor version | latest minor version |
+| Older 0.x minors | no | no |
+| 0.x, after 1.0.0 | no | no |
+
+The docs of every release line from 1.0 on stay at `https://marmeon.com/docs/<line>/` (`/docs/1.x/`), and the docs of the version you have installed
+are in `node_modules/marmeon/docs/`.
+
+The [security policy](../SECURITY.md) explains how to report a vulnerability.
+
+## Supported platforms
+
+A "major version" in this section means the next breaking release: a major version from 1.0 on, a minor version before.
+
+### Node
+
+Marmeon supports the LTS lines of Node from 26 on. Today that means Node 26.10 or newer (`engines` in every package). The rules
+for changing it:
+
+- A line is dropped only after its end of life, and only in a major version.
+- Within a line, the minimum version rises in a minor version only for a security fix in Node.
+- Supporting a new LTS line is a minor change.
+
+### Operating systems
+
+Linux and macOS. On Windows, use WSL 2. Supporting one more operating system is a minor change.
+
+### TypeScript and ES modules
+
+An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `erasableSyntaxOnly`, `verbatimModuleSyntax` and a
+`lib` with `ESNext.Temporal`. The packages are ES modules only; there is no CommonJS build.
+
+### Libraries the framework builds on
+
+- **Peers**: React, React DOM, Vite, Vitest, the OpenTelemetry API, TanStack Table, and the drivers an app picks (`pg`, `mjml`, the
+  AWS SDK). Supporting one more major version of a peer is a minor change; dropping a major version is a major change.
+- **Kysely**: you write Kysely's builder through `@marmeon/database` and never import the `kysely` package. It is an exact
+  dependency of the framework, not a peer. The shape of the builder (methods, `eb`, result types) is public API: a Kysely update
+  that changes it comes only in a Marmeon major version, with an entry in the [upgrade guide](../UPGRADING.md). An update an app
+  does not notice comes in a minor version, with a `Low` entry there. Security fixes of Kysely are taken into every supported
+  line. Which version that is: [database](database.md#kysely-and-its-version).
+- **`@faire/mjml-react`**: the components of `@marmeon/react/mail` stand on it, in an exact version that is a dependency of
+  `@marmeon/react`. You never install or import it. The promise covers the API of `@marmeon/react/mail`: the names of its components,
+  their prop types, their checks and what `toMjml` returns. The library under them may be updated, forked or replaced in a minor
+  version when an app notices nothing. See [mail](mail.md#the-library-under-the-components).
+
+## What is public API
+
+The promise of a version covers the public API. These are part of it:
+
+- The exports of each package's entry points, `.` and the documented subpaths, types included.
+- The contracts an app implements for authentication ([listed here](authentication.md#what-your-app-implements)): `SignInStore`,
+  `PasswordResetTokenStore`, `AccessTokenStore` and `TwoFactorState` of `@marmeon/auth`, and `SessionStore` of `@marmeon/session`, are
+  abstract classes your store extends. A member added later has a default, unless it is
+  [security-relevant](authentication.md#security-relevant-members): that comes only as a security hardening or in a major
+  version and never has a default. `UserProvider` and `Hasher` are interfaces: a security-relevant member is added the same way; any
+  other member is optional.
+- Other interfaces an app implements itself, such as the drivers of cache, queue and storage: a new required member is a break. An
+  extension arrives as an optional member.
+- Interfaces your code is given but does not implement: `Disk`, `Storage`, `Broadcaster`, `HttpKernel`, `Prompt`, `Output`,
+  `CommandInput` and `DevtoolsStore`. A later release may add a member to them. A disk of your own implements `DiskDriver`.
+- A class you extend (`Repository`, `Controller` …) may gain members in a minor release. A member of your subclass
+  with the same name may then need another name; the [upgrade guide](../UPGRADING.md) lists each such member with a `Low` line.
+- The names and defaults of environment variables.
+- The commands of `marmeon`, their flags and exit codes.
+- The flags and exit codes of `create-marmeon` ([listed here](installation.md#options)). The files it writes are not: they follow the
+  starter kit of its version, `marmeon-stubs.json` records where they came from, and the release notes name changes.
+- The JSON body of an error: the keys `message` and `errors` (a field's dotted path, a list index as a number, to a list of
+  messages); the status code of each error class (`ValidationError` 422, `HttpError` its status); and the error codes, the
+  [server's](errors.md#server-error-codes) and the [browser's](errors.md#error-codes) `C` and `R` alike: a code keeps its meaning and
+  never moves to another error, and an error may get a code later. The text of a message is not API.
+- The documents `--json` prints, by their `format`.
+- The place of the documentation of an installed version, `node_modules/marmeon/docs/`, and `docs/index.json` there (`format` 1: `version` and `sections` with each page's `slug`, `label`, `title` and `file`, relative to the package).
+- The table schemas of the migrations the framework ships, the stubs and the `make:*` tables. The migrations the framework's packages ship, the starter kit's among them, are append-only: a released file never changes, and a change of a table is a new file ([tables](package-development.md#tables)).
+- `defineMigration`, `up(schema)` and the schema builder, including which plans they accept and what they create: a migration that ran keeps its meaning.
+- The protocol between client and server: headers ([listed here](navigation.md#the-headers-of-the-protocol)) and the page object.
+- Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the record of migrations and the generated files, as
+  [listed below](#stored-and-wire-formats).
+- Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels and the
+  shape of their messages.
+- The span names and the attribute names `@marmeon/otel` records ([listed here](observability.md#what-it-records)): the
+  `{method} {route}`, `send <job>`, `process <job>`, `schedule <task>`, `mail <Mailable>`, `notify <notification>`, `live refresh`
+  and `render <View>` names, the attributes under `marmeon.`, and the ones of OpenTelemetry's semantic conventions the framework sets
+  (`http.*`, `url.*`, `db.*`, `messaging.*`, `error.type`, `deployment.environment.name`). Dashboards and alerts are built on them, so
+  a rename or a removal is a break. A new attribute or a new value of one is not.
+- The keys of a table's state in the URL ([listed here](tables.md#the-url-is-strict)): `sort` (a column alias, `-` for descending),
+  `page` or `cursor`, `per_page`, `search` and `filter[<name>]` (a day range as `YYYY-MM-DD..YYYY-MM-DD`), each with the table's
+  prefix (`members_sort`). People bookmark and share these URLs. A key does not change its name or its meaning, and a value that
+  was valid stays valid.
+- The field names of the JSON log line ([listed here](logging.md#the-fields-of-a-json-line)): `level`, `time`, `msg`, `appEnv`,
+  `requestId`, `job`, `jobId`, `attempt`, `task`, `trace_id`, `span_id`, `trace_flags` and `err` with its `type`, `message` and `stack`, for an error the app logs as `{ err: error }`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of this set yet. Log
+  shippers parse them, so the name and the meaning of a field stay; a new field is not a break. The text of a message is not part of it.
+- The health endpoints ([health.md](health.md#liveness-and-readiness)): the path `SERVER_HEALTH_PATH` names and `/ready` below it,
+  their status codes (`200`, `503`), and the `status` of `/up/ready`: `ok`, `failing` or `draining`. The details a check adds
+  in development are not part of it.
+- The framework's data attributes that [Styling state](styling.md#styling-state) lists, plus `data-marmeon-failure` and the progress
+  bar's `data-marmeon-progress`, and the custom properties an app sets on `:root`: the three `--marmeon-progress-*` and the four
+  `--marmeon-failure-*` ([the framework's look](styling.md#the-frameworks-look)). A stylesheet selects on them. A new attribute or a
+  new value of one is not a break. Any other `data-marmeon-*` attribute the components render is internal.
+- The entry types of `@marmeon/devtools`: a field may come to an entry, and in 1.x none is renamed or removed.
+
+Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), a command marked `static hidden` (the snapshot lists those apart as "Hidden commands (not API)") except `serve`, which `marmeon start` runs, and the wording of messages and logs.
+The JSON API of the [devtools](devtools.md#for-other-tools) is covered through its `version`: the answer of
+`/_marmeon/devtools/api` names the version of the API, and a tool reads the other answers by it. The routes and the envelopes of the
+answers change only together with a new `version`; the entries inside them follow the rule of their types above. The devtools exist only in development.
+
+The same list decides, already in 0.x, whether a pull request is a `breaking` one.
+
+> [!WARNING]
+> **Security hardening.** A security hardening may break in a minor or a patch version. It then has an entry of its own in the
+> [upgrade guide](../UPGRADING.md). Leaving a vulnerability open to keep an API protects nobody.
+
+### Stored and wire formats
+
+Anything that outlives a process or travels between two of them is a format: a record in a queue, a session in its store, a cookie,
+a header between a tab and a server, a file the framework generates. Each carries a mark in a fixed place, and the meaning of that
+mark never changes. A reader knows a set of versions, today one per format, and treats data by that set:
+
+- **Newer than it knows:** it leaves the data alone. A newer process may be running, and what it wrote is not for an older one to
+  overwrite, delete or guess at. The reader refuses, or treats the request as one without the data. Two things end such data
+  all the same: a worker lets a record it cannot read fail after six hours, which takes it out of the queue, and a sign-in or sign-out
+  on an older node ends the newer session of that request.
+- **Older than it supports, or without a mark:** it never interprets the data. What a migration can carry over, `marmeon migrate` carries
+  over (the framework's tables). Everything else counts as missing: a session starts anew, a cookie is not
+  read, a job fails with its reason and stays readable in the failed jobs.
+
+A reader never guesses and never falls back to a default.
+
+| Format | Mark | A newer version is | An older one, or none, is |
+| --- | --- | --- | --- |
+| [Page protocol](navigation.md#a-tab-of-another-protocol-version) | the header `x-marmeon: 1` on every request of the client | answered with `409` before routing, whatever the method | the same: an old tab sends `true`, or nothing |
+| Page object and region object (JSON) | none; new fields are optional | carried along; without `component`, `props` and `url` it is no page | read as they are |
+| [Live stream](realtime.md#a-stream-of-another-version) | `v=1` in the query of `GET /_marmeon/live`; the frames are frozen with it; the message between nodes (over Redis, and in the `live_hints` table) carries `"v":1` | answered with `204` and no stream, so the browser stops reconnecting; the tab asks again every 30 s until its next visit reloads it | the same: a tab of the release before sends no `v` |
+| [Job record](queues.md#deploying-while-jobs-wait) | `v` in the payload | put back untouched until a worker reads it; after six hours it fails and leaves the queue | failed at once with the reason, never run |
+| [Queued listener](events.md#queued-listeners) | the listener's `static listener` name, within its event | put back like an unknown job | failed like any record without a version |
+| [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
+| [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
+| [`XSRF-TOKEN` cookie](csrf.md#the-token) | the name; the value is the session's CSRF token, unencrypted, and `xsrfToken()` of `@marmeon/http/client` reads it | n/a | a request of the client core without the cookie sends no token, and a write that needs one fails with `419`; a `<Form>` without JavaScript sends `_token` from the page data |
+| [Record of migrations](migrations.md#how-the-migrator-keeps-track) | the columns of `migrations` (and of `migration_lock`) | `migrate` refuses; every query on the connection fails and `/up/ready` is red | `migrate` adds `checksum` and records each file as it is then; until it ran, every query fails (D2) and `/up/ready` is red |
+| [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
+| [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
+| [Link tokens](urls.md#a-link-that-is-used-once) (`linkToken()`) | the hash: SHA-256, in hex, of `marmeon.link-token.v1`, a NUL character and the token | a token is found by the hash of the release that made it | a hash of another scheme is not found, like an unknown token (see [moving from a hash of your own](urls.md#moving-from-a-hash-of-your-own)) |
+| [Generated types](queries.md#table-types) (`bootstrap/routes.ts`: 1, `bootstrap/database.d.ts`: 3) | `// @marmeon-format <n>` on the third line | `--check` fails with "update `@marmeon/*`"; no command overwrites it | `--check` says another version wrote it; regenerate |
+| [Copied files](starter-kit.md#what-the-auth-module-holds) (`marmeon-stubs.json`) | `format` in the file | `make:auth` stops and writes nothing | `make:auth` stops and writes nothing: there is no older version |
+| [Schema projection](migrations.md#what-the-migrations-describe) (`.marmeon/schema.json`) | `format` in the file, and the version of `@marmeon/database` | computed again and written over: the file is a cache | computed again and written over |
+| [Injection lists and island marks](container.md#where-the-lists-come-from) (`.marmeon/injections.json`: 2) | `format` in the file | every module is analysed at start, as without a build, and the start says the artifacts are missing; the file stays as it is | the same: a version 1 file is not read |
+| [The block of `AGENTS.md`](agents.md#the-marks) | `<!-- marmeon:begin v1 -->` and `<!-- marmeon:end -->`, each on a line of its own | `agents:sync` refuses and writes nothing | the text between the marks is replaced; without marks the block is appended |
+| [Skills of the framework](agents.md#what-the-command-owns) (`SKILL.md`) | `marmeon-skill: "1"` under `metadata:` in the front matter | `agents:install` refuses and asks you to update marmeon | `agents:install` refuses and writes nothing: the file is the app's |
+| [The server in `.mcp.json`](agents.md#what-the-command-owns) | `mcpServers.marmeon`: `command` and `args` | n/a: the entry is replaced, and the command says so | n/a |
+| [`--json` of a command](console.md) | `format`, the first key | n/a: the command prints its newest | n/a |
+| [Results of `marmeon mcp`'s tools](mcp.md#tools) | `format`, the first key of the document; the tool names and input schemas | n/a: the server answers in its newest | n/a |
+
+Some formats have no version of their own and are kept stable another way:
+
+- **Signed URLs, upload tokens and live tokens** are tied to `APP_KEY` through a key derived per purpose (`marmeon:<purpose>`, so a
+  signature is never also a cookie or session key). A change of the form arrives as a new parameter or a new derivation, so an old
+  link or token fails closed. Links in mails live long, so a signed URL only ever grows. An upload token starts with `tu_`, which
+  serves as its version.
+- **Messages between nodes** (live updates over Redis, the tab sync) carry a `kind` or a `v`. A reader drops a message it does not
+  know. Such a message never carries data: it tells a tab to ask the server, which answers through the route and its authorisation.
+- **The envelopes of cache entries and the values the framework stores in them** have no mark and are frozen: the file store's
+  `{ value, expires }`, the rows of the `cache` and `cache_locks` tables, and the Redis value, a JSON text with a millisecond expiry
+  (`PX`). So are the values the framework puts there itself, such as a rate limiter's counter (a whole number), the marker of
+  `job.once` (`1`) and the scheduler's last tick (`schedule:last-tick` for tasks that run on one server and `schedule:last-tick:<host>` for the others, each the start of the minute in epoch milliseconds). Two nodes of a rolling deploy read each other's entries. A change of one arrives as a new key name, never as
+  a new meaning under the old one.
+- **Pagination cursors** carry no mark: the values of the last row as JSON, encrypted with `APP_KEY` under a context that names the
+  list's order (and its `name`, when given). A cursor stays valid while the key that made it is `APP_KEY` or in `APP_PREVIOUS_KEYS`
+  and the list's order stays the same; its payload is frozen, and one that no longer decrypts or fits answers 400.
+- **CSV exports** of a [table](tables.md#exports) are frozen: a byte order mark, every field quoted, lines ended by CRLF. The header
+  row is each column's `label`, or its name, in the order of the definition. A time the database returns as a date is written as ISO 8601 in UTC, and a time stored as text as it is stored; a boolean as
+  `true` or `false`, an object as JSON, and a text that starts like a formula (`=`, `+`, `-`, `@`, a tab, a carriage return or a line feed, also behind spaces or invisible characters, or in full width) gets a `'` in front (a plain decimal such as `-12.50` is
+  no formula). The file is named `<name>-YYYY-MM-DD.csv`, the day being the UTC day. A new form of a cell arrives with a new kind of column, never as a new
+  meaning of an old one; `csv/v1.csv` holds the form. The table's cursor is a pagination cursor under the context `table:<name>`.
+- **`history.state`** holds the URL, component, a key and the scroll position. An entry that does not match loads from the server.
+- **The names of keys** in the cache and the lock store (`limiter:…`, `queue:unique:…`, `queue:once-lock:…`, the scheduler's locks) and the names of
+  [encryption contexts](encryption.md#what-the-key-protects) are format: two nodes must agree on them. A release that renames one
+  does so with the same care as a renamed column.
+
+Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
+listeners, mails and notifications, the session payload, the pagination cursor, the CSV export, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
+directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
+says how a format moves on.
+
+From 1.0 on, every change of a format ships so that a rolling deploy works: the release that first writes version N is one whose
+readers already read N, and a table is not renamed in place but created anew, written twice and dropped over two releases. The
+upgrade to the first release that marks these formats is the exception, and cannot be rolling: [the upgrade that stops every
+process](deployment.md#the-upgrade-that-stops-every-process) lists what to do and what it costs.
+
+### Experimental
+
+Experimental means: it can change or go away in any minor version, without an entry in the [upgrade guide](../UPGRADING.md). It
+is still listed in the package's `api.md`, under **Experimental**, so a change shows in the pull request's diff, but the
+`breaking` label is not required for it. Build on it only when you can follow the releases. Nothing in this release is experimental.
+
+### When a union grows
+
+A new member of a union, such as a string value, a field of an event like `via`, or a message of a diagnostics channel, is a
+minor change. It ships as an ordinary `feature`, and the title of its pull request names the new member (for example "Add
+'magic-link' to SignInVia"), so the release notes show it.
+
+The exception is the `err` kinds of the [results the framework returns](errors.md#results-the-framework-returns). They are
+closed: a new kind comes only with a new method, so an exhaustive `switch` with `satisfies never` compiles across minor versions.
+
+Everywhere else, handle a value you do not know in a `default` branch. Here `event` is a `SignedIn` event:
+
+```ts
+switch (event.via) {
+  case 'attempt':
+    return 'password';
+  case 'passkey':
+    return 'passkey';
+  case 'remember':
+    return 'cookie';
+  default:
+    return 'other';
+}
+```
+
+### Deprecations
+
+What is removed is deprecated first, in a minor version: marked `@deprecated` in its types, with the replacement and a link to
+the docs, and warned about once per process as soon as it is used, **only** when `NODE_ENV` is `development` or `test`. On the server,
+the warning is a Node `DeprecationWarning`: `node --no-deprecation` turns it off, and `node --throw-deprecation` turns it into
+an error; in the browser it goes to the console. It is removed at the earliest in the next breaking release (a major version from 1.0
+on, a minor before); its `@deprecated` tag says which one (from 1.0 on, `Removed in 2.0` and the like, never a minor). The removal has an entry in the [upgrade guide](../UPGRADING.md).
+[Package development](package-development.md#deprecating-an-api) shows how a package deprecates an API.
+
+## A broken release
+
+A release is never taken back from npm. A broken one is deprecated there, with the version to use instead, and the next patch
+fixes it. What the release workflow publishes is staged first and goes public only after a maintainer approves it with two-factor
+authentication, and it carries npm provenance, so you can check where it was built. A package's very first version has to be
+published by hand, before trusted publishing can be set up for it. The
+[contribution guide](../CONTRIBUTING.md#pull-requests-and-releases) describes the process.
+
+## The first day after a release
+
+pnpm 12 holds back any package version younger than its `minimumReleaseAge`, one day by default. This protects you
+from a package that is pulled again soon after it appears. For a day after a Marmeon release, `pnpm up --latest` and
+`pnpm create marmeon` install the previous release without a message. A new exact version you wrote into `package.json` yourself
+installs all the same under the default setting: pnpm prints that it added the package to `minimumReleaseAgeExclude` in
+`pnpm-workspace.yaml` and writes it there. Only where `minimumReleaseAge` is set explicitly (the app's `pnpm-workspace.yaml`, your global config or a variable) is the install asked in a terminal, and
+without one the install fails with "within the minimumReleaseAge cutoff". Check the versions in `package.json` (`marmeon` and the `@marmeon/*` packages) after an upgrade; a mix of two
+releases is what [`marmeon check`](check.md#the-packages-check) reports.
+
+Wait a day, or let only the framework through for this one command:
+
+```sh
+pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon"]' pnpm up --latest "@marmeon/*" marmeon
+```
+
+The variable changes nothing else, and only this command sees it. npm has no such delay.
+
+## How to upgrade
+
+1. Read the section of the new version in the [upgrade guide](../UPGRADING.md). Its entries are sorted by impact, and each says
+   how likely it touches your app.
+2. Move every framework package to the new version at once ([the first day after a release](#the-first-day-after-a-release) has a
+   catch), install, and run `pnpm marmeon build` and your tests. Type errors
+   point to most of what changed.
+3. Deploy as usual. An entry says so when a change needs a migration or signs users out. The [deployment](deployment.md) page
+   covers the rest.
