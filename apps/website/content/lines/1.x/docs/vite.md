@@ -180,7 +180,7 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | --- | --- | --- |
 | `entries` | `{ client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' }` | Where the entries are, relative to the app root. |
 | `fonts` | none | `.woff2` files to preload from `index.html`, as `{ file }`, and with `family` and `fallback` a fallback font of the same size. See [Fonts](#fonts). |
-| `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
+| `serverModules` | none | More server modules for this config only, as globs; `'!glob'` takes files out of the conventions. Declare them in [package.json](#server-folders-of-your-own) so that tests and the lint preset see them too. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |
 | `images` | `{ widths: [640, 960, 1280, 1920, 2560], formats: ['avif', 'webp'], quality: 70 }` | How `?image` imports are built. See [Images of the app](images.md#images-of-the-app). |
 | `test` | `false` | For `vitest.config.ts`. |
@@ -237,17 +237,8 @@ These files are server modules by convention:
 | `bootstrap/app.ts`, `config/**`, `middleware/**` | The app's definition, its configuration and its middleware |
 
 Anything else becomes client code as soon as a page imports it: views, layouts, language files, a `shared.ts`. When the browser
-needs a value from a server module, move the value into a module both sides import. `serverModules` adds patterns of your own:
-
-```ts title="vite.config.ts"
-import { marmeon } from '@marmeon/vite';
-import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  plugins: [marmeon({ serverModules: ['modules/*/services/**', '!modules/notes/jobs/labels.ts'] }), react()],
-});
-```
+needs a value from a server module, move the value into a module both sides import. [Server folders of your own](#server-folders-of-your-own)
+adds folders of your own.
 
 Two packages count as server modules too: `@marmeon/mail` and `@marmeon/react/mail`. A mail is composed on the server, and a value
 import of either in client code would bundle the mailer and the MJML compiler into the browser; the error says to render it in
@@ -255,6 +246,39 @@ import of either in client code would bundle the mailer and the MJML compiler in
 
 The check reads the source while building and adds no code to any chunk. The lint preset, which `marmeon make:lint-config`
 writes, flags the common case in the editor already. The [console](console.md#lint) page lists the command.
+
+### Server folders of your own
+
+A feature folder such as `modules/billing/invoices/` or a renamed folder is no convention. Declare it once in the `"marmeon"`
+field of the app's package.json:
+
+```json title="package.json"
+{
+  "marmeon": {
+    "serverModules": ["modules/billing/invoices/**", "!modules/notes/jobs/labels.ts"]
+  }
+}
+```
+
+`marmeon dev`, `marmeon build` and Vitest with `marmeon({ test: true })` read the list, so a value import from one of these
+folders fails in all three without a line in `vite.config.ts` or `vitest.config.ts`. Each entry is a glob relative to the app
+root:
+
+- `!glob` takes files out of the conventions and out of the list, such as `!modules/notes/jobs/labels.ts`.
+- Write a folder as `folder/**`; a name with no `*` and no file extension matches no file.
+- No leading `/`, no `\`, no `.` or `..` segment, no empty segment, no space at either end and no leading `#`.
+- No braces, `(`, `)` or `|`: list each alternative as its own entry. No `?` and no `[…]` either: the build and the lint preset
+  would read them differently, so spell the name out or use `*`.
+
+An entry that does not hold to this, an unreadable package.json or a misspelt key in `"marmeon"` stops the dev server, the build
+and the tests with `H14`. A declaration that is silently skipped would leave a folder unchecked, which is why it is an error.
+Restart `marmeon dev` after you change the list.
+
+The lint preset takes the list over when `marmeon make:lint-config --force` (with `--boundaries`, if you use it) writes it anew. See
+[lint](console.md#lint).
+
+The `serverModules` option of the plugin adds patterns for one config only. It takes globs too, but they are not checked against
+these rules, and the lint preset does not see them, so declare folders in package.json.
 
 ## Tests
 
