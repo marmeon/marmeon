@@ -7,7 +7,7 @@
  * GitHub Release only as a draft, and the draft is there; the dist-tag and the prerelease flag come from the release guard's outputs alone, a candidate is staged as `next` only), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
- * reads a checkout, installs nothing, holds no token), `.github/workflows/kysely-canary.yml` (the scheduled Kysely canary: no token, no cache, no pull request), `.github/workflows/codeql.yml` (code scanning: the write-capable job runs no `run:` step, never `pull_request_target`) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
+ * reads a checkout, installs nothing, holds no token), `.github/workflows/kysely-canary.yml` (the scheduled Kysely canary: no token, no cache, no pull request), `.github/workflows/codeql.yml` (code scanning: the write-capable job runs no `run:` step, never `pull_request_target`), `.github/workflows/scorecard.yml` (the Scorecard: the whole file held to a golden shape, never a pull request) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
  *
  * Each rule in full: CONTRIBUTING.md, "Pull requests and releases".
  */
@@ -1118,6 +1118,68 @@ export function checkCodeqlWorkflow(repository: string): string[] {
   return problems;
 }
 
+/**
+ * The shape of `scorecard.yml` as {@link CODEQL_SHAPE} lists it. The job publishes to the public Scorecard API with an OIDC token
+ * and writes code-scanning results, so it is compared line by line: a trigger, a permission, an action, an input, an `env:`, a
+ * `defaults:`, a container or any spelling of YAML not listed here fails. A change of the workflow is a change of this.
+ */
+const SCORECARD_SHAPE = [
+  'name: Scorecard',
+  'on:',
+  '  push:',
+  '    branches: [main]',
+  '  schedule:',
+  '    - cron: \'41 5 * * 3\'',
+  '  branch_protection_rule:',
+  '  workflow_dispatch:',
+  'permissions: {}',
+  'concurrency:',
+  '  group: scorecard-${{ github.ref }}',
+  '  cancel-in-progress: false',
+  'jobs:',
+  '  analysis:',
+  '    name: scorecard',
+  '    runs-on: ubuntu-latest',
+  '    timeout-minutes: 15',
+  '    permissions:',
+  '      actions: read',
+  '      contents: read',
+  '      id-token: write',
+  '      security-events: write',
+  '    steps:',
+  '      - uses: actions/checkout@<sha>',
+  '        with:',
+  '          persist-credentials: false',
+  '      - uses: ossf/scorecard-action@<sha>',
+  '        with:',
+  '          results_file: results.sarif',
+  '          results_format: sarif',
+  '          publish_results: true',
+  '      - uses: actions/upload-artifact@<sha>',
+  '        with:',
+  '          name: scorecard-sarif',
+  '          path: results.sarif',
+  '          retention-days: 5',
+  '      - uses: github/codeql-action/upload-sarif@<sha>',
+  '        with:',
+  '          sarif_file: results.sarif',
+  '          category: scorecard',
+];
+
+/**
+ * The Scorecard workflow: its job holds `id-token: write` and `security-events: write`, so nothing of the repository runs in it and
+ * the whole file is held to {@link SCORECARD_SHAPE}. Never a pull request: a fork's run must not reach the publication.
+ */
+export function checkScorecardWorkflow(repository: string): string[] {
+  const where = 'scorecard.yml';
+  const file = join(repository, '.github/workflows/scorecard.yml');
+  if (!existsSync(file)) return [`${where}: .github/workflows/scorecard.yml is missing`];
+  const shape = shapeOf(readFileSync(file, 'utf8'));
+  if (shape.length === SCORECARD_SHAPE.length && shape.every((line, index) => line === SCORECARD_SHAPE[index])) return [];
+  const first = shape.findIndex((line, index) => line !== SCORECARD_SHAPE[index]);
+  return [`${where}: differs from the expected shape at "${(shape[first] ?? 'the end of the file').trim()}" — the triggers (never a pull request), the permissions, the actions (each pinned by its full SHA), their inputs, an env, a default or a container are all listed; a deliberate change goes into SCORECARD_SHAPE too`];
+}
+
 /** The API label check: it checks out untrusted code, so it holds no token, installs nothing and runs one script of node-only imports. */
 export function checkApiLabelWorkflow(repository: string): string[] {
   const where = 'api-label.yml';
@@ -1230,6 +1292,7 @@ export function check(repository: string = root): string[] {
     ...checkApiLabelWorkflow(repository),
     ...checkCanaryWorkflow(repository),
     ...checkCodeqlWorkflow(repository),
+    ...checkScorecardWorkflow(repository),
     ...checkReleaseConfig(repository),
     ...checkTrust(repository),
     ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version),
@@ -1250,7 +1313,7 @@ if (import.meta.main) {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
-      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, kysely-canary.yml, codeql.yml, .github/release.yml,` +
+      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, kysely-canary.yml, codeql.yml, scorecard.yml, .github/release.yml,` +
         ` npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }

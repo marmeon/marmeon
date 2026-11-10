@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkScorecardWorkflow, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -1389,6 +1389,83 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
 
   it('refuses an expression inside a script', () => {
     expect(problemsOf(mutated('update "kysely@$VERSION"', 'update "kysely@${{ steps.kysely.outputs.version }}"'))).toContain('an expression inside a run script');
+  });
+});
+
+describe('checkScorecardWorkflow — the OpenSSF Scorecard', () => {
+  const real = readFileSync(join(root, '.github/workflows/scorecard.yml'), 'utf8');
+
+  function problemsOf(workflow: string): string {
+    const directory = repositoryWith(unreleased);
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true });
+    writeFileSync(join(directory, '.github/workflows/scorecard.yml'), workflow);
+    return checkScorecardWorkflow(directory).join('\n');
+  }
+  /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
+  function mutated(from: string, to: string): string {
+    const result = real.replace(from, to);
+    expect(result, `the mutation of ${from} changed nothing`).not.toBe(real);
+    return result;
+  }
+  const differs = 'differs from the expected shape';
+
+  it('passes the repository’s workflow', () => {
+    expectProblems(checkScorecardWorkflow(root), []);
+  });
+
+  it('refuses a missing workflow', () => {
+    expect(checkScorecardWorkflow(repositoryWith(unreleased)).join()).toContain('is missing');
+  });
+
+  it('refuses a pull request trigger of any kind', () => {
+    for (const event of ['pull_request', 'pull_request_target', 'issue_comment']) {
+      expect(problemsOf(mutated('  workflow_dispatch:\n', `  workflow_dispatch:\n  ${event}:\n`)), event).toContain(differs);
+    }
+  });
+
+  it('wants empty workflow permissions and exactly the four grants in the job', () => {
+    expect(problemsOf(mutated('permissions: {}', 'permissions:\n  contents: read'))).toContain(differs);
+    expect(problemsOf(mutated('      actions: read\n', '      actions: read\n      contents: write\n'))).toContain(differs);
+    expect(problemsOf(mutated('      actions: read\n', '      actions: read\n      pull-requests: write\n'))).toContain(differs);
+    expect(problemsOf(mutated('      id-token: write\n', ''))).toContain(differs);
+    expect(problemsOf(mutated('      contents: read\n', '      contents: write\n'))).toContain(differs);
+  });
+
+  it('wants exactly its four actions, each pinned by its full SHA', () => {
+    for (const action of ['actions/checkout', 'ossf/scorecard-action', 'actions/upload-artifact', 'github/codeql-action/upload-sarif']) {
+      const line = real.split('\n').find((candidate) => candidate.includes(`uses: ${action}@`))!;
+      expect(problemsOf(mutated(line, line.replace(/@[0-9a-f]{40}/, '@v1'))), action).toContain(differs);
+    }
+    const checkout = real.split('\n').find((line) => line.includes('uses: actions/checkout@'))!;
+    expect(problemsOf(mutated(checkout, `${checkout}\n      - uses: actions/setup-node@${'0'.repeat(40)}`))).toContain(differs);
+    expect(problemsOf(mutated(checkout, `${checkout}\n      - run: pnpm install`))).toContain(differs);
+  });
+
+  it('wants the checkout to leave no credentials behind', () => {
+    expect(problemsOf(mutated('        with:\n          persist-credentials: false\n', ''))).toContain(differs);
+    expect(problemsOf(mutated('persist-credentials: false', 'persist-credentials: true'))).toContain(differs);
+  });
+
+  it('wants the results published, and no other input', () => {
+    expect(problemsOf(mutated('publish_results: true', 'publish_results: false'))).toContain(differs);
+    expect(problemsOf(mutated('          publish_results: true\n', ''))).toContain(differs);
+    expect(problemsOf(mutated('          publish_results: true\n', '          publish_results: true\n          repo_token: ${{ secrets.TOKEN }}\n'))).toContain(differs);
+  });
+
+  it('refuses a top-level env or defaults, and a container or services in the job', () => {
+    expect(problemsOf(mutated('permissions: {}\n', 'permissions: {}\nenv:\n  X: y\n'))).toContain(differs);
+    expect(problemsOf(mutated('permissions: {}\n', 'permissions: {}\ndefaults:\n  run:\n    shell: bash\n'))).toContain(differs);
+    expect(problemsOf(mutated('    timeout-minutes: 15\n', '    timeout-minutes: 15\n    container: node:latest\n'))).toContain(differs);
+    expect(problemsOf(mutated('    timeout-minutes: 15\n', '    timeout-minutes: 15\n    services:\n      x:\n        image: y\n'))).toContain(differs);
+  });
+
+  it('wants the concurrency block', () => {
+    expect(problemsOf(mutated('concurrency:\n  group: scorecard-${{ github.ref }}\n  cancel-in-progress: false\n', ''))).toContain(differs);
+    expect(problemsOf(mutated('cancel-in-progress: false', 'cancel-in-progress: true'))).toContain(differs);
+  });
+
+  it('refuses another runner', () => {
+    expect(problemsOf(mutated('runs-on: ubuntu-latest', 'runs-on: self-hosted'))).toContain(differs);
   });
 });
 
