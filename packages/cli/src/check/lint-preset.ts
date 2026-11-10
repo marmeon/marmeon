@@ -34,7 +34,7 @@ export function lintPresetDrift(root: string): CheckProblem[] {
   return [
     {
       severity: 'warning',
-      message: `The lint preset was written for another list of server modules than package.json declares now, so the editor misses value imports from the folders added since. The build still refuses them. Write it anew: ${command} — it replaces your own changes to the file.`,
+      message: `The lint preset does not match the server modules that Marmeon's conventions and package.json name now: it predates this check, or either list changed since it was written. The editor may miss value imports of server code. The build still refuses them. Write it anew: ${command} — it replaces your own changes to the file.`,
       file: LINT_CONFIG_FILE,
       line: 1,
       rule: 'marmeon(lint-preset)',
