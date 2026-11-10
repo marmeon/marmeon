@@ -25,16 +25,16 @@ What happens then:
 
 ## Supported versions
 
-Marmeon is in 0.x ([release policy](docs/releases.md#what-a-version-promises)): security fixes are released for the
-**latest minor version** only — upgrade along [UPGRADING.md](UPGRADING.md). From 1.0 on, the current major version and, for 12
-months after the next major is released, the previous one receive them; 0.x gets none once 1.0.0 is out
-([which versions get fixes](docs/releases.md#which-versions-get-fixes)).
+Security fixes are released for the **latest minor version of the current major version** (1.x). The previous major
+version receives them for 12 months after the next major is released, as patches on its last minor version under the npm
+dist-tag `latest-<major>`. 0.x receives none — upgrade along [Upgrading to 1.0.0 from
+0.4.0](UPGRADING.md#upgrading-to-100-from-040) ([which versions get fixes](docs/releases.md#which-versions-get-fixes)).
 
 | Version | Security fixes |
 |---|---|
-| latest 0.x minor (before 1.0) | yes |
-| older 0.x | no — upgrade |
-| 0.x after 1.0.0 | no — upgrade to 1.0 |
+| 1.x, latest minor | yes |
+| 1.x, older minors | no — upgrade to the latest minor |
+| 0.x | no — upgrade to 1.0 |
 
 ## What is in scope
 

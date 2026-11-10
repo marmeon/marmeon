@@ -36,7 +36,7 @@ A new app has the script: `pnpm check` runs `marmeon check`.
 | Name | What it does | Needs |
 | --- | --- | --- |
 | `types` | Type-checks the app with its own TypeScript (`tsc --noEmit`), as `marmeon build` does. | TypeScript and a `tsconfig.json` |
-| `lint` | Runs the app's own [oxlint](https://oxc.rs/docs/guide/usage/linter) with its `.oxlintrc.json`. | oxlint |
+| `lint` | Runs the app's own [oxlint](https://oxc.rs/docs/guide/usage/linter) with its `.oxlintrc.json`, and warns when a preset that `make:lint-config` wrote was written for other [server modules](vite.md#server-folders-of-your-own) than the app has now (`marmeon(lint-preset)`). A preset from an older version has no mark and gets that warning once; a preset of your own is left alone. A broken declaration in package.json is an error (`H14`) whenever the lint runs. | oxlint |
 | `internal-imports` | Finds [imports of framework internals](#imports-of-framework-internals). | nothing |
 | `raw-sql` | Warns about [`sql.raw()` and `sql.lit()` with an argument that is not a literal](#raw-sql). | nothing |
 | `inner-html` | Warns about [HTML that code sets from a value that is not a literal](#html-from-code). | nothing |
