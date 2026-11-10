@@ -1,5 +1,23 @@
 # @marmeon/testing
 
+## 1.1.0
+
+### Features
+
+- Declare an app's own server folders once for build, tests and lint by @maxeckel in https://github.com/marmeon/marmeon/pull/768
+
+### Fixes
+
+- Refuse RSA passkeys shorter than 2048 bits by @maxeckel in https://github.com/marmeon/marmeon/pull/765
+
+### Documentation
+
+- Say that Marmeon is at 1.0 in the README and the release policy by @maxeckel in https://github.com/marmeon/marmeon/pull/761
+- Say which versions get security fixes now that 1.0 is out by @maxeckel in https://github.com/marmeon/marmeon/pull/764
+- Show how a module can group its files by feature by @maxeckel in https://github.com/marmeon/marmeon/pull/766
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.0.0...v1.1.0
+
 ## 1.0.0
 
 ### Breaking changes

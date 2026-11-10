@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/queue",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Queues for Marmeon apps: injectable job classes, sync, database and Redis drivers, workers, retries and failed jobs.",
   "keywords": [
     "marmeon",

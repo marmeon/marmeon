@@ -3,6 +3,16 @@
 This page lists every change between one version and the next that an app has to act on: how likely it is to affect your app, what to do, and the way back where there is one. The
 [release policy](docs/releases.md#what-a-version-promises) says what a version promises.
 
+## Upgrading to 1.1.0 from 1.0.0
+
+### Security hardening
+
+#### Low: A passkey with an RSA key under 2048 bits or an unlisted algorithm no longer signs in
+
+*Likelihood of impact: low — accounts whose stored passkey uses an RSA key under 2048 bits, or an algorithm other than ES256, EdDSA and RS256 (for example from imported rows). Common RS256 authenticators such as Windows Hello make 2048-bit keys.*
+
+Nothing changes in code. Registration refuses an RSA key shorter than 2048 bits, and sign-in refuses such a stored key, or one whose algorithm registration does not offer, before anything is verified. Each attempt ends like any invalid credential: the same `invalid` result and the usual failure events (`PasskeySignInFailed`, `TwoFactorChallengeFailed`). An affected account signs in with its password and another second factor or a recovery code, then registers a new passkey. There is no way back: the bound has no setting.
+
 ## Upgrading to 1.0.0 from 0.4.0
 
 ### Before and right after the upgrade
