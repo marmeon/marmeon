@@ -11,7 +11,7 @@ This page lists every change between one version and the next that an app has to
 
 *Likelihood of impact: low — accounts whose stored passkey uses an RSA key under 2048 bits, or an algorithm other than ES256, EdDSA and RS256 (for example from imported rows). Common RS256 authenticators such as Windows Hello make 2048-bit keys.*
 
-Nothing changes in code. Registration refuses an RSA key shorter than 2048 bits, and sign-in refuses such a stored key, or one whose algorithm registration does not offer, before anything is verified. Each attempt ends like any invalid credential: the same `invalid` result and the usual failure events (`PasskeySignInFailed`, `TwoFactorChallengeFailed`). An affected account signs in with its password and another second factor or a recovery code, then registers a new passkey. There is no way back: the bound has no setting.
+Nothing changes in code. Registration refuses an RSA key shorter than 2048 bits with `invalid` and fires no event. Sign-in refuses such a stored key, or one whose algorithm registration does not offer, before anything is verified, like any wrong passkey: a passwordless sign-in returns `invalid` and fires `PasskeySignInFailed`; as a second factor (after the password, at a step-up, when confirming sudo mode) it returns `invalid-code` and fires `TwoFactorChallengeFailed`. An affected account signs in with its password and another second factor or a recovery code, removes the passkey and registers a new one. There is no way back: the bound has no setting.
 
 ## Upgrading to 1.0.0 from 0.4.0
 
