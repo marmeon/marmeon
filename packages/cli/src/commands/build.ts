@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { Redactor } from '@marmeon/core';
-import { runtimeConditions, writeInjectionArtifacts, writeMailViewArtifacts, writeManifest } from '@marmeon/core/internal';
+import { declaredServerModules, runtimeConditions, writeInjectionArtifacts, writeMailViewArtifacts, writeManifest } from '@marmeon/core/internal';
 import { ViteSetupError } from '@marmeon/server';
 import { marmeonEntries, explainConfigError, importVite } from '@marmeon/server/internal';
 import type { CommandInput } from '../command.ts';
@@ -25,6 +25,13 @@ export class BuildCommand {
   static boots = false;
 
   async handle({ options, output, root, spawn }: CommandInput): Promise<number> {
+    // First: a broken declaration of the app's server folders (H14) would otherwise surface from Vite's config as a stack.
+    try {
+      declaredServerModules(root);
+    } catch (error) {
+      output.error(`Not built: ${(error as Error).message}`);
+      return 1;
+    }
     if (existsSync(join(root, 'bootstrap', 'app.ts'))) {
       const injections = writeInjectionArtifacts({ root });
       output.success(`Precomputed the injection lists of ${injections.modules} module${injections.modules === 1 ? '' : 's'} → ${relative(root, injections.path)}`);

@@ -73,8 +73,8 @@ export interface MarmeonOptions {
    */
   images?: ImageOptions;
   /**
-   * More server modules — globs relative to the app root — besides the built-in conventions; `'!glob'` takes
-   * modules out of them. See docs/vite.md#server-code-in-the-browser.
+   * More server modules for this config only — declare them in package.json (`"marmeon": { "serverModules": […] }`) so that
+   * the tests and the lint preset see them too. See docs/vite.md#server-folders-of-your-own.
    */
   serverModules?: readonly string[];
   /**

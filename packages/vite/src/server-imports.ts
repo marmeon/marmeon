@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { matchesGlob, relative, sep } from 'node:path';
-import { SERVER_MODULES, type ServerModule } from '@marmeon/core/internal';
+import { declaredServerModules, SERVER_MODULES, type ServerModule } from '@marmeon/core/internal';
 import { parseSync } from 'oxc-parser';
 import type { Plugin, ResolvedConfig } from 'vite';
 
@@ -60,12 +60,9 @@ interface State {
  * SSR build is not checked: the client build has checked what reaches the browser.
  */
 export function serverImports(options: ServerImportsOptions): Plugin {
-  const extra = options.serverModules ?? [];
-  const serverModules: ServerModule[] = [
-    ...SERVER_MODULES,
-    ...extra.filter((pattern) => !pattern.startsWith('!')).map((pattern) => ({ pattern: pattern.replace(/^\/+/, ''), what: `a module matching ${pattern}` })),
-  ];
-  const excluded = extra.filter((pattern) => pattern.startsWith('!')).map((pattern) => pattern.slice(1).replace(/^\/+/, ''));
+  // The conventions from the start; configResolved adds the package.json declaration and the option once the app root is known.
+  let serverModules: ServerModule[] = [...SERVER_MODULES];
+  let excluded: string[] = [];
   const clientRoots = [...options.pages, ...CLIENT_LAYOUTS, options.client].map((pattern) => pattern.replace(/^\/+/, ''));
 
   let roots: string[] = [];
@@ -95,6 +92,15 @@ export function serverImports(options: ServerImportsOptions): Plugin {
     enforce: 'pre',
     configResolved(config) {
       command = config.command;
+      // Throws H14 for a broken declaration, which stops the dev server, the build and Vitest alike.
+      const declared = declaredServerModules(config.root);
+      const lists = [
+        ...declared.map((pattern) => ({ pattern, what: `a module of package.json's "serverModules" (${pattern.replace(/^!/, '')})` })),
+        ...(options.serverModules ?? []).map((pattern) => ({ pattern, what: `a module matching ${pattern}` })),
+      ];
+      const plain = (pattern: string) => pattern.replace(/^\/+/, '');
+      serverModules = [...SERVER_MODULES, ...lists.filter(({ pattern }) => !pattern.startsWith('!')).map(({ pattern, what }) => ({ pattern: plain(pattern), what }))];
+      excluded = lists.filter(({ pattern }) => pattern.startsWith('!')).map(({ pattern }) => plain(pattern.slice(1)));
       aliases = config.resolve.alias.filter(({ find }) => typeof find !== 'string' || !find.startsWith('@vite/'));
       let real = config.root;
       try {
