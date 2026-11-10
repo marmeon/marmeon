@@ -220,8 +220,8 @@ Views import from `#ui` directly. The target is a file you write: `modules/ui/co
 
 ### Folders by feature
 
-Apart from `index.ts`, `views/` and `lang/`, the folder names above are a suggestion. A module can just as well group its files
-by feature:
+Apart from `index.ts`, `views/` and `lang/`, the framework finds nothing by the folder names above. A module can just as well
+group its files by feature:
 
 ```text
 modules/billing/
@@ -240,11 +240,29 @@ modules/billing/
 └── migrations/
 ```
 
+The folder names still say one thing: `controllers/`, `jobs/`, `listeners/` and the other folders of their kind hold
+[server code](vite.md#server-code-in-the-browser), and the build refuses a page that imports a file from them as a value.
+A feature folder is not one of them. Name the feature folders as server code, so a page that imports
+`ShowInvoiceController.ts` as a value stops the build instead of shipping the controller to the browser:
+
+```ts title="vite.config.ts"
+import { marmeon } from '@marmeon/vite';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [marmeon({ serverModules: ['modules/billing/invoices/**', 'modules/billing/subscriptions/**'] }), react()],
+});
+```
+
+Pass the same list to `marmeon({ test: true })` in `vitest.config.ts`, so the tests check it too. The lint preset knows only the
+folders of the conventions and does not flag such an import in the editor; the build and the tests do.
+
 A few things stay where they are, because the framework finds them by their path:
 
-- Pages are the `.tsx` files under the module's own `views/`, at any depth. A page in `invoices/` is not found, and the lint
-  preset treats it as server code. Group the pages by feature inside `views/` instead: the page name follows the path,
-  `this.view('invoices/Show')`.
+- Pages are the `.tsx` files under the module's own `views/`, at any depth. A page in `invoices/` is not found. Group the pages
+  by feature inside `views/` instead: the page name follows the path, so `modules/billing/views/invoices/Show.tsx` is
+  `billing/invoices/Show`.
 - Texts are the files directly in `lang/`.
 - Migrations are the files directly in the one folder the definition names. Folders inside it may hold helpers a migration
   imports.
@@ -261,8 +279,9 @@ export default defineRoutes((Route) => {
 });
 ```
 
-Jobs, listeners and commands are listed in `index.ts` wherever they live. The boundary rule of the lint preset covers at least
-eight folder levels below a module, more if a module is deeper when `marmeon make:lint-config` writes the preset.
+Jobs, listeners and commands are listed in `index.ts` wherever they live. The boundary rule, which
+`marmeon make:lint-config --boundaries` adds to the lint preset, covers files up to seven folders below a module, more if a
+module is deeper when the preset is written.
 
 A feature that brings its own tables, routes and pages often makes a module of its own: then it has its own migrations and its
 own `views/`, and other modules reach it only through its `index.ts` and the tables it [exposes](queries.md#module-boundaries).
@@ -273,10 +292,16 @@ The app's `vitest.config.ts` decides which files are tests. A new app collects `
 code and one in a module's `tests/` folder both run. For a `tests/` folder in the app's root, add it to the list:
 
 ```ts title="vitest.config.ts"
-test: { include: ['modules/**/*.test.ts', 'tests/**/*.test.ts'] },
+import { marmeon } from '@marmeon/vite';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  plugins: [marmeon({ test: true })],
+  test: { include: ['modules/**/*.test.ts', 'tests/**/*.test.ts'] },
+});
 ```
 
-Wherever a test lives, the lint preset lets it import from inside any module.
+With the boundary rule, the lint preset lets a test import from inside any module, wherever the test lives.
 
 ## Your first module
 
