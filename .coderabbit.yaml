@@ -49,6 +49,8 @@ reviews:
     - "!apps/*/bootstrap/database.d.ts"
     - "!packages/create-marmeon/template/base/bootstrap/routes.ts"
     - "!packages/create-marmeon/template/base/bootstrap/database.d.ts"
+    # Snapshots of a release line's docs; `pnpm website:check` compares them byte for byte with the tagged commit.
+    - "!apps/website/content/lines/**"
 
   path_instructions:
     - path: "**/*"

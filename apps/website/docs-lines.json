@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "lines": {
+    "1.x": {
+      "version": "1.0.0",
+      "tag": "v1.0.0",
+      "commit": "5e76336936af3718d9ebe1fe47398c0cb32a4817"
+    }
+  }
+}

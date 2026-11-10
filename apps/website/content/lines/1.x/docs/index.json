@@ -1,0 +1,595 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "sections": [
+    {
+      "title": "Prologue",
+      "pages": [
+        {
+          "slug": "why-marmeon",
+          "label": "Why Marmeon",
+          "title": "Why Marmeon",
+          "file": "docs/why-marmeon.md"
+        },
+        {
+          "slug": "upgrading",
+          "label": "Upgrade Guide",
+          "title": "Upgrading",
+          "file": "UPGRADING.md"
+        },
+        {
+          "slug": "releases",
+          "label": "Releases and Support",
+          "title": "Releases and Support",
+          "file": "docs/releases.md"
+        },
+        {
+          "slug": "contributing",
+          "label": "Contribution Guide",
+          "title": "Contributing to Marmeon",
+          "file": "CONTRIBUTING.md"
+        },
+        {
+          "slug": "security-policy",
+          "label": "Security Policy",
+          "title": "Security policy",
+          "file": "SECURITY.md"
+        },
+        {
+          "slug": "packages",
+          "label": "Packages",
+          "title": "Packages",
+          "file": "docs/packages.md"
+        }
+      ]
+    },
+    {
+      "title": "Getting Started",
+      "pages": [
+        {
+          "slug": "installation",
+          "label": "Installation",
+          "title": "Installation",
+          "file": "docs/installation.md"
+        },
+        {
+          "slug": "configuration",
+          "label": "Configuration",
+          "title": "Configuration",
+          "file": "docs/configuration.md"
+        },
+        {
+          "slug": "structure",
+          "label": "Directory Structure",
+          "title": "Directory Structure",
+          "file": "docs/structure.md"
+        },
+        {
+          "slug": "starter-kit",
+          "label": "Starter Kit",
+          "title": "Starter Kit",
+          "file": "docs/starter-kit.md"
+        },
+        {
+          "slug": "first-app",
+          "label": "Your First App",
+          "title": "Your First App",
+          "file": "docs/first-app.md"
+        },
+        {
+          "slug": "deployment",
+          "label": "Deployment",
+          "title": "Deployment",
+          "file": "docs/deployment.md"
+        }
+      ]
+    },
+    {
+      "title": "Recipes",
+      "pages": [
+        {
+          "slug": "recipe-resource",
+          "label": "A Resource With Its Policy",
+          "title": "A Resource With Its Policy",
+          "file": "docs/recipe-resource.md"
+        },
+        {
+          "slug": "recipe-public-form",
+          "label": "A Public Page and Form",
+          "title": "A Public Page and Form",
+          "file": "docs/recipe-public-form.md"
+        },
+        {
+          "slug": "recipe-background-job",
+          "label": "A Job That Retries",
+          "title": "A Job That Retries",
+          "file": "docs/recipe-background-job.md"
+        },
+        {
+          "slug": "recipe-bookings",
+          "label": "Bookings That Never Overlap",
+          "title": "Bookings That Never Overlap",
+          "file": "docs/recipe-bookings.md"
+        },
+        {
+          "slug": "recipe-webhook",
+          "label": "A Payment Webhook",
+          "title": "A Payment Webhook",
+          "file": "docs/recipe-webhook.md"
+        }
+      ]
+    },
+    {
+      "title": "Architecture Concepts",
+      "pages": [
+        {
+          "slug": "lifecycle",
+          "label": "Request Lifecycle",
+          "title": "Request Lifecycle",
+          "file": "docs/lifecycle.md"
+        },
+        {
+          "slug": "modules",
+          "label": "Modules & Discovery",
+          "title": "Modules & Discovery",
+          "file": "docs/modules.md"
+        },
+        {
+          "slug": "container",
+          "label": "Service Container",
+          "title": "Service Container",
+          "file": "docs/container.md"
+        },
+        {
+          "slug": "providers",
+          "label": "Service Providers",
+          "title": "Service Providers",
+          "file": "docs/providers.md"
+        },
+        {
+          "slug": "context",
+          "label": "Context",
+          "title": "Context",
+          "file": "docs/context.md"
+        }
+      ]
+    },
+    {
+      "title": "The Basics",
+      "pages": [
+        {
+          "slug": "routing",
+          "label": "Routing",
+          "title": "Routing",
+          "file": "docs/routing.md"
+        },
+        {
+          "slug": "middleware",
+          "label": "Middleware",
+          "title": "Middleware",
+          "file": "docs/middleware.md"
+        },
+        {
+          "slug": "csrf",
+          "label": "CSRF Protection",
+          "title": "CSRF Protection",
+          "file": "docs/csrf.md"
+        },
+        {
+          "slug": "controllers",
+          "label": "Controllers",
+          "title": "Controllers",
+          "file": "docs/controllers.md"
+        },
+        {
+          "slug": "requests",
+          "label": "Requests",
+          "title": "Requests",
+          "file": "docs/requests.md"
+        },
+        {
+          "slug": "responses",
+          "label": "Responses",
+          "title": "Responses",
+          "file": "docs/responses.md"
+        },
+        {
+          "slug": "urls",
+          "label": "URL Generation",
+          "title": "URL Generation",
+          "file": "docs/urls.md"
+        },
+        {
+          "slug": "session",
+          "label": "Session",
+          "title": "Session",
+          "file": "docs/session.md"
+        },
+        {
+          "slug": "validation",
+          "label": "Validation",
+          "title": "Validation",
+          "file": "docs/validation.md"
+        },
+        {
+          "slug": "errors",
+          "label": "Error Handling",
+          "title": "Error Handling",
+          "file": "docs/errors.md"
+        },
+        {
+          "slug": "logging",
+          "label": "Logging",
+          "title": "Logging",
+          "file": "docs/logging.md"
+        }
+      ]
+    },
+    {
+      "title": "Frontend",
+      "pages": [
+        {
+          "slug": "pages",
+          "label": "Pages & Layouts",
+          "title": "Pages & Layouts",
+          "file": "docs/pages.md"
+        },
+        {
+          "slug": "navigation",
+          "label": "Navigation & View Transitions",
+          "title": "Navigation & View Transitions",
+          "file": "docs/navigation.md"
+        },
+        {
+          "slug": "forms",
+          "label": "Forms",
+          "title": "Forms",
+          "file": "docs/forms.md"
+        },
+        {
+          "slug": "actions",
+          "label": "Actions",
+          "title": "Actions",
+          "file": "docs/actions.md"
+        },
+        {
+          "slug": "dialogs",
+          "label": "Dialogs & Layers",
+          "title": "Dialogs & Layers",
+          "file": "docs/dialogs.md"
+        },
+        {
+          "slug": "deferred-props",
+          "label": "Deferred Props & Islands",
+          "title": "Deferred Props & Islands",
+          "file": "docs/deferred-props.md"
+        },
+        {
+          "slug": "client-features",
+          "label": "Client Features & Tab Sync",
+          "title": "Client Features & Tab Sync",
+          "file": "docs/client-features.md"
+        },
+        {
+          "slug": "vite",
+          "label": "Asset Bundling (Vite)",
+          "title": "Asset Bundling (Vite)",
+          "file": "docs/vite.md"
+        },
+        {
+          "slug": "styling",
+          "label": "Styling",
+          "title": "Styling",
+          "file": "docs/styling.md"
+        },
+        {
+          "slug": "seo",
+          "label": "Search Engines & Sharing",
+          "title": "Search Engines & Sharing",
+          "file": "docs/seo.md"
+        },
+        {
+          "slug": "images",
+          "label": "Images",
+          "title": "Images",
+          "file": "docs/images.md"
+        }
+      ]
+    },
+    {
+      "title": "Digging Deeper",
+      "pages": [
+        {
+          "slug": "console",
+          "label": "Console",
+          "title": "Console",
+          "file": "docs/console.md"
+        },
+        {
+          "slug": "cache",
+          "label": "Cache",
+          "title": "Cache",
+          "file": "docs/cache.md"
+        },
+        {
+          "slug": "events",
+          "label": "Events",
+          "title": "Events",
+          "file": "docs/events.md"
+        },
+        {
+          "slug": "storage",
+          "label": "File Storage",
+          "title": "File Storage",
+          "file": "docs/storage.md"
+        },
+        {
+          "slug": "localization",
+          "label": "Localization",
+          "title": "Localization",
+          "file": "docs/localization.md"
+        },
+        {
+          "slug": "mail",
+          "label": "Mail",
+          "title": "Mail",
+          "file": "docs/mail.md"
+        },
+        {
+          "slug": "notifications",
+          "label": "Notifications",
+          "title": "Notifications",
+          "file": "docs/notifications.md"
+        },
+        {
+          "slug": "queues",
+          "label": "Queues",
+          "title": "Queues",
+          "file": "docs/queues.md"
+        },
+        {
+          "slug": "rate-limiting",
+          "label": "Rate Limiting",
+          "title": "Rate Limiting",
+          "file": "docs/rate-limiting.md"
+        },
+        {
+          "slug": "realtime",
+          "label": "Real-time Updates",
+          "title": "Real-time Updates",
+          "file": "docs/realtime.md"
+        },
+        {
+          "slug": "scheduling",
+          "label": "Task Scheduling",
+          "title": "Task Scheduling",
+          "file": "docs/scheduling.md"
+        },
+        {
+          "slug": "webhooks",
+          "label": "Webhooks",
+          "title": "Webhooks",
+          "file": "docs/webhooks.md"
+        },
+        {
+          "slug": "tables",
+          "label": "Data Tables",
+          "title": "Data Tables",
+          "file": "docs/tables.md"
+        },
+        {
+          "slug": "drivers",
+          "label": "Drivers",
+          "title": "Drivers",
+          "file": "docs/drivers.md"
+        },
+        {
+          "slug": "package-development",
+          "label": "Package Development",
+          "title": "Package Development",
+          "file": "docs/package-development.md"
+        }
+      ]
+    },
+    {
+      "title": "Security",
+      "pages": [
+        {
+          "slug": "security",
+          "label": "Security Overview",
+          "title": "Security",
+          "file": "docs/security.md"
+        },
+        {
+          "slug": "authentication",
+          "label": "Authentication",
+          "title": "Authentication",
+          "file": "docs/authentication.md"
+        },
+        {
+          "slug": "two-factor-authentication",
+          "label": "Two-Factor Authentication",
+          "title": "Two-Factor Authentication",
+          "file": "docs/two-factor-authentication.md"
+        },
+        {
+          "slug": "passkeys",
+          "label": "Passkeys",
+          "title": "Passkeys",
+          "file": "docs/passkeys.md"
+        },
+        {
+          "slug": "authorization",
+          "label": "Authorization",
+          "title": "Authorization",
+          "file": "docs/authorization.md"
+        },
+        {
+          "slug": "verification",
+          "label": "Email Verification",
+          "title": "Email Verification",
+          "file": "docs/verification.md"
+        },
+        {
+          "slug": "passwords",
+          "label": "Password Reset",
+          "title": "Password Reset",
+          "file": "docs/passwords.md"
+        },
+        {
+          "slug": "api-tokens",
+          "label": "API Tokens",
+          "title": "API Tokens",
+          "file": "docs/api-tokens.md"
+        },
+        {
+          "slug": "encryption",
+          "label": "Encryption",
+          "title": "Encryption",
+          "file": "docs/encryption.md"
+        },
+        {
+          "slug": "hashing",
+          "label": "Hashing",
+          "title": "Hashing",
+          "file": "docs/hashing.md"
+        },
+        {
+          "slug": "csp",
+          "label": "Content Security Policy",
+          "title": "Content Security Policy",
+          "file": "docs/csp.md"
+        }
+      ]
+    },
+    {
+      "title": "Database",
+      "pages": [
+        {
+          "slug": "database",
+          "label": "Getting Started",
+          "title": "Database: Getting Started",
+          "file": "docs/database.md"
+        },
+        {
+          "slug": "queries",
+          "label": "Repositories & Queries",
+          "title": "Repositories & Queries",
+          "file": "docs/queries.md"
+        },
+        {
+          "slug": "pagination",
+          "label": "Pagination",
+          "title": "Pagination",
+          "file": "docs/pagination.md"
+        },
+        {
+          "slug": "migrations",
+          "label": "Migrations",
+          "title": "Migrations",
+          "file": "docs/migrations.md"
+        },
+        {
+          "slug": "seeding",
+          "label": "Seeding & Factories",
+          "title": "Seeding & Factories",
+          "file": "docs/seeding.md"
+        },
+        {
+          "slug": "transactions",
+          "label": "Transactions",
+          "title": "Transactions",
+          "file": "docs/transactions.md"
+        },
+        {
+          "slug": "redis",
+          "label": "Redis",
+          "title": "Redis",
+          "file": "docs/redis.md"
+        }
+      ]
+    },
+    {
+      "title": "Testing",
+      "pages": [
+        {
+          "slug": "testing",
+          "label": "Getting Started",
+          "title": "Getting Started",
+          "file": "docs/testing.md"
+        },
+        {
+          "slug": "http-tests",
+          "label": "HTTP Tests",
+          "title": "HTTP Tests",
+          "file": "docs/http-tests.md"
+        },
+        {
+          "slug": "database-testing",
+          "label": "Database Testing",
+          "title": "Database Testing",
+          "file": "docs/database-testing.md"
+        },
+        {
+          "slug": "fakes",
+          "label": "Fakes",
+          "title": "Fakes",
+          "file": "docs/fakes.md"
+        },
+        {
+          "slug": "time",
+          "label": "Time",
+          "title": "Time",
+          "file": "docs/time.md"
+        },
+        {
+          "slug": "testing-pages",
+          "label": "Testing Pages",
+          "title": "Testing Pages",
+          "file": "docs/testing-pages.md"
+        },
+        {
+          "slug": "check",
+          "label": "Checking an App",
+          "title": "Checking an App",
+          "file": "docs/check.md"
+        }
+      ]
+    },
+    {
+      "title": "Tools",
+      "pages": [
+        {
+          "slug": "devtools",
+          "label": "Devtools",
+          "title": "Devtools",
+          "file": "docs/devtools.md"
+        },
+        {
+          "slug": "observability",
+          "label": "Observability",
+          "title": "Observability",
+          "file": "docs/observability.md"
+        },
+        {
+          "slug": "health",
+          "label": "Health Checks",
+          "title": "Health Checks",
+          "file": "docs/health.md"
+        },
+        {
+          "slug": "agents",
+          "label": "Coding Agents",
+          "title": "Coding Agents",
+          "file": "docs/agents.md"
+        },
+        {
+          "slug": "mcp",
+          "label": "MCP Server",
+          "title": "MCP Server",
+          "file": "docs/mcp.md"
+        }
+      ]
+    }
+  ]
+}
