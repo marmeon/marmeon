@@ -234,7 +234,7 @@ session that removed it: the sessions of someone who holds a cloned or stolen pa
 is not undone when this session ended meanwhile; the result is `ok` all the same. A wrong or missing password, an unknown id and another account's passkey end nothing.
 
 An account holds at most 20 passkeys; the 21st answers `limit`. Names lose control and invisible format characters (a bidi override would otherwise
-reorder the text of the list). Registration accepts ES256 and EdDSA keys, and RSA keys only with the exponent 65537 and at most 4096 bits.
+reorder the text of the list). Registration accepts ES256 and EdDSA keys, and RSA keys only with the exponent 65537 and at least 2048 and at most 4096 bits. A stored RSA passkey under 2048 bits, or one with an algorithm outside that list, does not sign in. The account then signs in with its password and another second factor or a recovery code, and removes the passkey.
 
 An account without a password cannot register its first factor: turning it on asks for the password, and signs out the other devices
 with a new session key, so `register()` throws for it.
@@ -331,9 +331,9 @@ removes the passkeys together with the authenticator and the recovery codes.
 | `PasskeyRegistered` | `register()` added a passkey | `user`, `name` |
 | `PasskeyRemoved` | `remove()` removed one, or the password reset of an account with an unconfirmed address removed them | `user`, `via` (`user` or `reset`) |
 | `PasskeyCloneSuspected` | A sign-in was refused for its sign count, the passkey suspended and every session of the account ended | `user`, `passkeyId` |
-| `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `at`, `ip`, `userAgent` |
+| `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle, or a stored RSA key under 2048 bits or with an algorithm outside the accepted ones. Nothing for an unknown passkey | `user`, `at`, `ip`, `userAgent` |
 | `SignedIn` | A passwordless sign-in | `via: 'passkey'` |
-| `TwoFactorChallengeFailed` | A wrong passkey after the password, at a step-up, or when confirming sudo mode | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`, `step-up` or `confirm`) |
+| `TwoFactorChallengeFailed` | A wrong passkey, or one with a stored RSA key under 2048 bits or an algorithm outside the accepted ones, after the password, at a step-up, or when confirming sudo mode | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`, `step-up` or `confirm`) |
 
 The first passkey also dispatches `TwoFactorEnabled` and `RecoveryCodesGenerated`, and removing the last factor `TwoFactorDisabled`. All of
 them can be [queued](events.md#queued-listeners). Send the owner a mail on `PasskeyRegistered`, `PasskeyRemoved`,

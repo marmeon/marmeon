@@ -79,8 +79,12 @@ const TRANSPORTS: readonly string[] = ['ble', 'hybrid', 'internal', 'nfc', 'usb'
 const FLAG_UP = 0x01;
 const FLAG_UV = 0x04;
 const FLAG_BE = 0x08;
-/** RSA keys: the usual exponent, and at most 4096 bits (larger moduli only cost every later verification time). */
+/**
+ * RSA keys: the usual exponent, at least 2048 bits (the NIST minimum through 2030; shorter moduli can be factored
+ * with far less effort) and at most 4096 bits (larger moduli only cost every later verification time).
+ */
 const RSA_EXPONENT = Buffer.from([0x01, 0x00, 0x01]);
+const MIN_RSA_BITS = 2048;
 const MAX_RSA_BITS = 4096;
 
 /**
@@ -212,7 +216,9 @@ export async function verifyRegistration(
       const key = decodeCredentialPublicKey(credential.publicKey) as unknown as Map<number, unknown>;
       const modulus = key.get(-1) as Uint8Array | undefined;
       const exponent = key.get(-2) as Uint8Array | undefined;
-      if (!modulus || !exponent || bitLength(modulus) > MAX_RSA_BITS) throw new Error('RSA key too large');
+      if (!modulus || !exponent) throw new Error('RSA key incomplete');
+      if (bitLength(modulus) > MAX_RSA_BITS) throw new Error('RSA key too large');
+      if (bitLength(modulus) < MIN_RSA_BITS) throw new Error('RSA key too small');
       if (exponent.length !== RSA_EXPONENT.length || !timingSafeEqual(Buffer.from(exponent), RSA_EXPONENT)) throw new Error('RSA exponent is not 65537');
     }
     return ok({
@@ -254,6 +260,14 @@ export async function verifyAuthentication(
   try {
     if (isCrossOrigin(response?.response?.clientDataJSON)) throw new Error('cross-origin response');
     if (response.id !== stored.credentialId || response.rawId !== stored.credentialId) throw new Error('response is for another credential');
+    // Registration refuses short RSA keys and unknown algorithms; a stored key is refused here too, like any invalid credential.
+    const storedKey = decodeCredentialPublicKey(new Uint8Array(Buffer.from(stored.publicKey, 'base64url'))) as unknown as Map<number, unknown>;
+    const storedAlgorithm = storedKey.get(cose.COSEKEYS.alg);
+    if (typeof storedAlgorithm !== 'number' || !PASSKEY_ALGORITHMS.includes(storedAlgorithm)) throw new Error('stored algorithm not offered');
+    if (storedKey.get(cose.COSEKEYS.kty) === cose.COSEKTY.RSA) {
+      const modulus = storedKey.get(-1) as Uint8Array | undefined;
+      if (!modulus || bitLength(modulus) < MIN_RSA_BITS) throw new Error('stored RSA key too small');
+    }
     verified = await verifyAuthenticationResponse({
       response: authenticationForLibrary(response),
       expectedChallenge: sameChallenge(expected.challenge),
