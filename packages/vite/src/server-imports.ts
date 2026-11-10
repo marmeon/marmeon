@@ -1,43 +1,8 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { matchesGlob, relative, sep } from 'node:path';
+import { SERVER_MODULES, type ServerModule } from '@marmeon/core/internal';
 import { parseSync } from 'oxc-parser';
 import type { Plugin, ResolvedConfig } from 'vite';
-
-/** A kind of server module: a glob relative to the app root, and what to call such a module in an error. */
-export interface ServerModule {
-  readonly pattern: string;
-  readonly what: string;
-}
-
-/**
- * The app's server modules by convention — what client code must never import as a value. Globs relative to the app root;
- * `marmeon({ serverModules })` adds patterns and, with a leading `!`, takes some out.
- */
-export const SERVER_MODULES: readonly ServerModule[] = [
-  { pattern: 'modules/*/controllers/**', what: 'a controller' },
-  { pattern: 'modules/*/listeners/**', what: 'a listener' },
-  { pattern: 'modules/*/jobs/**', what: 'a job' },
-  { pattern: 'modules/*/mail/**', what: 'a mail' },
-  { pattern: 'modules/*/notifications/**', what: 'a notification' },
-  { pattern: 'modules/*/policies/**', what: 'a policy' },
-  { pattern: 'modules/*/middleware/**', what: 'a middleware' },
-  { pattern: 'modules/*/tasks/**', what: 'a scheduled task' },
-  { pattern: 'modules/*/health/**', what: 'a health check' },
-  { pattern: 'modules/*/commands/**', what: 'a command' },
-  { pattern: 'modules/*/migrations/**', what: 'a migration' },
-  { pattern: 'modules/*/seeders/**', what: 'a seeder' },
-  { pattern: 'modules/*/factories/**', what: 'a factory' },
-  { pattern: 'modules/*/index.ts', what: "a module's definition (its providers, routes, listeners …)" },
-  { pattern: 'modules/*/routes.ts', what: "a module's routes" },
-  { pattern: 'modules/*/api-routes.ts', what: "a module's routes" },
-  { pattern: 'modules/*/schedule.ts', what: "a module's schedule" },
-  { pattern: 'modules/*/config.ts', what: "a module's config (read from the server's environment)" },
-  { pattern: '**/*ServiceProvider.ts', what: 'a service provider' },
-  { pattern: '**/*Repository.ts', what: 'a repository' },
-  { pattern: 'bootstrap/app.ts', what: "the app's definition" },
-  { pattern: 'config/**', what: "the app's config (read from the server's environment)" },
-  { pattern: 'middleware/**', what: 'a middleware' },
-];
 
 /**
  * Packages that compose a mail on the server: client code importing one as a value would bundle the mailer (and, with it,

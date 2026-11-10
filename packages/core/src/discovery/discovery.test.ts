@@ -393,9 +393,13 @@ describe('the "marmeon" field of a package', () => {
     expect(marmeonField(field(undefined, '{"name":"x"}'))).toBeUndefined();
   });
 
+  it('does not refuse serverModules in a dependency: the key is the app\'s own and ignored here', () => {
+    expect(marmeonField(field({ providers: ['A'], serverModules: ['modules/billing/invoices/**'] }))?.providers).toEqual(['A']);
+  });
+
   it('refuses a key it does not know, naming the package, the key and the known keys — a misspelt "provider" is not ignored', () => {
     expect(messageOf(field({ provider: ['AuditServiceProvider'] }))).toBe(
-      '[marmeon:K7] @acme/marmeon-audit has an unknown key "provider" in its "marmeon" field (known: providers, browser, experimental) — a misspelt key would leave its providers out.',
+      '[marmeon:K7] @acme/marmeon-audit has an unknown key "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules) — a misspelt key would leave its providers out.',
     );
     expect(messageOf(field({ providers: ['A'], migrations: 'stubs' }))).toContain('unknown key "migrations"');
   });

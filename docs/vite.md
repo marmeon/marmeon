@@ -256,6 +256,11 @@ import of either in client code would bundle the mailer and the MJML compiler in
 The check reads the source while building and adds no code to any chunk. The lint preset, which `marmeon make:lint-config`
 writes, flags the common case in the editor already. The [console](console.md#lint) page lists the command.
 
+### Server folders of your own
+
+Declare server folders outside the conventions in the `"marmeon"` field of the app's package.json, for example `"serverModules": ["modules/billing/invoices/**"]`.
+A broken entry stops with `H14`, because a misspelt declaration would otherwise leave the folder unchecked without a word.
+
 ## Tests
 
 `vitest.config.ts` uses the plugin with `test: true`:

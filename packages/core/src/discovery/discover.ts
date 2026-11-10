@@ -173,8 +173,11 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   };
 }
 
-/** The keys of the `"marmeon"` field (docs/package-development.md#the-package-protocol); a new key is a minor release, so an older core refuses it. */
-const MARMEON_KEYS = ['providers', 'browser', 'experimental'] as const;
+/**
+ * The keys of the `"marmeon"` field (docs/package-development.md#the-package-protocol); a new key is a minor release, so an older core refuses it.
+ * `serverModules` is for the app's own package.json (`declaredServerModules`): in a dependency it is accepted and ignored.
+ */
+export const MARMEON_KEYS = ['providers', 'browser', 'experimental', 'serverModules'] as const;
 const CLASS_NAME = /^[A-Za-z_$][\w$]*$/;
 /** A key the message may repeat: short and identifier-shaped, so a hostile `package.json` cannot put text of its own into it. */
 const SHOWN_KEY = /^[A-Za-z_$][\w$]{0,63}$/;

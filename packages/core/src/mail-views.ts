@@ -6,7 +6,7 @@ import type * as OxcTransform from 'oxc-transform';
 import { ConfigError } from './environment.ts';
 
 /**
- * The only TSX the server loads: the mail views of an app's modules. The same folder `SERVER_MODULES` in `@marmeon/vite` treats as
+ * The only TSX the server loads: the mail views of an app's modules. The same folder `SERVER_MODULES` (./server-modules.ts) treats as
  * server code (`modules/<module>/mail/`), so nothing that is compiled here can be imported by client code, and no page view ever
  * runs in Node.
  */
