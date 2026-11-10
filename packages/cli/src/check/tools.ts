@@ -7,6 +7,7 @@ import { shippedSkills } from '../agents/skills.ts';
 import { syncAgents } from '../agents/sync.ts';
 import { findBin, runNode, typecheckApp } from '../typecheck.ts';
 import { internalImports } from './internal-imports.ts';
+import { lintPresetDrift } from './lint-preset.ts';
 import { reportOf, unrunReport, type CheckProblem, type CheckReport } from './report.ts';
 
 /** A check's report, and — for `types` — the type checker's own output, which `marmeon check` shows under the findings. */
@@ -97,7 +98,7 @@ export async function lintCheck(root: string): Promise<CheckRun> {
     if (!problems || code > 1) {
       return { report: unrunReport('lint', 'error', `oxlint failed (exit ${code}): ${plainReason(output.trim().split('\n')[0] ?? 'no output', root)}`, ms()) };
     }
-    return { report: reportOf('lint', problems, ms()) };
+    return { report: reportOf('lint', [...problems, ...lintPresetDrift(root)], ms()) };
   } catch (error) {
     return { report: unrunReport('lint', 'error', `oxlint could not run: ${plainReason(error, root)}`, ms()) };
   }

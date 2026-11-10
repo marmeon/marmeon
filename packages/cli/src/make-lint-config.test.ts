@@ -256,6 +256,15 @@ describe('marmeon make:lint-config — the server folders of package.json and th
     expect(flagged(false)).toEqual([]);
   });
 
+  it('--boundaries: the same one folder deeper — a negated file stays free inside its module, not across', () => {
+    const root = withDeclaration({
+      'modules/auth/views/sub/Negated.tsx': "import { labels } from '../../jobs/labels.ts';\nexport const c = labels;\n",
+      'modules/notes/views/sub/Across.tsx': "import { labels } from '../../../auth/jobs/labels.ts';\nexport const c = labels;\n",
+    });
+    generate(root, { boundaries: true });
+    expect([...new Set(lint(root).map((line) => line.split(':')[0]))]).toEqual(['modules/notes/views/sub/Across.tsx']);
+  });
+
   it('reaches a declared folder through #modules/ too, and keeps the conventions it always flagged', () => {
     const root = withDeclaration({
       'modules/billing/views/invoices/Entry.tsx': "import { Invoices } from '#modules/billing';\nexport const c = Invoices;\n",
