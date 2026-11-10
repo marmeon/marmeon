@@ -952,6 +952,9 @@ describe('Passkeys: replay, clones and audit signals', () => {
     };
     expect(await register({ publicExponent: 3 })).toEqual({ ok: false, kind: 'invalid' });
     expect(await register({ modulusLength: 4160 })).toEqual({ ok: false, kind: 'invalid' });
+    expect(await register({ modulusLength: 1024 })).toEqual({ ok: false, kind: 'invalid' });
+    expect(await register({ modulusLength: 2047 })).toEqual({ ok: false, kind: 'invalid' });
+    expect(await register({ modulusLength: 2048 })).toMatchObject({ ok: true });
     expect(await register({})).toMatchObject({ ok: true });
   }, 60_000);
 });

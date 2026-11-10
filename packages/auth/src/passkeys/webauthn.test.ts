@@ -1,8 +1,11 @@
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { Session, type SessionConfig } from '@marmeon/session';
 import { MemorySessionStore, plainSessionCodec } from '@marmeon/session/internal';
+import { decodeAttestationObject, decodeCredentialPublicKey } from '@simplewebauthn/server/helpers';
 import { describe, expect, it } from 'vitest';
+import { cbor } from '../cbor.ts';
 import { softAuthenticator } from '../testing.ts';
 import { issueChallenge, takeChallenge } from './challenge.ts';
 import { authenticationOptions, registrationOptions, verifyAuthentication, verifyRegistration, type RelyingParty, type StoredPasskey } from './webauthn.ts';
@@ -170,6 +173,45 @@ describe('a sign-in is refused when', () => {
   it('the user was not present, though verified', () => refuse({ userPresent: false }));
   it('the signature is wrong', () => refuse({ badSignature: true }));
   it('the page was in a frame of another site (crossOrigin)', () => refuse({ crossOrigin: true }));
+
+  it('the stored key is an RSA key under 2048 bits (whatever its algorithm), or has an algorithm that is not offered; a 2048-bit RS256 key still signs in', async () => {
+    const stored = async (modulusLength: number, alg = -257) => {
+      const authenticator = softAuthenticator({ origin: 'http://localhost:3000', rpId: 'localhost', algorithm: 'RS256', rsa: { modulusLength } });
+      const attestation = authenticator.register(await creation());
+      const authData = Buffer.from(decodeAttestationObject(Buffer.from(attestation.response.attestationObject, 'base64url')).get('authData'));
+      const key = decodeCredentialPublicKey(authData.subarray(55 + Buffer.from(attestation.id, 'base64url').length)) as unknown as Map<number, unknown>;
+      key.set(3, alg);
+      const passkey: StoredPasskey = { credentialId: attestation.id, publicKey: cbor(key).toString('base64url'), signCount: 0, userHandle: handle, backupEligible: false };
+      const options = await request(Buffer.alloc(32, 3), [passkey]);
+      return verifyAuthentication(authenticator.authenticate(options), { ...relyingParty, challenge: options.challenge }, passkey);
+    };
+    const invalid = { ok: false, error: { kind: 'invalid' } };
+    expect(await stored(1024)).toEqual(invalid);
+    expect(await stored(1024, -259)).toEqual(invalid); // RS512
+    expect(await stored(1024, -37)).toEqual(invalid); // PS256
+    expect(await stored(2048, -259)).toEqual(invalid); // not offered
+    expect(await stored(2048)).toMatchObject({ ok: true });
+  }, 60_000);
+
+  it('the stored key carries an algorithm that is not offered, even when its signature verifies (RS1)', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    const part = (name: 'n' | 'e') => Buffer.from(jwk[name] as string, 'base64url');
+    const authenticator = authenticatorFor();
+    const credentialId = authenticator.register(await creation()).id;
+    const passkey: StoredPasskey = {
+      credentialId,
+      publicKey: cbor(new Map<unknown, unknown>([[1, 3], [3, -65535], [-1, part('n')], [-2, part('e')]])).toString('base64url'),
+      signCount: 0,
+      userHandle: handle,
+      backupEligible: false,
+    };
+    const options = await request(Buffer.alloc(32, 3), [passkey]);
+    const assertion = authenticator.authenticate(options);
+    const message = Buffer.concat([Buffer.from(assertion.response.authenticatorData, 'base64url'), createHash('sha256').update(Buffer.from(assertion.response.clientDataJSON, 'base64url')).digest()]);
+    assertion.response.signature = sign('sha1', message, privateKey).toString('base64url');
+    expect(await verifyAuthentication(assertion, { ...relyingParty, challenge: options.challenge }, passkey)).toEqual({ ok: false, error: { kind: 'invalid' } });
+  });
 
   it('the credential belongs to another passkey (another account)', async () => {
     const other = await enrol(authenticatorFor());
