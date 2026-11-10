@@ -1,6 +1,7 @@
 # Marmeon
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/marmeon/marmeon/badge)](https://scorecard.dev/viewer/?uri=github.com/marmeon/marmeon)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16530/badge)](https://www.bestpractices.dev/projects/16530)
 
 Marmeon is a full-stack framework for TypeScript on Node.js: an app is a set of modules whose routes, controllers and React
 pages are typed from end to end, and the server renders each page before the browser takes over. A new app comes with a
