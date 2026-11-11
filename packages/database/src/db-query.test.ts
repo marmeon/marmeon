@@ -317,7 +317,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
   });
 
   // What the database holds cannot be told from files that are not what ran: refused rather than guessed.
-  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}, statement = 'select password from users') => {
+  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}, statement = 'select password from users', exit = 1) => {
     const directory = workspaceTempDir('marmeon-db-query-');
     const migrations = join(directory, 'migrations');
     mkdirSync(migrations);
@@ -329,7 +329,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
       writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
       await prepare(migrations, file);
       const { code, stdout, stderr } = await run(connections, [statement], { json: true, ...options }, undefined, real());
-      expect(code).toBe(1);
+      expect(code).toBe(exit);
       expect(stdout).toBe('');
       return stderr;
     } finally {
@@ -428,7 +428,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       raw.exec("delete from migrations where name like '%create_users_table'");
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter("table.dropColumn('password');"));
-    });
+    }, {}, undefined, 3);
     expect(stderr).toContain('users.password');
     expect(stderr).toContain('No migration describes it');
   });
@@ -457,6 +457,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       },
       {},
       'select body from raw_notes',
+      3,
     );
     expect(stderr).toContain('raw_notes.body');
     expect(stderr).toContain('No migration describes it');
@@ -480,7 +481,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       expect((await run(connections, ['select id, email from users'], { json: true }, undefined, real)).code).toBe(0);
       for (const table of ['DocsFts', 'docsfts', 'gone']) {
         const { code, stderr } = await run(connections, [`select * from ${table}`], { json: true }, undefined, real);
-        expect(code, table).toBe(1);
+        expect(code, table).toBe(table === 'gone' ? 1 : 3);
         expect(stderr, table).toContain(table !== 'gone' ? 'No migration describes it' : 'no such module');
       }
     } finally {
@@ -572,7 +573,7 @@ export default defineMigration({ up: (schema) => schema.create('users', (table) 
       await sql.raw('create table audit.api_tokens (id integer, token text)').execute(inspectionConnection(connections));
       expect((await run(connections, ['select id, email from users'], { json: true }, undefined, real)).code).toBe(0);
       const { code, stderr } = await run(connections, ['select token from audit.api_tokens'], { json: true }, undefined, real);
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stderr).toContain('api_tokens.token');
     } finally {
       await connections.destroy();
