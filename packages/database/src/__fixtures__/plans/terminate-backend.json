@@ -1,0 +1,25 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Limit",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Disabled": false,
+      "Output": [
+        "(pg_terminate_backend(1, '0'::bigint))"
+      ],
+      "Plans": [
+        {
+          "Node Type": "Result",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Disabled": false,
+          "Output": [
+            "pg_terminate_backend(1, '0'::bigint)"
+          ]
+        }
+      ]
+    }
+  }
+]
