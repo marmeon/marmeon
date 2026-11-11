@@ -17,7 +17,7 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { DevtoolsStore, FileDevtoolsStore, type AnyEntry } from './index.ts';
 import { MemoryDevtoolsStore } from './store.ts';
-import { Recorder } from './recorder.ts';
+import { MAX_BATCH_ENTRIES, Recorder } from './recorder.ts';
 import { enableDevtoolsForTests } from './test-opt-in.ts';
 import type { DevtoolsTester } from './tester.ts';
 import { DevtoolsServiceProvider } from './provider.ts';
@@ -154,6 +154,14 @@ const routes = openRoutes((Route) => {
   Route.get('/invite/:code', () => {
     throw new Error('The invite failed');
   });
+  // Where the first route that matches is not the one with the secret: the page's path is masked by every route it could reach.
+  Route.get('/u/:id{[0-9]+}', () => ({ ok: true }));
+  Route.get('/u/:token', () => ({ ok: true }));
+  Route.get('/s/:token/:mode', () => ({ ok: true }));
+  Route.get('/s/:id/edit', () => ({ ok: true }));
+  Route.post('/reset/:id', () => ({ ok: true }));
+  Route.get('/reset/:token', () => ({ ok: true }));
+  Route.get('/einladung/über/:code', () => ({ ok: true }));
   Route.get('/ignored', () => ({ ok: true }));
   Route.get('/to-invite', () => new Response(null, { status: 302, headers: { location: '/invite/483920' } }));
   Route.get('/to-code', () => new Response(null, { status: 302, headers: { location: '/invite/1?code=SECRETCODE#/b/c' } }));
@@ -480,6 +488,116 @@ describe('what the recorder keeps', () => {
       fake.value.assertDispatched(PersonViewed);
       await tester!.settled();
       tester!.assertRecorded('event', (event) => event.name === 'people.viewed');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('browser reports: masked in every text field, the page URL like a request\'s, tied to the page\'s request by its id', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const response = await kernel.request('/people/7');
+      const requestId = response.headers.get('x-request-id')!;
+      // Joined at run time: a token-shaped literal in the source would trip secret scanners.
+      const token = ['Qm9yZ2VkVG9rZW5Gb3JUZXN0c0Fub3RoZXJPbmVI', 'ZXJl'].join('');
+      const publish = channels.event('browser.log');
+      publish.publish({
+        ...messageBase(app),
+        requestId,
+        kind: 'error',
+        level: 'error',
+        message: `Request failed: Bearer ${token} password=hunter2`,
+        stack: `Error: ${token}\n    at fetch (http://localhost/src/app.tsx:1:1)`,
+        source: { url: `http://localhost/src/app.tsx?token=${token}`, line: 3, column: 4 },
+        page: `/invite/483920?token=${token}`,
+        dropped: 2,
+      });
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Each child needs a key', page: '/people/7' });
+      // A path no route answers is not kept: it could hold a token the route's pattern would have named.
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Elsewhere', page: `/nowhere/483920?token=${token}` });
+      await tester!.settled();
+      const entry = tester!.assertRecorded('browser', (content) => content.kind === 'error');
+      const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
+      expect(entry.batch).toBe(request.batch);
+      expect(entry.requestId).toBe(requestId);
+      expect(entry.tags).toEqual(['level:error', 'kind:error']);
+      expect(entry.content).toMatchObject({ level: 'error', source: { line: 3, column: 4 }, dropped: 2 });
+      expect(entry.content.page).toBe('/invite/[redacted]?token=[redacted]');
+      // The warning is kept apart by its level, in a batch of its own.
+      const warning = tester!.assertRecorded('browser', (content) => content.kind === 'console');
+      expect(warning.tags).toEqual(['level:warn', 'kind:console']);
+      expect(warning.batch).not.toBe(request.batch);
+      const stored = JSON.stringify(tester!.entries('browser'));
+      expect(stored).not.toContain(token);
+      expect(stored).not.toContain('hunter2');
+      expect(stored).not.toContain('483920');
+      expect(tester!.assertRecorded('browser', (content) => content.message === 'Elsewhere').content.page).toBe('[unmatched page]?token=[redacted]');
+      expect(warning.content.page).toBe('/people/7');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it.each([
+    ['a constrained route first', '/u/abc123', '/u/[redacted]'],
+    ['routes that name the secret in different segments', '/s/abc/edit', '/s/[redacted]/edit'],
+    ['a POST route first', '/reset/abc123', '/reset/[redacted]'],
+    ['a literal with non-ASCII characters', '/einladung/%C3%BCber/abc123', '/einladung/%C3%BCber/[redacted]'],
+  ])('browser reports mask the page by every route it could reach: %s', async (_name, page, expected) => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'x', page });
+      await tester!.settled();
+      const shown = tester!.assertRecorded('browser').content.page;
+      expect(shown).toBe(expected);
+      expect(shown).not.toContain('abc');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('masks the value of a query parameter whose name is written percent-encoded — also on a path no route matches', async () => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const publish = channels.event('browser.log');
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'a', page: '/people/7?%74oken=short-secret&page=2' });
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'b', page: '/nowhere?%74oken=short-secret' });
+      await tester!.settled();
+      expect(tester!.assertRecorded('browser', (content) => content.message === 'a').content.page).toBe('/people/7?%74oken=[redacted]&page=2');
+      expect(tester!.assertRecorded('browser', (content) => content.message === 'b').content.page).toBe('[unmatched page]?%74oken=[redacted]');
+      expect(JSON.stringify(tester!.entries('browser'))).not.toContain('short-secret');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('keeps a request\'s batch within the limit across the late writes of browser reports', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const response = await kernel.request('/people/7');
+      const requestId = response.headers.get('x-request-id')!;
+      const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
+      const publish = channels.event('browser.log');
+      for (let round = 0; round < 3; round++) {
+        for (let i = 0; i < 500; i++) publish.publish({ ...messageBase(app), requestId, kind: 'console', level: 'warn', message: `report ${round}-${i}`, page: '/people/7' });
+        await tester!.settled();
+      }
+      expect(tester!.batch(request.batch).length).toBeLessThanOrEqual(MAX_BATCH_ENTRIES);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('records no browser reports when `record` leaves them out — and every other type still', async () => {
+    const config = `import { defineDevtools } from '${pathToFileURL(join(import.meta.dirname, 'index.ts')).href}';\nexport default defineDevtools({ record: ['requests'] });\n`;
+    const { app, kernel } = await boot({ NODE_ENV: 'development' }, { config });
+    try {
+      await kernel.request('/people/3');
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'error', message: 'nope', page: '/' });
+      await app.container.make(Recorder).settled();
+      const store = app.container.make(DevtoolsStore);
+      expect(await store.list({ type: 'browser' })).toEqual([]);
+      expect((await store.list({ type: 'request' })).length).toBeGreaterThan(0);
     } finally {
       await app.shutdown();
     }

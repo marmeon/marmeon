@@ -7,14 +7,14 @@ const MAX_CHILD_STDOUT_BYTES = 16 * 1024 * 1024;
 const DEFAULT_LIMIT = 20;
 
 /** The types of an entry, as `@marmeon/devtools` records them: kept here as literals, so the package is not needed to list the tools. */
-const ENTRY_TYPES = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command'];
+const ENTRY_TYPES = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command', 'browser'];
 
 const NOT_INSTALLED = 'The devtools are not installed: pnpm add -E -D @marmeon/devtools@<version of your app> (docs/devtools.md#introduction)';
 
 /** The entries the devtools recorded, as `marmeon devtools:list --json` prints them, passed on as the command's document. */
 export const DEVTOOLS_ENTRIES_TOOL: McpTool = {
   name: 'devtools_entries',
-  description: `The entries the devtools recorded while the app ran in development, newest first: requests, queries, jobs, mails, notifications, logs, exceptions, schedule runs, live messages, events and commands. They are recorded with secrets masked. Narrow by type first; search reads entry by entry. ${DATA_NOTICE}`,
+  description: `The entries the devtools recorded while the app ran in development, newest first: requests, queries, jobs, mails, notifications, logs, exceptions, schedule runs, live messages, events, commands and browser reports (console errors and warnings, uncaught errors, rejections; kept apart by their level). The list of types can grow. They are recorded with secrets masked. Narrow by type first; search reads entry by entry. ${DATA_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {

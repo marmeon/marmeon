@@ -356,6 +356,12 @@ export class Connections {
     });
   }
 
+  /** @internal — the file of a SQLite connection as the app opens it; `undefined` for an in-memory database and for Postgres. */
+  sqliteFile(name = 'default'): string | undefined {
+    const options = this.options(name);
+    return options.driver === 'sqlite' && options.database !== ':memory:' ? this.#sqlitePath(options.database) : undefined;
+  }
+
   #sqlitePath(database: string): string {
     return database === ':memory:' || isAbsolute(database) ? database : join(this.#root, database);
   }

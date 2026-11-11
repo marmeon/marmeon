@@ -1,0 +1,30 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Limit",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Disabled": false,
+      "Output": [
+        "'pg_terminate_backend(1)'::text",
+        "(length(users.email))"
+      ],
+      "Plans": [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "users",
+          "Schema": "public",
+          "Alias": "users",
+          "Disabled": false,
+          "Output": [
+            "'pg_terminate_backend(1)'::text",
+            "length(users.email)"
+          ]
+        }
+      ]
+    }
+  }
+]

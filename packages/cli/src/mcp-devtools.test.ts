@@ -43,7 +43,10 @@ describe('devtools_entries in an app with the devtools', { timeout: 120_000 }, (
     const mail = recorded(now).find((entry) => entry.type === 'mail')!;
     // One more mail, with a token in its text, that is newer than the rest.
     const secret = { ...mail, id: '000000005aa0000000005', at: now - 1_000, tags: ['Reset'], content: { ...mail.content, text: `Open https://example.com/reset-password/${TOKEN} now` } };
-    await record(app, [...recorded(now), secret]);
+    // A report with a token in its text — a store written past the recorder — and a warning, newer than the rest.
+    const report = { id: '000000006aa0000000006', type: 'browser', at: now - 500, batch: 'batch-6', requestId: null, jobId: null, tags: ['level:error', 'kind:console'], content: { kind: 'console', level: 'error', message: `Failed with Bearer ${TOKEN}`, page: '/' } };
+    const warning = { ...report, id: '000000007aa0000000007', at: now - 400, tags: ['level:warn', 'kind:console'], content: { kind: 'console', level: 'warn', message: 'Each child needs a key', page: '/' } };
+    await record(app, [...recorded(now), secret, report, warning]);
     session = mcpSession(app, mcpEnv({ NODE_ENV: 'development' }));
     await initialize(session);
   });
@@ -72,6 +75,19 @@ describe('devtools_entries in an app with the devtools', { timeout: 120_000 }, (
     expect(page.truncated).toBe(true);
     const rest = (await call(session, { before: page.next })).structuredContent;
     expect(rest.entries.every((entry: { id: string }) => !page.entries.some((seen: { id: string }) => seen.id === entry.id))).toBe(true);
+  });
+
+  it('accepts the type browser and lists the browser reports kept apart by their level', async () => {
+    const result = await call(session, { type: 'browser' });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.entries.map((entry: { type: string; tags: string[] }) => [entry.type, entry.tags])).toEqual([
+      ['browser', ['level:warn', 'kind:console']],
+      ['browser', ['level:error', 'kind:console']],
+    ]);
+    expect(await call(session, { type: ['browser', 'job'] }).then((r) => r.structuredContent.entries.map((entry: { type: string }) => entry.type))).toEqual(['browser', 'browser', 'job']);
+    expect(result.content[0].text).not.toContain(TOKEN);
+    expect(result.content[0].text).toContain('Each child needs a key');
+    expect((await call(session, { type: 'browsers' })).isError).toBe(true);
   });
 
   it('hands over a token in the text of a mail masked, in the document and in its text', async () => {

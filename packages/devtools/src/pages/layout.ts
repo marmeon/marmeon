@@ -18,6 +18,7 @@ export const SLUGS: Readonly<Record<EntryType, string>> = {
   live: 'live',
   event: 'events',
   command: 'commands',
+  browser: 'browser',
 };
 
 export const TITLES: Readonly<Record<EntryType, string>> = {
@@ -32,10 +33,11 @@ export const TITLES: Readonly<Record<EntryType, string>> = {
   live: 'Live',
   event: 'Events',
   command: 'Commands',
+  browser: 'Browser',
 };
 
 /** The entry types in the navigation's order. */
-const NAV_TYPES: readonly EntryType[] = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'event', 'live', 'command'];
+const NAV_TYPES: readonly EntryType[] = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'event', 'live', 'command', 'browser'];
 
 /** A link inside the devtools: `path` under the base, with the query's set values. */
 export function href(path: string, query: Readonly<Record<string, string | undefined>> = {}): string {

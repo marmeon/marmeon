@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "tools": [
+    {
+      "name": "devtools_entries",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["request", "query", "job", "mail", "notification", "log", "exception", "schedule", "live", "event", "command", "browser"]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["request", "query", "job", "mail", "notification", "log", "exception", "schedule", "live", "event", "command", "browser"]
+                },
+                "minItems": 1,
+                "maxItems": 12,
+                "uniqueItems": true
+              }
+            ]
+          },
+          "tag": { "type": "string", "pattern": "^[A-Za-z0-9:._/-]{1,100}$", "minLength": 1, "maxLength": 100 },
+          "requestId": { "type": "string", "pattern": "^[\\w.:-]{1,128}$", "minLength": 1, "maxLength": 128 },
+          "search": { "type": "string", "pattern": "^[^\\r\\n]+$", "minLength": 1, "maxLength": 200 },
+          "before": { "type": "string", "pattern": "^[\\w.:-]{1,128}$", "minLength": 1, "maxLength": 128 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}
