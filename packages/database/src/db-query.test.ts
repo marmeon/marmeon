@@ -1,0 +1,286 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { Readable } from 'node:stream';
+import { CommandArgumentsError, Redactor } from '@marmeon/core';
+import { Output } from 'marmeon';
+import { sql } from 'kysely';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { DbQueryCommand } from './commands/db-query.ts';
+import { Connections } from './connections.ts';
+import { freshDatabase, drivers, silent, type TestDriver } from './__fixtures__/databases.ts';
+import { inspectionConnection } from './migrator-connection.ts';
+import type { Migrator } from './migrations/migrator.ts';
+import type { ProjectedColumn, SchemaProjection } from './schema/projection.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
+
+function fixture(name: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(new URL(`./__fixtures__/formats/cli-db-query/${name}.json`, import.meta.url), 'utf8'));
+}
+
+const column = (name: string, secret = false): ProjectedColumn => ({ name, type: { sqlite: 'text', pgsql: 'text' }, nullable: true, primary: false, identity: false, default: null, secret });
+const projection: SchemaProjection = {
+  migrations: [],
+  tables: new Map([['users', { name: 'users', module: 'app', columns: [column('id'), column('email'), column('password', true)], uniques: [], indexes: [], foreignKeys: [], markers: [] }]]),
+};
+const migrator = { projection: async () => projection } as unknown as Migrator;
+
+const STATEMENTS = [
+  'create table users (id integer primary key, email text, password text)',
+  "insert into users (id, email, password) values (1, 'a@example.test', 'abc'), (2, 'b@example.test', 'xyz')",
+];
+
+interface Setup {
+  connections: Connections;
+  /** Runs DDL or a write on the database of `connection`, outside the command. */
+  exec(statement: string, connection?: string): Promise<void>;
+  count(): Promise<number>;
+  close(): Promise<void>;
+}
+
+async function setup(driver: TestDriver): Promise<Setup> {
+  if (driver === 'sqlite') {
+    const directory = tempDir('marmeon-db-query-');
+    const files = { default: join(directory, 'app.db'), system: join(directory, 'system.db') };
+    const exec = async (statement: string, connection = 'default') => {
+      const db = new DatabaseSync(files[connection as keyof typeof files]);
+      try {
+        db.exec(statement);
+      } finally {
+        db.close();
+      }
+    };
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: files.default }, system: { driver: 'sqlite', database: files.system } }, root: directory, logger: silent });
+    return {
+      connections,
+      exec,
+      count: async () => {
+        const db = new DatabaseSync(files.default, { readOnly: true });
+        try {
+          return (db.prepare('select count(*) as n from users').get() as { n: number }).n;
+        } finally {
+          db.close();
+        }
+      },
+      close: async () => connections.destroy(),
+    };
+  }
+  const [app, system] = await Promise.all([freshDatabase('pgsql'), freshDatabase('pgsql')]);
+  const connections = new Connections({ connections: { default: app.options, system: system.options }, root: '/', logger: silent });
+  return {
+    connections,
+    exec: async (statement, connection = 'default') => void (await sql.raw(statement).execute(inspectionConnection(connections, connection))),
+    count: async () => Number((await sql<{ n: string }>`select count(*) as n from users`.execute(inspectionConnection(connections))).rows[0]!.n),
+    close: async () => {
+      await connections.destroy();
+      await Promise.all([app.drop(), system.drop()]);
+    },
+  };
+}
+
+async function run(connections: Connections, args: string[], options: Record<string, string | boolean> = {}, stdin?: string) {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+  vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
+  if (stdin !== undefined) vi.spyOn(process, 'stdin', 'get').mockReturnValue(Readable.from([Buffer.from(stdin)]) as never);
+  try {
+    const code = await new DbQueryCommand(connections, migrator, new Redactor()).handle({ args, options, output: new Output(), root: '/' } as never);
+    return { code, stdout: stdout.join(''), stderr: stderr.join('') };
+  } finally {
+    vi.restoreAllMocks();
+  }
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
+
+describe.each(drivers)('db:query on %s', (driver) => {
+  let db: Setup;
+  const query = (sqlText: string, options: Record<string, string | boolean> = {}) => run(db.connections, [sqlText], { json: true, ...options });
+
+  beforeAll(async () => {
+    db = await setup(driver);
+    for (const statement of STATEMENTS) await db.exec(statement);
+    await db.exec('create table things (name text)', 'system');
+    await db.exec("insert into things (name) values ('from system')", 'system');
+  });
+  afterAll(async () => db.close());
+
+  it('prints the rows as a table', async () => {
+    const { code, stdout, stderr } = await run(db.connections, ['select id, email from users order by id']);
+    expect(code).toBe(0);
+    expect(stderr).toBe('');
+    expect(stdout).toMatch(/^id\s+email\n1\s+a@example\.test\n2\s+b@example\.test\n\n2 rows\n$/);
+  });
+
+  it('prints one JSON document, matching the stored format', async () => {
+    const { code, stdout, stderr } = await query('select id, email from users order by id');
+    expect(code).toBe(0);
+    expect(stderr).toBe('');
+    const document = JSON.parse(stdout) as Record<string, unknown>;
+    expect(Object.keys(document)).toEqual(['format', 'connection', 'driver', 'columns', 'rows', 'truncated', 'cut', 'warnings']);
+    expect(document).toEqual(fixture(driver === 'sqlite' ? 'v1' : 'v1-pgsql'));
+  });
+
+  it('reads the SQL from standard input', async () => {
+    const { code, stdout } = await run(db.connections, [], { stdin: true, json: true }, 'select email\nfrom users where id = 2\n');
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout).rows).toEqual([['b@example.test']]);
+  });
+
+  it('queries the connection --database names', async () => {
+    const { code, stdout } = await query('select name from things', { database: 'system' });
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ connection: 'system', rows: [['from system']] });
+  });
+
+  it('keeps --limit rows and says there were more', async () => {
+    const { stdout } = await query('select id from users order by id', { limit: '1' });
+    expect(JSON.parse(stdout)).toMatchObject({ rows: [[1]], truncated: true });
+    const text = await run(db.connections, ['select id from users order by id'], { limit: '1' });
+    expect(text.stdout).toContain('1 row, more were left out (--limit=1)');
+  });
+
+  it('refuses a write, prints nothing on stdout and leaves the table as it was', async () => {
+    const { code, stdout, stderr } = await query('delete from users');
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr.length).toBeGreaterThan(0);
+    expect(await db.count()).toBe(2);
+  });
+
+  it.each(['select password from users', 'select * from users', 'select length(password) from users'])('refuses a secret column: %s', async (statement) => {
+    const { code, stdout, stderr } = await query(statement);
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('users.password');
+  });
+
+  it('fails, not throws, for a connection that does not exist', async () => {
+    const { code, stdout, stderr } = await query('select 1', { database: 'nowhere' });
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('nowhere');
+  });
+
+  it('writes the control characters of a cell and of a column name out before they reach the terminal', async () => {
+    const hostile = driver === 'sqlite' ? "char(27) || '[2J' || char(13) || char(10) || 'x'" : "chr(27) || '[2J' || chr(13) || chr(10) || 'x'";
+    // A stand-in for the console that writes what it is given as it is: the escaping must already be done by the command.
+    const table = vi.fn();
+    const output = { table, line: vi.fn(), error: vi.fn(), json: vi.fn() };
+    const code = await new DbQueryCommand(db.connections, migrator, new Redactor()).handle({ args: [`select ${hostile} as c`], options: {}, output, root: '/' } as never);
+    expect(code).toBe(0);
+    const [header, rows] = table.mock.calls[0] as [string[], string[][]];
+    expect(rows[0]![0]).toBe('\\u001b[2J\\u000d\\u000ax');
+    expect([...`${header.join('')}${rows.flat().join('')}`].some((char) => char.charCodeAt(0) < 32)).toBe(false);
+  });
+
+  it('writes the control characters of a column name out as well', async () => {
+    const table = vi.fn();
+    const output = { table, line: vi.fn(), error: vi.fn(), json: vi.fn() };
+    const alias = '"a\u001b[2Jb"';
+    await new DbQueryCommand(db.connections, migrator, new Redactor()).handle({ args: [`select 1 as ${alias}`], options: {}, output, root: '/' } as never);
+    expect((table.mock.calls[0] as [string[]])[0]).toEqual(['a\\u001b[2Jb']);
+  });
+});
+
+describe('db:query refuses a wrong call with exit code 2', () => {
+  let db: Setup;
+  beforeAll(async () => {
+    db = await setup('sqlite');
+    await db.exec(STATEMENTS.join(';'));
+  });
+  afterAll(async () => db.close());
+  const wrong = async (args: string[], options: Record<string, string | boolean> = {}, stdin?: string) => {
+    await expect(run(db.connections, args, options, stdin)).rejects.toBeInstanceOf(CommandArgumentsError);
+  };
+
+  it('needs exactly one of the argument and --stdin', async () => {
+    await wrong(['select 1'], { stdin: true }, 'select 1');
+    await wrong([]);
+    await wrong(['select 1', 'select 2']);
+    await wrong(['   ']);
+  });
+
+  it('reads at most 64 KiB from standard input', async () => {
+    await wrong([], { stdin: true }, `select '${'a'.repeat(64 * 1024)}'`);
+    expect((await run(db.connections, [], { stdin: true, json: true }, `select '${'a'.repeat(60 * 1024)}' as a`)).code).toBe(0);
+  });
+
+  it.each([[true], [''], [['a', 'b']]])('takes --database=%j as a wrong call, not as default', async (value) => {
+    await expect(run(db.connections, ['select 1'], { database: value } as never)).rejects.toBeInstanceOf(CommandArgumentsError);
+  });
+
+  it('refuses --stdin on a terminal instead of waiting for it', async () => {
+    vi.spyOn(process, 'stdin', 'get').mockReturnValue({ isTTY: true } as never);
+    await wrong([], { stdin: true });
+  });
+
+  it.each([['--limit', '0'], ['--limit', '1001'], ['--limit', 'abc'], ['--limit', '1.5'], ['--limit', ''], ['--timeout', '0'], ['--timeout', '61'], ['--timeout', 'x']])('takes %s=%s as a wrong call', async (option, value) => {
+    await wrong(['select 1'], { [option.slice(2)]: value });
+  });
+});
+
+// Only development and test have a development database to look into. Decided positively: a missing or unknown NODE_ENV is no
+// reason to run, and nothing is opened before the decision.
+describe('db:query outside development and test', () => {
+  it.each(['production', 'staging', ''])('refuses with NODE_ENV=%j, before anything is read or opened', async (nodeEnv) => {
+    const touched = vi.fn();
+    const connections = new Proxy({}, { get: (_target, property) => (touched(String(property)), () => ({ driver: 'sqlite' })) }) as unknown as Connections;
+    const projectionRead = vi.fn();
+    vi.stubEnv('NODE_ENV', nodeEnv);
+    const stderr: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
+    const code = await new DbQueryCommand(connections, { projection: projectionRead } as unknown as Migrator, new Redactor()).handle({ args: ['select 1'], options: { json: true }, output: new Output(), root: '/' } as never);
+    expect(code).toBe(1);
+    expect(stderr.join('')).toContain('db:query runs only in development and test');
+    expect(touched).not.toHaveBeenCalled();
+    expect(projectionRead).not.toHaveBeenCalled();
+  });
+
+  it('runs with NODE_ENV=development', async () => {
+    const db = await setup('sqlite');
+    try {
+      for (const statement of STATEMENTS) await db.exec(statement);
+      vi.stubEnv('NODE_ENV', 'development');
+      expect((await run(db.connections, ['select 1'], { json: true })).code).toBe(0);
+    } finally {
+      await db.close();
+    }
+  });
+});
+
+describe('db:query on a connection that is not managed', () => {
+  it('knows no secret column, so every column is readable', async () => {
+    const directory = tempDir('marmeon-db-query-');
+    const file = join(directory, 'open.db');
+    const raw = new DatabaseSync(file);
+    raw.exec(STATEMENTS.join(';'));
+    raw.close();
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file, managed: false } }, root: directory, logger: silent });
+    try {
+      const { code, stdout } = await run(connections, ['select password from users order by id'], { json: true });
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout).rows).toEqual([['abc'], ['xyz']]);
+    } finally {
+      await connections.destroy();
+    }
+  });
+});
+
+describe.runIf(drivers.includes('pgsql' as never))('db:query on Postgres, the limits of a run', () => {
+  it('ends a query that runs past --timeout', async () => {
+    const db = await setup('pgsql');
+    try {
+      const { code, stdout, stderr } = await run(db.connections, ['select count(*) from generate_series(1, 1e10)'], { json: true, timeout: '1' });
+      expect(code).toBe(1);
+      expect(stdout).toBe('');
+      expect(stderr).toMatch(/timeout/i);
+    } finally {
+      await db.close();
+    }
+  });
+});

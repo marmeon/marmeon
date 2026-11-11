@@ -258,6 +258,81 @@ whether the address came from `DB_URL`, from `DB_PASSWORD` or from a connection'
 `pgsql`), `target` (as in the text, without the driver in front), `server`, `tables` (each with `name`, `schema` — `null` for
 SQLite — `columns` and `rows`) and `warnings`.
 
+## Querying a connection
+
+`marmeon db:query` runs one read-only query and prints the rows as a table, or as a document with `--json`:
+
+```sh
+pnpm marmeon db:query "select id, email from users order by id"
+echo "select count(*) from orders" | pnpm marmeon db:query --stdin --json
+pnpm marmeon db:query "select * from things" --database=system --limit=20
+```
+
+Pass the SQL as one argument or, with `--stdin`, on standard input (at most 64 KiB, read to its end) — one of the two, not both.
+`--database` names a connection, `default` without it. `--limit` is the number of rows to keep, 1 to 1000, 100 without it; one
+row more is read to tell whether there were others. `--timeout` is the seconds Postgres may work on the query, 1 to 60, 10 without
+it. A wrong call (both or neither of the SQL and `--stdin`, a value out of range) ends with exit code 2; a query the command
+refuses or the database cannot run ends with exit code 1, the reason on stderr and nothing on stdout.
+
+The command runs only with `NODE_ENV=development` or `NODE_ENV=test`, where there is a development database to look into; with any
+other value, and with none, it ends with exit code 1 before it reads anything. For a running production app,
+[`tinker`](console.md#tinker) is the tool.
+
+It never goes through the app's connection pool. It opens a connection of its own and the database keeps that one read-only:
+SQLite opens the file read-only and refuses everything but a plain `SELECT` through its authorizer; Postgres runs the statement in
+a `READ ONLY` transaction of the `REPEATABLE READ` level, as one statement through the extended protocol, after `EXPLAIN` has shown
+the plan Postgres will run and the plan has been checked. What is refused, as a list of classes:
+
+- every statement that is not one `SELECT`, `WITH … SELECT`, `VALUES` or `TABLE`: writes, schema changes, transaction control,
+  `PRAGMA`, `COPY`, `SET`, locking clauses such as `FOR UPDATE`, a second statement after the first;
+- functions with side effects: on Postgres every volatile function (`nextval`, `set_config`, `pg_terminate_backend`,
+  `pg_advisory_lock`, `pg_notify`, …) and a list of others that read the server's files, settings or other databases
+  (`pg_read_file`, `current_setting`, `dblink`, `lo_*`, `table_to_xml`, `query_to_xml`, …); on SQLite `load_extension` and the
+  tokenizer registration;
+- relations that hold copies of values or credentials: on Postgres `pg_statistic` (and so `pg_stats`), `pg_authid`,
+  `pg_user_mapping`, `pg_subscription`, `pg_largeobject`, `pg_db_role_setting` and `pg_settings`, and the TOAST tables; on SQLite
+  `sqlite_stat*`;
+- the secret columns of the migrations ([`secret()`](migrations.md)), however they are reached: named, through `select *`, in a
+  `WHERE` or a function call, through a subquery, a view, an alias that selects the whole row, a generated column or a full-text
+  index over them. The message names the column, as `users.password`.
+
+Which statements, functions and relations are refused may grow in any release: it is a security boundary, and the command's name,
+options and document stay as they are.
+
+The answer is limited and masked before it leaves the process:
+
+- text cells are masked by the app's [redactor](logging.md#patterns-of-your-own) and cut at 4096 characters (`cut` counts the cells
+  that were); binary cells are written as `[binary N bytes]`; big integers and dates are text;
+- Postgres results are read through a cursor and stop at 4 MiB after the cutting, with `truncated: true`; the first row is always
+  returned. `text`, `varchar`, `json`, `jsonb` and `xml` values are cut on the server, `bytea` becomes its size, and any other value
+  above 64 KiB arrives as `NULL` and counts in `cut`. The server still computes each value in full (`repeat('x', 1e9)`); only
+  `--timeout` bounds that;
+- the text output writes the control characters of a cell or a column name out (`\u001b`), as all console output does.
+
+`--json` prints a [machine-readable document](console.md#machine-readable-output): `format`, `connection`, `driver` (`sqlite` or
+`pgsql`), `columns` (each with `name` and `type`: the declared type on SQLite — `null` for an expression — and the type's name on
+Postgres), `rows` (arrays in the order of `columns`), `truncated` (there were more rows than `--limit`, or the 4 MiB were reached),
+`cut` and `warnings`.
+
+The limits that stay open, on purpose:
+
+- **Functions and views of the database are trusted.** On Postgres a function that is not volatile, a view, an operator and a cast
+  that already exist in the database run as they are: a PL/pgSQL function marked `STABLE` can hide a volatile statement, and a
+  view or function may read what the migrations mark secret on its own. A materialized view over a secret column is refused, but
+  one over a function that reads a secret table is not: `pg_depend` does not know what a function's body reads. A function of the app marked `IMMUTABLE` or
+  `STABLE` function may already run while `EXPLAIN` plans the query, before the check looks at it.
+- **A full-text index over a view**, or over anything but an ordinary table without secret columns, is withheld on SQLite, and an
+  FTS4 table declared with `content=<table>` cannot be read on the read-only connection at all. Generated columns of a table with a
+  secret column, and full-text tables over secrets, count as secret themselves.
+- **Values over 1 MiB** are refused on SQLite: ask for `length()` or `substr()` instead.
+- **A connection set to `managed: false` knows no secret column:** every column is readable, because the secret columns come from the
+  migrations.
+- **`--timeout` bounds Postgres only.** SQLite has no way to interrupt the query: the process limit of whoever runs the command
+  (the shell's `timeout`, the tool that starts it) is the bound.
+- **The connection is the one `.env` names.** When the development `.env` points at a shared or production database, the command
+  reads that database, read-only but readable. Rows are personal data: whatever prints them — a terminal, a log, an agent's
+  transcript — holds them.
+
 ## When a table is missing
 
 A query on a table that does not exist yet fails like any error. In development, the error page names the cause: the migrations
