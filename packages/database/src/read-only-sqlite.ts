@@ -1,6 +1,6 @@
 import { constants, DatabaseSync } from 'node:sqlite';
 import { err, ok, type Result } from '@marmeon/core';
-import { cellOf, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
+import { cellOf, limitProblem, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
 import { fold } from './secret-guard.ts';
 
 // What SQLite lets a query do, by allow-list: whatever the authorizer does not name is denied, so an action a later SQLite adds is
@@ -23,6 +23,8 @@ export function queryReadOnlySqlite(
   options: ReadOnlyQueryOptions,
 ): Result<ReadOnlyQueryResult, ReadOnlyQueryRefusal> {
   if (file === undefined) return err({ kind: 'refused', message: 'An in-memory database belongs to the process that opened it: there is nothing to open read-only.' });
+  const invalid = limitProblem(options.limit);
+  if (invalid) return err({ kind: 'failed', message: invalid });
   const secrets = new Map<string, Set<string>>();
   for (const [table, columns] of options.secrets) secrets.set(fold(table), new Set([...columns].map(fold)));
 
@@ -37,6 +39,9 @@ export function queryReadOnlySqlite(
     db.limits.length = MAX_VALUE_BYTES;
     let shadows: Set<string>;
     try {
+      // One snapshot for the inspection and the query: a migration committed in between cannot leave the checks with an old picture. Before
+      // the authorizer, which would refuse it; the statement of a caller that begins is refused by the authorizer all the same.
+      db.exec('begin');
       shadows = withheldBeyondTheMigrations(db, secrets);
     } catch (error) {
       // Not read rather than read unchecked: a file that is no database, or one another process holds.
@@ -108,6 +113,11 @@ export function queryReadOnlySqlite(
     }
     return ok({ columns: columns.map((column) => ({ name: column.name, type: column.type })), rows, truncated, cut });
   } finally {
+    try {
+      db.exec('rollback');
+    } catch {
+      // No transaction open (the begin failed): nothing to end; closing the connection ends whatever is left.
+    }
     db.close();
   }
 }
@@ -131,9 +141,18 @@ function withheldBeyondTheMigrations(db: DatabaseSync, secrets: Map<string, Set<
   // Text indexes, with the table they index when it is not their own storage (`content='users'`): a MATCH on one asks whether
   // a word is in the text, so an index over a secret column is withheld whole, shadow tables and all.
   const fts = new Map<string, (string | null)[]>();
+  // The only `content=` taken as safe names one of these: an ordinary table. A view (even over harmless columns: its dependencies are not
+  // followed), a missing name or another virtual table is withheld.
+  const ordinary = new Set(
+    (db.prepare("select name from sqlite_master where type = 'table' and sql not like 'create virtual table%'").all() as { name: string }[]).map((row) => fold(row.name)),
+  );
+  // The tables an FTS table keeps its text in are ordinary tables to SQLite, but never a safe `content=`: they hold what an index over a
+  // secret column holds.
   for (const row of virtual) {
     const using = /\busing\s+fts[345]\s*\(/i.exec(row.sql);
-    if (using) fts.set(fold(row.name), contentOf(row.sql.slice(using.index + using[0].length)));
+    if (!using) continue;
+    fts.set(fold(row.name), contentOf(row.sql.slice(using.index + using[0].length)));
+    for (const suffix of FTS_SHADOWS) ordinary.delete(`${fold(row.name)}_${suffix}`);
   }
   const withhold = (table: string) => {
     for (const suffix of FTS_SHADOWS) shadows.add(`${table}_${suffix}`);
@@ -146,8 +165,8 @@ function withheldBeyondTheMigrations(db: DatabaseSync, secrets: Map<string, Set<
   for (const [table, content] of fts) {
     if (secrets.has(table)) withhold(table);
     // Its own columns are the secret ones of another table, under names the migrations do not know: all of it is withheld.
-    // `null`: a `content=` that could not be read — withheld, since it may name a table with secrets.
-    else if (content.some((name) => name === null || secrets.has(name))) {
+    // `null`: a `content=` that could not be read, or one that names no ordinary table: withheld, since it may reach a secret column.
+    else if (content.some((name) => name === null || secrets.has(name) || !ordinary.has(name))) {
       shadows.add(table);
       withhold(table);
     }

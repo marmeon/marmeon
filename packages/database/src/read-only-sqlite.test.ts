@@ -18,6 +18,7 @@ const options: ReadOnlyQueryOptions = {
     ['gen', new Set(['password'])],
     ['notebook', new Set(['secret_note'])],
     ['f4', new Set(['body'])],
+    ['sec5', new Set(['body'])],
   ]),
   redact: (text) => redactor.text(text),
   timeoutMs: 10_000,
@@ -59,6 +60,19 @@ describe('a read-only query on SQLite', () => {
       create virtual table e_double using fts5(password, content="Users", content_rowid=id);
       create virtual table e_bare using fts5(password, content=users, content_rowid=id);
       create virtual table "x content=notes" using fts5(password, content=users, content_rowid=id);
+      create view secret_view as select id, password from users;
+      create view plain_view as select id, email from users;
+      create table plain_docs (id integer primary key, body text);
+      insert into plain_docs (body) values ('findable');
+      create virtual table e_view using fts5(password, content=secret_view, content_rowid=id);
+      create virtual table e_plain_view using fts5(email, content=plain_view, content_rowid=id);
+      create virtual table e_missing using fts5(body, content=nothing_here);
+      create virtual table e_plain using fts5(body, content=plain_docs, content_rowid=id);
+      insert into e_plain (rowid, body) select id, body from plain_docs;
+      create virtual table sec5 using fts5(body);
+      insert into sec5 (body) values ('topsecret');
+      create virtual table viashadow using fts5(c0, content=sec5_content, content_rowid=id);
+      insert into viashadow (viashadow) values ('rebuild');
       create view v as select * from users;
       create table notes (id integer primary key, body text);
       create index notes_body on notes (body);
@@ -165,6 +179,28 @@ describe('a read-only query on SQLite', () => {
     refused(`select rowid from "x content=notes" where "x content=notes" match 'abc'`);
   });
 
+  it.each(['e_view', 'e_plain_view', 'e_missing'])('withholds %s: a content= that is a view or names no table is not followed, even over harmless columns', (name) => {
+    refused(`select rowid from ${name} where ${name} match 'abc'`);
+  });
+
+  it('withholds an index whose content= is a table an FTS index keeps its text in', () => {
+    refused("select rowid from viashadow where viashadow match 'topsecret'");
+  });
+
+  it('reads an index over an ordinary table without secrets', () => {
+    expect(run("select rowid from e_plain where e_plain match 'findable'")).toMatchObject({ ok: true, value: { rows: [[1]] } });
+  });
+
+  it.each([-1, 0, 1.5, Infinity, NaN])('fails for the row limit %s', (limit) => {
+    expect(run('select 1', { limit })).toMatchObject({ ok: false, error: { kind: 'failed' } });
+  });
+
+  it('fails the row limit before it picks a driver', async () => {
+    const connections = new Connections({ connections: { default: { driver: 'pgsql', url: 'postgres://localhost/none' } }, root: directory, logger: silent });
+    expect(await readOnlyQuery(connections, 'default', 'select 1', { ...options, limit: 0 })).toMatchObject({ ok: false, error: { message: expect.stringContaining('row limit') } });
+    await connections.destroy();
+  });
+
   it('withholds an index whose content= it cannot read', () => {
     const odd = join(directory, 'odd.db');
     const writer = new DatabaseSync(odd);
@@ -193,6 +229,30 @@ describe('a read-only query on SQLite', () => {
     writer.close();
     expect(queryReadOnlySqlite(wide, 'select 1', options)).toMatchObject({ ok: true });
     expect(queryReadOnlySqlite(wide, 'select c149 from users', options)).toMatchObject({ ok: true, value: { rows: [[7]] } });
+  });
+
+  it('works on a database with a rollback journal, and always ends its transaction', () => {
+    const journal = join(directory, 'journal.db');
+    const writer = new DatabaseSync(journal);
+    writer.exec('create table users (id integer primary key, password text, email text); insert into users (email) values (\'a\')');
+    const writes = () => {
+      // An open read transaction would hold the shared lock and make this wait out its timeout.
+      const other = new DatabaseSync(journal, { timeout: 100 });
+      try {
+        other.exec('begin exclusive; rollback');
+      } finally {
+        other.close();
+      }
+    };
+    expect(queryReadOnlySqlite(journal, 'select email from users', options)).toMatchObject({ ok: true, value: { rows: [['a']] } });
+    writes();
+    expect(queryReadOnlySqlite(journal, 'select password from users', options)).toMatchObject({ ok: false, error: { kind: 'refused' } });
+    writes();
+    expect(queryReadOnlySqlite(journal, 'select 1; delete from users', options)).toMatchObject({ ok: false, error: { kind: 'refused' } });
+    writes();
+    expect(queryReadOnlySqlite(journal, 'select * from', options)).toMatchObject({ ok: false, error: { kind: 'failed' } });
+    writes();
+    writer.close();
   });
 
   it('fails, and does not throw, for a file that is no database or one that is locked', () => {

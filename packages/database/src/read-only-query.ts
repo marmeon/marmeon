@@ -42,6 +42,8 @@ export async function readOnlyQuery(
   sql: string,
   options: ReadOnlyQueryOptions,
 ): Promise<Result<ReadOnlyQueryResult, ReadOnlyQueryRefusal>> {
+  const invalid = limitProblem(options.limit);
+  if (invalid) return err({ kind: 'failed', message: invalid });
   let driver: string;
   let file: string | undefined;
   try {
@@ -66,4 +68,9 @@ export function cellOf(value: unknown, redact: (text: string) => string, onCut: 
   if (typeof value === 'bigint') return value.toString();
   if (value instanceof Date) return value.toISOString();
   return value;
+}
+
+/** Why a row limit cannot be used (rows are read until it is reached, so it must be a whole number of at least one), if it cannot. */
+export function limitProblem(limit: number): string | undefined {
+  return Number.isSafeInteger(limit) && limit >= 1 ? undefined : `The row limit must be a whole number of at least 1, not ${String(limit)}.`;
 }
