@@ -6,7 +6,7 @@ import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
-import { assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
+import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
 import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
@@ -424,29 +424,43 @@ export class Migrator {
 
   /**
    * @internal — the schema of the migrations that ran, as the record says: what the database holds, where {@link projection} also
-   * holds what a pending migration will change.
+   * holds what a pending migration will change. Throws when that cannot be established — tables and no record, a migration whose file
+   * is gone or changed — because a column the database still holds could be secret.
    */
   async ranProjection(): Promise<SchemaProjection> {
-    const ran = new Set(await this.#ranNames());
-    return projectMigrations(this.files(), { only: ran });
+    const { rows, tables } = await this.#record();
+    const unknown = 'Which columns are secret cannot be established';
+    if (rows.length === 0 && tables.length > 0) throw new Error(`${unknown}: the database has tables but no record of migrations. Run marmeon migrate.`);
+    const files = this.files();
+    const present = new Map(files.map((file) => [file.name, file]));
+    const missing = rows.find((row) => !present.has(row.name));
+    if (missing) throw new Error(`${unknown}: the migration ${printable(missing.name)} ran, and no module has its file any more. Restore the file.`);
+    const [changed] = changedOf(rows, (name) => migrationChecksum(readFileSync(present.get(name)!.path)));
+    if (changed) throw new Error(`${unknown}: the migration ${printable(changed.name)} changed after it ran. Restore the file as it was, or see docs/migrations.md#a-migration-that-changed-after-it-ran.`);
+    return projectMigrations(files, { only: new Set(rows.map((row) => row.name)) });
   }
 
   /**
-   * The names the record holds, read without creating or changing anything: a SQLite file that is not there has no record, and an
-   * existing one is opened read-only (the migrator's own connection would create the file and switch it to WAL).
+   * The record of migrations and the app's tables, read without creating or changing anything: a SQLite file that is not there has
+   * neither, and an existing one is opened read-only (the migrator's own connection would create the file and switch it to WAL).
    */
-  async #ranNames(): Promise<string[]> {
-    if (this.#driver() !== 'sqlite') return (await this.#ran()).map((row) => row.name);
-    const file = this.#connections.sqliteFile('default');
-    if (file === undefined) return (await this.#ran()).map((row) => row.name);
-    if (!existsSync(file)) return [];
+  async #record(): Promise<{ rows: { name: string; module: string; batch: number; checksum: string | null }[]; tables: string[] }> {
+    const file = this.#driver() === 'sqlite' ? this.#connections.sqliteFile('default') : undefined;
+    if (file === undefined) {
+      const columns = await columnsOf(this.#books(), this.#driver());
+      return { rows: await this.#ran(), tables: appTables(columns) };
+    }
+    if (!existsSync(file)) return { rows: [], tables: [] };
     const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
     try {
-      const columns = new Map<string, string[]>();
+      const names = (db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((row) => row.name);
+      const columns = new Map(names.map((name): [string, string[]] => [name, []]));
       const found = db.prepare(`select name from pragma_table_info('${MIGRATIONS_TABLE}')`).all() as { name: string }[];
       if (found.length > 0) columns.set(MIGRATIONS_TABLE, found.map((row) => row.name));
-      if (recordVersion(columns, 'default') === undefined) return [];
-      return (db.prepare(`select name from ${MIGRATIONS_TABLE}`).all() as { name: string }[]).map((row) => row.name);
+      const tables = appTables(columns);
+      if (recordVersion(columns, 'default') === undefined) return { rows: [], tables };
+      const rows = db.prepare(`select * from ${MIGRATIONS_TABLE} order by batch, id`).all() as { name: string; module: string; batch: number; checksum?: string | null }[];
+      return { rows: rows.map((row) => ({ ...row, checksum: row.checksum ?? null })), tables };
     } finally {
       db.close();
     }

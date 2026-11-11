@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -312,6 +312,62 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
     } finally {
       await connections.destroy();
     }
+  });
+
+  // What the database holds cannot be told from files that are not what ran: refused rather than guessed.
+  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>) => {
+    const directory = workspaceTempDir('marmeon-db-query-');
+    const migrations = join(directory, 'migrations');
+    mkdirSync(migrations);
+    const file = join(directory, 'app.db');
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file } }, root: directory, logger: silent });
+    const modules = [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }];
+    const real = () => new Migrator({ modules, root: directory } as unknown as Application, connections);
+    try {
+      writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
+      await prepare(migrations, file);
+      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true }, undefined, real());
+      expect(code).toBe(1);
+      expect(stdout).toBe('');
+      return stderr;
+    } finally {
+      await connections.destroy();
+    }
+  };
+  const migrateFirst = async (migrations: string, file: string) => {
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file } }, root: join(file, '..'), logger: silent });
+    try {
+      await new Migrator({ modules: [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }], root: join(file, '..') } as unknown as Application, connections).migrate();
+    } finally {
+      await connections.destroy();
+    }
+  };
+
+  it('refuses a database that has tables and no record of migrations', async () => {
+    const stderr = await unestablished(async (_migrations, file) => {
+      const raw = new DatabaseSync(file);
+      raw.exec(STATEMENTS.join(';'));
+      raw.close();
+    });
+    expect(stderr).toContain('has tables but no record of migrations');
+  });
+
+  it('refuses a migration that ran and has no file any more, naming it', async () => {
+    const stderr = await unestablished(async (migrations, file) => {
+      await migrateFirst(migrations, file);
+      rmSync(join(migrations, '2026_01_01_000000_create_users_table.ts'));
+    });
+    expect(stderr).toContain('2026_01_01_000000_create_users_table');
+    expect(stderr).toContain('no module has its file any more');
+  });
+
+  it('refuses a migration whose file changed after it ran, naming it', async () => {
+    const stderr = await unestablished(async (migrations, file) => {
+      await migrateFirst(migrations, file);
+      writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), `${create}// edited\n`);
+    });
+    expect(stderr).toContain('2026_01_01_000000_create_users_table');
+    expect(stderr).toContain('changed after it ran');
   });
 
   it('leaves no file behind when the SQLite database is not there', async () => {
