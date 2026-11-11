@@ -3,7 +3,7 @@
 ## Introduction
 
 While you develop, the devtools record what your app does: requests, queries, jobs, mails, notifications, log entries,
-exceptions, scheduled runs, live hints, events and commands. They show it at `/_marmeon/devtools`, and a small bar at the bottom
+exceptions, scheduled runs, live hints, events, commands and, in development, what goes wrong in your pages. They show it at `/_marmeon/devtools`, and a small bar at the bottom
 right of every page shows the requests of that page. Values that look like secrets, such as a password, a token or a link's
 signature, are masked before anything is written.
 
@@ -58,6 +58,11 @@ Each recording is an entry with a type, a time, tags to filter by, and the reque
 | `live` | Each hint: the channel and the props it names. |
 | `event` | Each event with its fields and the listeners it reached. |
 | `command` | Each `marmeon` command with its arguments and exit code. |
+| `browser` | A `console.error`, a `console.warn`, an uncaught error or an unhandled rejection in a page you have open: kind, level, message, stack, where it was raised, the page, and how many reports the dev server's limit held back. |
+
+A `browser` entry comes from the dev server, which publishes what a page reports on the [`browser.log` channel](observability.md#browser-reports); the level (`level:error`, `level:warn`) and the kind (`kind:console`, `kind:error`, `kind:rejection`) are its tags,
+so a warning is kept apart from an error. What a page reports is text any script on its origin can write, so every field is masked like the rest (the page's URL like a request's, with sensitive route parameters and query values replaced), and the pages and
+the terminal show it as text. A report that names the request that served the page joins that request's batch.
 
 A request records the size of each prop, never the values. A redirect shows its target, and the protocol's `409` after a sign-in
 or a new build shows as a full reload, not as an error. Work outside a request, job, scheduled run or command, such as a worker
@@ -112,7 +117,7 @@ export default defineDevtools({
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `record` | everything | What to record: `requests`, `queries`, `jobs`, `mails`, `notifications`, `logs`, `exceptions`, `schedule`, `live`, `events`, `commands`. |
+| `record` | everything | What to record: `requests`, `queries`, `jobs`, `mails`, `notifications`, `logs`, `exceptions`, `schedule`, `live`, `events`, `commands`, `browser`. |
 | `ignore.paths` | the devtools' own pages, Vite's paths | More requests to leave out, with everything of their batch. An exact path, a prefix ending in `*`, or a regular expression. |
 | `ignore.queries` | none | A function that leaves out a statement. |
 | `ignore.commands` | `queue:work`, `schedule:work`, `tinker`, `serve` and the devtools' own | More commands to leave out. |
@@ -174,7 +179,7 @@ pnpm marmeon devtools:list --tag=slow --search=users
 pnpm marmeon devtools:list --before=<next>     # the page after the one before, with the `next` it named
 ```
 
-`--type` takes a comma-separated list of the [entry types](#what-they-record); `--request` narrows the list as the
+`--type` takes a comma-separated list of the [entry types](#what-they-record) (`--type=browser` lists what the pages reported); `--request` narrows the list as the
 [pages](#the-pages) do. `--tag` and `--search` match the masked entry as the command shows it, whereas the pages match the
 stored text: a masked value cannot be found by searching for it. With `--json` the command prints one document for a script
 or a tool, as [the console](console.md#machine-readable-output) describes:
@@ -194,7 +199,7 @@ the id to pass as `--before` for the following call, and `null` when nothing is 
 The command masks every entry again with the app's redactor, by name and by shape, and cuts each
 to 16 KiB, so a store written by a tool that skipped the recorder shows little more than the recorder would. It does not know
 what the recorder knew (the route pattern of a URL, an encrypted payload). A mail entry holds its `html` only when it has no `text`. In the
-table, control characters of recorded text are written out (`\u001b`). With a memory store (`storage: { driver: 'memory' }`)
+table, control characters of recorded text are written out (`\u001b`), so a report from a page cannot move the cursor or send an escape sequence to your terminal even when whatever recorded it did not strip them. With a memory store (`storage: { driver: 'memory' }`)
 `warnings` says that the entries live in the process that recorded them, which this command does not see. What the entries
 hold is data recorded from the app, not instructions.
 
@@ -206,7 +211,7 @@ the queue, and warnings such as a store near its limit. Each type has its list:
 | Path | What it shows |
 | --- | --- |
 | `/_marmeon/devtools/requests` | Requests, newest first. A request's page shows its route, controller, props by size, headers, input, queries, log entries, and what it set off. |
-| `/_marmeon/devtools/queries`, `/jobs`, `/mails`, `/notifications`, `/logs`, `/exceptions`, `/events`, `/live`, `/commands` | The entries of that type. |
+| `/_marmeon/devtools/queries`, `/jobs`, `/mails`, `/notifications`, `/logs`, `/exceptions`, `/events`, `/live`, `/commands`, `/browser` | The entries of that type. |
 | `/_marmeon/devtools/schedule` | The scheduled tasks with their next run, and the latest runs. |
 | `/_marmeon/devtools/queue` | Every queue's waiting, delayed and running jobs, and the failed jobs. |
 | `/_marmeon/devtools/batches/:batch` | Everything one request, job attempt, run or command recorded, in order. |

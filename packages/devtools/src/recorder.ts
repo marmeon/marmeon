@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { currentJob, currentRequest, currentTask, outsideTransaction, type Application, type ErrorSolutions, type Redactor } from '@marmeon/core';
 import {
   channels,
+  type BrowserLogMessage,
   type CommandRunMessage,
   type DbQueryMessage,
   type EventDispatchMessage,
@@ -108,6 +109,7 @@ export class Recorder {
     if (record.has('logs')) this.#off.push(channels.subscribe(app, 'log', (message) => this.#log(message)));
     if (record.has('exceptions')) this.#off.push(channels.subscribe(app, 'exception', (message) => this.#exception(message)));
     if (record.has('events')) this.#off.push(channels.subscribe(app, 'event', (message) => this.#event(message)));
+    if (record.has('browser')) this.#off.push(channels.subscribe(app, 'browser.log', (message) => this.#browser(message)));
     return this;
   }
 
@@ -558,6 +560,39 @@ export class Recorder {
         })
         .catch(() => undefined),
     );
+  }
+
+  /**
+   * A report from a page: raw text of a script on the page, so every field is redacted here. It arrives outside the request
+   * that served the page; with its `requestId` it joins that request's batch (or its late entries), else the background's.
+   */
+  #browser(message: BrowserLogMessage): void {
+    const redactor = this.#redactor;
+    const batch = message.requestId === undefined ? undefined : this.#requestBatch(message.requestId);
+    this.#add(
+      'browser',
+      message,
+      {
+        kind: message.kind,
+        level: message.level,
+        message: redactor.text(message.message),
+        ...(message.stack === undefined ? {} : { stack: redactor.text(message.stack) }),
+        ...(message.source === undefined ? {} : { source: { url: redactor.url(message.source.url), line: message.source.line, column: message.source.column } }),
+        page: redactor.url(message.page),
+        ...(message.dropped === undefined ? {} : { dropped: message.dropped }),
+      },
+      [`level:${message.level}`, `kind:${message.kind}`],
+      batch,
+    );
+  }
+
+  /** The batch of a request by its id: the open one, or its late one after the response. */
+  #requestBatch(requestId: string): Batch | undefined {
+    const open = this.#requests.get(requestId);
+    if (open) return open;
+    const ended = this.#ended.get(requestId);
+    if (ended) return this.#linger(requestId, () => this.#batch({ id: ended.id, requestId, ignored: ended.ignored }));
+    return undefined;
   }
 
   #event(message: EventDispatchMessage): void {

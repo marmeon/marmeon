@@ -29,6 +29,25 @@ function withoutDescriptions(value: unknown): unknown {
   return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'description').map(([key, item]) => [key, withoutDescriptions(item)]));
 }
 
+/**
+ * `listed` with what may grow cut back to `kept`: a list of allowed values (`enum`) that gained values, and the `maxItems` that
+ * follows such a list. Everything else must match, so only a stored value that went missing or changed shows up as a difference.
+ */
+function withoutGrowth(listed: unknown, kept: unknown): unknown {
+  if (Array.isArray(listed) && Array.isArray(kept)) return listed.map((item, index) => withoutGrowth(item, kept[index]));
+  if (listed === null || typeof listed !== 'object' || kept === null || typeof kept !== 'object') return listed;
+  const now = listed as Record<string, unknown>;
+  const was = kept as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries(now).map(([key, value]) => {
+      const before = was[key];
+      if (key === 'enum' && Array.isArray(value) && Array.isArray(before) && before.every((item) => value.includes(item))) return [key, before];
+      if (key === 'maxItems' && typeof value === 'number' && typeof before === 'number' && value >= before) return [key, before];
+      return [key, withoutGrowth(value, before)];
+    }),
+  );
+}
+
 async function call(session: McpSession, name: string, args: Record<string, unknown> = {}): Promise<Record<string, any>> {
   const response = await session.request('tools/call', { name, arguments: args });
   return response.result;
@@ -58,7 +77,7 @@ describe('marmeon mcp', { timeout: 60_000 }, () => {
       expect(await other.close()).toBe(0);
     });
 
-    it('lists the tools of every stored file with the same input schema and annotations (more tools are allowed)', async () => {
+    it('lists the tools of every stored file with the same input schema and annotations (more tools, and more values in a list of types, are allowed)', async () => {
       const { result } = await session.request('tools/list');
       const files = stored('mcp-tools');
       expect(files.length).toBeGreaterThan(0);
@@ -67,7 +86,7 @@ describe('marmeon mcp', { timeout: 60_000 }, () => {
         for (const tool of file.tools) {
           const listed = result.tools.find((candidate: { name: string }) => candidate.name === tool.name);
           expect(listed, `${name}: ${tool.name}`).toBeDefined();
-          expect(withoutDescriptions(listed.inputSchema), `${name}: ${tool.name}`).toEqual(withoutDescriptions(tool.inputSchema));
+          expect(withoutGrowth(withoutDescriptions(listed.inputSchema), tool.inputSchema), `${name}: ${tool.name}`).toEqual(withoutDescriptions(tool.inputSchema));
           expect(listed.annotations, `${name}: ${tool.name}`).toEqual(tool.annotations);
         }
       }

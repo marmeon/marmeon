@@ -485,6 +485,61 @@ describe('what the recorder keeps', () => {
     }
   });
 
+  it('browser reports: masked in every text field, the page URL like a request\'s, tied to the page\'s request by its id', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const response = await kernel.request('/people/7');
+      const requestId = response.headers.get('x-request-id')!;
+      // Joined at run time: a token-shaped literal in the source would trip secret scanners.
+      const token = ['Qm9yZ2VkVG9rZW5Gb3JUZXN0c0Fub3RoZXJPbmVI', 'ZXJl'].join('');
+      const publish = channels.event('browser.log');
+      publish.publish({
+        ...messageBase(app),
+        requestId,
+        kind: 'error',
+        level: 'error',
+        message: `Request failed: Bearer ${token} password=hunter2`,
+        stack: `Error: ${token}\n    at fetch (http://localhost/src/app.tsx:1:1)`,
+        source: { url: `http://localhost/src/app.tsx?token=${token}`, line: 3, column: 4 },
+        page: `/invite/483920?token=${token}`,
+        dropped: 2,
+      });
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Each child needs a key', page: '/people/7' });
+      await tester!.settled();
+      const entry = tester!.assertRecorded('browser', (content) => content.kind === 'error');
+      const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
+      expect(entry.batch).toBe(request.batch);
+      expect(entry.requestId).toBe(requestId);
+      expect(entry.tags).toEqual(['level:error', 'kind:error']);
+      expect(entry.content).toMatchObject({ level: 'error', source: { line: 3, column: 4 }, dropped: 2 });
+      expect(entry.content.page).toBe('/invite/483920?token=[redacted]');
+      // The warning is kept apart by its level, in a batch of its own.
+      const warning = tester!.assertRecorded('browser', (content) => content.kind === 'console');
+      expect(warning.tags).toEqual(['level:warn', 'kind:console']);
+      expect(warning.batch).not.toBe(request.batch);
+      const stored = JSON.stringify(tester!.entries('browser'));
+      expect(stored).not.toContain(token);
+      expect(stored).not.toContain('hunter2');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('records no browser reports when `record` leaves them out — and every other type still', async () => {
+    const config = `import { defineDevtools } from '${pathToFileURL(join(import.meta.dirname, 'index.ts')).href}';\nexport default defineDevtools({ record: ['requests'] });\n`;
+    const { app, kernel } = await boot({ NODE_ENV: 'development' }, { config });
+    try {
+      await kernel.request('/people/3');
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'error', message: 'nope', page: '/' });
+      await app.container.make(Recorder).settled();
+      const store = app.container.make(DevtoolsStore);
+      expect(await store.list({ type: 'browser' })).toEqual([]);
+      expect((await store.list({ type: 'request' })).length).toBeGreaterThan(0);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
   it('keeps a command as one batch — its arguments redacted', async () => {
     const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {

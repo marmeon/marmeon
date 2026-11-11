@@ -11,9 +11,9 @@ export class DevtoolsSetupError extends ConfigError {
 }
 
 /** What the recorder can watch — `record` lists those it does (default: all). */
-export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications' | 'logs' | 'exceptions' | 'schedule' | 'live' | 'events' | 'commands';
+export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications' | 'logs' | 'exceptions' | 'schedule' | 'live' | 'events' | 'commands' | 'browser';
 
-export const WATCHERS: readonly Watcher[] = ['requests', 'queries', 'jobs', 'mails', 'notifications', 'logs', 'exceptions', 'schedule', 'live', 'events', 'commands'];
+export const WATCHERS: readonly Watcher[] = ['requests', 'queries', 'jobs', 'mails', 'notifications', 'logs', 'exceptions', 'schedule', 'live', 'events', 'commands', 'browser'];
 
 /** A request path to leave out: exact (`/up`), a prefix ending in `*` (`/_marmeon/live*`), or a pattern. */
 export type PathPattern = string | RegExp;
