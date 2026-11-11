@@ -665,7 +665,7 @@ const MCP_LIMIT = 60_000;
 /** What the server has to take to end after its stdin closed. */
 const MCP_EXIT = 5_000;
 /** Tools `marmeon mcp` must offer (it may offer more). */
-const MCP_TOOLS = ['app_overview', 'check', 'database', 'devtools_entries', 'docs_read', 'docs_search', 'last_error', 'migrations', 'routes', 'schema'];
+const MCP_TOOLS = ['app_overview', 'check', 'commands', 'database', 'devtools_entries', 'docs_read', 'docs_search', 'last_error', 'migrations', 'routes', 'schema'];
 /**
  * The agent kit the creator installed (`--agents`): `agents:install --check` passes; `marmeon mcp`
  * answers over stdio in development (the SDK loaded only there), and in production it stops with exit 1 and nothing on stdout.
