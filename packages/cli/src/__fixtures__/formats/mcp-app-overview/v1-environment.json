@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "app": { "providers": [] },
+  "modules": [{ "name": "system", "providers": [], "commands": [], "jobs": [], "notifications": [], "seeders": [], "migrations": "modules/system/migrations" }],
+  "events": [
+    { "event": "NoteCreated", "name": "notes.created", "listeners": [{ "listener": "IndexNote", "queued": false, "defined": "module", "module": "system" }] }
+  ],
+  "runtime": { "nodeEnv": "development" },
+  "environment": [
+    { "name": "OVERVIEW_NOTE", "config": "overview", "set": false, "required": false, "hasDefault": false },
+    { "name": "OVERVIEW_PORT", "config": "overview", "set": false, "required": false, "hasDefault": true },
+    { "name": "OVERVIEW_SECRET", "config": "overview", "set": true, "required": true, "hasDefault": false }
+  ],
+  "schedules": null,
+  "warnings": []
+}

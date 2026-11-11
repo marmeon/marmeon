@@ -16,19 +16,22 @@ const call = async (session: McpSession, args: Record<string, unknown>) => (awai
 
 // Assembled at run time: a literal secret in the source would be one for the push protection too.
 const SECRET = ['s3cr', '3t-value-', '41'].join('');
+// A default is no secret, but it is a value all the same: it must not appear either.
+const DEFAULT_PORT = ['d3fa', 'ult-', '7731'].join('');
 
 /** The system module of the app with a listener, a schedule and a key the overview must not know, which holds the secret. */
 function describeModule(app: string, schedule = "s.command('cache:prune').hourly().description('Prunes the cache');"): void {
   const file = join(app, 'modules/system/index.ts');
   const source = readFileSync(file, 'utf8')
     .replace("import { defineModule } from '@marmeon/core';", [
-      "import { defineModule, listen } from '@marmeon/core';",
+      "import { defineConfig, defineModule, env, listen } from '@marmeon/core';",
+      `const Overview = defineConfig('overview', { env: env({ OVERVIEW_SECRET: env.string(), OVERVIEW_PORT: env.string().default(${JSON.stringify(DEFAULT_PORT)}), OVERVIEW_NOTE: env.string().optional() }), resolve: (values) => values });`,
       "import { defineSchedule } from '@marmeon/scheduler';",
       "class NoteCreated { readonly #event = true; static event = 'notes.created'; }",
       'class IndexNote { handle() {} }',
       `const schedule = defineSchedule((s) => { ${schedule} });`,
     ].join('\n'))
-    .replace("name: 'system',", `name: 'system', schedule, listeners: [listen(NoteCreated, IndexNote)], secretish: ${JSON.stringify(SECRET)},`);
+    .replace("name: 'system',", `name: 'system', schedule, config: [Overview], listeners: [listen(NoteCreated, IndexNote)], secretish: ${JSON.stringify(SECRET)},`);
   writeFileSync(file, source);
   appendFileSync(join(app, '.env'), `OVERVIEW_SECRET=${SECRET}\n`);
 }
@@ -43,7 +46,7 @@ describe('app_overview in an app', { timeout: 120_000 }, () => {
     app = mcpApp();
     describeModule(app);
     bootLog = join(realpathSync(tempDir('marmeon-mcp-overview-boots-')), 'boots.log');
-    session = mcpSession(app, mcpEnv({ NODE_ENV: 'development', MCP_BOOT_LOG: bootLog }));
+    session = mcpSession(app, mcpEnv({ NODE_ENV: 'development', MCP_BOOT_LOG: bootLog, OVERVIEW_SECRET: SECRET }));
     await initialize(session);
   });
   afterAll(() => session.close());
@@ -64,8 +67,28 @@ describe('app_overview in an app', { timeout: 120_000 }, () => {
     const before = boots();
     const result = await call(session, { module: 'system' });
     expect(result.structuredContent).toMatchObject(stored('mcp-app-overview/v1-module.json'));
+    expect(result.structuredContent).toMatchObject(stored('mcp-app-overview/v1-environment.json'));
     expect(result.structuredContent.schedules).toBeNull();
     expect(boots()).toBe(before + 1);
+  });
+
+  it('names the runtime of the server process', async () => {
+    const { runtime } = (await call(session, {})).structuredContent;
+    expect(Object.keys(runtime)).toEqual(['node', 'platform', 'arch', 'marmeon', 'nodeEnv']);
+    expect(runtime).toMatchObject({ node: process.version, platform: process.platform, arch: process.arch, nodeEnv: 'development' });
+    expect(runtime.marmeon).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
+  it('names the variables with their state, those of the module only when one is asked for', async () => {
+    const all = (await call(session, {})).structuredContent.environment as Record<string, unknown>[];
+    // The packages of the app bring their own variables; the module's are among them.
+    expect(all.length).toBeGreaterThan(3);
+    expect(all).toContainEqual({ name: 'OVERVIEW_SECRET', config: 'overview', set: true, required: true, hasDefault: false });
+    expect(all).toContainEqual({ name: 'OVERVIEW_PORT', config: 'overview', set: false, required: false, hasDefault: true });
+    expect(all.every((item) => Object.keys(item).join() === 'name,config,set,required,hasDefault')).toBe(true);
+    expect(all.map((item) => item.name)).toEqual([...all.map((item) => item.name)].sort());
+    const own = (await call(session, { module: 'system' })).structuredContent.environment as { name: string }[];
+    expect(own.map((item) => item.name)).toEqual(['OVERVIEW_NOTE', 'OVERVIEW_PORT', 'OVERVIEW_SECRET']);
   });
 
   it('names the modules when the one asked for is unknown', async () => {
@@ -78,6 +101,7 @@ describe('app_overview in an app', { timeout: 120_000 }, () => {
     for (const input of [{}, { module: 'system' }]) {
       const result = await call(session, input);
       expect(JSON.stringify(result)).not.toContain(SECRET);
+      expect(JSON.stringify(result)).not.toContain(DEFAULT_PORT);
       expect(JSON.stringify(result)).not.toContain('secretish');
       expect(Object.keys(result.structuredContent.modules[0]).sort()).toEqual(['commands', 'jobs', 'migrations', 'name', 'notifications', 'providers', 'seeders']);
     }
@@ -153,6 +177,11 @@ describe('app_overview with the child process replaced', () => {
     app: { providers: ['AppProvider'] },
     modules: [{ name: 'a', providers: ['P'], commands: [], jobs: [], notifications: [], seeders: [], migrations: null }, { name: 'b', providers: [], commands: [], jobs: [], notifications: [], seeders: [], migrations: null }],
     events: [{ event: 'E', name: null, listeners: [{ listener: 'La', queued: false, defined: 'module', module: 'a' }, { listener: 'Lb', queued: true, defined: 'module', module: 'b' }, { listener: 'Lx', queued: false, defined: 'app', module: null }] }],
+    environment: [
+      { name: 'A_KEY', config: 'a-config', module: 'a', set: true, required: true, hasDefault: false },
+      { name: 'B_KEY', config: 'b-config', module: 'b', set: false, required: false, hasDefault: true },
+      { name: 'APP_KEY', config: 'app-config', module: null, set: true, required: true, hasDefault: false },
+    ],
     warnings: ['from modules:list'],
     ...extra,
   });
@@ -183,13 +212,16 @@ describe('app_overview with the child process replaced', () => {
       leaks: 'top',
       app: { providers: ['AppProvider'], config: 'leaks' },
       modules: [{ name: 'a', providers: ['P'], commands: [], jobs: [{ class: 'J', job: 'j', secret: 'leaks' }], notifications: [], seeders: [], migrations: null, secretish: 'leaks' }],
+      environment: [{ name: 'N', config: 'c', module: null, set: true, required: false, hasDefault: false, value: 'leaks', default: 'leaks', length: 5 }],
       events: [{ event: 'E', name: null, extra: 'leaks', listeners: [{ listener: 'L', queued: false, defined: 'app', module: null, extra: 'leaks' }] }],
     });
     answer({ document });
     answer({ document: { ...tasks, tasks: [{ ...tasks.tasks[0], does: 'call Payload{"leaks"}', options: { extra: 'leaks' } }] } });
     const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, unknown>;
     expect(JSON.stringify(result)).not.toContain('leaks');
-    expect(Object.keys(result)).toEqual(['format', 'packages', 'app', 'modules', 'events', 'schedules', 'warnings']);
+    expect(Object.keys(result)).toEqual(['format', 'runtime', 'packages', 'app', 'modules', 'events', 'environment', 'schedules', 'warnings']);
+    // The module a variable belongs to only filters; it is not passed on.
+    expect(result.environment).toEqual([{ name: 'N', config: 'c', set: true, required: false, hasDefault: false }]);
     expect(result.schedules).toEqual([{ name: 'n', expression: '* * * * *', timeZone: 'UTC', description: null }]);
   });
 
@@ -200,6 +232,41 @@ describe('app_overview with the child process replaced', () => {
     expect(result.events).toEqual([{ event: 'E', name: null, listeners: [{ listener: 'La', queued: false, defined: 'module', module: 'a' }] }]);
     expect(result.schedules).toBeNull();
     expect(result.warnings).toEqual(['from modules:list']);
+    expect(result.environment).toEqual([{ name: 'A_KEY', config: 'a-config', set: true, required: true, hasDefault: false }]);
+  });
+
+  it('lists every variable, sorted as modules:list gave them, without a module filter', async () => {
+    answer({ document: overview() });
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
+    expect(result.environment.map((item: { name: string }) => item.name)).toEqual(['A_KEY', 'B_KEY', 'APP_KEY']);
+  });
+
+  it('names the runtime of this process', async () => {
+    answer({ document: overview() });
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
+    expect(result.runtime).toEqual({ node: process.version, platform: process.platform, arch: process.arch, marmeon: expect.stringMatching(/^\d+\.\d+\.\d+/), nodeEnv: 'development' });
+  });
+
+  it('gives each warning as its first line, masked and cut to 300 characters', async () => {
+    const password = ['hunter', '2', 'pw'].join('');
+    answer({ document: overview({ warnings: [`config x: password=${password}\nsecond line`, 'y'.repeat(400)] }) });
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as unknown as { warnings: string[] };
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings[0]).not.toContain(password);
+    expect(result.warnings[0]).not.toContain('second line');
+    expect(result.warnings[1]).toHaveLength(300);
+  });
+
+  it('refuses a document whose variables are not what this version reads', async () => {
+    answer({ document: overview({ environment: [{ name: 'X', config: 'c', module: null, set: 'yes', required: true, hasDefault: false }] }) });
+    expect(await APP_OVERVIEW_TOOL.run({}, context())).toEqual({ failure: expect.stringContaining('update marmeon') });
+  });
+
+  it('reads a document that has no environment, as the first version of the format printed it', async () => {
+    answer({ document: overview({ environment: undefined }) });
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
+    expect(result.environment).toEqual([]);
+    expect(result.modules).toHaveLength(2);
   });
 
   it('has no schedules, and does not look for them, without @marmeon/scheduler', async () => {

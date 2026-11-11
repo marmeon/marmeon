@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Application, createApplication, PROVIDER_STATICS, type ApplicationDefinition } from './application.ts';
+import { Application, configDefinitions, createApplication, PROVIDER_STATICS, type ApplicationDefinition } from './application.ts';
 import { Container } from './container.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
+import { ShutdownConfig } from './config/shutdown-config.ts';
 import { Logger } from './logger.ts';
 import { Redactor } from './redact.ts';
 import { coreSolutions } from './core-solutions.ts';
@@ -425,5 +426,18 @@ describe('createApplication(definition, options)', () => {
       expect(() => register([])).toThrow('[marmeon:K9]');
       expect(() => register({})).toThrow('[marmeon:K9]');
     });
+  });
+});
+
+describe('configDefinitions', () => {
+  const definition = (name: string) => defineConfig(name, { env: env({ [name.toUpperCase()]: env.string().optional() }), resolve: (values) => values });
+
+  it('gathers the core\'s, the app\'s, the modules\' and the providers\' definitions once each', () => {
+    const [fromApp, fromModule, fromProvider] = [definition('a'), definition('b'), definition('c')];
+    class Provider {
+      static config = [fromProvider, fromApp];
+    }
+    const all = configDefinitions({ root: '/srv/app', config: [fromApp] }, [defineModule({ name: 'm', ...({ config: [fromModule] } as object) })], [Provider as never]);
+    expect([...all]).toEqual([EnvironmentConfig, ShutdownConfig, fromApp, fromModule, fromProvider]);
   });
 });

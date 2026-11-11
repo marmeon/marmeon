@@ -285,6 +285,25 @@ function quietWhileBooting(container: Container): { end(): void } {
   };
 }
 
+/**
+ * Every configuration definition an app validates: the environment's and the shutdown's, then the app's, its modules' and
+ * every provider's. Not API: `createApplication` and the commands that list the variables share it.
+ * @internal
+ */
+export function configDefinitions(
+  definition: ApplicationDefinition,
+  modules: readonly ModuleDefinition[],
+  providers: readonly ServiceProviderClass[],
+): Set<ConfigDefinition<unknown>> {
+  return new Set<ConfigDefinition<unknown>>([
+    EnvironmentConfig,
+    ShutdownConfig,
+    ...(definition.config ?? []),
+    ...modules.flatMap((module) => module.config ?? []),
+    ...providers.flatMap((Provider) => Provider.config ?? []),
+  ]);
+}
+
 /** The keys of {@link CreateApplicationOptions}: never part of a definition. */
 const BOOT_OPTIONS = ['env', 'phase', 'container', 'override'] as const;
 
@@ -310,13 +329,7 @@ export async function createApplication(definition: ApplicationDefinition, optio
   ];
 
   // Configuration from the app, its modules and every provider (packages bring their own) — and the environment, every app's.
-  const definitions = new Set([
-    EnvironmentConfig,
-    ShutdownConfig,
-    ...(definition.config ?? []),
-    ...modules.flatMap((module) => module.config ?? []),
-    ...providers.flatMap((Provider) => Provider.config ?? []),
-  ]);
+  const definitions = configDefinitions(definition, modules, providers);
   // NODE_ENV resolved once for the process: the environment's, else the app's .env — `marmeon` did it already; a script
   // that boots the app itself gets the same answer here. An app given its own `env` (a test fixture) decides for itself.
   const resolved = options.env ? undefined : resolveEnvironment(definition.root);

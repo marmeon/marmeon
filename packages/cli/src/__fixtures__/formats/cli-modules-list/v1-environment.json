@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "packages": [],
+  "app": { "providers": ["AppProvider"] },
+  "modules": [
+    {
+      "name": "notes",
+      "providers": ["NotesProvider", "SetUpAudit"],
+      "commands": ["notes:prune"],
+      "jobs": [{ "class": "ExportNotes", "job": "notes.export" }],
+      "notifications": [{ "class": "NoteShared", "notification": "notes.shared" }],
+      "seeders": ["NoteSeeder"],
+      "migrations": "modules/notes/migrations"
+    },
+    { "name": "quiet", "providers": ["Quiet"], "commands": [], "jobs": [], "notifications": [], "seeders": [], "migrations": null }
+  ],
+  "events": [
+    {
+      "event": "NoteCreated",
+      "name": "notes.created",
+      "listeners": [
+        { "listener": "IndexNote", "queued": true, "defined": "module", "module": "notes" },
+        { "listener": "TouchStats", "queued": false, "defined": "module", "module": "notes" }
+      ]
+    },
+    {
+      "event": "NoteDeleted",
+      "name": null,
+      "listeners": [
+        { "listener": "TouchStats", "queued": false, "defined": "app", "module": null },
+        { "listener": "AuditAll", "queued": false, "defined": "provider", "module": null }
+      ]
+    }
+  ],
+  "environment": [
+    { "name": "APP_ENV", "config": "environment", "module": null, "set": false, "required": false, "hasDefault": false },
+    { "name": "APP_SHUTDOWN_TIMEOUT_SECONDS", "config": "shutdown", "module": null, "set": false, "required": false, "hasDefault": true },
+    { "name": "NODE_ENV", "config": "environment", "module": null, "set": true, "required": false, "hasDefault": false }
+  ],
+  "warnings": []
+}
