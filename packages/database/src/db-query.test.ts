@@ -442,7 +442,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_drop_password.ts'), alter("table.dropColumn('password');"));
       writeFileSync(join(migrations, '2026_01_03_000000_add_password.ts'), alter("table.string('password').nullable();"));
-    });
+    }, {}, 'select password from users', 3);
     expect(stderr).toContain('users.password');
     expect(stderr).toContain('No migration describes it');
   });
