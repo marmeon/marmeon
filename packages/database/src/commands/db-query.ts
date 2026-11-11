@@ -63,7 +63,7 @@ export class DbQueryCommand {
     try {
       const connection = this.#connections.options(name);
       driver = connection.driver;
-      secrets = connection.managed === false ? new Map() : await this.#secrets(connection.driver);
+      secrets = connection.managed === false ? new Map() : await this.#secrets(name, connection.driver);
     } catch (error) {
       output.error(this.#redactor.text(error instanceof Error ? error.message : String(error)));
       return 1;
@@ -93,9 +93,9 @@ export class DbQueryCommand {
    * The secret columns of the migrations, by table: the same ones the app's own queries are held to. Those of the migrations that ran
    * count too: a pending migration that renames or drops a secret column has not changed the database yet, which still holds it.
    */
-  async #secrets(driver: 'sqlite' | 'pgsql'): Promise<Map<string, Set<string>>> {
+  async #secrets(name: string, driver: 'sqlite' | 'pgsql'): Promise<Map<string, Set<string>>> {
     const secrets = new Map<string, Set<string>>();
-    for (const projection of [await this.#migrator.readProjection(), await this.#migrator.ranProjection()]) {
+    for (const projection of [await this.#migrator.readProjection(), await this.#migrator.ranProjection(name)]) {
       for (const { table, column } of factsOf(projection, driver).secretColumns) {
         let columns = secrets.get(table);
         if (!columns) secrets.set(table, (columns = new Set()));

@@ -427,17 +427,34 @@ export class Migrator {
    * holds what a pending migration will change. Throws when that cannot be established — tables and no record, a migration whose file
    * is gone or changed — because a column the database still holds could be secret.
    */
-  async ranProjection(): Promise<SchemaProjection> {
-    const { rows, tables } = await this.#record();
+  async ranProjection(connection = 'default'): Promise<SchemaProjection> {
+    const { rows, tables: ofDefault } = await this.#record();
+    // The record is `default`'s; the connection that is queried may hold tables of its own.
+    const tables = connection === 'default' ? ofDefault : [...ofDefault, ...(await this.#tablesOf(connection))];
     const unknown = 'Which columns are secret cannot be established';
     if (rows.length === 0 && tables.length > 0) throw new Error(`${unknown}: the database has tables but no record of migrations. Run marmeon migrate.`);
     const files = this.files();
     const present = new Map(files.map((file) => [file.name, file]));
     const missing = rows.find((row) => !present.has(row.name));
     if (missing) throw new Error(`${unknown}: the migration ${printable(missing.name)} ran, and no module has its file any more. Restore the file.`);
+    const unchecked = rows.find((row) => row.checksum === null);
+    if (unchecked) throw new Error(`${unknown}: the migration ${printable(unchecked.name)} has no recorded checksum (a record from Marmeon 0.3), so a change of its file cannot be seen. See docs/migrations.md#how-the-migrator-keeps-track.`);
     const [changed] = changedOf(rows, (name) => migrationChecksum(readFileSync(present.get(name)!.path)));
     if (changed) throw new Error(`${unknown}: the migration ${printable(changed.name)} changed after it ran. Restore the file as it was, or see docs/migrations.md#a-migration-that-changed-after-it-ran.`);
     return projectMigrations(files, { only: new Set(rows.map((row) => row.name)) });
+  }
+
+  /** A connection's app tables, read without creating or changing anything. */
+  async #tablesOf(connection: string): Promise<string[]> {
+    const file = this.#driver(connection) === 'sqlite' ? this.#connections.sqliteFile(connection) : undefined;
+    if (file === undefined) return appTables(await columnsOf(this.#books(connection), this.#driver(connection)));
+    if (!existsSync(file)) return [];
+    const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
+    try {
+      return appTables(new Map((db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((row): [string, string[]] => [row.name, []])));
+    } finally {
+      db.close();
+    }
   }
 
   /**

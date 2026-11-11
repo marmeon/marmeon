@@ -315,18 +315,18 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
   });
 
   // What the database holds cannot be told from files that are not what ran: refused rather than guessed.
-  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>) => {
+  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}) => {
     const directory = workspaceTempDir('marmeon-db-query-');
     const migrations = join(directory, 'migrations');
     mkdirSync(migrations);
     const file = join(directory, 'app.db');
-    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file } }, root: directory, logger: silent });
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file }, other: { driver: 'sqlite', database: join(directory, 'other.db') } }, root: directory, logger: silent });
     const modules = [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }];
     const real = () => new Migrator({ modules, root: directory } as unknown as Application, connections);
     try {
       writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
       await prepare(migrations, file);
-      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true }, undefined, real());
+      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true, ...options }, undefined, real());
       expect(code).toBe(1);
       expect(stdout).toBe('');
       return stderr;
@@ -368,6 +368,30 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
     });
     expect(stderr).toContain('2026_01_01_000000_create_users_table');
     expect(stderr).toContain('changed after it ran');
+  });
+
+  it('refuses a migration whose recorded checksum is missing, as an older record leaves it', async () => {
+    const stderr = await unestablished(async (migrations, file) => {
+      await migrateFirst(migrations, file);
+      const raw = new DatabaseSync(file);
+      raw.exec('update migrations set checksum = null');
+      raw.close();
+      writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create.replace('.secret()', ''));
+    });
+    expect(stderr).toContain('2026_01_01_000000_create_users_table');
+    expect(stderr).toContain('no recorded checksum');
+  });
+
+  it('refuses a connection that has tables while the record, on default, is not there', async () => {
+    const stderr = await unestablished(
+      async (_migrations, file) => {
+        const raw = new DatabaseSync(join(file, '..', 'other.db'));
+        raw.exec(STATEMENTS.join(';'));
+        raw.close();
+      },
+      { database: 'other' },
+    );
+    expect(stderr).toContain('has tables but no record of migrations');
   });
 
   it('leaves no file behind when the SQLite database is not there', async () => {
