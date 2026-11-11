@@ -1,5 +1,7 @@
 import { err, type Result } from '@marmeon/core';
+import type { ConnectionOptions } from './config.ts';
 import type { Connections } from './connections.ts';
+import { queryReadOnlyPgsql } from './read-only-pgsql.ts';
 import { queryReadOnlySqlite } from './read-only-sqlite.ts';
 
 /** How one read-only query is run and what of its result is kept. */
@@ -44,16 +46,15 @@ export async function readOnlyQuery(
 ): Promise<Result<ReadOnlyQueryResult, ReadOnlyQueryRefusal>> {
   const invalid = limitProblem(options.limit);
   if (invalid) return err({ kind: 'failed', message: invalid });
-  let driver: string;
+  let connection: ConnectionOptions;
   let file: string | undefined;
   try {
-    driver = connections.options(name).driver;
+    connection = connections.options(name);
     file = connections.sqliteFile(name);
   } catch (error) {
     return err({ kind: 'failed', message: error instanceof Error ? error.message : String(error) });
   }
-  if (driver === 'sqlite') return queryReadOnlySqlite(file, sql, options);
-  return err({ kind: 'failed', message: `Read-only queries on ${driver} are not supported yet.` });
+  return connection.driver === 'sqlite' ? queryReadOnlySqlite(file, sql, options) : queryReadOnlyPgsql(connection.url, sql, options);
 }
 
 /** A cell as JSON can carry it: text masked and cut, bytes by their size, big integers and dates as text. */

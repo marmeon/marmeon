@@ -352,8 +352,11 @@ describe('a read-only query on SQLite', () => {
       const memory = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: directory, logger: silent });
       expect(await readOnlyQuery(memory, 'default', 'select 1', options)).toMatchObject({ ok: false, error: { kind: 'refused' } });
       await memory.destroy();
-      const pgsql = new Connections({ connections: { default: { driver: 'pgsql', url: 'postgres://localhost/none' } }, root: directory, logger: silent });
-      expect(await readOnlyQuery(pgsql, 'default', 'select 1', options)).toMatchObject({ ok: false, error: { kind: 'failed' } });
+      // Port 1 answers nobody: the Postgres driver is picked, and it fails to connect without a word about the host.
+      const pgsql = new Connections({ connections: { default: { driver: 'pgsql', url: 'postgres://user:pw@127.0.0.1:1/none' } }, root: directory, logger: silent });
+      const result = await readOnlyQuery(pgsql, 'default', 'select 1', options);
+      expect(result).toMatchObject({ ok: false, error: { kind: 'failed' } });
+      expect(JSON.stringify(result)).not.toContain('127.0.0.1');
       await pgsql.destroy();
     });
   });

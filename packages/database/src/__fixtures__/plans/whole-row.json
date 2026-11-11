@@ -1,0 +1,28 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Limit",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Disabled": false,
+      "Output": [
+        "(to_jsonb(u.*))"
+      ],
+      "Plans": [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "users",
+          "Schema": "public",
+          "Alias": "u",
+          "Disabled": false,
+          "Output": [
+            "to_jsonb(u.*)"
+          ]
+        }
+      ]
+    }
+  }
+]

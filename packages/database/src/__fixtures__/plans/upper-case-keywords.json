@@ -1,0 +1,45 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Limit",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Disabled": false,
+      "Output": [
+        "(COALESCE(users.email, 'none'::text))",
+        "((EXTRACT(year FROM now()))::integer)",
+        "(count(*) OVER w1)"
+      ],
+      "Plans": [
+        {
+          "Node Type": "WindowAgg",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Disabled": false,
+          "Output": [
+            "COALESCE(users.email, 'none'::text)",
+            "(EXTRACT(year FROM now()))::integer",
+            "count(*) OVER w1"
+          ],
+          "Window": "w1 AS ()",
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Relation Name": "users",
+              "Schema": "public",
+              "Alias": "users",
+              "Disabled": false,
+              "Output": [
+                "users.email"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
