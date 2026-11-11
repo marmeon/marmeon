@@ -53,7 +53,7 @@ describe('startServer', () => {
     await app.shutdown();
   });
 
-  it('publishes what a page sends on the HMR WebSocket as browser.log, checked — and nothing a malformed or flooding page sends', async () => {
+  it('publishes what a page sends on the HMR WebSocket as browser.log, checked — and nothing a malformed report sends', async () => {
     const app = await createApplication({
       root,
       discover: false,
@@ -72,12 +72,11 @@ describe('startServer', () => {
       const send = (data: unknown) => hmr.send(JSON.stringify({ type: 'custom', event: BROWSER_LOG_EVENT, data }));
       send({ kind: 'console', level: 'warn', message: 'Deprecated', page: '/', extra: 'x' });
       send({ kind: 'nope', level: 'warn', message: 'Bad', page: '/' });
-      for (let i = 0; i < 100; i++) send({ kind: 'error', level: 'error', message: `flood ${i}`, page: '/' });
-      // The burst is 50 and the malformed report used one of them: about 49 come through (a loaded machine refills a few), not 100.
-      for (let waited = 0; seen.length < 49 && waited < 5000; waited += 20) await new Promise((resolve) => setTimeout(resolve, 20));
+      send({ kind: 'error', level: 'error', message: 'second', page: '/' });
+      // Exact rate counts are in browser-log.test.ts (own clock); here the WebSocket delivers, and the malformed report is refused.
+      for (let waited = 0; seen.length < 2 && waited < 5000; waited += 20) await new Promise((resolve) => setTimeout(resolve, 20));
       await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(seen.length).toBeGreaterThanOrEqual(49);
-      expect(seen.length).toBeLessThan(55);
+      expect(seen.length).toBeGreaterThanOrEqual(2);
       expect(seen[0]).toMatchObject({ app, kind: 'console', level: 'warn', message: 'Deprecated', page: '/' });
       expect(seen[0]).not.toHaveProperty('extra');
       expect(seen.some((message) => message.message === 'Bad')).toBe(false);

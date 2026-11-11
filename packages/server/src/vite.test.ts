@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { Redactor } from '@marmeon/core';
+import { createApplication, Redactor } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
 import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
 import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { createServer } from 'node:http';
@@ -52,6 +53,38 @@ async function start(root: string) {
 }
 
 describe('createViteDevRenderer', () => {
+  it('keeps publishing browser reports after Vite restarts in-process (a changed .env, vite.restart())', async () => {
+    const application = await createApplication({ root: import.meta.dirname, discover: false, providers: [] }, { env: { NODE_ENV: 'test' } });
+    const heard: string[] = [];
+    const off = channels.subscribe(application, 'browser.log', (message) => void heard.push(message.message));
+    const httpServer = createServer();
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const { vite } = await createViteDevRenderer({ root: app(), httpServer, app: application });
+    const report = async (message: string) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${(httpServer.address() as AddressInfo).port}/`, 'vite-hmr');
+      try {
+        await new Promise((resolve, reject) => {
+          socket.onopen = resolve;
+          socket.onerror = reject;
+        });
+        socket.send(JSON.stringify({ type: 'custom', event: BROWSER_LOG_EVENT, data: { kind: 'console', level: 'error', message, page: '/' } }));
+        for (let waited = 0; !heard.includes(message) && waited < 5000; waited += 20) await new Promise((resolve) => setTimeout(resolve, 20));
+      } finally {
+        socket.close();
+      }
+    };
+    try {
+      await report('before');
+      await vite.restart();
+      await report('after');
+      expect(heard).toEqual(['before', 'after']);
+    } finally {
+      off();
+      await vite.close();
+      httpServer.close();
+    }
+  }, 120_000);
+
   it('publishes no browser reports without an app to name, however a page sends them', async () => {
     const httpServer = createServer();
     await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));

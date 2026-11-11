@@ -64,6 +64,14 @@ describe('acceptBrowserLog', () => {
   });
 });
 
+describe('BrowserReport', () => {
+  it('has no `dropped`: the limiter says it, not the page', () => {
+    const report = acceptBrowserLog(valid)!;
+    // @ts-expect-error `dropped` belongs to the server
+    expect(report.dropped).toBeUndefined();
+  });
+});
+
 describe('BrowserLogLimiter', () => {
   it('lets a burst of 50 through, holds the rest back, and the next report after a refill carries the count', () => {
     const limiter = new BrowserLogLimiter();
@@ -73,8 +81,19 @@ describe('BrowserLogLimiter', () => {
     expect(limiter.take(1000)).toBeUndefined();
     // 10 a second: 100 ms is one report.
     expect(limiter.take(1100)).toEqual({ dropped: 151 });
+    limiter.reported();
     expect(limiter.take(1100)).toBeUndefined();
     expect(limiter.take(1200)).toEqual({ dropped: 1 });
+  });
+
+  it('keeps the count until a report carried it', () => {
+    const limiter = new BrowserLogLimiter();
+    for (let i = 0; i < 53; i++) limiter.take(0);
+    expect(limiter.take(100)).toEqual({ dropped: 3 });
+    // Not reported (malformed, or nobody listens): the next one still says 3.
+    expect(limiter.take(200)).toEqual({ dropped: 3 });
+    limiter.reported();
+    expect(limiter.take(300)).toEqual({ dropped: 0 });
   });
 
   it('refills at most to the burst', () => {
@@ -98,8 +117,10 @@ describe('listenForBrowserLogs', () => {
     const seen: BrowserLogMessage[] = [];
     const off = channels.subscribe(app, 'browser.log', (message) => void seen.push(message));
     const { hot, listeners } = fakeHot();
-    listenForBrowserLogs(app, hot);
-    return { app, seen, send: (data: unknown, client: object) => listeners.get(BROWSER_LOG_EVENT)!(data, client), off, listeners };
+    // The limiters' clock is the test's: time passes only when it says so.
+    const clock = { now: 1000 };
+    listenForBrowserLogs(app, hot, () => clock.now);
+    return { app, seen, clock, send: (data: unknown, client: object) => listeners.get(BROWSER_LOG_EVENT)!(data, client), off, listeners };
   }
 
   it('publishes a checked report on browser.log, for the app', async () => {
@@ -122,12 +143,12 @@ describe('listenForBrowserLogs', () => {
   });
 
   it('holds 200 reports in one tick to 50, and the next one after the refill says how many it missed', async () => {
-    const { seen, send, off } = await setup();
+    const { seen, clock, send, off } = await setup();
     const client = {};
     for (let i = 0; i < 200; i++) send({ ...valid, message: `n${i}` }, client);
     expect(seen).toHaveLength(50);
     expect(seen.every((message) => message.dropped === undefined)).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    clock.now += 100;
     send({ ...valid, message: 'after' }, client);
     off();
     expect(seen).toHaveLength(51);
@@ -143,6 +164,18 @@ describe('listenForBrowserLogs', () => {
     expect(seen).toHaveLength(100);
   });
 
+  it('does not lose the missed count when the report that could have carried it is malformed', async () => {
+    const { seen, clock, send, off } = await setup();
+    const client = {};
+    for (let i = 0; i < 53; i++) send(valid, client);
+    clock.now += 100;
+    send({ ...valid, kind: 'nope' }, client);
+    clock.now += 100;
+    send({ ...valid, message: 'next' }, client);
+    off();
+    expect(seen.at(-1)).toMatchObject({ message: 'next', dropped: 3 });
+  });
+
   it('holds all clients together to 200 at once — more sockets are not more budget', async () => {
     const { seen, send, off } = await setup();
     for (let client = 0; client < 10; client++) for (let i = 0; i < 50; i++) send(valid, {});
@@ -151,12 +184,12 @@ describe('listenForBrowserLogs', () => {
   });
 
   it('tells the client whose reports the shared budget held back, once it can send again', async () => {
-    const { seen, send, off } = await setup();
+    const { seen, clock, send, off } = await setup();
     for (let client = 0; client < 5; client++) for (let i = 0; i < 50; i++) send(valid, {});
     const late = {};
     send(valid, late);
     expect(seen).toHaveLength(200);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    clock.now += 100;
     send({ ...valid, message: 'later' }, late);
     off();
     expect(seen.at(-1)).toMatchObject({ message: 'later', dropped: 1 });

@@ -9,7 +9,7 @@ import { channels } from '@marmeon/core/diagnostics';
 import { messageBase, withCode } from '@marmeon/core/internal';
 import type { SsrRender } from '@marmeon/http';
 import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
-import type { ResolvedConfig, ViteDevServer } from 'vite';
+import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
 import { acceptBrowserLog, BrowserLogLimiter, SHARED_BUDGET } from './browser-log.ts';
 import { withDevBody } from './dev-document.ts';
 import { devStyleTags, entryStylesheets } from './dev-styles.ts';
@@ -118,6 +118,8 @@ export async function createViteDevRenderer({ root, ssrEntry, app, httpServer, d
       // file first, which `node --watch` sees disappear and answers with a restart.
       configLoader: 'native',
       appType: 'custom',
+      // The page's reports come in on the HMR WebSocket (from any script on the app's origin), so only where it runs (`marmeon dev`).
+      ...(httpServer && app ? { plugins: [browserLogPlugin(app)] } : {}),
       // No CORS: Vite's default answers any page on localhost (any port) with `Access-Control-Allow-Origin` — on the app's answers
       // too (the devtools' API, mail previews, the error page). The app and its modules share one origin; nothing needs it.
       server: { middlewareMode: true, cors: false, ...(httpServer ? { hmr: { server: httpServer } } : { hmr: false, ws: false }) },
@@ -146,9 +148,6 @@ export async function createViteDevRenderer({ root, ssrEntry, app, httpServer, d
     await vite.close();
     throw new Error('The Vite SSR environment is not runnable in this process.');
   }
-
-  // Only where HMR runs (`marmeon dev`): the page's reports come in on its WebSocket, from any script on the app's origin.
-  if (httpServer && app && vite.environments.client) listenForBrowserLogs(app, vite.environments.client.hot);
 
   const loadRender = async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render;
   const imports = new WeakMap<object, readonly string[]>();
@@ -183,23 +182,44 @@ export async function createViteDevRenderer({ root, ssrEntry, app, httpServer, d
 
 const browserLog = channels.event('browser.log');
 
-/** Publishes what a page reports on the HMR channel as `browser.log` — checked, and limited per connected client. */
-export function listenForBrowserLogs(app: Application, hot: { on(event: string, listener: (data: unknown, client: object) => void): void }): void {
+/** What {@link listenForBrowserLogs} listens on: Vite's HMR channel of the client environment. */
+export interface BrowserLogHot {
+  on(event: string, listener: (data: unknown, client: object) => void): void;
+}
+
+/**
+ * Publishes what a page reports on the HMR channel as `browser.log` — checked, and limited per HMR connection and across all of
+ * them. `clock` is the limiters' time in ms (tests set it).
+ */
+export function listenForBrowserLogs(app: Application, hot: BrowserLogHot, clock: () => number = () => performance.now()): void {
   const limiters = new WeakMap<object, BrowserLogLimiter>();
-  // Around every client's own budget: many sockets of one origin do not add up to many budgets.
+  // Around every connection's own budget: many sockets of one origin do not add up to many budgets.
   const shared = new BrowserLogLimiter(SHARED_BUDGET);
   hot.on(BROWSER_LOG_EVENT, (data, client) => {
     let limiter = limiters.get(client);
     if (!limiter) limiters.set(client, (limiter = new BrowserLogLimiter()));
-    const allowed = limiter.take();
+    const now = clock();
+    const allowed = limiter.take(now);
     if (!allowed) return;
-    if (!shared.take()) {
-      limiter.hold(allowed.dropped + 1);
+    if (!shared.take(now)) {
+      limiter.hold(1);
       return;
     }
     if (!browserLog.hasSubscribers) return;
     const report = acceptBrowserLog(data);
     if (!report) return;
     browserLog.publish({ ...messageBase(app), ...report, ...(allowed.dropped > 0 ? { dropped: allowed.dropped } : {}) });
+    limiter.reported();
   });
+}
+
+/** Registers the listener on every Vite server this config starts — Vite restarts in-process (`vite.restart()`, a changed `.env`) with a new HMR channel. */
+function browserLogPlugin(app: Application): Plugin {
+  return {
+    name: 'marmeon:browser-log',
+    configureServer(server) {
+      const hot = server.environments.client?.hot;
+      if (hot) listenForBrowserLogs(app, hot);
+    },
+  };
 }

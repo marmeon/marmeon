@@ -345,17 +345,20 @@ describe('browser reports in production', () => {
     const seen: BrowserLogMessage[] = [];
     const off = channels.subscribe(app, 'browser.log', (message) => void seen.push(message));
     const running = await startServer({ app, port: 0, mode: 'production' });
+    let socket: WebSocket | undefined;
     try {
       expect(running.server.listenerCount('upgrade')).toBe(0);
-      const socket = new WebSocket(`ws://127.0.0.1:${running.port}/`, 'vite-hmr');
+      socket = new WebSocket(`ws://127.0.0.1:${running.port}/`, 'vite-hmr');
+      const opening = socket;
       const opened = await new Promise<boolean>((resolve) => {
-        socket.onopen = () => resolve(true);
-        socket.onerror = () => resolve(false);
-        socket.onclose = () => resolve(false);
+        opening.onopen = () => resolve(true);
+        opening.onerror = () => resolve(false);
+        opening.onclose = () => resolve(false);
       });
       expect(opened).toBe(false);
       expect(seen).toEqual([]);
     } finally {
+      socket?.close();
       off();
       await running.close();
       await app.shutdown();

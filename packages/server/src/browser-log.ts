@@ -1,7 +1,7 @@
 import type { BrowserLogMessage, MessageBase } from '@marmeon/core/diagnostics';
 
 /** What a page may report, checked: a {@link BrowserLogMessage} without the fields the server adds. */
-export type BrowserReport = Omit<BrowserLogMessage, keyof MessageBase> & { readonly requestId?: string };
+export type BrowserReport = Omit<BrowserLogMessage, keyof MessageBase | 'dropped'> & { readonly requestId?: string };
 
 const KINDS: ReadonlySet<unknown> = new Set(['console', 'error', 'rejection']);
 const LEVELS: ReadonlySet<unknown> = new Set(['error', 'warn']);
@@ -61,7 +61,7 @@ export function acceptBrowserLog(data: unknown): BrowserReport | undefined {
   };
 }
 
-/** Reports one page may send at once, and how many it gets back per second; the budget of all pages together is four times that and five times the refill. */
+/** Reports one HMR connection may send at once, and how many it gets back per second; the budget of all connections together is four times that and five times the refill. */
 export const CLIENT_BUDGET = { burst: 50, perSecond: 10 };
 export const SHARED_BUDGET = { burst: 200, perSecond: 50 };
 
@@ -82,7 +82,10 @@ export class BrowserLogLimiter {
   #last: number | undefined;
   #held = 0;
 
-  /** `undefined`: hold this report back. Otherwise let it through, with how many were held back before it (0: none). */
+  /**
+   * `undefined`: hold this report back. Otherwise let it through, with how many were held back before it (0: none). The count
+   * stays until {@link reported} says a report carried it.
+   */
   take(now: number = performance.now()): { dropped: number } | undefined {
     if (this.#last !== undefined) this.#tokens = Math.min(this.#burst, this.#tokens + (Math.max(0, now - this.#last) / 1000) * this.#perSecond);
     this.#last = now;
@@ -91,9 +94,12 @@ export class BrowserLogLimiter {
       return undefined;
     }
     this.#tokens -= 1;
-    const dropped = this.#held;
+    return { dropped: this.#held };
+  }
+
+  /** A report that came through {@link take} was published with the count: start counting again. */
+  reported(): void {
     this.#held = 0;
-    return { dropped };
   }
 
   /** Counts reports another limiter held back after this one let them through. */
