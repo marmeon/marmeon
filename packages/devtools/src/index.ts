@@ -5,6 +5,7 @@ export { defineDevtools, DevtoolsConfig, DevtoolsSetupError } from './config.ts'
 export type { DevtoolsDefinition, DevtoolsOptions, PathPattern, Watcher } from './config.ts';
 export type {
   AnyEntry,
+  BrowserEntryContent,
   CommandEntryContent,
   Entry,
   EntryContents,

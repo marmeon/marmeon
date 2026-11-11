@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { Writable } from 'node:stream';
 import { Redactor } from '@marmeon/core';
 import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server';
 import { serveStdio, StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { packageVersion } from './package-version.ts';
 import { SerialQueue } from './queue.ts';
 import { DATA_NOTICE, failure, toResult } from './result.ts';
 import { TOOLS, type McpTool } from './tools.ts';
@@ -62,10 +62,4 @@ async function call(tool: McpTool, queue: SerialQueue, { input, root, signal }: 
   } catch (error) {
     return failure(`The tool ${tool.name} failed: ${new Redactor().text(error instanceof Error ? error.message : String(error))}`);
   }
-}
-
-/** The version of the `marmeon` package, from its manifest (next to `src/` and `dist/`). */
-function packageVersion(): string {
-  const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: unknown };
-  return typeof manifest.version === 'string' ? manifest.version : '0.0.0';
 }

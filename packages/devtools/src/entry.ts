@@ -38,12 +38,13 @@ export interface EntryContents {
   live: LiveEntryContent;
   event: EventEntryContent;
   command: CommandEntryContent;
+  browser: BrowserEntryContent;
 }
 
 /** The kinds of entry the devtools record. */
 export type EntryType = keyof EntryContents;
 
-export const ENTRY_TYPES: readonly EntryType[] = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command'];
+export const ENTRY_TYPES: readonly EntryType[] = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command', 'browser'];
 
 /** A failure, as shown: never the error object itself. */
 export interface ErrorDetails {
@@ -256,6 +257,24 @@ export interface CommandEntryContent {
   readonly exitCode?: number;
   readonly durationMs?: number;
   readonly error?: ErrorDetails;
+}
+
+/**
+ * What a `browser` entry holds: something that went wrong in a page of the app (`console.error`, `console.warn`, an uncaught
+ * error, an unhandled rejection), as the dev server passed it on — text a script on the page wrote, so redacted and shown as data.
+ * See docs/devtools.md#what-they-record.
+ */
+export interface BrowserEntryContent {
+  readonly kind: 'console' | 'error' | 'rejection';
+  readonly level: 'error' | 'warn';
+  readonly message: string;
+  readonly stack?: string;
+  /** Where an uncaught error was raised. */
+  readonly source?: { readonly url: string; readonly line: number; readonly column: number };
+  /** The page's path and query, sensitive route parameters and query values replaced; `[unmatched page]` and the query when no route matches the path. */
+  readonly page: string;
+  /** Reports the dev server's rate limit held back before this one. */
+  readonly dropped?: number;
 }
 
 /**

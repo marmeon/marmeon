@@ -3,7 +3,7 @@
  * frames and the context of a request, job or task. Not API, can change in any release — an app imports from `@marmeon/core`.
  * @internal
  */
-export { CLUSTER_WORKER } from './application.ts';
+export { CLUSTER_WORKER, configDefinitions } from './application.ts';
 export { messageBase, publishEnded, trace } from './channels.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export { PAGES_GLOB, PAGE_TESTS_GLOB } from './pages.ts';

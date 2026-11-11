@@ -1184,6 +1184,7 @@ export async function startServer({
     const { vite, renderer } = await createViteDevRenderer({
       root,
       ssrEntry,
+      app,
       httpServer: server,
       styles: true,
       // Bound only with NODE_ENV=development: a Vite dev server elsewhere adds nothing.
