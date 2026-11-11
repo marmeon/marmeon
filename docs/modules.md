@@ -229,7 +229,7 @@ yours. It reads only the fields it prints. A configuration value, a default, a v
     }
   ],
   "environment": [
-    { "name": "NOTES_API_KEY", "config": "notes", "module": "notes", "set": true, "required": true, "hasDefault": false }
+    { "name": "NOTES_API_KEY", "config": "notes", "modules": ["notes"], "set": true, "required": true, "hasDefault": false }
   ],
   "warnings": []
 }
@@ -248,7 +248,7 @@ yours. It reads only the fields it prints. A configuration value, a default, a v
 - A class without a name is `(anonymous)`, a `static job`, `static notification` or `static event` that is no string is `null`,
   and no string from your code is longer than 200 characters.
 
-- `environment` has an entry per variable of every configuration the app validates (the framework's, the app's, its modules' and its providers'), sorted by `name`. `config` is the name of the configuration, `module` the module whose `config` lists it, else `null`. `set` is `true` when the variable is in the environment or in `.env` and is not empty. `required` is `true` for a variable without a default that must be set, `hasDefault` for one that has a default; a variable that is neither is optional. The value, and the value of a default, is never read into the document. A configuration whose `env` is not made by `env({ … })` has its own schema: its variables are not listed, and `config <name> validates its environment with its own schema; its variables are not listed` is in `warnings`. The text output does not list them.
+- `environment` has an entry per variable of every configuration the app validates (the framework's, the app's, its modules' and its providers'), sorted by `name`. `config` is the name of the configuration, `modules` the names of the modules whose `config` lists it (several when they share the definition), empty for the app's, a provider's and the framework's. `set` is `true` when the variable is in the environment or in `.env` and is not empty. `required` is `true` for a variable without a default that must be set, `hasDefault` for one that has a default; a variable that is neither is optional. The value, and the value of a default, is never read into the document. A configuration whose `env` is not made by `env({ … })` has its own schema: its variables are not listed, and `config <name> validates its environment with its own schema; its variables are not listed` is in `warnings`. The text output does not list them.
 
 A listener a provider adds in `boot()` is not in the list, because nothing boots.
 

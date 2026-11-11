@@ -40,7 +40,8 @@ interface ListenerEntry {
 interface EnvironmentEntry {
   readonly name: string;
   readonly config: string;
-  readonly module: string | null;
+  /** The modules whose `config` lists the definition, in module order; empty for the app's, a provider's and the framework's. */
+  readonly modules: string[];
   readonly set: boolean;
   readonly required: boolean;
   readonly hasDefault: boolean;
@@ -139,9 +140,13 @@ export class ModulesListCommand {
    * environment — `.env` included — and what a missing one means from the variable's own reader; no value is kept.
    */
   #environment(root: string, warnings: string[]): EnvironmentEntry[] {
-    const owners = new Map<ConfigDefinition<unknown>, string>();
+    const owners = new Map<ConfigDefinition<unknown>, string[]>();
     for (const module of this.#app.modules) {
-      for (const definition of module.config ?? []) if (!owners.has(definition)) owners.set(definition, text(module.name) ?? '');
+      for (const definition of module.config ?? []) {
+        const names = owners.get(definition) ?? [];
+        if (!names.includes(text(module.name) ?? '')) names.push(text(module.name) ?? '');
+        owners.set(definition, names);
+      }
     }
     const values = loadEnv(root);
     const entries: EnvironmentEntry[] = [];
@@ -166,7 +171,7 @@ export class ModulesListCommand {
           continue;
         }
         const value = Object.hasOwn(values, name) ? values[name] : undefined;
-        entries.push({ name: text(name) ?? '', config, module: owners.get(definition) ?? null, set: value !== undefined && value !== '', required, hasDefault });
+        entries.push({ name: text(name) ?? '', config, modules: owners.get(definition) ?? [], set: value !== undefined && value !== '', required, hasDefault });
       }
     }
     return entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.config < b.config ? -1 : a.config > b.config ? 1 : 0));

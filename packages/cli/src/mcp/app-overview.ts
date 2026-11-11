@@ -84,10 +84,10 @@ function boolean(value: unknown): boolean {
   return value;
 }
 
-/** A variable: its name and state. `module` says whose configuration it is and only filters; nothing else is read. */
-function variable(value: unknown): Variable & { module: string | null } {
+/** A variable: its name and state. `modules` says whose configuration it is and only filters; nothing else is read. */
+function variable(value: unknown): Variable & { modules: string[] } {
   const raw = record(value);
-  return { name: string(raw.name), config: string(raw.config), module: nullable(raw.module), set: boolean(raw.set), required: boolean(raw.required), hasDefault: boolean(raw.hasDefault) };
+  return { name: string(raw.name), config: string(raw.config), modules: strings(raw.modules), set: boolean(raw.set), required: boolean(raw.required), hasDefault: boolean(raw.hasDefault) };
 }
 
 function event(value: unknown): Event {
@@ -141,7 +141,7 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
   let app: { providers: string[] };
   let modules: Module[];
   let events: Event[];
-  let environment: (Variable & { module: string | null })[];
+  let environment: (Variable & { modules: string[] })[];
   const warnings: string[] = [];
   try {
     const document = record(run.document);
@@ -168,7 +168,7 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
     events = events
       .map((item) => ({ ...item, listeners: item.listeners.filter((entry) => entry.defined === 'module' && entry.module === only) }))
       .filter((item) => item.listeners.length > 0);
-    environment = environment.filter((item) => item.module === only);
+    environment = environment.filter((item) => item.modules.includes(only));
   }
 
   let schedules: { name: string; expression: string; timeZone: string; description: string | null }[] | null = null;

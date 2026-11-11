@@ -178,9 +178,9 @@ describe('app_overview with the child process replaced', () => {
     modules: [{ name: 'a', providers: ['P'], commands: [], jobs: [], notifications: [], seeders: [], migrations: null }, { name: 'b', providers: [], commands: [], jobs: [], notifications: [], seeders: [], migrations: null }],
     events: [{ event: 'E', name: null, listeners: [{ listener: 'La', queued: false, defined: 'module', module: 'a' }, { listener: 'Lb', queued: true, defined: 'module', module: 'b' }, { listener: 'Lx', queued: false, defined: 'app', module: null }] }],
     environment: [
-      { name: 'A_KEY', config: 'a-config', module: 'a', set: true, required: true, hasDefault: false },
-      { name: 'B_KEY', config: 'b-config', module: 'b', set: false, required: false, hasDefault: true },
-      { name: 'APP_KEY', config: 'app-config', module: null, set: true, required: true, hasDefault: false },
+      { name: 'A_KEY', config: 'a-config', modules: ['a'], set: true, required: true, hasDefault: false },
+      { name: 'B_KEY', config: 'b-config', modules: ['b'], set: false, required: false, hasDefault: true },
+      { name: 'APP_KEY', config: 'app-config', modules: [], set: true, required: true, hasDefault: false },
     ],
     warnings: ['from modules:list'],
     ...extra,
@@ -212,7 +212,7 @@ describe('app_overview with the child process replaced', () => {
       leaks: 'top',
       app: { providers: ['AppProvider'], config: 'leaks' },
       modules: [{ name: 'a', providers: ['P'], commands: [], jobs: [{ class: 'J', job: 'j', secret: 'leaks' }], notifications: [], seeders: [], migrations: null, secretish: 'leaks' }],
-      environment: [{ name: 'N', config: 'c', module: null, set: true, required: false, hasDefault: false, value: 'leaks', default: 'leaks', length: 5 }],
+      environment: [{ name: 'N', config: 'c', modules: [], set: true, required: false, hasDefault: false, value: 'leaks', default: 'leaks', length: 5 }],
       events: [{ event: 'E', name: null, extra: 'leaks', listeners: [{ listener: 'L', queued: false, defined: 'app', module: null, extra: 'leaks' }] }],
     });
     answer({ document });
@@ -233,6 +233,15 @@ describe('app_overview with the child process replaced', () => {
     expect(result.schedules).toBeNull();
     expect(result.warnings).toEqual(['from modules:list']);
     expect(result.environment).toEqual([{ name: 'A_KEY', config: 'a-config', set: true, required: true, hasDefault: false }]);
+  });
+
+  it('keeps the variables of a configuration that two modules share, for each of them', async () => {
+    const shared = { name: 'S_KEY', config: 'shared', modules: ['a', 'b'], set: false, required: true, hasDefault: false };
+    for (const module of ['a', 'b']) {
+      answer({ document: overview({ environment: [shared] }) });
+      const result = (await APP_OVERVIEW_TOOL.run({ module }, context())) as Record<string, any>;
+      expect(result.environment).toEqual([{ name: 'S_KEY', config: 'shared', set: false, required: true, hasDefault: false }]);
+    }
   });
 
   it('lists every variable, sorted as modules:list gave them, without a module filter', async () => {
@@ -258,7 +267,7 @@ describe('app_overview with the child process replaced', () => {
   });
 
   it('refuses a document whose variables are not what this version reads', async () => {
-    answer({ document: overview({ environment: [{ name: 'X', config: 'c', module: null, set: 'yes', required: true, hasDefault: false }] }) });
+    answer({ document: overview({ environment: [{ name: 'X', config: 'c', modules: [], set: 'yes', required: true, hasDefault: false }] }) });
     expect(await APP_OVERVIEW_TOOL.run({}, context())).toEqual({ failure: expect.stringContaining('update marmeon') });
   });
 

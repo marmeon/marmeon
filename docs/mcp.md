@@ -218,7 +218,7 @@ none, and, when `@marmeon/scheduler` is installed, `marmeon schedule:list --json
 
 | Input | |
 | --- | --- |
-| `module` | Only this module, by its exact name: 1 to 200 characters, no line break, not starting with `-`. The events keep only the listeners the module declares in `defineModule({ listeners })`; listeners of the app and of providers, the module's own provider included, are left out. `environment` keeps only the variables of the definitions in the module's own `config`. `schedules` is `null`, and the app starts once. |
+| `module` | Only this module, by its exact name: 1 to 200 characters, no line break, not starting with `-`. The events keep only the listeners the module declares in `defineModule({ listeners })`; listeners of the app and of providers, the module's own provider included, are left out. `environment` keeps only the variables of the definitions in the module's own `config`, also when another module lists the same definition. `schedules` is `null`, and the app starts once. |
 
 The commands and their arguments are fixed; the filter applies to their documents, so no input ever reaches a command line. The tool copies the fields it knows into its answer and nothing else, so
 a configuration value, a `.env` value, a default or a key a module carries for its own use is not in it. Of an environment variable it says the name and the state, never the value: whether it is set, whether it is required and whether it has a default, and nothing derived from a value, not even its length.

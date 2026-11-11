@@ -33,9 +33,9 @@
     }
   ],
   "environment": [
-    { "name": "APP_ENV", "config": "environment", "module": null, "set": false, "required": false, "hasDefault": false },
-    { "name": "APP_SHUTDOWN_TIMEOUT_SECONDS", "config": "shutdown", "module": null, "set": false, "required": false, "hasDefault": true },
-    { "name": "NODE_ENV", "config": "environment", "module": null, "set": true, "required": false, "hasDefault": false }
+    { "name": "APP_ENV", "config": "environment", "modules": [], "set": false, "required": false, "hasDefault": false },
+    { "name": "APP_SHUTDOWN_TIMEOUT_SECONDS", "config": "shutdown", "modules": [], "set": false, "required": false, "hasDefault": true },
+    { "name": "NODE_ENV", "config": "environment", "modules": [], "set": true, "required": false, "hasDefault": false }
   ],
   "warnings": []
 }

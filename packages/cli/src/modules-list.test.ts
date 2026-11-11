@@ -2,7 +2,7 @@ import { cpSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, createApplication, defineConfig, defineModule, env as e, EventRegistry, listen, type ModuleDefinition } from '@marmeon/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { marmeon, repo } from './__fixtures__/cli.js';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { ModulesListCommand } from './commands/modules-list.ts';
@@ -190,6 +190,10 @@ describe('modules:list environment', () => {
     command.handle({ args: [], options: { json: true }, output: new Output(), root: appRoot } as never);
     return JSON.parse(lines.join('')) as { environment: Record<string, unknown>[]; warnings: string[] };
   };
+  // The tests count on these being absent, whatever the shell that runs them exports.
+  beforeEach(() => {
+    for (const name of ['MAIL_TOKEN', 'MAIL_FROM', 'MAIL_REPLY', 'BILLING_KEY']) vi.stubEnv(name, undefined);
+  });
   const custom = { name: 'owned', env: { '~standard': { version: 1, vendor: 'other', validate: (value: unknown) => ({ value }) } }, resolve: () => ({}) };
 
   it('names each variable with its state, sorted, and the core\'s own', async () => {
@@ -197,14 +201,19 @@ describe('modules:list environment', () => {
     const { environment, warnings } = await environmentOf({ modules: [defineModule({ name: 'mailer', ...({ config: [Mail] } as object) })], ...({ config: [Billing] } as object) });
     const mine = environment.filter((entry) => ['MAIL_TOKEN', 'MAIL_FROM', 'MAIL_REPLY', 'BILLING_KEY'].includes(entry.name as string));
     expect(mine).toEqual([
-      { name: 'BILLING_KEY', config: 'billing', module: null, set: false, required: true, hasDefault: false },
-      { name: 'MAIL_FROM', config: 'mail', module: 'mailer', set: false, required: false, hasDefault: true },
-      { name: 'MAIL_REPLY', config: 'mail', module: 'mailer', set: false, required: false, hasDefault: false },
-      { name: 'MAIL_TOKEN', config: 'mail', module: 'mailer', set: true, required: true, hasDefault: false },
+      { name: 'BILLING_KEY', config: 'billing', modules: [], set: false, required: true, hasDefault: false },
+      { name: 'MAIL_FROM', config: 'mail', modules: ['mailer'], set: false, required: false, hasDefault: true },
+      { name: 'MAIL_REPLY', config: 'mail', modules: ['mailer'], set: false, required: false, hasDefault: false },
+      { name: 'MAIL_TOKEN', config: 'mail', modules: ['mailer'], set: true, required: true, hasDefault: false },
     ]);
     expect(environment.map((entry) => entry.name)).toEqual(environment.map((entry) => entry.name).sort());
     expect(environment.some((entry) => entry.name === 'NODE_ENV')).toBe(true);
     expect(warnings).toEqual([]);
+  });
+
+  it('lists a configuration shared by two modules under both', async () => {
+    const { environment } = await environmentOf({ modules: [defineModule({ name: 'one', ...({ config: [Mail] } as object) }), defineModule({ name: 'two', ...({ config: [Mail] } as object) })] });
+    expect(environment.find((entry) => entry.name === 'MAIL_TOKEN')?.modules).toEqual(['one', 'two']);
   });
 
   it('counts an empty variable as not set, and reads the app\'s .env', async () => {
@@ -227,7 +236,7 @@ describe('modules:list environment', () => {
     const out = lines.join('');
     for (const needle of [canary, fallback, String(canary.length)]) expect(out).not.toContain(needle);
     const entry = (JSON.parse(out) as { environment: Record<string, unknown>[] }).environment.find((item) => item.name === 'MAIL_FROM')!;
-    expect(Object.keys(entry)).toEqual(['name', 'config', 'module', 'set', 'required', 'hasDefault']);
+    expect(Object.keys(entry)).toEqual(['name', 'config', 'modules', 'set', 'required', 'hasDefault']);
     expect(entry).toMatchObject({ set: true, hasDefault: true });
     // The text output says nothing of the variables.
     lines.length = 0;
@@ -334,7 +343,7 @@ describe('marmeon modules:list in an app', { timeout: 60_000 }, () => {
     const result = marmeon(app, ['modules:list', '--json'], { MAIL_SECRET: `${secret}-process` });
     expect(result.stdout).not.toContain(secret);
     const document = JSON.parse(result.stdout) as { environment: Record<string, unknown>[] };
-    expect(document.environment).toContainEqual({ name: 'MAIL_SECRET', config: 'hidden', module: 'system', set: true, required: true, hasDefault: false });
+    expect(document.environment).toContainEqual({ name: 'MAIL_SECRET', config: 'hidden', modules: ['system'], set: true, required: true, hasDefault: false });
   });
 
   it('is in marmeon list', () => {
