@@ -88,6 +88,30 @@ const DENIED_RELATIONS = new Set([
 // Words the deparsed text puts before `(` that are not functions: type names with a modifier, `varchar(20)` as `character varying(20)`.
 const TYPE_WORDS = new Set(['varying', 'character', 'char', 'bit', 'time', 'timestamp', 'interval', 'numeric', 'decimal', 'float', 'second', 'minute', 'hour', 'day', 'month', 'year']);
 
+// The same names as the list above, as they can be found in the text of a query. A function on that list may never reach the planner, which
+// evaluates stable functions while it estimates: an error that depends on a secret it computed would answer a question per query. Matching
+// the text over-refuses (a name in a string literal), which is the side to err on.
+const DENIED_TEXT =
+  /_to_xml|ts_stat|current_setting|pg_settings|pg_show_all_(?:file_)?settings|pg_hba_file_rules|pg_ident_file_mappings|pg_config|pg_stat_get_(?:backend_)?activity|dblink|\blo_|\blo(?:read|write)\b|pg_read_|pg_ls_|pg_stat_file|crosstab|connectby|xpath_table|ts_rewrite|get_raw_page|page_header|page_checksum|fsm_page_contents|(?:heap|bt|hash|gin|gist|brin|tuple)_[a-z_]*(?:page|items|tuple)|pg_stat_statements|txid_current|pg_current_xact_id/;
+
+/**
+ * The message that says why a query may not even be explained, or `undefined`: it names a function that is never allowed, or spells an
+ * identifier with Unicode escapes (`U&"\0063urrent_setting"`), the one way to write a name without its letters.
+ */
+export function refusedBeforePlanning(sql: string): string | undefined {
+  const text = sql.toLowerCase();
+  if (text.includes('u&"')) return 'Identifiers written with Unicode escapes cannot be checked.';
+  const found = DENIED_TEXT.exec(text);
+  if (!found) return undefined;
+  // The whole word around the match, so that the message names the function.
+  let start = found.index;
+  let end = found.index + found[0].length;
+  while (start > 0 && /[a-z0-9_]/.test(text[start - 1]!)) start--;
+  while (end < text.length && /[a-z0-9_]/.test(text[end]!)) end++;
+  const word = text.slice(start, end);
+  return `${word}() is not available here.`;
+}
+
 const IDENT = String.raw`"(?:[^"]|"")+"|[\p{Ll}\p{Lo}_][\p{Ll}\p{Lo}\p{N}_$]*`;
 // Postgres writes unquoted identifiers in lower case, so the upper-case grammar words (`COALESCE(`, `ROW(`, `ANY (`, `EXTRACT(`,
 // `OVER (`) are never names. It writes a call without a space before its `(`.

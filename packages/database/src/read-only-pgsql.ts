@@ -1,7 +1,7 @@
 import type { Client, FieldDef } from 'pg';
 import { err, ok, type Result } from '@marmeon/core';
 import { fold } from './secret-guard.ts';
-import { calledNames, checkPlan, readPlan, type FunctionFact, type PlanFacts } from './pg-plan-guard.ts';
+import { calledNames, checkPlan, readPlan, refusedBeforePlanning, type FunctionFact, type PlanFacts } from './pg-plan-guard.ts';
 import { importPg, postgresConnection } from './postgres.ts';
 import { cellOf, limitProblem, MAX_CELL_LENGTH, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
 
@@ -27,6 +27,9 @@ export async function queryReadOnlyPgsql(url: string, sql: string, options: Read
   const invalid = limitProblem(options.limit);
   if (invalid) return err({ kind: 'failed', message: invalid });
   if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1) return err({ kind: 'failed', message: 'The time limit must be a whole number of milliseconds of at least 1.' });
+
+  const before = refusedBeforePlanning(sql);
+  if (before) return err({ kind: 'refused', message: before });
 
   let pg;
   try {
@@ -58,10 +61,12 @@ export async function queryReadOnlyPgsql(url: string, sql: string, options: Read
     // Not the driver's message: it names the host and the account.
     return err({ kind: 'failed', message: `Could not connect to the database${typeof code === 'string' ? ` (${code})` : ''}.` });
   }
+  // Until the query is declared, an error comes from checking it: the planner evaluates what it can while it explains.
+  const phase = { inspecting: true };
   try {
-    return await run(client, sql, options);
+    return await run(client, sql, options, phase);
   } catch (error) {
-    return err(refusalOf(error, options));
+    return err(refusalOf(error, sql, options, phase.inspecting));
   } finally {
     try {
       await client.query('ROLLBACK');
@@ -76,7 +81,7 @@ export async function queryReadOnlyPgsql(url: string, sql: string, options: Read
   }
 }
 
-async function run(client: Client, sql: string, options: ReadOnlyQueryOptions): Promise<Result<ReadOnlyQueryResult, ReadOnlyQueryRefusal>> {
+async function run(client: Client, sql: string, options: ReadOnlyQueryOptions, phase: { inspecting: boolean }): Promise<Result<ReadOnlyQueryResult, ReadOnlyQueryRefusal>> {
   // One snapshot for the inspection and the query. The limits are settings of this transaction, over whatever the URL asked for.
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   await client.query("SET LOCAL lock_timeout = '1s'");
@@ -108,6 +113,7 @@ async function run(client: Client, sql: string, options: ReadOnlyQueryOptions): 
   const projected = projection(fields);
   const text = projected ? `SELECT ${projected.sql} FROM (${query}) AS marmeon_cut(${fields.map((_, index) => `c${index}`).join(', ')})` : query;
   // Fetched in batches from a cursor, so that what the client holds is bounded by what it keeps, not by what the query could return.
+  phase.inspecting = false;
   await remaining();
   await client.query({ text: `DECLARE marmeon_rows NO SCROLL CURSOR FOR ${text}`, values: [options.limit + 1] });
   const rows: unknown[][] = [];
@@ -284,14 +290,35 @@ function deep(value: unknown, redact: (text: string) => string, onCut: () => voi
   return cellOf(value, redact, onCut);
 }
 
-/** Postgres's own errors, by what they say about the statement: the read-only transaction, the wrapper and a limit reached. */
-function refusalOf(error: unknown, options: ReadOnlyQueryOptions): ReadOnlyQueryRefusal {
+// While a query is only being checked, Postgres's text is passed on only for errors that quote the query's own names and types
+// (class 42: syntax, undefined table or column, type mismatch), the read-only transaction (25006), an unsupported construct (0A000),
+// and the limits (57014, 55P03). Any other error may quote a value the planner evaluated, a setting for one, before the check ran.
+const INSPECTION_CODES = /^(42|0A000$|25006$|57014$|55P03$)/;
+
+/**
+ * Postgres's own errors, by what they say about the statement: the read-only transaction, the wrapper and a limit reached. Once the
+ * query runs (`inspecting` is false) a data error stays as it is: it quotes what the query read, which the checks allowed.
+ */
+function refusalOf(error: unknown, sql: string, options: ReadOnlyQueryOptions, inspecting: boolean): ReadOnlyQueryRefusal {
   const { code } = (error ?? {}) as { code?: unknown };
+  if (inspecting && !(typeof code === 'string' && INSPECTION_CODES.test(code) && quotesOnlyTheQuery(messageOf(error), sql))) return { kind: 'refused', message: 'The query could not be checked.' };
   const message = options.redact(messageOf(error));
   // Read-only transaction; a statement that is not a query where a query goes (syntax, `WITH` with a write below the top).
   if (code === '25006' || code === '42601' || code === '0A000') return { kind: 'refused', message: `${message}. ${SHAPE}` };
   if (code === '57014') return { kind: 'failed', message: `The query took longer than ${options.timeoutMs} ms and was stopped (${message}).` };
   return { kind: 'failed', message };
+}
+
+/**
+ * The message names nothing but what the query says: every `"…"` in it and every word after a `: ` occurs in the query. A cast of a value the
+ * planner computed (`'…'::regclass`) puts that value into the message, and then it does not.
+ */
+function quotesOnlyTheQuery(message: string, sql: string): boolean {
+  const text = sql.toLowerCase();
+  const quoted = [...message.matchAll(/"([^"]*)"/g)].map((found) => found[1] ?? '');
+  const colon = message.indexOf(': ');
+  const after = colon === -1 ? [] : (message.slice(colon + 2).toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
+  return quoted.every((fragment) => text.includes(fragment.toLowerCase())) && after.every((word) => text.includes(word));
 }
 
 function messageOf(error: unknown): string {

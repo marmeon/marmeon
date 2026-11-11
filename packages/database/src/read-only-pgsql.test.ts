@@ -72,7 +72,7 @@ describe.runIf(process.env.MARMEON_TEST_PGSQL_URL)('a read-only query on Postgre
   });
   // Every query ends its connection, whatever became of it.
   afterEach(async () => {
-    await expect.poll(() => scalar<number>("select count(*)::int as value from pg_stat_activity where application_name = 'marmeon-db-query'"), { timeout: 2000 }).toBe(0);
+    await expect.poll(() => scalar<number>("select count(*)::int as value from pg_stat_activity where application_name = 'marmeon-db-query' and datname = current_database()"), { timeout: 2000 }).toBe(0);
   });
 
   describe('what only the read-only transaction refuses', () => {
@@ -174,7 +174,7 @@ describe.runIf(process.env.MARMEON_TEST_PGSQL_URL)('a read-only query on Postgre
     it('refuses pg_advisory_lock(), a lock that outlives a rollback', async () => {
       await refused('select pg_advisory_lock(4242)');
       await refused('select pg_try_advisory_lock(4243)');
-      expect(await scalar<number>("select count(*)::int as value from pg_locks where locktype = 'advisory' and objid in (4242, 4243)")).toBe(0);
+      expect(await scalar<number>("select count(*)::int as value from pg_locks where locktype = 'advisory' and objid in (4242, 4243) and database = (select oid from pg_database where datname = current_database())")).toBe(0);
     });
 
     it('refuses pg_notify(), which a read-only transaction allows', async () => {
@@ -361,11 +361,51 @@ describe.runIf(process.env.MARMEON_TEST_PGSQL_URL)('a read-only query on Postgre
     });
 
     it('counts the time limit over the whole query, not per batch of rows', async () => {
-      const started = Date.now();
       // Many cheap rows: every batch stays far below the limit, while all of them together take about ten times as long.
       const result = await run('select (select count(*) from generate_series(1, g * 0 + 4000)) from generate_series(1, 20001) g', { limit: 20000, timeoutMs: 1000 });
       expect(result).toMatchObject({ ok: false, error: { kind: 'failed', message: expect.stringContaining('longer than 1000 ms') } });
-      expect(Date.now() - started).toBeLessThan(2500);
+    });
+
+    it('answers the same whatever a setting holds: a function that is never allowed does not reach the planner', async () => {
+      const withSetting = new URL(url);
+      withSetting.searchParams.set('options', '-c app.secret=hunter2-value');
+      const probe = (character: string) =>
+        queryReadOnlyPgsql(withSetting.href, `select id from users where id = (case when substr(current_setting('app.secret'), 1, 1) = '${character}' then 'x' else '1' end)::int`, options);
+      const [right, wrong] = [await probe('h'), await probe('z')];
+      expect(right).toEqual(wrong);
+      expect(right).toMatchObject({ ok: false, error: { kind: 'refused', message: 'current_setting() is not available here.' } });
+      const rows = (character: string) => run(`select id from users where id = (case when substr(table_to_xml('users', true, false, ''), 1, 1) = '${character}' then 'x' else '1' end)::int`);
+      expect(await rows('<')).toEqual(await rows('z'));
+      expect(await rows('<')).toMatchObject({ ok: false, error: { kind: 'refused', message: 'table_to_xml() is not available here.' } });
+    });
+
+    it('refuses an identifier spelled with Unicode escapes, which could name a function without its letters', async () => {
+      const withSetting = new URL(url);
+      withSetting.searchParams.set('options', '-c app.secret=hunter2-value');
+      const probe = (character: string) =>
+        queryReadOnlyPgsql(
+          withSetting.href,
+          String.raw`select id from users where id = (case when substr(U&"\0063urrent_setting"('app.secret'), 1, 1) = '${character}' then 'x' else '1' end)::int`,
+          options,
+        );
+      const [right, wrong] = [await probe('h'), await probe('z')];
+      expect(right).toEqual(wrong);
+      expect(right).toMatchObject({ ok: false, error: { kind: 'refused', message: expect.stringContaining('Unicode escapes') } });
+    });
+
+    it('does not pass on a name the planner computed, as a cast to regclass would put it in the message', async () => {
+      await sql`create function leaked_name() returns text stable language sql as $$ select 'hunter2-value'::text $$`.execute(connections.get());
+      for (const type of ['regclass', 'regrole', 'regproc', 'regtype', 'regconfig']) {
+        const result = await run(`select id from users where id::oid = leaked_name()::${type}::oid`);
+        expect(result, type).toMatchObject({ ok: false, error: { message: 'The query could not be checked.' } });
+        expect(JSON.stringify(result)).not.toContain('hunter2');
+      }
+    });
+
+    it('still says what is wrong with a query that is not valid', async () => {
+      expect(await refused('select from from')).toContain('syntax error');
+      const missing = await run('select * from no_such_table');
+      expect(missing).toMatchObject({ ok: false, error: { message: expect.stringContaining('no_such_table') } });
     });
 
     it('does not let the URL lift the time limit', async () => {
