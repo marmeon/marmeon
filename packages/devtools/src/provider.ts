@@ -82,12 +82,16 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     if (store instanceof FileDevtoolsStore) await store.prune();
     app.container.instance(DevtoolsSettings, options);
     app.container.instance(DevtoolsStore, store);
+    // Without HTTP in the app there is no router: a page report then keeps no path.
+    const router = await import('@marmeon/router').catch(() => undefined);
+    const routing = await import('@marmeon/router/internal').catch(() => undefined);
     this.#recorder = new Recorder({
       app,
       store,
       redactor: app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor(),
       options,
       ...(app.container.has(ErrorSolutions) ? { solutions: app.container.make(ErrorSolutions) } : {}),
+      ...(router && routing && app.container.has(router.Router) ? { routesFor: (pathname: string) => routePatternsFor(pathname, app.container.make(router.Router).routes.map((route) => route.path), routing.matchParams) } : {}),
     }).start();
     app.container.instance(Recorder, this.#recorder);
 
@@ -111,4 +115,21 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     this.#recorder = undefined;
     await recorder?.close();
   }
+}
+
+/**
+ * Every pattern a path matches — whatever the method, in the router's own reading (constraints, optional parameters, a trailing
+ * slash) — with each segment compared decoded, as the router does. An undecodable path matches none.
+ */
+function routePatternsFor(pathname: string, patterns: readonly string[], matchParams: (pattern: string, pathname: string) => unknown): string[] {
+  let decoded: string;
+  try {
+    decoded = pathname
+      .split('/')
+      .map((segment) => decodeURIComponent(segment).replaceAll('/', '%2F'))
+      .join('/');
+  } catch {
+    return [];
+  }
+  return patterns.filter((pattern) => matchParams(pattern, decoded) !== undefined);
 }

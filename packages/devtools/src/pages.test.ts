@@ -1,7 +1,8 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
-import { runWithRequest } from '@marmeon/core/internal';
+import { channels } from '@marmeon/core/diagnostics';
+import { messageBase, runWithRequest } from '@marmeon/core/internal';
 import { Connections, DatabaseServiceProvider, Migrator, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -232,6 +233,38 @@ describe('what the pages show', () => {
       const search = await (await kernel.request(`${BASE}/requests?search=${encodeURIComponent('"><script>alert(3)</script>')}`)).text();
       expect(search).toContain('value="&quot;&gt;&lt;script&gt;alert(3)&lt;/script&gt;"');
       expect(search).not.toContain('<script>alert(3)');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('list and show a browser report — its message, stack and page are text, never markup', async () => {
+    const { app, kernel, tester } = await boot();
+    try {
+      const evil = '<script>alert(1)</script><img src=x onerror=alert(2)>';
+      channels.event('browser.log').publish({
+        ...messageBase(app),
+        kind: 'error',
+        level: 'error',
+        message: `Uncaught ${evil}`,
+        stack: `Error: ${evil}\n    at <anonymous>`,
+        source: { url: 'http://localhost/src/<b>app</b>.tsx', line: 3, column: 4 },
+        page: `/p/<i>x</i>`,
+      });
+      await tester!.settled();
+      const entry = tester!.assertRecorded('browser');
+      for (const path of [`${BASE}/browser`, `${BASE}/browser/${entry.id}`, `${BASE}/requests`]) {
+        const response = await kernel.request(path);
+        expect(response.status, path).toBe(200);
+        const body = await response.text();
+        expect(body, path).not.toMatch(/<script>alert|<img src=x|<b>app|<i>x/);
+        if (path !== `${BASE}/requests`) expect(body, path).toContain('Uncaught &lt;script&gt;alert(1)&lt;/script&gt;');
+      }
+      const detail = await (await kernel.request(`${BASE}/browser/${entry.id}`)).text();
+      expect(detail).toContain('Raised at');
+      expect(detail).toContain('.tsx:3:4');
+      const all = (await (await kernel.request(`${BASE}/api/entries?type=browser`)).json()) as { entries: AnyEntry[] };
+      expect(all.entries.map((e) => e.type)).toEqual(['browser']);
     } finally {
       await app.shutdown();
     }

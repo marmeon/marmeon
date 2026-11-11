@@ -3,6 +3,7 @@
 export { channels } from './channels.ts';
 export type {
   Around,
+  BrowserLogMessage,
   ChannelHandlers,
   ChannelMessage,
   ChannelName,
