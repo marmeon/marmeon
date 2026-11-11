@@ -33,6 +33,8 @@ describe('@marmeon/devtools/client is browser-safe', () => {
       },
     })) as Rolldown.RolldownOutput[];
     const modules = output.flatMap(({ output: chunks }) => chunks.flatMap((chunk) => (chunk.type === 'chunk' ? chunk.moduleIds.filter((id) => !id.startsWith('\0')).map((id) => relative(packages, id).replaceAll('\\', '/')) : [])));
+    // A build replaces `import.meta.hot` with `undefined`: even this client, built, has no channel to report on.
+    expect(output.flatMap(({ output: chunks }) => chunks.map((chunk) => (chunk.type === 'chunk' ? chunk.code : ''))).join('\n')).not.toContain('marmeon:browser-log');
     expect([...externals]).toEqual([]);
     const shared = ['http/src/page.ts', 'http/src/protocol.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'router/src/url.ts'];
     expect(modules.filter((id) => !id.startsWith('devtools/src/client/') && !id.startsWith('http/src/client/') && !shared.includes(id))).toEqual([]);

@@ -126,6 +126,11 @@ describe('the devtools lab', () => {
     await app.get('/lab/devtools', page).assertOk().assertDontSee('Rendered by');
   });
 
+  it('three buttons report an error from the page, for the devtools’ Browser tab', async () => {
+    const { app } = await lab();
+    await app.get('/lab/devtools', page).assertOk().assertSee('>console.error</button>').assertSee('>Throw</button>').assertSee('>Reject</button>');
+  });
+
   it('the client hooks part renders in the browser (a feature: no navigator on the server) — its form is sent back with errors', async () => {
     const { app } = await lab();
     await app.get('/lab/devtools', page).assertOk().assertServerRendered().assertDontSee('Client hooks');

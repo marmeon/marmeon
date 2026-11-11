@@ -66,7 +66,7 @@ Nothing registers the listener outside `marmeon dev`, so a production server has
 Any script on the app's origin can send on that channel, so the dev server treats a report as untrusted. It copies only the
 known fields, cuts the message to 4 096 characters and the stack to 16 384 and strips control characters (an escape sequence cannot reach a terminal), refuses a report with a wrong type or an unknown
 `kind` or `level`, and lets each HMR connection send 50 reports at once and 10 more per second, and all connections together 200 and 50 (a page may open more than one connection). The next report after a pause
-carries `dropped`, the number it held back. The text is whatever the page wrote: record it as data, and redact it first.
+carries `dropped`, the number it held back. The devtools' in-page client is what sends them (`console.error`, `console.warn`, uncaught errors, unhandled rejections: [browser errors](devtools.md#browser-errors)); it cuts to the same limits and sends 20 reports at once and 5 more a second, so the server's limit is a second line of defence. The text is whatever the page wrote: record it as data, and redact it first.
 
 ### Subscribing
 
