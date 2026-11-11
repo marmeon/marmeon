@@ -40,7 +40,9 @@ function BrowserErrors() {
           Reject
         </button>
       </p>
-      <p>In development, the entries appear in the devtools under Browser.</p>
+      <p>
+        In development, the entries appear on the <a href="/_marmeon/devtools/browser">devtools’ Browser page</a> (not in the bar).
+      </p>
     </section>
   );
 }

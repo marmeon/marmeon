@@ -214,20 +214,40 @@ describe('installBrowserLog', () => {
     expect(sent.at(-1)!.message.length).toBeLessThanOrEqual(4096);
   });
 
-  it('Vite’s own `[vite]` error after a send failed is not reported; the same call long after a send, or without an Error, is', () => {
+  it('Vite’s `[vite]` error for a send that failed is not reported; the same call for a failed module update, later, is', async () => {
     const { target, calls } = page();
-    let clock = 0;
     const sent: BrowserReport[] = [];
-    installBrowserLog(target, (report) => sent.push(report), context, () => clock);
+    let clock = 0;
+    installBrowserLog(
+      target,
+      (report) => {
+        sent.push(report);
+        // The transport rejects; Vite's catch logs it a microtask later.
+        queueMicrotask(() => target.console.error('[vite]', new Error('send was called before connect')));
+      },
+      context,
+      () => clock,
+    );
     target.console.error('first');
-    clock += 100;
-    target.console.error('[vite]', new Error('socket closed'));
+    await new Promise((resolve) => setTimeout(resolve, 5));
     expect(calls.error).toHaveLength(2);
     expect(sent.map(({ message }) => message)).toEqual(['first']);
-    target.console.error('[vite]', 'text only');
-    clock += 60_000;
-    target.console.error('[vite]', new Error('later'));
-    expect(sent).toHaveLength(3);
+    clock += 1000;
+    target.console.error('[vite]', new Error('Failed to reload /src/a.ts'));
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!.message.startsWith('[vite] Error: Failed to reload')).toBe(true);
+  });
+
+  it('only the first 20 arguments are read, and the message says how many were left out', () => {
+    const { target } = page();
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context);
+    let reads = 0;
+    const errors = Array.from({ length: 1000 }, () => Object.defineProperty(new Error('e'), 'stack', { get: () => (reads++, '') }));
+    target.console.error('many', ...errors);
+    // Once to look for a stack and once to print the Error, for 20 arguments at most.
+    expect(reads).toBeLessThanOrEqual(40);
+    expect(sent[0]!.message.endsWith('… 981 more arguments')).toBe(true);
   });
 
   it('after the hook is taken away, a wrapper another hook kept in the chain reports nothing', () => {

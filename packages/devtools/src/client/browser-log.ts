@@ -27,8 +27,8 @@ const URL_MAX = 2048;
 const BURST = 20;
 const PER_SECOND = 5;
 const DEPTH = 3;
-/** How long after a send a `[vite]` error is taken for that send's own failure. */
-const VITE_ECHO_MS = 5000;
+/** Arguments of one console call that are read; the rest is counted. */
+const ARGUMENTS = 20;
 const ENTRIES = 50;
 
 const cut = (text: string, max: number): string => (text.length > max ? text.slice(0, max) : text);
@@ -134,8 +134,9 @@ function substitute(template: string, rest: readonly unknown[], budget: Budget):
 }
 
 /** Console arguments as text: `%` specifiers filled, strings as they are, other values to depth 3 (cycles as `[Circular]`), cut at the server's limit. */
-export function formatArguments(args: readonly unknown[]): string {
+export function formatArguments(all: readonly unknown[]): string {
   const budget: Budget = { left: MESSAGE_MAX, nodes: 0 };
+  const args = all.slice(0, ARGUMENTS);
   try {
     const parts: string[] = [];
     let from = 0;
@@ -146,6 +147,7 @@ export function formatArguments(args: readonly unknown[]): string {
       from = 1 + used;
     }
     for (const arg of args.slice(from)) parts.push(describe(arg, 0, new Set(), budget));
+    if (all.length > args.length) parts.push(`… ${all.length - args.length} more arguments`);
     return cut(parts.join(' '), MESSAGE_MAX);
   } catch {
     return UNPRINTABLE;
@@ -178,7 +180,8 @@ export function installBrowserLog(
   let busy = false;
   let stopped = false;
   let held = 0;
-  let sentAt = -Infinity;
+  // True while our own `send` runs and until the task after it: Vite logs a failed send from a promise it settles by then.
+  let sending = false;
   let tokens = BURST;
   let last: number | undefined;
   const take = (): boolean => {
@@ -204,7 +207,8 @@ export function installBrowserLog(
       const note = held > 0 ? ` (${held} more held back on the page)` : '';
       const message = note ? cut(built.message, MESSAGE_MAX - note.length) + note : built.message;
       held = 0;
-      sentAt = now();
+      sending = true;
+      setTimeout(() => (sending = false), 0);
       send({ ...built, message, page: cut(context.page(), URL_MAX), ...(requestId ? { requestId } : {}) });
     } catch {
       // The report is lost; the page's own error handling is not ours to disturb.
@@ -213,9 +217,9 @@ export function installBrowserLog(
     }
   };
 
-  // Vite's HMR client logs `console.error('[vite]', error)` when its socket fails *after* `send` returned: that is this hook's
-  // own send failing, shortly after it sent — reporting it would loop.
-  const viteFailure = (args: readonly unknown[]): boolean => args[0] === '[vite]' && args.some((arg) => arg instanceof Error) && now() - sentAt < VITE_ECHO_MS;
+  // Vite's HMR client logs `console.error('[vite]', error)` when its transport fails *after* `send` returned — that is this hook's
+  // own send failing, and reporting it would loop. Vite logs a failed module update the same way, much later: that one is reported.
+  const viteFailure = (args: readonly unknown[]): boolean => sending && args[0] === '[vite]' && args.some((arg) => arg instanceof Error);
 
   const originals = { error: target.console.error, warn: target.console.warn };
   for (const level of ['error', 'warn'] as const) {
@@ -226,7 +230,8 @@ export function installBrowserLog(
       } finally {
         if (!viteFailure(args)) {
           report(() => {
-            const stack = args.map(stackOf).find((candidate) => candidate !== undefined);
+            let stack: string | undefined;
+            for (const arg of args.slice(0, ARGUMENTS)) if ((stack = stackOf(arg))) break;
             return { kind: 'console', level, message: formatArguments(args), ...(stack ? { stack } : {}) };
           });
         }
