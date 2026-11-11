@@ -11,7 +11,7 @@ It is a tool for development and nothing else:
 - It starts only with `NODE_ENV=development`, set in the environment or in the app's `.env`. With `production`, `test` or no
   `NODE_ENV` it prints why on stderr and ends with code 1, before it loads anything of the protocol. Nothing in a deployment starts it.
 - There is no port: the server does not listen, has no HTTP transport, and no option turns one on.
-- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call to `routes` or `check` starts your app, though, and the app's own startup code runs: it can write files or open connections.
+- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call that starts your app (`routes`, `check`, `migrations`, `database`) runs the app's own startup code, though: it can write files or open connections.
 
 ## Starting it
 

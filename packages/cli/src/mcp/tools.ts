@@ -32,5 +32,5 @@ export interface McpTool {
   run(input: Readonly<Record<string, unknown>>, context: ToolContext): Promise<ToolDocument | ToolFailure>;
 }
 
-/** The tools the server offers. The server itself writes nothing; `schema` starts a command that keeps a file up to date. */
+/** The tools the server offers. The server itself writes nothing; `schema` starts a command that keeps a file up to date, and `database` one that may create a missing SQLite file. */
 export const TOOLS: readonly McpTool[] = [ROUTES_TOOL, LAST_ERROR_TOOL, DOCS_SEARCH_TOOL, DOCS_READ_TOOL, CHECK_TOOL, SCHEMA_TOOL, DEVTOOLS_ENTRIES_TOOL, MIGRATIONS_TOOL, DATABASE_TOOL, APP_OVERVIEW_TOOL];
