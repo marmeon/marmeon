@@ -10,6 +10,8 @@ export interface ReadOnlyQueryOptions {
   readonly limit: number;
   /** Columns the query may never read, by table. */
   readonly secrets: ReadonlyMap<string, ReadonlySet<string>>;
+  /** SQLite tables that cannot be read at all: their columns are not known (virtual tables, which may keep a copy of text a table holds). */
+  readonly withheld?: ReadonlySet<string>;
   /** Masks what a string cell holds that the app's redaction knows (tokens, secrets in text). */
   readonly redact: (text: string) => string;
   /** How long Postgres may work on the query before it gives up. SQLite has no interrupt: there the caller's process limit is the bound. */

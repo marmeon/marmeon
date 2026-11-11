@@ -30,7 +30,7 @@ export class DbQueryCommand {
   } as const;
 
   readonly #connections: Connections;
-  readonly #migrator: Pick<Migrator, 'readProjection' | 'ranProjection'>;
+  readonly #migrator: Pick<Migrator, 'readProjection' | 'ranProjection' | 'undescribedColumns'>;
   readonly #redactor: Redactor;
 
   /** @internal The container builds the command. */
@@ -60,18 +60,24 @@ export class DbQueryCommand {
     const name = typeof options.database === 'string' ? options.database : 'default';
     let driver: string;
     let secrets: Map<string, Set<string>>;
+    let undescribed = new Map<string, Set<string>>();
+    let withheld = new Set<string>();
     try {
       const connection = this.#connections.options(name);
       driver = connection.driver;
-      secrets = connection.managed === false ? new Map() : await this.#secrets(name, connection.driver);
+      secrets = new Map();
+      if (connection.managed !== false) ({ secrets, undescribed, withheld } = await this.#secrets(name, connection.driver));
     } catch (error) {
       output.error(this.#redactor.text(error instanceof Error ? error.message : String(error)));
       return 1;
     }
 
-    const result = await readOnlyQuery(this.#connections, name, sql, { limit, secrets, redact: (text) => this.#redactor.text(text), timeoutMs: timeout * 1000 });
+    const result = await readOnlyQuery(this.#connections, name, sql, { limit, secrets, withheld, redact: (text) => this.#redactor.text(text), timeoutMs: timeout * 1000 });
     if (!result.ok) {
-      output.error(this.#redactor.text(result.error.message));
+      const message = result.error.message;
+      const lower = message.toLowerCase();
+      const unknown = [...withheld].some((table) => lower.includes(table.toLowerCase())) || [...undescribed].some(([table, columns]) => [...columns].some((column) => lower.includes(`${table}.${column}`.toLowerCase())));
+      output.error(this.#redactor.text(unknown ? `${message} No migration describes it (a table made by raw SQL or another tool): create it with schema.create() to read it, or run marmeon migrate if a migration is pending.` : message));
       return 1;
     }
     const { columns, rows, truncated, cut } = result.value;
@@ -91,18 +97,21 @@ export class DbQueryCommand {
 
   /**
    * The secret columns of the migrations, by table: the same ones the app's own queries are held to. Those of the migrations that ran
-   * count too: a pending migration that renames or drops a secret column has not changed the database yet, which still holds it.
+   * count too (a pending migration that renames or drops a secret column has not changed the database yet), and so does every column
+   * the database has that no migration describes: whether it is secret is not known, so it is treated as secret.
    */
-  async #secrets(name: string, driver: 'sqlite' | 'pgsql'): Promise<Map<string, Set<string>>> {
+  async #secrets(name: string, driver: 'sqlite' | 'pgsql'): Promise<{ secrets: Map<string, Set<string>>; undescribed: Map<string, Set<string>>; withheld: Set<string> }> {
     const secrets = new Map<string, Set<string>>();
-    for (const projection of [await this.#migrator.readProjection(), await this.#migrator.ranProjection(name)]) {
-      for (const { table, column } of factsOf(projection, driver).secretColumns) {
-        let columns = secrets.get(table);
-        if (!columns) secrets.set(table, (columns = new Set()));
-        columns.add(column);
-      }
-    }
-    return secrets;
+    const add = (table: string, column: string) => {
+      let columns = secrets.get(table);
+      if (!columns) secrets.set(table, (columns = new Set()));
+      columns.add(column);
+    };
+    const projections = [await this.#migrator.readProjection(), await this.#migrator.ranProjection(name)];
+    for (const projection of projections) for (const { table, column } of factsOf(projection, driver).secretColumns) add(table, column);
+    const { columns: undescribed, withheld } = await this.#migrator.undescribedColumns(name, projections);
+    for (const [table, columns] of undescribed) for (const column of columns) add(table, column);
+    return { secrets, undescribed, withheld };
   }
 }
 

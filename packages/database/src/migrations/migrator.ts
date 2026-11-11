@@ -444,17 +444,82 @@ export class Migrator {
     return projectMigrations(files, { only: new Set(rows.map((row) => row.name)) });
   }
 
-  /** A connection's app tables, read without creating or changing anything. */
-  async #tablesOf(connection: string): Promise<string[]> {
-    const file = this.#driver(connection) === 'sqlite' ? this.#connections.sqliteFile(connection) : undefined;
-    if (file === undefined) return appTables(await columnsOf(this.#books(connection), this.#driver(connection)));
-    if (!existsSync(file)) return [];
+  /**
+   * A connection's tables with their columns, read without creating or changing anything. `withheld`: SQLite's virtual tables and
+   * their shadows, whose columns are not read — a module that is not loaded would fail the reading, and what they hold is not known.
+   * Postgres: every schema but the system's, not only those on the search path, so a table off the path counts, by its bare name.
+   */
+  async #catalog(connection: string): Promise<{ columns: Map<string, string[]>; extension: Set<string>; withheld: Set<string> }> {
+    const driver = this.#driver(connection);
+    const file = driver === 'sqlite' ? this.#connections.sqliteFile(connection) : undefined;
+    if (driver === 'pgsql') {
+      const rows = (
+        await sql
+          .raw<{ table_name: string; column_name: string; extension: boolean }>(
+            `select c.relname::text as table_name, a.attname::text as column_name,
+              exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') as extension
+              from pg_catalog.pg_class c
+                join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                join pg_catalog.pg_attribute a on a.attrelid = c.oid
+              where n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_toast%' and n.nspname not like 'pg\\_temp%'
+                and c.relkind in ('r', 'p') and a.attnum > 0 and not a.attisdropped
+              order by c.relname, a.attnum`,
+          )
+          .execute(this.#books(connection))
+      ).rows;
+      const columns = new Map<string, string[]>();
+      const extension = new Set<string>();
+      for (const row of rows) {
+        if (row.extension) extension.add(row.table_name);
+        const known = columns.get(row.table_name) ?? [];
+        if (!known.includes(row.column_name)) known.push(row.column_name);
+        columns.set(row.table_name, known);
+      }
+      return { columns, extension, withheld: new Set() };
+    }
+    if (file === undefined || !existsSync(file)) return { columns: new Map(), extension: new Set(), withheld: new Set() };
     const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
     try {
-      return appTables(new Map((db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((row): [string, string[]] => [row.name, []])));
+      const columns = new Map<string, string[]>();
+      const withheld = new Set<string>();
+      const tables = db.prepare("select name, type from pragma_table_list where schema = 'main' and type in ('table', 'virtual', 'shadow')").all() as { name: string; type: string }[];
+      for (const { name, type } of tables) {
+        if (type === 'table') columns.set(name, (db.prepare('select name from pragma_table_info(?)').all(name) as { name: string }[]).map((row) => row.name));
+        else {
+          columns.set(name, []);
+          withheld.add(name);
+        }
+      }
+      return { columns, extension: new Set(), withheld };
     } finally {
       db.close();
     }
+  }
+
+  async #tablesOf(connection: string): Promise<string[]> {
+    const { columns, extension } = await this.#catalog(connection);
+    return appTables(columns, extension);
+  }
+
+  /**
+   * @internal — what the connection's database has that none of `known` describes: the columns, by table (every column of a table they
+   * do not describe), and the tables whose columns are not read at all (SQLite's virtual tables). A migration the record lost, or a table
+   * made by raw SQL, leaves these, and whether they hold a secret is not known.
+   */
+  async undescribedColumns(connection: string, known: readonly SchemaProjection[]): Promise<{ columns: Map<string, Set<string>>; withheld: Set<string> }> {
+    const catalog = await this.#catalog(connection);
+    const found = new Map<string, Set<string>>();
+    const withheld = new Set<string>();
+    for (const table of appTables(catalog.columns, catalog.extension)) {
+      if (catalog.withheld.has(table)) {
+        withheld.add(table);
+        continue;
+      }
+      const described = new Set(known.flatMap((projection) => projection.tables.get(table)?.columns.map((column) => column.name) ?? []));
+      const missing = catalog.columns.get(table)!.filter((column) => !described.has(column));
+      if (missing.length > 0) found.set(table, new Set(missing));
+    }
+    return { columns: found, withheld };
   }
 
   /**
@@ -464,8 +529,7 @@ export class Migrator {
   async #record(): Promise<{ rows: { name: string; module: string; batch: number; checksum: string | null }[]; tables: string[] }> {
     const file = this.#driver() === 'sqlite' ? this.#connections.sqliteFile('default') : undefined;
     if (file === undefined) {
-      const columns = await columnsOf(this.#books(), this.#driver());
-      return { rows: await this.#ran(), tables: appTables(columns) };
+      return { rows: await this.#ran(), tables: await this.#tablesOf('default') };
     }
     if (!existsSync(file)) return { rows: [], tables: [] };
     const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });

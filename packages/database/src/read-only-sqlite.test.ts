@@ -98,6 +98,14 @@ describe('a read-only query on SQLite', () => {
     },
   );
 
+  it('withholds a table whatever the case its name is written in', () => {
+    for (const query of ['select * from users', 'select * from USERS', 'select id from "Users"']) {
+      const result = run(query, { withheld: new Set(['Users']) });
+      expect(result.ok, query).toBe(false);
+      if (!result.ok) expect(result.error.message).toContain('cannot be read');
+    }
+  });
+
   it('refuses a write that returns rows, as a refusal and not as a failed write', () => {
     expect(refused("insert into users (email) select 'x' returning id")).toContain('Only a plain SELECT');
     expect(count()).toBe(2);

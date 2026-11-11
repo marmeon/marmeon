@@ -297,7 +297,8 @@ the plan Postgres will run and the plan has been checked. What is refused, as a 
   index over them. The message names the column, as `users.password`. A column stays secret while a pending migration renames or
   drops it: the database still holds it until `migrate` has run. When the record of migrations cannot say which columns
   are secret — the database has tables and no record, a migration that ran has no file, its file changed, or it has no recorded checksum — the query is refused
-  and the message names what to fix.
+  and the message names what to fix. A column of the database that no migration describes — a table made by raw SQL, or one
+  whose migration the record lost — counts as secret too, until `migrate` or a migration describes it.
 
 Which statements, functions and relations are refused may grow in any release: it is a security boundary, and the command's name,
 options and document stay as they are.
@@ -323,10 +324,12 @@ The limits that stay open, on purpose:
   that already exist in the database run as they are: a PL/pgSQL function marked `STABLE` can hide a volatile statement, and a
   view or function may read what the migrations mark secret on its own. A materialized view over a secret column is refused, but
   one over a function that reads a secret table is not: `pg_depend` does not know what a function's body reads. A function of the app marked `IMMUTABLE` or
-  `STABLE` function may already run while `EXPLAIN` plans the query, before the check looks at it.
-- **A full-text index over a view**, or over anything but an ordinary table without secret columns, is withheld on SQLite, and an
-  FTS4 table declared with `content=<table>` cannot be read on the read-only connection at all. Generated columns of a table with a
-  secret column, and full-text tables over secrets, count as secret themselves.
+  `STABLE` may already run while `EXPLAIN` plans the query, before the check looks at it.
+- **Virtual tables made by raw SQL are refused whole**, a full-text table among them, like any table no migration describes: what
+  they keep is not known, and a trigger may have copied a secret into them. Full-text shadow tables are withheld too, and an FTS4 table declared with `content=<table>` cannot be read on the read-only connection at all. Generated
+  columns of a table with a secret column count as secret themselves.
+- **On Postgres a table in another schema with the name of a migrated table is held to that table's description:** its columns of the
+  same names are read as described, since tables are matched by their bare name.
 - **Values over 1 MiB** are refused on SQLite: ask for `length()` or `substr()` instead.
 - **A connection set to `managed: false` knows no secret column:** every column is readable, because the secret columns come from the
   migrations.

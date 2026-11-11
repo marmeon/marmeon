@@ -24,7 +24,7 @@ const projection: SchemaProjection = {
   migrations: [],
   tables: new Map([['users', { name: 'users', module: 'app', columns: [column('id'), column('email'), column('password', true)], uniques: [], indexes: [], foreignKeys: [], markers: [] }]]),
 };
-const migrator = { readProjection: async () => projection, ranProjection: async () => projection } as unknown as Migrator;
+const migrator = { readProjection: async () => projection, ranProjection: async () => projection, undescribedColumns: async () => ({ columns: new Map(), withheld: new Set() }) } as unknown as Migrator;
 
 const STATEMENTS = [
   'create table users (id integer primary key, email text, password text)',
@@ -267,7 +267,7 @@ describe('db:query with a pending migration that changes a secret column', () =>
     const db = await setup('sqlite');
     try {
       for (const statement of STATEMENTS) await db.exec(statement);
-      const command = new DbQueryCommand(db.connections, { readProjection: async () => afterPending, ranProjection: async () => projection } as unknown as Migrator, new Redactor());
+      const command = new DbQueryCommand(db.connections, { readProjection: async () => afterPending, ranProjection: async () => projection, undescribedColumns: async () => ({ columns: new Map(), withheld: new Set() }) } as unknown as Migrator, new Redactor());
       const stderr: string[] = [];
       vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
       const code = await command.handle({ args: ['select password from users'], options: { json: true }, output: new Output(), root: '/' } as never);
@@ -315,7 +315,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
   });
 
   // What the database holds cannot be told from files that are not what ran: refused rather than guessed.
-  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}) => {
+  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}, statement = 'select password from users') => {
     const directory = workspaceTempDir('marmeon-db-query-');
     const migrations = join(directory, 'migrations');
     mkdirSync(migrations);
@@ -326,7 +326,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
     try {
       writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
       await prepare(migrations, file);
-      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true, ...options }, undefined, real());
+      const { code, stdout, stderr } = await run(connections, [statement], { json: true, ...options }, undefined, real());
       expect(code).toBe(1);
       expect(stdout).toBe('');
       return stderr;
@@ -342,6 +342,24 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
       await connections.destroy();
     }
   };
+
+  it('reads the columns the migrations describe', async () => {
+    const directory = workspaceTempDir('marmeon-db-query-');
+    const migrations = join(directory, 'migrations');
+    mkdirSync(migrations);
+    writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
+    const file = join(directory, 'app.db');
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file } }, root: directory, logger: silent });
+    const real = new Migrator({ modules: [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }], root: directory } as unknown as Application, connections);
+    try {
+      await real.migrate();
+      const { code, stdout } = await run(connections, ['select id, email from users'], { json: true }, undefined, real);
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout).rows).toEqual([]);
+    } finally {
+      await connections.destroy();
+    }
+  });
 
   it('refuses a database that has tables and no record of migrations', async () => {
     const stderr = await unestablished(async (_migrations, file) => {
@@ -394,6 +412,64 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
     expect(stderr).toContain('has tables but no record of migrations');
   });
 
+  const notes = `import { defineMigration } from '${new URL('./index.ts', import.meta.url).href}';
+export default defineMigration({ up: (schema) => schema.create('notes', (table) => { table.id(); }), down: (schema) => schema.drop('notes') });
+`;
+
+  it('treats a column no migration describes as secret: a migration whose record row was lost, then dropped its column', async () => {
+    const stderr = await unestablished(async (migrations, file) => {
+      writeFileSync(join(migrations, '2025_01_01_000000_create_notes_table.ts'), notes);
+      await migrateFirst(migrations, file);
+      const raw = new DatabaseSync(file);
+      raw.exec("delete from migrations where name like '%create_users_table'");
+      raw.close();
+      writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter("table.dropColumn('password');"));
+    });
+    expect(stderr).toContain('users.password');
+    expect(stderr).toContain('No migration describes it');
+  });
+
+  it('treats a table made by raw SQL as secret, every column of it', async () => {
+    const stderr = await unestablished(
+      async (migrations, file) => {
+        await migrateFirst(migrations, file);
+        const raw = new DatabaseSync(file);
+        raw.exec('create table raw_notes (id integer primary key, body text)');
+        raw.close();
+      },
+      {},
+      'select body from raw_notes',
+    );
+    expect(stderr).toContain('raw_notes.body');
+    expect(stderr).toContain('No migration describes it');
+  });
+
+  it('withholds a virtual table whole, without reading its columns: one whose module is not loaded does not stop other queries', async () => {
+    const directory = workspaceTempDir('marmeon-db-query-');
+    const migrations = join(directory, 'migrations');
+    mkdirSync(migrations);
+    writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
+    const file = join(directory, 'app.db');
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file } }, root: directory, logger: silent });
+    const real = new Migrator({ modules: [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }], root: directory } as unknown as Application, connections);
+    try {
+      await real.migrate();
+      const raw = new DatabaseSync(file);
+      raw.enableDefensive(false);
+      raw.exec('create virtual table DocsFts using fts5(body)');
+      raw.exec("pragma writable_schema = on; insert into sqlite_master (type, name, tbl_name, rootpage, sql) values ('table', 'gone', 'gone', 0, 'create virtual table gone using no_such_module(a)')");
+      raw.close();
+      expect((await run(connections, ['select id, email from users'], { json: true }, undefined, real)).code).toBe(0);
+      for (const table of ['DocsFts', 'docsfts', 'gone']) {
+        const { code, stderr } = await run(connections, [`select * from ${table}`], { json: true }, undefined, real);
+        expect(code, table).toBe(1);
+        expect(stderr, table).toContain(table !== 'gone' ? 'No migration describes it' : 'no such module');
+      }
+    } finally {
+      await connections.destroy();
+    }
+  });
+
   it('leaves no file behind when the SQLite database is not there', async () => {
     const directory = tempDir('marmeon-db-query-');
     const connections = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'app.db') } }, root: directory, logger: silent });
@@ -427,6 +503,30 @@ describe('db:query on a connection that is not managed', () => {
 });
 
 describe.runIf(drivers.includes('pgsql' as never))('db:query on Postgres, the limits of a run', () => {
+  it('counts a table in a schema off the search path as one no migration describes', async () => {
+    const directory = workspaceTempDir('marmeon-db-query-');
+    const migrations = join(directory, 'migrations');
+    mkdirSync(migrations);
+    writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), `import { defineMigration } from '${new URL('./index.ts', import.meta.url).href}';
+export default defineMigration({ up: (schema) => schema.create('users', (table) => { table.id(); table.string('email'); table.string('password').secret(); }), down: (schema) => schema.drop('users') });
+`);
+    const fresh = await freshDatabase('pgsql');
+    const connections = new Connections({ connections: { default: fresh.options }, root: directory, logger: silent });
+    const real = new Migrator({ modules: [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }], root: directory } as unknown as Application, connections);
+    try {
+      await real.migrate();
+      await sql.raw('create schema audit').execute(inspectionConnection(connections));
+      await sql.raw('create table audit.api_tokens (id integer, token text)').execute(inspectionConnection(connections));
+      expect((await run(connections, ['select id, email from users'], { json: true }, undefined, real)).code).toBe(0);
+      const { code, stderr } = await run(connections, ['select token from audit.api_tokens'], { json: true }, undefined, real);
+      expect(code).toBe(1);
+      expect(stderr).toContain('api_tokens.token');
+    } finally {
+      await connections.destroy();
+      await fresh.drop();
+    }
+  });
+
   it('ends a query that runs past --timeout', async () => {
     const db = await setup('pgsql');
     try {
