@@ -1,5 +1,7 @@
+import { Redactor } from '@marmeon/core';
 import { hasPackage } from '../commands/schema-project.ts';
 import { runMarmeonJson, type JsonRun } from '../spawn.ts';
+import { packageVersion } from './package-version.ts';
 import { DATA_NOTICE, failure, type ToolDocument, type ToolFailure } from './result.ts';
 import type { McpTool, ToolContext } from './tools.ts';
 
@@ -7,17 +9,22 @@ const CHILD_TIMEOUT_MS = 120_000;
 const MAX_CHILD_STDOUT_BYTES = 16 * 1024 * 1024;
 const MAX_MODULE_NAMES = 20;
 const MAX_WARNING_LENGTH = 200;
+const MAX_OVERVIEW_WARNING_LENGTH = 300;
 
 const UPDATE = 'this version does not read — update marmeon.';
 
-/** What the app defines — modules, providers, events and their listeners, jobs, commands, schedules, packages — as `marmeon modules:list --json` and `schedule:list --json` print it, copied field by field. */
+/**
+ * What the app defines — modules, providers, events and their listeners, jobs, commands, schedules, packages, the names of
+ * the environment variables it reads — and the runtime, as `marmeon modules:list --json` and `schedule:list --json` print
+ * it, copied field by field. Never a value of `.env`, a default or a configuration.
+ */
 export const APP_OVERVIEW_TOOL: McpTool = {
   name: 'app_overview',
-  description: `Give an overview of the app: its packages, the providers of the app and of each module, the commands, jobs, notifications, seeders and migration folder of each module, each event with its listeners, and the scheduled tasks (name, expression, time zone). Use it to find what exists before placing code. Listeners that a provider adds in boot() are missing. Starts the app once, twice when it has a scheduler. ${DATA_NOTICE}`,
+  description: `Give an overview of the app: its packages, the providers of the app and of each module, the commands, jobs, notifications, seeders and migration folder of each module, each event with its listeners, the scheduled tasks (name, expression, time zone), the Node and Marmeon version, and the names of the environment variables the app reads, each with whether it is set, required or has a default — never a value. Use it to find what exists before placing code. Listeners that a provider adds in boot() are missing. Starts the app once, twice when it has a scheduler. ${DATA_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
-      module: { type: 'string', minLength: 1, maxLength: 200, pattern: '^[^\\r\\n-][^\\r\\n]{0,199}$', description: 'Only this module, with the listeners it declares; not the app\'s or providers\'.' },
+      module: { type: 'string', minLength: 1, maxLength: 200, pattern: '^[^\\r\\n-][^\\r\\n]{0,199}$', description: 'Only this module, with the listeners it declares and the variables of its own configuration; not the app\'s or providers\'.' },
     },
     additionalProperties: false,
   },
@@ -54,6 +61,7 @@ function strings(value: unknown): string[] {
 }
 
 interface Listener { listener: string; queued: boolean; defined: 'app' | 'module' | 'provider'; module: string | null }
+interface Variable { name: string; config: string; set: boolean; required: boolean; hasDefault: boolean }
 interface Event { event: string; name: string | null; listeners: Listener[] }
 interface Module {
   name: string;
@@ -69,6 +77,17 @@ function listener(value: unknown): Listener {
   const raw = record(value);
   if (typeof raw.queued !== 'boolean' || (raw.defined !== 'app' && raw.defined !== 'module' && raw.defined !== 'provider')) throw new Unreadable();
   return { listener: string(raw.listener), queued: raw.queued, defined: raw.defined, module: nullable(raw.module) };
+}
+
+function boolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new Unreadable();
+  return value;
+}
+
+/** A variable: its name and state. `modules` says whose configuration it is and only filters; nothing else is read. */
+function variable(value: unknown): Variable & { modules: string[] } {
+  const raw = record(value);
+  return { name: string(raw.name), config: string(raw.config), modules: strings(raw.modules), set: boolean(raw.set), required: boolean(raw.required), hasDefault: boolean(raw.hasDefault) };
 }
 
 function event(value: unknown): Event {
@@ -122,6 +141,7 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
   let app: { providers: string[] };
   let modules: Module[];
   let events: Event[];
+  let environment: (Variable & { modules: string[] })[];
   const warnings: string[] = [];
   try {
     const document = record(run.document);
@@ -131,6 +151,8 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
     app = { providers: strings(record(document.app).providers) };
     modules = list(document.modules).map(module);
     events = list(document.events).map(event);
+    // A document of an older version of this format has none.
+    environment = document.environment === undefined ? [] : list(document.environment).map(variable);
     warnings.push(...list(document.warnings).filter((warning): warning is string => typeof warning === 'string'));
   } catch (error) {
     if (!(error instanceof Unreadable)) throw error;
@@ -146,6 +168,7 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
     events = events
       .map((item) => ({ ...item, listeners: item.listeners.filter((entry) => entry.defined === 'module' && entry.module === only) }))
       .filter((item) => item.listeners.length > 0);
+    environment = environment.filter((item) => item.modules.includes(only));
   }
 
   let schedules: { name: string; expression: string; timeZone: string; description: string | null }[] | null = null;
@@ -174,5 +197,11 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
     }
   }
 
-  return { format: 1, packages, app, modules, events, schedules, warnings };
+  // A warning is the first line of what the app said, masked and cut: it may quote a name or message of the app's own code.
+  const redactor = new Redactor();
+  const lines = warnings.map((warning) => redactor.text(warning.split('\n')[0]!).slice(0, MAX_OVERVIEW_WARNING_LENGTH));
+  const variables = environment.map(({ name, config, set, required, hasDefault }) => ({ name, config, set, required, hasDefault }));
+  // The tools' children run with this process's Node, and the server runs only in development.
+  const runtime = { node: process.version, platform: process.platform, arch: process.arch, marmeon: packageVersion(), nodeEnv: 'development' };
+  return { format: 1, runtime, packages, app, modules, events, environment: variables, schedules, warnings: lines };
 }
