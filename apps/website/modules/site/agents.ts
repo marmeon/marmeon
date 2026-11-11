@@ -19,6 +19,7 @@ export const AGENT_TOOLS: readonly { name: string; text: string }[] = [
   { name: 'devtools_entries', text: 'Requests, queries, jobs and mails the devtools recorded.' },
   { name: 'migrations', text: 'Which migrations ran and which are pending.' },
   { name: 'database', text: 'Tables of a connection with their column and row counts.' },
+  { name: 'commands', text: 'Every marmeon command with its options.' },
   { name: 'app_overview', text: 'Modules, providers, events and schedules.' },
 ];
 

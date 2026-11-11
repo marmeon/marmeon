@@ -4,14 +4,14 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, a database connection with its driver, server version and tables, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read. Where `.mcp.json` has the entry, the block of `AGENTS.md` lists the tools and when to reach for them ([coding agents](agents.md#skills-and-the-mcp-server)).
+error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, a database connection with its driver, server version and tables, the commands of `marmeon` with their options, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read. Where `.mcp.json` has the entry, the block of `AGENTS.md` lists the tools and when to reach for them ([coding agents](agents.md#skills-and-the-mcp-server)).
 
 It is a tool for development and nothing else:
 
 - It starts only with `NODE_ENV=development`, set in the environment or in the app's `.env`. With `production`, `test` or no
   `NODE_ENV` it prints why on stderr and ends with code 1, before it loads anything of the protocol. Nothing in a deployment starts it.
 - There is no port: the server does not listen, has no HTTP transport, and no option turns one on.
-- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call that starts your app (`routes`, `check`, `migrations`, `database`) runs the app's own startup code, though: it can write files or open connections.
+- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call that starts your app (`routes`, `check`, `migrations`, `database`, `commands`) runs the app's own startup code, though: it can write files or open connections.
 
 ## Starting it
 
@@ -195,6 +195,21 @@ or the connection is not defined, the error says only that it failed with its ex
 
 An app without `@marmeon/database` gets `"database": false`, `null` for `connection`, `driver` and `server`, no tables, `total` 0, and nothing is started.
 
+### `commands`
+
+The commands `marmeon` offers in this app, the framework's and the ones its modules add: the document of [`marmeon list --json`](console.md#machine-readable-output), filtered and cut. It starts the app once and only reads. Use it to find a generator and its options before you guess.
+
+| Input | |
+| --- | --- |
+| `name` | Only commands whose name starts with this: a lowercase letter, then lowercase letters, digits, `:` or `-`, at most 100 characters, such as `make:`. |
+| `limit` | At most this many commands, 1 to 500 (default 200). |
+
+The command is fixed, `list --json`; nothing of the input reaches it, the filter applies to the document.
+
+The document: `{ "format": 1, "complete": true, "commands": [{ "name": "make:controller", "description": "…", "usage": "<Name> --module=<module>", "options": [{ "name": "view", "type": "boolean", "short": null, "multiple": false, "default": null }], "experimental": false, "launcher": false }], "total": 42, "truncated": false, "warnings": [] }`.
+`launcher` marks `dev` and `start`, which the launcher handles. `complete` is `false` when the app did not load and only the built-in commands are known; `warnings` then says why. Every warning is the first line of its message, secrets masked, at most 300 characters.
+The tool copies the fields it knows and leaves out the rest; a `default` is a string, number or boolean, or an array of strings or booleans, and strings in it are masked; the default of an option whose name looks secret (`password`, `api-key`) is masked whole. A document of another `format` is an error that says to update `marmeon`. When the command fails, the error carries the end of its message (secrets masked) and says to run `marmeon list` in a terminal. The call is stopped after 120 seconds.
+
 ### `app_overview`
 
 What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs, notifications, seeders and migration folder, each event with its listeners
@@ -219,12 +234,12 @@ Each command is stopped after 120 seconds.
 ### `devtools_entries`
 
 The entries the [devtools](devtools.md) recorded while the app ran in development: requests, queries, jobs, mails, notifications, logs, exceptions, schedule
-runs, live messages, events, commands and browser reports (what went wrong in a page: console errors and warnings, uncaught errors, rejections), newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
+runs, live messages, events and commands, newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
 masked the way the devtools mask them: a token in the text of a mail is not in the answer. Ask for one `type` first; `search` reads the entries one by one.
 
 | Input | |
 | --- | --- |
-| `type` | One entry type, or a list of up to 12 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event`, `command` or `browser`. The list of types can grow, so do not treat a type you do not know as an error of the call. A `browser` entry's `level` and `kind` are tags (`level:warn`). |
+| `type` | One entry type, or a list of up to 11 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event` or `command`. |
 | `tag` | Only entries with exactly this tag: 1 to 100 letters, digits and `:` `.` `_` `/` `-`. |
 | `requestId` | Only entries of this request, and of the jobs it started: 1 to 128 letters, digits, `_`, `.`, `:` and `-`. |
 | `search` | Only entries whose masked text contains this, ignoring case (1 to 200 characters, no line break). |
@@ -243,9 +258,9 @@ the message of the command. The call is stopped after 120 seconds. Like `routes`
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
 - Standard output carries protocol messages and nothing else. Whatever your app or a library prints there, `console.log` included, goes
   to standard error.
-- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `database` reports the names and counts of a connection's tables (no row, no target), `app_overview` reports the names of what the modules define (no configuration, no values), `devtools_entries` reports the entries the devtools masked, and
+- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `database` reports the names and counts of a connection's tables (no row, no target), `commands` reports the commands and their options, `app_overview` reports the names of what the modules define (no configuration, no values), `devtools_entries` reports the entries the devtools masked, and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `database`, `app_overview`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `database`, `commands`, `app_overview`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
