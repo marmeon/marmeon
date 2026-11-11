@@ -1,5 +1,6 @@
 import { hash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { Application } from '@marmeon/core';
 import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
@@ -8,8 +9,8 @@ import { tableColumns, type CatalogQuery } from '../introspection.ts';
 import { assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
 import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
-import { loadProjection } from '../schema/projection-file.ts';
-import { applyPlan, differingTables, listCheckOf, emptyProjection, type SchemaProjection } from '../schema/projection.ts';
+import { loadProjection, readProjection } from '../schema/projection-file.ts';
+import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
 import { migrationChecksum } from './checksum.ts';
 import { dropAllTables } from './drop-all.ts';
@@ -414,6 +415,41 @@ export class Migrator {
    */
   async projection(): Promise<SchemaProjection> {
     return loadProjection(this.#app.root, this.files());
+  }
+
+  /** @internal — {@link projection} for a caller that must write nothing: the cached `.marmeon/schema.json` when it fits, otherwise computed and not saved. */
+  async readProjection(): Promise<SchemaProjection> {
+    return readProjection(this.#app.root, this.files()) ?? projectMigrations(this.files());
+  }
+
+  /**
+   * @internal — the schema of the migrations that ran, as the record says: what the database holds, where {@link projection} also
+   * holds what a pending migration will change.
+   */
+  async ranProjection(): Promise<SchemaProjection> {
+    const ran = new Set(await this.#ranNames());
+    return projectMigrations(this.files(), { only: ran });
+  }
+
+  /**
+   * The names the record holds, read without creating or changing anything: a SQLite file that is not there has no record, and an
+   * existing one is opened read-only (the migrator's own connection would create the file and switch it to WAL).
+   */
+  async #ranNames(): Promise<string[]> {
+    if (this.#driver() !== 'sqlite') return (await this.#ran()).map((row) => row.name);
+    const file = this.#connections.sqliteFile('default');
+    if (file === undefined) return (await this.#ran()).map((row) => row.name);
+    if (!existsSync(file)) return [];
+    const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
+    try {
+      const columns = new Map<string, string[]>();
+      const found = db.prepare(`select name from pragma_table_info('${MIGRATIONS_TABLE}')`).all() as { name: string }[];
+      if (found.length > 0) columns.set(MIGRATIONS_TABLE, found.map((row) => row.name));
+      if (recordVersion(columns, 'default') === undefined) return [];
+      return (db.prepare(`select name from ${MIGRATIONS_TABLE}`).all() as { name: string }[]).map((row) => row.name);
+    } finally {
+      db.close();
+    }
   }
 
   async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], options: Pick<MigrateOptions, 'onRun' | 'onChanged'>): Promise<MigrationRun[]> {

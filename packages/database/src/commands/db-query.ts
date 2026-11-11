@@ -30,7 +30,7 @@ export class DbQueryCommand {
   } as const;
 
   readonly #connections: Connections;
-  readonly #migrator: Pick<Migrator, 'projection'>;
+  readonly #migrator: Pick<Migrator, 'readProjection' | 'ranProjection'>;
   readonly #redactor: Redactor;
 
   /** @internal The container builds the command. */
@@ -89,13 +89,18 @@ export class DbQueryCommand {
     return 0;
   }
 
-  /** The secret columns of the migrations, by table: the same ones the app's own queries are held to. */
+  /**
+   * The secret columns of the migrations, by table: the same ones the app's own queries are held to. Those of the migrations that ran
+   * count too: a pending migration that renames or drops a secret column has not changed the database yet, which still holds it.
+   */
   async #secrets(driver: 'sqlite' | 'pgsql'): Promise<Map<string, Set<string>>> {
     const secrets = new Map<string, Set<string>>();
-    for (const { table, column } of factsOf(await this.#migrator.projection(), driver).secretColumns) {
-      let columns = secrets.get(table);
-      if (!columns) secrets.set(table, (columns = new Set()));
-      columns.add(column);
+    for (const projection of [await this.#migrator.readProjection(), await this.#migrator.ranProjection()]) {
+      for (const { table, column } of factsOf(projection, driver).secretColumns) {
+        let columns = secrets.get(table);
+        if (!columns) secrets.set(table, (columns = new Set()));
+        columns.add(column);
+      }
     }
     return secrets;
   }

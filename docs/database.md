@@ -294,7 +294,8 @@ the plan Postgres will run and the plan has been checked. What is refused, as a 
   `sqlite_stat*`;
 - the secret columns of the migrations ([`secret()`](migrations.md)), however they are reached: named, through `select *`, in a
   `WHERE` or a function call, through a subquery, a view, an alias that selects the whole row, a generated column or a full-text
-  index over them. The message names the column, as `users.password`.
+  index over them. The message names the column, as `users.password`. A column stays secret while a pending migration renames or
+  drops it: the database still holds it until `migrate` has run.
 
 Which statements, functions and relations are refused may grow in any release: it is a security boundary, and the command's name,
 options and document stay as they are.

@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Readable } from 'node:stream';
-import { CommandArgumentsError, Redactor } from '@marmeon/core';
+import { CommandArgumentsError, Redactor, type Application } from '@marmeon/core';
 import { Output } from 'marmeon';
 import { sql } from 'kysely';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -10,9 +11,9 @@ import { DbQueryCommand } from './commands/db-query.ts';
 import { Connections } from './connections.ts';
 import { freshDatabase, drivers, silent, type TestDriver } from './__fixtures__/databases.ts';
 import { inspectionConnection } from './migrator-connection.ts';
-import type { Migrator } from './migrations/migrator.ts';
+import { Migrator } from './migrations/migrator.ts';
 import type { ProjectedColumn, SchemaProjection } from './schema/projection.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 function fixture(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(new URL(`./__fixtures__/formats/cli-db-query/${name}.json`, import.meta.url), 'utf8'));
@@ -23,7 +24,7 @@ const projection: SchemaProjection = {
   migrations: [],
   tables: new Map([['users', { name: 'users', module: 'app', columns: [column('id'), column('email'), column('password', true)], uniques: [], indexes: [], foreignKeys: [], markers: [] }]]),
 };
-const migrator = { projection: async () => projection } as unknown as Migrator;
+const migrator = { readProjection: async () => projection, ranProjection: async () => projection } as unknown as Migrator;
 
 const STATEMENTS = [
   'create table users (id integer primary key, email text, password text)',
@@ -78,14 +79,14 @@ async function setup(driver: TestDriver): Promise<Setup> {
   };
 }
 
-async function run(connections: Connections, args: string[], options: Record<string, string | boolean> = {}, stdin?: string) {
+async function run(connections: Connections, args: string[], options: Record<string, string | boolean> = {}, stdin?: string, using: Migrator = migrator) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
   vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
   if (stdin !== undefined) vi.spyOn(process, 'stdin', 'get').mockReturnValue(Readable.from([Buffer.from(stdin)]) as never);
   try {
-    const code = await new DbQueryCommand(connections, migrator, new Redactor()).handle({ args, options, output: new Output(), root: '/' } as never);
+    const code = await new DbQueryCommand(connections, using, new Redactor()).handle({ args, options, output: new Output(), root: '/' } as never);
     return { code, stdout: stdout.join(''), stderr: stderr.join('') };
   } finally {
     vi.restoreAllMocks();
@@ -234,7 +235,7 @@ describe('db:query outside development and test', () => {
     vi.stubEnv('NODE_ENV', nodeEnv);
     const stderr: string[] = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
-    const code = await new DbQueryCommand(connections, { projection: projectionRead } as unknown as Migrator, new Redactor()).handle({ args: ['select 1'], options: { json: true }, output: new Output(), root: '/' } as never);
+    const code = await new DbQueryCommand(connections, { readProjection: projectionRead } as unknown as Migrator, new Redactor()).handle({ args: ['select 1'], options: { json: true }, output: new Output(), root: '/' } as never);
     expect(code).toBe(1);
     expect(stderr.join('')).toContain('db:query runs only in development and test');
     expect(touched).not.toHaveBeenCalled();
@@ -249,6 +250,80 @@ describe('db:query outside development and test', () => {
       expect((await run(db.connections, ['select 1'], { json: true })).code).toBe(0);
     } finally {
       await db.close();
+    }
+  });
+});
+
+// The database holds what the migrations that ran made, so a pending migration's rename or drop must not make a column readable.
+describe('db:query with a pending migration that changes a secret column', () => {
+  const pending = (columns: ProjectedColumn[]): SchemaProjection => ({
+    migrations: [],
+    tables: new Map([['users', { name: 'users', module: 'app', columns, uniques: [], indexes: [], foreignKeys: [], markers: [] }]]),
+  });
+  it.each([
+    ['renames it', pending([column('id'), column('email'), column('password_hash', true)])],
+    ['drops it', pending([column('id'), column('email')])],
+  ])('still refuses the column when the migration %s', async (_what, afterPending) => {
+    const db = await setup('sqlite');
+    try {
+      for (const statement of STATEMENTS) await db.exec(statement);
+      const command = new DbQueryCommand(db.connections, { readProjection: async () => afterPending, ranProjection: async () => projection } as unknown as Migrator, new Redactor());
+      const stderr: string[] = [];
+      vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
+      const code = await command.handle({ args: ['select password from users'], options: { json: true }, output: new Output(), root: '/' } as never);
+      expect(code).toBe(1);
+      expect(stderr.join('')).toContain('users.password');
+    } finally {
+      await db.close();
+    }
+  });
+});
+
+describe('db:query with the real migrator', () => {
+  const create = `import { defineMigration } from '${new URL('./index.ts', import.meta.url).href}';
+export default defineMigration({ up: (schema) => schema.create('users', (table) => { table.id(); table.string('email'); table.string('password').secret(); }), down: (schema) => schema.drop('users') });
+`;
+  const alter = (change: string) => `import { defineMigration } from '${new URL('./index.ts', import.meta.url).href}';
+export default defineMigration({ up: (schema) => schema.alter('users', (table) => { ${change} }), down: () => {} });
+`;
+
+  it.each([
+    ['renames', "table.renameColumn('password', 'password_hash');"],
+    ['drops', "table.dropColumn('password');"],
+  ])('refuses the column while a pending migration %s it', async (_what, change) => {
+    const directory = workspaceTempDir('marmeon-db-query-');
+    const migrations = join(directory, 'migrations');
+    mkdirSync(migrations);
+    writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
+    const file = join(directory, 'app.db');
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: file } }, root: directory, logger: silent });
+    const modules = [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }];
+    const real = () => new Migrator({ modules, root: directory } as unknown as Application, connections);
+    try {
+      await real().migrate();
+      const raw = new DatabaseSync(file);
+      raw.exec("insert into users (email, password) values ('a@example.test', 'abc')");
+      raw.close();
+      writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter(change));
+      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true }, undefined, real());
+      expect(code).toBe(1);
+      expect(stdout).toBe('');
+      expect(stderr).toContain('users.password');
+    } finally {
+      await connections.destroy();
+    }
+  });
+
+  it('leaves no file behind when the SQLite database is not there', async () => {
+    const directory = tempDir('marmeon-db-query-');
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'app.db') } }, root: directory, logger: silent });
+    const modules = [{ name: 'app', migrations: pathToFileURL(`${directory}/`) }];
+    try {
+      const { code } = await run(connections, ['select 1'], { json: true }, undefined, new Migrator({ modules, root: directory } as unknown as Application, connections));
+      expect(code).toBe(1);
+      expect(readdirSync(directory)).toEqual([]);
+    } finally {
+      await connections.destroy();
     }
   });
 });
