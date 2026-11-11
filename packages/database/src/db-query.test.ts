@@ -146,7 +146,7 @@ describe.each(drivers)('db:query on %s', (driver) => {
   });
 
   it('refuses a write with exit code 3, prints nothing on stdout and leaves the table as it was', async () => {
-    for (const options of [{ json: true }, {}]) {
+    for (const options of [{ json: true }, {}] as Record<string, string | boolean>[]) {
       const { code, stdout, stderr } = await run(db.connections, ['delete from users'], options);
       expect(code).toBe(3);
       expect(stdout).toBe('');
@@ -273,7 +273,7 @@ describe('db:query with a pending migration that changes a secret column', () =>
       const stderr: string[] = [];
       vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
       const code = await command.handle({ args: ['select password from users'], options: { json: true }, output: new Output(), root: '/' } as never);
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stderr.join('')).toContain('users.password');
     } finally {
       await db.close();
@@ -308,7 +308,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter(change));
       const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true }, undefined, real());
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stdout).toBe('');
       expect(stderr).toContain('users.password');
     } finally {
