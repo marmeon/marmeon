@@ -311,6 +311,19 @@ describe('a read-only query on SQLite', () => {
     expect(run('select id from notes', { limit: 3 })).toMatchObject({ ok: true, value: { truncated: false } });
   });
 
+  it('stops once the rows weigh 4 MiB as JSON, with truncated, instead of holding all of a wide result', () => {
+    const wide = 'hex(zeroblob(2048))';
+    const result = run(`with recursive n(i) as (select 1 union all select i + 1 from n where i < 1000) select i, ${wide}, ${wide}, ${wide} from n`, { limit: 1000 });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.truncated).toBe(true);
+    expect(result.value.rows.length).toBeGreaterThan(100);
+    expect(result.value.rows.length).toBeLessThan(500);
+    expect(JSON.stringify(result.value.rows).length).toBeLessThanOrEqual(4 * 1024 * 1024 + result.value.rows.length * 2);
+    // A single row past the cap is still answered.
+    const first = run(`select ${Array.from({ length: 300 }, () => wide).join(', ')}`);
+    expect(first).toMatchObject({ ok: true, value: { truncated: false } });
+  });
+
   it('cuts long text, marks bytes and masks what the redactor knows', () => {
     const token = ['ghp_', 'a'.repeat(36)].join('');
     expect(redactor.text(token)).not.toContain(token);

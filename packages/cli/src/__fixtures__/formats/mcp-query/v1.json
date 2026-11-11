@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "connection": "default",
+  "driver": "sqlite",
+  "columns": [
+    { "name": "id", "type": "INTEGER" },
+    { "name": "title", "type": "varchar(255)" }
+  ],
+  "rows": [
+    [1, "first"],
+    [2, "second"]
+  ],
+  "truncated": false,
+  "cut": 0,
+  "warnings": []
+}

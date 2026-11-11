@@ -145,6 +145,14 @@ function assertManaged(connections: Connections, connection: string): void {
 }
 
 /**
+ * @internal — the record of migrations cannot say which columns are secret (no record, a migration whose file is gone or changed). Its
+ * message names migrations only, never a path or a value, so a caller may pass it on.
+ */
+export class UnknownSecretsError extends Error {
+  override name = 'UnknownSecretsError';
+}
+
+/**
  * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps two tables for it, `migrations` (which
  * ran, in which batch) and, on SQLite, `migration_lock`; what the migrations say about the schema (secret columns, `timestamps()`,
  * `softDeletes()`, `.inverse()`, the owner of a table) is computed from their plans, not stored. After every migration the
@@ -432,15 +440,15 @@ export class Migrator {
     // The record is `default`'s; the connection that is queried may hold tables of its own.
     const tables = connection === 'default' ? ofDefault : [...ofDefault, ...(await this.#tablesOf(connection))];
     const unknown = 'Which columns are secret cannot be established';
-    if (rows.length === 0 && tables.length > 0) throw new Error(`${unknown}: the database has tables but no record of migrations. Run marmeon migrate.`);
+    if (rows.length === 0 && tables.length > 0) throw new UnknownSecretsError(`${unknown}: the database has tables but no record of migrations. Run marmeon migrate.`);
     const files = this.files();
     const present = new Map(files.map((file) => [file.name, file]));
     const missing = rows.find((row) => !present.has(row.name));
-    if (missing) throw new Error(`${unknown}: the migration ${printable(missing.name)} ran, and no module has its file any more. Restore the file.`);
+    if (missing) throw new UnknownSecretsError(`${unknown}: the migration ${printable(missing.name)} ran, and no module has its file any more. Restore the file.`);
     const unchecked = rows.find((row) => row.checksum === null);
-    if (unchecked) throw new Error(`${unknown}: the migration ${printable(unchecked.name)} has no recorded checksum (a record from Marmeon 0.3), so a change of its file cannot be seen. See docs/migrations.md#how-the-migrator-keeps-track.`);
+    if (unchecked) throw new UnknownSecretsError(`${unknown}: the migration ${printable(unchecked.name)} has no recorded checksum (a record from Marmeon 0.3), so a change of its file cannot be seen. See docs/migrations.md#how-the-migrator-keeps-track.`);
     const [changed] = changedOf(rows, (name) => migrationChecksum(readFileSync(present.get(name)!.path)));
-    if (changed) throw new Error(`${unknown}: the migration ${printable(changed.name)} changed after it ran. Restore the file as it was, or see docs/migrations.md#a-migration-that-changed-after-it-ran.`);
+    if (changed) throw new UnknownSecretsError(`${unknown}: the migration ${printable(changed.name)} changed after it ran. Restore the file as it was, or see docs/migrations.md#a-migration-that-changed-after-it-ran.`);
     return projectMigrations(files, { only: new Set(rows.map((row) => row.name)) });
   }
 

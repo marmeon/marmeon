@@ -271,8 +271,13 @@ pnpm marmeon db:query "select * from things" --database=system --limit=20
 Pass the SQL as one argument or, with `--stdin`, on standard input (at most 64 KiB, read to its end) — one of the two, not both.
 `--database` names a connection, `default` without it. `--limit` is the number of rows to keep, 1 to 1000, 100 without it; one
 row more is read to tell whether there were others. `--timeout` is the seconds Postgres may work on the query, 1 to 60, 10 without
-it. A wrong call (both or neither of the SQL and `--stdin`, a value out of range) ends with exit code 2; a query the command
-refuses or the database cannot run ends with exit code 1, the reason on stderr and nothing on stdout.
+it. A wrong call (both or neither of the SQL and `--stdin`, a value out of range) ends with exit code 2; a query the database
+cannot run ends with exit code 1, and a query the command refuses (a write, a secret column, a connection that `--managed-only` rules
+out, a record of migrations that cannot say which columns are secret) with exit code 3 — in both the reason is on stderr and nothing on
+stdout, with `--json` as well. The reason of a refusal is one line, the last that starts with `db:query refused:`.
+
+A connection with `managed: false` has no known secret columns, so every column of it is readable. `--managed-only` makes the
+command refuse such a connection before it runs anything; the [MCP `query` tool](mcp.md#query) passes it.
 
 The command runs only with `NODE_ENV=development` or `NODE_ENV=test`, where there is a development database to look into; with any
 other value, and with none, it ends with exit code 1 before it reads anything. For a running production app,
@@ -296,7 +301,7 @@ the plan Postgres will run and the plan has been checked. What is refused, as a 
   `WHERE` or a function call, through a subquery, a view, an alias that selects the whole row, a generated column or a full-text
   index over them. The message names the column, as `users.password`. A column stays secret while a pending migration renames or
   drops it: the database still holds it until `migrate` has run. When the record of migrations cannot say which columns
-  are secret — the database has tables and no record, a migration that ran has no file, its file changed, or it has no recorded checksum — the query is refused
+  are secret — the database has tables and no record, a migration that ran has no file, its file changed, or it has no recorded checksum — the query is refused (exit code 3)
   and the message names what to fix. A column of the database that no migration that ran describes — a table made by raw SQL, or one
   whose migration the record lost — counts as secret too, until `migrate` or a migration describes it.
 
@@ -307,8 +312,8 @@ The answer is limited and masked before it leaves the process:
 
 - text cells are masked by the app's [redactor](logging.md#patterns-of-your-own) and cut at 4096 characters (`cut` counts the cells
   that were); binary cells are written as `[binary N bytes]`; big integers and dates are text;
-- Postgres results are read through a cursor and stop at 4 MiB after the cutting, with `truncated: true`; the first row is always
-  returned. `text`, `varchar`, `json`, `jsonb` and `xml` values are cut on the server, `bytea` becomes its size, and any other value
+- A result stops at 4 MiB (as JSON, after the cutting) on both drivers, with `truncated: true`; the first row is always returned.
+  Postgres reads it through a cursor. On Postgres `text`, `varchar`, `json`, `jsonb` and `xml` values are cut on the server, `bytea` becomes its size, and any other value
   above 64 KiB arrives as `NULL` and counts in `cut`. The server still computes each value in full (`repeat('x', 1e9)`); only
   `--timeout` bounds that;
 - the text output writes the control characters of a cell or a column name out (`\u001b`), as all console output does.

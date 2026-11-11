@@ -21,6 +21,7 @@ export const AGENT_TOOLS: readonly { name: string; text: string }[] = [
   { name: 'database', text: 'Tables of a connection with their column and row counts.' },
   { name: 'commands', text: 'Every marmeon command with its options.' },
   { name: 'app_overview', text: 'Modules, providers, events and schedules.' },
+  { name: 'query', text: 'One read-only SQL query on the development database.' },
 ];
 
 export const AGENTS_INSTALL_COMMAND = 'pnpm marmeon agents:install';

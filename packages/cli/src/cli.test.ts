@@ -161,7 +161,7 @@ describe('marmeon (in the web app)', () => {
     expect(counted.code, counted.stderr).toBe(0);
     expect(JSON.parse(counted.stdout)).toMatchObject({ format: 1, connection: 'default', driver: 'sqlite', rows: [[0]], truncated: false, warnings: [] });
     const secret = marmeon(webApp, ['db:query', 'select password from users'], env);
-    expect(secret.code).toBe(1);
+    expect(secret.code).toBe(3);
     expect(secret.stdout).toBe('');
     expect(secret.stderr).toContain('users.password');
     expect(marmeon(webApp, ['db:query'], env).code).toBe(2);

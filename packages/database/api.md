@@ -916,10 +916,11 @@ interface SelectQueryBuilder<DB, TB extends keyof DB, O> {
 
 ```ts
 // db:query
-marmeon db:query [<sql>] [--stdin] [--database=<connection>] [--limit=<rows>] [--timeout=<seconds>] [--json]
+marmeon db:query [<sql>] [--stdin] [--database=<connection>] [--limit=<rows>] [--timeout=<seconds>] [--managed-only] [--json]
 --database (string)
 --json (boolean)
 --limit (string)
+--managed-only (boolean)
 --stdin (boolean)
 --timeout (string)
 // db:seed

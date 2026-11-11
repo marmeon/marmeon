@@ -2,7 +2,7 @@ import { CommandArgumentsError, environment, Redactor } from '@marmeon/core';
 import { printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { Connections } from '../connections.ts';
-import { Migrator } from '../migrations/migrator.ts';
+import { Migrator, UnknownSecretsError } from '../migrations/migrator.ts';
 import { readOnlyQuery } from '../read-only-query.ts';
 import { factsOf } from '../schema/projection.ts';
 
@@ -10,7 +10,7 @@ import { factsOf } from '../schema/projection.ts';
 const MAX_SQL_BYTES = 64 * 1024;
 const MAX_LIMIT = 1000;
 const MAX_TIMEOUT_SECONDS = 60;
-const USAGE = 'marmeon db:query [<sql>] [--stdin] [--database=<connection>] [--limit=<rows>] [--timeout=<seconds>] [--json]';
+const USAGE = 'marmeon db:query [<sql>] [--stdin] [--database=<connection>] [--limit=<rows>] [--timeout=<seconds>] [--managed-only] [--json]';
 
 /**
  * Answers one read-only query as a table or a `--json` document. The database itself keeps the query read-only, on a connection
@@ -20,12 +20,13 @@ const USAGE = 'marmeon db:query [<sql>] [--stdin] [--database=<connection>] [--l
 export class DbQueryCommand {
   static command = 'db:query';
   static description = 'Run one read-only query on a connection (development and test only)';
-  static usage = '[<sql>] [--stdin] [--database=<connection>] [--limit=<rows>] [--timeout=<seconds>] [--json]';
+  static usage = '[<sql>] [--stdin] [--database=<connection>] [--limit=<rows>] [--timeout=<seconds>] [--managed-only] [--json]';
   static options = {
     stdin: { type: 'boolean' },
     database: { type: 'string' },
     limit: { type: 'string' },
     timeout: { type: 'string' },
+    'managed-only': { type: 'boolean' },
     json: { type: 'boolean' },
   } as const;
 
@@ -65,10 +66,17 @@ export class DbQueryCommand {
     try {
       const connection = this.#connections.options(name);
       driver = connection.driver;
+      // No secret column is known on such a connection, so a caller that cannot vouch for its reader (the MCP tool) asks for it to be refused.
+      if (connection.managed === false && options['managed-only'] === true) {
+        return refuse(output, `Connection "${name}" is not managed by Marmeon's migrations, so its secret columns are unknown and it is not queried here. Run marmeon db:query in a terminal to read it.`);
+      }
       secrets = new Map();
       if (connection.managed !== false) ({ secrets, undescribed, withheld } = await this.#secrets(name, connection.driver));
     } catch (error) {
-      output.error(this.#redactor.text(error instanceof Error ? error.message : String(error)));
+      const text = this.#redactor.text(error instanceof Error ? error.message : String(error));
+      // The record of migrations cannot say which columns are secret: a refusal a caller can pass on, as its message names migrations only.
+      if (error instanceof UnknownSecretsError) return refuse(output, text);
+      output.error(text);
       return 1;
     }
 
@@ -77,8 +85,8 @@ export class DbQueryCommand {
       const message = result.error.message;
       const lower = message.toLowerCase();
       const unknown = [...withheld].some((table) => lower.includes(table.toLowerCase())) || [...undescribed].some(([table, columns]) => [...columns].some((column) => lower.includes(`${table}.${column}`.toLowerCase())));
-      output.error(this.#redactor.text(unknown ? `${message} No migration describes it (a table made by raw SQL or another tool): create it with schema.create() to read it, or run marmeon migrate if a migration is pending.` : message));
-      return 1;
+      const text = this.#redactor.text(unknown ? `${message} No migration describes it (a table made by raw SQL or another tool): create it with schema.create() to read it, or run marmeon migrate if a migration is pending.` : message);
+      return result.error.kind === 'refused' ? refuse(output, text) : (output.error(text), 1);
     }
     const { columns, rows, truncated, cut } = result.value;
 
@@ -114,6 +122,21 @@ export class DbQueryCommand {
     for (const [table, columns] of undescribed) for (const column of columns) add(table, column);
     return { secrets, undescribed, withheld };
   }
+}
+
+/** The exit code of a query the command refuses, apart from 1 for what the database could not run: a caller tells the two apart. */
+const REFUSED = 3;
+
+/**
+ * What a line of stderr starts with when it is the reason of a refusal. The app prints to stderr while it boots too (under `--json`
+ * its stdout goes there), so a caller finds the reason by this marker and not by its place.
+ */
+const REFUSAL_MARKER = 'db:query refused: ';
+
+/** The reason as one line behind {@link REFUSAL_MARKER} on stderr and exit {@link REFUSED}; stdout stays empty, in text and in `--json`. */
+function refuse(output: CommandInput['output'], message: string): number {
+  output.error(`${REFUSAL_MARKER}${printable(message)}`);
+  return REFUSED;
 }
 
 /** A cell as the table shows it: no control character of the database's text reaches the terminal. */

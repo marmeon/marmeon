@@ -145,17 +145,19 @@ describe.each(drivers)('db:query on %s', (driver) => {
     expect(text.stdout).toContain('1 row, more were left out (--limit=1)');
   });
 
-  it('refuses a write, prints nothing on stdout and leaves the table as it was', async () => {
-    const { code, stdout, stderr } = await query('delete from users');
-    expect(code).toBe(1);
-    expect(stdout).toBe('');
-    expect(stderr.length).toBeGreaterThan(0);
+  it('refuses a write with exit code 3, prints nothing on stdout and leaves the table as it was', async () => {
+    for (const options of [{ json: true }, {}] as Record<string, string | boolean>[]) {
+      const { code, stdout, stderr } = await run(db.connections, ['delete from users'], options);
+      expect(code).toBe(3);
+      expect(stdout).toBe('');
+      expect(stderr.length).toBeGreaterThan(0);
+    }
     expect(await db.count()).toBe(2);
   });
 
   it.each(['select password from users', 'select * from users', 'select length(password) from users'])('refuses a secret column: %s', async (statement) => {
     const { code, stdout, stderr } = await query(statement);
-    expect(code).toBe(1);
+    expect(code).toBe(3);
     expect(stdout).toBe('');
     expect(stderr).toContain('users.password');
   });
@@ -271,7 +273,7 @@ describe('db:query with a pending migration that changes a secret column', () =>
       const stderr: string[] = [];
       vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
       const code = await command.handle({ args: ['select password from users'], options: { json: true }, output: new Output(), root: '/' } as never);
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stderr.join('')).toContain('users.password');
     } finally {
       await db.close();
@@ -306,7 +308,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter(change));
       const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true }, undefined, real());
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stdout).toBe('');
       expect(stderr).toContain('users.password');
     } finally {
@@ -327,8 +329,9 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
       writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
       await prepare(migrations, file);
       const { code, stdout, stderr } = await run(connections, [statement], { json: true, ...options }, undefined, real());
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stdout).toBe('');
+      expect(stderr.trim().split('\n')).toEqual([expect.stringContaining('db:query refused: ')]);
       return stderr;
     } finally {
       await connections.destroy();
@@ -478,7 +481,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       expect((await run(connections, ['select id, email from users'], { json: true }, undefined, real)).code).toBe(0);
       for (const table of ['DocsFts', 'docsfts', 'gone']) {
         const { code, stderr } = await run(connections, [`select * from ${table}`], { json: true }, undefined, real);
-        expect(code, table).toBe(1);
+        expect(code, table).toBe(table === 'gone' ? 1 : 3);
         expect(stderr, table).toContain(table !== 'gone' ? 'No migration describes it' : 'no such module');
       }
     } finally {
@@ -518,6 +521,41 @@ describe('db:query on a connection that is not managed', () => {
   });
 });
 
+describe('db:query --managed-only', () => {
+  const unmanaged = (directory: string) => {
+    const file = join(directory, 'open.db');
+    const raw = new DatabaseSync(file);
+    raw.exec(STATEMENTS.join(';'));
+    raw.close();
+    return new Connections({ connections: { default: { driver: 'sqlite', database: file, managed: false } }, root: directory, logger: silent });
+  };
+
+  it('refuses a connection that is not managed, before any query runs, and names no file', async () => {
+    const directory = tempDir('marmeon-db-query-');
+    const connections = unmanaged(directory);
+    try {
+      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true, 'managed-only': true });
+      expect(code).toBe(3);
+      expect(stdout).toBe('');
+      expect(stderr).toContain('not managed');
+      expect(stderr).not.toContain(directory);
+      expect(stderr).not.toContain('abc');
+    } finally {
+      await connections.destroy();
+    }
+  });
+
+  it('leaves a managed connection alone', async () => {
+    const db = await setup('sqlite');
+    try {
+      for (const statement of STATEMENTS) await db.exec(statement);
+      expect((await run(db.connections, ['select id from users'], { json: true, 'managed-only': true })).code).toBe(0);
+    } finally {
+      await db.close();
+    }
+  });
+});
+
 describe.runIf(drivers.includes('pgsql' as never))('db:query on Postgres, the limits of a run', () => {
   it('counts a table in a schema off the search path as one no migration describes', async () => {
     const directory = workspaceTempDir('marmeon-db-query-');
@@ -535,7 +573,7 @@ export default defineMigration({ up: (schema) => schema.create('users', (table) 
       await sql.raw('create table audit.api_tokens (id integer, token text)').execute(inspectionConnection(connections));
       expect((await run(connections, ['select id, email from users'], { json: true }, undefined, real)).code).toBe(0);
       const { code, stderr } = await run(connections, ['select token from audit.api_tokens'], { json: true }, undefined, real);
-      expect(code).toBe(1);
+      expect(code).toBe(3);
       expect(stderr).toContain('api_tokens.token');
     } finally {
       await connections.destroy();

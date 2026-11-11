@@ -3,7 +3,7 @@ import { err, ok, type Result } from '@marmeon/core';
 import { fold } from './secret-guard.ts';
 import { calledNames, checkPlan, readPlan, refusedBeforePlanning, type FunctionFact, type PlanFacts } from './pg-plan-guard.ts';
 import { importPg, postgresConnection } from './postgres.ts';
-import { cellOf, limitProblem, MAX_CELL_LENGTH, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
+import { cellOf, limitProblem, MAX_CELL_LENGTH, MAX_RESULT_CHARS, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
 
 const APPLICATION_NAME = 'marmeon-db-query';
 const SHAPE = 'Only one SELECT, WITH … SELECT, VALUES or TABLE query can run here.';
@@ -162,8 +162,6 @@ async function run(client: Client, sql: string, options: ReadOnlyQueryOptions, p
 
 // Types whose values are as small as their type: everything else can hold what a query builds (`array[repeat('x', 100000000)]`).
 const FIXED_WIDTH = new Set([16, 18, 19, 20, 21, 23, 26, 700, 701, 1082, 1083, 1114, 1184, 1186, 1266, 2950]);
-// What an answer may weigh in all (as JSON text) before the rest of its rows is left out: what a person or an agent can read, and a process can hold.
-const MAX_RESULT_CHARS = 4 * 1024 * 1024;
 // What a value of another type may weigh in the database before it is replaced: no string in it survives the client's cut of 4096
 // characters, so a bigger one only costs transfer and memory.
 const MAX_VALUE_BYTES = 64 * 1024;

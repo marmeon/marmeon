@@ -36,6 +36,9 @@ export interface ReadOnlyQueryRefusal {
 /** Longest text a cell keeps. */
 export const MAX_CELL_LENGTH = 4096;
 
+/** What an answer may weigh in all (as JSON text) before the rest of its rows is left out: what a person or an agent can read, and a process can hold. */
+export const MAX_RESULT_CHARS = 4 * 1024 * 1024;
+
 /**
  * Answers one query on a connection of its own (never the app's pool), and the database itself keeps it read-only.
  * @internal
