@@ -71,7 +71,7 @@ Ask only for what the error points at.
   `marmeon modules:list` and `marmeon schedule:list`. It lists names and no values; a listener that a provider adds in `boot()` is not
   in it (`docs/modules.md#listing-the-modules`, `docs/scheduling.md#running-the-scheduler`).
 
-- What a table holds, to test a hypothesis ("the row is not there", "the status is wrong"): tool `query`, or `marmeon db:query` in a terminal
+- What a table holds, to test a hypothesis ("the row is not there", "the status is wrong"): tool `query`, or `marmeon db:query --managed-only` in a terminal (without the flag it reads a connection set to `managed: false`, where no secret column is known: leave that to a person)
   (`docs/mcp.md#query`, `docs/database.md#querying-a-connection`). It runs one read-only statement on the development database: a write is
   refused, and so is a secret column, so name the columns instead of `SELECT *`. The rows are personal data of that database and
   reach the provider that runs you: ask for the few columns and rows the hypothesis needs, never a whole table, and do not copy them into a test or your answer.
@@ -95,7 +95,7 @@ pnpm exec marmeon tinker --sandbox -e "await repos.users.count()"
   (`docs/console.md#running-code-from-a-script`). Print the one value you need, not whole rows: they are personal data.
 - `config.<name>` shows secrets as they are, the `APP_KEY` and the passwords of the mail and Redis servers. Never print `config`, `process.env` or a column read with `secret()`, or one
   of its secrets: the output lands in your transcript. Ask for a derived fact instead (a count, a boolean, whether a key is set).
-- Check first that `NODE_ENV=development`; if the banner says PRODUCTION, stop and tell the user. With `-e` the banner comes after the code ran, and a missing `NODE_ENV` counts as protected: every change there is real.
+- Check the environment before you run any code: `NODE_ENV=development`. With `-e` the warning for a protected environment (production, or no `NODE_ENV`) is only printed, before the code runs, and does not stop it; every change there is real. If it is not development, stop and tell the user.
 
 ## 5. Check the fix
 
