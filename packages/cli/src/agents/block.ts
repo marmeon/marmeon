@@ -39,10 +39,10 @@ const HEADS = {
   mcp: ['## MCP tools', 'This app has the MCP server `marmeon`. Start a task with its tools; the commands below cover the rest.'],
 } as const;
 
-const MCP_POINT = `- The MCP server \`marmeon\` reads the app for you: \`app_overview\` first (modules, providers, commands, jobs, events,
-  schedules), \`routes\`, \`schema\` and \`migrations\`; \`last_error\` (the last 5xx) and \`devtools_entries\` (requests, queries,
-  mails, jobs) for what happened in development; \`query\` runs one read-only SQL query on the development database;
-  \`docs_search\` and \`docs_read\` for the guides of this version; \`check\` runs \`marmeon check\`. If its tools are not in your list, the server is not approved yet: use the commands below.`;
+const MCP_POINT = `- The MCP server \`marmeon\` reads the app for you: \`app_overview\` first (modules, providers, jobs, events, schedules), \`routes\`,
+  \`schema\`, \`migrations\`, \`database\`, \`commands\` (CLI commands and options), \`query\` (one read-only SQL query); \`last_error\` (the last
+  5xx) and \`devtools_entries\` (requests, queries, mails, jobs) for development; \`docs_search\`, \`docs_read\` for this version's guides;
+  \`check\` runs \`marmeon check\`. If its tools are not in your list, the server is not approved yet: use the commands below.`;
 
 const BLOCK_HEAD = `${AGENTS_BEGIN}
 Managed by \`marmeon agents:sync\` — edits inside this block are replaced; write yours outside.

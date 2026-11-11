@@ -13,6 +13,20 @@ Types from other packages: none
 export type AnyEntry = {
     [T in EntryType]: Entry<T>;
 }[EntryType];
+// BrowserEntryContent
+export interface BrowserEntryContent {
+    readonly kind: 'console' | 'error' | 'rejection';
+    readonly level: 'error' | 'warn';
+    readonly message: string;
+    readonly stack?: string;
+    readonly source?: {
+        readonly url: string;
+        readonly line: number;
+        readonly column: number;
+    };
+    readonly page: string;
+    readonly dropped?: number;
+}
 // CommandEntryContent
 export interface CommandEntryContent {
     readonly command: string;
@@ -109,6 +123,7 @@ export interface EntryContents {
     live: LiveEntryContent;
     event: EventEntryContent;
     command: CommandEntryContent;
+    browser: BrowserEntryContent;
 }
 // EntryQuery
 export interface EntryQuery {
@@ -308,7 +323,7 @@ export interface StoreUsage {
     readonly entries: number;
 }
 // Watcher
-export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications' | 'logs' | 'exceptions' | 'schedule' | 'live' | 'events' | 'commands';
+export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications' | 'logs' | 'exceptions' | 'schedule' | 'live' | 'events' | 'commands' | 'browser';
 // defineDevtools
 export declare function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition;
 ```
@@ -352,6 +367,20 @@ export declare class DevtoolsTester {
 export type AnyEntry = {
     [T in EntryType]: Entry<T>;
 }[EntryType];
+// BrowserEntryContent
+export interface BrowserEntryContent {
+    readonly kind: 'console' | 'error' | 'rejection';
+    readonly level: 'error' | 'warn';
+    readonly message: string;
+    readonly stack?: string;
+    readonly source?: {
+        readonly url: string;
+        readonly line: number;
+        readonly column: number;
+    };
+    readonly page: string;
+    readonly dropped?: number;
+}
 // CommandEntryContent
 export interface CommandEntryContent {
     readonly command: string;
@@ -384,6 +413,7 @@ export interface EntryContents {
     live: LiveEntryContent;
     event: EventEntryContent;
     command: CommandEntryContent;
+    browser: BrowserEntryContent;
 }
 // EntryType
 export type EntryType = keyof EntryContents;

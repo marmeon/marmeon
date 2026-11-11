@@ -315,6 +315,8 @@ function plainTitle(entry: AnyEntry): string {
       return entry.content.name;
     case 'command':
       return entry.content.command;
+    case 'browser':
+      return firstLine(entry.content.message, 60);
   }
 }
 
@@ -421,6 +423,18 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
       )}${entry.content.stack ? section('Stack', html`<pre class="block">${entry.content.stack}</pre>`) : ''}`;
     case 'log':
       return section('Message', html`<p>${levelBadge(entry.content.level)}</p><pre class="block">${entry.content.message}</pre><h3>Context</h3>${json(entry.content.context)}`);
+    case 'browser': {
+      const c = entry.content;
+      return html`${section(
+        'Message',
+        html`<p>${levelBadge(c.level)} ${badge(c.kind)}</p><pre class="block">${c.message}</pre>${keyValues([
+          ['Page', html`<span class="mono">${c.page}</span>`],
+          ['Raised at', c.source ? html`<span class="mono">${c.source.url}:${c.source.line}:${c.source.column}</span>` : undefined],
+          ['Held back before', c.dropped ? `${c.dropped} reports (rate limit)` : undefined],
+          ['Request', origin(entry)],
+        ])}`,
+      )}${c.stack ? section('Stack', html`<pre class="block">${c.stack}</pre>`) : ''}`;
+    }
     case 'schedule':
       return section(
         'Run',

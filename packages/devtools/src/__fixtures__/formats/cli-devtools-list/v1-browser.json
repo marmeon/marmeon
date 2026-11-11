@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "store": {
+    "driver": "file",
+    "path": "storage/framework/devtools"
+  },
+  "entries": [
+    {
+      "id": "000000005aa0000000005",
+      "type": "browser",
+      "at": 5000,
+      "batch": "batch-000000005aa0000000005",
+      "requestId": "req-1",
+      "jobId": null,
+      "tags": [
+        "level:error",
+        "kind:error"
+      ],
+      "content": {
+        "kind": "error",
+        "level": "error",
+        "message": "Uncaught TypeError: x is undefined",
+        "stack": "TypeError: x is undefined\n    at render (/src/app.tsx:12:5)",
+        "source": {
+          "url": "http://localhost:5173/src/app.tsx",
+          "line": 12,
+          "column": 5
+        },
+        "page": "/users/1",
+        "dropped": 3
+      }
+    }
+  ],
+  "truncated": false,
+  "next": null,
+  "warnings": []
+}

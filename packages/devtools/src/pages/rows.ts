@@ -20,6 +20,7 @@ const HEADERS: Readonly<Record<EntryType, readonly string[]>> = {
   live: ['Time', 'Channel', 'Props', 'Origin'],
   event: ['Time', 'Event', 'Listeners', 'Origin'],
   command: ['Time', 'Command', 'Exit', 'Duration'],
+  browser: ['Time', 'Level', 'Message', 'Page', 'Origin'],
 };
 
 /** How many columns a list of `type` (or of several types) has. */
@@ -83,6 +84,10 @@ function cells(entry: AnyEntry, link: string): Html {
       const c = entry.content;
       return html`<td class="mono"><a class="row" href="${link}">${c.name}</a></td><td>${c.listeners.length === 0 ? html`<span class="muted">none</span>` : c.listeners.join(', ')}</td><td>${origin(entry)}</td>`;
     }
+    case 'browser': {
+      const c = entry.content;
+      return html`<td>${levelBadge(c.level)} ${badge(c.kind)}</td><td><a class="row" href="${link}">${firstLine(c.message, 240)}</a></td><td class="mono">${c.page}</td><td>${origin(entry)}</td>`;
+    }
     case 'command': {
       const c = entry.content;
       return html`<td class="mono"><a class="row" href="${link}">marmeon ${c.command} ${c.args.join(' ')}</a></td><td>${c.exitCode === undefined ? '' : badge(String(c.exitCode), c.exitCode === 0 ? 'ok' : 'bad')}</td><td class="num">${duration(c.durationMs)}</td>`;
@@ -115,6 +120,8 @@ export function summary(entry: AnyEntry): Html {
       return html`<span class="mono">${entry.content.name}</span>`;
     case 'command':
       return html`<span class="mono">marmeon ${entry.content.command}</span>`;
+    case 'browser':
+      return html`${levelBadge(entry.content.level)} ${firstLine(entry.content.message, 200)}`;
   }
 }
 
