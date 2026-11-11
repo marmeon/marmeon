@@ -42,19 +42,19 @@ describe('database in an app', { timeout: 120_000 }, () => {
     expect(result.isError).toBeUndefined();
     const document = result.structuredContent;
     expect(Object.keys(document)[0]).toBe('format');
-    expect(document).toMatchObject({ format: 1, database: true, connection: 'default', driver: 'sqlite', warnings: [] });
+    expect(document).toMatchObject({ format: 1, database: true, connection: 'default', driver: 'sqlite', total: expect.any(Number), truncated: false, warnings: [] });
     expect(document.server).toMatch(/^SQLite \d/);
     expect(document.tables).toContainEqual({ name: 'migrations', schema: null, columns: 5, rows: 3 });
     for (const table of document.tables) expect(Object.keys(table).sort()).toEqual(['columns', 'name', 'rows', 'schema']);
-    expect(Object.keys(document).sort()).toEqual(['connection', 'database', 'driver', 'format', 'server', 'tables', 'warnings']);
+    expect(Object.keys(document).sort()).toEqual(['connection', 'database', 'driver', 'format', 'server', 'tables', 'total', 'truncated', 'warnings']);
     expect(JSON.parse(result.content[0].text)).toEqual(document);
   });
 
-  it('says what the command says about a connection that does not exist', async () => {
+  it('fails with a fixed sentence, not the command\'s message, for a connection that does not exist', async () => {
     const result = await call(session, { connection: 'nowhere' });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('marmeon db:show failed:');
-    expect(result.content[0].text).toContain('nowhere');
+    expect(result.content[0].text).toMatch(/failed with code \d+\. Run it in a terminal/);
+    expect(result.content[0].text).not.toContain('nowhere');
   });
 
   // Argument injection: the input is checked before any child process starts (the app records each boot).
@@ -63,6 +63,9 @@ describe('database in an app', { timeout: 120_000 }, () => {
     ['a line break', { connection: 'system\n--seed' }],
     ['64 characters', { connection: 'a'.repeat(64) }],
     ['an empty name', { connection: '' }],
+    ['a table with a line break', { table: 'a\nb' }],
+    ['a limit of zero', { limit: 0 }],
+    ['a limit above 500', { limit: 501 }],
     ['a key the schema does not know', { target: true }],
   ])('refuses %s and starts nothing', async (_reason, input) => {
     const before = boots();
@@ -109,7 +112,7 @@ describe('database with the child process replaced', () => {
     withPackage();
     answer({ ...shown, target: 'pgsql postgres://u:***@h/db', password: 'x', tables: [{ ...shown.tables[0], password: 'y' }] });
     const result = await DATABASE_TOOL.run({}, context());
-    expect(result).toEqual({ ...shown, database: true });
+    expect(result).toEqual({ ...shown, database: true, total: 1, truncated: false });
     const text = JSON.stringify(result);
     for (const leak of ['target', 'postgres://', 'password']) expect(text).not.toContain(leak);
   });
@@ -128,10 +131,28 @@ describe('database with the child process replaced', () => {
     expect(await DATABASE_TOOL.run({}, context())).toEqual({ failure: expect.stringContaining('update marmeon') });
   });
 
-  it('passes on the end of stderr when the command fails, and says when it ran out of time', async () => {
+  it('filters the tables by name prefix, cuts them at the limit and counts them', async () => {
     withPackage();
-    run.mockResolvedValueOnce({ ...exitedClean, code: 1, stderrTail: 'boom\n' });
-    expect(await DATABASE_TOOL.run({}, context())).toEqual({ failure: 'marmeon db:show failed: boom. Run it in a terminal to see the whole message.' });
+    const tables = ['users', 'user_roles', 'posts', 'post_tags'].map((name) => ({ name, schema: null, columns: 1, rows: 0 }));
+    answer({ ...shown, tables });
+    const prefixed = (await DATABASE_TOOL.run({ table: 'user' }, context())) as Record<string, any>;
+    expect(prefixed.tables.map((table: { name: string }) => table.name)).toEqual(['users', 'user_roles']);
+    expect(prefixed).toMatchObject({ total: 2, truncated: false });
+    answer({ ...shown, tables });
+    const cut = (await DATABASE_TOOL.run({ limit: 3 }, context())) as Record<string, any>;
+    expect(cut.tables).toHaveLength(3);
+    expect(cut).toMatchObject({ total: 4, truncated: true });
+    expect(run).toHaveBeenLastCalledWith(root, ['db:show', '--json'], expect.anything());
+  });
+
+  it('is announced as a tool that may write, because the command may create a SQLite file', () => {
+    expect(DATABASE_TOOL.writes).toBe(true);
+  });
+
+  it('does not pass on the message of the command, which can name the host, the database or a path', async () => {
+    withPackage();
+    run.mockResolvedValueOnce({ ...exitedClean, code: 1, stderrTail: 'connect ECONNREFUSED db.internal:5432 /home/me/app.sqlite\n' });
+    expect(await DATABASE_TOOL.run({}, context())).toEqual({ failure: 'marmeon db:show failed with code 1. Run it in a terminal to see the whole message.' });
     run.mockResolvedValueOnce({ ...exitedClean, code: 1, timedOut: true });
     expect(await DATABASE_TOOL.run({}, context())).toEqual({ failure: expect.stringContaining('120 seconds') });
   });

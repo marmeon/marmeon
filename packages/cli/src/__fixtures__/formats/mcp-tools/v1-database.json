@@ -11,12 +11,24 @@
             "minLength": 1,
             "maxLength": 63,
             "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,62}$"
+          },
+          "table": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\r\\n]+$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 200
           }
         },
         "additionalProperties": false
       },
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "openWorldHint": false
       }
     }

@@ -11,7 +11,7 @@ It is a tool for development and nothing else:
 - It starts only with `NODE_ENV=development`, set in the environment or in the app's `.env`. With `production`, `test` or no
   `NODE_ENV` it prints why on stderr and ends with code 1, before it loads anything of the protocol. Nothing in a deployment starts it.
 - There is no port: the server does not listen, has no HTTP transport, and no option turns one on.
-- The server itself changes no code, database or file. Of the tools' own commands, only `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed. A call to `routes` or `check` starts your app, though, and the app's own startup code runs: it can write files or open connections.
+- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call to `routes` or `check` starts your app, though, and the app's own startup code runs: it can write files or open connections.
 
 ## Starting it
 
@@ -178,20 +178,22 @@ An app without `@marmeon/database` gets `"database": false` and empty lists, and
 
 ### `database`
 
-A database connection of the app: the document of [`marmeon db:show --json`](database.md#inspecting-a-connection), without its `target`. It needs the database and starts the app once. It reports names and counts and reads no row.
+A database connection of the app: the document of [`marmeon db:show --json`](database.md#inspecting-a-connection), without its `target`. It needs the database and starts the app once. It reports names and counts and reads no row. Like `schema`, the tool is not announced as read-only: on SQLite the command opens the database file the way the app does, so a file that does not exist yet is created and the journal mode is set to WAL.
 
 | Input | |
 | --- | --- |
 | `connection` | The connection by its name: a letter or `_`, then letters, digits, `_`, `.` or `-`, at most 63 characters. Default: the default connection. |
+| `table` | Only tables whose name starts with this text (1 to 200 characters, no line break). |
+| `limit` | At most this many tables, 1 to 500. Default 200. |
 
 The command is fixed apart from one token, `--database=<connection>`, which is checked against the pattern first.
 
-The document: `{ "format": 1, "database": true, "connection": "default", "driver": "sqlite", "server": "SQLite 3.50.4", "tables": [{ "name": "users", "schema": null, "columns": 4, "rows": 3 }], "warnings": [] }`.
-`driver` is `sqlite` or `pgsql`; `schema` is `null` on SQLite. The tool copies the fields it knows and leaves out `target`, the text that says where the connection points, so the
+The document: `{ "format": 1, "database": true, "connection": "default", "driver": "sqlite", "server": "SQLite 3.50.4", "tables": [{ "name": "users", "schema": null, "columns": 4, "rows": 3 }], "total": 1, "truncated": false, "warnings": [] }`.
+`driver` is `sqlite` or `pgsql`; `schema` is `null` on SQLite. `total` counts the tables that matched `table`, `truncated` says that `limit` cut the list. The tool copies the fields it knows and leaves out `target`, the text that says where the connection points, so the
 configuration stays out of the answer; `marmeon db:show` in a terminal shows it. A document of another `format` is an error that says to update `marmeon`. When the command fails, for example because the database is unreachable
-or the connection is not defined, the error carries the end of its message (secrets masked) and says to run `marmeon db:show` in a terminal. The call is stopped after 120 seconds.
+or the connection is not defined, the error says only that it failed with its exit code and to run `marmeon db:show` in a terminal, because its message can name the host, the user, the database or the path of the file, which is what `target` withholds. The call is stopped after 120 seconds.
 
-An app without `@marmeon/database` gets `"database": false`, `null` for `connection`, `driver` and `server`, and no tables, and nothing is started.
+An app without `@marmeon/database` gets `"database": false`, `null` for `connection`, `driver` and `server`, no tables, `total` 0, and nothing is started.
 
 ### `app_overview`
 
@@ -247,7 +249,7 @@ the message of the command. The call is stopped after 120 seconds. Like `routes`
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
-- It writes nothing of its own; the one file a tool's command keeps up to date is `.marmeon/schema.json`.
+- It writes nothing of its own; the one file a tool's command keeps up to date is `.marmeon/schema.json`, and `database` may create a missing SQLite database file.
 
 ## Results are data
 
