@@ -8,6 +8,8 @@ import type { ShowDevtoolsLabController } from '../controllers/ShowDevtoolsLabCo
  * The devtools' bar at work. With `?mismatch=1` the server renders another text than the browser — a hydration
  * mismatch on purpose, listed in the bar's SSR tab. Below, the client hook API — a feature, so it is used where the page
  * runs in the browser (after it mounted): `before` cancels every visit to `blocked`, `invalid` lists the fields a form got back.
+ * The three buttons report an error from the page — a `console.error`, an uncaught error, an unhandled rejection — to the dev
+ * server, which lists them in the devtools under Browser.
  */
 export default function Devtools({ blocked, mismatch }: PageProps<ShowDevtoolsLabController>) {
   const [mounted, setMounted] = useState(false);
@@ -17,8 +19,29 @@ export default function Devtools({ blocked, mismatch }: PageProps<ShowDevtoolsLa
       <Head title="Devtools lab" />
       <h1>Devtools lab</h1>
       {mismatch ? <p data-rendered-by>Rendered by {typeof window === 'undefined' ? 'the server' : 'the browser'}.</p> : <p><a href="/lab/devtools?mismatch=1">A hydration mismatch on purpose</a></p>}
+      <BrowserErrors />
       {mounted ? <Hooks blocked={blocked} /> : null}
     </main>
+  );
+}
+
+function BrowserErrors() {
+  return (
+    <section>
+      <h2>Browser errors</h2>
+      <p>
+        <button type="button" onClick={() => console.error('Lab: console.error', { from: 'the devtools lab' })}>
+          console.error
+        </button>{' '}
+        <button type="button" onClick={() => void setTimeout(() => { throw new Error('Lab: an uncaught error'); })}>
+          Throw
+        </button>{' '}
+        <button type="button" onClick={() => void Promise.reject(new Error('Lab: an unhandled rejection'))}>
+          Reject
+        </button>
+      </p>
+      <p>In development, the entries appear in the devtools under Browser.</p>
+    </section>
   );
 }
 

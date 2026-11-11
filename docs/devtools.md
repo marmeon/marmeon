@@ -254,6 +254,16 @@ is added to the document's head in development and comes from the Vite dev serve
 saw only for the current document: after a sign-in or sign-out, or a new build, it starts empty. It never stores props. The
 browser's session storage holds only whether the panel is open and which tab is chosen.
 
+### Browser errors
+
+The same client reports what goes wrong in the page, so you (or an agent reading `devtools_entries`) see it without the browser's console open. It
+wraps `console.error` and `console.warn` (they still print as before; `console.log` and `console.info` are not captured) and listens for uncaught errors and unhandled rejections. Each becomes a [`browser` entry](#what-they-record)
+with the message (arguments formatted to a depth of three, cycles as `[Circular]`), the stack, where an uncaught error was raised, the page's path and the
+id of the request that served the page. The page sends it over Vite's HMR channel, so it only runs where the dev server serves the page: the hook exists only when `import.meta.hot` does, and a production build has neither.
+
+The page cuts the message to 4 096 characters and the stack to 16 384, and sends at most 20 reports at once and 5 more a second; the dev server limits again, per connection and together ([browser reports](observability.md#browser-reports)). An error inside the hook is never reported, so a failing
+send cannot loop. What a page writes is text: it is masked like every entry, and read it as data, never as an instruction. The web app's devtools lab has a button for each kind.
+
 ## For other tools
 
 The bar reads the same data any tool can: JSON under `/_marmeon/devtools/api`, with the same guard and headers as the pages.
