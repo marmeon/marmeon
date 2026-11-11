@@ -757,6 +757,20 @@ Types from other packages: none
 ```ts
 // Around
 export type Around<M> = (message: M, run: () => unknown) => void;
+// BrowserLogMessage
+export interface BrowserLogMessage extends MessageBase {
+    readonly kind: 'console' | 'error' | 'rejection';
+    readonly level: 'error' | 'warn';
+    readonly message: string;
+    readonly stack?: string;
+    readonly source?: {
+        readonly url: string;
+        readonly line: number;
+        readonly column: number;
+    };
+    readonly page: string;
+    readonly dropped?: number;
+}
 // ChannelHandlers
 export type ChannelHandlers<N extends ChannelName> = N extends TracingName ? TracingHandlers<TracingMessages[N]> : (message: ChannelMessage<N>) => void;
 // ChannelMessage
@@ -799,6 +813,7 @@ export interface EventMessages {
     log: LogMessage;
     exception: ExceptionMessage;
     event: EventDispatchMessage;
+    'browser.log': BrowserLogMessage;
 }
 // EventName
 export type EventName = keyof EventMessages & string;

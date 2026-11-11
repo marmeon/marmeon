@@ -10,7 +10,12 @@ import { LabController } from './ShowLabPageController.ts';
 export class ShowDevtoolsLabController extends LabController {
   handle(ctx: HttpContext) {
     this.enabled();
-    return this.view('lab/Devtools', { blocked: '/lab/devtools/blocked', mismatch: new URL(ctx.request.url).searchParams.get('mismatch') === '1' });
+    return this.view('lab/Devtools', {
+      blocked: '/lab/devtools/blocked',
+      // The devtools' path stays on the server: no client chunk of a build may name it.
+      browserPage: '/_marmeon/devtools/browser',
+      mismatch: new URL(ctx.request.url).searchParams.get('mismatch') === '1',
+    });
   }
 }
 
