@@ -312,8 +312,8 @@ The answer is limited and masked before it leaves the process:
 
 - text cells are masked by the app's [redactor](logging.md#patterns-of-your-own) and cut at 4096 characters (`cut` counts the cells
   that were); binary cells are written as `[binary N bytes]`; big integers and dates are text;
-- Postgres results are read through a cursor and stop at 4 MiB after the cutting, with `truncated: true`; the first row is always
-  returned. `text`, `varchar`, `json`, `jsonb` and `xml` values are cut on the server, `bytea` becomes its size, and any other value
+- A result stops at 4 MiB (as JSON, after the cutting) on both drivers, with `truncated: true`; the first row is always returned.
+  Postgres reads it through a cursor. On Postgres `text`, `varchar`, `json`, `jsonb` and `xml` values are cut on the server, `bytea` becomes its size, and any other value
   above 64 KiB arrives as `NULL` and counts in `cut`. The server still computes each value in full (`repeat('x', 1e9)`); only
   `--timeout` bounds that;
 - the text output writes the control characters of a cell or a column name out (`\u001b`), as all console output does.

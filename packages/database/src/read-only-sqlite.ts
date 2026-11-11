@@ -1,6 +1,6 @@
 import { constants, DatabaseSync } from 'node:sqlite';
 import { err, ok, type Result } from '@marmeon/core';
-import { cellOf, limitProblem, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
+import { cellOf, limitProblem, MAX_RESULT_CHARS, type ReadOnlyQueryOptions, type ReadOnlyQueryRefusal, type ReadOnlyQueryResult } from './read-only-query.ts';
 import { fold } from './secret-guard.ts';
 
 // What SQLite lets a query do, by allow-list: whatever the authorizer does not name is denied, so an action a later SQLite adds is
@@ -105,6 +105,7 @@ export function queryReadOnlySqlite(
     statement.setReadBigInts(true);
     const rows: unknown[][] = [];
     let cut = 0;
+    let bytes = 0;
     let truncated = false;
     try {
       for (const row of statement.iterate() as Iterable<unknown[]>) {
@@ -112,7 +113,17 @@ export function queryReadOnlySqlite(
           truncated = true;
           break;
         }
-        rows.push(row.map((cell) => cellOf(integer(cell), options.redact, () => cut++)));
+        let cutHere = 0;
+        const cells = row.map((cell) => cellOf(integer(cell), options.redact, () => cutHere++));
+        // The first row always stays; after it the answer stops where the cap is reached, so a wide result is never held whole.
+        const size = JSON.stringify(cells).length;
+        if (rows.length > 0 && bytes + size > MAX_RESULT_CHARS) {
+          truncated = true;
+          break;
+        }
+        rows.push(cells);
+        bytes += size;
+        cut += cutHere;
       }
     } catch (error) {
       return err({ kind: reason === undefined ? 'failed' : 'refused', message: reason ?? messageOf(error) });
