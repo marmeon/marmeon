@@ -317,7 +317,7 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
   });
 
   // What the database holds cannot be told from files that are not what ran: refused rather than guessed.
-  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}, statement = 'select password from users', exit = 1) => {
+  const unestablished = async (prepare: (migrations: string, file: string) => Promise<void>, options: Record<string, string | boolean> = {}, statement = 'select password from users') => {
     const directory = workspaceTempDir('marmeon-db-query-');
     const migrations = join(directory, 'migrations');
     mkdirSync(migrations);
@@ -329,8 +329,9 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
       writeFileSync(join(migrations, '2026_01_01_000000_create_users_table.ts'), create);
       await prepare(migrations, file);
       const { code, stdout, stderr } = await run(connections, [statement], { json: true, ...options }, undefined, real());
-      expect(code).toBe(exit);
+      expect(code).toBe(3);
       expect(stdout).toBe('');
+      expect(stderr.trim().split('\n')).toEqual([expect.stringContaining('db:query refused: ')]);
       return stderr;
     } finally {
       await connections.destroy();
@@ -428,7 +429,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       raw.exec("delete from migrations where name like '%create_users_table'");
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter("table.dropColumn('password');"));
-    }, {}, undefined, 3);
+    });
     expect(stderr).toContain('users.password');
     expect(stderr).toContain('No migration describes it');
   });
@@ -442,7 +443,7 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_drop_password.ts'), alter("table.dropColumn('password');"));
       writeFileSync(join(migrations, '2026_01_03_000000_add_password.ts'), alter("table.string('password').nullable();"));
-    }, {}, 'select password from users', 3);
+    });
     expect(stderr).toContain('users.password');
     expect(stderr).toContain('No migration describes it');
   });
@@ -457,7 +458,6 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       },
       {},
       'select body from raw_notes',
-      3,
     );
     expect(stderr).toContain('raw_notes.body');
     expect(stderr).toContain('No migration describes it');

@@ -11,8 +11,14 @@ const MAX_CHILD_STDOUT_BYTES = 16 * 1024 * 1024;
 const MAX_SQL_BYTES = 64 * 1024;
 const MAX_REFUSAL_CHARACTERS = 300;
 
-/** The exit code of `db:query` for a query it refuses; its stderr then holds the reason. */
+/** The exit code of `db:query` for a query it refuses; its stderr then holds the reason in one line behind the marker of the command. */
 const REFUSED = 3;
+/**
+ * Starts that line: the marker of the command after the mark `output.error` puts first, with or without colour. A line of the app that
+ * only mentions it further in (a log line) is not the reason.
+ */
+// eslint-disable-next-line no-control-regex -- the colour codes of the mark
+const REFUSAL_LINE = /^(?:\x1b\[\d+m)?✗(?:\x1b\[\d+m)? db:query refused: /;
 
 const NO_DATABASE = 'This app has no database (@marmeon/database is not installed).';
 
@@ -51,8 +57,10 @@ async function query(input: Readonly<Record<string, unknown>>, { root, signal }:
   if (signal.aborted) return failure('The call was cancelled; marmeon db:query was stopped.');
   if (run.tooLarge) return failure('db:query printed more than 16 MiB; the result was dropped.');
   if (run.code === REFUSED) {
-    // The command's own sentence, built from fixed text and the query's identifiers; the first line, redacted by the runner.
-    const reason = run.stderrTail.trim().split('\n')[0]!.slice(0, MAX_REFUSAL_CHARACTERS);
+    // The command's own sentence, built from fixed text and the query's identifiers, redacted by the runner. Nothing else on stderr is
+    // passed on: the app's own output reaches it too, and the last marked line is the command's, as it runs after the boot.
+    const line = run.stderrTail.split('\n').findLast((candidate) => REFUSAL_LINE.test(candidate));
+    const reason = (line?.replace(REFUSAL_LINE, '') ?? '').trim().slice(0, MAX_REFUSAL_CHARACTERS);
     return failure(reason === '' ? 'The query was refused.' : `The query was refused: ${reason}`);
   }
   // Not its stderr: what the database failed with may name a file or an address. The command says why in a terminal.

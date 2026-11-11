@@ -2,7 +2,7 @@ import { CommandArgumentsError, environment, Redactor } from '@marmeon/core';
 import { printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { Connections } from '../connections.ts';
-import { Migrator } from '../migrations/migrator.ts';
+import { Migrator, UnknownSecretsError } from '../migrations/migrator.ts';
 import { readOnlyQuery } from '../read-only-query.ts';
 import { factsOf } from '../schema/projection.ts';
 
@@ -73,7 +73,10 @@ export class DbQueryCommand {
       secrets = new Map();
       if (connection.managed !== false) ({ secrets, undescribed, withheld } = await this.#secrets(name, connection.driver));
     } catch (error) {
-      output.error(this.#redactor.text(error instanceof Error ? error.message : String(error)));
+      const text = this.#redactor.text(error instanceof Error ? error.message : String(error));
+      // The record of migrations cannot say which columns are secret: a refusal a caller can pass on, as its message names migrations only.
+      if (error instanceof UnknownSecretsError) return refuse(output, text);
+      output.error(text);
       return 1;
     }
 
@@ -124,9 +127,15 @@ export class DbQueryCommand {
 /** The exit code of a query the command refuses, apart from 1 for what the database could not run: a caller tells the two apart. */
 const REFUSED = 3;
 
-/** The reason on stderr and exit {@link REFUSED}; stdout stays empty, in text and in `--json`. */
+/**
+ * What a line of stderr starts with when it is the reason of a refusal. The app prints to stderr while it boots too (under `--json`
+ * its stdout goes there), so a caller finds the reason by this marker and not by its place.
+ */
+const REFUSAL_MARKER = 'db:query refused: ';
+
+/** The reason as one line behind {@link REFUSAL_MARKER} on stderr and exit {@link REFUSED}; stdout stays empty, in text and in `--json`. */
 function refuse(output: CommandInput['output'], message: string): number {
-  output.error(message);
+  output.error(`${REFUSAL_MARKER}${printable(message)}`);
   return REFUSED;
 }
 

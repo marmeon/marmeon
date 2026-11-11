@@ -23,6 +23,8 @@ describe('query in an app', { timeout: 120_000 }, () => {
   let file: string;
   let session: McpSession;
   let unmanaged: McpSession;
+  let unrecorded: McpSession;
+  const noise = 'connected to db at /home/max/secret/app.sqlite as admin@db.internal';
   const count = () => {
     const database = new DatabaseSync(file, { readOnly: true });
     try {
@@ -45,11 +47,18 @@ describe('query in an app', { timeout: 120_000 }, () => {
     database.exec("insert into notes (title) values ('first'), ('second')");
     database.close();
     session = mcpSession(app, mcpEnv(env));
-    unmanaged = mcpSession(app, mcpEnv({ ...env, DB_MANAGED: 'false' }));
-    await Promise.all([initialize(session), initialize(unmanaged)]);
+    // The app prints a path while it boots: it reaches the stderr of the child, ahead of the command's own line.
+    unmanaged = mcpSession(app, mcpEnv({ ...env, DB_MANAGED: 'false', MCP_BOOT_NOISE: noise }));
+    // A database that has a table and no record of migrations: which of its columns are secret cannot be established.
+    const other = join(dir, 'unrecorded.sqlite');
+    const raw = new DatabaseSync(other);
+    raw.exec('create table loose (id integer primary key, body text)');
+    raw.close();
+    unrecorded = mcpSession(app, mcpEnv({ ...env, DB_DATABASE: other, MCP_BOOT_NOISE: noise }));
+    await Promise.all([initialize(session), initialize(unmanaged), initialize(unrecorded)]);
   });
   afterAll(async () => {
-    await Promise.all([session.close(), unmanaged.close()]);
+    await Promise.all([session.close(), unmanaged.close(), unrecorded.close()]);
   });
 
   it('answers a select with the stored document', async () => {
@@ -76,9 +85,18 @@ describe('query in an app', { timeout: 120_000 }, () => {
   it('refuses a connection that is not managed and answers nothing of its target', async () => {
     const result = await call(unmanaged, { sql: 'select title from notes' });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('not managed');
+    expect(result.content[0].text).toMatch(/^The query was refused: Connection "default" is not managed/);
     expect(result.content[0].text).not.toContain(dir);
+    expect(result.content[0].text).not.toContain('/home/max');
+    expect(result.content[0].text).not.toContain('admin@db.internal');
     expect(result.content[0].text).not.toContain('first');
+  });
+
+  it('says that a record of migrations that cannot name the secret columns refuses the query, and to run marmeon migrate', async () => {
+    const result = await call(unrecorded, { sql: 'select body from loose' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/^The query was refused: Which columns are secret cannot be established: the database has tables but no record of migrations\. Run marmeon migrate\.$/);
+    expect(result.content[0].text).not.toContain('/home/max');
   });
 
   it('gives a fixed sentence, not the message of the database, when the query fails', async () => {
@@ -172,12 +190,18 @@ describe('query with the child process replaced', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it('passes on the first line of the reason of a refusal (exit 3), cut at 300 characters', async () => {
-    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: 'Column users.password is secret.\nat /home/x/app.sqlite\n' });
+  it('passes on the last marked line of the reason of a refusal (exit 3) and nothing the app printed, cut at 300 characters', async () => {
+    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: 'connected to /home/x/app.sqlite\n✗ db:query refused: Column users.password is secret.\nat /home/x/app.sqlite\n' });
     expect(await QUERY_TOOL.run({ sql: 'select password from users' }, context())).toEqual({ failure: 'The query was refused: Column users.password is secret.' });
-    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: `${'x'.repeat(500)}\n` });
+    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: `✗ db:query refused: ${'x'.repeat(500)}\n` });
     const cut = (await QUERY_TOOL.run({ sql: 'select 1' }, context())) as { failure: string };
     expect(cut.failure).toBe(`The query was refused: ${'x'.repeat(300)}`);
+    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: '✗ db:query refused: Column users.password is secret.\n[info] shutdown after db:query refused: /home/x/app.sqlite\n' });
+    expect(await QUERY_TOOL.run({ sql: 'select 1' }, context())).toEqual({ failure: 'The query was refused: Column users.password is secret.' });
+    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: '[info] shutdown after db:query refused: /home/x/app.sqlite\n' });
+    expect(await QUERY_TOOL.run({ sql: 'select 1' }, context())).toEqual({ failure: 'The query was refused.' });
+    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: 'connected to /home/x/app.sqlite as admin\n' });
+    expect(await QUERY_TOOL.run({ sql: 'select 1' }, context())).toEqual({ failure: 'The query was refused.' });
   });
 
   it('never passes on stderr: a fixed sentence for a failure of the database', async () => {
