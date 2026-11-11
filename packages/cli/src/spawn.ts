@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Redactor } from '@marmeon/core';
 import { NO_INTERACTION_ENV } from './prompt.ts';
@@ -115,8 +116,8 @@ export function stderrTailOf(window: Buffer, truncated: boolean): string {
 }
 
 /**
- * `marmeon <args>` in `root` as a new process, whose stdout is one JSON document (`--json`). No shell, nothing on stdin, both
- * outputs piped; the arguments are an array, never a string. Ends the child (SIGTERM, SIGKILL after a grace period) after
+ * `marmeon <args>` in `root` as a new process, whose stdout is one JSON document (`--json`). No shell, stdin closed unless
+ * `input` is given (then it is the child's whole standard input, written and ended), both outputs piped; the arguments are an array, never a string. Ends the child (SIGTERM, SIGKILL after a grace period) after
  * `timeoutMs`, when `signal` aborts, and when it prints more than `maxStdoutBytes`.
  *
  * The child leads a process group of its own (POSIX) and the signals go to the group: the launcher starts a second Node process
@@ -127,13 +128,14 @@ export function stderrTailOf(window: Buffer, truncated: boolean): string {
 export function runMarmeonJson(
   root: string,
   args: readonly string[],
-  { timeoutMs, signal, maxStdoutBytes, documentCodes = [0], launcher = LAUNCHER }: { readonly timeoutMs: number; readonly signal?: AbortSignal; readonly maxStdoutBytes: number; readonly documentCodes?: readonly number[]; readonly launcher?: string },
+  { timeoutMs, signal, maxStdoutBytes, documentCodes = [0], launcher = LAUNCHER, input }: { readonly timeoutMs: number; readonly signal?: AbortSignal; readonly maxStdoutBytes: number; readonly documentCodes?: readonly number[]; readonly launcher?: string; readonly input?: string },
 ): Promise<JsonRun> {
   const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...inherited } = process.env;
   // A call that was cancelled while it waited in the queue never starts the app.
   if (signal?.aborted) return Promise.resolve({ code: 1, document: undefined, stderrTail: '', timedOut: false, tooLarge: false });
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [launcher, ...args], { cwd: root, env: { ...inherited, [NO_INTERACTION_ENV]: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: OWN_GROUP });
+    // The overloads cannot tell which of the two stdin modes it is; the type says what both have in common.
+    const child = spawn(process.execPath, [launcher, ...args], { cwd: root, env: { ...inherited, [NO_INTERACTION_ENV]: '1' }, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: OWN_GROUP }) as ChildProcessByStdio<Writable | null, Readable, Readable>;
     const out: Buffer[] = [];
     let outBytes = 0;
     let errWindow: Buffer = Buffer.alloc(0);
@@ -186,6 +188,11 @@ export function runMarmeonJson(
       stop();
     }, timeoutMs);
     signal?.addEventListener('abort', stop, { once: true });
+    if (input !== undefined) {
+      // A child that ends before it read everything closes the pipe: that is its answer, not an error of ours.
+      child.stdin?.on('error', () => {});
+      child.stdin?.end(input);
+    }
     child.stdout.on('data', (chunk: Buffer) => {
       outBytes += chunk.length;
       if (outBytes > maxStdoutBytes) {

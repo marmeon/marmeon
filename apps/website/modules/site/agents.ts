@@ -19,6 +19,7 @@ export const AGENT_TOOLS: readonly { name: string; text: string }[] = [
   { name: 'devtools_entries', text: 'Requests, queries, jobs and mails the devtools recorded.' },
   { name: 'migrations', text: 'Which migrations ran and which are pending.' },
   { name: 'app_overview', text: 'Modules, providers, events and schedules.' },
+  { name: 'query', text: 'One read-only SQL query on the development database.' },
 ];
 
 export const AGENTS_INSTALL_COMMAND = 'pnpm marmeon agents:install';

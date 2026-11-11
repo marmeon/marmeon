@@ -271,8 +271,12 @@ pnpm marmeon db:query "select * from things" --database=system --limit=20
 Pass the SQL as one argument or, with `--stdin`, on standard input (at most 64 KiB, read to its end) — one of the two, not both.
 `--database` names a connection, `default` without it. `--limit` is the number of rows to keep, 1 to 1000, 100 without it; one
 row more is read to tell whether there were others. `--timeout` is the seconds Postgres may work on the query, 1 to 60, 10 without
-it. A wrong call (both or neither of the SQL and `--stdin`, a value out of range) ends with exit code 2; a query the command
-refuses or the database cannot run ends with exit code 1, the reason on stderr and nothing on stdout.
+it. A wrong call (both or neither of the SQL and `--stdin`, a value out of range) ends with exit code 2; a query the database
+cannot run ends with exit code 1, and a query the command refuses (a write, a secret column, a connection that `--managed-only` rules
+out) with exit code 3 — in both the reason is on stderr and nothing on stdout, with `--json` as well.
+
+A connection with `managed: false` has no known secret columns, so every column of it is readable. `--managed-only` makes the
+command refuse such a connection before it runs anything; the [MCP `query` tool](mcp.md#query) passes it.
 
 The command runs only with `NODE_ENV=development` or `NODE_ENV=test`, where there is a development database to look into; with any
 other value, and with none, it ends with exit code 1 before it reads anything. For a running production app,

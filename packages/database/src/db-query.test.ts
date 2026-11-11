@@ -145,17 +145,19 @@ describe.each(drivers)('db:query on %s', (driver) => {
     expect(text.stdout).toContain('1 row, more were left out (--limit=1)');
   });
 
-  it('refuses a write, prints nothing on stdout and leaves the table as it was', async () => {
-    const { code, stdout, stderr } = await query('delete from users');
-    expect(code).toBe(1);
-    expect(stdout).toBe('');
-    expect(stderr.length).toBeGreaterThan(0);
+  it('refuses a write with exit code 3, prints nothing on stdout and leaves the table as it was', async () => {
+    for (const options of [{ json: true }, {}]) {
+      const { code, stdout, stderr } = await run(db.connections, ['delete from users'], options);
+      expect(code).toBe(3);
+      expect(stdout).toBe('');
+      expect(stderr.length).toBeGreaterThan(0);
+    }
     expect(await db.count()).toBe(2);
   });
 
   it.each(['select password from users', 'select * from users', 'select length(password) from users'])('refuses a secret column: %s', async (statement) => {
     const { code, stdout, stderr } = await query(statement);
-    expect(code).toBe(1);
+    expect(code).toBe(3);
     expect(stdout).toBe('');
     expect(stderr).toContain('users.password');
   });
@@ -514,6 +516,41 @@ describe('db:query on a connection that is not managed', () => {
       expect(JSON.parse(stdout).rows).toEqual([['abc'], ['xyz']]);
     } finally {
       await connections.destroy();
+    }
+  });
+});
+
+describe('db:query --managed-only', () => {
+  const unmanaged = (directory: string) => {
+    const file = join(directory, 'open.db');
+    const raw = new DatabaseSync(file);
+    raw.exec(STATEMENTS.join(';'));
+    raw.close();
+    return new Connections({ connections: { default: { driver: 'sqlite', database: file, managed: false } }, root: directory, logger: silent });
+  };
+
+  it('refuses a connection that is not managed, before any query runs, and names no file', async () => {
+    const directory = tempDir('marmeon-db-query-');
+    const connections = unmanaged(directory);
+    try {
+      const { code, stdout, stderr } = await run(connections, ['select password from users'], { json: true, 'managed-only': true });
+      expect(code).toBe(3);
+      expect(stdout).toBe('');
+      expect(stderr).toContain('not managed');
+      expect(stderr).not.toContain(directory);
+      expect(stderr).not.toContain('abc');
+    } finally {
+      await connections.destroy();
+    }
+  });
+
+  it('leaves a managed connection alone', async () => {
+    const db = await setup('sqlite');
+    try {
+      for (const statement of STATEMENTS) await db.exec(statement);
+      expect((await run(db.connections, ['select id from users'], { json: true, 'managed-only': true })).code).toBe(0);
+    } finally {
+      await db.close();
     }
   });
 });
