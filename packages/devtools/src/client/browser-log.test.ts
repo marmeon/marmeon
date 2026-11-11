@@ -196,6 +196,39 @@ describe('installBrowserLog', () => {
     expect(sent).toHaveLength(30);
   });
 
+  it('the notes on omitted arguments and held-back reports survive a message that fills the limit', () => {
+    const { target } = page();
+    let clock = 0;
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context, () => clock);
+    for (let index = 0; index < 22; index++) target.console.error('n');
+    clock += 1000;
+    target.console.error('x'.repeat(5000), ...Array.from({ length: 30 }, () => 'y'));
+    const { message } = sent.at(-1)!;
+    expect(message.length).toBeLessThanOrEqual(4096);
+    expect(message.endsWith('… 11 more arguments (2 more held back on the page)')).toBe(true);
+  });
+
+  it('a `[vite]` call is only a send failure with exactly one Error after it', async () => {
+    const { target } = page();
+    const sent: BrowserReport[] = [];
+    installBrowserLog(
+      target,
+      (report) => {
+        sent.push(report);
+        if (report.message === 'first') {
+          queueMicrotask(() => target.console.error('[vite]', 'text', new Error('x')));
+          queueMicrotask(() => target.console.error('[vite]', new Error('y')));
+        }
+      },
+      context,
+    );
+    target.console.error('first');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    // The call with an extra argument is not Vite's send failure; the one with exactly an Error is.
+    expect(sent.map(({ message }) => message.slice(0, 13))).toEqual(['first', '[vite] text E']);
+  });
+
   it('what the page holds back goes into the next message that is sent', () => {
     const { target } = page();
     let clock = 0;

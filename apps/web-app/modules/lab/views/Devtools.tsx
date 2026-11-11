@@ -11,7 +11,7 @@ import type { ShowDevtoolsLabController } from '../controllers/ShowDevtoolsLabCo
  * The three buttons report an error from the page — a `console.error`, an uncaught error, an unhandled rejection — to the dev
  * server, which lists them in the devtools under Browser.
  */
-export default function Devtools({ blocked, mismatch }: PageProps<ShowDevtoolsLabController>) {
+export default function Devtools({ blocked, browserPage, mismatch }: PageProps<ShowDevtoolsLabController>) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return (
@@ -19,13 +19,13 @@ export default function Devtools({ blocked, mismatch }: PageProps<ShowDevtoolsLa
       <Head title="Devtools lab" />
       <h1>Devtools lab</h1>
       {mismatch ? <p data-rendered-by>Rendered by {typeof window === 'undefined' ? 'the server' : 'the browser'}.</p> : <p><a href="/lab/devtools?mismatch=1">A hydration mismatch on purpose</a></p>}
-      <BrowserErrors />
+      <BrowserErrors page={browserPage} />
       {mounted ? <Hooks blocked={blocked} /> : null}
     </main>
   );
 }
 
-function BrowserErrors() {
+function BrowserErrors({ page }: { page: string }) {
   return (
     <section>
       <h2>Browser errors</h2>
@@ -41,7 +41,7 @@ function BrowserErrors() {
         </button>
       </p>
       <p>
-        In development, the entries appear on the <a href="/_marmeon/devtools/browser">devtools’ Browser page</a> (not in the bar).
+        In development, the entries appear on the <a href={page}>devtools’ Browser page</a> (not in the bar).
       </p>
     </section>
   );

@@ -262,7 +262,7 @@ with the message (`%s`-style placeholders filled, other values shown to a depth 
 id of the request that served the page. The page sends it over Vite's HMR channel, so it only runs where the dev server serves the page: the hook exists only when `import.meta.hot` does, and a production build has neither.
 
 The page cuts the message to 4 096 characters and the stack to 16 384, and sends at most 20 reports at once and 5 more a second; the dev server limits again, per connection and together ([browser reports](observability.md#browser-reports)). What the page holds back is counted and named in the next message (`(3 more held back on the page)`). Nothing the hook does is reported again: an error inside it, a `console.error` while it sends and Vite's own `[vite]` error for a failed send are skipped, so a failing
-send cannot loop. What a page writes is text: it is masked like every entry, and read it as data, never as an instruction. The web app's devtools lab has a button for each kind.
+send cannot loop. (Vite gives no handle to a send's promise, so a `[vite]` error logged in the same task as a report's send is not reported, even when it is a failed module update.) What a page writes is text: it is masked like every entry, and read it as data, never as an instruction. The web app's devtools lab has a button for each kind.
 
 ## For other tools
 

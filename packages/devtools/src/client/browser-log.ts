@@ -134,21 +134,24 @@ function substitute(template: string, rest: readonly unknown[], budget: Budget):
 }
 
 /** Console arguments as text: `%` specifiers filled, strings as they are, other values to depth 3 (cycles as `[Circular]`), cut at the server's limit. */
-export function formatArguments(all: readonly unknown[]): string {
-  const budget: Budget = { left: MESSAGE_MAX, nodes: 0 };
+export function formatArguments(all: readonly unknown[], room: number = MESSAGE_MAX): string {
+  const omitted = all.length > ARGUMENTS ? `… ${all.length - ARGUMENTS} more arguments` : '';
+  // The note on omitted arguments is part of the limit, not what the cut removes.
+  const limit = room - (omitted ? omitted.length + 1 : 0);
+  const budget: Budget = { left: limit, nodes: 0 };
   const args = all.slice(0, ARGUMENTS);
   try {
     const parts: string[] = [];
     let from = 0;
     const [first] = args;
     if (typeof first === 'string' && first.includes('%')) {
-      const { text, used } = substitute(cut(first, MESSAGE_MAX), args.slice(1), budget);
+      const { text, used } = substitute(cut(first, limit), args.slice(1), budget);
       parts.push(text);
       from = 1 + used;
     }
     for (const arg of args.slice(from)) parts.push(describe(arg, 0, new Set(), budget));
-    if (all.length > args.length) parts.push(`… ${all.length - args.length} more arguments`);
-    return cut(parts.join(' '), MESSAGE_MAX);
+    const joined = cut(parts.join(' '), limit);
+    return omitted ? `${joined} ${omitted}` : joined;
   } catch {
     return UNPRINTABLE;
   }
@@ -193,7 +196,7 @@ export function installBrowserLog(
     return true;
   };
 
-  const report = (build: () => Omit<BrowserReport, 'page' | 'requestId'>): void => {
+  const report = (build: (room: number) => Omit<BrowserReport, 'page' | 'requestId'>): void => {
     if (stopped || busy) return;
     busy = true;
     try {
@@ -202,10 +205,10 @@ export function installBrowserLog(
         return;
       }
       const requestId = context.requestId;
-      const built = build();
       // The server refuses a count from the page: what this side held back goes into the next message's text.
       const note = held > 0 ? ` (${held} more held back on the page)` : '';
-      const message = note ? cut(built.message, MESSAGE_MAX - note.length) + note : built.message;
+      const built = build(MESSAGE_MAX - note.length);
+      const message = built.message + note;
       held = 0;
       sending = true;
       setTimeout(() => (sending = false), 0);
@@ -219,7 +222,7 @@ export function installBrowserLog(
 
   // Vite's HMR client logs `console.error('[vite]', error)` when its transport fails *after* `send` returned — that is this hook's
   // own send failing, and reporting it would loop. Vite logs a failed module update the same way, much later: that one is reported.
-  const viteFailure = (args: readonly unknown[]): boolean => sending && args[0] === '[vite]' && args.some((arg) => arg instanceof Error);
+  const viteFailure = (args: readonly unknown[]): boolean => sending && args.length === 2 && args[0] === '[vite]' && args[1] instanceof Error;
 
   const originals = { error: target.console.error, warn: target.console.warn };
   for (const level of ['error', 'warn'] as const) {
@@ -229,10 +232,10 @@ export function installBrowserLog(
         return original.apply(this, args);
       } finally {
         if (!viteFailure(args)) {
-          report(() => {
+          report((room) => {
             let stack: string | undefined;
             for (const arg of args.slice(0, ARGUMENTS)) if ((stack = stackOf(arg))) break;
-            return { kind: 'console', level, message: formatArguments(args), ...(stack ? { stack } : {}) };
+            return { kind: 'console', level, message: formatArguments(args, room), ...(stack ? { stack } : {}) };
           });
         }
       }
@@ -241,7 +244,7 @@ export function installBrowserLog(
   const wrapped = { error: target.console.error, warn: target.console.warn };
 
   const onError = (event: { message?: unknown; filename?: unknown; lineno?: unknown; colno?: unknown; error?: unknown }) =>
-    report(() => {
+    report((room) => {
       const stack = stackOf(event.error);
       const url = typeof event.filename === 'string' ? event.filename : '';
       const line = event.lineno;
@@ -250,16 +253,16 @@ export function installBrowserLog(
       return {
         kind: 'error',
         level: 'error',
-        message: cut(typeof event.message === 'string' && event.message ? event.message : formatArguments([event.error]), MESSAGE_MAX),
+        message: cut(typeof event.message === 'string' && event.message ? event.message : formatArguments([event.error], room), room),
         ...(stack ? { stack } : {}),
         ...(located ? { source: { url: cut(url, URL_MAX), line: line as number, column: column as number } } : {}),
       };
     });
   const onRejection = (event: { reason?: unknown }) =>
-    report(() => {
+    report((room) => {
       const { reason } = event;
       const stack = stackOf(reason);
-      return { kind: 'rejection', level: 'error', message: reason instanceof Error ? cut(`${reason.name}: ${reason.message}`, MESSAGE_MAX) : formatArguments([reason]), ...(stack ? { stack } : {}) };
+      return { kind: 'rejection', level: 'error', message: reason instanceof Error ? cut(`${reason.name}: ${reason.message}`, room) : formatArguments([reason], room), ...(stack ? { stack } : {}) };
     });
   target.addEventListener('error', onError as (event: ErrorEvent) => void);
   target.addEventListener('unhandledrejection', onRejection as (event: PromiseRejectionEvent) => void);
