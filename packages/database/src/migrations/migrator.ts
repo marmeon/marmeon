@@ -1,15 +1,16 @@
 import { hash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { Application } from '@marmeon/core';
 import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
-import { assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
+import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
 import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
-import { loadProjection } from '../schema/projection-file.ts';
-import { applyPlan, differingTables, listCheckOf, emptyProjection, type SchemaProjection } from '../schema/projection.ts';
+import { loadProjection, readProjection } from '../schema/projection-file.ts';
+import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
 import { migrationChecksum } from './checksum.ts';
 import { dropAllTables } from './drop-all.ts';
@@ -414,6 +415,136 @@ export class Migrator {
    */
   async projection(): Promise<SchemaProjection> {
     return loadProjection(this.#app.root, this.files());
+  }
+
+  /** @internal — {@link projection} for a caller that must write nothing: the cached `.marmeon/schema.json` when it fits, otherwise computed and not saved. */
+  async readProjection(): Promise<SchemaProjection> {
+    return readProjection(this.#app.root, this.files()) ?? projectMigrations(this.files());
+  }
+
+  /**
+   * @internal — the schema of the migrations that ran, as the record says: what the database holds, where {@link projection} also
+   * holds what a pending migration will change. Throws when that cannot be established — tables and no record, a migration whose file
+   * is gone or changed — because a column the database still holds could be secret.
+   */
+  async ranProjection(connection = 'default'): Promise<SchemaProjection> {
+    const { rows, tables: ofDefault } = await this.#record();
+    // The record is `default`'s; the connection that is queried may hold tables of its own.
+    const tables = connection === 'default' ? ofDefault : [...ofDefault, ...(await this.#tablesOf(connection))];
+    const unknown = 'Which columns are secret cannot be established';
+    if (rows.length === 0 && tables.length > 0) throw new Error(`${unknown}: the database has tables but no record of migrations. Run marmeon migrate.`);
+    const files = this.files();
+    const present = new Map(files.map((file) => [file.name, file]));
+    const missing = rows.find((row) => !present.has(row.name));
+    if (missing) throw new Error(`${unknown}: the migration ${printable(missing.name)} ran, and no module has its file any more. Restore the file.`);
+    const unchecked = rows.find((row) => row.checksum === null);
+    if (unchecked) throw new Error(`${unknown}: the migration ${printable(unchecked.name)} has no recorded checksum (a record from Marmeon 0.3), so a change of its file cannot be seen. See docs/migrations.md#how-the-migrator-keeps-track.`);
+    const [changed] = changedOf(rows, (name) => migrationChecksum(readFileSync(present.get(name)!.path)));
+    if (changed) throw new Error(`${unknown}: the migration ${printable(changed.name)} changed after it ran. Restore the file as it was, or see docs/migrations.md#a-migration-that-changed-after-it-ran.`);
+    return projectMigrations(files, { only: new Set(rows.map((row) => row.name)) });
+  }
+
+  /**
+   * A connection's tables with their columns, read without creating or changing anything. `withheld`: SQLite's virtual tables and
+   * their shadows, whose columns are not read — a module that is not loaded would fail the reading, and what they hold is not known.
+   * Postgres: every schema but the system's, not only those on the search path, so a table off the path counts, by its bare name.
+   */
+  async #catalog(connection: string): Promise<{ columns: Map<string, string[]>; extension: Set<string>; withheld: Set<string> }> {
+    const driver = this.#driver(connection);
+    const file = driver === 'sqlite' ? this.#connections.sqliteFile(connection) : undefined;
+    if (driver === 'pgsql') {
+      const rows = (
+        await sql
+          .raw<{ table_name: string; column_name: string; extension: boolean }>(
+            `select c.relname::text as table_name, a.attname::text as column_name,
+              exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') as extension
+              from pg_catalog.pg_class c
+                join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                join pg_catalog.pg_attribute a on a.attrelid = c.oid
+              where n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_toast%' and n.nspname not like 'pg\\_temp%'
+                and c.relkind in ('r', 'p') and a.attnum > 0 and not a.attisdropped
+              order by c.relname, a.attnum`,
+          )
+          .execute(this.#books(connection))
+      ).rows;
+      const columns = new Map<string, string[]>();
+      const extension = new Set<string>();
+      for (const row of rows) {
+        if (row.extension) extension.add(row.table_name);
+        const known = columns.get(row.table_name) ?? [];
+        if (!known.includes(row.column_name)) known.push(row.column_name);
+        columns.set(row.table_name, known);
+      }
+      return { columns, extension, withheld: new Set() };
+    }
+    if (file === undefined || !existsSync(file)) return { columns: new Map(), extension: new Set(), withheld: new Set() };
+    const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
+    try {
+      const columns = new Map<string, string[]>();
+      const withheld = new Set<string>();
+      const tables = db.prepare("select name, type from pragma_table_list where schema = 'main' and type in ('table', 'virtual', 'shadow')").all() as { name: string; type: string }[];
+      for (const { name, type } of tables) {
+        if (type === 'table') columns.set(name, (db.prepare('select name from pragma_table_info(?)').all(name) as { name: string }[]).map((row) => row.name));
+        else {
+          columns.set(name, []);
+          withheld.add(name);
+        }
+      }
+      return { columns, extension: new Set(), withheld };
+    } finally {
+      db.close();
+    }
+  }
+
+  async #tablesOf(connection: string): Promise<string[]> {
+    const { columns, extension } = await this.#catalog(connection);
+    return appTables(columns, extension);
+  }
+
+  /**
+   * @internal — what the connection's database has that none of `known` describes: the columns, by table (every column of a table they
+   * do not describe), and the tables whose columns are not read at all (SQLite's virtual tables). A migration the record lost, or a table
+   * made by raw SQL, leaves these, and whether they hold a secret is not known.
+   */
+  async undescribedColumns(connection: string, known: readonly SchemaProjection[]): Promise<{ columns: Map<string, Set<string>>; withheld: Set<string> }> {
+    const catalog = await this.#catalog(connection);
+    const found = new Map<string, Set<string>>();
+    const withheld = new Set<string>();
+    for (const table of appTables(catalog.columns, catalog.extension)) {
+      if (catalog.withheld.has(table)) {
+        withheld.add(table);
+        continue;
+      }
+      const described = new Set(known.flatMap((projection) => projection.tables.get(table)?.columns.map((column) => column.name) ?? []));
+      const missing = catalog.columns.get(table)!.filter((column) => !described.has(column));
+      if (missing.length > 0) found.set(table, new Set(missing));
+    }
+    return { columns: found, withheld };
+  }
+
+  /**
+   * The record of migrations and the app's tables, read without creating or changing anything: a SQLite file that is not there has
+   * neither, and an existing one is opened read-only (the migrator's own connection would create the file and switch it to WAL).
+   */
+  async #record(): Promise<{ rows: { name: string; module: string; batch: number; checksum: string | null }[]; tables: string[] }> {
+    const file = this.#driver() === 'sqlite' ? this.#connections.sqliteFile('default') : undefined;
+    if (file === undefined) {
+      return { rows: await this.#ran(), tables: await this.#tablesOf('default') };
+    }
+    if (!existsSync(file)) return { rows: [], tables: [] };
+    const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
+    try {
+      const names = (db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((row) => row.name);
+      const columns = new Map(names.map((name): [string, string[]] => [name, []]));
+      const found = db.prepare(`select name from pragma_table_info('${MIGRATIONS_TABLE}')`).all() as { name: string }[];
+      if (found.length > 0) columns.set(MIGRATIONS_TABLE, found.map((row) => row.name));
+      const tables = appTables(columns);
+      if (recordVersion(columns, 'default') === undefined) return { rows: [], tables };
+      const rows = db.prepare(`select * from ${MIGRATIONS_TABLE} order by batch, id`).all() as { name: string; module: string; batch: number; checksum?: string | null }[];
+      return { rows: rows.map((row) => ({ ...row, checksum: row.checksum ?? null })), tables };
+    } finally {
+      db.close();
+    }
   }
 
   async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], options: Pick<MigrateOptions, 'onRun' | 'onChanged'>): Promise<MigrationRun[]> {

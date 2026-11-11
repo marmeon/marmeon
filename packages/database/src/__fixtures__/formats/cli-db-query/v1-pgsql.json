@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "connection": "default",
+  "driver": "pgsql",
+  "columns": [
+    { "name": "id", "type": "integer" },
+    { "name": "email", "type": "text" }
+  ],
+  "rows": [
+    [1, "a@example.test"],
+    [2, "b@example.test"]
+  ],
+  "truncated": false,
+  "cut": 0,
+  "warnings": []
+}

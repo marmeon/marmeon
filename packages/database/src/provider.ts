@@ -3,6 +3,7 @@ import type { AppCheckClass, CommandClass } from 'marmeon';
 import { PublishCommand } from './commands/publish.ts';
 import { DbTypesCheck, PackageMigrationsCheck } from './checks.ts';
 import { DbShowCommand } from './commands/db-show.ts';
+import { DbQueryCommand } from './commands/db-query.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 import { DbSeedCommand } from './commands/db-seed.ts';
 import { DbTypesCommand } from './commands/db-types.ts';
@@ -55,7 +56,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
   static health = [DatabaseHealthCheck];
   /** `bootstrap/database.d.ts` matches the migrations, for `marmeon check`. */
   static checks: readonly AppCheckClass[] = [PackageMigrationsCheck, DbTypesCheck];
-  static commands: readonly CommandClass[] = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, PublishCommand];
+  static commands: readonly CommandClass[] = [DbShowCommand, DbQueryCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, PublishCommand];
 
   register(container: Container): void {
     container.singleton(SchemaRequirements);

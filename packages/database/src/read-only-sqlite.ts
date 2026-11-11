@@ -28,6 +28,8 @@ export function queryReadOnlySqlite(
   const secrets = new Map<string, Set<string>>();
   for (const [table, columns] of options.secrets) secrets.set(fold(table), new Set([...columns].map(fold)));
 
+  const withheld = new Set([...(options.withheld ?? [])].map(fold));
+
   let db: DatabaseSync;
   try {
     db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
@@ -61,6 +63,10 @@ export function queryReadOnlySqlite(
         const table = fold(first ?? '');
         if (table.startsWith('sqlite_stat')) {
           reason ??= `${first} holds samples of the data and cannot be read.`;
+          return constants.SQLITE_DENY;
+        }
+        if (withheld.has(table)) {
+          reason ??= `${first} is not described by the migrations and cannot be read.`;
           return constants.SQLITE_DENY;
         }
         if (shadows.has(table)) {

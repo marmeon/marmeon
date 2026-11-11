@@ -150,6 +150,23 @@ describe('marmeon (in the web app)', () => {
     expect(migrate.stdout).not.toContain('database.d.ts');
   });
 
+  it('answers db:query from the migrated app: SQL as an argument or on standard input, the secret columns of its migrations refused', () => {
+    const database = join(tempDir('marmeon-db-query-'), 'database.sqlite');
+    const env = { DB_DATABASE: database };
+    expect(marmeon(webApp, ['migrate'], env).code).toBe(0);
+    const listed = JSON.parse(marmeon(webApp, ['list', '--json'], env).stdout) as { commands: { name: string }[] };
+    expect(listed.commands.map((command) => command.name)).toContain('db:query');
+
+    const counted = marmeon(webApp, ['db:query', 'select count(*) as users from users', '--json'], env);
+    expect(counted.code, counted.stderr).toBe(0);
+    expect(JSON.parse(counted.stdout)).toMatchObject({ format: 1, connection: 'default', driver: 'sqlite', rows: [[0]], truncated: false, warnings: [] });
+    const secret = marmeon(webApp, ['db:query', 'select password from users'], env);
+    expect(secret.code).toBe(1);
+    expect(secret.stdout).toBe('');
+    expect(secret.stderr).toContain('users.password');
+    expect(marmeon(webApp, ['db:query'], env).code).toBe(2);
+  });
+
   it('prints migrate:status as one JSON document, and nothing on stdout when the record of migrations is of a newer form', () => {
     const database = join(tempDir('marmeon-migrate-status-'), 'database.sqlite');
     const env = { DB_DATABASE: database };
