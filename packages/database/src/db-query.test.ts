@@ -353,6 +353,8 @@ export default defineMigration({ up: (schema) => schema.alter('users', (table) =
     const real = new Migrator({ modules: [{ name: 'app', migrations: pathToFileURL(`${migrations}/`) }], root: directory } as unknown as Application, connections);
     try {
       await real.migrate();
+      // A pending migration that adds a column changes nothing the database has yet.
+      writeFileSync(join(migrations, '2026_01_02_000000_add_nickname.ts'), alter("table.string('nickname').nullable();"));
       const { code, stdout } = await run(connections, ['select id, email from users'], { json: true }, undefined, real);
       expect(code).toBe(0);
       expect(JSON.parse(stdout).rows).toEqual([]);
@@ -424,6 +426,20 @@ export default defineMigration({ up: (schema) => schema.create('notes', (table) 
       raw.exec("delete from migrations where name like '%create_users_table'");
       raw.close();
       writeFileSync(join(migrations, '2026_01_02_000000_change_users_table.ts'), alter("table.dropColumn('password');"));
+    });
+    expect(stderr).toContain('users.password');
+    expect(stderr).toContain('No migration describes it');
+  });
+
+  it('treats the columns of a migration whose record row was lost as secret, though pending migrations drop and recreate them without secret()', async () => {
+    const stderr = await unestablished(async (migrations, file) => {
+      writeFileSync(join(migrations, '2025_01_01_000000_create_notes_table.ts'), notes);
+      await migrateFirst(migrations, file);
+      const raw = new DatabaseSync(file);
+      raw.exec("delete from migrations where name like '%create_users_table'");
+      raw.close();
+      writeFileSync(join(migrations, '2026_01_02_000000_drop_password.ts'), alter("table.dropColumn('password');"));
+      writeFileSync(join(migrations, '2026_01_03_000000_add_password.ts'), alter("table.string('password').nullable();"));
     });
     expect(stderr).toContain('users.password');
     expect(stderr).toContain('No migration describes it');

@@ -297,7 +297,7 @@ the plan Postgres will run and the plan has been checked. What is refused, as a 
   index over them. The message names the column, as `users.password`. A column stays secret while a pending migration renames or
   drops it: the database still holds it until `migrate` has run. When the record of migrations cannot say which columns
   are secret — the database has tables and no record, a migration that ran has no file, its file changed, or it has no recorded checksum — the query is refused
-  and the message names what to fix. A column of the database that no migration describes — a table made by raw SQL, or one
+  and the message names what to fix. A column of the database that no migration that ran describes — a table made by raw SQL, or one
   whose migration the record lost — counts as secret too, until `migrate` or a migration describes it.
 
 Which statements, functions and relations are refused may grow in any release: it is a security boundary, and the command's name,

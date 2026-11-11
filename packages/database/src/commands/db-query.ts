@@ -107,9 +107,10 @@ export class DbQueryCommand {
       if (!columns) secrets.set(table, (columns = new Set()));
       columns.add(column);
     };
+    // What the database holds is what the migrations that ran made: only that projection describes its columns.
     const projections = [await this.#migrator.readProjection(), await this.#migrator.ranProjection(name)];
     for (const projection of projections) for (const { table, column } of factsOf(projection, driver).secretColumns) add(table, column);
-    const { columns: undescribed, withheld } = await this.#migrator.undescribedColumns(name, projections);
+    const { columns: undescribed, withheld } = await this.#migrator.undescribedColumns(name, [projections[1]!]);
     for (const [table, columns] of undescribed) for (const column of columns) add(table, column);
     return { secrets, undescribed, withheld };
   }
