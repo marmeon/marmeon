@@ -4,7 +4,7 @@
 
 `marmeon mcp` lets a coding agent ask your app questions instead of guessing. It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
 that the agent starts itself and talks to over its standard input and output. It answers with the routes the app registers, the last
-error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read. Where `.mcp.json` has the entry, the block of `AGENTS.md` lists the tools and when to reach for them ([coding agents](agents.md#skills-and-the-mcp-server)).
+error of the development server, the documentation of the installed version, the report of `marmeon check`, the schema the migrations describe, the migrations that ran and the ones that are pending, a database connection with its driver, server version and tables, an overview of what the app defines (modules, providers, events with their listeners, schedules), and the entries of the [devtools](devtools.md), as data the agent can read. Where `.mcp.json` has the entry, the block of `AGENTS.md` lists the tools and when to reach for them ([coding agents](agents.md#skills-and-the-mcp-server)).
 
 It is a tool for development and nothing else:
 
@@ -176,6 +176,23 @@ The call is stopped after 120 seconds.
 
 An app without `@marmeon/database` gets `"database": false` and empty lists, and nothing is started.
 
+### `database`
+
+A database connection of the app: the document of [`marmeon db:show --json`](database.md#inspecting-a-connection), without its `target`. It needs the database and starts the app once. It reports names and counts and reads no row.
+
+| Input | |
+| --- | --- |
+| `connection` | The connection by its name: a letter or `_`, then letters, digits, `_`, `.` or `-`, at most 63 characters. Default: the default connection. |
+
+The command is fixed apart from one token, `--database=<connection>`, which is checked against the pattern first.
+
+The document: `{ "format": 1, "database": true, "connection": "default", "driver": "sqlite", "server": "SQLite 3.50.4", "tables": [{ "name": "users", "schema": null, "columns": 4, "rows": 3 }], "warnings": [] }`.
+`driver` is `sqlite` or `pgsql`; `schema` is `null` on SQLite. The tool copies the fields it knows and leaves out `target`, the text that says where the connection points, so the
+configuration stays out of the answer; `marmeon db:show` in a terminal shows it. A document of another `format` is an error that says to update `marmeon`. When the command fails, for example because the database is unreachable
+or the connection is not defined, the error carries the end of its message (secrets masked) and says to run `marmeon db:show` in a terminal. The call is stopped after 120 seconds.
+
+An app without `@marmeon/database` gets `"database": false`, `null` for `connection`, `driver` and `server`, and no tables, and nothing is started.
+
 ### `app_overview`
 
 What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs, notifications, seeders and migration folder, each event with its listeners
@@ -224,9 +241,9 @@ the message of the command. The call is stopped after 120 seconds. Like `routes`
 - It opens no network connection and accepts none. Its only channel is the standard input and output of the process the agent started.
 - Standard output carries protocol messages and nothing else. Whatever your app or a library prints there, `console.log` included, goes
   to standard error.
-- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `app_overview` reports the names of what the modules define (no configuration, no values), `devtools_entries` reports the entries the devtools masked, and
+- It returns no `.env`, no configuration and no file you name. `last_error` reads one file, `routes` reports what the app registers, `schema` reads the projection of the migrations, `migrations` reports which of them ran, `database` reports the names and counts of a connection's tables (no row, no target), `app_overview` reports the names of what the modules define (no configuration, no values), `devtools_entries` reports the entries the devtools masked, and
   the documentation tools read pages of the installed package that its index lists.
-- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `app_overview`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
+- It does not run your app inside its own process. Each call that needs the app (`routes`, `check`, `schema`, `migrations`, `database`, `app_overview`, `devtools_entries`) starts a fresh `marmeon` process for it, with a
   time limit of 120 seconds (`check`: 10 minutes), no input and an output of at most 16 MiB, and one at a time. A call that is cancelled, a call that runs
   out of time and a server that ends stop the process and everything it started: the process leads a group of its own, the group is asked to end
   and killed after five seconds, and the answer does not wait for a process that keeps the pipes open. On Windows, which has no process groups, only the process itself is stopped. A process that leaves the group can outlive the kill; the call itself still ends.
