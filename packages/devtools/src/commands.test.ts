@@ -94,7 +94,7 @@ describe('devtools:list', () => {
     try {
       const { document } = await list({ json: true });
       const fixture = JSON.parse(readFileSync(new URL('v1.json', formats), 'utf8')) as { entries: object[] };
-      expect(readdirSync(formats).sort()).toEqual(['v1.json']);
+      expect(readdirSync(formats).sort()).toEqual(['v1-browser.json', 'v1.json']);
       expect(document).toMatchObject(fixture);
       // toMatchObject ignores extra keys: the document and each entry have exactly these, in this order.
       expect(Object.keys(document!)).toEqual(['format', 'store', 'entries', 'truncated', 'next', 'warnings']);
@@ -135,6 +135,37 @@ describe('devtools:list', () => {
       expect(lines[2]).toContain('Welcome  Welcome Hi');
       expect(lines[3]).toContain('select * from users');
       expect(lines.at(-1)).toBe('4 entries');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('lists browser entries — the format fixture, filtered by type and found by its text', async () => {
+    const fixture = JSON.parse(readFileSync(new URL('v1-browser.json', formats), 'utf8')) as { entries: AnyEntry[] };
+    const { app, list } = await listApp([...mixed, ...fixture.entries]);
+    try {
+      const { document } = await list({ json: true, type: 'browser' });
+      expect(document).toMatchObject({ format: 1, entries: fixture.entries, truncated: false, next: null, warnings: [] });
+      expect(Object.keys(document!.entries[0]!.content)).toEqual(['kind', 'level', 'message', 'stack', 'source', 'page', 'dropped']);
+      expect((await list({ json: true, search: 'x is undefined' })).document!.entries.map((e) => e.type)).toEqual(['browser']);
+      expect((await list({ json: true, tag: 'level:error' })).document!.entries.map((e) => e.type)).toEqual(['browser']);
+      expect((await list({ json: true, type: 'browser,job' })).document!.entries.map((e) => e.type)).toEqual(['browser', 'job']);
+      expect((await list({ type: 'browser' })).lines[1]).toContain('browser  level:error,kind:error  error Uncaught TypeError: x is undefined');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('shows a browser report in the terminal without a control character — even one a producer left in', async () => {
+    const hostile = '\u001b[2J\u001b[1;1Hpwned\rfake line\u009b31m\u202eevil\u0007';
+    const raw = entry('000000005aa0000000005', 'browser', 5_000, { kind: 'console', level: 'error', message: `boom ${hostile}`, page: `/p${hostile}` }, { tags: [`kind:${hostile}`] });
+    const { app, list } = await listApp([raw]);
+    try {
+      const { lines } = await list({ type: 'browser' });
+      const text = lines.join('\n');
+      expect(text).toContain('boom \\u001b[2J');
+      // eslint-disable-next-line no-control-regex -- the point of the test
+      expect(lines.every((line) => !/[\u001b\u009b\u0007\r\u202e]/.test(line))).toBe(true);
     } finally {
       await app.shutdown();
     }

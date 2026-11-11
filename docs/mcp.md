@@ -219,12 +219,12 @@ Each command is stopped after 120 seconds.
 ### `devtools_entries`
 
 The entries the [devtools](devtools.md) recorded while the app ran in development: requests, queries, jobs, mails, notifications, logs, exceptions, schedule
-runs, live messages, events and commands, newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
+runs, live messages, events, commands and browser reports (what went wrong in a page: console errors and warnings, uncaught errors, rejections), newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
 masked the way the devtools mask them: a token in the text of a mail is not in the answer. Ask for one `type` first; `search` reads the entries one by one.
 
 | Input | |
 | --- | --- |
-| `type` | One entry type, or a list of up to 11 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event` or `command`. |
+| `type` | One entry type, or a list of up to 12 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event`, `command` or `browser`. The list of types can grow, so do not treat a type you do not know as an error of the call. A `browser` entry's `level` and `kind` are tags (`level:warn`). |
 | `tag` | Only entries with exactly this tag: 1 to 100 letters, digits and `:` `.` `_` `/` `-`. |
 | `requestId` | Only entries of this request, and of the jobs it started: 1 to 128 letters, digits, `_`, `.`, `:` and `-`. |
 | `search` | Only entries whose masked text contains this, ignoring case (1 to 200 characters, no line break). |

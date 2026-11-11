@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { currentJob, currentRequest, currentTask, outsideTransaction, type Application, type ErrorSolutions, type Redactor } from '@marmeon/core';
 import {
   channels,
+  type BrowserLogMessage,
   type CommandRunMessage,
   type DbQueryMessage,
   type EventDispatchMessage,
@@ -20,6 +21,9 @@ import {
 import { ignoresPath, type ResolvedDevtoolsOptions } from './config.ts';
 import { EntryIds, type AnyEntry, type EntryContents, type EntryType, type ErrorDetails, type ExceptionEntryContent, type RequestEntryContent } from './entry.ts';
 import type { DevtoolsStore } from './store.ts';
+
+/** What a browser entry's `page` shows when no route matches the reported path: the path itself could hold a token. */
+export const UNMATCHED_PAGE = '[unmatched page]';
 
 /** The most entries one batch keeps — a request running 10 000 queries keeps the first ones and counts the rest. */
 export const MAX_BATCH_ENTRIES = 1000;
@@ -40,6 +44,8 @@ interface Batch {
   /** Work an entry still waits for (an exception's solutions). */
   readonly pending: Promise<void>[];
   dropped: number;
+  /** Entries kept so far, also by the late writes of a request that ended: the limit counts them all. */
+  readonly counter: { kept: number };
   /** Requests sharing it (an island resolved in-process joins its page's). */
   open: number;
   ssr?: RequestEntryContent['ssr'];
@@ -52,6 +58,8 @@ export interface RecorderOptions {
   readonly options: ResolvedDevtoolsOptions;
   /** The app's solutions, for exception entries. */
   readonly solutions?: ErrorSolutions;
+  /** The patterns of every route a path could reach (`/invite/:code`), asked when a page report arrives — routes load after the recorder starts. */
+  readonly routesFor?: (pathname: string) => readonly string[];
 }
 
 /**
@@ -66,6 +74,7 @@ export class Recorder {
   readonly #redactor: Redactor;
   readonly #options: ResolvedDevtoolsOptions;
   readonly #solutions: ErrorSolutions | undefined;
+  readonly #routesFor: ((pathname: string) => readonly string[]) | undefined;
   readonly #ids = new EntryIds();
   readonly #off: (() => void)[] = [];
   /** Open batches: requests by request id, job attempts by `<jobId>:<attempt>`, scheduled runs by task. */
@@ -74,13 +83,14 @@ export class Recorder {
   readonly #tasks = new Map<string, Batch>();
   #command: Batch | undefined;
   /** Requests that ended lately — what they still do (deferred props, work after the response) joins their batch. */
-  readonly #ended = new Map<string, { readonly id: string; readonly ignored: boolean }>();
+  readonly #ended = new Map<string, { readonly id: string; readonly ignored: boolean; readonly counter: { kept: number } }>();
   /** Entries waiting for {@link LINGER_MS}: late ones of ended requests, and those outside any batch. */
   readonly #lingering = new Map<string, Batch>();
   #timer: ReturnType<typeof setTimeout> | undefined;
   readonly #writing = new Set<Promise<void>>();
 
-  constructor({ app, store, redactor, options, solutions }: RecorderOptions) {
+  constructor({ app, store, redactor, options, solutions, routesFor }: RecorderOptions) {
+    this.#routesFor = routesFor;
     this.#app = app;
     this.#store = store;
     this.#redactor = redactor;
@@ -108,6 +118,7 @@ export class Recorder {
     if (record.has('logs')) this.#off.push(channels.subscribe(app, 'log', (message) => this.#log(message)));
     if (record.has('exceptions')) this.#off.push(channels.subscribe(app, 'exception', (message) => this.#exception(message)));
     if (record.has('events')) this.#off.push(channels.subscribe(app, 'event', (message) => this.#event(message)));
+    if (record.has('browser')) this.#off.push(channels.subscribe(app, 'browser.log', (message) => this.#browser(message)));
     return this;
   }
 
@@ -130,7 +141,7 @@ export class Recorder {
 
   // ---- batches ---------------------------------------------------------------------------------------------------
 
-  #batch(fields: { requestId?: string | undefined; jobId?: string | undefined; ignored?: boolean; id?: string }): Batch {
+  #batch(fields: { requestId?: string | undefined; jobId?: string | undefined; ignored?: boolean; id?: string; counter?: { kept: number } }): Batch {
     return {
       id: fields.id ?? randomUUID(),
       ...(fields.requestId === undefined ? {} : { requestId: fields.requestId }),
@@ -139,6 +150,7 @@ export class Recorder {
       entries: [],
       pending: [],
       dropped: 0,
+      counter: fields.counter ?? { kept: 0 },
       open: 1,
     };
   }
@@ -161,7 +173,7 @@ export class Recorder {
       if (open) return open;
       // After its response (deferred props streaming, work after the response): its batch again, written a moment later.
       const ended = this.#ended.get(request.requestId);
-      if (ended) return this.#linger(request.requestId, () => this.#batch({ id: ended.id, requestId: request.requestId, ignored: ended.ignored }));
+      if (ended) return this.#linger(request.requestId, () => this.#batch({ id: ended.id, requestId: request.requestId, ignored: ended.ignored, counter: ended.counter }));
     }
     return this.#command;
   }
@@ -211,7 +223,7 @@ export class Recorder {
    */
   #add<T extends EntryType>(type: T, message: MessageBase, content: EntryContents[T], tags: readonly string[], batch = this.#current() ?? this.#background()): AnyEntry | undefined {
     if (batch.ignored) return undefined;
-    if (batch.entries.length >= MAX_BATCH_ENTRIES) {
+    if (batch.counter.kept >= MAX_BATCH_ENTRIES) {
       batch.dropped++;
       return undefined;
     }
@@ -228,6 +240,7 @@ export class Recorder {
       content: this.#redactor.fit(this.#redactor.value(content)) as EntryContents[T],
     } as AnyEntry;
     batch.entries.push(entry);
+    batch.counter.kept++;
     return entry;
   }
 
@@ -256,7 +269,7 @@ export class Recorder {
     }
     if (--batch.open > 0) return;
     this.#requests.delete(message.requestId);
-    this.#ended.set(message.requestId, { id: batch.id, ignored: batch.ignored });
+    this.#ended.set(message.requestId, { id: batch.id, ignored: batch.ignored, counter: batch.counter });
     if (this.#ended.size > 500) this.#ended.delete(this.#ended.keys().next().value!);
     this.#write(batch);
   }
@@ -558,6 +571,77 @@ export class Recorder {
         })
         .catch(() => undefined),
     );
+  }
+
+  /**
+   * A report from a page: raw text of a script on the page, so every field is redacted here. It arrives outside the request
+   * that served the page; with its `requestId` it joins that request's batch (or its late entries), else the background's.
+   */
+  #browser(message: BrowserLogMessage): void {
+    const redactor = this.#redactor;
+    const batch = message.requestId === undefined ? undefined : this.#requestBatch(message.requestId);
+    this.#add(
+      'browser',
+      message,
+      {
+        kind: message.kind,
+        level: message.level,
+        message: redactor.text(message.message),
+        ...(message.stack === undefined ? {} : { stack: redactor.text(message.stack) }),
+        ...(message.source === undefined ? {} : { source: { url: redactor.url(message.source.url), line: message.source.line, column: message.source.column } }),
+        page: this.#page(message.page),
+        ...(message.dropped === undefined ? {} : { dropped: message.dropped }),
+      },
+      [`level:${message.level}`, `kind:${message.kind}`],
+      batch,
+    );
+  }
+
+  /**
+   * The page a report came from, masked by the patterns of every route its path could reach (`/invite/[redacted]`): a segment
+   * any of them names sensitive is replaced, so a different choice than the server's router makes cannot keep a secret. Fails
+   * closed: a path no route matches (or no router to ask) is not kept — only {@link UNMATCHED_PAGE} and the masked query.
+   */
+  #page(page: string): string {
+    let url: URL;
+    try {
+      url = new URL(page, 'http://localhost');
+    } catch {
+      return UNMATCHED_PAGE;
+    }
+    const query = this.#queryOf(url.search);
+    const patterns = url.host === 'localhost' ? (this.#routesFor?.(url.pathname) ?? []) : [];
+    if (patterns.length === 0) return `${UNMATCHED_PAGE}${query}`;
+    let shown = url.pathname;
+    for (const pattern of patterns) shown = this.#redactor.path(shown, pattern);
+    return `${shown}${query}`;
+  }
+
+  /** A query string masked: the value of a parameter whose decoded name is sensitive (`%74oken`) is replaced, the rest as text. */
+  #queryOf(search: string): string {
+    if (search.length < 2) return '';
+    const parts = search.slice(1).split('&').map((part) => {
+      const equals = part.indexOf('=');
+      if (equals < 0) return this.#redactor.text(part);
+      const name = part.slice(0, equals);
+      let sensitive: boolean;
+      try {
+        sensitive = this.#redactor.isSensitive(decodeURIComponent(name.replaceAll('+', ' ')));
+      } catch {
+        sensitive = true;
+      }
+      return sensitive ? `${this.#redactor.text(name)}=[redacted]` : this.#redactor.text(part);
+    });
+    return `?${parts.join('&')}`;
+  }
+
+  /** The batch of a request by its id: the open one, or its late one after the response. */
+  #requestBatch(requestId: string): Batch | undefined {
+    const open = this.#requests.get(requestId);
+    if (open) return open;
+    const ended = this.#ended.get(requestId);
+    if (ended) return this.#linger(requestId, () => this.#batch({ id: ended.id, requestId, ignored: ended.ignored, counter: ended.counter }));
+    return undefined;
   }
 
   #event(message: EventDispatchMessage): void {

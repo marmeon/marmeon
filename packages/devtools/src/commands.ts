@@ -183,6 +183,9 @@ function summaryOf(entry: AnyEntry): string {
     case 'command':
       line = `${text(content.command)} ${text(content.exitCode)}`;
       break;
+    case 'browser':
+      line = `${text(content.level)} ${text(content.message)}`;
+      break;
   }
   const flat = line.replace(/\s+/g, ' ').trim();
   return flat.length > 100 ? `${flat.slice(0, 97)}...` : flat;
