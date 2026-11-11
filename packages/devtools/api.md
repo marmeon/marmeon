@@ -13,6 +13,20 @@ Types from other packages: none
 export type AnyEntry = {
     [T in EntryType]: Entry<T>;
 }[EntryType];
+// BrowserEntryContent
+export interface BrowserEntryContent {
+    readonly kind: 'console' | 'error' | 'rejection';
+    readonly level: 'error' | 'warn';
+    readonly message: string;
+    readonly stack?: string;
+    readonly source?: {
+        readonly url: string;
+        readonly line: number;
+        readonly column: number;
+    };
+    readonly page: string;
+    readonly dropped?: number;
+}
 // CommandEntryContent
 export interface CommandEntryContent {
     readonly command: string;
@@ -317,20 +331,6 @@ export declare function defineDevtools(options: DevtoolsOptions): DevtoolsDefini
 ### Referenced, not exported
 
 ```ts
-// BrowserEntryContent
-export interface BrowserEntryContent {
-    readonly kind: 'console' | 'error' | 'rejection';
-    readonly level: 'error' | 'warn';
-    readonly message: string;
-    readonly stack?: string;
-    readonly source?: {
-        readonly url: string;
-        readonly line: number;
-        readonly column: number;
-    };
-    readonly page: string;
-    readonly dropped?: number;
-}
 // DEFINITION
 declare const DEFINITION: unique symbol;
 ```

@@ -42,7 +42,12 @@ function withoutGrowth(listed: unknown, kept: unknown): unknown {
     Object.entries(now).map(([key, value]) => {
       const before = was[key];
       if (key === 'enum' && Array.isArray(value) && Array.isArray(before) && before.every((item) => value.includes(item))) return [key, before];
-      if (key === 'maxItems' && typeof value === 'number' && typeof before === 'number' && value >= before) return [key, before];
+      if (key === 'maxItems' && typeof value === 'number' && typeof before === 'number' && value >= before) {
+        // Only the length of a list of values that grew with it: `maxItems` is the number of values.
+        const values = (now.items as { enum?: unknown } | undefined)?.enum;
+        const earlier = (was.items as { enum?: unknown } | undefined)?.enum;
+        if (Array.isArray(values) && Array.isArray(earlier) && earlier.every((item) => values.includes(item)) && value === values.length) return [key, before];
+      }
       return [key, withoutGrowth(value, before)];
     }),
   );
@@ -569,5 +574,22 @@ describe('runMarmeonJson without a start', () => {
     const run = await runMarmeonJson(mcpApp(), ['route:list', '--json'], { timeoutMs: 30_000, maxStdoutBytes: 1_000_000, signal: AbortSignal.abort() });
     expect(run).toMatchObject({ code: 1, document: undefined, timedOut: false, tooLarge: false });
     expect(existsSync(log)).toBe(false);
+  });
+});
+
+describe('withoutGrowth', () => {
+  const list = (values: string[], maxItems = values.length) => ({ anyOf: [{ type: 'string', enum: values }, { type: 'array', items: { type: 'string', enum: values }, maxItems }] });
+
+  it('cuts a list of values that gained one, and the length that follows it, back to the stored one', () => {
+    expect(withoutGrowth(list(['a', 'b', 'c']), list(['a', 'b']))).toEqual(list(['a', 'b']));
+  });
+
+  it('leaves a removed value a difference', () => {
+    expect(withoutGrowth(list(['a']), list(['a', 'b']))).not.toEqual(list(['a', 'b']));
+  });
+
+  it('leaves a raised maxItems without new values a difference — and one that is not the number of values', () => {
+    expect(withoutGrowth(list(['a', 'b'], 5), list(['a', 'b']))).not.toEqual(list(['a', 'b']));
+    expect(withoutGrowth(list(['a', 'b', 'c'], 9), list(['a', 'b']))).not.toEqual(list(['a', 'b']));
   });
 });

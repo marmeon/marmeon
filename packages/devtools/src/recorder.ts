@@ -22,6 +22,9 @@ import { ignoresPath, type ResolvedDevtoolsOptions } from './config.ts';
 import { EntryIds, type AnyEntry, type EntryContents, type EntryType, type ErrorDetails, type ExceptionEntryContent, type RequestEntryContent } from './entry.ts';
 import type { DevtoolsStore } from './store.ts';
 
+/** What a browser entry's `page` shows when no route matches the reported path: the path itself could hold a token. */
+export const UNMATCHED_PAGE = '[unmatched page]';
+
 /** The most entries one batch keeps — a request running 10 000 queries keeps the first ones and counts the rest. */
 export const MAX_BATCH_ENTRIES = 1000;
 
@@ -53,6 +56,8 @@ export interface RecorderOptions {
   readonly options: ResolvedDevtoolsOptions;
   /** The app's solutions, for exception entries. */
   readonly solutions?: ErrorSolutions;
+  /** The patterns of every route a path could reach (`/invite/:code`), asked when a page report arrives — routes load after the recorder starts. */
+  readonly routesFor?: (pathname: string) => readonly string[];
 }
 
 /**
@@ -67,6 +72,7 @@ export class Recorder {
   readonly #redactor: Redactor;
   readonly #options: ResolvedDevtoolsOptions;
   readonly #solutions: ErrorSolutions | undefined;
+  readonly #routesFor: ((pathname: string) => readonly string[]) | undefined;
   readonly #ids = new EntryIds();
   readonly #off: (() => void)[] = [];
   /** Open batches: requests by request id, job attempts by `<jobId>:<attempt>`, scheduled runs by task. */
@@ -81,7 +87,8 @@ export class Recorder {
   #timer: ReturnType<typeof setTimeout> | undefined;
   readonly #writing = new Set<Promise<void>>();
 
-  constructor({ app, store, redactor, options, solutions }: RecorderOptions) {
+  constructor({ app, store, redactor, options, solutions, routesFor }: RecorderOptions) {
+    this.#routesFor = routesFor;
     this.#app = app;
     this.#store = store;
     this.#redactor = redactor;
@@ -578,12 +585,32 @@ export class Recorder {
         message: redactor.text(message.message),
         ...(message.stack === undefined ? {} : { stack: redactor.text(message.stack) }),
         ...(message.source === undefined ? {} : { source: { url: redactor.url(message.source.url), line: message.source.line, column: message.source.column } }),
-        page: redactor.url(message.page),
+        page: this.#page(message.page),
         ...(message.dropped === undefined ? {} : { dropped: message.dropped }),
       },
       [`level:${message.level}`, `kind:${message.kind}`],
       batch,
     );
+  }
+
+  /**
+   * The page a report came from, masked by the patterns of every route its path could reach (`/invite/[redacted]`): a segment
+   * any of them names sensitive is replaced, so a different choice than the server's router makes cannot keep a secret. Fails
+   * closed: a path no route matches (or no router to ask) is not kept — only {@link UNMATCHED_PAGE} and the masked query.
+   */
+  #page(page: string): string {
+    let url: URL;
+    try {
+      url = new URL(page, 'http://localhost');
+    } catch {
+      return UNMATCHED_PAGE;
+    }
+    const query = url.search.length > 1 ? this.#redactor.text(url.search) : '';
+    const patterns = url.host === 'localhost' ? (this.#routesFor?.(url.pathname) ?? []) : [];
+    if (patterns.length === 0) return `${UNMATCHED_PAGE}${query}`;
+    let shown = url.pathname;
+    for (const pattern of patterns) shown = this.#redactor.path(shown, pattern);
+    return this.#redactor.url(`${shown}${url.search}`);
   }
 
   /** The batch of a request by its id: the open one, or its late one after the response. */

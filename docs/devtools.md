@@ -61,7 +61,7 @@ Each recording is an entry with a type, a time, tags to filter by, and the reque
 | `browser` | A `console.error`, a `console.warn`, an uncaught error or an unhandled rejection in a page you have open: kind, level, message, stack, where it was raised, the page, and how many reports the dev server's limit held back. |
 
 A `browser` entry comes from the dev server, which publishes what a page reports on the [`browser.log` channel](observability.md#browser-reports); the level (`level:error`, `level:warn`) and the kind (`kind:console`, `kind:error`, `kind:rejection`) are its tags,
-so a warning is kept apart from an error. What a page reports is text any script on its origin can write, so every field is masked like the rest (the page's URL like a request's, with sensitive route parameters and query values replaced), and the pages and
+so a warning is kept apart from an error. What a page reports is text any script on its origin can write, so every field is masked like the rest (the page's path is masked by the pattern of the route that serves it, so `/invite/483920` is kept as `/invite/[redacted]`, and query values are replaced; a path that no route matches is kept only as `[unmatched page]`), and the pages and
 the terminal show it as text. A report that names the request that served the page joins that request's batch.
 
 A request records the size of each prop, never the values. A redirect shows its target, and the protocol's `409` after a sign-in

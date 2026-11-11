@@ -154,6 +154,14 @@ const routes = openRoutes((Route) => {
   Route.get('/invite/:code', () => {
     throw new Error('The invite failed');
   });
+  // Where the first route that matches is not the one with the secret: the page's path is masked by every route it could reach.
+  Route.get('/u/:id{[0-9]+}', () => ({ ok: true }));
+  Route.get('/u/:token', () => ({ ok: true }));
+  Route.get('/s/:token/:mode', () => ({ ok: true }));
+  Route.get('/s/:id/edit', () => ({ ok: true }));
+  Route.post('/reset/:id', () => ({ ok: true }));
+  Route.get('/reset/:token', () => ({ ok: true }));
+  Route.get('/einladung/über/:code', () => ({ ok: true }));
   Route.get('/ignored', () => ({ ok: true }));
   Route.get('/to-invite', () => new Response(null, { status: 302, headers: { location: '/invite/483920' } }));
   Route.get('/to-code', () => new Response(null, { status: 302, headers: { location: '/invite/1?code=SECRETCODE#/b/c' } }));
@@ -505,6 +513,8 @@ describe('what the recorder keeps', () => {
         dropped: 2,
       });
       publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Each child needs a key', page: '/people/7' });
+      // A path no route answers is not kept: it could hold a token the route's pattern would have named.
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Elsewhere', page: `/nowhere/483920?token=${token}` });
       await tester!.settled();
       const entry = tester!.assertRecorded('browser', (content) => content.kind === 'error');
       const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
@@ -512,7 +522,7 @@ describe('what the recorder keeps', () => {
       expect(entry.requestId).toBe(requestId);
       expect(entry.tags).toEqual(['level:error', 'kind:error']);
       expect(entry.content).toMatchObject({ level: 'error', source: { line: 3, column: 4 }, dropped: 2 });
-      expect(entry.content.page).toBe('/invite/483920?token=[redacted]');
+      expect(entry.content.page).toBe('/invite/[redacted]?token=[redacted]');
       // The warning is kept apart by its level, in a batch of its own.
       const warning = tester!.assertRecorded('browser', (content) => content.kind === 'console');
       expect(warning.tags).toEqual(['level:warn', 'kind:console']);
@@ -520,6 +530,27 @@ describe('what the recorder keeps', () => {
       const stored = JSON.stringify(tester!.entries('browser'));
       expect(stored).not.toContain(token);
       expect(stored).not.toContain('hunter2');
+      expect(stored).not.toContain('483920');
+      expect(tester!.assertRecorded('browser', (content) => content.message === 'Elsewhere').content.page).toBe('[unmatched page]?token=[redacted]');
+      expect(warning.content.page).toBe('/people/7');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it.each([
+    ['a constrained route first', '/u/abc123', '/u/[redacted]'],
+    ['routes that name the secret in different segments', '/s/abc/edit', '/s/[redacted]/edit'],
+    ['a POST route first', '/reset/abc123', '/reset/[redacted]'],
+    ['a literal with non-ASCII characters', '/einladung/%C3%BCber/abc123', '/einladung/%C3%BCber/[redacted]'],
+  ])('browser reports mask the page by every route it could reach: %s', async (_name, page, expected) => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'x', page });
+      await tester!.settled();
+      const shown = tester!.assertRecorded('browser').content.page;
+      expect(shown).toBe(expected);
+      expect(shown).not.toContain('abc');
     } finally {
       await app.shutdown();
     }

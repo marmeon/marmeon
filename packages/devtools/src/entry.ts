@@ -271,7 +271,7 @@ export interface BrowserEntryContent {
   readonly stack?: string;
   /** Where an uncaught error was raised. */
   readonly source?: { readonly url: string; readonly line: number; readonly column: number };
-  /** The page's path and query, sensitive route parameters and query values replaced. */
+  /** The page's path and query, sensitive route parameters and query values replaced; `[unmatched page]` and the query when no route matches the path. */
   readonly page: string;
   /** Reports the dev server's rate limit held back before this one. */
   readonly dropped?: number;
