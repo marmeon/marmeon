@@ -320,6 +320,10 @@ Postgres), `rows` (arrays in the order of `columns`), `truncated` (there were mo
 
 The limits that stay open, on purpose:
 
+- **The record of migrations is trusted.** Which columns are secret is read from the migrations the record says ran. A record
+  that lost rows while their migrations' changes stayed in the database (edited by hand, or a crash between a migration and its
+  row) can make a column that a lost migration marked secret look like the one an earlier migration described under the same
+  name. `marmeon migrate:status` shows such a migration as pending.
 - **Functions and views of the database are trusted.** On Postgres a function that is not volatile, a view, an operator and a cast
   that already exist in the database run as they are: a PL/pgSQL function marked `STABLE` can hide a volatile statement, and a
   view or function may read what the migrations mark secret on its own. A materialized view over a secret column is refused, but
