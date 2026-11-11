@@ -105,6 +105,26 @@ describe('commands with the child process replaced', () => {
     expect(defaults[1]).toEqual(['plain', expect.any(String)]);
   });
 
+  it('masks the whole default of an option whose name looks secret, and only of those', async () => {
+    answer({
+      ...listed,
+      commands: [
+        command('x', {
+          options: [
+            { ...option, name: 'password', default: 'hunter2-plain' },
+            { ...option, name: 'api-key', default: ['one-plain', 'two-plain'] },
+            { ...option, name: 'secret', default: 42 },
+            { ...option, name: 'token', default: true },
+            { ...option, name: 'user', default: 'hunter2-plain' },
+            { ...option, name: 'tags', default: ['one-plain', 'two-plain'] },
+          ],
+        }),
+      ],
+    });
+    const result = (await COMMANDS_TOOL.run({}, context())) as unknown as { commands: { options: { default: unknown }[] }[] };
+    expect(result.commands[0]!.options.map((entry) => entry.default)).toEqual(['[redacted]', ['[redacted]', '[redacted]'], '[redacted]', true, 'hunter2-plain', ['one-plain', 'two-plain']]);
+  });
+
   it('passes on `complete: false`, with the first line of each warning, masked and cut', async () => {
     answer({ ...listed, complete: false, warnings: ['The app did not load: boom\n    at stack line', `${'w'.repeat(500)}`, 'DB_PASSWORD=hunter2 is wrong', 7] });
     const result = (await COMMANDS_TOOL.run({}, context())) as unknown as { complete: boolean; warnings: string[] };

@@ -208,7 +208,7 @@ The command is fixed, `list --json`; nothing of the input reaches it, the filter
 
 The document: `{ "format": 1, "complete": true, "commands": [{ "name": "make:controller", "description": "…", "usage": "<Name> --module=<module>", "options": [{ "name": "view", "type": "boolean", "short": null, "multiple": false, "default": null }], "experimental": false, "launcher": false }], "total": 42, "truncated": false, "warnings": [] }`.
 `launcher` marks `dev` and `start`, which the launcher handles. `complete` is `false` when the app did not load and only the built-in commands are known; `warnings` then says why. Every warning is the first line of its message, secrets masked, at most 300 characters.
-The tool copies the fields it knows and leaves out the rest; a `default` is a string, number or boolean, or an array of strings or booleans, and strings in it are masked. A document of another `format` is an error that says to update `marmeon`. When the command fails, the error carries the end of its message (secrets masked) and says to run `marmeon list` in a terminal. The call is stopped after 120 seconds.
+The tool copies the fields it knows and leaves out the rest; a `default` is a string, number or boolean, or an array of strings or booleans, and strings in it are masked; the default of an option whose name looks secret (`password`, `api-key`) is masked whole. A document of another `format` is an error that says to update `marmeon`. When the command fails, the error carries the end of its message (secrets masked) and says to run `marmeon list` in a terminal. The call is stopped after 120 seconds.
 
 ### `app_overview`
 

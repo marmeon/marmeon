@@ -1,4 +1,4 @@
-import { Redactor } from '@marmeon/core';
+import { REDACTED, Redactor } from '@marmeon/core';
 import { runMarmeonJson } from '../spawn.ts';
 import { DATA_NOTICE, failure, type ToolDocument, type ToolFailure } from './result.ts';
 import type { McpTool, ToolContext } from './tools.ts';
@@ -43,11 +43,18 @@ interface Command {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** A default as the command declares it (`parseArgs`: a string, a boolean, or an array of either), masked: it may hold a value from the environment. */
-function copyDefault(value: unknown, redactor: Redactor): Option['default'] {
-  if (typeof value === 'string') return redactor.text(value);
-  if (typeof value === 'number' || typeof value === 'boolean') return value;
-  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value.map((item: string) => redactor.text(item));
+/**
+ * A default as the command declares it (`parseArgs`: a string, a boolean, or an array of either), masked: it may hold a value from the environment.
+ * Under an option whose name looks secret (`password`, `api-key`) the whole value is masked, as the redactor masks a value by its key; booleans are
+ * switches, not secrets, and stay.
+ */
+function copyDefault(name: string, value: unknown, redactor: Redactor): Option['default'] {
+  const secret = redactor.isSensitive(name);
+  const mask = (text: string) => (secret ? REDACTED : redactor.text(text));
+  if (typeof value === 'string') return mask(value);
+  if (typeof value === 'number') return secret ? REDACTED : value;
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value.map((item: string) => mask(item));
   if (Array.isArray(value) && value.every((item) => typeof item === 'boolean')) return [...value] as boolean[];
   return null;
 }
@@ -79,7 +86,7 @@ async function commands(input: Readonly<Record<string, unknown>>, { root, signal
         type: option.type,
         short: typeof option.short === 'string' ? option.short : null,
         multiple: option.multiple === true,
-        default: copyDefault(option.default, redactor),
+        default: copyDefault(option.name, option.default, redactor),
       });
     }
     all.push({
