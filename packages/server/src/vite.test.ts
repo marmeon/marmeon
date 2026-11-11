@@ -1,6 +1,9 @@
 import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { Redactor } from '@marmeon/core';
+import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
+import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +52,30 @@ async function start(root: string) {
 }
 
 describe('createViteDevRenderer', () => {
+  it('publishes no browser reports without an app to name, however a page sends them', async () => {
+    const httpServer = createServer();
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const { vite } = await createViteDevRenderer({ root: app(), httpServer });
+    const heard: unknown[] = [];
+    const hear = (message: unknown) => void heard.push(message);
+    subscribe('marmeon:browser.log', hear);
+    const socket = new WebSocket(`ws://127.0.0.1:${(httpServer.address() as AddressInfo).port}/`, 'vite-hmr');
+    try {
+      await new Promise((resolve, reject) => {
+        socket.onopen = resolve;
+        socket.onerror = reject;
+      });
+      socket.send(JSON.stringify({ type: 'custom', event: BROWSER_LOG_EVENT, data: { kind: 'console', level: 'error', message: 'x', page: '/' } }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(heard).toEqual([]);
+    } finally {
+      unsubscribe('marmeon:browser.log', hear);
+      socket.close();
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
   it('adds the development HTML (DevDocument: the devtools\' link) before </body> — outside the app\'s root, read per request', async () => {
     let body = '<a href="/_marmeon/devtools" data-marmeon-devtools>Devtools</a>';
     const httpServer = createServer();

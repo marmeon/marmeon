@@ -51,10 +51,22 @@ channel, the framework builds no report for it at all, so the channels cost noth
 | `log` | Every log entry, at any level. | Level, message, context. |
 | `exception` | The error a request ends in. | The error, status, method, path and the request's `Sec-Fetch-Site`, if it sent one. |
 | `event` | Every event dispatched. | The event, its name, its listeners. |
+| `browser.log` | A `console.error`, `console.warn`, uncaught error or unhandled rejection a page reports to the dev server (development only). | The kind, level, message, stack, source, the page, and how many reports the limit held back. |
 
 Every report names its app and carries the time it started and where it happened: the `requestId`, the `jobId` or the scheduled
 `task`. A report of an operation that ended also has `durationMs`, and `error` when it failed. The types name each report:
 `ChannelMessage<'db.query'>` is the report of a query, and a misspelt channel or field is a compile error.
+
+### Browser reports
+
+`browser.log` carries what goes wrong in a page while you develop: the dev server publishes it when a page sends a report on
+Vite's HMR channel (the event `marmeon:browser-log`, whose name `BROWSER_LOG_EVENT` exports from `@marmeon/http/protocol`, which a page can import).
+Nothing registers the listener outside `marmeon dev`, so a production server has no such channel to receive on.
+
+Any script on the app's origin can send on that channel, so the dev server treats a report as untrusted. It copies only the
+known fields, cuts the message to 4 096 characters and the stack to 16 384 and strips control characters (an escape sequence cannot reach a terminal), refuses a report with a wrong type or an unknown
+`kind` or `level`, and lets each connected page send 50 reports at once and 10 more per second, and all pages together 200 and 50. The next report after a pause
+carries `dropped`, the number it held back. The text is whatever the page wrote: record it as data, and redact it first.
 
 ### Subscribing
 
@@ -64,7 +76,7 @@ subscribes in `boot()` and stops in `shutdown()`. The handlers depend on the kin
 - An **operation** such as `http.request` or `db.query` takes `{ start, end, error }`. `start` runs before the operation, `end`
   after it, whether it succeeded or failed, and `error` when it failed. A query is reported once it ran, so its `start` comes
   after the statement too.
-- A **plain channel**, `log`, `exception` or `event`, takes one function.
+- A **plain channel**, `log`, `exception`, `event` or `browser.log`, takes one function.
 
 A subscription hears only the reports of its own app, so two apps in one process, such as parallel tests, never mix. A handler
 that throws is reported as a process warning, and the operation goes on. A subscriber of `log` must not write to the log itself.

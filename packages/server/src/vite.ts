@@ -4,9 +4,13 @@ import type { Server } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { withCode } from '@marmeon/core/internal';
+import type { Application } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
+import { messageBase, withCode } from '@marmeon/core/internal';
 import type { SsrRender } from '@marmeon/http';
+import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
 import type { ResolvedConfig, ViteDevServer } from 'vite';
+import { acceptBrowserLog, BrowserLogLimiter, SHARED_BUDGET } from './browser-log.ts';
 import { withDevBody } from './dev-document.ts';
 import { devStyleTags, entryStylesheets } from './dev-styles.ts';
 import { createDocumentRenderer, type PageRenderer } from './render.ts';
@@ -81,6 +85,8 @@ export interface ViteDevOptions {
   root: string;
   /** SSR entry relative to `root`, exporting `render: SsrRender`. Defaults to the `marmeon()` plugin's entry. */
   ssrEntry?: string;
+  /** The app the browser reports (`browser.log`) belong to. Without one, the dev server listens for none. */
+  app?: Application;
   /** Share the HTTP server so HMR runs on the app's port instead of a second one. Without one, no HMR (tests). */
   httpServer?: Server;
   /** Development HTML for the end of every document's body (`DevDocument`) — read per request. */
@@ -95,7 +101,7 @@ export interface ViteDevOptions {
  * Starts Vite in middleware mode. SSR modules run in Vite's module runner, so
  * view edits hot-reload without restarting the Node process.
  */
-export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody, devHead, styles }: ViteDevOptions): Promise<{
+export async function createViteDevRenderer({ root, ssrEntry, app, httpServer, devBody, devHead, styles }: ViteDevOptions): Promise<{
   vite: ViteDevServer;
   renderer: PageRenderer;
   /** The app's SSR entry's `render`, loaded through Vite's module runner — for what a document does not carry (a placeholder's markup). */
@@ -141,6 +147,9 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
     throw new Error('The Vite SSR environment is not runnable in this process.');
   }
 
+  // Only where HMR runs (`marmeon dev`): the page's reports come in on its WebSocket, from any script on the app's origin.
+  if (httpServer && app && vite.environments.client) listenForBrowserLogs(app, vite.environments.client.hot);
+
   const loadRender = async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render;
   const imports = new WeakMap<object, readonly string[]>();
   const client = vite.environments.client;
@@ -170,4 +179,27 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
   });
 
   return { vite, renderer, ssr: loadRender };
+}
+
+const browserLog = channels.event('browser.log');
+
+/** Publishes what a page reports on the HMR channel as `browser.log` — checked, and limited per connected client. */
+export function listenForBrowserLogs(app: Application, hot: { on(event: string, listener: (data: unknown, client: object) => void): void }): void {
+  const limiters = new WeakMap<object, BrowserLogLimiter>();
+  // Around every client's own budget: many sockets of one origin do not add up to many budgets.
+  const shared = new BrowserLogLimiter(SHARED_BUDGET);
+  hot.on(BROWSER_LOG_EVENT, (data, client) => {
+    let limiter = limiters.get(client);
+    if (!limiter) limiters.set(client, (limiter = new BrowserLogLimiter()));
+    const allowed = limiter.take();
+    if (!allowed) return;
+    if (!shared.take()) {
+      limiter.hold(allowed.dropped + 1);
+      return;
+    }
+    if (!browserLog.hasSubscribers) return;
+    const report = acceptBrowserLog(data);
+    if (!report) return;
+    browserLog.publish({ ...messageBase(app), ...report, ...(allowed.dropped > 0 ? { dropped: allowed.dropped } : {}) });
+  });
 }

@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { createApplication, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
+import { channels, type BrowserLogMessage } from '@marmeon/core/diagnostics';
 import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { cacheControl, contentSecurityPolicy, HttpServiceProvider, view, type SsrRender } from '@marmeon/http';
@@ -327,6 +328,35 @@ describe('startServer and HOST', () => {
       expect((await fetch(`http://127.0.0.1:${address.port}/up`)).status).toBe(200);
       expect(lines.find((line) => line.startsWith('Marmeon in'))).toContain(`on http://localhost:${address.port}`);
     } finally {
+      await running.close();
+      await app.shutdown();
+    }
+  });
+});
+
+describe('browser reports in production', () => {
+  it('start no HMR channel: the production server has no WebSocket upgrade, and a page cannot reach browser.log', async () => {
+    const root = tempDir('marmeon-browser-log-');
+    mkdirSync(join(root, 'dist/client'), { recursive: true });
+    mkdirSync(join(root, 'dist/server'), { recursive: true });
+    writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
+    writeFileSync(join(root, 'dist/server/ssr.js'), 'export const render = async () => ({ html: "" });');
+    const app = await createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test', LOG_LEVEL: 'silent' } });
+    const seen: BrowserLogMessage[] = [];
+    const off = channels.subscribe(app, 'browser.log', (message) => void seen.push(message));
+    const running = await startServer({ app, port: 0, mode: 'production' });
+    try {
+      expect(running.server.listenerCount('upgrade')).toBe(0);
+      const socket = new WebSocket(`ws://127.0.0.1:${running.port}/`, 'vite-hmr');
+      const opened = await new Promise<boolean>((resolve) => {
+        socket.onopen = () => resolve(true);
+        socket.onerror = () => resolve(false);
+        socket.onclose = () => resolve(false);
+      });
+      expect(opened).toBe(false);
+      expect(seen).toEqual([]);
+    } finally {
+      off();
       await running.close();
       await app.shutdown();
     }
