@@ -17,7 +17,7 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { DevtoolsStore, FileDevtoolsStore, type AnyEntry } from './index.ts';
 import { MemoryDevtoolsStore } from './store.ts';
-import { Recorder } from './recorder.ts';
+import { MAX_BATCH_ENTRIES, Recorder } from './recorder.ts';
 import { enableDevtoolsForTests } from './test-opt-in.ts';
 import type { DevtoolsTester } from './tester.ts';
 import { DevtoolsServiceProvider } from './provider.ts';
@@ -551,6 +551,38 @@ describe('what the recorder keeps', () => {
       const shown = tester!.assertRecorded('browser').content.page;
       expect(shown).toBe(expected);
       expect(shown).not.toContain('abc');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('masks the value of a query parameter whose name is written percent-encoded — also on a path no route matches', async () => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const publish = channels.event('browser.log');
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'a', page: '/people/7?%74oken=short-secret&page=2' });
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'b', page: '/nowhere?%74oken=short-secret' });
+      await tester!.settled();
+      expect(tester!.assertRecorded('browser', (content) => content.message === 'a').content.page).toBe('/people/7?%74oken=[redacted]&page=2');
+      expect(tester!.assertRecorded('browser', (content) => content.message === 'b').content.page).toBe('[unmatched page]?%74oken=[redacted]');
+      expect(JSON.stringify(tester!.entries('browser'))).not.toContain('short-secret');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('keeps a request\'s batch within the limit across the late writes of browser reports', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const response = await kernel.request('/people/7');
+      const requestId = response.headers.get('x-request-id')!;
+      const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
+      const publish = channels.event('browser.log');
+      for (let round = 0; round < 3; round++) {
+        for (let i = 0; i < 500; i++) publish.publish({ ...messageBase(app), requestId, kind: 'console', level: 'warn', message: `report ${round}-${i}`, page: '/people/7' });
+        await tester!.settled();
+      }
+      expect(tester!.batch(request.batch).length).toBeLessThanOrEqual(MAX_BATCH_ENTRIES);
     } finally {
       await app.shutdown();
     }

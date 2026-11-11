@@ -44,6 +44,8 @@ interface Batch {
   /** Work an entry still waits for (an exception's solutions). */
   readonly pending: Promise<void>[];
   dropped: number;
+  /** Entries kept so far, also by the late writes of a request that ended: the limit counts them all. */
+  readonly counter: { kept: number };
   /** Requests sharing it (an island resolved in-process joins its page's). */
   open: number;
   ssr?: RequestEntryContent['ssr'];
@@ -81,7 +83,7 @@ export class Recorder {
   readonly #tasks = new Map<string, Batch>();
   #command: Batch | undefined;
   /** Requests that ended lately — what they still do (deferred props, work after the response) joins their batch. */
-  readonly #ended = new Map<string, { readonly id: string; readonly ignored: boolean }>();
+  readonly #ended = new Map<string, { readonly id: string; readonly ignored: boolean; readonly counter: { kept: number } }>();
   /** Entries waiting for {@link LINGER_MS}: late ones of ended requests, and those outside any batch. */
   readonly #lingering = new Map<string, Batch>();
   #timer: ReturnType<typeof setTimeout> | undefined;
@@ -139,7 +141,7 @@ export class Recorder {
 
   // ---- batches ---------------------------------------------------------------------------------------------------
 
-  #batch(fields: { requestId?: string | undefined; jobId?: string | undefined; ignored?: boolean; id?: string }): Batch {
+  #batch(fields: { requestId?: string | undefined; jobId?: string | undefined; ignored?: boolean; id?: string; counter?: { kept: number } }): Batch {
     return {
       id: fields.id ?? randomUUID(),
       ...(fields.requestId === undefined ? {} : { requestId: fields.requestId }),
@@ -148,6 +150,7 @@ export class Recorder {
       entries: [],
       pending: [],
       dropped: 0,
+      counter: fields.counter ?? { kept: 0 },
       open: 1,
     };
   }
@@ -170,7 +173,7 @@ export class Recorder {
       if (open) return open;
       // After its response (deferred props streaming, work after the response): its batch again, written a moment later.
       const ended = this.#ended.get(request.requestId);
-      if (ended) return this.#linger(request.requestId, () => this.#batch({ id: ended.id, requestId: request.requestId, ignored: ended.ignored }));
+      if (ended) return this.#linger(request.requestId, () => this.#batch({ id: ended.id, requestId: request.requestId, ignored: ended.ignored, counter: ended.counter }));
     }
     return this.#command;
   }
@@ -220,7 +223,7 @@ export class Recorder {
    */
   #add<T extends EntryType>(type: T, message: MessageBase, content: EntryContents[T], tags: readonly string[], batch = this.#current() ?? this.#background()): AnyEntry | undefined {
     if (batch.ignored) return undefined;
-    if (batch.entries.length >= MAX_BATCH_ENTRIES) {
+    if (batch.counter.kept >= MAX_BATCH_ENTRIES) {
       batch.dropped++;
       return undefined;
     }
@@ -237,6 +240,7 @@ export class Recorder {
       content: this.#redactor.fit(this.#redactor.value(content)) as EntryContents[T],
     } as AnyEntry;
     batch.entries.push(entry);
+    batch.counter.kept++;
     return entry;
   }
 
@@ -265,7 +269,7 @@ export class Recorder {
     }
     if (--batch.open > 0) return;
     this.#requests.delete(message.requestId);
-    this.#ended.set(message.requestId, { id: batch.id, ignored: batch.ignored });
+    this.#ended.set(message.requestId, { id: batch.id, ignored: batch.ignored, counter: batch.counter });
     if (this.#ended.size > 500) this.#ended.delete(this.#ended.keys().next().value!);
     this.#write(batch);
   }
@@ -605,12 +609,30 @@ export class Recorder {
     } catch {
       return UNMATCHED_PAGE;
     }
-    const query = url.search.length > 1 ? this.#redactor.text(url.search) : '';
+    const query = this.#queryOf(url.search);
     const patterns = url.host === 'localhost' ? (this.#routesFor?.(url.pathname) ?? []) : [];
     if (patterns.length === 0) return `${UNMATCHED_PAGE}${query}`;
     let shown = url.pathname;
     for (const pattern of patterns) shown = this.#redactor.path(shown, pattern);
-    return this.#redactor.url(`${shown}${url.search}`);
+    return `${shown}${query}`;
+  }
+
+  /** A query string masked: the value of a parameter whose decoded name is sensitive (`%74oken`) is replaced, the rest as text. */
+  #queryOf(search: string): string {
+    if (search.length < 2) return '';
+    const parts = search.slice(1).split('&').map((part) => {
+      const equals = part.indexOf('=');
+      if (equals < 0) return this.#redactor.text(part);
+      const name = part.slice(0, equals);
+      let sensitive: boolean;
+      try {
+        sensitive = this.#redactor.isSensitive(decodeURIComponent(name.replaceAll('+', ' ')));
+      } catch {
+        sensitive = true;
+      }
+      return sensitive ? `${this.#redactor.text(name)}=[redacted]` : this.#redactor.text(part);
+    });
+    return `?${parts.join('&')}`;
   }
 
   /** The batch of a request by its id: the open one, or its late one after the response. */
@@ -618,7 +640,7 @@ export class Recorder {
     const open = this.#requests.get(requestId);
     if (open) return open;
     const ended = this.#ended.get(requestId);
-    if (ended) return this.#linger(requestId, () => this.#batch({ id: ended.id, requestId, ignored: ended.ignored }));
+    if (ended) return this.#linger(requestId, () => this.#batch({ id: ended.id, requestId, ignored: ended.ignored, counter: ended.counter }));
     return undefined;
   }
 
