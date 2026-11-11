@@ -1,8 +1,8 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Application, EventRegistry, type EventClass, type ListenerBinding, type ModuleDefinition } from '@marmeon/core';
-import { isQueuedListener } from '@marmeon/core/internal';
+import { Application, EventRegistry, type ConfigDefinition, type EventClass, type ListenerBinding, type ModuleDefinition } from '@marmeon/core';
+import { configDefinitions, isQueuedListener, loadEnv } from '@marmeon/core/internal';
 import type { CommandInput } from '../command.ts';
 
 /** The longest string taken from app code into the document. */
@@ -36,6 +36,20 @@ interface ListenerEntry {
   readonly module: string | null;
 }
 
+/** A variable a configuration reads: its name and state, never a value — nor a default's value. */
+interface EnvironmentEntry {
+  readonly name: string;
+  readonly config: string;
+  /** The modules whose `config` lists the definition, in module order; empty for the app's, a provider's and the framework's. */
+  readonly modules: string[];
+  readonly set: boolean;
+  readonly required: boolean;
+  readonly hasDefault: boolean;
+}
+
+/** Where an `EnvSchema` hands out its variables (`@marmeon/core`'s environment reader). */
+const ENV_FIELDS = Symbol.for('marmeon.env.fields');
+
 interface EventEntry {
   readonly event: string;
   readonly name: string | null;
@@ -44,8 +58,9 @@ interface EventEntry {
 
 /**
  * Lists what the app defines: the packages, the modules with their providers, commands, jobs, notifications and seeders,
- * and the listeners of each event. Registers the providers and boots none, and reads only the fields it prints — never
- * configuration or `.env`. With `--json` it prints format 1. See docs/modules.md#listing-the-modules.
+ * and the listeners of each event, and the names of the environment variables the configuration reads with their state
+ * (set, required, has a default). Registers the providers and boots none, and reads only the fields it prints — never a
+ * configuration value, a default or a value of `.env`. With `--json` it prints format 1. See docs/modules.md#listing-the-modules.
  */
 export class ModulesListCommand {
   static command = 'modules:list';
@@ -85,7 +100,9 @@ export class ModulesListCommand {
     const events = this.#eventList();
 
     if (options.json === true) {
-      output.json({ format: 1, packages, app, modules, events, warnings });
+      // Only the document names the variables: the text output neither reads `.env` nor warns about a schema.
+      const environment = this.#environment(root, warnings);
+      output.json({ format: 1, packages, app, modules, events, environment, warnings });
       return;
     }
     for (const warning of warnings) output.warn(warning);
@@ -116,6 +133,48 @@ export class ModulesListCommand {
         }
       }
     }
+  }
+
+  /**
+   * The variables of every configuration definition, sorted by name. Only whether a variable is set is read from the
+   * environment — `.env` included — and what a missing one means from the variable's own reader; no value is kept.
+   */
+  #environment(root: string, warnings: string[]): EnvironmentEntry[] {
+    const owners = new Map<ConfigDefinition<unknown>, string[]>();
+    for (const module of this.#app.modules) {
+      for (const definition of module.config ?? []) {
+        const names = owners.get(definition) ?? [];
+        if (!names.includes(text(module.name) ?? '')) names.push(text(module.name) ?? '');
+        owners.set(definition, names);
+      }
+    }
+    const values = loadEnv(root);
+    const entries: EnvironmentEntry[] = [];
+    for (const definition of configDefinitions(this.#app.definition, this.#app.modules, this.#app.providers)) {
+      const config = nameOf(definition);
+      const fields = (definition.env as unknown as Record<symbol, unknown> | null | undefined)?.[ENV_FIELDS];
+      if (fields === null || typeof fields !== 'object') {
+        warnings.push(`config ${config} validates its environment with its own schema; its variables are not listed`);
+        continue;
+      }
+      for (const [name, field] of Object.entries(fields)) {
+        const read = (field as { '~env'?: unknown } | null)?.['~env'];
+        if (typeof read !== 'function') continue;
+        let required: boolean;
+        let hasDefault: boolean;
+        try {
+          const missing = read(undefined, name) as { problem?: unknown; value?: unknown };
+          required = missing.problem !== undefined;
+          hasDefault = !required && missing.value !== undefined;
+        } catch {
+          warnings.push(`config ${config}: ${text(name) ?? ''} could not be inspected`);
+          continue;
+        }
+        const value = Object.hasOwn(values, name) ? values[name] : undefined;
+        entries.push({ name: text(name) ?? '', config, modules: owners.get(definition) ?? [], set: value !== undefined && value !== '', required, hasDefault });
+      }
+    }
+    return entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.config < b.config ? -1 : a.config > b.config ? 1 : 0));
   }
 
   /** Every event with its listeners, sorted by the event's class name; the listeners keep their registration order. */
