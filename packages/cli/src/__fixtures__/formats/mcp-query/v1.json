@@ -4,7 +4,7 @@
   "driver": "sqlite",
   "columns": [
     { "name": "id", "type": "INTEGER" },
-    { "name": "title", "type": "TEXT" }
+    { "name": "title", "type": "varchar(255)" }
   ],
   "rows": [
     [1, "first"],

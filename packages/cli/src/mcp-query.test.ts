@@ -1,8 +1,10 @@
+import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { bin } from './__fixtures__/cli.ts';
 import { initialize, mcpApp, mcpEnv, mcpSession, type McpSession } from './__fixtures__/mcp.ts';
 
 const run = vi.hoisted(() => vi.fn());
@@ -34,10 +36,14 @@ describe('query in an app', { timeout: 120_000 }, () => {
     app = mcpApp();
     dir = realpathSync(tempDir('marmeon-mcp-query-'));
     file = join(dir, 'app.sqlite');
-    const database = new DatabaseSync(file);
-    database.exec("create table notes (id integer primary key, title text); insert into notes (title) values ('first'), ('second');");
-    database.close();
     const env = { NODE_ENV: 'development', DB_DRIVER: 'sqlite', DB_DATABASE: file };
+    // The table comes from a migration: db:query refuses a database whose tables the record of migrations does not account for.
+    writeFileSync(join(app, 'modules/system/migrations/2099_01_01_000000_create_notes_table.ts'), "export default { up(schema) { schema.create('notes', (t) => { t.id(); t.string('title'); }); } };\n");
+    const migrated = spawnSync(process.execPath, [bin, 'migrate'], { cwd: app, env: mcpEnv(env), encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] });
+    expect(migrated.status, migrated.stderr).toBe(0);
+    const database = new DatabaseSync(file);
+    database.exec("insert into notes (title) values ('first'), ('second')");
+    database.close();
     session = mcpSession(app, mcpEnv(env));
     unmanaged = mcpSession(app, mcpEnv({ ...env, DB_MANAGED: 'false' }));
     await Promise.all([initialize(session), initialize(unmanaged)]);
