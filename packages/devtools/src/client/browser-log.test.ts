@@ -101,7 +101,7 @@ describe('installBrowserLog', () => {
     expect(() => target.console.warn('x')).toThrow('original');
   });
 
-  it('a cyclic object, a getter that throws and a hostile proxy are formatted, never thrown', () => {
+  it('a cyclic object is `[Circular]`; a getter that throws or a hostile proxy blanks only that argument', () => {
     const { target } = page();
     const sent: BrowserReport[] = [];
     installBrowserLog(target, (report) => sent.push(report), context);
@@ -109,10 +109,64 @@ describe('installBrowserLog', () => {
     cyclic.self = cyclic;
     const getter = Object.defineProperty({}, 'bad', { enumerable: true, get: () => { throw new Error('getter'); } });
     const proxy = new Proxy({}, { ownKeys: () => { throw new Error('trap'); } });
-    expect(() => target.console.error(cyclic, getter, proxy)).not.toThrow();
-    expect(sent[0]!.message).toBe('[unprintable]');
-    target.console.error(cyclic);
-    expect(sent[1]!.message).toBe('{ name: "loop", self: [Circular] }');
+    expect(() => target.console.error('Checkout failed', getter, proxy, cyclic)).not.toThrow();
+    expect(sent[0]!.message).toBe('Checkout failed [unprintable] [unprintable] { name: "loop", self: [Circular] }');
+  });
+
+  it('a wide, deep, shared structure is written within a bounded number of steps and about the limit in text', () => {
+    const { target } = page();
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context);
+    let reads = 0;
+    // Four levels, 50 wide, every level the same children again (shared, not cyclic): 50^3 leaves if expanded in full.
+    const counted = <T extends object>(value: T): T => new Proxy(value, { get: (object, key) => (reads++, Reflect.get(object, key)) });
+    const leaf = counted(Array.from({ length: 50 }, (_, index) => index));
+    const level = (child: unknown[]) => counted(Array.from({ length: 50 }, () => child));
+    const wide = level(level(level(leaf)));
+    target.console.error(wide);
+    expect(sent[0]!.message.length).toBeLessThanOrEqual(4096);
+    expect(sent[0]!.message.endsWith('…') || sent[0]!.message.includes('…')).toBe(true);
+    expect(reads).toBeLessThan(5000);
+  });
+
+  it('a typed array is read by index and capped like an array, not turned into a string per element', () => {
+    const { target } = page();
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context);
+    let keys = 0;
+    const spy = vi.spyOn(Object, 'keys').mockImplementation(((value: object) => (keys++, Reflect.ownKeys(value).filter((key) => typeof key === 'string'))) as typeof Object.keys);
+    target.console.error(new Uint8ClampedArray(3.3e7));
+    spy.mockRestore();
+    expect(keys).toBe(0);
+    expect(sent[0]!.message).toMatch(/^\[ 0(, 0){49}, … 32999950 more \]$/);
+  });
+
+  it('a long key is cut and charged to the budget', () => {
+    const { target } = page();
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context);
+    const read: string[] = [];
+    const object = new Proxy({ ['k'.repeat(5e6)]: 1, second: 2 }, { get: (target, key) => (read.push(String(key).slice(0, 6)), Reflect.get(target, key)) });
+    target.console.error(object);
+    expect(sent[0]!.message.length).toBeLessThanOrEqual(4096);
+    // The key used the whole budget: nothing after it is read.
+    expect(read).toEqual(['kkkkkk']);
+  });
+
+  it('% specifiers are filled (%s %d %i %f %o %O), %c goes with its argument, %% is one %, the rest follows', () => {
+    const { target } = page();
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context);
+    target.console.error('Warning: %s of %s is %d%% done, %i %f %o %O', 'Form', 'Page', 42.5, '7.9', '1.5', { a: 1 }, [2], 'tail');
+    target.console.warn('%cstyled%c text', 'color: red', '', { z: 1 });
+    target.console.error('100%', 'no specifier here', '%s');
+    target.console.error('%s and %s', 'one');
+    expect(sent.map(({ message }) => message)).toEqual([
+      'Warning: Form of Page is 42.5% done, 7 1.5 { a: 1 } [ 2 ] tail',
+      'styled text { z: 1 }',
+      '100% no specifier here %s',
+      'one and %s',
+    ]);
   });
 
   it('objects are shown to depth 3; the message is cut at the server’s limit, the stack too', () => {
@@ -140,6 +194,54 @@ describe('installBrowserLog', () => {
     clock += 2000; // five a second: ten come back
     for (let index = 0; index < 20; index++) target.console.error('later');
     expect(sent).toHaveLength(30);
+  });
+
+  it('what the page holds back goes into the next message that is sent', () => {
+    const { target } = page();
+    let clock = 0;
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context, () => clock);
+    for (let index = 0; index < 25; index++) target.console.error(`n${index}`);
+    expect(sent).toHaveLength(20);
+    clock += 1000;
+    target.console.error('after');
+    expect(sent[20]!.message).toBe('after (5 more held back on the page)');
+    clock += 1000;
+    target.console.error('next');
+    expect(sent[21]!.message).toBe('next');
+    clock += 1000;
+    for (let index = 0; index < 30; index++) target.console.error('x'.repeat(5000));
+    expect(sent.at(-1)!.message.length).toBeLessThanOrEqual(4096);
+  });
+
+  it('Vite’s own `[vite]` error after a send failed is not reported; the same call long after a send, or without an Error, is', () => {
+    const { target, calls } = page();
+    let clock = 0;
+    const sent: BrowserReport[] = [];
+    installBrowserLog(target, (report) => sent.push(report), context, () => clock);
+    target.console.error('first');
+    clock += 100;
+    target.console.error('[vite]', new Error('socket closed'));
+    expect(calls.error).toHaveLength(2);
+    expect(sent.map(({ message }) => message)).toEqual(['first']);
+    target.console.error('[vite]', 'text only');
+    clock += 60_000;
+    target.console.error('[vite]', new Error('later'));
+    expect(sent).toHaveLength(3);
+  });
+
+  it('after the hook is taken away, a wrapper another hook kept in the chain reports nothing', () => {
+    const { target, calls } = page();
+    const sent: BrowserReport[] = [];
+    const stop = installBrowserLog(target, (report) => sent.push(report), context);
+    const ours = target.console.error;
+    target.console.error = (...args) => ours(...args); // another hook wraps ours
+    const theirs = target.console.error;
+    stop();
+    expect(target.console.error).toBe(theirs);
+    target.console.error('late');
+    expect(calls.error).toEqual([['late']]);
+    expect(sent).toEqual([]);
   });
 
   it('without a channel nothing is installed; the returned function takes the hook away', () => {

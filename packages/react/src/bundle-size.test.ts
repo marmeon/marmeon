@@ -321,7 +321,7 @@ describe('an app holds only the features it uses (leak test)', () => {
       expect(built.lazyModules).toEqual(expect.arrayContaining(['http/dist/client/features/layers.js', 'http/dist/client/layer.js', 'react/dist/layer-stack.js']));
       // The devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
       expect(devtoolsIn(built), 'web-app').toEqual([]);
-      // The page's error reports are the devtools client's: the event name is in no chunk of a build.
+      // Guards against other code using the report event's name; the devtools client itself is kept out above and by the browser-safe test.
       expect(built.code + built.lazyCode, 'web-app').not.toContain('marmeon:browser-log');
       // The members table (useTable) comes with its page — a lazy chunk; TanStack is in no chunk (the app has no bridge).
       expect(featuresIn(built)).not.toContain('table');
