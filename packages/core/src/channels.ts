@@ -1,6 +1,6 @@
 /**
  * The framework's observation points: TracingChannels `tracing:marmeon:<operation>:…` and the plain channels `marmeon:log`,
- * `marmeon:exception` and `marmeon:event` (docs/observability.md#the-channels). Every message names its app; nothing is built
+ * `marmeon:exception`, `marmeon:event` and `marmeon:browser.log` (docs/observability.md#the-channels). Every message names its app; nothing is built
  * without a subscriber; values are raw — whatever records or shows them redacts them first.
  */
 import { channel as plainChannel, tracingChannel, type TracingChannel } from 'node:diagnostics_channel';
@@ -286,6 +286,26 @@ export interface ExceptionMessage extends MessageBase {
 }
 
 /**
+ * `marmeon:browser.log` — something that went wrong in a browser page of the app, in development: a `console.error` or
+ * `console.warn`, an uncaught error, an unhandled rejection. The dev server checks and limits what the page sends; the text is
+ * still whatever a script on the page wrote — raw: treat it as data and redact before recording or showing.
+ */
+export interface BrowserLogMessage extends MessageBase {
+  readonly kind: 'console' | 'error' | 'rejection';
+  readonly level: 'error' | 'warn';
+  /** At most 4 096 characters. */
+  readonly message: string;
+  /** At most 16 384 characters. */
+  readonly stack?: string;
+  /** Where an uncaught error was raised. */
+  readonly source?: { readonly url: string; readonly line: number; readonly column: number };
+  /** The page's path and query, as the page reported it. */
+  readonly page: string;
+  /** Reports the rate limit held back since the last one that came through. */
+  readonly dropped?: number;
+}
+
+/**
  * The traced operations and their messages. Packages may add their own through declaration merging.
  */
 export interface TracingMessages {
@@ -308,6 +328,7 @@ export interface EventMessages {
   log: LogMessage;
   exception: ExceptionMessage;
   event: EventDispatchMessage;
+  'browser.log': BrowserLogMessage;
 }
 
 export type TracingName = keyof TracingMessages & string;
@@ -352,7 +373,7 @@ const TRACING: readonly TracingName[] = [
   'render.ssr',
   'command.run',
 ];
-const EVENTS: readonly EventName[] = ['log', 'exception', 'event'];
+const EVENTS: readonly EventName[] = ['log', 'exception', 'event', 'browser.log'];
 
 // Node's channels are process-wide by name; these are handles to them, created once (Node recommends top-level handles).
 const tracings = new Map<string, TracingChannel<object>>(TRACING.map((name) => [name, tracingChannel<object>(`marmeon:${name}`)]));

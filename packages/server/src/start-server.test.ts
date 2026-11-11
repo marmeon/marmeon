@@ -3,6 +3,8 @@ import { createRequire } from 'node:module';
 import { createServer as createNetServer, type AddressInfo, type Server as NetServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { createApplication, defineModule, Logger } from '@marmeon/core';
+import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
+import { channels, type BrowserLogMessage } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { RouteAccessError } from '@marmeon/router';
@@ -49,6 +51,41 @@ describe('startServer', () => {
     await hmrClosed;
     expect(running.server.listening).toBe(false);
     await app.shutdown();
+  });
+
+  it('publishes what a page sends on the HMR WebSocket as browser.log, checked — and nothing a malformed report sends', async () => {
+    const app = await createApplication({
+      root,
+      discover: false,
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+    }, { env: { APP_KEY: generateKey(), PORT: '1' } });
+    const seen: BrowserLogMessage[] = [];
+    const off = channels.subscribe(app, 'browser.log', (message) => void seen.push(message));
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
+    const { port } = running.server.address() as AddressInfo;
+    const hmr = new WebSocket(`ws://127.0.0.1:${port}/`, 'vite-hmr');
+    try {
+      await new Promise((resolve, reject) => {
+        hmr.onopen = resolve;
+        hmr.onerror = reject;
+      });
+      const send = (data: unknown) => hmr.send(JSON.stringify({ type: 'custom', event: BROWSER_LOG_EVENT, data }));
+      send({ kind: 'console', level: 'warn', message: 'Deprecated', page: '/', extra: 'x' });
+      send({ kind: 'nope', level: 'warn', message: 'Bad', page: '/' });
+      send({ kind: 'error', level: 'error', message: 'second', page: '/' });
+      // Exact rate counts are in browser-log.test.ts (own clock); here the WebSocket delivers, and the malformed report is refused.
+      for (let waited = 0; seen.length < 2 && waited < 5000; waited += 20) await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(seen.length).toBeGreaterThanOrEqual(2);
+      expect(seen[0]).toMatchObject({ app, kind: 'console', level: 'warn', message: 'Deprecated', page: '/' });
+      expect(seen[0]).not.toHaveProperty('extra');
+      expect(seen.some((message) => message.message === 'Bad')).toBe(false);
+    } finally {
+      off();
+      hmr.close();
+      await running.close();
+      await app.shutdown();
+    }
   });
 
   it('answers no other origin in development — Vite\'s CORS is off (a page on another localhost port reads nothing)', async () => {
