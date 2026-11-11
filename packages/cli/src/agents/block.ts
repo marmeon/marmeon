@@ -40,7 +40,7 @@ const HEADS = {
 } as const;
 
 const MCP_POINT = `- The MCP server \`marmeon\` reads the app for you: \`app_overview\` first (modules, providers, commands, jobs, events,
-  schedules), \`routes\`, \`schema\` and \`migrations\`; \`last_error\` (the last 5xx) and \`devtools_entries\` (requests, queries,
+  schedules), \`routes\`, \`schema\`, \`migrations\` and \`database\`; \`last_error\` (the last 5xx) and \`devtools_entries\` (requests, queries,
   mails, jobs) for what happened in development; \`docs_search\` and \`docs_read\` for the guides of this version; \`check\` runs
   \`marmeon check\`. If its tools are not in your list, the server is not approved yet: use the commands below.`;
 

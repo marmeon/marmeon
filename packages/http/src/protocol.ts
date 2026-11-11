@@ -18,6 +18,12 @@ export const FLASH_HEADER = 'x-marmeon-flash';
  */
 export const FLASH_WAITING_HEADER = 'x-marmeon-flash-waiting';
 
+/**
+ * The event name on which a page in development sends what went wrong in it to the dev server, over Vite's HMR channel
+ * (`import.meta.hot.send`). The server publishes it as the `browser.log` diagnostics channel (docs/observability.md#browser-reports).
+ */
+export const BROWSER_LOG_EVENT = 'marmeon:browser-log';
+
 /** The wire format of a page — shared by the server and every UI adapter. */
 export interface PageObject {
   component: string;

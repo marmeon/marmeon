@@ -2953,6 +2953,8 @@ Types from other packages: none
 export declare const ACTION_HEADER = "x-marmeon-action";
 // ACTION_REDIRECT_HEADER
 export declare const ACTION_REDIRECT_HEADER = "x-marmeon-redirect";
+// BROWSER_LOG_EVENT
+export declare const BROWSER_LOG_EVENT = "marmeon:browser-log";
 // FLASH_HEADER
 export declare const FLASH_HEADER = "x-marmeon-flash";
 // FLASH_WAITING_HEADER
