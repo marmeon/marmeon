@@ -2,7 +2,7 @@ import type { PageProps } from '@marmeon/http';
 import { Head, Image, Link, useTranslation } from '@marmeon/react';
 import banner from '../images/features.png?image';
 import type { ShowAboutController } from '../controllers/ShowAboutController.ts';
-import { LanguageSwitch } from '../layouts/LanguageSwitch.tsx';
+import { LanguageSwitch } from '../../../layouts/LanguageSwitch.tsx';
 
 /** The public list of features. */
 export default function Index({ features }: PageProps<ShowAboutController>) {

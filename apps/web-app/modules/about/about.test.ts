@@ -24,7 +24,7 @@ describe('the sitemap', () => {
       'http://localhost/en/about',
       'http://localhost/de/about',
       ...features.flatMap((feature) => [`http://localhost/en/about/features/${feature}`, `http://localhost/de/about/features/${feature}`]),
-      ...['', '/getting-started', '/getting-started/install', '/accounts/passkeys'].flatMap((path) => [`http://localhost/en/help${path}`, `http://localhost/de/help${path}`]),
+      ...[['', ''], ['/getting-started', '/erste-schritte'], ['/getting-started/install', '/erste-schritte/installation'], ['/accounts/passkeys', '/konto/passkeys']].flatMap(([en, de]) => [`http://localhost/en/help${en}`, `http://localhost/de/help${de}`]),
     ]);
     expect(response.body).toContain('<loc>http://localhost/en/about/features/typed-routes</loc><lastmod>2026-03-02</lastmod>');
   });

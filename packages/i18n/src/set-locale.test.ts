@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { createApplication, defineModule, type Application, type Container, type ServiceProvider } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, HttpServiceProvider, view, type HttpContext } from '@marmeon/http';
+import { Controller, HttpServiceProvider, PageAlternates, view, type HttpContext } from '@marmeon/http';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { defineRoutes, everyone, GLOBAL, Router } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
@@ -45,6 +45,36 @@ class StoredLocaleController extends Controller {
   }
 }
 
+/** A page whose path differs per language: it names its versions itself. */
+class TranslatedController extends Controller {
+  readonly #alternates: PageAlternates;
+  constructor(alternates: PageAlternates) {
+    super();
+    this.#alternates = alternates;
+  }
+  handle(ctx: HttpContext<{}, { slug: string }>) {
+    const slug = ctx.params.slug;
+    if (slug === 'none') this.#alternates.none();
+    else if (slug === 'bad') this.#alternates.replace({ en: { slug: 'a' }, fr: { slug: 'b' } });
+    else if (slug === 'dot') this.#alternates.replace({ en: { slug: '..' } });
+    else this.#alternates.replace({ en: { slug: 'getting-started' }, de: { slug: 'erste-schritte' }, 'x-default': { locale: 'en', slug: 'getting-started' } });
+    return view('shop/About', {});
+  }
+}
+
+/** The same call on a route that is not localized. */
+class PlainTranslatedController extends Controller {
+  readonly #alternates: PageAlternates;
+  constructor(alternates: PageAlternates) {
+    super();
+    this.#alternates = alternates;
+  }
+  handle() {
+    this.#alternates.replace({ en: { slug: 'a' } });
+    return view('shop/About', {});
+  }
+}
+
 class GoController extends Controller {
   handle() {
     return this.redirect().route('about.feature', { feature: 'x y' });
@@ -63,7 +93,9 @@ const routes = defineRoutes((Root) => {
   const localized = open.localized();
   localized.get('/about', AboutController).name('about');
   localized.get('/about/features/:feature', AboutController).name('about.feature');
+  localized.get('/help/:slug', TranslatedController).name('help');
   open.get('/about-plain', AboutController).name('about-plain');
+  open.get('/translated-plain', PlainTranslatedController).name('translated-plain');
   open.get('/session/:locale', SessionLocaleController);
   open.get('/session', StoredLocaleController);
   open.post('/go', GoController).name('go');
@@ -184,6 +216,22 @@ describe('SetLocale on a localized route', () => {
     const page = await pageOf(await send('/de/about/features/%2F%2Fevil.example', { headers: visit }));
     expect(page.alternates?.['x-default']).toBe('/about/features/%2F%2Fevil.example');
     for (const path of Object.values(page.alternates ?? {})) expect(path).toMatch(/^\/(?!\/)/);
+  });
+
+  it('lets the controller name its versions with PageAlternates.replace(), the query kept', async () => {
+    const { send } = await boot();
+    const page = await pageOf(await send('/de/help/erste-schritte?tab=1', { headers: visit }));
+    expect(page.alternates).toEqual({ en: '/en/help/getting-started?tab=1', de: '/de/help/erste-schritte?tab=1', 'x-default': '/en/help/getting-started?tab=1' });
+  });
+
+  it('has no alternates after PageAlternates.none()', async () => {
+    const { send } = await boot();
+    expect('alternates' in (await pageOf(await send('/de/help/none', { headers: visit })))).toBe(false);
+  });
+
+  it('fails a controller that names a language the app does not have, or a page the route does not match, or calls replace() on a route that is not localized', async () => {
+    const { send } = await boot();
+    for (const path of ['/de/help/bad', '/de/help/dot', '/translated-plain']) expect((await send(path, { headers: visit })).status).toBe(500);
   });
 
   it('answers a dot segment in the URL with a 404 — never a 500, never alternates', async () => {

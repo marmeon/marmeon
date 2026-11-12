@@ -985,7 +985,15 @@ export function createHttpKernel(
   // After every route of the app (one on the same path wins), before the localized routes' versions without a locale: such a
   // route (`/:page`) would otherwise take `/sitemap.xml`. Only when a route asks for it, and behind the global middleware alone.
   if (listed.length > 0) {
-    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, claimed: (route, path) => router.isFallback(route) && (router.claimedBy(path) !== undefined || router.fallbackFor(path) !== route), logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
+    // Whether another route or the framework answers a decoded path in a fallback's place.
+    const claimed = (route: RouteDefinition, path: string): boolean => {
+      if (!router.isFallback(route)) return false;
+      if (router.claimedBy(path) !== undefined) return true;
+      // The address without a locale of a localized fallback is answered by its redirecting variant: still the route's own.
+      const answering = router.fallbackFor(path);
+      return answering !== route && answering?.generatedFrom !== route;
+    };
+    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, claimed, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
     const answer = (answerWith: () => Response | Promise<Response>) => async (c: Context) =>
       (await refuseIslandRequest(c.req.raw, undefined, showsDebug(c.req.raw), refuseWith(c.req.raw))) ??
       handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {

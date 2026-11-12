@@ -2,6 +2,7 @@
 const en = {
   title: 'Help',
   all_pages: 'All help pages',
+  language: 'Language',
 } as const;
 
 export default en;

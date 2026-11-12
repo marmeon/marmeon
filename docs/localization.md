@@ -341,6 +341,53 @@ never guesses: its `locale` is required, because a mail for Ada is in Ada's lang
 The tab-sync epoch follows the visitor's *preferred* locale (session, account, browser), not the URL's. Moving from `/de/about` to
 `/en/about` changes nothing for the other tabs, which would otherwise discard everything and load again.
 
+#### Translated paths
+
+`alternates` assumes the page has the same parameters in every language, which fits `/de/about` and `/en/about`. A page whose
+path differs per language (`/de/help/erste-schritte`, `/en/help/getting-started`) names its versions itself, with
+`PageAlternates` of `@marmeon/http`, resolved in the controller. `replace()` takes the parameters of the answering route by
+language; the framework builds each path from the route's pattern, appends the query, and refuses anything the route would not
+answer:
+
+```ts
+export class ShowHelpPageController extends Controller {
+  readonly #pages: HelpPages;
+  readonly #alternates: PageAlternates;
+
+  constructor(pages: HelpPages, alternates: PageAlternates) {
+    super();
+    this.#pages = pages;
+    this.#alternates = alternates;
+  }
+
+  handle(ctx: HttpContext<{}, { locale: string; path: string }>) {
+    const page = this.#pages.find(ctx.params.locale, ctx.params.path) ?? abort(404);
+    this.#alternates.replace({
+      en: { path: page.paths.en },
+      de: { path: page.paths.de },
+      'x-default': { locale: 'en', path: page.paths.en },
+    });
+    return this.view('help/Show', { page });
+  }
+}
+```
+
+The page object's `alternates` and the page's `hreflang` links, the language switcher included, follow. A language without an entry
+has no version, and `none()` says the page exists in this language only. Both throw a `TypeError` for a key that is not a
+supported locale or `x-default`, for parameters the route does not match, and when called on a page that is not localized: a
+mistake in the code or the data, not in the request. The call replaces what the framework derived, so name every version, the
+page itself among them.
+
+- **`x-default`.** The address without a locale keeps the path it was given and redirects to the visitor's language, so for a
+  German visitor `/help/getting-started` leads to `/de/help/getting-started`, a 404. Give `x-default` a `locale` and it names
+  that language's page instead. Without `locale` it is the address without a locale, which suits pages with one path in every
+  language.
+- **Another language's path.** The same redirect lets a visitor arrive on a slug of another language. The controller looks the
+  path up in the other languages and redirects: `this.redirect().route('help.page', { locale, path }).status(301)`, to the page's
+  path in the language of the address.
+- **The sitemap.** An entry of a localized route that names its `locale` in `params` is that language's `<url>` alone, with
+  the `alternates` it writes; see [the sitemap](seo.md#sitemap-and-robotstxt).
+
 #### Caches
 
 A localized URL is one language, so a cache can key a page by its URL alone. That is a condition for a shared cache, not a

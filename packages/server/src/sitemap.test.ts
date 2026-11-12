@@ -312,18 +312,83 @@ describe('/sitemap.xml', () => {
       }
     });
 
-    it('lets no hook choose the locale: a `locale` parameter of an entry is overwritten', async () => {
-      state.slugs = [{ params: { slug: 'a', locale: '//evil.example' } }, { params: { slug: 'a', locale: 'fr' } }] as unknown as typeof state.slugs;
+    it('lists an entry that names its locale once, in that language, with the versions it gives', async () => {
+      state.slugs = [{ params: { slug: 'leistungen', locale: 'de' }, alternates: { de: { slug: 'leistungen' }, en: { slug: 'services' }, 'x-default': { slug: 'services', locale: 'en' } } }] as unknown as typeof state.slugs;
       const { application, create } = await boot({ routes: features, urlLocales });
       try {
         const xml = await (await create().request('/sitemap.xml')).text();
+        expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
         const feature = xml.split('<url>').filter((entry) => entry.includes('/features/'));
-        expect(locs(feature.join('')).filter((loc, index, all) => all.indexOf(loc) === index)).toEqual([`${url}/en/features/a`, `${url}/de/features/a`]);
-        expect(links(feature.join('')).map((link) => link.split(' ')[0])).toEqual(['en', 'de', 'x-default', 'en', 'de', 'x-default', 'en', 'de', 'x-default', 'en', 'de', 'x-default']);
-        expect(links(feature[0]!)).toContain(`x-default ${url}/features/a`);
+        expect(feature).toHaveLength(1);
+        expect(locs(feature[0]!)).toEqual([`${url}/de/features/leistungen`]);
+        expect(links(feature[0]!)).toEqual([`de ${url}/de/features/leistungen`, `en ${url}/en/features/services`, `x-default ${url}/en/features/services`]);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('takes x-default without a locale as the address without a prefix, and lists no links for an entry without alternates', async () => {
+      state.slugs = [{ params: { slug: 'a', locale: 'en' }, alternates: { en: { slug: 'a' }, 'x-default': { slug: 'a' } } }, { params: { slug: 'only', locale: 'de' } }] as unknown as typeof state.slugs;
+      const { application, create } = await boot({ routes: features, urlLocales });
+      try {
+        const feature = (await (await create().request('/sitemap.xml')).text()).split('<url>').filter((entry) => entry.includes('/features/'));
+        expect(links(feature[0]!)).toEqual([`en ${url}/en/features/a`, `x-default ${url}/features/a`]);
+        expect(feature[1]!.trim()).toBe(`<loc>${url}/de/features/only</loc></url>`);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('leaves out an entry that names a locale the app does not have, with one warning', async () => {
+      state.slugs = [{ params: { slug: 'a', locale: '//evil.example' } }, { params: { slug: 'a', locale: 'fr' } }, { params: { slug: 'b', locale: 5 } }] as unknown as typeof state.slugs;
+      const { application, logger, create } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([]);
         expect(xml).not.toContain('evil');
-        expect(xml).not.toContain('fr');
-        expect(xml.replace('<?xml version="1.0" encoding="UTF-8"?>', '')).not.toContain('?');
+        expect(logger.warnings.filter((warning) => warning.includes('names a locale the app does not support'))).toHaveLength(1);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('leaves out all links of an entry with a key or a value that names no page, and keeps the entry', async () => {
+      state.slugs = [
+        { params: { slug: 'a', locale: 'de' }, alternates: { de: { slug: 'a' }, 'x"><evil': { slug: 'b' } } },
+        { params: { slug: 'b', locale: 'de' }, alternates: { de: { slug: 'b' }, en: { slug: '..' } } },
+        { params: { slug: 'c', locale: 'de' }, alternates: { de: { slug: 'c' }, 'x-default': { slug: 'c', locale: 'fr' } } },
+        { params: { slug: 'd', locale: 'de' }, alternates: { de: { slug: 'd' }, 'x-default': { slug: 'd', locale: '//evil.example' } } },
+      ] as unknown as typeof state.slugs;
+      const { application, create } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([`${url}/de/features/a`, `${url}/de/features/b`, `${url}/de/features/c`, `${url}/de/features/d`]);
+        expect(links(xml.split('<url>').filter((entry) => entry.includes('/features/')).join(''))).toEqual([]);
+        expect(xml).not.toContain('evil');
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('leaves out the links of an entry whose value names another locale than its key, and keeps the entry', async () => {
+      state.slugs = [{ params: { slug: 'a', locale: 'de' }, alternates: { de: { slug: 'a' }, en: { slug: 'a', locale: 'de' } } }] as unknown as typeof state.slugs;
+      const { application, create } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([`${url}/de/features/a`]);
+        expect(links(xml.split('<url>').filter((entry) => entry.includes('/features/')).join(''))).toEqual([]);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('lets no hook choose a prefix: a locale that is not the app\'s never reaches an address', async () => {
+      state.slugs = [{ params: { slug: 'a' }, alternates: { en: { slug: 'a', locale: '//evil.example' } } }, { params: { slug: 'a', locale: 'en' }, alternates: { en: { slug: 'a', locale: '//evil.example' } } }] as unknown as typeof state.slugs;
+      const { application, create } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        expect(xml).not.toContain('evil');
+        expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([`${url}/en/features/a`, `${url}/de/features/a`, `${url}/en/features/a`]);
       } finally {
         await application.shutdown();
       }
@@ -714,6 +779,91 @@ describe('/sitemap.xml of a fallback', () => {
     } finally {
       await application.shutdown();
     }
+  });
+
+  describe('a localized fallback', () => {
+    const urlLocales: UrlLocales = { supported: ['de', 'en'], preferred: async () => 'de' };
+    const links = (xml: string): string[] => [...xml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"\/>/g)].map((match) => `${match[1]} ${match[2]}`);
+
+    it('leaves x-default out of an entry whose address without a locale another route answers, and keeps the other links', async () => {
+      class Pages {
+        handle() {
+          return 'page';
+        }
+        sitemap(): SitemapEntries<{ path: string }> {
+          return [{ params: { path: 'free' } }, { params: { path: 'about' } }];
+        }
+      }
+      const { application, logger, create } = await boot({
+        urlLocales,
+        routes: openRoutes((Route) => {
+          Route.get('/about', () => 'about');
+          Route.localized().fallback(Pages).sitemap();
+        }),
+      });
+      try {
+        const urls = (await (await create().request('/sitemap.xml')).text()).split('<url>').slice(1);
+        expect(links(urls[0]!)).toEqual([`de ${url}/de/free`, `en ${url}/en/free`, `x-default ${url}/free`]);
+        expect(links(urls[2]!)).toEqual([`de ${url}/de/about`, `en ${url}/en/about`]);
+        expect(logger.warnings.filter((warning) => warning.includes('The x-default of a sitemap entry'))).toHaveLength(1);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('warns about a left-out x-default and about other left-out alternates separately', async () => {
+      class Pages {
+        handle() {
+          return 'page';
+        }
+        sitemap(): SitemapEntries<{ locale?: string; path: string }> {
+          return [{ params: { locale: 'de', path: 'a' }, alternates: { 'x-default': { path: 'about' } } }, { params: { path: 'about' } }];
+        }
+      }
+      const { application, logger, create } = await boot({
+        urlLocales,
+        routes: openRoutes((Route) => {
+          Route.get('/about', () => 'about');
+          Route.localized().fallback(Pages).sitemap();
+        }),
+      });
+      try {
+        await (await create().request('/sitemap.xml')).text();
+        expect(logger.warnings.filter((warning) => warning.includes('The alternates of a sitemap entry'))).toHaveLength(1);
+        expect(logger.warnings.filter((warning) => warning.includes('The x-default of a sitemap entry'))).toHaveLength(1);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('drops the links of an entry that names its locale when one points to a path another route answers, and keeps the entry', async () => {
+      class Pages {
+        handle() {
+          return 'page';
+        }
+        sitemap(): SitemapEntries<{ locale?: string; path: string }> {
+          return [
+            { params: { locale: 'de', path: 'leistungen' }, alternates: { de: { locale: 'de', path: 'leistungen' }, 'x-default': { path: 'leistungen' } } },
+            { params: { locale: 'de', path: 'ueber' }, alternates: { de: { locale: 'de', path: 'ueber' }, 'x-default': { path: 'about' } } },
+          ];
+        }
+      }
+      const { application, create } = await boot({
+        urlLocales,
+        routes: openRoutes((Route) => {
+          Route.get('/about', () => 'about');
+          Route.localized().fallback(Pages).sitemap();
+        }),
+      });
+      try {
+        const urls = (await (await create().request('/sitemap.xml')).text()).split('<url>').slice(1);
+        expect(locs(urls.join(''))).toEqual([`${url}/de/leistungen`, `${url}/de/ueber`]);
+        expect(links(urls[0]!)).toEqual([`de ${url}/de/leistungen`, `x-default ${url}/leistungen`]);
+        expect(links(urls[1]!)).toEqual([]);
+      } finally {
+        await application.shutdown();
+      }
+    });
   });
 
   it('keeps the entries of a route that is no fallback, even on a path another route answers', async () => {

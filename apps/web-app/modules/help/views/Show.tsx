@@ -1,6 +1,7 @@
 import type { PageProps } from '@marmeon/http';
 import { Head, Link, useTranslation } from '@marmeon/react';
 import type { ShowHelpPageController } from '../controllers/ShowHelpPageController.ts';
+import { LanguageSwitch } from '../../../layouts/LanguageSwitch.tsx';
 
 /** A help page, or the list of them when no page is asked for. */
 export default function Show({ page, pages }: PageProps<ShowHelpPageController>) {
@@ -8,6 +9,7 @@ export default function Show({ page, pages }: PageProps<ShowHelpPageController>)
   return (
     <main>
       <Head title={page?.title ?? t('title')} />
+      <LanguageSwitch label={t('language')} />
       <h1>{page?.title ?? t('title')}</h1>
       {page ? (
         <>

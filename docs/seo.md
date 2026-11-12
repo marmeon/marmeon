@@ -137,7 +137,7 @@ that redirects to the visitor's:
   `APP_URL` the server's document leaves the whole block (the languages and the default `canonical`) out, and development says so once; the browser resolves them against its own origin.
 - The browser updates them on every visit, also from one language to another.
 
-They come only from the server: the route is localized, so its page object carries `alternates`. A page on another route gets none,
+A page whose path differs per language names its versions itself with [`PageAlternates.replace()`](localization.md#translated-paths), and gives `x-default` a `locale` so that it points at a real page. They come only from the server: the route is localized, so its page object carries `alternates`. A page on another route gets none,
 whatever its URL looks like, and an app that does not use `localized()` has no `hreflang` at all.
 
 ## Sitemap and robots.txt
@@ -204,7 +204,7 @@ URL. Each `<url>` lists all versions as `<xhtml:link rel="alternate" hreflang="â
 language, which redirects to the visitor's. A page with two languages and three features is six `<url>` elements with three links
 each; the file declares `xmlns:xhtml` when it holds any. See [Routes under a locale](routing.md#routes-under-a-locale).
 
-A page that exists in other languages under addresses of their own, such as a help page `/help/getting-started` and its German version `/help/erste-schritte`, names them in `alternates` of its entry, on a route that is not localized. The key is the hreflang: a language, optionally with a script and a region (`de`, `en-GB`, `zh-Hant-TW`, `es-419`), or `x-default`; extensions, variants and private-use tags are refused. The value is the `params` of the same route:
+A page that exists in other languages under addresses of their own, such as a help page `/help/getting-started` and its German version `/help/erste-schritte`, names them in `alternates` of its entry, on a route that is not localized, or on a localized route with an entry that names its own `locale` (below). The key is the hreflang: a language, optionally with a script and a region (`de`, `en-GB`, `zh-Hant-TW`, `es-419`), or `x-default`; extensions, variants and private-use tags are refused. The value is the `params` of the same route:
 
 ```ts
 sitemap(): SitemapEntries<{ slug: string }> {
@@ -219,7 +219,26 @@ sitemap(): SitemapEntries<{ slug: string }> {
 }
 ```
 
-Each value is built like the `<loc>`, from `APP_URL` and the route's path, so an `alternates` entry is never an address. Name the page itself among them (a version lists itself), and write the same set in the entry of every version: search engines ignore a link the other page does not return. A route without path parameters has one address, so its `alternates` have nothing to point to and are left out. A key that is no language tag, or a value the route would answer with a 404, leaves out all `alternates` of that entry with one warning for the route; the entry stays. On a route under `Route.localized()` the entry's `alternates` are ignored with a warning, because its versions come from its locales. The links do not count against the 50 000 URLs.
+Each value is built like the `<loc>`, from `APP_URL` and the route's path, so an `alternates` entry is never an address. Name the page itself among them (a version lists itself), and write the same set in the entry of every version: search engines ignore a link the other page does not return. A route without path parameters has one address, so its `alternates` have nothing to point to and are left out. A key that is no language tag, or a value the route would answer with a 404, leaves out all `alternates` of that entry with one warning for the route; the entry stays. On a route under `Route.localized()`, an entry without `locale` in its `params` is listed in every language and its `alternates` are ignored with a warning, because its versions come from its locales. The links do not count against the 50 000 URLs.
+
+An entry that names its `locale` is one `<url>`, in that language, and lists the versions it writes itself, for a page whose path differs per language:
+
+```ts
+sitemap(): SitemapEntries<{ locale: string; path: string }> {
+  return this.#pages.all().flatMap((page) =>
+    ['en', 'de'].map((locale) => ({
+      params: { locale, path: page.paths[locale] },
+      alternates: {
+        en: { locale: 'en', path: page.paths.en },
+        de: { locale: 'de', path: page.paths.de },
+        'x-default': { locale: 'en', path: page.paths.en },
+      },
+    })),
+  );
+}
+```
+
+The locale must be one the app supports; an entry that names another is left out with a warning. Any key but `x-default` is its own language, so a value that names another `locale` than its key leaves out the entry's links. For `x-default`, a value with `locale` is built under that language's address, and one without is the address without a locale. An entry without `alternates` has no links. A fallback's entry drops its links the same way as above when the address without a locale of `x-default` is answered by another route or the framework. `x-default` of an automatic entry (without `locale`) is left out alone in that case. In the page's head, [`PageAlternates.replace()`](localization.md#translated-paths) follows the same rules (it throws instead of leaving out).
 
 The start stops, with code H10, when a marked route:
 

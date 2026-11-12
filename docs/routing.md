@@ -1064,7 +1064,9 @@ the controller answers 404 there.
   (`/de/help/erste-schritte`, `/en/help/getting-started`), `/help/getting-started` leads a German visitor to
   `/de/help/getting-started`, which is a 404. The controller can recognise the other language's path and
   redirect to the page in the visitor's language. The automatic language versions (the `hreflang` links of the page and of the
-  sitemap) assume the same path in every language, so with translated paths they point at 404s.
+  sitemap) assume the same path in every language, so with translated paths the controller names them itself with
+  `PageAlternates.replace()` and the sitemap's entries carry their own `locale` and `alternates`; give `x-default` a `locale`.
+  See [Translated paths](localization.md#translated-paths).
 - **One fallback fits each prefix, with or without a locale.** The localized fallback also takes the address without a locale,
   so a fallback that is not localized on the same prefix (`/help` and `Route.localized().prefix('/help')`) stops the app at start
   with [H15](errors.md#server-error-codes), naming both places, in whatever order they load. Different prefixes sit side by side:

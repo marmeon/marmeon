@@ -10,6 +10,7 @@ export { ensuresOf } from './ensures.ts';
 export type { DispatchOptions, ResponseFactory } from './router.ts';
 export { defaultToResponse, describeMiddlewareProblem, describeRouteConflict, FRAMEWORK_ROUTES, isControllerClass, isIslandAction } from './router.ts';
 export { PageAlternates } from './page-alternates.ts';
+export type { PageAlternatesSource } from './page-alternates.ts';
 export { UrlLocales } from './url-locales.ts';
 export { matchParams, tokenizePattern } from './pattern.ts';
 export { localLocation } from './local-location.ts';
