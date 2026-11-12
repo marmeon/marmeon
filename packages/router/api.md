@@ -444,6 +444,7 @@ export type SitemapEntries<TParams = Record<string, string | number>> = Iterable
 export interface SitemapEntry<TParams = Record<string, string | number>> {
     readonly params: TParams;
     readonly lastModified?: Date;
+    readonly alternates?: Readonly<Record<string, TParams>>;
 }
 // StandardIssue
 export type { StandardIssue } from '@marmeon/core';

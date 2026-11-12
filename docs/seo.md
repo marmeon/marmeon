@@ -173,8 +173,8 @@ export class ShowFeatureController extends Controller {
 ```
 
 `sitemap()` returns a list, a generator (`async *sitemap()` reads a large table in batches), or a promise of a list. Each entry
-is `{ params, lastModified? }`: `params` fills the path of the route, and `lastModified` becomes `<lastmod>` as a `YYYY-MM-DD`
-date. The controller is built in a scope of its own, so it may take services in its constructor. A route without parameters may
+is `{ params, lastModified?, alternates? }`: `params` fills the path of the route, and `lastModified` becomes `<lastmod>` as a
+`YYYY-MM-DD` date; `alternates` is described below. The controller is built in a scope of its own, so it may take services in its constructor. A route without parameters may
 have the method too, to say when its page changed: the latest date it gives is the one that counts. A closure cannot have it.
 
 The address of each entry is built from the route's path, with every value encoded, and from `APP_URL`, never from the `Host`
@@ -202,6 +202,23 @@ A route under `Route.localized()` appears once per language. Its hook (or the pa
 URL. Each `<url>` lists all versions as `<xhtml:link rel="alternate" hreflang="…">`, and `x-default` for the address without a
 language, which redirects to the visitor's. A page with two languages and three features is six `<url>` elements with three links
 each; the file declares `xmlns:xhtml` when it holds any. See [Routes under a locale](routing.md#routes-under-a-locale).
+
+A page that exists in other languages under addresses of their own, such as a help page `/help/getting-started` and its German version `/help/erste-schritte`, names them in `alternates` of its entry, on a route that is not localized. The key is the hreflang: a language, optionally with a script and a region (`de`, `en-GB`, `zh-Hant-TW`, `es-419`), or `x-default`; extensions, variants and private-use tags are refused. The value is the `params` of the same route:
+
+```ts
+sitemap(): SitemapEntries<{ slug: string }> {
+  return this.#pages.all().map((page) => ({
+    params: { slug: page.slug },
+    alternates: {
+      en: { slug: page.slugs.en },
+      de: { slug: page.slugs.de },
+      'x-default': { slug: page.slugs.en },
+    },
+  }));
+}
+```
+
+Each value is built like the `<loc>`, from `APP_URL` and the route's path, so an `alternates` entry is never an address. Name the page itself among them (a version lists itself), and write the same set in the entry of every version: search engines ignore a link the other page does not return. A route without path parameters has one address, so its `alternates` have nothing to point to and are left out. A key that is no language tag, or a value the route would answer with a 404, leaves out all `alternates` of that entry with one warning for the route; the entry stays. On a route under `Route.localized()` the entry's `alternates` are ignored with a warning, because its versions come from its locales. The links do not count against the 50 000 URLs.
 
 The start stops, with code H10, when a marked route:
 
