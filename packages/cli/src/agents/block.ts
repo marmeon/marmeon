@@ -41,8 +41,8 @@ const HEADS = {
 
 const MCP_POINT = `- The MCP server \`marmeon\` reads the app for you: \`app_overview\` first (modules, providers, jobs, events, schedules), \`routes\`,
   \`schema\`, \`migrations\`, \`database\`, \`commands\` (CLI commands and options), \`query\` (one read-only SQL query); \`last_error\` (the last
-  5xx) and \`devtools_entries\` (requests, queries, mails, jobs) for development; \`docs_search\`, \`docs_read\` for this version's guides;
-  \`check\` runs \`marmeon check\`. If its tools are not in your list, the server is not approved yet: use the commands below.`;
+  5xx) and \`devtools_entries\` (requests, queries, mails, jobs, browser errors) for development; \`docs_search\`, \`docs_read\` for this
+  version's guides; \`check\` runs \`marmeon check\`. If its tools are not in your list, the server is not approved yet: use the commands below.`;
 
 const BLOCK_HEAD = `${AGENTS_BEGIN}
 Managed by \`marmeon agents:sync\` — edits inside this block are replaced; write yours outside.
