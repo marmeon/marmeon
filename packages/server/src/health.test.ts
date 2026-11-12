@@ -1,3 +1,4 @@
+import { Router } from '@marmeon/router';
 import { fileURLToPath } from 'node:url';
 import { Clock, createApplication, defineModule, Logger, type HealthCheck } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -219,6 +220,21 @@ describe('health endpoints', () => {
     } finally {
       await application.shutdown();
     }
+  });
+
+  it('tells the router where the health check answers, so claimedBy() never calls those paths free', async () => {
+    const claimed = async (env: Record<string, string>, ...paths: string[]) => {
+      const { application } = await boot({ env });
+      createHttpKernel(application);
+      const router = application.container.make(Router);
+      const answers = paths.map((path) => router.claimedBy(path));
+      await application.shutdown();
+      return answers;
+    };
+    const health = { by: 'framework', reason: 'health' };
+    expect(await claimed({}, '/up', '/up/ready', '/healthz')).toEqual([health, health, undefined]);
+    expect(await claimed({ SERVER_HEALTH_PATH: '/healthz' }, '/healthz', '/healthz/ready', '/up')).toEqual([health, health, undefined]);
+    expect(await claimed({ SERVER_HEALTH_PATH: 'off' }, '/up', '/up/ready')).toEqual([undefined, undefined]);
   });
 
   it('SERVER_HEALTH_PATH moves them (or turns them off); an app route on a health path fails the start', async () => {

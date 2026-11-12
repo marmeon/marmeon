@@ -234,6 +234,16 @@ export interface ParsedQuery {
     readonly defaults: Record<string, unknown>;
     readonly dropped: readonly string[];
 }
+// PathClaim
+export type PathClaim = {
+    readonly by: 'route';
+    readonly route: RouteDefinition;
+} | {
+    readonly by: 'framework';
+    readonly reason: 'reserved' | 'assets' | 'sitemap' | 'health';
+} | {
+    readonly by: 'invalid';
+};
 // Query
 export type Query = Readonly<Record<string, QueryValue>>;
 // QueryFields
@@ -419,6 +429,7 @@ export declare class Router {
     #private;
     readonly middleware: MiddlewareGroups;
     get routes(): readonly RouteDefinition[];
+    claimedBy(path: string): PathClaim | undefined;
     load(...definitions: RouteDefinitions[]): this;
     load(options: LoadOptions, ...definitions: RouteDefinitions[]): this;
     beforeValidation(hook: ValidationHook): this;

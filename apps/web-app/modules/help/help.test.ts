@@ -2,6 +2,7 @@ import { Router } from '@marmeon/http';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { HelpPages } from './HelpPages.ts';
 
 let app: TestApp;
 beforeEach(async () => {
@@ -55,6 +56,13 @@ describe('the help pages', () => {
     await app.navigating().get('/help/getting-started').assertOk().assertPage('help/Show');
     const router = app.application.container.make(Router);
     expect(router.fallbacks.map((route) => route.path)).toEqual(['/help/:path*']);
+  });
+
+  it('has no page on a path a route or the framework answers: the fallback would never get it', () => {
+    const router = app.application.container.make(Router);
+    for (const page of new HelpPages().all()) expect(router.claimedBy(`/help/${page.path}`), page.path).toBeUndefined();
+    expect(router.claimedBy('/help/contact')).toMatchObject({ by: 'route' });
+    expect(router.claimedBy('/help/a//b')).toEqual({ by: 'invalid' });
   });
 
   it('lists its pages in the sitemap, and leaves /sitemap.xml to the kernel', async () => {

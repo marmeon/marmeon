@@ -89,7 +89,7 @@ import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveVa
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { devHosts, hostAllowed } from '@marmeon/core/dev';
-import { checkHealthPaths, createHealthEndpoints } from './health.ts';
+import { checkHealthPaths, createHealthEndpoints, readyPathOf } from './health.ts';
 import { ServerConfig } from './provider.ts';
 import { forwardedRequest, proxyMatcher } from './proxies.ts';
 import { serveAssets } from './assets.ts';
@@ -267,6 +267,8 @@ export function createHttpKernel(
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   // The locales a localized route can name (`@marmeon/i18n`); the start stops without them, and on a route they would shadow.
   const urlLocales = container.has(UrlLocales) ? container.make(UrlLocales) : undefined;
+  // What the server answers besides routes — the locales a localized route's path names, the health check — for `claimedBy`.
+  router.bindServerPaths({ locales: urlLocales?.supported, health: health === false ? [] : [health, readyPathOf(health)] });
   checkLocalizedRoutes(router, urlLocales, (route) => redactor.path(route.path, route.path));
   // A route no request reaches, because an earlier one has its method and path: a warning in development, the start goes on.
   if (environment.isDevelopment()) {
@@ -983,7 +985,7 @@ export function createHttpKernel(
   // After every route of the app (one on the same path wins), before the localized routes' versions without a locale: such a
   // route (`/:page`) would otherwise take `/sitemap.xml`. Only when a route asks for it, and behind the global middleware alone.
   if (listed.length > 0) {
-    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
+    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, claimed: (route, path) => router.isFallback(route) && router.claimedBy(path) !== undefined, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
     const answer = (answerWith: () => Response | Promise<Response>) => async (c: Context) =>
       (await refuseIslandRequest(c.req.raw, undefined, showsDebug(c.req.raw), refuseWith(c.req.raw))) ??
       handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {

@@ -103,6 +103,15 @@ describe('createHttpKernel — Route.fallback()', () => {
     expect(await text(await kernel.request('/de/unknown'))).toMatch(/^root:de\/unknown\|/);
   });
 
+  it('tells the router the app\'s locales, so claimedBy() answers a localized route per locale', async () => {
+    const localized = openRoutes((Route) => void Route.localized().get('/about', () => 'about'));
+    const { application } = await boot([fallbacks, localized], { locales: true });
+    const router = application.container.make(Router);
+    expect(router.claimedBy('/de/about')).toMatchObject({ by: 'route' });
+    expect(router.claimedBy('/en/about')).toMatchObject({ by: 'route' });
+    expect(router.claimedBy('/fr/about')).toBeUndefined();
+  });
+
   it('leaves /sitemap.xml and /robots.txt to the kernel when a route is in the sitemap', async () => {
     const { kernel } = await boot([fallbacks, later]);
     const sitemap = await kernel.request('/sitemap.xml');
