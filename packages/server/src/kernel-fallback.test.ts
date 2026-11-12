@@ -236,3 +236,108 @@ describe('createHttpKernel — a fallback that cannot work', () => {
     await expect(create([], [wildcard, fallback])).rejects.toThrow(/H15.*covers the fallback/s);
   });
 });
+
+describe('createHttpKernel — Route.localized().fallback()', () => {
+  /** In the first module, so the routes that must beat it come later. */
+  const pages = openRoutes((Route) => {
+    Route.localized().fallback((ctx) => {
+      calls.push(`${ctx.params.locale}:${ctx.params.path}`);
+      return `page ${ctx.params.locale}|${ctx.params.path}|web=${(ctx as unknown as { webSeen?: string }).webSeen}`;
+    });
+    Route.localized().prefix('/blog').fallback((ctx) => `blog ${ctx.params.locale}|${ctx.params.path}`);
+  });
+  const owners = openRoutes((Route) => {
+    Route.get('/kontakt', () => 'kontakt');
+    Route.localized().get('/about', () => 'about');
+    Route.localized().get('/blog/archive', () => 'archive');
+  });
+
+  it('gives the controller the locale and the path below its prefix, behind the web group', async () => {
+    const { kernel } = await boot([pages, owners], { locales: true });
+    expect(await text(await kernel.request('/de'))).toBe('page de||web=yes');
+    expect(await text(await kernel.request('/en/help/a/b'))).toBe('page en|help/a/b|web=yes');
+    expect(await text(await kernel.request('/en/blog'))).toBe('blog en|');
+    expect(await text(await kernel.request('/de/blog/x/y'))).toBe('blog de|x/y');
+  });
+
+  it('is tried after every route of the app, whatever module it came from', async () => {
+    for (const modules of [[pages, owners], [owners, pages]]) {
+      const { kernel } = await boot(modules, { locales: true });
+      expect(await text(await kernel.request('/kontakt'))).toBe('kontakt');
+      expect(await text(await kernel.request('/de/about'))).toBe('about');
+      expect(await text(await kernel.request('/de/blog/archive'))).toBe('archive');
+      expect(calls).toEqual([]);
+      // The address without a locale of a route of the app is that route's own redirect, not the fallback's.
+      const redirect = await kernel.request('/about');
+      expect([redirect.status, redirect.headers.get('location')]).toEqual([302, '/de/about']);
+    }
+  });
+
+  it('sends the address without a locale to the visitor\'s language, uncached, and never asks the controller', async () => {
+    const { kernel } = await boot([pages, owners], { locales: true });
+    for (const [from, to] of [['/', '/de'], ['/leistungen', '/de/leistungen'], ['/fr/x', '/de/fr/x'], ['/blog/a/b?q=1', '/de/blog/a/b?q=1'], ['/a%20b', '/de/a%20b']] as const) {
+      const response = await kernel.request(from);
+      expect([from, response.status, response.headers.get('location')]).toEqual([from, 302, to]);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(response.headers.get('vary')).toBe('accept-language, cookie');
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it.each(['//evil.com/x', '//evil.com', '/a%2Fb', '/a//b', '/a%5Cb', '/%5Cevil.com', '/a%0D%0Ab', '/%ZZ'])('answers %s with a 404 and no location, before any redirect or controller', async (path) => {
+    const { kernel } = await boot([pages, owners], { locales: true });
+    const response = await kernel.request(path);
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
+    expect(calls).toEqual([]);
+    expect(seen.web).toBe(0);
+  });
+
+  it('sends a trailing slash to the path without it first, with a 301, whether or not it has a locale', async () => {
+    const { kernel } = await boot([pages, owners], { locales: true });
+    for (const [from, to] of [['/leistungen/', '/leistungen'], ['/de/a/', '/de/a'], ['/blog/a/', '/blog/a']] as const) {
+      const response = await kernel.request(from);
+      expect([from, response.status, response.headers.get('location')]).toEqual([from, 301, to]);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('keeps a locale the app lacks out of the controller: /fr/x is a path without a locale', async () => {
+    const { kernel } = await boot([pages], { locales: true });
+    expect((await kernel.request('/fr/x')).headers.get('location')).toBe('/de/fr/x');
+    expect(calls).toEqual([]);
+  });
+
+  it('yields to a fallback without a locale on another prefix: /legacy first, then the locale, then the rest', async () => {
+    const legacy = openRoutes((Route) => void Route.prefix('/legacy').fallback((ctx) => `legacy ${ctx.params.path}`));
+    const { kernel } = await boot([pages, legacy], { locales: true });
+    expect(await text(await kernel.request('/legacy/a'))).toBe('legacy a');
+    expect(await text(await kernel.request('/de/legacy/a'))).toBe('page de|legacy/a|web=yes');
+    expect((await kernel.request('/other')).headers.get('location')).toBe('/de/other');
+  });
+
+  it('stops the start for a fallback without a locale on its prefix, whichever module loads first', async () => {
+    const plain = openRoutes((Route) => void Route.fallback(() => 'plain'));
+    await expect(boot([pages, plain], { locales: true })).rejects.toThrow(/H15.*Two fallbacks answer the root/s);
+    await expect(boot([plain, pages], { locales: true })).rejects.toThrow(/H15.*Two fallbacks answer the root/s);
+  });
+
+  it('claims nothing: neither the fallback nor its address without a locale answers claimedBy()', async () => {
+    const { application } = await boot([pages, owners], { locales: true });
+    const router = application.container.make(Router);
+    expect(router.claimedBy('/de/free')).toBeUndefined();
+    expect(router.claimedBy('/free')).toBeUndefined();
+    expect(router.claimedBy('/de/blog/free')).toBeUndefined();
+    expect(router.claimedBy('/de/about')).toMatchObject({ by: 'route' });
+  });
+
+  it('stops the start for a localized fallback whose prefix is a locale of the app, whichever module loads first', async () => {
+    const english = openRoutes((Route) => void Route.localized().prefix('/en').fallback(() => 'english'));
+    await expect(boot([pages, english], { locales: true })).rejects.toThrow(/H9.*starts with \[en\], a locale of the app/s);
+    await expect(boot([english, pages], { locales: true })).rejects.toThrow(/H9.*starts with \[en\], a locale of the app/s);
+    const upper = openRoutes((Route) => void Route.localized().prefix('/EN').fallback(() => 'english'));
+    await expect(boot([pages, upper], { locales: true })).rejects.toThrow(/H9/);
+    const other = openRoutes((Route) => void Route.localized().prefix('/fr').fallback(() => 'french'));
+    await expect(boot([pages, other], { locales: true })).resolves.toBeDefined();
+  });
+});

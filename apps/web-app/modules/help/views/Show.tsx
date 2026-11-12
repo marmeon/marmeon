@@ -1,18 +1,19 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link } from '@marmeon/react';
+import { Head, Link, useTranslation } from '@marmeon/react';
 import type { ShowHelpPageController } from '../controllers/ShowHelpPageController.ts';
 
 /** A help page, or the list of them when no page is asked for. */
 export default function Show({ page, pages }: PageProps<ShowHelpPageController>) {
+  const t = useTranslation('help');
   return (
     <main>
-      <Head title={page?.title ?? 'Help'} />
-      <h1>{page?.title ?? 'Help'}</h1>
+      <Head title={page?.title ?? t('title')} />
+      <h1>{page?.title ?? t('title')}</h1>
       {page ? (
         <>
           <p>{page.body}</p>
           <p>
-            <Link route="help.page">All help pages</Link>
+            <Link route="help.page">{t('all_pages')}</Link>
           </p>
         </>
       ) : (

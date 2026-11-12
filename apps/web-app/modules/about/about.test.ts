@@ -24,10 +24,7 @@ describe('the sitemap', () => {
       'http://localhost/en/about',
       'http://localhost/de/about',
       ...features.flatMap((feature) => [`http://localhost/en/about/features/${feature}`, `http://localhost/de/about/features/${feature}`]),
-      'http://localhost/help',
-      'http://localhost/help/getting-started',
-      'http://localhost/help/getting-started/install',
-      'http://localhost/help/accounts/passkeys',
+      ...['', '/getting-started', '/getting-started/install', '/accounts/passkeys'].flatMap((path) => [`http://localhost/en/help${path}`, `http://localhost/de/help${path}`]),
     ]);
     expect(response.body).toContain('<loc>http://localhost/en/about/features/typed-routes</loc><lastmod>2026-03-02</lastmod>');
   });

@@ -79,8 +79,8 @@ describe('what a fallback refuses', () => {
     expect(() => web(fallbackAt('/_marmeon/x'))).toThrow(/belong to the framework/);
   });
 
-  it('a localized fallback, without promising anything', () => {
-    expect(() => web(open((Route) => void Route.localized().fallback(() => 'x')))).toThrow(/H15.*cannot be localized/s);
+  it('a prefix with a parameter other than the locale, also under localized()', () => {
+    expect(() => web(open((Route) => void Route.localized().prefix('/:tenant').fallback(() => 'x')))).toThrow(/H15.*no parameter besides the locale/s);
   });
 
   it('a group other than web', () => {
@@ -183,5 +183,104 @@ describe('what a fallback refuses', () => {
       ),
     ).not.toThrow();
     expect(() => web(fallbackAt('/'), fallbackAt('/help'), fallbackAt('/help/api'))).not.toThrow();
+  });
+});
+
+const localizedAt = (prefix: string) => open((Route) => void Route.localized().prefix(prefix).fallback(() => `localized ${prefix}`));
+
+describe('Route.localized().fallback()', () => {
+  it('is one route at /:locale/:path*, and under a prefix after it', () => {
+    const router = web(localizedAt('/'), localizedAt('/blog'));
+    expect(paths(router.routes).sort()).toEqual(['/:locale/:path*', '/:locale/blog/:path*']);
+    expect(router.routes.every((route) => route.localized && router.isFallback(route))).toBe(true);
+  });
+
+  it('gives the controller the locale and the path below the prefix', async () => {
+    const router = web(open((Route) => void Route.localized().prefix('/blog').fallback((ctx) => `${ctx.params.locale}|${ctx.params.path}`)));
+    const [route] = router.routes;
+    const run = (url: string, locale = 'de') => router.dispatch(route!, { request: new Request(`http://localhost${url}`), params: { locale } });
+    expect(await (await run('/de/blog')).text()).toBe('de|');
+    expect(await (await run('/en/blog/a/b', 'en')).text()).toBe('en|a/b');
+  });
+
+  it('adds its address without a locale to the fallbacks, and keeps it out of registrationOrder', () => {
+    const router = web(localizedAt('/'), open((Route) => void Route.localized().get('/about', () => 'a')), localizedAt('/blog'));
+    expect(paths(router.registrationOrder)).toEqual(['/:locale/about', '/about']);
+    expect(paths(router.fallbacks)).toEqual(['/:locale/blog/:path*', '/blog/:path*', '/:locale/:path*', '/:path*']);
+    expect(router.fallbacks.filter((route) => route.generatedFrom).map((route) => route.generatedFrom!.path)).toEqual(['/:locale/blog/:path*', '/:locale/:path*']);
+  });
+});
+
+describe('a localized fallback next to one without a locale', () => {
+  it('refuses the same prefix, naming both places — in both orders of loading', () => {
+    for (const prefix of ['/', '/blog']) {
+      expect(() => web(localizedAt(prefix), fallbackAt(prefix))).toThrow(/H15.*Two fallbacks answer.*fallback\.test\.ts.* and .*fallback\.test\.ts.*under a locale also takes the address without one/s);
+      expect(() => web(fallbackAt(prefix), localizedAt(prefix))).toThrow(/H15.*Two fallbacks answer.*under a locale also takes the address without one/s);
+      // Two separate loads, as two modules or a package's boot() make them.
+      expect(loadedTwice(localizedAt(prefix), fallbackAt(prefix))).toThrow(/H15.*Two fallbacks answer/s);
+      expect(loadedTwice(fallbackAt(prefix), localizedAt(prefix))).toThrow(/H15.*Two fallbacks answer/s);
+    }
+  });
+
+  it('refuses a second localized fallback for a prefix', () => {
+    expect(loadedTwice(localizedAt('/blog'), localizedAt('/blog'))).toThrow(/H15.*Two fallbacks answer \/blog/s);
+  });
+
+  it('lets other prefixes coexist: a root fallback beside a localized /blog, and a localized root beside /legacy', () => {
+    expect(loadedTwice(fallbackAt('/'), localizedAt('/blog'))).not.toThrow();
+    expect(loadedTwice(localizedAt('/blog'), fallbackAt('/'))).not.toThrow();
+    expect(loadedTwice(localizedAt('/'), fallbackAt('/legacy'))).not.toThrow();
+    expect(loadedTwice(fallbackAt('/legacy'), localizedAt('/'))).not.toThrow();
+  });
+
+  it('sorts a localized root between the literal prefix and its own address without a locale', () => {
+    const router = web(localizedAt('/'), fallbackAt('/legacy'));
+    expect(paths(router.fallbacks)).toEqual(['/legacy/:path*', '/:locale/:path*', '/:path*']);
+    expect(paths(web(fallbackAt('/legacy'), localizedAt('/')).fallbacks)).toEqual(['/legacy/:path*', '/:locale/:path*', '/:path*']);
+  });
+
+  it('refuses a localized prefix under the framework\'s paths: the address without a locale could never answer', () => {
+    expect(() => web(localizedAt('/_marmeon'))).toThrow(/H15.*belongs to the framework/s);
+    expect(() => web(localizedAt('/_MARMEON/x'))).toThrow(/H15.*belongs to the framework/s);
+    expect(() => web(localizedAt('/_marmeonx'))).not.toThrow();
+  });
+
+  it('refuses a localized prefix under the build\'s files: the address without a locale would never answer', () => {
+    expect(() => web(localizedAt('/assets'))).toThrow(/H15.*build's files/s);
+  });
+});
+
+describe('what covers a localized fallback', () => {
+  const localizedRest = (path: string) => open((Route) => void Route.localized().get(path, () => 'rest'));
+
+  it.each([
+    ['a localized rest route of the same form', '/blog/:x*', '/blog'],
+    ['a localized rest route at the root', '/:x*', '/blog'],
+    ['a localized rest route of the same form at the root', '/:x*', '/'],
+  ])('%s — in both orders of loading, through its address without a locale', (_name, rest, prefix) => {
+    expect(loadedTwice(localizedRest(rest), localizedAt(prefix))).toThrow(/H15.*the address without a locale of/s);
+    expect(loadedTwice(localizedAt(prefix), localizedRest(rest))).toThrow(/H15.*the address without a locale of/s);
+  });
+
+  it('a route without a locale that takes the rest of the path under the locale', () => {
+    expect(loadedTwice(rest('/:x*'), localizedAt('/blog'))).toThrow(/H15.*covers/s);
+    expect(loadedTwice(localizedAt('/blog'), rest('/:x*'))).toThrow(/H15.*covers/s);
+    expect(loadedTwice(rest('/:a/:b*'), localizedAt('/'))).toThrow(/H15.*(covers|has the form of)/s);
+  });
+
+  it('nothing else: localized routes of other paths, and the root of the app', () => {
+    expect(() =>
+      web(
+        open((Route) => {
+          Route.get('/', () => 'home');
+          Route.get('/kontakt', () => 'k');
+          Route.localized().get('/about', () => 'a');
+          Route.localized().get('/blog/:slug', () => 'b');
+          Route.localized().prefix('/docs').get('/:x*', () => 'd');
+        }),
+        localizedAt('/'),
+        localizedAt('/blog'),
+      ),
+    ).not.toThrow();
   });
 });

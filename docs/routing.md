@@ -635,6 +635,8 @@ server limits the segment to the locales of the app, in the spelling the app giv
 Call `localized()` first. The locale is the first segment of the path, so it throws a `TypeError` after `prefix()`, a second
 time, and inside `load({ prefix })`.
 
+A localized [fallback route](#under-a-locale) answers every path below `/:locale` that no route takes.
+
 The same page without the locale, `/about`, answers every `GET` and `HEAD` request with a `302` to the visitor's preferred
 language, such as `/de/about`. The route builds the target from its own pattern and the parameters that matched, and the query
 string stays as it came. The response carries `Cache-Control: private, no-store` and `Vary: accept-language, cookie`, because
@@ -1008,13 +1010,14 @@ to the path without it. The controller looks the path up and calls `abort(404)` 
 
 A fallback is a route like any other: it needs [`authorize`](authorization.md#every-route-decides), takes `middleware()` and
 `name()` from its registrar, and may carry `.sitemap()` when its controller has a `sitemap()` method. It answers `GET` and `HEAD`
-only, takes a `query` schema but no body, and lives in the `web` group. `Route.localized().fallback()` and a prefix with a
-parameter (`Route.prefix('/:tenant').fallback()`) are refused at start with [H15](errors.md#server-error-codes).
+only, takes a `query` schema but no body, and lives in the `web` group. A prefix with a parameter
+(`Route.prefix('/:tenant').fallback()`) is refused at start with [H15](errors.md#server-error-codes); the one parameter a
+prefix may have is the locale of [`Route.localized()`](#under-a-locale).
 
 ### Which request reaches it
 
 The server registers every fallback after all other routes: the routes of every module, the routes a package adds while booting,
-the sitemap and the addresses without a locale of [localized](#routes-under-a-locale) routes. The order the modules load in does
+the sitemap and the addresses without a locale of [localized](#routes-under-a-locale) routes (those of a localized fallback sit among the fallbacks). The order the modules load in does
 not matter, so a route in a later module still beats a fallback in an earlier one. Of two fallbacks, the one under the longer
 prefix is asked first, so `/help` takes `/help/a` and the fallback at the root takes `/helpx`.
 
@@ -1029,6 +1032,51 @@ These paths never reach a fallback:
   does not have is the disk's 404. Only paths under the disk's prefix are the disk's, and the prefix is case-sensitive: `/storage`
   itself and `/STORAGE/a.txt` reach the fallback;
 - every method but `GET` and `HEAD`.
+
+### Under a locale
+
+An app with several languages mounts the fallback under `Route.localized()`, so the pages of each language have their own URL:
+
+```ts title="modules/help/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ShowHelpPageController } from './controllers/ShowHelpPageController.ts';
+
+export default defineRoutes((Route) => {
+  Route.localized().authorize(everyone).prefix('/help').name('help.').fallback(ShowHelpPageController).name('page').sitemap();
+});
+```
+
+This is one route, `/:locale/help/:path*`, limited to the locales of the app like any [localized route](#routes-under-a-locale).
+The controller gets `ctx.params.locale`, one of the supported locales, and `ctx.params.path` relative to the prefix after the
+locale: `/de/help` gives `''` and `/en/help/accounts/passkeys` gives `'accounts/passkeys'`. `SetLocale` has already set the
+language of the request, and a link built with `<Link route="help.page" params={{ path: 'accounts/passkeys' }}>` takes the
+locale of the current screen. Every rule of the path (empty segments, encoded slashes, the trailing slash) applies as above.
+
+The address without a locale, `/help/accounts/passkeys`, answers as it does for every localized route: a `302` to the
+visitor's preferred language, `/de/help/accounts/passkeys`, with `Cache-Control: private, no-store` and
+`Vary: accept-language, cookie`. It is part of the fallback, so it is asked after every other route. The server builds the
+target from the pattern and the path it has already checked, one encoded segment at a time, never from the request path:
+`//evil.example/x`, `/a//b` and `/a%2Fb` are a 404 before any redirect, and a trailing slash is a `301` first. Because the
+redirect keeps the path, an unknown page takes two hops to a 404: `/help/no-such-page` leads to `/de/help/no-such-page`, and
+the controller answers 404 there.
+
+- **Translated paths.** The redirect keeps the path as it came. When the pages have another path per language
+  (`/de/help/erste-schritte`, `/en/help/getting-started`), `/help/getting-started` leads a German visitor to
+  `/de/help/getting-started`, which is a 404. The controller can recognise the other language's path and
+  redirect to the page in the visitor's language. The automatic language versions (the `hreflang` links of the page and of the
+  sitemap) assume the same path in every language, so with translated paths they point at 404s.
+- **One fallback fits each prefix, with or without a locale.** The localized fallback also takes the address without a locale,
+  so a fallback that is not localized on the same prefix (`/help` and `Route.localized().prefix('/help')`) stops the app at start
+  with [H15](errors.md#server-error-codes), naming both places, in whatever order they load. Different prefixes sit side by side:
+  a fallback at the root without a locale and a localized one under `/blog`, or a localized one at the root and `/legacy`
+  without. The one under the longer prefix is asked first, and at equal length the one without a locale.
+- **A prefix may not be a locale of the app.** `Route.localized().prefix('/en').fallback()` would have the address without a
+  locale `/en/…`, which sits where the English pages are, so the app stops at start with [H9](errors.md#server-error-codes). A
+  prefix under `/_marmeon` or `/assets` is refused with H15.
+- **A fallback without a locale does not answer a locale.** A fallback at the root that is not localized takes `/de/unknown` as
+  the path `'de/unknown'`. An app with pages per language mounts the localized one instead.
+- **It claims nothing.** Like any fallback, the localized one and its address without a locale are not asked by
+  [`claimedBy()`](#asking-whether-a-path-is-taken); check a slug with its locale, `/de/help/${slug}`.
 
 ### What to keep in mind
 
@@ -1048,7 +1096,7 @@ These paths never reach a fallback:
   or `[^]+`, each also inside one `(?:…)` (`/:page{.+}`, `/help/:x{.*}`). Any other constraint leaves the fallback the paths it
   does not match, so `/:slug{[a-z0-9-]+/[a-z0-9-]+}`, `/help/:p{a/.*}` and `/:page{[^!]+}` start fine; a pattern that takes any
   value in another spelling hides the fallback without a message. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
-  everything below its prefix. A fallback also has to be in the `web` group: a package that loads routes
+  everything below its prefix, so it covers a fallback, localized or not, that sits there. A fallback also has to be in the `web` group: a package that loads routes
   while booting loads its fallback with `{ group: 'web' }`. A fallback under `/assets` or `/_marmeon` stops the app at start too, since the server answers those paths with a 404 first.
 
 ### Asking whether a path is taken

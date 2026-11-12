@@ -371,16 +371,16 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   /**
    * Answers every GET path no other route takes — at the root, or under the registrar's prefix (`Route.prefix('/help').fallback(…)`).
    * The server registers it after every other route, so the order the modules load in does not matter. The rest of the path
-   * is `ctx.params.path` (`''` at the prefix itself). One fallback fits each prefix. See docs/routing.md#the-fallback-route.
+   * is `ctx.params.path` (`''` at the prefix itself). One fallback fits each prefix. After `localized()` it answers under each language
+   * (`ctx.params.locale` too), and the address without a language redirects to the visitor's. See docs/routing.md#the-fallback-route.
    */
   fallback<TQuery extends StandardSchemaV1 = never>(
     action: GetRouteAction<TState, TParams, TBindings, '/:path*', never, TQuery>,
   ): RouteDefinition<RouteContext<TState, TParams, TBindings, '/:path*'>> {
-    if (this.#attributes.localized) {
-      throw new TypeError(withCode('H15', `Route.localized().fallback() at ${this.#attributes.prefix}: a fallback cannot be localized. See docs/routing.md#the-fallback-route.`));
-    }
-    if (tokenizePattern(this.#attributes.prefix).some((token) => 'name' in token)) {
-      throw new TypeError(withCode('H15', `Route.fallback() under ${this.#attributes.prefix}: the prefix of a fallback has no parameter — a parameter takes any first segment and would hide every other fallback. See docs/routing.md#the-fallback-route.`));
+    // Under `localized()` the locale is the one parameter a prefix may have: the languages are a fixed, known set, so it takes no first segment of another fallback.
+    const prefix = this.#attributes.localized ? this.#attributes.prefix.replace(/^\/:locale/, '') : this.#attributes.prefix;
+    if (tokenizePattern(prefix).some((token) => 'name' in token)) {
+      throw new TypeError(withCode('H15', `Route.fallback() under ${this.#attributes.prefix}: the prefix of a fallback has no parameter${this.#attributes.localized ? ' besides the locale' : ''} — a parameter takes any first segment and would hide every other fallback. See docs/routing.md#the-fallback-route.`));
     }
     return this.#add(['GET'], '/:path*', action as unknown as AnyAction, Route.prototype.fallback, true);
   }

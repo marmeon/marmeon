@@ -97,6 +97,42 @@ describe('Router.claimedBy()', () => {
     expect(web().fallbackFor('/x')).toBeUndefined();
   });
 
+  it('names a localized fallback only for a locale the app has: /fr/x belongs to the address without a locale, or to a root fallback', () => {
+    const localized = open((Route) => void Route.localized().fallback(() => 'localized'));
+    const alone = web(localized);
+    // Unbound (the command line): any first segment may be a locale.
+    expect(alone.fallbackFor('/fr/x')?.path).toBe('/:locale/:path*');
+    alone.bindServerPaths({ locales: ['de', 'en'], health: [] });
+    expect(alone.fallbackFor('/de/x')?.path).toBe('/:locale/:path*');
+    expect(alone.fallbackFor('/de')?.path).toBe('/:locale/:path*');
+    const variant = alone.fallbackFor('/fr/x')!;
+    expect([variant.path, variant.generatedFrom?.path]).toEqual(['/:path*', '/:locale/:path*']);
+    const beside = web(localized, open((Route) => void Route.prefix('/legacy').fallback(() => 'legacy')));
+    beside.bindServerPaths({ locales: ['de', 'en'], health: [] });
+    expect(beside.fallbackFor('/legacy/x')?.path).toBe('/legacy/:path*');
+    expect(beside.fallbackFor('/de/legacy/x')?.path).toBe('/:locale/:path*');
+    expect(beside.fallbackFor('/fr/legacy/x')?.generatedFrom?.path).toBe('/:locale/:path*');
+  });
+
+  it('never counts a localized fallback, nor its address without a locale', () => {
+    const router = web(
+      open((Route) => void Route.localized().fallback(() => 'root')),
+      open((Route) => void Route.localized().prefix('/help').fallback(() => 'help')),
+    );
+    for (const bound of [false, true]) {
+      if (bound) router.bindServerPaths({ locales: ['de', 'en'], health: [] });
+      for (const path of ['/', '/de', '/de/x', '/x', '/help', '/help/x', '/de/help', '/de/help/x']) expect(router.claimedBy(path), `${path} (bound ${bound})`).toBeUndefined();
+    }
+  });
+
+  it('counts the route of the app beside a localized fallback', () => {
+    const router = web(open((Route) => void Route.localized().fallback(() => 'root')), open((Route) => void Route.localized().get('/about', () => 'about')));
+    router.bindServerPaths({ locales: ['de', 'en'], health: [] });
+    expect(routeAt(router, '/de/about')).toBe('/:locale/about');
+    expect(routeAt(router, '/about')).toBe('/:locale/about');
+    expect(router.claimedBy('/de/other')).toBeUndefined();
+  });
+
   describe('a localized route', () => {
     const about = open((Route) => void Route.localized().get('/about', () => 'about'));
 

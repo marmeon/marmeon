@@ -57,6 +57,13 @@ describe('route:list fallbacks', () => {
     expect(rows[2]).toContain('(fallback)');
   });
 
+  it('lists a localized fallback once, without its address without a locale', () => {
+    const localized = new Router().load({ group: 'web' }, defineRoutes((Route) => void Route.authorize(everyone).localized().prefix('/help').fallback(() => 'help')));
+    const rows = list(localized).split('\n').filter((line) => /GET\s+\//.test(line));
+    expect(rows.map((row) => /GET\s+(\S+)/.exec(row)![1])).toEqual(['/:locale/help/:path*']);
+    expect(rows[0]).toContain('(fallback)');
+  });
+
   it('prints both marks for a fallback that answers an island', () => {
     Object.defineProperty(IslandFallback, Symbol.for('marmeon.island-controller'), { value: true });
     const marked = new Router().load({ group: 'web' }, defineRoutes((Route) => void Route.authorize(everyone).prefix('/lazy').fallback(IslandFallback)));

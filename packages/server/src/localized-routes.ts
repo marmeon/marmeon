@@ -38,6 +38,15 @@ export function checkLocalizedRoutes(router: Router, urlLocales: UrlLocales | un
       throw new Error(withCode('H9', `${route.methods.join('|')} ${path(route)} starts with the locale [${segment}], which ${first.methods.join('|')} ${path(first)} (Route.localized()) serves: the URL would have two owners. Register it through Route.localized(), or give it another path. See docs/routing.md#routes-under-a-locale.`));
     }
   }
+  // The address without a locale of a localized fallback sits among the fallbacks and is asked before the localized one when its first
+  // segment is literal: `/en/:path*` would take `/en/x` and send it to the visitor's language, so the locale `en` would be lost.
+  for (const variant of router.fallbacks) {
+    const source = variant.generatedFrom;
+    const segment = variant.path.split('/')[1] ?? '';
+    if (source && owned.has(segment.toLowerCase())) {
+      throw new Error(withCode('H9', `GET ${path(source)} (Route.localized().fallback()) answers the address without a locale ${path(variant)}, which starts with [${segment}], a locale of the app: the visitor's language would take the address before the fallback, so pages in [${segment}] would be redirected away. Give the fallback another prefix. See docs/routing.md#routes-under-a-locale.`));
+    }
+  }
   const taken = router.registrationOrder.filter((route) => !route.generatedFrom);
   for (const variant of router.registrationOrder) {
     const source = variant.generatedFrom;

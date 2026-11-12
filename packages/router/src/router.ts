@@ -227,7 +227,9 @@ export class Router {
   readonly #routes: RouteDefinition[] = [];
   /** The route without its locale, for each localized GET route: it redirects to the visitor's language. */
   readonly #unprefixed = new Map<RouteDefinition, RouteDefinition>();
-  /** The fallback of each slot, by {@link fallbackSlot}: one per prefix. */
+  /** The addresses without a locale that belong to a localized fallback: they sit with the fallbacks, not among the routes. */
+  readonly #fallbackVariants = new WeakSet<RouteDefinition>();
+  /** The fallback of each slot, by {@link fallbackSlots}: one per prefix and kind. */
   readonly #fallbackSlots = new Map<string, RouteDefinition>();
   #snapshot: readonly RouteDefinition[] | undefined;
   /** The locales a localized route's first segment can name, once the kernel binds them; none before. */
@@ -266,17 +268,18 @@ export class Router {
   get registrationOrder(): readonly RouteDefinition[] {
     const routes = this.#routes.filter((route) => !isFallbackDefinition(route));
     // The routes without a locale come last: a route of the app always wins, and they answer only what would be a 404 otherwise.
-    return [...routes.filter((route) => route.reserved), ...routes.filter((route) => !route.reserved), ...this.#unprefixed.values()];
+    const variants = [...this.#unprefixed.values()].filter((variant) => !this.#fallbackVariants.has(variant));
+    return [...routes.filter((route) => route.reserved), ...routes.filter((route) => !route.reserved), ...variants];
   }
 
   /**
-   * The routes `Route.fallback()` made, the one under the longest prefix first: the server registers them after every other
-   * route, so they answer what nothing else takes.
+   * The routes `Route.fallback()` made, and the address without a locale of each localized one, the one under the longest prefix
+   * first: the server registers them after every other route, so they answer what nothing else takes.
    *
    * @internal
    */
   get fallbacks(): readonly RouteDefinition[] {
-    return this.#routes.filter(isFallbackDefinition).sort(fallbackOrder);
+    return [...this.#routes.filter(isFallbackDefinition), ...[...this.#unprefixed.values()].filter((variant) => this.#fallbackVariants.has(variant))].sort(fallbackOrder);
   }
 
   /** Whether `Route.fallback()` made the route; a definition built by hand never is. @internal */
@@ -318,7 +321,12 @@ export class Router {
    */
   fallbackFor(path: string): RouteDefinition | undefined {
     const seen = typeof path === 'string' ? seenByServer(path) : undefined;
-    return seen === undefined ? undefined : this.fallbacks.find((route) => matchParams(route.path, seen) !== undefined);
+    if (seen === undefined) return undefined;
+    // The server limits a localized fallback to the app's locales: `/fr/x` is for the address without a locale (or a fallback of the root), not for it.
+    return this.fallbacks.find((route) => {
+      const params = matchParams(route.path, seen);
+      return params !== undefined && !(route.localized && namesOtherLocale(params, this.#urlLocales));
+    });
   }
 
   /**
@@ -445,6 +453,7 @@ export class Router {
       });
       variant.seal();
       this.#unprefixed.set(route, variant);
+      if (isFallbackDefinition(route)) this.#fallbackVariants.add(variant);
     }
     this.#checkFallbacks(this.#routes.slice(before));
     for (const route of this.#routes.slice(before)) if (route.inSitemap) checkSitemapRoute(route);
@@ -702,32 +711,41 @@ export class Router {
         throw new Error(withCode('H15', `Route.fallback() at ${route.site ?? 'a route file'} is ${route.group === undefined ? 'in no group' : `in the ${route.group} group`}: a fallback answers pages, so it belongs in the web group — load it with { group: 'web' }. See docs/routing.md#the-fallback-route.`));
       }
       // The server answers `/assets` and everything below it with a 404 before any fallback; compared in the case Hono matches.
-      const under = fallbackPrefix(route);
+      const under = slotPrefix(route);
       if (under === '/assets' || under.startsWith('/assets/')) {
         throw new Error(withCode('H15', `Route.fallback() at ${route.site ?? 'a route file'} sits under ${under}, which belongs to the build's files: the server answers every path there with a 404 before a fallback, so this one would never answer. Give it another prefix. See docs/routing.md#the-fallback-route.`));
       }
-      const slot = fallbackSlot(route);
-      const held = this.#fallbackSlots.get(slot);
-      if (held) {
-        throw new Error(withCode('H15', `Two fallbacks answer ${showFallbackPrefix(route)}: ${atSite(held)} and ${atSite(route)}. A fallback takes every path no route takes under its prefix, so only one fits — move one under another prefix with Route.prefix(…). See docs/routing.md#the-fallback-route.`));
+      // A localized fallback's address without a locale is `/_marmeon/…` then, which the server hands to the framework first.
+      if (route.localized && isReserved(under)) {
+        throw new Error(withCode('H15', `Route.fallback() at ${route.site ?? 'a route file'} sits under ${under}, which belongs to the framework: its address without a locale could never answer. Give it another prefix. See docs/routing.md#the-fallback-route.`));
       }
-      this.#fallbackSlots.set(slot, route);
+      const slots = fallbackSlots(route);
+      for (const slot of slots) {
+        const held = this.#fallbackSlots.get(slot);
+        if (!held) continue;
+        // A localized fallback also takes the address without its locale, which is where a fallback without a locale sits.
+        const mixed = held.localized !== route.localized ? ' A fallback under a locale also takes the address without one, so the two cannot share a prefix.' : '';
+        throw new Error(withCode('H15', `Two fallbacks answer ${showSlotPrefix(route)}: ${atSite(held)} and ${atSite(route)}. A fallback takes every path no route takes under its prefix, so only one fits.${mixed} Move one under another prefix with Route.prefix(…). See docs/routing.md#the-fallback-route.`));
+      }
+      for (const slot of slots) this.#fallbackSlots.set(slot, route);
     }
     // The address without a locale of a localized route redirects every path it matches, so it takes part like a route of its own.
     const every = [...this.#routes, ...this.#unprefixed.values()];
     const addedEvery = [...added, ...added.flatMap((route) => this.#unprefixed.get(route) ?? [])];
+    const isFallback = (route: RouteDefinition): boolean => isFallbackDefinition(route) || this.#fallbackVariants.has(route);
     for (const route of addedEvery) {
       for (const other of every) {
         if (route === other) continue;
-        const fallback = isFallbackDefinition(route) ? route : other;
+        const fallback = isFallback(route) ? route : other;
         const plain = fallback === route ? other : route;
-        if (!isFallbackDefinition(fallback) || isFallbackDefinition(plain) || this.#framework.has(plain) || plain.localized || !plain.methods.includes('GET')) continue;
+        if (!isFallback(fallback) || isFallback(plain) || this.#framework.has(plain) || plain.localized || !plain.methods.includes('GET')) continue;
         const named = plain.generatedFrom ? `${atSite(plain)}, the address without a locale of ${atSite(plain.generatedFrom)},` : atSite(plain);
+        const which = fallback.generatedFrom ? `the address without a locale of the fallback ${atSite(fallback.generatedFrom)}` : `the fallback ${atSite(fallback)}`;
         if (routeShape(plain.path) === routeShape(fallback.path)) {
-          throw new Error(withCode('H15', `GET ${named} has the form of the fallback ${atSite(fallback)}: it takes every path under ${showFallbackPrefix(fallback)} before the fallback is asked, so the fallback would never answer there. Use Route.fallback() for it, or give the route a path of its own. See docs/routing.md#the-fallback-route.`));
+          throw new Error(withCode('H15', `GET ${named} has the form of ${which}: it takes every path under ${showFallbackPrefix(fallback)} before the fallback is asked, so the fallback would never answer there. Use Route.fallback() for it, or give the route a path of its own. See docs/routing.md#the-fallback-route.`));
         }
         if (coversPrefix(plain, fallbackPrefix(fallback))) {
-          throw new Error(withCode('H15', `GET ${named} takes the rest of the path and covers the fallback ${atSite(fallback)}: it answers everything under ${showFallbackPrefix(fallback)} first, so the fallback would never answer. Make it a Route.fallback() or give it a longer prefix. See docs/routing.md#the-fallback-route.`));
+          throw new Error(withCode('H15', `GET ${named} takes the rest of the path and covers ${which}: it answers everything under ${showFallbackPrefix(fallback)} first, so the fallback would never answer. Make it a Route.fallback() or give it a longer prefix. See docs/routing.md#the-fallback-route.`));
         }
       }
     }
@@ -757,19 +775,28 @@ const FALLBACK_TAIL = '/:path*';
 /** The path a fallback sits under: `''` at the root, `/help` for `/help/:path*`. */
 const fallbackPrefix = (route: RouteDefinition): string => route.path.slice(0, -FALLBACK_TAIL.length);
 
+/** The prefix a fallback sits under without the locale a localized one starts with: where its address without a locale is. */
+const slotPrefix = (route: RouteDefinition): string => (route.localized ? fallbackPrefix(route).replace(/^\/:locale/, '') : fallbackPrefix(route));
+
 /**
- * The key of the slot a fallback takes: one per prefix, written with its kind so another kind of slot can be added next to it.
- * Two fallbacks with the same key cannot both answer.
+ * The keys of the slots a fallback takes, each written with its kind so another kind can be added next to them: `path:` is the
+ * paths under a prefix as written, `locale:` the same prefix under each locale. A localized fallback takes both, since its address
+ * without a locale redirects every path a fallback of that prefix would answer. Two fallbacks sharing a key cannot both answer.
  */
-const fallbackSlot = (route: RouteDefinition): string => `path:${fallbackPrefix(route)}`;
+const fallbackSlots = (route: RouteDefinition): string[] => (route.localized ? [`locale:${slotPrefix(route)}`, `path:${slotPrefix(route)}`] : [`path:${slotPrefix(route)}`]);
 
 const prefixSegments = (prefix: string): string[] => prefix.split('/').filter(Boolean);
 
-/** The longer prefix first, so `/help/:path*` is tried before `/:path*`; equal lengths are other prefixes, which never overlap. */
+/**
+ * The longer prefix first, so `/help/:path*` is tried before `/:path*` (`/:locale` counts as one segment). At equal length a prefix
+ * of literals comes before one under a locale: the locale is one of a fixed set, so the two never take the same path, and the
+ * order only has to be the same every time.
+ */
 function fallbackOrder(a: RouteDefinition, b: RouteDefinition): number {
-  return prefixSegments(fallbackPrefix(b)).length - prefixSegments(fallbackPrefix(a)).length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  return prefixSegments(fallbackPrefix(b)).length - prefixSegments(fallbackPrefix(a)).length || Number(a.localized) - Number(b.localized) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }
 
+const showSlotPrefix = (route: RouteDefinition): string => (slotPrefix(route) === '' ? 'the root' : shown.path(slotPrefix(route), slotPrefix(route)));
 const showFallbackPrefix = (route: RouteDefinition): string => (fallbackPrefix(route) === '' ? 'the root' : shown.path(fallbackPrefix(route), fallbackPrefix(route)));
 const atSite = (route: RouteDefinition): string => `${showPath(route)}${route.site ? ` (${route.site})` : ''}`;
 
