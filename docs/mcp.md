@@ -11,7 +11,7 @@ It is a tool for development and nothing else:
 - It starts only with `NODE_ENV=development`, set in the environment or in the app's `.env`. With `production`, `test` or no
   `NODE_ENV` it prints why on stderr and ends with code 1, before it loads anything of the protocol. Nothing in a deployment starts it.
 - There is no port: the server does not listen, has no HTTP transport, and no option turns one on.
-- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call that starts your app (`routes`, `check`, `migrations`, `database`, `commands`, `query`) runs the app's own startup code, though: it can write files or open connections.
+- The server itself changes no code, database or file. Of the tools' own commands, `schema`'s writes a file, `.marmeon/schema.json`, when the projection changed, and `database`'s may create a SQLite file that does not exist yet. A call that starts your app (`routes`, `check`, `migrations`, `database`, `commands`, `devtools_entries`, `query`) runs the app's own startup code, though: it can write files or open connections.
 
 ## Starting it
 
@@ -234,12 +234,12 @@ Each command is stopped after 120 seconds.
 ### `devtools_entries`
 
 The entries the [devtools](devtools.md) recorded while the app ran in development: requests, queries, jobs, mails, notifications, logs, exceptions, schedule
-runs, live messages, events and commands, newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
+runs, live messages, events, commands and the errors that pages reported in the browser (console errors and warnings, uncaught errors, unhandled rejections), newest first. The tool runs [`marmeon devtools:list --json`](devtools.md#listing-the-entries) and passes its document on as it is, so the entries are
 masked the way the devtools mask them: a token in the text of a mail is not in the answer. Ask for one `type` first; `search` reads the entries one by one.
 
 | Input | |
 | --- | --- |
-| `type` | One entry type, or a list of up to 11 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event` or `command`. |
+| `type` | One entry type, or a list of up to 12 different ones: `request`, `query`, `job`, `mail`, `notification`, `log`, `exception`, `schedule`, `live`, `event`, `command` or `browser`. |
 | `tag` | Only entries with exactly this tag: 1 to 100 letters, digits and `:` `.` `_` `/` `-`. |
 | `requestId` | Only entries of this request, and of the jobs it started: 1 to 128 letters, digits, `_`, `.`, `:` and `-`. |
 | `search` | Only entries whose masked text contains this, ignoring case (1 to 200 characters, no line break). |
