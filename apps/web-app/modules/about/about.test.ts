@@ -14,7 +14,7 @@ beforeEach(async () => {
 });
 
 describe('the sitemap', () => {
-  it('lists the about page and every feature in each language, to a guest without a cookie', async () => {
+  it('lists the about page and every feature in each language, then the help pages, to a guest without a cookie', async () => {
     const response = await app.get('/sitemap.xml').assertOk();
     expect(response.headers.get('cache-control')).toBe('public, max-age=300');
     expect(response.headers.has('set-cookie')).toBe(false);
@@ -24,6 +24,10 @@ describe('the sitemap', () => {
       'http://localhost/en/about',
       'http://localhost/de/about',
       ...features.flatMap((feature) => [`http://localhost/en/about/features/${feature}`, `http://localhost/de/about/features/${feature}`]),
+      'http://localhost/help',
+      'http://localhost/help/getting-started',
+      'http://localhost/help/getting-started/install',
+      'http://localhost/help/accounts/passkeys',
     ]);
     expect(response.body).toContain('<loc>http://localhost/en/about/features/typed-routes</loc><lastmod>2026-03-02</lastmod>');
   });

@@ -305,7 +305,7 @@ describe('user-profile module', () => {
   });
 
   it('boots modules and discovered packages through their providers', () => {
-    expect(app.application.modules.map((module) => module.name)).toEqual(['about', 'auth', 'user-profile', 'dashboard', 'members', 'notifications', 'locale', 'lab', 'system', 'bookmarks', 'webhooks', 'help']);
+    expect(app.application.modules.map((module) => module.name)).toEqual(['about', 'auth', 'user-profile', 'dashboard', 'members', 'notifications', 'locale', 'lab', 'system', 'bookmarks', 'webhooks', 'help', 'support']);
     expect(app.application.packages).toEqual(expect.arrayContaining(['@marmeon/http', '@marmeon/log', '@marmeon/session', '@marmeon/redis', '@marmeon/table']));
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });

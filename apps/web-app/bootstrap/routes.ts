@@ -56,6 +56,7 @@ import type { SendPasswordResetLinkController } from '../modules/auth/controller
 import type { ShowAboutController } from '../modules/about/controllers/ShowAboutController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
 import type { ShowConfirmPasswordController } from '../modules/auth/controllers/ShowConfirmPasswordController.ts';
+import type { ShowContactController } from '../modules/support/controllers/ShowContactController.ts';
 import type { ShowCreateAccessTokenController } from '../modules/auth/controllers/ShowCreateAccessTokenController.ts';
 import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
 import type { ShowFeatureController } from '../modules/about/controllers/ShowFeatureController.ts';
@@ -171,6 +172,7 @@ declare module '@marmeon/router' {
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
     'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
+    'support.contact': { method: 'get'; path: '/help/contact'; controller: typeof ShowContactController };
     'talks.ask': { method: 'post'; path: '/talks/:talk/questions'; controller: typeof AskQuestionController };
     'talks.show': { method: 'get'; path: '/talks/:talk'; controller: typeof ShowTalkController };
     'user-profile.avatar.update': { method: 'put'; path: '/users/:user/avatar'; controller: typeof UpdateAvatarController };
@@ -233,6 +235,7 @@ declare module '@marmeon/http/page' {
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;
     'notifications/Index': true;
+    'support/Contact': true;
     'system/errors/404': true;
     'system/errors/Error': true;
     'user-profile/Edit': true;

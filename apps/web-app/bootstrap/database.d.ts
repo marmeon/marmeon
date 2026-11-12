@@ -428,6 +428,7 @@ declare module '@marmeon/database' {
     locale: true;
     members: true;
     notifications: true;
+    support: true;
     system: true;
     'user-profile': true;
     webhooks: true;

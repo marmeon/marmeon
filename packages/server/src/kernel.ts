@@ -1001,6 +1001,16 @@ export function createHttpKernel(
   }
   for (const route of ordered) if (route.generatedFrom) register(route);
 
+  // The fallbacks answer what nothing above took, whatever order the modules loaded in. The build's `/assets` is no page: a missing
+  // file is a 404 here, not a page of the fallback a cache would keep. Only with a fallback, so a wildcard of an app sees `/assets`
+  // as before.
+  const fallbacks = router.fallbacks;
+  if (fallbacks.length > 0) {
+    app.get('/assets', notFound);
+    app.get('/assets/*', notFound);
+    for (const route of fallbacks) register(route);
+  }
+
   app.notFound(notFound);
   app.onError((error, c) => renderError(error, c.req.raw));
 
