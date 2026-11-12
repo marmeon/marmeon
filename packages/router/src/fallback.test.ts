@@ -111,6 +111,9 @@ describe('what a fallback refuses', () => {
     ['a wildcard parameter under the prefix', '/help/:x{.+}', '/help'],
     ['a wildcard that may be empty', '/:page{.*}', '/help'],
     ['a group that takes anything', '/help/:x{(?:.*)}', '/help'],
+    ['a class of anything', '/:x{[\\s\\S]+}', '/help'],
+    ['an empty negated class', '/help/:x{[^]+}', '/help/support'],
+    ['a spaced wildcard', '/:x{ .+ }', '/'],
     ['a parameter in front of the rest', '/:section/:rest*', '/help'],
     ['a parameter with a constraint the segment fits', '/:section{[a-z]+}/:rest*', '/help'],
     ['a wildcard that matches what remains of the prefix', '/help/:p{.+}', '/help/support'],
@@ -133,6 +136,8 @@ describe('what a fallback refuses', () => {
     ['a class with a slash, which leaves dots and capitals out', '/help/:x{[a-z/]+}', '/help'],
     ['an escaped slash', '/help/:x{[a-z]+\\/[a-z]+}', '/help'],
     ['a repeated group ending in a slash', '/help/:x{(?:[a-z]+/)*[a-z]+}', '/help'],
+    ['a class that leaves one character out, at the root', '/:page{[^!]+}', '/'],
+    ['a class that leaves one character out, under a prefix', '/help/:page{[^!]+}', '/help'],
     ['a slot past the end of the prefix', '/help/:s/:r*', '/help'],
     ['a choice that matches the segment but nothing below it', '/help/:p{support|a/b}', '/help/support'],
   ])('finds none in %s — in both orders of loading', (_name, plain, prefix) => {

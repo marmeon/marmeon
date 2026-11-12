@@ -1043,11 +1043,11 @@ These paths never reach a fallback:
   name in the database starts to answer there. Check a name against the routes of the app before saving it (see `marmeon route:list`).
 - **One fallback fits each prefix.** A second one for the same prefix, a route with the form of the fallback (`/help/:x*` next to
   `Route.prefix('/help').fallback()`) and a route that takes the rest of the path from a shorter prefix (`/:page*` before a fallback
-  at `/help`) stop the app at start with [H15](errors.md#server-error-codes); the message names both places. A parameter whose constraint
-  takes any value, one `/` included, counts as a rest of the path (`/:page{.+}`, `/help/:x{.*}`). A narrower one does not: it
-  leaves the fallback the paths it does not match, so `/:slug{[a-z0-9-]+/[a-z0-9-]+}` and `/help/:p{a/.*}` start fine and the
-  fallback answers the rest. The router finds out by trying the constraint on sample values, so an unusual one that takes any
-  value but fails a sample is missed. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
+  at `/help`) stop the app at start with [H15](errors.md#server-error-codes); the message names both places. A parameter counts as a rest of the path
+  only when its constraint is written as one of the forms that take any value: `.*`, `.+`, `[\s\S]*`, `[\s\S]+`, `[^]*`
+  or `[^]+`, each also inside one `(?:…)` (`/:page{.+}`, `/help/:x{.*}`). Any other constraint leaves the fallback the paths it
+  does not match, so `/:slug{[a-z0-9-]+/[a-z0-9-]+}`, `/help/:p{a/.*}` and `/:page{[^!]+}` start fine; a pattern that takes any
+  value in another spelling hides the fallback without a message. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
   everything below its prefix. A fallback also has to be in the `web` group: a package that loads routes
   while booting loads its fallback with `{ group: 'web' }`. A fallback under `/assets` or `/_marmeon` stops the app at start too, since the server answers those paths with a 404 first.
 

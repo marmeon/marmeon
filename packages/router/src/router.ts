@@ -692,20 +692,23 @@ function anchored(constraint: string): RegExp | undefined {
   }
 }
 
-/** What a parameter that takes the whole of the rest must accept, whatever it looks like: one segment, several, dots, dashes. */
-const ANYTHING_BELOW = ['x', 'ab', 'x/y', 'a/b/c', 'A/0', 'a.b/c-d', 'a_b', '0', 'x@y.z'];
+/**
+ * The constraints that take any value, written out: nothing else counts, since a start error must not rest on a guess about
+ * what a regular expression matches. A path holds no newline (decoded control characters are refused), so `.` takes anything.
+ */
+const TAKES_ANYTHING = /^(?:\((?:\?:)(?:\.[*+]|\[\\s\\S\][*+]|\[\^\][*+])\)|\.[*+]|\[\\s\\S\][*+]|\[\^\][*+])$/;
 
 /**
  * Whether `route` answers every path under the fallback's `prefix`: it is segments (literals and parameters) followed by a
- * rest parameter or one with a constraint, and each of its segments accepts the prefix's segment at its place — a
- * literal the same, a parameter without constraint any, one with a constraint if it matches. A last parameter with a
- * constraint must accept every one of {@link ANYTHING_BELOW} (under what remains of the prefix, and that itself): only a
- * constraint that takes any value takes the fallback's paths. `/help/:p{a/.*}` and `/:slug{[a-z]+/[a-z]+}` leave it the rest.
+ * rest parameter or one whose constraint is a {@link TAKES_ANYTHING} form, and each of its segments accepts the prefix's
+ * segment at its place — a literal the same, a parameter without constraint any, one with a constraint if it matches. What
+ * remains of the prefix under the last parameter is taken with everything below. Any other constraint leaves the fallback paths
+ * (`/help/:p{a/.*}`, `/:slug{[a-z]+/[a-z]+}`, `/:p{[^!]+}`), and a pattern that does take anything in another spelling is missed.
  */
 function coversPrefix(route: RouteDefinition, prefix: string): boolean {
   const tokens = tokenizePattern(route.path);
   const last = tokens.at(-1);
-  if (!last || !('name' in last) || !(last.rest || last.constraint !== undefined)) return false;
+  if (!last || !('name' in last) || !(last.rest || (last.constraint !== undefined && TAKES_ANYTHING.test(last.constraint.trim())))) return false;
   const slots: ({ readonly literal: string } | { readonly constraint: string | undefined })[] = [];
   // Only the last parameter of a pattern may be optional (H13), so none of these is.
   for (const token of tokens.slice(0, -1)) {
@@ -719,11 +722,7 @@ function coversPrefix(route: RouteDefinition, prefix: string): boolean {
     return slot.constraint === undefined || (anchored(slot.constraint)?.test(fallback[index]!) ?? false);
   });
   if (!fits) return false;
-  if (last.rest) return true;
-  const pattern = anchored(last.constraint!);
-  const remaining = fallback.slice(slots.length).join('/');
-  const values = remaining === '' ? ANYTHING_BELOW : [remaining, ...ANYTHING_BELOW.map((value) => `${remaining}/${value}`)];
-  return pattern !== undefined && values.every((value) => pattern.test(value));
+  return true;
 }
 
 /**
