@@ -203,7 +203,7 @@ URL. Each `<url>` lists all versions as `<xhtml:link rel="alternate" hreflang="â
 language, which redirects to the visitor's. A page with two languages and three features is six `<url>` elements with three links
 each; the file declares `xmlns:xhtml` when it holds any. See [Routes under a locale](routing.md#routes-under-a-locale).
 
-A page that exists in other languages under addresses of their own, such as a help page `/help/getting-started` and its German version `/help/erste-schritte`, names them in `alternates` of its entry, on a route that is not localized. The key is the hreflang (`de`, `en-GB`, `x-default`), the value the `params` of the same route:
+A page that exists in other languages under addresses of their own, such as a help page `/help/getting-started` and its German version `/help/erste-schritte`, names them in `alternates` of its entry, on a route that is not localized. The key is the hreflang: a language, optionally with a script and a region (`de`, `en-GB`, `zh-Hant-TW`, `es-419`), or `x-default`; extensions, variants and private-use tags are refused. The value is the `params` of the same route:
 
 ```ts
 sitemap(): SitemapEntries<{ slug: string }> {
@@ -218,7 +218,7 @@ sitemap(): SitemapEntries<{ slug: string }> {
 }
 ```
 
-Each value is built like the `<loc>`, from `APP_URL` and the route's path, so an `alternates` entry is never an address. Name the page itself among them (a version lists itself), and write the same set in the entry of every version: search engines ignore a link the other page does not return. A key that is no language tag, or a value the route would answer with a 404, leaves out all `alternates` of that entry with one warning for the route; the entry stays. On a route under `Route.localized()` the entry's `alternates` are ignored with a warning, because its versions come from its locales. The links do not count against the 50 000 URLs.
+Each value is built like the `<loc>`, from `APP_URL` and the route's path, so an `alternates` entry is never an address. Name the page itself among them (a version lists itself), and write the same set in the entry of every version: search engines ignore a link the other page does not return. A route without path parameters has one address, so its `alternates` have nothing to point to and are left out. A key that is no language tag, or a value the route would answer with a 404, leaves out all `alternates` of that entry with one warning for the route; the entry stays. On a route under `Route.localized()` the entry's `alternates` are ignored with a warning, because its versions come from its locales. The links do not count against the 50 000 URLs.
 
 The start stops, with code H10, when a marked route:
 

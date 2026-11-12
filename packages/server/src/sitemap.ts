@@ -54,8 +54,8 @@ function day(date: Date | undefined): string | undefined {
 const XML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
 const escapeXml = (text: string): string => text.replace(/[&<>"']/g, (char) => XML_ESCAPES[char]!);
 
-/** A language tag as hreflang takes it (`de`, `en-GB`, `x-default`): nothing that could leave the attribute it is written into. */
-const HREFLANG = /^(?:x-default|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*)$/;
+/** A language tag as hreflang takes it (`de`, `zh-Hant-TW`, `es-419`, `x-default`: language, script, region): nothing that could leave the attribute it is written into. */
+const HREFLANG = /^(?:x-default|[A-Za-z]{2,3}(?:-[A-Za-z]{4})?(?:-(?:[A-Za-z]{2}|[0-9]{3}))?)$/;
 
 type Entries = SitemapEntries<Record<string, string | number>>;
 

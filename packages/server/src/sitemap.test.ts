@@ -380,7 +380,7 @@ describe('/sitemap.xml', () => {
         { params: { slug: 'bad' } },
         { params: { slug: 'good' }, alternates: { 'en-GB': { slug: 'good' } } },
       ];
-      for (const key of ['"><evil/>', 'a"b', 'de<', 'e', 'de_DE', 'x-defaults', ' de', '']) {
+      for (const key of ['"><evil/>', 'a"b', 'de<', 'e', 'de_DE', 'x-defaults', ' de', '', 'en-a', 'en-x', 'en-x-foo', 'de-DE-1996', 'en-US-u-ca-gregory']) {
         state.slugs[0] = { params: { slug: 'bad' }, alternates: { [key]: { slug: 'bad' } } };
         const { xml, logger } = await sitemapOf(help);
         expect(locs(xml)).toEqual([`${url}/help/bad`, `${url}/help/good`]);
@@ -388,6 +388,14 @@ describe('/sitemap.xml', () => {
         expect(xml).not.toContain('evil');
         expect(logger.warnings).toHaveLength(1);
       }
+    });
+
+    it('accepts the language tags search engines read', async () => {
+      const keys = ['de', 'en-GB', 'zh-Hant', 'zh-Hant-TW', 'es-419', 'x-default'];
+      state.slugs = [{ params: { slug: 'a' }, alternates: Object.fromEntries(keys.map((key) => [key, { slug: 'a' }])) }];
+      const { xml, logger } = await sitemapOf(help);
+      expect(links(xml).map((link) => link.split(' ')[0])).toEqual(keys);
+      expect(logger.warnings).toEqual([]);
     });
 
     it('leaves out all links of an entry with parameters the constraint refuses, and keeps the entry', async () => {
