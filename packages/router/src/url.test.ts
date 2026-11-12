@@ -54,6 +54,14 @@ describe('fillPath with the rest of the path', () => {
     expect(() => fillPath('help.page', '/help/:path*', { path: '/a' })).toThrow('leave out the leading /');
   });
 
+  it('refuses a value before the rest that the server would refuse, and leaves a route without a rest alone', () => {
+    expect(fillPath('x', '/files/:folder/:path*', { folder: 'a b', path: 'c/d' }).path).toBe('/files/a%20b/c/d');
+    for (const folder of ['a/b', 'a\\b', 'a\u0000b']) {
+      expect(() => fillPath('files.show', '/files/:folder/:path*', { folder, path: 'c' })).toThrow(/Parameter \[folder\] of route \[files\.show\] cannot be/);
+    }
+    expect(fillPath('x', '/files/:folder', { folder: 'a/b' }).path).toBe('/files/a%2Fb');
+  });
+
   it('takes a string only', () => {
     expect(() => fillPath('help.page', '/help/:path*', { path: 7 })).toThrow('takes the rest of the path as a string');
   });

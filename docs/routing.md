@@ -196,7 +196,7 @@ never in a redirect:
 - a segment that holds, once decoded, a `/` (`%2F`), a `\` (`%5C`) or a control character (`%00`, `%0A`);
 - a percent escape that is broken (`%ZZ`).
 
-So `'/' + ctx.params.path` is always a path of your site: safe to compare, to use as a cache key or to build a link from.
+So `'/' + ctx.params.path` is always a path of your site: safe to compare or to use as a cache key. It is decoded, so do not glue it into a link (`a?b` would turn `b` into a query): build links with `route()` or `router.url()`, which encode each segment.
 
 One path has a canonical form: the rest followed by a single `/`. `GET` and `HEAD` requests to `/help/a/` get a `301` to
 `/help/a` with their query kept; any other method gets a 404. No route path of the framework ends in `/`, so the form without
@@ -207,7 +207,7 @@ it is the one a page is known by.
 
 A link to the route takes the rest as a string, and it may be left out: `route('help.page', { path: 'accounts/passkeys' })`
 gives `/help/accounts/passkeys`, `route('help.page')` gives `/help`. Each segment is encoded on its own and the `/` between
-them stays. A value the server would refuse (`'a//b'`, `'/a'`, `'..'`, `'a\\b'`) throws when the link is built, so a link is never
+them stays. A value the server would refuse (`'a//b'`, `'/a'`, `'..'`, `'a\\b'`, or a `/` in a parameter before the rest) throws when the link is built, so a link is never
 one the route answers with a 404. Leave out the leading `/` of the value.
 
 ### Parameter names
