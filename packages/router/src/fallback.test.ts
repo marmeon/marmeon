@@ -98,14 +98,34 @@ describe('what a fallback refuses', () => {
     ['a leftover wildcard parameter at the root', '/:page{.+}', '/'],
     ['a wildcard parameter under the prefix', '/help/:x{.+}', '/help'],
     ['a wildcard that may be empty', '/:page{.*}', '/help'],
-    ['a constraint that writes a slash', '/help/:x{[a-z/]+}', '/help'],
-    ['an escaped slash', '/help/:x{[a-z]+\\/[a-z]+}', '/help'],
-    ['a repeated group ending in a slash', '/help/:x{(?:[a-z]+/)*[a-z]+}', '/help'],
+    ['a group that takes anything', '/help/:x{(?:.*)}', '/help'],
+    ['a parameter in front of the rest', '/:section/:rest*', '/help'],
+    ['a parameter with a constraint the segment fits', '/:section{[a-z]+}/:rest*', '/help'],
+    ['a wildcard that matches what remains of the prefix', '/help/:p{.+}', '/help/support'],
   ];
 
   it.each(greedy)('%s covers the fallback — in both orders of loading', (_name, plain, prefix) => {
     expect(loadedTwice(rest(plain), fallbackAt(prefix))).toThrow(/H15.*covers the fallback/s);
     expect(loadedTwice(fallbackAt(prefix), rest(plain))).toThrow(/H15.*covers the fallback/s);
+  });
+
+  it.each([
+    ['a parameter whose constraint the segment does not fit', '/:section{[0-9]+}/:rest*', '/help'],
+    ['another literal', '/blog/:x*', '/help'],
+    ['a wildcard with a start the prefix does not have', '/help/:p{a/.*}', '/help/support'],
+    ['a wildcard under a longer prefix than the fallback', '/help/support/:p{.+}', '/help'],
+    ['a two-segment slug at the root', '/:slug{[a-z0-9-]+/[a-z0-9-]+}', '/'],
+    ['a wildcard that starts with a letter, at the prefix', '/help/:p{a/.*}', '/help'],
+    ['two segments of letters', '/docs/:p{[a-z]+/[a-z]+}', '/docs'],
+    ['a choice with a slash', '/help/:p{(?:a|b)/.*}', '/help'],
+    ['a class with a slash, which leaves dots and capitals out', '/help/:x{[a-z/]+}', '/help'],
+    ['an escaped slash', '/help/:x{[a-z]+\\/[a-z]+}', '/help'],
+    ['a repeated group ending in a slash', '/help/:x{(?:[a-z]+/)*[a-z]+}', '/help'],
+    ['a slot past the end of the prefix', '/help/:s/:r*', '/help'],
+    ['a choice that matches the segment but nothing below it', '/help/:p{support|a/b}', '/help/support'],
+  ])('finds none in %s — in both orders of loading', (_name, plain, prefix) => {
+    expect(loadedTwice(rest(plain), fallbackAt(prefix))).not.toThrow();
+    expect(loadedTwice(fallbackAt(prefix), rest(plain))).not.toThrow();
   });
 
   it('leaves a parameter that cannot take a slash, and a greedy route when there is no fallback', () => {

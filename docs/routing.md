@@ -1044,9 +1044,10 @@ These paths never reach a fallback:
 - **One fallback fits each prefix.** A second one for the same prefix, a route with the form of the fallback (`/help/:x*` next to
   `Route.prefix('/help').fallback()`) and a route that takes the rest of the path from a shorter prefix (`/:page*` before a fallback
   at `/help`) stop the app at start with [H15](errors.md#server-error-codes); the message names both places. A parameter whose constraint
-  matches a value with a `/` counts as a rest of the path (`/:page{.+}`, `/help/:x{.*}`, `/help/:x{[a-z/]+}`; `[^/]+` and
-  `[\w.+-]+` do not). The router finds out by trying the constraint on sample values, so an unusual one that matches a `/` only
-  in a shape the samples lack is missed. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
+  takes any value, one `/` included, counts as a rest of the path (`/:page{.+}`, `/help/:x{.*}`). A narrower one does not: it
+  leaves the fallback the paths it does not match, so `/:slug{[a-z0-9-]+/[a-z0-9-]+}` and `/help/:p{a/.*}` start fine and the
+  fallback answers the rest. The router finds out by trying the constraint on sample values, so an unusual one that takes any
+  value but fails a sample is missed. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
   everything below its prefix. A fallback also has to be in the `web` group: a package that loads routes
   while booting loads its fallback with `{ group: 'web' }`.
 

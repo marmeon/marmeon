@@ -29,6 +29,8 @@ interface Located {
 export class RouteTypes {
   readonly #app: Application;
   readonly #router: Router;
+  /** The names of the controller classes some file of the app declares, set by `#locateControllers`. */
+  #declared = new Set<string>();
 
   constructor(app: Application, router: Router) {
     this.#app = app;
@@ -53,8 +55,8 @@ export class RouteTypes {
       if (!isControllerClass(action) || imports.has(action)) continue;
       const located = controllers.get(action);
       if (!located) {
-        // Without a `request` there are no fields for `useForm` to miss: a package's page controller needs no export.
-        if (!(action as { request?: unknown }).request) continue;
+        // A class no file of the app declares comes from a package, which the app cannot export: nothing for it to fix.
+        if (!this.#declared.has(action.name)) continue;
         warnings.push(`Route [${route.routeName}]: ${action.name || 'its controller'} is not exported by any file of the app — useForm('${route.routeName}', …) has no fields.`);
         continue;
       }
@@ -202,6 +204,7 @@ export class RouteTypes {
       wanted.set(action.name, list);
     }
     const located = new Map<Function, Located>();
+    this.#declared = new Set();
     if (wanted.size === 0) return located;
 
     const files = globSync('**/*.ts', { cwd: this.#app.root, exclude: (path: string) => IGNORED.test(path) })
@@ -209,7 +212,9 @@ export class RouteTypes {
       .map((file) => join(this.#app.root, file));
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
-      const names = [...wanted.keys()].filter((name) => new RegExp(`\\bclass\\s+${name}\\b`).test(text) && /\bexport\b/.test(text));
+      const declared = [...wanted.keys()].filter((name) => new RegExp(`\\bclass\\s+${name}\\b`).test(text));
+      for (const name of declared) this.#declared.add(name);
+      const names = declared.filter(() => /\bexport\b/.test(text));
       if (names.length === 0) continue;
       const exports = (await import(pathToFileURL(file).href)) as Record<string, unknown>;
       for (const [exportName, value] of Object.entries(exports)) {

@@ -56,8 +56,8 @@ export class RouteListCommand {
   }
 
   #action(route: RouteDefinition): string {
-    if (isIslandAction(route.action)) return `${actionName(route.action)} (island)`;
-    return this.#router.isFallback(route) ? `${actionName(route.action)} (fallback)` : actionName(route.action);
+    const marks = [...(this.#router.isFallback(route) ? ['fallback'] : []), ...(isIslandAction(route.action) ? ['island'] : [])];
+    return marks.length === 0 ? actionName(route.action) : `${actionName(route.action)} (${marks.join(', ')})`;
   }
 
   // The framework's own routes decide for themselves (signatures, their own checks), so they say so instead of `none`.

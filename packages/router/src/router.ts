@@ -678,50 +678,47 @@ function fallbackOrder(a: RouteDefinition, b: RouteDefinition): number {
 const showFallbackPrefix = (route: RouteDefinition): string => (fallbackPrefix(route) === '' ? 'the root' : shown.path(fallbackPrefix(route), fallbackPrefix(route)));
 const atSite = (route: RouteDefinition): string => `${showPath(route)}${route.site ? ` (${route.site})` : ''}`;
 
-/** Sample segments: what a slug, a number, a version or an address looks like. */
-const SAMPLE_SEGMENTS = ['a', 'ab', 'A', '0', '1', 'a.b', 'a-b', 'a_b', 'v1', 'x@y.z', ''];
-
-/** Values with a `/` in them: every sample on either side of one, and a few with more or only slashes. */
-const SLASH_PROBES = [
-  ...SAMPLE_SEGMENTS.flatMap((before) => SAMPLE_SEGMENTS.map((after) => `${before}/${after}`)),
-  '/',
-  'x/y/z',
-  'x/y/',
-  '/x/y',
-];
-
-const SLASH_TAKERS = new Map<string, boolean>();
-
-/**
- * Whether a parameter's constraint matches a value that holds a `/`, so the parameter takes the rest of the path like `:name*`.
- * Tried, not read: the constraint is compiled the way the server anchors it and run on {@link SLASH_PROBES}, so a constraint
- * that cannot match a `/` (`[\w.+-]+`, `[^/]+`) is never taken for one. A pattern that only matches a `/` in a shape the
- * probes do not have is missed.
- */
-function takesSlash(constraint: string | undefined): boolean {
-  if (constraint === undefined) return false;
-  let found = SLASH_TAKERS.get(constraint);
-  if (found === undefined) {
-    try {
-      const pattern = new RegExp(`^(?:${constraint})$`);
-      found = SLASH_PROBES.some((probe) => pattern.test(probe));
-    } catch {
-      // A constraint that is no regular expression is refused elsewhere.
-      found = false;
-    }
-    SLASH_TAKERS.set(constraint, found);
+/** The constraint as the server anchors it, or `undefined` when it is no regular expression (refused elsewhere). */
+function anchored(constraint: string): RegExp | undefined {
+  try {
+    return new RegExp(`^(?:${constraint})$`);
+  } catch {
+    return undefined;
   }
-  return found;
 }
 
-/** Whether `route` is only literals and a rest parameter at the end, and its literals open `prefix` — it answers every path under it. */
+/** What a parameter that takes the whole of the rest must accept, whatever it looks like: one segment, several, dots, dashes. */
+const ANYTHING_BELOW = ['x', 'ab', 'x/y', 'a/b/c', 'A/0', 'a.b/c-d', 'a_b', '0', 'x@y.z'];
+
+/**
+ * Whether `route` answers every path under the fallback's `prefix`: it is segments (literals and parameters) followed by a
+ * rest parameter or one with a constraint, and each of its segments accepts the prefix's segment at its place — a
+ * literal the same, a parameter without constraint any, one with a constraint if it matches. A last parameter with a
+ * constraint must accept every one of {@link ANYTHING_BELOW} (under what remains of the prefix, and that itself): only a
+ * constraint that takes any value takes the fallback's paths. `/help/:p{a/.*}` and `/:slug{[a-z]+/[a-z]+}` leave it the rest.
+ */
 function coversPrefix(route: RouteDefinition, prefix: string): boolean {
   const tokens = tokenizePattern(route.path);
   const last = tokens.at(-1);
-  if (!last || !('name' in last) || !(last.rest || takesSlash(last.constraint)) || !tokens.slice(0, -1).every((token) => 'text' in token)) return false;
-  const own = prefixSegments(tokens.map((token) => ('text' in token ? token.text : '')).join(''));
+  if (!last || !('name' in last) || !(last.rest || last.constraint !== undefined)) return false;
+  const slots: ({ readonly literal: string } | { readonly constraint: string | undefined })[] = [];
+  // Only the last parameter of a pattern may be optional (H13), so none of these is.
+  for (const token of tokens.slice(0, -1)) {
+    if ('text' in token) slots.push(...prefixSegments(token.text).map((literal) => ({ literal })));
+    else slots.push({ constraint: token.constraint });
+  }
   const fallback = prefixSegments(prefix);
-  return own.length <= fallback.length && own.every((segment, index) => segment === fallback[index]);
+  if (slots.length > fallback.length) return false;
+  const fits = slots.every((slot, index) => {
+    if ('literal' in slot) return slot.literal === fallback[index];
+    return slot.constraint === undefined || (anchored(slot.constraint)?.test(fallback[index]!) ?? false);
+  });
+  if (!fits) return false;
+  if (last.rest) return true;
+  const pattern = anchored(last.constraint!);
+  const remaining = fallback.slice(slots.length).join('/');
+  const values = remaining === '' ? ANYTHING_BELOW : [remaining, ...ANYTHING_BELOW.map((value) => `${remaining}/${value}`)];
+  return pattern !== undefined && values.every((value) => pattern.test(value));
 }
 
 /**

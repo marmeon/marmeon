@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Application } from '@marmeon/core';
 import { defineRequest, defineRoutes, everyone, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
@@ -43,20 +45,29 @@ describe('RouteTypes — a controller no file of the app exports', () => {
       return 'sent';
     }
   }
+  class HiddenController {
+    handle() {
+      return 'hidden';
+    }
+  }
   const router = new Router().load(
     { group: 'web' },
     defineRoutes((Route) => {
       const open = Route.authorize(everyone);
       open.prefix('/pages').fallback(PackagePageController).name('pages.show');
       open.post('/send', PackageFormController).name('pages.send');
+      open.get('/hidden', HiddenController).name('hidden.show');
     }),
   );
-  const types = new RouteTypes({ root: tempDir('marmeon-route-types-'), definition: {} } as unknown as Application, router);
+  const root = tempDir('marmeon-route-types-');
+  mkdirSync(join(root, 'modules'));
+  writeFileSync(join(root, 'modules/hidden.ts'), 'class HiddenController {}\nexport const other = 1;\n');
+  const types = new RouteTypes({ root, definition: {} } as unknown as Application, router);
 
-  it('warns about one with a request, which has fields useForm would miss, and about none without', async () => {
+  it('warns about one the app declares and does not export, and about none that comes from a package', async () => {
     const { warnings } = await types.render();
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('[pages.send]');
-    expect(warnings[0]).toContain('PackageFormController is not exported by any file of the app');
+    expect(warnings[0]).toContain('[hidden.show]');
+    expect(warnings[0]).toContain('HiddenController is not exported by any file of the app');
   });
 });

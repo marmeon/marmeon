@@ -36,6 +36,11 @@ describe('route:list access column', () => {
 });
 
 describe('route:list fallbacks', () => {
+  class IslandFallback {
+    handle() {
+      return 'x';
+    }
+  }
   const router = new Router();
   router.load({ group: 'web' }, defineRoutes((Route) => {
     const open = Route.authorize(everyone);
@@ -50,6 +55,12 @@ describe('route:list fallbacks', () => {
     expect(rows[0]).not.toContain('(fallback)');
     expect(rows[1]).toContain('(fallback)');
     expect(rows[2]).toContain('(fallback)');
+  });
+
+  it('prints both marks for a fallback that answers an island', () => {
+    Object.defineProperty(IslandFallback, Symbol.for('marmeon.island-controller'), { value: true });
+    const marked = new Router().load({ group: 'web' }, defineRoutes((Route) => void Route.authorize(everyone).prefix('/lazy').fallback(IslandFallback)));
+    expect(list(marked)).toContain('IslandFallback (fallback, island)');
   });
 
   it('says so in the JSON', () => {
