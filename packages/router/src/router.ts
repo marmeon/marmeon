@@ -98,6 +98,23 @@ export const FRAMEWORK_ROUTES: unique symbol = Symbol('marmeon.router.framework'
 /** The path prefix only routes loaded with {@link FRAMEWORK_ROUTES} may use. */
 const RESERVED_PREFIX = '/_marmeon';
 
+/**
+ * A decoded path as the server's matching sees it, or `undefined` when no fallback would be given it: the one rule the rest
+ * parameter reads a request with (no empty or dot segment, no `\` or control character, no trailing `/`), each segment encoded,
+ * then `decodeURI` with `%25` kept (the server writes it `%2525` first, so a literal `%` stays one) and `%2F`, `%3F` and the
+ * other reserved characters left as they are.
+ */
+function seenByServer(path: string): string | undefined {
+  if (!path.startsWith('/')) return undefined;
+  const segments = path === '/' ? [] : path.slice(1).split('/');
+  if (segments.some((segment) => restSegmentProblem(segment) !== undefined)) return undefined;
+  try {
+    return decodeURI(`/${segments.map(encodeURIComponent).join('/')}`.replace(/%25/g, '%2525'));
+  } catch {
+    return undefined;
+  }
+}
+
 /** The health check's paths with no configuration: what the CLI, which never starts the kernel, assumes. */
 const DEFAULT_HEALTH_PATHS: readonly string[] = ['/up', '/up/ready'];
 
@@ -275,17 +292,8 @@ export class Router {
   claimedBy(path: string): PathClaim | undefined {
     // A value that is no string (a JavaScript caller's `undefined`) is no path anyone could take: refused, not free.
     if (typeof path !== 'string' || !path.startsWith('/')) return { by: 'invalid' };
-    // The one rule the rest parameter reads a request with: a path that fails it is none a fallback is given.
-    const segments = path === '/' ? [] : path.slice(1).split('/');
-    if (segments.some((segment) => restSegmentProblem(segment) !== undefined)) return { by: 'invalid' };
-    let seen: string;
-    try {
-      // As the server reads a request: each segment encoded, then `decodeURI` with `%25` kept (the server writes it `%2525` first,
-      // so a literal `%` stays one) and `%2F`, `%3F` and the other reserved characters left as they are.
-      seen = decodeURI(`/${segments.map(encodeURIComponent).join('/')}`.replace(/%25/g, '%2525'));
-    } catch {
-      return { by: 'invalid' };
-    }
+    const seen = seenByServer(path);
+    if (seen === undefined) return { by: 'invalid' };
     if (isReserved(path)) return { by: 'framework', reason: 'reserved' };
     if (path === '/assets' || path.startsWith('/assets/')) return { by: 'framework', reason: 'assets' };
     if ((path === '/sitemap.xml' || path === '/robots.txt') && this.#routes.some((route) => route.inSitemap)) return { by: 'framework', reason: 'sitemap' };
@@ -300,6 +308,17 @@ export class Router {
       return { by: 'route', route: route.generatedFrom ?? route };
     }
     return undefined;
+  }
+
+  /**
+   * The fallback that answers `path` — a decoded path as {@link Router.claimedBy} takes it — in the order the server tries them:
+   * the one under the longest prefix. `undefined` for a path no fallback is given (not canonical, or none under its prefix).
+   *
+   * @internal
+   */
+  fallbackFor(path: string): RouteDefinition | undefined {
+    const seen = typeof path === 'string' ? seenByServer(path) : undefined;
+    return seen === undefined ? undefined : this.fallbacks.find((route) => matchParams(route.path, seen) !== undefined);
   }
 
   /**

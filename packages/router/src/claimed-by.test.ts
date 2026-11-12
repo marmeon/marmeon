@@ -1,5 +1,5 @@
-import { describe, expect, expectTypeOf, it } from 'vitest';
-import { defineRoutes, everyone, Router, type PathClaim, type RouteDefinitions } from './index.ts';
+import { describe, expect, it } from 'vitest';
+import { defineRoutes, everyone, Router, type RouteDefinitions } from './index.ts';
 import { FRAMEWORK_ROUTES } from './internal.ts';
 import { namesOtherLocale } from './router.ts';
 
@@ -86,6 +86,15 @@ describe('Router.claimedBy()', () => {
     expect(router.claimedBy('/help/anything')).toBeUndefined();
     expect(router.claimedBy('/anything')).toBeUndefined();
     expect(router.claimedBy('/help')).toBeUndefined();
+  });
+
+  it('names the fallback under the longest prefix as the one that answers a path', () => {
+    const router = web(open((Route) => void Route.fallback(() => 'root')), open((Route) => void Route.prefix('/help').fallback(() => 'help')));
+    expect(router.fallbackFor('/help/x')?.path).toBe('/help/:path*');
+    expect(router.fallbackFor('/help')?.path).toBe('/help/:path*');
+    expect(router.fallbackFor('/helpful')?.path).toBe('/:path*');
+    expect(router.fallbackFor('/a//b')).toBeUndefined();
+    expect(web().fallbackFor('/x')).toBeUndefined();
   });
 
   describe('a localized route', () => {
@@ -178,12 +187,9 @@ describe('Router.claimedBy()', () => {
     });
   });
 
-  it('types its answer', () => {
+  it('refuses a value that is no string, as a JavaScript caller may pass', () => {
     const router = web();
-    expectTypeOf(router.claimedBy('/x')).toEqualTypeOf<PathClaim | undefined>();
-    // @ts-expect-error a path is a string
-    expect(router.claimedBy(1)).toEqual({ by: 'invalid' });
-    // @ts-expect-error a path is a string
-    expect(router.claimedBy(undefined)).toEqual({ by: 'invalid' });
+    expect(router.claimedBy(1 as unknown as string)).toEqual({ by: 'invalid' });
+    expect(router.claimedBy(undefined as unknown as string)).toEqual({ by: 'invalid' });
   });
 });

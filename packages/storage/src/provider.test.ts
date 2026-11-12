@@ -8,6 +8,7 @@ import { Router } from '@marmeon/router';
 import { accessLabel, routeAccess } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage } from './config.ts';
 import { MemoryDisk } from './drivers/memory.ts';
@@ -490,9 +491,9 @@ describe('serving public disks next to a fallback route', () => {
 
   it('says a path under the disk\'s prefix is taken, whatever file is asked for, and a path beside it is free', async () => {
     const app = await createApplication({
-      root: freshDirectory(),
+      root: tempDir('marmeon-storage-claimed-'),
       discover: false,
-      config: [storageConfig(freshDirectory())],
+      config: [storageConfig(tempDir('marmeon-storage-claimed-disks-'))],
       providers: [EncryptionServiceProvider, HttpServiceProvider, StorageServiceProvider],
       modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => void Route.fallback(() => 'fallback')) })],
     }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });

@@ -95,11 +95,12 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
         if (typeof params !== 'object' || params === null) throw new Error('the value is no parameters object');
         const path = fillPath(name, route.path, params as Record<string, string | number>).path;
         if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+        if (claimed?.(route, decodeURIComponent(path))) throw new Error('another route answers the path');
         return `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`;
       });
       return links.join('');
     } catch {
-      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route. See docs/seo.md#sitemap-and-robotstxt.`);
+      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route, or one that another route or the framework answers. See docs/seo.md#sitemap-and-robotstxt.`);
       return '';
     }
   }
