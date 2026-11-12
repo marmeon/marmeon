@@ -226,7 +226,7 @@ export type Param = string | number;
 // ParamsOf
 export type ParamsOf<N extends string> = true extends IsUnion<N> ? Record<string, Param> : N extends keyof Routes ? Entry<N> extends {
     readonly path: infer P extends string;
-} ? ParamValues<ExtractParams<P>> : Record<string, Param> : Record<string, Param>;
+} ? ParamValues<ExtractParams<P>, RestParamName<P>> : Record<string, Param> : Record<string, Param>;
 // ParsedQuery
 export interface ParsedQuery {
     readonly value: Record<string, unknown>;
@@ -605,9 +605,9 @@ type LocalizedParamValues<E> = E extends {
     readonly path: infer P extends string;
 } ? E extends {
     readonly localized: true;
-} ? Omit<ParamValues<ExtractParams<P>>, 'locale'> & {
+} ? Omit<ParamValues<ExtractParams<P>, RestParamName<P>>, 'locale'> & {
     readonly locale?: Param;
-} : ParamValues<ExtractParams<P>> : never;
+} : ParamValues<ExtractParams<P>, RestParamName<P>> : never;
 // MissingState
 type MissingState<B, TState extends object> = B extends new (...args: any[]) => {
     resolveRouteBinding(value: any, binding: infer C): any;
@@ -629,15 +629,23 @@ type NotScoping = 'this binder does not say it finds a record within its parent 
 // ParamEntry
 type ParamEntry<Segment extends string> = Segment extends `${infer Name}{${string}}` ? ParamEntry<Name> : Segment extends `${infer Name}?` ? {
     [K in Name]?: string;
+} : Segment extends `${infer Name}*` ? {
+    [K in Name]: string;
 } : {
     [K in Segment]: string;
 };
 // ParamValues
-type ParamValues<T> = {
+type ParamValues<T, Rest extends string = never> = Pick<{
     [K in keyof T]: Param;
-} & {};
+}, Exclude<keyof T, Rest>> & {
+    readonly [K in Rest]?: string;
+} extends infer V ? {
+    [K in keyof V]: V[K];
+} : never;
 // Parent
 type Parent<N extends string, Sep extends string, Done extends string = ''> = N extends `${infer Head}${Sep}${infer Tail}` ? Parent<Tail, Sep, Done extends '' ? Head : `${Done}${Sep}${Head}`> : Done;
+// PathTail
+type PathTail<Path extends string> = Path extends `${string}/${infer Rest}` ? PathTail<Rest> : Path;
 // QueryFieldValue
 type QueryFieldValue = QueryScalar | readonly QueryScalar[] | undefined;
 // QueryScalar
@@ -654,6 +662,8 @@ type Registered = [keyof Routes] extends [never] ? false : true;
 type RequiredKeys<T> = {
     [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
 }[keyof T];
+// RestParamName
+type RestParamName<Path extends string> = PathTail<Path> extends `:${infer Name}*` ? Name : never;
 // RouteAction
 type RouteAction<TState extends object, TParams extends object, TBindings extends object, TPath extends string, TSchema extends StandardSchemaV1, TQuery extends StandardSchemaV1, TResult = unknown> = Exclude<keyof TBindings, keyof (TParams & ExtractParams<TPath>)> extends infer Missing extends PropertyKey ? [Missing] extends [never] ? Action<RouteContext<TState, TParams, TBindings, TPath>, TSchema, TQuery, TResult> : `Route.bind('${Missing & string}') needs a :${Missing & string} parameter in the path` : never;
 // RouteContext

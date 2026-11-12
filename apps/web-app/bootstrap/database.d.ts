@@ -423,6 +423,7 @@ declare module '@marmeon/database' {
     auth: true;
     bookmarks: true;
     dashboard: true;
+    help: true;
     lab: true;
     locale: true;
     members: true;

@@ -142,17 +142,24 @@ export type ParamsOf<N extends string> = true extends IsUnion<N>
   ? Record<string, Param>
   : N extends keyof Routes
   ? Entry<N> extends { readonly path: infer P extends string }
-    ? ParamValues<ExtractParams<P>>
+    ? ParamValues<ExtractParams<P>, RestParamName<P>>
     : Record<string, Param>
   : Record<string, Param>;
 
-type ParamValues<T> = { [K in keyof T]: Param } & {};
+/** The last segment of a path pattern. */
+type PathTail<Path extends string> = Path extends `${string}/${infer Rest}` ? PathTail<Rest> : Path;
+
+/** The name of the parameter that takes the rest of the path (`/docs/:page*` → `'page'`), or `never`. */
+type RestParamName<Path extends string> = PathTail<Path> extends `:${infer Name}*` ? Name : never;
+
+/** Every parameter a {@link Param}, except the one that takes the rest of the path: that is optional, and only a string. */
+type ParamValues<T, Rest extends string = never> = Pick<{ [K in keyof T]: Param }, Exclude<keyof T, Rest>> & { readonly [K in Rest]?: string } extends infer V ? { [K in keyof V]: V[K] } : never;
 
 /** The parameters of an entry's path, the `locale` of a localized entry optional — the rule of redirects and of the browser alike. */
 type LocalizedParamValues<E> = E extends { readonly path: infer P extends string }
   ? E extends { readonly localized: true }
-    ? Omit<ParamValues<ExtractParams<P>>, 'locale'> & { readonly locale?: Param }
-    : ParamValues<ExtractParams<P>>
+    ? Omit<ParamValues<ExtractParams<P>, RestParamName<P>>, 'locale'> & { readonly locale?: Param }
+    : ParamValues<ExtractParams<P>, RestParamName<P>>
   : never;
 
 /**

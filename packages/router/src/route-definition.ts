@@ -207,6 +207,9 @@ export class RouteDefinition<TContext extends object = any> {
     if (tokenizePattern(this.path).some((token) => 'optional' in token && token.optional)) {
       throw new TypeError(`attach(): ${this.path} has an optional parameter — the routes under the page would have none to fill. Give the page a path without one.`);
     }
+    if (tokenizePattern(this.path).some((token) => 'rest' in token && token.rest)) {
+      throw new TypeError(`attach(): ${this.path} takes the rest of the path — the routes under the page would sit inside it. Give the page a path without one.`);
+    }
     const attacher = this.#attacher;
     if (!attacher) throw new TypeError(`attach() needs a route registered through Route — ${this.methods.join('|')} ${this.path} was built by hand.`);
     // The caller's frame: the routes name the app's route file in a message, not the package that registered them.

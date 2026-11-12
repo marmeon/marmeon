@@ -13,6 +13,11 @@ export function honoPath(path: string): string {
       out += token.text;
       continue;
     }
+    // The rest of the path is Hono's wildcard: it only decides that the route answers. The router reads the value itself.
+    if (token.rest) {
+      out += '/*';
+      continue;
+    }
     const { constraint } = token;
     out += `/:${token.name}`;
     if (constraint !== undefined) out += `{${hasTopLevelAlternative(constraint) ? `(?:${constraint})` : constraint}}`;

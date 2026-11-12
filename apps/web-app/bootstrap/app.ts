@@ -4,6 +4,7 @@ import { contentSecurityPolicy, NONCE, securityHeaders } from '@marmeon/http';
 import about from '#modules/about';
 import auth from '#modules/auth';
 import dashboard from '#modules/dashboard';
+import help from '#modules/help';
 import lab from '#modules/lab';
 import locale from '#modules/locale';
 import members from '#modules/members';
@@ -27,7 +28,7 @@ export default defineApplication({
   config: [AppConfig, SystemDatabase, AppStorage],
   // The names and the value format of the example app's partner: the core's lists do not know them.
   redact: { keys: ['iban', 'national_id'], patterns: [/\bwa_live_[a-z0-9]{24}\b/] },
-  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks, webhooks],
+  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks, webhooks, help],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {

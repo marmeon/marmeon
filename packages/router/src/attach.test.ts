@@ -177,6 +177,10 @@ describe('RouteDefinition.attach()', () => {
     expect(() => load((Route) => void Route.authorize(everyone).get('/x/:page?', () => 'x').attach(part))).toThrow('has an optional parameter');
   });
 
+  it('refuses a path that takes the rest of the path', () => {
+    expect(() => load((Route) => void Route.authorize(everyone).get('/x/:page*', () => 'x').attach(part))).toThrow('the routes under the page would sit inside it');
+  });
+
   it('refuses something without attachTo', () => {
     expect(() => load((Route) => void Route.authorize(everyone).get('/x', () => 'x').attach({} as never))).toThrow("attach() takes what a package makes for a page, such as a route attachment");
     expect(() => load((Route) => void Route.authorize(everyone).get('/x', () => 'x').attach(undefined as never))).toThrow('attach() takes what a package makes');

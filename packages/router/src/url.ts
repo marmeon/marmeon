@@ -4,7 +4,7 @@
  * `@marmeon/http/page` (as `@marmeon/router/url`).
  */
 
-import { matchParams, tokenizePattern } from './pattern.ts';
+import { matchParams, restSegmentProblem, tokenizePattern } from './pattern.ts';
 
 /** A value for a path parameter: `{ user: 7 }` or `{ user: 'ada' }`. */
 export type Param = string | number;
@@ -28,7 +28,9 @@ export interface RouteLookup {
 export function fillPath(name: string, pattern: string, params: Readonly<Record<string, Param | undefined>> = {}): { path: string; rest: Record<string, Param> } {
   const used = new Set<string>();
   let path = '';
-  for (const token of tokenizePattern(pattern)) {
+  const tokens = tokenizePattern(pattern);
+  const hasRest = tokens.some((token) => 'rest' in token && token.rest);
+  for (const token of tokens) {
     if ('text' in token) {
       path += token.text;
       continue;
@@ -36,17 +38,40 @@ export function fillPath(name: string, pattern: string, params: Readonly<Record<
     const key = token.name;
     used.add(key);
     const value = params[key];
+    if (token.rest) {
+      path += restPath(name, key, value);
+      continue;
+    }
     if (value === undefined || value === '') {
       if (token.optional) continue;
       throw new Error(`Missing required parameter [${key}] for route [${name}].`);
     }
     // A browser resolves even `%2E%2E` as a dot segment: no encoding keeps the link on its route.
     if (value === '.' || value === '..') throw new Error(`Parameter [${key}] of route [${name}] cannot be [${value}]: a dot segment leads to another route.`);
+    // The server counts the segments before a rest: a value it would read as more than one (or refuse) leads to a 404.
+    const problem = hasRest ? restSegmentProblem(String(value)) : undefined;
+    if (problem !== undefined) throw new Error(`Parameter [${key}] of route [${name}] cannot be [${value}]: a segment before the rest of the path ${problem}.`);
     path += `/${encodeURIComponent(String(value))}`;
   }
   const rest: Record<string, Param> = {};
   for (const [key, value] of Object.entries(params)) if (!used.has(key) && value !== undefined) rest[key] = value;
   return { path: path || '/', rest };
+}
+
+/** The path a `/:name*` parameter adds: each segment of `value` encoded, nothing for a missing or empty value. */
+function restPath(route: string, key: string, value: Param | undefined): string {
+  if (value === undefined || value === '') return '';
+  if (typeof value !== 'string') throw new TypeError(`Parameter [${key}] of route [${route}] takes the rest of the path as a string, got ${typeof value}.`);
+  let path = '';
+  for (const segment of value.split('/')) {
+    const problem = restSegmentProblem(segment);
+    if (problem !== undefined) {
+      const hint = value.startsWith('/') && segment === '' && path === '' ? ' (leave out the leading /)' : '';
+      throw new Error(`Parameter [${key}] of route [${route}] cannot be [${value}]: a segment ${problem}${hint}.`);
+    }
+    path += `/${encodeURIComponent(segment)}`;
+  }
+  return path;
 }
 
 /** @internal The framework's: query values as search parameters, in the given order; `null`/`undefined` left out. */
