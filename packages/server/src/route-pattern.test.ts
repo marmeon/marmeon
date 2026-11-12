@@ -42,6 +42,16 @@ describe('honoPath', () => {
   });
 });
 
+describe('honoPath for the rest of the path', () => {
+  it.each([
+    ['/:path*', '/*'],
+    ['/docs/:page*', '/docs/*'],
+    ['/:locale{de|en}/:path*', '/:locale{(?:de|en)}/*'],
+  ])('turns %s into the wildcard %s', (path, expected) => {
+    expect(honoPath(path)).toBe(expected);
+  });
+});
+
 describe('a constraint with alternatives', () => {
   const probe = (path: string, kind: 'reg-exp' | 'trie', wrap = true) => {
     const app = new Hono({ router: kind === 'trie' ? new TrieRouter() : new RegExpRouter() });

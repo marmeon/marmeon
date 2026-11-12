@@ -794,3 +794,54 @@ describe('createHttpKernel — answers that set a cookie are never shared', asyn
     expect(warned).toHaveLength(before);
   });
 });
+
+describe('createHttpKernel — the rest of the path', async () => {
+  const seen: string[] = [];
+  class Spy {
+    handle(_ctx: HttpContext, next: Next<{}>) {
+      seen.push('web');
+      return next();
+    }
+  }
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    providers: [EncryptionServiceProvider, HttpServiceProvider],
+    middleware: { web: [Spy] },
+    modules: [
+      defineModule({
+        name: 'files',
+        routes: openRoutes((Route) => {
+          Route.get('/files/:path*', (ctx: { params: { path: string } }) => {
+            seen.push('controller');
+            return `path=${ctx.params.path}`;
+          });
+        }),
+      }),
+    ],
+  }, { env: { APP_KEY: generateKey() } });
+  const app = createHttpKernel(application);
+
+  it('gives the controller the path as the router read it, one segment at a time', async () => {
+    expect(await (await app.request('/files/a/b')).text()).toBe('path=a/b');
+    expect(await (await app.request('/files')).text()).toBe('path=');
+    expect(await (await app.request('/files/caf%C3%A9')).text()).toBe('path=café');
+  });
+
+  it('answers 404 for a path that is none, without the web group and without the controller', async () => {
+    seen.length = 0;
+    for (const url of ['//files/x', '/files//x', '/files/a%2Fb', '/files/a%5Cb', '/files/a%00b', '/files/%ZZ']) {
+      const response = await app.request(url);
+      expect([url, response.status]).toEqual([url, 404]);
+    }
+    expect(seen).toEqual([]);
+  });
+
+  it('sends a trailing slash with 301 for GET, keeping the query, and refuses it for POST', async () => {
+    seen.length = 0;
+    const response = await app.request('/files/a/?x=1', { redirect: 'manual' });
+    expect([response.status, response.headers.get('location')]).toEqual([301, '/files/a?x=1']);
+    expect((await app.request('/files/a/', { method: 'POST' })).status).toBe(404);
+    expect(seen).toEqual([]);
+  });
+});

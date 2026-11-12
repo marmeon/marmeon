@@ -4,7 +4,7 @@
  * `@marmeon/http/page` (as `@marmeon/router/url`).
  */
 
-import { matchParams, tokenizePattern } from './pattern.ts';
+import { matchParams, restSegmentProblem, tokenizePattern } from './pattern.ts';
 
 /** A value for a path parameter: `{ user: 7 }` or `{ user: 'ada' }`. */
 export type Param = string | number;
@@ -36,6 +36,10 @@ export function fillPath(name: string, pattern: string, params: Readonly<Record<
     const key = token.name;
     used.add(key);
     const value = params[key];
+    if (token.rest) {
+      path += restPath(name, key, value);
+      continue;
+    }
     if (value === undefined || value === '') {
       if (token.optional) continue;
       throw new Error(`Missing required parameter [${key}] for route [${name}].`);
@@ -47,6 +51,22 @@ export function fillPath(name: string, pattern: string, params: Readonly<Record<
   const rest: Record<string, Param> = {};
   for (const [key, value] of Object.entries(params)) if (!used.has(key) && value !== undefined) rest[key] = value;
   return { path: path || '/', rest };
+}
+
+/** The path a `/:name*` parameter adds: each segment of `value` encoded, nothing for a missing or empty value. */
+function restPath(route: string, key: string, value: Param | undefined): string {
+  if (value === undefined || value === '') return '';
+  if (typeof value !== 'string') throw new TypeError(`Parameter [${key}] of route [${route}] takes the rest of the path as a string, got ${typeof value}.`);
+  let path = '';
+  for (const segment of value.split('/')) {
+    const problem = restSegmentProblem(segment);
+    if (problem !== undefined) {
+      const hint = value.startsWith('/') && segment === '' && path === '' ? ' (leave out the leading /)' : '';
+      throw new Error(`Parameter [${key}] of route [${route}] cannot be [${value}]: a segment ${problem}${hint}.`);
+    }
+    path += `/${encodeURIComponent(segment)}`;
+  }
+  return path;
 }
 
 /** @internal The framework's: query values as search parameters, in the given order; `null`/`undefined` left out. */

@@ -15,17 +15,22 @@ describe('tokenizePattern', () => {
   it('reads literals and parameters with their constraint and optional mark', () => {
     expect(tokenizePattern('/archive/:year{[0-9]{4}}/:month{[0-9]{2}}?/x')).toEqual([
       { text: '/archive' },
-      { name: 'year', constraint: '[0-9]{4}', optional: false },
-      { name: 'month', constraint: '[0-9]{2}', optional: true },
+      { name: 'year', constraint: '[0-9]{4}', optional: false, rest: false },
+      { name: 'month', constraint: '[0-9]{2}', optional: true, rest: false },
       { text: '/x' },
     ]);
-    expect(tokenizePattern('/a/:b?')).toEqual([{ text: '/a' }, { name: 'b', constraint: undefined, optional: true }]);
+    expect(tokenizePattern('/a/:b?')).toEqual([{ text: '/a' }, { name: 'b', constraint: undefined, optional: true, rest: false }]);
     expect(tokenizePattern('/')).toEqual([{ text: '/' }]);
   });
 
   it('keeps a `}` in a class and an escaped brace inside the constraint', () => {
-    expect(tokenizePattern('/raw/:text{[}]+}/y')).toEqual([{ text: '/raw' }, { name: 'text', constraint: '[}]+', optional: false }, { text: '/y' }]);
-    expect(tokenizePattern('/raw/:text{a\\}b}')).toEqual([{ text: '/raw' }, { name: 'text', constraint: 'a\\}b', optional: false }]);
+    expect(tokenizePattern('/raw/:text{[}]+}/y')).toEqual([{ text: '/raw' }, { name: 'text', constraint: '[}]+', optional: false, rest: false }, { text: '/y' }]);
+    expect(tokenizePattern('/raw/:text{a\\}b}')).toEqual([{ text: '/raw' }, { name: 'text', constraint: 'a\\}b', optional: false, rest: false }]);
+  });
+
+  it('reads /:name* as a parameter that takes the rest of the path', () => {
+    expect(tokenizePattern('/docs/:page*')).toEqual([{ text: '/docs' }, { name: 'page', constraint: undefined, optional: false, rest: true }]);
+    expect(tokenizePattern('/:path*')).toEqual([{ name: 'path', constraint: undefined, optional: false, rest: true }]);
   });
 
   it('reads an unterminated constraint as text, which the start then refuses', () => {
@@ -70,6 +75,35 @@ describe.each(ROUTE_PATTERNS)('the pattern $pattern', ({ pattern, names, params,
     expect(() => new Router().load(checkedRoutes((Route) => (Route.bind('other', Things) as any).get(pattern, () => 'x')))).toThrow(
       `Route.bind('other') needs a :other parameter in ${pattern}.`,
     );
+  });
+});
+
+describe('the rest of the path', () => {
+  it('is matched raw, with nothing, one segment or many, and a trailing slash ignored', () => {
+    expect(matchParams('/docs/:page*', '/docs')).toEqual({ page: '' });
+    expect(matchParams('/docs/:page*', '/docs/a/b')).toEqual({ page: 'a/b' });
+    expect(matchParams('/docs/:page*', '/docs/a%2Fb/')).toEqual({ page: 'a%2Fb' });
+    expect(matchParams('/:path*', '/')).toEqual({ path: '' });
+    expect(matchParams('/docs/:page*', '/docsx')).toBeUndefined();
+    expect(matchesPath('/:locale/:path*', '/de/a/b')).toBe(true);
+  });
+
+  it.each([
+    ['/a/:x*/b', 'it has to be last'],
+    ['/a/:x*/:y', 'it has to be last'],
+    ['/a/:x*{a}', 'no constraint'],
+    ['/a/:x{a}*', 'followed by text in its segment'],
+    ['/a/:x*?', 'no constraint and no ?'],
+    ['/a/:x*y', 'it has to be last'],
+    ['/a/:*', 'is no name'],
+  ])('stops the start in %s with H13', (pattern, problem) => {
+    const load = () => new Router().load(defineRoutes((Route) => void Route.authorize(everyone).get(pattern, () => 'x')));
+    expect(load).toThrow(/\[marmeon:H13\]/);
+    expect(load).toThrow(problem);
+  });
+
+  it('is accepted as the last parameter, after parameters and a prefix', () => {
+    for (const pattern of ['/:path*', '/docs/:page*', '/:locale/docs/:page*', '/:a/:b/:rest*']) expect(patternProblem(pattern)).toBeUndefined();
   });
 });
 

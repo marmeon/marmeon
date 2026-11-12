@@ -30,3 +30,35 @@ describe('fillPath / urlFor', () => {
     expect(() => urlFor(lookup, 'nope')).toThrow('[marmeon:H4] Route [nope] is not defined.');
   });
 });
+
+describe('fillPath with the rest of the path', () => {
+  it('encodes each segment and keeps the / between them', () => {
+    expect(fillPath('x', '/help/:path*', { path: 'a/b' }).path).toBe('/help/a/b');
+    expect(fillPath('x', '/help/:path*', { path: 'a b/c' }).path).toBe('/help/a%20b/c');
+    expect(fillPath('x', '/help/:path*', { path: 'a?b#c/d' }).path).toBe('/help/a%3Fb%23c/d');
+    expect(fillPath('x', '/:path*', { path: 'a/b' }).path).toBe('/a/b');
+  });
+
+  it('adds nothing for an empty or missing value, and leaves other parameters to the query', () => {
+    expect(fillPath('x', '/help/:path*', { path: '' })).toEqual({ path: '/help', rest: {} });
+    expect(fillPath('x', '/help/:path*')).toEqual({ path: '/help', rest: {} });
+    expect(fillPath('x', '/:path*', {})).toEqual({ path: '/', rest: {} });
+    expect(fillPath('x', '/help/:path*', { path: 'a', tab: 'b' })).toEqual({ path: '/help/a', rest: { tab: 'b' } });
+  });
+
+  it.each(['a//b', '/a', 'a/', '..', 'a/./b', 'a\\b', 'a\u0000b', 'a\nb'])('refuses [%j], the path the server would refuse', (path) => {
+    expect(() => fillPath('help.page', '/help/:path*', { path })).toThrow(/Parameter \[path\] of route \[help\.page\] cannot be/);
+  });
+
+  it('names the leading slash when that is the mistake', () => {
+    expect(() => fillPath('help.page', '/help/:path*', { path: '/a' })).toThrow('leave out the leading /');
+  });
+
+  it('takes a string only', () => {
+    expect(() => fillPath('help.page', '/help/:path*', { path: 7 })).toThrow('takes the rest of the path as a string');
+  });
+
+  it('leaves a {.+} parameter as it was: the / of its value is encoded', () => {
+    expect(fillPath('x', '/files/:path{.+}', { path: 'a/b' }).path).toBe('/files/a%2Fb');
+  });
+});

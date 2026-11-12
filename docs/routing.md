@@ -174,6 +174,42 @@ Route.get('/notes/archive/:year/:month?', (ctx) => ({ year: ctx.params.year, mon
 
 `/notes/archive/2026` and `/notes/archive/2026/10` both reach this route.
 
+### The rest of the path
+
+`:name*` as the last parameter takes the whole rest of the path as one value: nothing, one segment or many.
+
+```ts
+Route.get('/help/:path*', ShowHelpPageController).name('help.page');
+```
+
+`/help` reaches the controller with `ctx.params.path` set to `''`, `/help/accounts/passkeys` with `'accounts/passkeys'`, and
+`/help/caf%C3%A9` with `'café'`. The type is `string`; a request to the route always has one. A parameter before it fills exactly
+one segment, so `/:locale/help/:path*` counts `:locale` as one. A constraint that spans a `/` there (`/plus/:a{.+}/:path*`) would
+overlap the rest, so a request where it took more than one segment ends in a 404.
+
+The router reads the value itself, from the path as it came in, one segment at a time, and ignores what the server's own
+matching made of it. A path that cannot be a path of your site ends in a 404 before the `web` group and the controller run,
+never in a redirect:
+
+- an empty segment (`//example.com/x`, `/help//a`);
+- a segment that is `.` or `..`;
+- a segment that holds, once decoded, a `/` (`%2F`), a `\` (`%5C`) or a control character (`%00`, `%0A`);
+- a percent escape that is broken (`%ZZ`).
+
+So `'/' + ctx.params.path` is always a path of your site: safe to compare, to use as a cache key or to build a link from.
+
+One path has a canonical form: the rest followed by a single `/`. `GET` and `HEAD` requests to `/help/a/` get a `301` to
+`/help/a` with their query kept; any other method gets a 404. No route path of the framework ends in `/`, so the form without
+it is the one a page is known by.
+
+`:name*` takes no constraint and no `?`, and nothing may follow it. The app stops at start-up with
+[H13](errors.md#server-error-codes) for `/a/:x*/b`, `/a/:x*{[a-z]+}` and `/a/:x*?`.
+
+A link to the route takes the rest as a string, and it may be left out: `route('help.page', { path: 'accounts/passkeys' })`
+gives `/help/accounts/passkeys`, `route('help.page')` gives `/help`. Each segment is encoded on its own and the `/` between
+them stays. A value the server would refuse (`'a//b'`, `'/a'`, `'..'`, `'a\\b'`) throws when the link is built, so a link is never
+one the route answers with a 404. Leave out the leading `/` of the value.
+
 ### Parameter names
 
 A parameter name is made of letters, digits and `_`, and starts with a letter or `_`: `:user_id`, not `:user-id`. The name is the
@@ -204,6 +240,10 @@ ends in a 404.
 
 A constraint with alternatives, such as `/notes/:note{new|edit}`, matches as a whole: `/notes/edit` reaches the route,
 `/notes/editor` and `/notes/xedit` do not.
+
+A constraint that allows a `/`, such as `/files/:path{.+}`, gives one value with the `/` in it, and a link to it encodes the
+`/` as `%2F`. For a path of nested segments take [`:path*`](#the-rest-of-the-path): it is checked and decoded segment by
+segment, and a link keeps the `/` between them.
 
 A constraint runs to the brace that closes it, so it may hold braces of its own: `/archive/:year{[0-9]{4}}` takes four digits.
 Links, the browser, the sitemap and the server read a path this way alike.

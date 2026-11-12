@@ -18,12 +18,14 @@ export type Merge<A, B> = Simplify<Omit<A, keyof B> & B>;
 // Path parameters
 // ---------------------------------------------------------------------------
 
-/** `id`, `id?` or `id{[0-9]+}` -> `{ id: string }` / `{ id?: string }`. */
+/** `id`, `id?`, `id*` or `id{[0-9]+}` -> `{ id: string }` / `{ id?: string }`; `id*` takes the rest of the path, `''` at its root. */
 type ParamEntry<Segment extends string> = Segment extends `${infer Name}{${string}}`
   ? ParamEntry<Name>
   : Segment extends `${infer Name}?`
     ? { [K in Name]?: string }
-    : { [K in Segment]: string };
+    : Segment extends `${infer Name}*`
+      ? { [K in Name]: string }
+      : { [K in Segment]: string };
 
 /**
  * Extracts typed parameters from a Hono-style path. A parameter is a whole segment (`/:name`); a `:` inside a segment is text,

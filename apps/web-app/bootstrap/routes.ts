@@ -60,6 +60,7 @@ import type { ShowCreateAccessTokenController } from '../modules/auth/controller
 import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
 import type { ShowFeatureController } from '../modules/about/controllers/ShowFeatureController.ts';
 import type { ShowForgotPasswordController } from '../modules/auth/controllers/ShowForgotPasswordController.ts';
+import type { ShowHelpPageController } from '../modules/help/controllers/ShowHelpPageController.ts';
 import type { ShowLoginController } from '../modules/auth/controllers/ShowLoginController.ts';
 import type { ShowMemberStatsController } from '../modules/dashboard/controllers/ShowMemberStatsController.ts';
 import type { ShowMyActivityController } from '../modules/dashboard/controllers/ShowMyActivityController.ts';
@@ -156,6 +157,7 @@ declare module '@marmeon/router' {
     'dashboard.panels': { method: 'get'; path: '/dashboard/panels'; controller: typeof ShowPanelsController };
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
+    'help.page': { method: 'get'; path: '/help/:path*'; controller: typeof ShowHelpPageController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'members.directory': { method: 'get'; path: '/members/directory'; controller: typeof ListMembersController };
     'members.exports': { method: 'get'; path: '/members/exports'; controller: typeof ExportMembersController };
@@ -213,6 +215,7 @@ declare module '@marmeon/http/page' {
     'dashboard/Panels': true;
     'dashboard/RecentSignIns': true;
     'dashboard/Show': true;
+    'help/Show': true;
     'lab/BrowserOnly': true;
     'lab/ClientOnly': true;
     'lab/Devtools': true;

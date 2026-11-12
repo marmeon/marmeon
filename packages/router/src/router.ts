@@ -15,6 +15,7 @@ import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
 import { localLocation } from './local-location.ts';
 import { tokenizePattern } from './pattern.ts';
+import { restParam, restShape } from './rest-path.ts';
 import { fillPath, toSearchParams, urlFor, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
@@ -375,7 +376,20 @@ export class Router {
    * Runs a matched route through its middleware pipeline and action.
    * @internal
    */
-  dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
+  dispatch(route: RouteDefinition, given: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
+    let input = given;
+    const rest = restShape(route.path);
+    if (rest) {
+      // Security invariant: the value is worked out from the raw path, never from the server's match (`%2F` and `//host` would
+      // reach the controller as paths of this site), and it replaces whatever a caller passed under that name.
+      const url = new URL(given.request.url);
+      const found = restParam(route.path, url.pathname, given.request.method, url.search, given.params);
+      if (found.kind === 'refused') return this.dispatchGlobal(given.request, () => Promise.reject(new HttpError(404)), options);
+      if (found.kind === 'redirect') {
+        return this.dispatchGlobal(given.request, () => new Response(null, { status: 301, headers: { location: found.location } }), options);
+      }
+      input = { request: given.request, params: { ...given.params, [rest.name]: found.value } };
+    }
     const state = options.state ?? createRequestState(input.request);
     // Whoever calls dispatch directly (a custom server) gets no way around the rules the kernel enforces at start.
     const unscoped = unscopedBinder(route);
