@@ -67,6 +67,18 @@ describe('what a fallback refuses', () => {
     expect(() => web(open((Route) => void Route.prefix('/:tenant').fallback(() => 'x')))).toThrow(/H15.*no parameter/s);
   });
 
+  it.each(['/assets', '/assets/app'])('a prefix under the build\'s files (%s)', (prefix) => {
+    expect(() => web(fallbackAt(prefix))).toThrow(/H15.*build's files/s);
+    // Hono matches the case: `/Assets` is no path of the build.
+    expect(() => web(fallbackAt('/Assets'))).not.toThrow();
+    expect(() => web(fallbackAt('/assetsx'))).not.toThrow();
+  });
+
+  it('a prefix under the framework\'s paths', () => {
+    expect(() => web(fallbackAt('/_marmeon'))).toThrow(/H15|belong to the framework/);
+    expect(() => web(fallbackAt('/_marmeon/x'))).toThrow(/belong to the framework/);
+  });
+
   it('a localized fallback, without promising anything', () => {
     expect(() => web(open((Route) => void Route.localized().fallback(() => 'x')))).toThrow(/H15.*cannot be localized/s);
   });

@@ -1049,7 +1049,7 @@ These paths never reach a fallback:
   fallback answers the rest. The router finds out by trying the constraint on sample values, so an unusual one that takes any
   value but fails a sample is missed. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
   everything below its prefix. A fallback also has to be in the `web` group: a package that loads routes
-  while booting loads its fallback with `{ group: 'web' }`.
+  while booting loads its fallback with `{ group: 'web' }`. A fallback under `/assets` or `/_marmeon` stops the app at start too, since the server answers those paths with a 404 first.
 
 ### Moving from a wildcard route
 

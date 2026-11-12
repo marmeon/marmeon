@@ -611,6 +611,11 @@ export class Router {
       if (route.group !== 'web') {
         throw new Error(withCode('H15', `Route.fallback() at ${route.site ?? 'a route file'} is ${route.group === undefined ? 'in no group' : `in the ${route.group} group`}: a fallback answers pages, so it belongs in the web group — load it with { group: 'web' }. See docs/routing.md#the-fallback-route.`));
       }
+      // The server answers `/assets` and everything below it with a 404 before any fallback; compared in the case Hono matches.
+      const under = fallbackPrefix(route);
+      if (under === '/assets' || under.startsWith('/assets/')) {
+        throw new Error(withCode('H15', `Route.fallback() at ${route.site ?? 'a route file'} sits under ${under}, which belongs to the build's files: the server answers every path there with a 404 before a fallback, so this one would never answer. Give it another prefix. See docs/routing.md#the-fallback-route.`));
+      }
       const slot = fallbackSlot(route);
       const held = this.#fallbackSlots.get(slot);
       if (held) {
