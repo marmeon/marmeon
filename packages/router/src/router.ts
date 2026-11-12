@@ -140,6 +140,8 @@ export interface RouteConflict {
   readonly second: RouteDefinition;
   /** The methods both answer; `HEAD` counts as `GET`, which answers it. */
   readonly methods: readonly HttpMethod[];
+  /** `rest`: `first` ends in a rest parameter (`/:path*`) that takes the path of `second`; otherwise both have the same path. */
+  readonly kind: 'same-path' | 'rest';
 }
 
 /**
@@ -150,7 +152,7 @@ export interface RouteConflict {
  */
 export function routeShape(path: string): string {
   return tokenizePattern(path)
-    .map((token) => ('text' in token ? token.text : `/:${token.constraint === undefined ? '' : `{${token.constraint}}`}${token.optional ? '?' : ''}`))
+    .map((token) => ('text' in token ? token.text : `/:${token.constraint === undefined ? '' : `{${token.constraint}}`}${token.optional ? '?' : ''}${token.rest ? '*' : ''}`))
     .join('');
 }
 
@@ -160,12 +162,17 @@ export function routeShape(path: string): string {
  *
  * @internal
  */
-export function describeRouteConflict({ first, second, methods }: RouteConflict, path: (route: RouteDefinition) => string = showPath): string {
+export function describeRouteConflict({ first, second, methods, kind }: RouteConflict, path: (route: RouteDefinition) => string = showPath): string {
   const where = (route: RouteDefinition) => (route.site ? ` (${route.site})` : '');
+  const own = second.methods.join('|');
   const shown = second.generatedFrom
-    ? `${methods.join('|')} ${path(second)}${where(second)}, the address without a locale of ${path(second.generatedFrom)},`
-    : `${methods.join('|')} ${path(second)}${where(second)}`;
-  return `${shown} never answers: ${first.methods.join('|')} ${path(first)}${where(first)} has the same path and is registered first — remove one or change its path. See docs/routing.md#route-order.`;
+    ? `${own} ${path(second)}${where(second)}, the address without a locale of ${path(second.generatedFrom)},`
+    : `${own} ${path(second)}${where(second)}`;
+  const reached = new Set<string>(second.methods.map((method) => (method === 'HEAD' ? 'GET' : method)));
+  const dead = methods.length === reached.size && methods.every((method) => reached.has(method));
+  const which = dead ? 'never answers' : `never answers for ${methods.join('|')}`;
+  const why = kind === 'rest' ? 'takes the rest of that path' : 'has the same path';
+  return `${shown} ${which}: ${first.methods.join('|')} ${path(first)}${where(first)} ${why} and is registered first — change the path of one of them${dead ? '' : ' (or the methods of one of them)'}. See docs/routing.md#route-order.`;
 }
 
 /** One line per conflict: the route, the key and both layers; `path` lets a caller redact the path. @internal */
@@ -401,24 +408,27 @@ export class Router {
    */
   routeConflicts(): RouteConflict[] {
     const conflicts: RouteConflict[] = [];
-    const seen = new Map<string, RouteDefinition[]>();
+    /** The routes seen so far in registration order; `prefix` is the shape before the rest parameter of a route that ends in one. */
+    const before: { readonly route: RouteDefinition; readonly shape: string; readonly prefix: string | undefined }[] = [];
+    // Hono answers HEAD through the GET routes: a route of HEAD alone never matches, so it keeps nothing from a later route.
+    const answered = (first: RouteDefinition): readonly HttpMethod[] => first.methods.filter((method) => method !== 'HEAD');
     for (const route of this.registrationOrder) {
       if (this.#framework.has(route)) continue;
       // A localized route answers only the app's locales, so its first segment is no free parameter: it clashes with another localized route alone.
       const shape = route.localized ? `/:{locale}${routeShape(route.path.replace(/^\/:locale/, ''))}` : routeShape(route.path);
       const open = new Set<HttpMethod>(route.methods.map((method) => (method === 'HEAD' ? 'GET' : method)));
-      // Hono answers HEAD through the GET routes: a route of HEAD alone never matches, so it keeps nothing from a later route.
-      const answered = (first: RouteDefinition): readonly HttpMethod[] => first.methods.filter((method) => method !== 'HEAD');
-      const earlier = seen.get(shape) ?? [];
-      for (const first of earlier) {
+      // In registration order, so each report names the earliest route that takes the methods; an earlier rest route answers its own prefix and every path below it.
+      for (const { route: first, shape: firstShape, prefix } of before) {
+        if (open.size === 0) break;
+        const kind = firstShape === shape ? 'same-path' : prefix !== undefined && (shape === prefix || shape.startsWith(`${prefix}/`)) ? 'rest' : undefined;
         // The routes without a locale of two localized routes clash because the routes themselves do, which is reported once.
-        if (route.generatedFrom && first.generatedFrom) continue;
+        if (kind === undefined || (route.generatedFrom && first.generatedFrom)) continue;
         const shared = [...open].filter((method) => answered(first).includes(method));
         if (shared.length === 0) continue;
-        conflicts.push({ first, second: route, methods: shared });
+        conflicts.push({ first, second: route, methods: shared, kind });
         for (const method of shared) open.delete(method);
       }
-      seen.set(shape, [...earlier, route]);
+      before.push({ route, shape, prefix: shape.endsWith('/:*') ? shape.slice(0, -3) : undefined });
     }
     return conflicts;
   }

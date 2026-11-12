@@ -96,6 +96,75 @@ describe('Router.routeConflicts()', () => {
     })).routeConflicts()).toEqual([]);
   });
 
+  it('finds none when a rest route comes after a route with a parameter: it also answers the longer paths', () => {
+    expect(load(open((Route) => {
+      Route.get('/notes/:id', () => 'a');
+      Route.get('/notes/:path*', () => 'b');
+    })).routeConflicts()).toEqual([]);
+  });
+
+  it.each(['/notes/:id', '/notes', '/notes/a/b'])('finds %s behind an earlier rest route with the same prefix', (later) => {
+    const router = load(open((Route) => {
+      Route.get('/notes/:path*', () => 'a');
+      Route.get(later, () => 'b');
+    }));
+    expect(router.routeConflicts()).toMatchObject([{ kind: 'rest', methods: ['GET'] }]);
+    expect(describeRouteConflict(router.routeConflicts()[0]!)).toContain('takes the rest of that path');
+  });
+
+  it('finds none for a route outside the prefix of an earlier rest route', () => {
+    expect(load(open((Route) => {
+      Route.get('/a/:path*', () => 'a');
+      Route.get('/b/x', () => 'b');
+      Route.get('/ab', () => 'c');
+    })).routeConflicts()).toEqual([]);
+  });
+
+  it('names the methods that never reach a later route, and not the ones it still answers', () => {
+    const router = load(open((Route) => {
+      Route.get('/x', () => 'a');
+      Route.match(['GET', 'POST'], '/x', () => 'b');
+    }));
+    const message = describeRouteConflict(router.routeConflicts()[0]!);
+    expect(message).toContain('GET|POST /x');
+    expect(message).toContain('never answers for GET:');
+    expect(message).toContain('or the methods of one of them');
+  });
+
+  it('names the earliest route that takes the methods, not a later one that is dead itself', () => {
+    const router = load(open((Route) => {
+      Route.get('/a/:p*', () => 'a');
+      Route.get('/a/x', () => 'b');
+      Route.get('/a/x', () => 'c');
+    }));
+    expect(router.routeConflicts().map((conflict) => [conflict.first, conflict.second])).toEqual([
+      [router.routes[0], router.routes[1]],
+      [router.routes[0], router.routes[2]],
+    ]);
+  });
+
+  it('reports a route behind two rest routes once, against the first', () => {
+    const router = load(open((Route) => {
+      Route.get('/a/:p*', () => 'a');
+      Route.get('/a/b/:q*', () => 'b');
+      Route.get('/a/b/c', () => 'c');
+    }));
+    expect(router.routeConflicts().map((conflict) => [conflict.first, conflict.second])).toEqual([
+      [router.routes[0], router.routes[1]],
+      [router.routes[0], router.routes[2]],
+    ]);
+  });
+
+  it('calls a route dead when its methods, HEAD counted as GET, are all taken', () => {
+    const router = load(open((Route) => {
+      Route.get('/x', () => 'a');
+      Route.match(['GET', 'HEAD'], '/x', () => 'b');
+    }));
+    const message = describeRouteConflict(router.routeConflicts()[0]!);
+    expect(message).toContain('never answers:');
+    expect(message).not.toContain('or the methods');
+  });
+
   it('reports a route against each earlier one for the methods it shares with them', () => {
     const router = load(open((Route) => {
       Route.get('/x', () => 'a');
