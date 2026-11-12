@@ -72,6 +72,17 @@ class AboutController {
   }
 }
 
+/** A localized page without parameters: what its hook returns is set per test. */
+const aboutEntries = { list: [] as { params: { locale?: string }; lastModified?: Date; alternates?: Record<string, { locale?: string }> }[] };
+class LocalizedAboutController {
+  handle() {
+    return 'about';
+  }
+  sitemap(): SitemapEntries<{ locale?: string }> {
+    return aboutEntries.list;
+  }
+}
+
 const url = 'https://marmeon.example';
 
 async function boot({ routes, env = { APP_URL: url }, urlLocales }: { routes: RouteDefinitions; env?: Record<string, string>; urlLocales?: UrlLocales }) {
@@ -380,6 +391,67 @@ describe('/sitemap.xml', () => {
       } finally {
         await application.shutdown();
       }
+    });
+
+    describe('without parameters of its own', () => {
+      const about = openRoutes((Route) => void Route.localized().get('/about', LocalizedAboutController).name('about').sitemap());
+      const aboutLocs = async (): Promise<{ xml: string; warnings: string[] }> => {
+        const { application, logger, create } = await boot({ routes: about, urlLocales });
+        try {
+          return { xml: await (await create().request('/sitemap.xml')).text(), warnings: logger.warnings };
+        } finally {
+          await application.shutdown();
+        }
+      };
+
+      it('lists an entry that names its locale in that language alone', async () => {
+        aboutEntries.list = [{ params: { locale: 'de' } }];
+        const { xml } = await aboutLocs();
+        expect(locs(xml)).toEqual([`${url}/de/about`]);
+        expect(links(xml)).toEqual([]);
+      });
+
+      it('leaves out an entry that names a locale the app does not have, with the warning', async () => {
+        aboutEntries.list = [{ params: { locale: 'fr' } }];
+        const { xml, warnings } = await aboutLocs();
+        expect(locs(xml)).toEqual([]);
+        expect(warnings.filter((warning) => warning.includes('names a locale the app does not support'))).toHaveLength(1);
+      });
+
+      it('lets an entry that names its locale win over the generated one for its language, every <url> naming the same versions', async () => {
+        aboutEntries.list = [{ params: {}, lastModified: new Date('2026-01-02T00:00:00Z') }, { params: { locale: 'de' }, lastModified: new Date('2026-05-06T00:00:00Z') }];
+        const { xml } = await aboutLocs();
+        expect(locs(xml)).toEqual([`${url}/de/about`, `${url}/en/about`]);
+        const entries = xml.split('<url>').slice(1);
+        expect(entries[0]).toContain('<lastmod>2026-05-06</lastmod>');
+        expect(entries[1]).toContain('<lastmod>2026-01-02</lastmod>');
+        const set = [`en ${url}/en/about`, `de ${url}/de/about`, `x-default ${url}/about`];
+        expect(links(entries[0]!)).toEqual(set);
+        expect(links(entries[1]!)).toEqual(set);
+      });
+
+      it('ignores the alternates of an entry that names its locale when other entries are listed in every language, with a warning', async () => {
+        aboutEntries.list = [{ params: {} }, { params: { locale: 'de' }, alternates: { de: { locale: 'de' } } }];
+        const { xml, warnings } = await aboutLocs();
+        const entries = xml.split('<url>').slice(1);
+        expect(links(entries[0]!)).toEqual([`en ${url}/en/about`, `de ${url}/de/about`, `x-default ${url}/about`]);
+        expect(links(entries[1]!)).toEqual(links(entries[0]!));
+        expect(warnings.filter((warning) => warning.includes('name alternates, which are ignored'))).toHaveLength(1);
+      });
+
+      it('lists the alternates an entry writes itself when every entry names its locale', async () => {
+        aboutEntries.list = [{ params: { locale: 'de' }, alternates: { de: { locale: 'de' }, en: { locale: 'en' } } }];
+        const { xml } = await aboutLocs();
+        expect(locs(xml)).toEqual([`${url}/de/about`]);
+        expect(links(xml)).toEqual([`de ${url}/de/about`, `en ${url}/en/about`]);
+      });
+
+      it('keeps one <url> for a locale two entries name, the one with the latest date', async () => {
+        aboutEntries.list = [{ params: { locale: 'de' }, lastModified: new Date('2026-01-02T00:00:00Z') }, { params: { locale: 'de' }, lastModified: new Date('2026-03-04T00:00:00Z') }, { params: { locale: 'de' } }];
+        const { xml } = await aboutLocs();
+        expect(locs(xml)).toEqual([`${url}/de/about`]);
+        expect(xml).toContain('<lastmod>2026-03-04</lastmod>');
+      });
     });
 
     it('lets no hook choose a prefix: a locale that is not the app\'s never reaches an address', async () => {
