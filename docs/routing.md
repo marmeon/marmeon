@@ -1038,6 +1038,9 @@ These paths never reach a fallback:
 An app with several languages mounts the fallback under `Route.localized()`, so the pages of each language have their own URL:
 
 ```ts title="modules/help/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ShowHelpPageController } from './controllers/ShowHelpPageController.ts';
+
 export default defineRoutes((Route) => {
   Route.localized().authorize(everyone).prefix('/help').name('help.').fallback(ShowHelpPageController).name('page').sitemap();
 });
