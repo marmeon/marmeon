@@ -129,6 +129,44 @@ describe('Route.localized() on the server', () => {
     }
   });
 
+  it('stops the start for a fallback without localized() under a locale', async () => {
+    const { application, create } = await kernelFor(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.prefix('/de').fallback(() => 'legal');
+    }));
+    try {
+      expect(create).toThrow(/\[marmeon:H9\].*GET \/de\/:path\* starts with the locale \[de\].*GET \/:locale\/about/s);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('still finds a route of the app that takes the address without a locale of a localized one, beside a localized fallback', async () => {
+    const { application, create } = await kernelFor(openRoutes((Route) => {
+      Route.localized().fallback(() => 'page');
+      Route.localized().get('/about', () => 'about');
+      Route.get('/about', () => 'plain about');
+    }));
+    try {
+      expect(create).toThrow(/\[marmeon:H9\].*both answer GET \/about/s);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('accepts a localized fallback beside localized routes: its address without a locale is no route of the app', async () => {
+    const { application, create } = await kernelFor(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.localized().fallback(() => 'page');
+      Route.get('/kontakt', () => 'k');
+    }));
+    try {
+      expect(create).not.toThrow();
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('compares the first segment without regard to case', async () => {
     const { application, create } = await kernelFor(openRoutes((Route) => {
       Route.localized().get('/about', () => 'about');

@@ -666,6 +666,29 @@ describe('/sitemap.xml of a fallback', () => {
     }
   });
 
+  it('keeps the entries of a localized fallback in each language, and still drops one a fallback under a longer prefix answers', async () => {
+    class Pages {
+      handle() {
+        return 'page';
+      }
+      sitemap(): SitemapEntries<{ path: string }> {
+        return [{ params: { path: 'free' } }, { params: { path: 'docs/a' } }];
+      }
+    }
+    const { application, create } = await boot({
+      urlLocales: { supported: ['de', 'en'], preferred: async () => 'de' },
+      routes: openRoutes((Route) => {
+        Route.localized().fallback(Pages).sitemap();
+        Route.localized().prefix('/docs').fallback(() => 'docs');
+      }),
+    });
+    try {
+      expect(locs(await (await create().request('/sitemap.xml')).text())).toEqual([`${url}/de/free`, `${url}/en/free`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('drops the alternates of an entry when one names a path another route answers, and keeps the entry', async () => {
     class WithAlternates {
       handle() {

@@ -50,9 +50,10 @@ export class RouteListCommand {
     output.line(`${rows.length} routes`);
   }
 
-  // The fallbacks last, the longest prefix first: the order the server registers them, after every other route.
+  // The fallbacks last, the longest prefix first: the order the server registers them, after every other route. The address
+  // without a locale of a localized fallback is no row, as it is none for any other localized route.
   #routes(): readonly RouteDefinition[] {
-    return [...this.#router.routes.filter((route) => !this.#router.isFallback(route)), ...this.#router.fallbacks];
+    return [...this.#router.routes.filter((route) => !this.#router.isFallback(route)), ...this.#router.fallbacks.filter((route) => !route.generatedFrom)];
   }
 
   #action(route: RouteDefinition): string {

@@ -10,76 +10,107 @@ beforeEach(async () => {
 });
 
 describe('the help pages', () => {
-  it('lists the pages at /help, for a guest', async () => {
-    const response = await app.navigating().get('/help').assertOk().assertPage('help/Show');
-    const props = response.page()!.props as { page: unknown; pages: { path: string }[] };
+  it('lists the pages at /en/help and /de/help, in each language, for a guest', async () => {
+    const english = await app.navigating().get('/en/help').assertOk().assertPage('help/Show');
+    const props = english.page()!.props as { page: unknown; pages: { path: string; title: string }[] };
     expect(props.page).toBeNull();
     expect(props.pages.map((page) => page.path)).toEqual(['getting-started', 'getting-started/install', 'accounts/passkeys']);
+    expect(english.page()!.locale).toBe('en');
+    const german = await app.navigating().get('/de/help').assertOk().assertPage('help/Show');
+    expect((german.page()!.props as typeof props).pages[0]!.title).toBe('Erste Schritte');
+    expect(german.page()!.locale).toBe('de');
   });
 
-  it('shows a page and a nested page by the rest of the path', async () => {
-    const page = await app.navigating().get('/help/getting-started').assertOk().assertPage('help/Show');
+  it('shows a page and a nested page by the rest of the path, in the language of the address', async () => {
+    const page = await app.navigating().get('/en/help/getting-started').assertOk().assertPage('help/Show');
     expect((page.page()!.props.page as { title: string }).title).toBe('Getting started');
-    const nested = await app.navigating().get('/help/getting-started/install').assertOk().assertPage('help/Show');
-    expect((nested.page()!.props.page as { path: string }).path).toBe('getting-started/install');
-    await app.navigating().get('/help/accounts/passkeys').assertOk();
+    const german = await app.navigating().get('/de/help/getting-started/install').assertOk().assertPage('help/Show');
+    expect((german.page()!.props.page as { path: string; title: string })).toMatchObject({ path: 'getting-started/install', title: 'Installation' });
+    await app.navigating().get('/en/help/accounts/passkeys').assertOk();
   });
 
-  it('answers 404 for a page the help does not have', async () => {
-    await app.navigating().get('/help/no-such-page').assertNotFound();
-    await app.navigating().get('/help/getting-started/install/more').assertNotFound();
+  it('answers 404 for a page the help does not have, and for a language the app lacks', async () => {
+    await app.navigating().get('/en/help/no-such-page').assertNotFound();
+    await app.navigating().get('/de/help/getting-started/install/more').assertNotFound();
+    await app.navigating().get('/fr/help/getting-started').assertNotFound();
   });
 
   it('answers 404 for a path with an empty segment or an encoded slash, before the controller runs', async () => {
-    await app.navigating().get('/help/getting-started%2Finstall').assertNotFound();
-    await app.navigating().get('/help//getting-started').assertNotFound();
-    await app.navigating().get('/help/getting-started//install').assertNotFound();
+    await app.navigating().get('/de/help/getting-started%2Finstall').assertNotFound();
+    await app.navigating().get('/de/help//getting-started').assertNotFound();
+    await app.navigating().get('/de/help/getting-started//install').assertNotFound();
   });
 
   it('sends a trailing slash to the page without it', async () => {
-    const response = await app.get('/help/getting-started/install/');
+    const response = await app.get('/de/help/getting-started/install/');
     expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe('/help/getting-started/install');
+    expect(response.headers.get('location')).toBe('/de/help/getting-started/install');
   });
 
-  it('builds the URL of a page from its path, one segment at a time', () => {
+  it('sends the address without a language to the visitor\'s, for no shared cache', async () => {
+    const response = await app.get('/help/getting-started/install', { headers: { 'accept-language': 'de' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/de/help/getting-started/install');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.headers.get('vary')).toBe('accept-language, cookie');
+    expect((await app.get('/help', { headers: { 'accept-language': 'en' } })).headers.get('location')).toBe('/en/help');
+  });
+
+  it('sends an address it would redirect to a page that does not exist to a 404 there: the double hop', async () => {
+    const hop = await app.get('/help/no-such-page', { headers: { 'accept-language': 'de' } });
+    expect(hop.headers.get('location')).toBe('/de/help/no-such-page');
+    await app.navigating().get('/de/help/no-such-page').assertNotFound();
+  });
+
+  it('refuses a path that could leave the site before it redirects', async () => {
+    for (const path of ['//evil.example/x', '/help//x', '/a%2Fb', '/%5Cevil.example']) {
+      const response = await app.get(path);
+      expect([path, response.status, response.headers.get('location')]).toEqual([path, 404, null]);
+    }
+  });
+
+  it('builds the URL of a page from its path, one segment at a time, and the language as a parameter', () => {
     const router = app.application.container.make(Router);
-    expect(router.url('help.page', { path: 'getting-started/install' })).toBe('/help/getting-started/install');
-    expect(router.url('help.page')).toBe('/help');
-    expect(() => router.url('help.page', { path: 'a//b' })).toThrow('cannot be');
+    expect(router.url('help.page', { locale: 'de', path: 'getting-started/install' })).toBe('/de/help/getting-started/install');
+    expect(router.url('help.page', { locale: 'en' })).toBe('/en/help');
+    expect(() => router.url('help.page', { locale: 'en', path: 'a//b' })).toThrow('cannot be');
     // @ts-expect-error — a number is no rest of the path.
-    expect(() => router.url('help.page', { path: 7 })).toThrow('as a string');
+    expect(() => router.url('help.page', { locale: 'en', path: 7 })).toThrow('as a string');
   });
 
   it('yields to a route of a module that loads after it, and keeps every other path', async () => {
-    await app.navigating().get('/help/contact').assertOk().assertPage('support/Contact');
-    await app.navigating().get('/help/getting-started').assertOk().assertPage('help/Show');
+    await app.navigating().get('/en/help/contact').assertOk().assertPage('support/Contact');
+    await app.navigating().get('/de/help/getting-started').assertOk().assertPage('help/Show');
+    expect((await app.get('/help/contact', { headers: { 'accept-language': 'de' } })).headers.get('location')).toBe('/de/help/contact');
     const router = app.application.container.make(Router);
-    expect(router.fallbacks.map((route) => route.path)).toEqual(['/help/:path*']);
+    expect(router.fallbacks.map((route) => route.path)).toEqual(['/:locale/help/:path*', '/help/:path*']);
   });
 
   it('has no page on a path a route or the framework answers: the fallback would never get it', () => {
     const router = app.application.container.make(Router);
-    for (const page of new HelpPages().all()) expect(router.claimedBy(`/help/${page.path}`), page.path).toBeUndefined();
-    expect(router.claimedBy('/help/contact')).toMatchObject({ by: 'route' });
-    expect(router.claimedBy('/help/a//b')).toEqual({ by: 'invalid' });
+    for (const locale of ['en', 'de']) {
+      for (const page of new HelpPages().all(locale)) expect(router.claimedBy(`/${locale}/help/${page.path}`), page.path).toBeUndefined();
+    }
+    expect(router.claimedBy('/en/help/contact')).toMatchObject({ by: 'route' });
+    expect(router.claimedBy('/en/help/a//b')).toEqual({ by: 'invalid' });
   });
 
-  it('lists its pages in the sitemap, and leaves /sitemap.xml to the kernel', async () => {
+  it('lists its pages in the sitemap in each language, and leaves /sitemap.xml to the kernel', async () => {
     const xml = (await app.get('/sitemap.xml').assertOk()).body;
-    expect(xml).toContain('/help/getting-started/install</loc>');
-    expect(xml).toContain('/help</loc>');
+    for (const locale of ['en', 'de']) {
+      expect(xml).toContain(`/${locale}/help/getting-started/install</loc>`);
+      expect(xml).toContain(`/${locale}/help</loc>`);
+    }
   });
 
   it('never gives a missing asset, another method or a framework path to the help', async () => {
     expect((await app.get('/assets/missing.js')).status).toBe(404);
     expect((await app.get('/_marmeon/missing')).status).toBe(404);
-    expect((await app.post('/help/getting-started', {})).status).toBe(404);
+    expect((await app.post('/en/help/getting-started', {})).status).toBe(404);
   });
 
   it('starts no session for a guest who only reads a page', async () => {
-    const response = await app.get('/help/getting-started');
+    const response = await app.get('/en/help/getting-started');
     expect(response.headers.getSetCookie()).toEqual([]);
   });
 });
-

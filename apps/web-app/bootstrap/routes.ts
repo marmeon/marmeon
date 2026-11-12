@@ -158,7 +158,7 @@ declare module '@marmeon/router' {
     'dashboard.panels': { method: 'get'; path: '/dashboard/panels'; controller: typeof ShowPanelsController };
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
-    'help.page': { method: 'get'; path: '/help/:path*'; controller: typeof ShowHelpPageController };
+    'help.page': { method: 'get'; path: '/:locale/help/:path*'; controller: typeof ShowHelpPageController; localized: true };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'members.directory': { method: 'get'; path: '/members/directory'; controller: typeof ListMembersController };
     'members.exports': { method: 'get'; path: '/members/exports'; controller: typeof ExportMembersController };
@@ -172,7 +172,7 @@ declare module '@marmeon/router' {
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
     'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
-    'support.contact': { method: 'get'; path: '/help/contact'; controller: typeof ShowContactController };
+    'support.contact': { method: 'get'; path: '/:locale/help/contact'; controller: typeof ShowContactController; localized: true };
     'talks.ask': { method: 'post'; path: '/talks/:talk/questions'; controller: typeof AskQuestionController };
     'talks.show': { method: 'get'; path: '/talks/:talk'; controller: typeof ShowTalkController };
     'user-profile.avatar.update': { method: 'put'; path: '/users/:user/avatar'; controller: typeof UpdateAvatarController };

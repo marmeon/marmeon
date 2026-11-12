@@ -35,4 +35,15 @@ export default defineRoutes((Route) => {
   page.prefix('/blog').fallback(QueryController);
   // @ts-expect-error — a fallback answers GET, which has no body: validate the URL with `query`.
   page.prefix('/news').fallback(BodyController);
+  // Under a locale the controller also gets the locale: a string, the rest of the path stays one.
+  page.localized().prefix('/docs').fallback((ctx) => {
+    is<Equal<typeof ctx.params.locale, string>>();
+    is<Equal<typeof ctx.params.path, string>>();
+    // @ts-expect-error — nothing else is a parameter of a localized fallback.
+    const wrong = ctx.params.page;
+    void wrong;
+    return 'x';
+  });
+  // @ts-expect-error — a localized fallback answers GET too: validate the URL with `query`.
+  page.localized().prefix('/guides').fallback(BodyController);
 });
