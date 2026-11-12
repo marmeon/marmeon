@@ -15,6 +15,8 @@ describe('routeShape', () => {
     expect(routeShape('/notes/:id{[0-9]+}')).toBe(routeShape('/notes/:n{[0-9]+}'));
     expect(routeShape('/a/:x?')).not.toBe(routeShape('/a/:x'));
     expect(routeShape('/a/:x')).not.toBe(routeShape('/b/:x'));
+    expect(routeShape('/a/:x*')).toBe(routeShape('/a/:rest*'));
+    expect(routeShape('/a/:x*')).not.toBe(routeShape('/a/:x'));
   });
 });
 

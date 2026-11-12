@@ -2,7 +2,7 @@ import { Router, type AnyAction, type AnyMiddleware, type RouteDefinition } from
 import { accessLabel, isIslandAction, isMiddlewareClass, routeAccess } from '@marmeon/router/internal';
 import type { CommandInput } from '../command.ts';
 
-/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, who may call it, action (marked `(island)` for a route that answers an island's request). */
+/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, who may call it, action (marked `(island)` for a route that answers an island's request, `(fallback)` for a `Route.fallback()`, listed last: it answers what no other route takes). */
 export class RouteListCommand {
   static command = 'route:list';
   static description = 'List all registered routes';
@@ -19,7 +19,7 @@ export class RouteListCommand {
     if (options.json === true) {
       output.json({
         format: 1,
-        routes: this.#router.routes.map((route) => ({
+        routes: this.#routes().map((route) => ({
           methods: [...route.methods],
           path: route.path,
           name: route.routeName ?? null,
@@ -29,24 +29,35 @@ export class RouteListCommand {
           publicBindings: publicBindings(route),
           action: actionName(route.action),
           island: isIslandAction(route.action),
+          fallback: this.#router.isFallback(route),
         })),
         warnings: [],
       });
       return;
     }
     // Middleware in execution order: global, the route's group, its own.
-    const rows = this.#router.routes.map((route) => [
+    const rows = this.#routes().map((route) => [
       route.methods.join('|'),
       route.path,
       route.routeName ?? '',
       route.group ?? '',
       this.#router.middlewareFor(route).map(middlewareName).join(', '),
       this.#access(route),
-      isIslandAction(route.action) ? `${actionName(route.action)} (island)` : actionName(route.action),
+      this.#action(route),
     ]);
     output.table(['METHOD', 'PATH', 'NAME', 'GROUP', 'MIDDLEWARE', 'ACCESS', 'ACTION'], rows);
     output.line();
     output.line(`${rows.length} routes`);
+  }
+
+  // The fallbacks last, the longest prefix first: the order the server registers them, after every other route.
+  #routes(): readonly RouteDefinition[] {
+    return [...this.#router.routes.filter((route) => !this.#router.isFallback(route)), ...this.#router.fallbacks];
+  }
+
+  #action(route: RouteDefinition): string {
+    if (isIslandAction(route.action)) return `${actionName(route.action)} (island)`;
+    return this.#router.isFallback(route) ? `${actionName(route.action)} (fallback)` : actionName(route.action);
   }
 
   // The framework's own routes decide for themselves (signatures, their own checks), so they say so instead of `none`.

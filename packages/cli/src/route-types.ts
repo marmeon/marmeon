@@ -53,6 +53,8 @@ export class RouteTypes {
       if (!isControllerClass(action) || imports.has(action)) continue;
       const located = controllers.get(action);
       if (!located) {
+        // Without a `request` there are no fields for `useForm` to miss: a package's page controller needs no export.
+        if (!(action as { request?: unknown }).request) continue;
         warnings.push(`Route [${route.routeName}]: ${action.name || 'its controller'} is not exported by any file of the app — useForm('${route.routeName}', …) has no fields.`);
         continue;
       }

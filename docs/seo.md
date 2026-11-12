@@ -196,6 +196,7 @@ with [authorization](authorization.md), and leave it out of the sitemap by not m
 carries `.sitemap()`. A route of your own on `/sitemap.xml` or `/robots.txt` wins, so an app that needs other rules writes its own
 `robots.txt` as a route. So does a catch-all route that is not localized, such as `/:page{.+}`: it takes both paths and the
 endpoints never answer.
+A [fallback route](routing.md#the-fallback-route) does not: the server registers the two endpoints before it, so it never gets `/sitemap.xml` or `/robots.txt` while a route carries `.sitemap()`, and answers `/robots.txt` itself when none does. A fallback may carry `.sitemap()` too: its controller's `sitemap()` lists the pages it serves.
 
 A route under `Route.localized()` appears once per language. Its hook (or the path itself) names the page, not the language, so
 `sitemap()` returns entries without `locale`; the app writes one `<url>` for each locale the app supports (`APP_LOCALES`), in the spelling of its

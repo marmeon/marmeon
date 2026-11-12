@@ -49,4 +49,29 @@ describe('the help pages', () => {
     // @ts-expect-error — a number is no rest of the path.
     expect(() => router.url('help.page', { path: 7 })).toThrow('as a string');
   });
+
+  it('yields to a route of a module that loads after it, and keeps every other path', async () => {
+    await app.navigating().get('/help/contact').assertOk().assertPage('support/Contact');
+    await app.navigating().get('/help/getting-started').assertOk().assertPage('help/Show');
+    const router = app.application.container.make(Router);
+    expect(router.fallbacks.map((route) => route.path)).toEqual(['/help/:path*']);
+  });
+
+  it('lists its pages in the sitemap, and leaves /sitemap.xml to the kernel', async () => {
+    const xml = (await app.get('/sitemap.xml').assertOk()).body;
+    expect(xml).toContain('/help/getting-started/install</loc>');
+    expect(xml).toContain('/help</loc>');
+  });
+
+  it('never gives a missing asset, another method or a framework path to the help', async () => {
+    expect((await app.get('/assets/missing.js')).status).toBe(404);
+    expect((await app.get('/_marmeon/missing')).status).toBe(404);
+    expect((await app.post('/help/getting-started', {})).status).toBe(404);
+  });
+
+  it('starts no session for a guest who only reads a page', async () => {
+    const response = await app.get('/help/getting-started');
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
 });
+

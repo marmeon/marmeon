@@ -1,5 +1,5 @@
 import type { Application } from '@marmeon/core';
-import { defineRoutes, everyone, Router } from '@marmeon/router';
+import { defineRequest, defineRoutes, everyone, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { RouteTypes } from './route-types.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -28,5 +28,35 @@ describe('RouteTypes — routes under a locale', () => {
     expect(routes.about).toEqual({ method: 'get', path: '/:locale/about', localized: true });
     expect(routes.legal).toEqual({ method: 'get', path: '/impressum' });
     expect(Object.keys(routes)).toEqual(['about', 'about.feature', 'legal']);
+  });
+});
+
+describe('RouteTypes — a controller no file of the app exports', () => {
+  class PackagePageController {
+    handle() {
+      return 'page';
+    }
+  }
+  class PackageFormController {
+    static request = defineRequest({ schema: { '~standard': { version: 1, vendor: 'test', validate: () => ({ value: {} }) } } });
+    handle() {
+      return 'sent';
+    }
+  }
+  const router = new Router().load(
+    { group: 'web' },
+    defineRoutes((Route) => {
+      const open = Route.authorize(everyone);
+      open.prefix('/pages').fallback(PackagePageController).name('pages.show');
+      open.post('/send', PackageFormController).name('pages.send');
+    }),
+  );
+  const types = new RouteTypes({ root: tempDir('marmeon-route-types-'), definition: {} } as unknown as Application, router);
+
+  it('warns about one with a request, which has fields useForm would miss, and about none without', async () => {
+    const { warnings } = await types.render();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('[pages.send]');
+    expect(warnings[0]).toContain('PackageFormController is not exported by any file of the app');
   });
 });

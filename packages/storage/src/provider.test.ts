@@ -469,6 +469,26 @@ describe('the fake', () => {
   });
 });
 
+describe('serving public disks next to a fallback route', () => {
+  it('answers a missing file with the disk\'s 404; only paths under the disk\'s prefix are the disk\'s', async () => {
+    const asked: string[] = [];
+    const app = await createApplication({
+      root: freshDirectory(),
+      discover: false,
+      config: [storageConfig(freshDirectory())],
+      providers: [EncryptionServiceProvider, HttpServiceProvider, StorageServiceProvider],
+      modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => void Route.fallback((ctx) => { asked.push(ctx.params.path); return 'fallback'; })) })],
+    }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
+    const kernel = createHttpKernel(app);
+    expect((await kernel.request('/storage/missing.txt')).status).toBe(404);
+    expect(asked).toEqual([]);
+    // The prefix is case-sensitive and the bare prefix is no file: both are ordinary paths, so the fallback gets them.
+    expect(await (await kernel.request('/storage')).text()).toBe('fallback');
+    expect(await (await kernel.request('/STORAGE/a.txt')).text()).toBe('fallback');
+    expect(asked).toEqual(['storage', 'STORAGE/a.txt']);
+  });
+});
+
 describe('the signed storage route against greedy app routes', () => {
   // The storage routes load after the modules': a catch-all must not answer in their place (the signature check decides: 403).
   it.each([

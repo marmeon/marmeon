@@ -136,6 +136,14 @@ type NonGetRouteAction<
   ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>
   : typeof ISLAND_IS_GET_ONLY;
 
+/** The route definitions `Route.fallback()` built. A private set: a field on the definition is one an app could write. */
+const FALLBACKS = new WeakSet<RouteDefinition>();
+
+/** @internal Whether `route` is one `Route.fallback()` made; nothing an app does can make another one so. */
+export function isFallbackDefinition(route: RouteDefinition): boolean {
+  return FALLBACKS.has(route);
+}
+
 export function joinPaths(...segments: string[]): string {
   const parts = segments.flatMap((segment) => segment.split('/')).filter(Boolean);
   return `/${parts.join('/')}`;
@@ -360,6 +368,23 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return this.#add(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], path, action, Route.prototype.any);
   }
 
+  /**
+   * Answers every GET path no other route takes — at the root, or under the registrar's prefix (`Route.prefix('/help').fallback(…)`).
+   * The server registers it after every other route, so the order the modules load in does not matter. The rest of the path
+   * is `ctx.params.path` (`''` at the prefix itself). One fallback fits each prefix. See docs/routing.md#the-fallback-route.
+   */
+  fallback<TQuery extends StandardSchemaV1 = never>(
+    action: GetRouteAction<TState, TParams, TBindings, '/:path*', never, TQuery>,
+  ): RouteDefinition<RouteContext<TState, TParams, TBindings, '/:path*'>> {
+    if (this.#attributes.localized) {
+      throw new TypeError(withCode('H15', `Route.localized().fallback() at ${this.#attributes.prefix}: a fallback cannot be localized. See docs/routing.md#the-fallback-route.`));
+    }
+    if (tokenizePattern(this.#attributes.prefix).some((token) => 'name' in token)) {
+      throw new TypeError(withCode('H15', `Route.fallback() under ${this.#attributes.prefix}: the prefix of a fallback has no parameter — a parameter takes any first segment and would hide every other fallback. See docs/routing.md#the-fallback-route.`));
+    }
+    return this.#add(['GET'], '/:path*', action as unknown as AnyAction, Route.prototype.fallback, true);
+  }
+
   // -- Internals ---------------------------------------------------------------
 
   #with<TNextState extends object, TNextParams extends object, TNextBindings extends object>(
@@ -368,7 +393,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return new Route(this.#register, { ...this.#attributes, ...attributes });
   }
 
-  #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string, caller: (...args: never[]) => unknown): RouteDefinition<any> {
+  #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string, caller: (...args: never[]) => unknown, fallback = false): RouteDefinition<any> {
     const fullPath = joinPaths(this.#attributes.prefix, path);
     // The types refuse this already; a route built without them fails at boot.
     const request = typeof action === 'function' ? (action as { request?: { schema?: unknown } }).request : undefined;
@@ -402,6 +427,8 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       attacher: (page, site) => this.#with({ prefix: fullPath, checks: [...routeAccess(page)], pending: [], site }),
     });
     for (const entry of this.#attributes.pending ?? []) entry.used = true;
+    // Before the router sees it: `register` may already ask whether it is one.
+    if (fallback) FALLBACKS.add(route);
     this.#register(route);
     return route;
   }

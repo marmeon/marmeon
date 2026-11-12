@@ -8,7 +8,7 @@ import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, lowerBodyLimit, type RequestState } from './request.ts';
 import { isLiveValidation, liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
 import { authorizeRequest, nothingToValidate, unauthorized, validateRequest, ValidationError, type RequestDefinition, type ValidationHook } from './request-definition.ts';
-import { Route, type RegistrarAudit } from './route.ts';
+import { isFallbackDefinition, Route, type RegistrarAudit } from './route.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { UrlLocales } from './url-locales.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
@@ -188,6 +188,8 @@ export class Router {
   readonly #routes: RouteDefinition[] = [];
   /** The route without its locale, for each localized GET route: it redirects to the visitor's language. */
   readonly #unprefixed = new Map<RouteDefinition, RouteDefinition>();
+  /** The fallback of each slot, by {@link fallbackSlot}: one per prefix. */
+  readonly #fallbackSlots = new Map<string, RouteDefinition>();
   #snapshot: readonly RouteDefinition[] | undefined;
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
@@ -213,13 +215,30 @@ export class Router {
 
   /**
    * The routes in the order the server registers them: the framework's paths under `/_marmeon/` first, so no parameter or
-   * wildcard route of an app matches ahead of them. The order inside each group is the order of loading.
+   * wildcard route of an app matches ahead of them. The order inside each group is the order of loading. The fallbacks are
+   * not in it — {@link Router.fallbacks} has them, and the server registers them after everything else.
    *
    * @internal
    */
   get registrationOrder(): readonly RouteDefinition[] {
+    const routes = this.#routes.filter((route) => !isFallbackDefinition(route));
     // The routes without a locale come last: a route of the app always wins, and they answer only what would be a 404 otherwise.
-    return [...this.#routes.filter((route) => route.reserved), ...this.#routes.filter((route) => !route.reserved), ...this.#unprefixed.values()];
+    return [...routes.filter((route) => route.reserved), ...routes.filter((route) => !route.reserved), ...this.#unprefixed.values()];
+  }
+
+  /**
+   * The routes `Route.fallback()` made, the one under the longest prefix first: the server registers them after every other
+   * route, so they answer what nothing else takes.
+   *
+   * @internal
+   */
+  get fallbacks(): readonly RouteDefinition[] {
+    return this.#routes.filter(isFallbackDefinition).sort(fallbackOrder);
+  }
+
+  /** Whether `Route.fallback()` made the route; a definition built by hand never is. @internal */
+  isFallback(route: RouteDefinition): boolean {
+    return isFallbackDefinition(route);
   }
 
   /**
@@ -337,6 +356,7 @@ export class Router {
       variant.seal();
       this.#unprefixed.set(route, variant);
     }
+    this.#checkFallbacks(this.#routes.slice(before));
     for (const route of this.#routes.slice(before)) if (route.inSitemap) checkSitemapRoute(route);
     this.#indexNames();
     for (const route of this.#routes.slice(before)) for (const check of this.#routeChecks) check(route, this.#resolve);
@@ -580,6 +600,44 @@ export class Router {
     });
   }
 
+  /**
+   * Refuses what would leave a fallback without its place: a second one for a prefix, one outside the `web` group, and a route
+   * that has its form or covers it — in either order of loading, since `added` is checked against everything loaded so far.
+   */
+  #checkFallbacks(added: readonly RouteDefinition[]): void {
+    for (const route of added) {
+      if (!isFallbackDefinition(route)) continue;
+      // Fail closed: a route loaded without a group (a package's `boot()` may do that) runs without the web group's middleware.
+      if (route.group !== 'web') {
+        throw new Error(withCode('H15', `Route.fallback() at ${route.site ?? 'a route file'} is ${route.group === undefined ? 'in no group' : `in the ${route.group} group`}: a fallback answers pages, so it belongs in the web group — load it with { group: 'web' }. See docs/routing.md#the-fallback-route.`));
+      }
+      const slot = fallbackSlot(route);
+      const held = this.#fallbackSlots.get(slot);
+      if (held) {
+        throw new Error(withCode('H15', `Two fallbacks answer ${showFallbackPrefix(route)}: ${atSite(held)} and ${atSite(route)}. A fallback takes every path no route takes under its prefix, so only one fits — move one under another prefix with Route.prefix(…). See docs/routing.md#the-fallback-route.`));
+      }
+      this.#fallbackSlots.set(slot, route);
+    }
+    // The address without a locale of a localized route redirects every path it matches, so it takes part like a route of its own.
+    const every = [...this.#routes, ...this.#unprefixed.values()];
+    const addedEvery = [...added, ...added.flatMap((route) => this.#unprefixed.get(route) ?? [])];
+    for (const route of addedEvery) {
+      for (const other of every) {
+        if (route === other) continue;
+        const fallback = isFallbackDefinition(route) ? route : other;
+        const plain = fallback === route ? other : route;
+        if (!isFallbackDefinition(fallback) || isFallbackDefinition(plain) || this.#framework.has(plain) || plain.localized || !plain.methods.includes('GET')) continue;
+        const named = plain.generatedFrom ? `${atSite(plain)}, the address without a locale of ${atSite(plain.generatedFrom)},` : atSite(plain);
+        if (routeShape(plain.path) === routeShape(fallback.path)) {
+          throw new Error(withCode('H15', `GET ${named} has the form of the fallback ${atSite(fallback)}: it takes every path under ${showFallbackPrefix(fallback)} before the fallback is asked, so the fallback would never answer there. Use Route.fallback() for it, or give the route a path of its own. See docs/routing.md#the-fallback-route.`));
+        }
+        if (coversPrefix(plain, fallbackPrefix(fallback))) {
+          throw new Error(withCode('H15', `GET ${named} takes the rest of the path and covers the fallback ${atSite(fallback)}: it answers everything under ${showFallbackPrefix(fallback)} first, so the fallback would never answer. Make it a Route.fallback() or give it a longer prefix. See docs/routing.md#the-fallback-route.`));
+        }
+      }
+    }
+  }
+
   /** Names are an API (redirects, links): a name used twice is a boot error, not a silent overwrite. */
   #indexNames(): void {
     const byName = new Map<string, RouteDefinition>();
@@ -596,6 +654,74 @@ export class Router {
     }
     this.#byName = byName;
   }
+}
+
+/** What a fallback's path ends with: the rest of the path, which `Route.fallback()` always names `path`. */
+const FALLBACK_TAIL = '/:path*';
+
+/** The path a fallback sits under: `''` at the root, `/help` for `/help/:path*`. */
+const fallbackPrefix = (route: RouteDefinition): string => route.path.slice(0, -FALLBACK_TAIL.length);
+
+/**
+ * The key of the slot a fallback takes: one per prefix, written with its kind so another kind of slot can be added next to it.
+ * Two fallbacks with the same key cannot both answer.
+ */
+const fallbackSlot = (route: RouteDefinition): string => `path:${fallbackPrefix(route)}`;
+
+const prefixSegments = (prefix: string): string[] => prefix.split('/').filter(Boolean);
+
+/** The longer prefix first, so `/help/:path*` is tried before `/:path*`; equal lengths are other prefixes, which never overlap. */
+function fallbackOrder(a: RouteDefinition, b: RouteDefinition): number {
+  return prefixSegments(fallbackPrefix(b)).length - prefixSegments(fallbackPrefix(a)).length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+}
+
+const showFallbackPrefix = (route: RouteDefinition): string => (fallbackPrefix(route) === '' ? 'the root' : shown.path(fallbackPrefix(route), fallbackPrefix(route)));
+const atSite = (route: RouteDefinition): string => `${showPath(route)}${route.site ? ` (${route.site})` : ''}`;
+
+/** Sample segments: what a slug, a number, a version or an address looks like. */
+const SAMPLE_SEGMENTS = ['a', 'ab', 'A', '0', '1', 'a.b', 'a-b', 'a_b', 'v1', 'x@y.z', ''];
+
+/** Values with a `/` in them: every sample on either side of one, and a few with more or only slashes. */
+const SLASH_PROBES = [
+  ...SAMPLE_SEGMENTS.flatMap((before) => SAMPLE_SEGMENTS.map((after) => `${before}/${after}`)),
+  '/',
+  'x/y/z',
+  'x/y/',
+  '/x/y',
+];
+
+const SLASH_TAKERS = new Map<string, boolean>();
+
+/**
+ * Whether a parameter's constraint matches a value that holds a `/`, so the parameter takes the rest of the path like `:name*`.
+ * Tried, not read: the constraint is compiled the way the server anchors it and run on {@link SLASH_PROBES}, so a constraint
+ * that cannot match a `/` (`[\w.+-]+`, `[^/]+`) is never taken for one. A pattern that only matches a `/` in a shape the
+ * probes do not have is missed.
+ */
+function takesSlash(constraint: string | undefined): boolean {
+  if (constraint === undefined) return false;
+  let found = SLASH_TAKERS.get(constraint);
+  if (found === undefined) {
+    try {
+      const pattern = new RegExp(`^(?:${constraint})$`);
+      found = SLASH_PROBES.some((probe) => pattern.test(probe));
+    } catch {
+      // A constraint that is no regular expression is refused elsewhere.
+      found = false;
+    }
+    SLASH_TAKERS.set(constraint, found);
+  }
+  return found;
+}
+
+/** Whether `route` is only literals and a rest parameter at the end, and its literals open `prefix` — it answers every path under it. */
+function coversPrefix(route: RouteDefinition, prefix: string): boolean {
+  const tokens = tokenizePattern(route.path);
+  const last = tokens.at(-1);
+  if (!last || !('name' in last) || !(last.rest || takesSlash(last.constraint)) || !tokens.slice(0, -1).every((token) => 'text' in token)) return false;
+  const own = prefixSegments(tokens.map((token) => ('text' in token ? token.text : '')).join(''));
+  const fallback = prefixSegments(prefix);
+  return own.length <= fallback.length && own.every((segment, index) => segment === fallback[index]);
 }
 
 /**

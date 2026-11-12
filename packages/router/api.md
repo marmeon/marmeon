@@ -332,6 +332,7 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     options<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
     match<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(methods: readonly HttpMethod[], path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
     any<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(path: TPath, action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>): RouteDefinition;
+    fallback<TQuery extends StandardSchemaV1 = never>(action: GetRouteAction<TState, TParams, TBindings, '/:path*', never, TQuery>): RouteDefinition<RouteContext<TState, TParams, TBindings, '/:path*'>>;
 }
 // RouteAccessError
 export declare class RouteAccessError extends Error {

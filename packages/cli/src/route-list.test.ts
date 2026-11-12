@@ -35,6 +35,35 @@ describe('route:list access column', () => {
   });
 });
 
+describe('route:list fallbacks', () => {
+  const router = new Router();
+  router.load({ group: 'web' }, defineRoutes((Route) => {
+    const open = Route.authorize(everyone);
+    open.fallback(() => 'root');
+    open.prefix('/help').fallback(() => 'help');
+    open.get('/about', () => 'about');
+  }));
+
+  it('lists them last, the longest prefix first, and marks them', () => {
+    const rows = list(router).split('\n').filter((line) => /GET\s+\//.test(line));
+    expect(rows.map((row) => /GET\s+(\S+)/.exec(row)![1])).toEqual(['/about', '/help/:path*', '/:path*']);
+    expect(rows[0]).not.toContain('(fallback)');
+    expect(rows[1]).toContain('(fallback)');
+    expect(rows[2]).toContain('(fallback)');
+  });
+
+  it('says so in the JSON', () => {
+    const lines: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((text) => {
+      lines.push(String(text));
+      return true;
+    });
+    new RouteListCommand(router).handle({ args: [], options: { json: true }, output: new Output(), root: '/' } as never);
+    const { routes } = JSON.parse(lines.join('')) as { routes: { path: string; fallback: boolean }[] };
+    expect(routes.map((route) => [route.path, route.fallback])).toEqual([['/about', false], ['/help/:path*', true], ['/:path*', true]]);
+  });
+});
+
 describe('route:list --json', () => {
   const router = new Router();
   router.load({ framework: FRAMEWORK_ROUTES } as never, defineRoutes((Route) => Route.get('/_marmeon/own', () => 'x')));
