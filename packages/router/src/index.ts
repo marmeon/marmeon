@@ -4,7 +4,7 @@ export type { RouteAttachment } from './attach.ts';
 export { Route } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
 export { Router, defineRoutes } from './router.ts';
-export type { LoadOptions, PageQuery, ResponseContext, RouteDefinitions, RouteInterceptor } from './router.ts';
+export type { LoadOptions, PageQuery, PathClaim, ResponseContext, RouteDefinitions, RouteInterceptor } from './router.ts';
 export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';
 export { defineMiddleware, RESERVED_CONTEXT_KEYS } from './middleware.ts';
 export type { DefineMiddlewareOptions, NoReservedKeys, ReservedContextKey } from './middleware.ts';

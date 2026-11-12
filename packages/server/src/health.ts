@@ -22,6 +22,9 @@ const NO_STORE = { 'cache-control': 'no-store' } as const;
 /** How long `/up/ready` answers with the result of its last run — failing results too. */
 export const READY_CACHE_MS = 1000;
 
+/** The readiness path under a liveness `path`. */
+export const readyPathOf = (path: string): string => `${path === '/' ? '' : path}/ready`;
+
 /**
  * The endpoints for `application`, under `path`. `debug`: the details of each check in the answer — to a request for one of
  * `hosts` only (the path is public; a foreign `Host` is a page re-pointed at this machine).
@@ -57,7 +60,7 @@ export function createHealthEndpoints(
 
   return {
     path,
-    readyPath: `${path === '/' ? '' : path}/ready`,
+    readyPath: readyPathOf(path),
     live: () =>
       closed()
         ? new Response('Service Unavailable', { status: 503, headers: { ...NO_STORE, 'content-type': 'text/plain; charset=utf-8' } })

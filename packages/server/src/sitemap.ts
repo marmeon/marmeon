@@ -62,9 +62,10 @@ type Entries = SitemapEntries<Record<string, string | number>>;
 /**
  * The sitemap and robots.txt of `routes`; their URLs begin with `appUrl`. A localized route is listed once per entry and locale
  * (`locales`, each in its URL spelling), every `<url>` naming all of its language versions and the address without a locale as
- * `x-default`.
+ * `x-default`. `claimed` says whether another route, a package or the framework answers a decoded path in the route's place
+ * (a fallback's entry on such a path is left out, with one warning per route).
  */
-export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], logger, report }: { appUrl: string; locales?: readonly string[]; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
+export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], claimed, logger, report }: { appUrl: string; locales?: readonly string[]; claimed?: (route: RouteDefinition, path: string) => boolean; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
   const clock = container.has(Clock) ? container.make(Clock) : { now: () => Date.now() };
   /** The routes already warned about, once each: the file is made every five minutes, a line each time would be noise. */
   const warned = new Set<RouteDefinition>();
@@ -80,6 +81,7 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
     warnedAlternates.add(route);
     logger.warn(message);
   };
+  const warnedClaimed = new Set<RouteDefinition>();
   let truncated = false;
 
   /**
@@ -93,11 +95,12 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
         if (typeof params !== 'object' || params === null) throw new Error('the value is no parameters object');
         const path = fillPath(name, route.path, params as Record<string, string | number>).path;
         if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+        if (claimed?.(route, decodeURIComponent(path))) throw new Error('another route answers the path');
         return `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`;
       });
       return links.join('');
     } catch {
-      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route. See docs/seo.md#sitemap-and-robotstxt.`);
+      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route, or one that another route or the framework answers. See docs/seo.md#sitemap-and-robotstxt.`);
       return '';
     }
   }
@@ -148,6 +151,14 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
           if (route.localized) unprefixed = fillPath(name, route.path.replace(/^\/:locale/, '') || '/', entry.params as Record<string, string | number>).path;
         } catch {
           warnOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} include parameters that name no page of the route (a missing one, a dot segment, one its constraint refuses); they are left out.`);
+          continue;
+        }
+        // A fallback's entry on a path another route answers is no page of the fallback: the server never gives it that request.
+        if (claimed && paths.some((path) => claimed(route, decodeURIComponent(path)))) {
+          if (!warnedClaimed.has(route)) {
+            warnedClaimed.add(route);
+            logger.warn(`A sitemap entry of ${route.methods.join('|')} ${route.path} is answered by another route or the framework, so it is left out. See docs/seo.md#sitemap-and-robotstxt.`);
+          }
           continue;
         }
         // The limit counts URLs, each locale one: an entry that does not fit whole is left out, so no `<url>` names a version that is missing.

@@ -618,3 +618,98 @@ describe('the start with a marked route', () => {
     await expect(boot({ routes: openRoutes((Route) => void Route.post('/contact', () => 'x').sitemap()) })).rejects.toThrow(TypeError);
   });
 });
+
+describe('/sitemap.xml of a fallback', () => {
+  class PageController {
+    handle() {
+      return 'page';
+    }
+    sitemap(): SitemapEntries<{ path: string }> {
+      return [{ params: { path: 'about' } }, { params: { path: 'free' } }, { params: { path: 'sitemap.xml' } }, { params: { path: 'assets/a.js' } }, { params: { path: 'help/inner' } }];
+    }
+  }
+  const routes = openRoutes((Route) => {
+    Route.get('/about', () => 'about');
+    Route.get('/help/inner', () => 'inner');
+    Route.fallback(PageController).sitemap();
+  });
+
+  it('leaves out an entry on a path another route or the framework answers, and warns once per route', async () => {
+    const { application, logger, create } = await boot({ routes });
+    try {
+      const kernel = create();
+      const xml = await (await kernel.request('/sitemap.xml')).text();
+      expect(locs(xml)).toEqual([`${url}/free`]);
+      expect(logger.warnings.filter((warning) => warning.includes('is answered by another route or the framework'))).toHaveLength(1);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('leaves out an entry that a fallback under a longer prefix answers instead', async () => {
+    class Root {
+      handle() {
+        return 'root';
+      }
+      sitemap(): SitemapEntries<{ path: string }> {
+        return [{ params: { path: 'free' } }, { params: { path: 'help/deeper' } }, { params: { path: 'help' } }];
+      }
+    }
+    const { application, create } = await boot({ routes: openRoutes((Route) => {
+      Route.fallback(Root).sitemap();
+      Route.prefix('/help').fallback(() => 'help');
+    }) });
+    try {
+      expect(locs(await (await create().request('/sitemap.xml')).text())).toEqual([`${url}/free`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('drops the alternates of an entry when one names a path another route answers, and keeps the entry', async () => {
+    class WithAlternates {
+      handle() {
+        return 'p';
+      }
+      sitemap(): SitemapEntries<{ path: string }> {
+        return [
+          { params: { path: 'free' }, alternates: { en: { path: 'free' }, de: { path: 'about' } } },
+          { params: { path: 'other' }, alternates: { en: { path: 'other' }, de: { path: 'anderes' } } },
+        ];
+      }
+    }
+    const { application, logger, create } = await boot({ routes: openRoutes((Route) => {
+      Route.get('/about', () => 'about');
+      Route.fallback(WithAlternates).sitemap();
+    }) });
+    try {
+      const xml = await (await create().request('/sitemap.xml')).text();
+      expect(locs(xml)).toEqual([`${url}/free`, `${url}/other`]);
+      expect(xml).not.toContain('/about');
+      expect(xml).toContain('hreflang="de" href="https://marmeon.example/anderes"');
+      expect(logger.warnings.filter((warning) => warning.includes('The alternates of a sitemap entry'))).toHaveLength(1);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('keeps the entries of a route that is no fallback, even on a path another route answers', async () => {
+    class Other {
+      handle() {
+        return 'o';
+      }
+      sitemap(): SitemapEntries<{ slug: string }> {
+        return [{ params: { slug: 'x' } }];
+      }
+    }
+    const { application, create } = await boot({ routes: openRoutes((Route) => {
+      Route.get('/posts/x', () => 'taken');
+      Route.get('/posts/:slug', Other).sitemap();
+    }) });
+    try {
+      expect(locs(await (await create().request('/sitemap.xml')).text())).toEqual([`${url}/posts/x`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+});

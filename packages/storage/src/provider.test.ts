@@ -8,6 +8,7 @@ import { Router } from '@marmeon/router';
 import { accessLabel, routeAccess } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage } from './config.ts';
 import { MemoryDisk } from './drivers/memory.ts';
@@ -486,6 +487,21 @@ describe('serving public disks next to a fallback route', () => {
     expect(await (await kernel.request('/storage')).text()).toBe('fallback');
     expect(await (await kernel.request('/STORAGE/a.txt')).text()).toBe('fallback');
     expect(asked).toEqual(['storage', 'STORAGE/a.txt']);
+  });
+
+  it('says a path under the disk\'s prefix is taken, whatever file is asked for, and a path beside it is free', async () => {
+    const app = await createApplication({
+      root: tempDir('marmeon-storage-claimed-'),
+      discover: false,
+      config: [storageConfig(tempDir('marmeon-storage-claimed-disks-'))],
+      providers: [EncryptionServiceProvider, HttpServiceProvider, StorageServiceProvider],
+      modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => void Route.fallback(() => 'fallback')) })],
+    }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
+    const router = app.container.make(Router);
+    expect(router.claimedBy('/storage/anything')).toMatchObject({ by: 'route' });
+    expect(router.claimedBy('/storage/a/b.png')).toMatchObject({ by: 'route' });
+    expect(router.claimedBy('/storage')).toBeUndefined();
+    expect(router.claimedBy('/stored')).toBeUndefined();
   });
 });
 

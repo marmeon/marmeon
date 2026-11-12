@@ -1040,7 +1040,7 @@ These paths never reach a fallback:
   answers it, so its own 404 is the page of an unknown URL, and an app that shows a page for the fallback must show a 404 for a
   path it does not know.
 - **A removed route frees its path.** The page that lived at `/help/contact` now belongs to the fallback, and a page of the same
-  name in the database starts to answer there. Check a name against the routes of the app before saving it (see `marmeon route:list`).
+  name in the database starts to answer there. Check a name before saving it with [`claimedBy()`](#asking-whether-a-path-is-taken).
 - **One fallback fits each prefix.** A second one for the same prefix, a route with the form of the fallback (`/help/:x*` next to
   `Route.prefix('/help').fallback()`) and a route that takes the rest of the path from a shorter prefix (`/:page*` before a fallback
   at `/help`) stop the app at start with [H15](errors.md#server-error-codes); the message names both places. A parameter counts as a rest of the path
@@ -1050,6 +1050,26 @@ These paths never reach a fallback:
   value in another spelling hides the fallback without a message. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
   everything below its prefix. A fallback also has to be in the `web` group: a package that loads routes
   while booting loads its fallback with `{ group: 'web' }`. A fallback under `/assets` or `/_marmeon` stops the app at start too, since the server answers those paths with a 404 first.
+
+### Asking whether a path is taken
+
+`router.claimedBy(path)` says who already answers a path, so a page's name can be refused before it is saved. It takes the
+decoded path with its leading `/`, the form of `'/' + ctx.params.path`, and returns `undefined` for a free path:
+
+```ts
+const claim = router.claimedBy(`/help/${slug}`);
+if (claim) throw new Error(claim.by === 'route' ? `${slug} is the address of ${claim.route.path}` : `${slug} is taken`);
+```
+
+| `by` | The path is |
+| --- | --- |
+| `'route'` | answered by a `GET` route of the app or a package (`claim.route`), the address without a locale of a [localized](#routes-under-a-locale) route included. A route that answers only `POST` or another method takes nothing, and neither does a fallback. |
+| `'framework'` | `reason: 'reserved'` (`/_marmeon`), `'assets'` (`/assets`), `'sitemap'` (`/sitemap.xml` and `/robots.txt` while a route carries `.sitemap()`) or `'health'` (`/up` and `/up/ready`, or where `SERVER_HEALTH_PATH` moved them; free when it is `off`). |
+| `'invalid'` | one no fallback would ever get: an empty or dot segment, a trailing `/`, a `\`, a control character or a path that does not begin with `/`. Treat it as taken. |
+
+A localized route answers one path per locale of the app: with `de` and `en`, `/de/about` and `/en/about` are taken and `/fr/about` is
+not. Where the server has not told the router (the command line), every first segment counts as a locale and the default health paths count, so the answer errs towards taken. A route a
+package adds in `boot()` is only seen once it has booted, so ask after the app started.
 
 ### Moving from a wildcard route
 

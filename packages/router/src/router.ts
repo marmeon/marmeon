@@ -14,7 +14,7 @@ import type { UrlLocales } from './url-locales.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, HttpMethod, MiddlewareHandler } from './types.ts';
 import { localLocation } from './local-location.ts';
-import { tokenizePattern } from './pattern.ts';
+import { matchParams, restSegmentProblem, tokenizePattern } from './pattern.ts';
 import { restParam, restShape } from './rest-path.ts';
 import { fillPath, toSearchParams, urlFor, type Query } from './url.ts';
 
@@ -97,6 +97,35 @@ export const FRAMEWORK_ROUTES: unique symbol = Symbol('marmeon.router.framework'
 
 /** The path prefix only routes loaded with {@link FRAMEWORK_ROUTES} may use. */
 const RESERVED_PREFIX = '/_marmeon';
+
+/**
+ * A decoded path as the server's matching sees it, or `undefined` when no fallback would be given it: the one rule the rest
+ * parameter reads a request with (no empty or dot segment, no `\` or control character, no trailing `/`), each segment encoded,
+ * then `decodeURI` with `%25` kept (the server writes it `%2525` first, so a literal `%` stays one) and `%2F`, `%3F` and the
+ * other reserved characters left as they are.
+ */
+function seenByServer(path: string): string | undefined {
+  if (!path.startsWith('/')) return undefined;
+  const segments = path === '/' ? [] : path.slice(1).split('/');
+  if (segments.some((segment) => restSegmentProblem(segment) !== undefined)) return undefined;
+  try {
+    return decodeURI(`/${segments.map(encodeURIComponent).join('/')}`.replace(/%25/g, '%2525'));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The health check's paths with no configuration: what the CLI, which never starts the kernel, assumes. */
+const DEFAULT_HEALTH_PATHS: readonly string[] = ['/up', '/up/ready'];
+
+/**
+ * Whether a localized route's match names a locale the app does not have. A match with no `locale` (a pattern that does not name
+ * it) names none, and locales not yet bound (the CLI) leave every value possible: both claim the path.
+ *
+ * @internal
+ */
+export const namesOtherLocale = (params: Readonly<Record<string, string>>, supported: readonly string[] | undefined): boolean =>
+  supported !== undefined && params.locale !== undefined && !supported.includes(params.locale);
 
 const isReserved = (path: string): boolean => {
   const lower = path.toLowerCase();
@@ -184,6 +213,16 @@ export function describeMiddlewareProblem({ route, key, first, second }: Middlew
   );
 }
 
+/**
+ * Who answers a path: `route` (an app's, a package's or a locale-free address of a localized one), `framework` (a path the
+ * server keeps for itself), or `invalid` (a path no fallback would ever get, which is refused as taken). See
+ * docs/routing.md#asking-whether-a-path-is-taken.
+ */
+export type PathClaim =
+  | { readonly by: 'route'; readonly route: RouteDefinition }
+  | { readonly by: 'framework'; readonly reason: 'reserved' | 'assets' | 'sitemap' | 'health' }
+  | { readonly by: 'invalid' };
+
 export class Router {
   readonly #routes: RouteDefinition[] = [];
   /** The route without its locale, for each localized GET route: it redirects to the visitor's language. */
@@ -191,6 +230,10 @@ export class Router {
   /** The fallback of each slot, by {@link fallbackSlot}: one per prefix. */
   readonly #fallbackSlots = new Map<string, RouteDefinition>();
   #snapshot: readonly RouteDefinition[] | undefined;
+  /** The locales a localized route's first segment can name, once the kernel binds them; none before. */
+  #urlLocales: readonly string[] | undefined;
+  /** The paths the server's health check answers; before the kernel binds them, the default ones. */
+  #healthPaths: readonly string[] = DEFAULT_HEALTH_PATHS;
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
   readonly #framework = new WeakSet<RouteDefinition>();
@@ -239,6 +282,53 @@ export class Router {
   /** Whether `Route.fallback()` made the route; a definition built by hand never is. @internal */
   isFallback(route: RouteDefinition): boolean {
     return isFallbackDefinition(route);
+  }
+
+  /**
+   * Whether a route, a package or the framework already answers `path` — the decoded path with its leading `/`, as a
+   * fallback's `'/' + ctx.params.path` — so a slug can be refused before it is saved. A path no fallback would get (empty,
+   * dot or `\` segments, a trailing `/`) is `{ by: 'invalid' }`, never free. See docs/routing.md#asking-whether-a-path-is-taken.
+   */
+  claimedBy(path: string): PathClaim | undefined {
+    // A value that is no string (a JavaScript caller's `undefined`) is no path anyone could take: refused, not free.
+    if (typeof path !== 'string' || !path.startsWith('/')) return { by: 'invalid' };
+    const seen = seenByServer(path);
+    if (seen === undefined) return { by: 'invalid' };
+    if (isReserved(path)) return { by: 'framework', reason: 'reserved' };
+    if (path === '/assets' || path.startsWith('/assets/')) return { by: 'framework', reason: 'assets' };
+    if ((path === '/sitemap.xml' || path === '/robots.txt') && this.#routes.some((route) => route.inSitemap)) return { by: 'framework', reason: 'sitemap' };
+    // The server answers these before any route; a path of its own (a moved health check) counts like the default.
+    if (this.#healthPaths.includes(path)) return { by: 'framework', reason: 'health' };
+    for (const route of this.registrationOrder) {
+      if (!route.methods.includes('GET')) continue;
+      const params = matchParams(route.path, seen);
+      if (!params) continue;
+      // Not bound (the CLI): any first segment may be a locale, so the route claims it.
+      if (route.localized && namesOtherLocale(params, this.#urlLocales)) continue;
+      return { by: 'route', route: route.generatedFrom ?? route };
+    }
+    return undefined;
+  }
+
+  /**
+   * The fallback that answers `path` — a decoded path as {@link Router.claimedBy} takes it — in the order the server tries them:
+   * the one under the longest prefix. `undefined` for a path no fallback is given (not canonical, or none under its prefix).
+   *
+   * @internal
+   */
+  fallbackFor(path: string): RouteDefinition | undefined {
+    const seen = typeof path === 'string' ? seenByServer(path) : undefined;
+    return seen === undefined ? undefined : this.fallbacks.find((route) => matchParams(route.path, seen) !== undefined);
+  }
+
+  /**
+   * @internal The kernel tells the router what the server owns besides routes, for {@link Router.claimedBy}: the locales a
+   * localized route's URL can name, and the paths of the health check (none when it is off). Unbound, any first segment may be a
+   * locale and the default health paths count.
+   */
+  bindServerPaths({ locales, health }: { readonly locales?: readonly string[] | undefined; readonly health: readonly string[] }): void {
+    this.#urlLocales = locales;
+    this.#healthPaths = health;
   }
 
   /**
