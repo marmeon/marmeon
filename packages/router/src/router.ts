@@ -12,7 +12,7 @@ import { Route, type RegistrarAudit } from './route.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { UrlLocales } from './url-locales.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
-import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
+import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, HttpMethod, MiddlewareHandler } from './types.ts';
 import { localLocation } from './local-location.ts';
 import { tokenizePattern } from './pattern.ts';
 import { restParam, restShape } from './rest-path.ts';
@@ -132,6 +132,47 @@ export type RouteCheck = (route: RouteDefinition, resolve: ClassResolver) => voi
 /** A route whose middleware declares a key twice (see {@link Router.middlewareProblems}). */
 export interface MiddlewareProblem extends AddsConflict {
   readonly route: RouteDefinition;
+}
+
+/** Two routes that answer the same method and path: `second` never does, because `first` is registered before it (see {@link Router.routeConflicts}). */
+export interface RouteConflict {
+  readonly first: RouteDefinition;
+  readonly second: RouteDefinition;
+  /** The methods both answer; `HEAD` counts as `GET`, which answers it. */
+  readonly methods: readonly HttpMethod[];
+  /** `rest`: `first` ends in a rest parameter (`/:path*`) that takes the path of `second`; otherwise both have the same path. */
+  readonly kind: 'same-path' | 'rest';
+}
+
+/**
+ * A route pattern with its parameter names taken out: `/notes/:id` and `/notes/:note` have the same shape, `/notes/:id{[0-9]+}`
+ * does not. Two routes of one shape and one method are the same address.
+ *
+ * @internal
+ */
+export function routeShape(path: string): string {
+  return tokenizePattern(path)
+    .map((token) => ('text' in token ? token.text : `/:${token.constraint === undefined ? '' : `{${token.constraint}}`}${token.optional ? '?' : ''}${token.rest ? '*' : ''}`))
+    .join('');
+}
+
+/**
+ * One line per conflict, naming both routes with where each was registered; `path` lets a caller redact the path. The same
+ * line shape serves any case where one route keeps another from answering.
+ *
+ * @internal
+ */
+export function describeRouteConflict({ first, second, methods, kind }: RouteConflict, path: (route: RouteDefinition) => string = showPath): string {
+  const where = (route: RouteDefinition) => (route.site ? ` (${route.site})` : '');
+  const own = second.methods.join('|');
+  const shown = second.generatedFrom
+    ? `${own} ${path(second)}${where(second)}, the address without a locale of ${path(second.generatedFrom)},`
+    : `${own} ${path(second)}${where(second)}`;
+  const reached = new Set<string>(second.methods.map((method) => (method === 'HEAD' ? 'GET' : method)));
+  const dead = methods.length === reached.size && methods.every((method) => reached.has(method));
+  const which = dead ? 'never answers' : `never answers for ${methods.join('|')}`;
+  const why = kind === 'rest' ? 'takes the rest of that path' : 'has the same path';
+  return `${shown} ${which}: ${first.methods.join('|')} ${path(first)}${where(first)} ${why} and is registered first — change the path of one of them${dead ? '' : ' (or the methods of one of them)'}. See docs/routing.md#route-order.`;
 }
 
 /** One line per conflict: the route, the key and both layers; `path` lets a caller redact the path. @internal */
@@ -356,6 +397,40 @@ export class Router {
    */
   middlewareProblems(): MiddlewareProblem[] {
     return this.#routes.flatMap((route) => addsConflicts(this.middlewareFor(route)).map((conflict) => ({ route, ...conflict })));
+  }
+
+  /**
+   * The routes that can never answer: an earlier one has the same method and the same path (parameter names aside). Loaded
+   * routes come in the order of registration, the routes without a locale last; the framework's own paths are left out.
+   * Nothing is refused here: `marmeon check` and the kernel warn.
+   *
+   * @internal
+   */
+  routeConflicts(): RouteConflict[] {
+    const conflicts: RouteConflict[] = [];
+    /** The routes seen so far in registration order; `prefix` is the shape before the rest parameter of a route that ends in one. */
+    const before: { readonly route: RouteDefinition; readonly shape: string; readonly prefix: string | undefined }[] = [];
+    // Hono answers HEAD through the GET routes: a route of HEAD alone never matches, so it keeps nothing from a later route.
+    const answered = (first: RouteDefinition): readonly HttpMethod[] => first.methods.filter((method) => method !== 'HEAD');
+    for (const route of this.registrationOrder) {
+      if (this.#framework.has(route)) continue;
+      // A localized route answers only the app's locales, so its first segment is no free parameter: it clashes with another localized route alone.
+      const shape = route.localized ? `/:{locale}${routeShape(route.path.replace(/^\/:locale/, ''))}` : routeShape(route.path);
+      const open = new Set<HttpMethod>(route.methods.map((method) => (method === 'HEAD' ? 'GET' : method)));
+      // In registration order, so each report names the earliest route that takes the methods; an earlier rest route answers its own prefix and every path below it.
+      for (const { route: first, shape: firstShape, prefix } of before) {
+        if (open.size === 0) break;
+        const kind = firstShape === shape ? 'same-path' : prefix !== undefined && (shape === prefix || shape.startsWith(`${prefix}/`)) ? 'rest' : undefined;
+        // The routes without a locale of two localized routes clash because the routes themselves do, which is reported once.
+        if (kind === undefined || (route.generatedFrom && first.generatedFrom)) continue;
+        const shared = [...open].filter((method) => answered(first).includes(method));
+        if (shared.length === 0) continue;
+        conflicts.push({ first, second: route, methods: shared, kind });
+        for (const method of shared) open.delete(method);
+      }
+      before.push({ route, shape, prefix: shape.endsWith('/:*') ? shape.slice(0, -3) : undefined });
+    }
+    return conflicts;
   }
 
   readonly #middlewareOf = new WeakMap<RouteDefinition, { readonly version: number; readonly list: readonly AnyMiddleware[] }>();

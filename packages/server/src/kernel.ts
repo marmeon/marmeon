@@ -66,6 +66,7 @@ import {
   clientIp,
   createRequestState,
   describeMiddlewareProblem,
+  describeRouteConflict,
   formatAccessProblems,
   isLiveValidation,
   keepFromSharedCaches,
@@ -267,6 +268,13 @@ export function createHttpKernel(
   // The locales a localized route can name (`@marmeon/i18n`); the start stops without them, and on a route they would shadow.
   const urlLocales = container.has(UrlLocales) ? container.make(UrlLocales) : undefined;
   checkLocalizedRoutes(router, urlLocales, (route) => redactor.path(route.path, route.path));
+  // A route no request reaches, because an earlier one has its method and path: a warning in development, the start goes on.
+  if (environment.isDevelopment()) {
+    const conflicts = router.routeConflicts();
+    if (conflicts.length > 0) {
+      logger.warn(withCode('H15', `${conflicts.length === 1 ? 'A route' : `${conflicts.length} routes`} never answer${conflicts.length === 1 ? 's' : ''}:\n${conflicts.map((conflict) => `  ${describeRouteConflict(conflict, (route) => redactor.path(route.path, route.path))}`).join('\n')}`));
+    }
+  }
   // The routes marked with `.sitemap()`: the start stops here when their sitemap could not be written.
   const appUrl = container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined;
   const listed = sitemapRoutes(router, appUrl, (route) => redactor.path(route.path, route.path));

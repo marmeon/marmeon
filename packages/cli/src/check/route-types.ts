@@ -2,7 +2,7 @@ import { relative, resolve } from 'node:path';
 import { Application, Redactor, errorCodeOf } from '@marmeon/core';
 import { withoutCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
-import { describeMiddlewareProblem } from '@marmeon/router/internal';
+import { describeMiddlewareProblem, describeRouteConflict } from '@marmeon/router/internal';
 import { RouteTypes } from '../route-types.ts';
 import type { AppCheck } from './registry.ts';
 import type { CheckProblem } from './report.ts';
@@ -62,6 +62,15 @@ export class RouteTypesCheck implements AppCheck {
         ...placeOf(route.site, this.#app.root),
         code: 'H8',
         docs: 'docs/middleware.md#listed-twice',
+      });
+    }
+    for (const conflict of this.#router.routeConflicts()) {
+      problems.push({
+        severity: 'warning',
+        message: describeRouteConflict(conflict, (r) => redactor.path(r.path, r.path)),
+        ...placeOf(conflict.second.site, this.#app.root),
+        code: 'H15',
+        docs: 'docs/routing.md#route-order',
       });
     }
     return problems;
