@@ -1,7 +1,7 @@
 import type { PageProps } from '@marmeon/http';
 import { Head, Link, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowFeatureController } from '../controllers/ShowFeatureController.ts';
-import { LanguageSwitch } from '../layouts/LanguageSwitch.tsx';
+import { LanguageSwitch } from '../../../layouts/LanguageSwitch.tsx';
 
 /** One feature of the public list. */
 export default function Feature({ feature }: PageProps<ShowFeatureController>) {

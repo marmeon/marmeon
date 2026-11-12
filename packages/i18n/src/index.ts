@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { canonicalTimeZone, PreferredLocale } from '@marmeon/core/internal';
 import { editableResponse, HttpError, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
-import { fillPath, PageAlternates, UrlLocales } from '@marmeon/router/internal';
+import { fillPath, PageAlternates, UrlLocales, type PageAlternatesSource } from '@marmeon/router/internal';
 import { Session } from '@marmeon/session';
 import { Catalog, MessageError } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
@@ -198,10 +198,10 @@ export class SetLocale {
   readonly #session: () => Session;
   readonly #preference: LocalePreference;
   readonly #locales: Locales;
-  readonly #alternates: (paths: Readonly<Record<string, string>>) => void;
+  readonly #alternates: (paths: Readonly<Record<string, string>> | undefined, source: PageAlternatesSource) => void;
 
   /** Built by the container: `SetLocale` is attached to a group as a class, never constructed by an app. @internal */
-  constructor(current: CurrentLocale, session: () => Session, preference: LocalePreference, locales: Locales, alternates: (paths: Readonly<Record<string, string>>) => void) {
+  constructor(current: CurrentLocale, session: () => Session, preference: LocalePreference, locales: Locales, alternates: (paths: Readonly<Record<string, string>> | undefined, source: PageAlternatesSource) => void) {
     this.#current = current;
     this.#session = session;
     this.#preference = preference;
@@ -246,8 +246,8 @@ export class SetLocale {
     }
     this.#current.set(locale);
     this.#current.localized = localized;
-    const alternates = fromUrl === undefined ? undefined : alternatesOf(ctx, locales.supported);
-    if (alternates) this.#alternates(alternates);
+    // Also when no path can be derived: a controller may still name the versions itself (`PageAlternates.replace()`).
+    if (fromUrl !== undefined) this.#alternates(alternatesOf(ctx, locales.supported), { name: ctx.route.routeName ?? ctx.route.path, pattern: ctx.route.path, search: new URL(ctx.request.url).search, locales: locales.supported });
 
     const response = editableResponse(await next());
     // Read again: `RequestLocale` may have changed it since.
@@ -507,7 +507,7 @@ export class I18nServiceProvider implements ServiceProvider {
     }));
     container.scoped(PageAlternates);
     // Resolved when the chain needs it: a localized route in a group without a session never touches one.
-    container.scoped(SetLocale, (c) => new SetLocale(c.make(CurrentLocale), () => c.make(Session), c.make(LocalePreference), locales, (paths) => c.make(PageAlternates).set(paths)));
+    container.scoped(SetLocale, (c) => new SetLocale(c.make(CurrentLocale), () => c.make(Session), c.make(LocalePreference), locales, (paths, source) => c.make(PageAlternates).set(paths, source)));
     // What `Route.localized()` needs: the locales a URL can name, and where the URL without one leads.
     container.instance(UrlLocales, {
       get supported() {

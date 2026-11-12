@@ -355,6 +355,8 @@ export interface OnceProp<T> extends PageProp<'once', T> {
 // OptionalProp
 export interface OptionalProp<T> extends PageProp<'optional', T> {
 }
+// PageAlternates
+export { PageAlternates } from '@marmeon/router';
 // PageObject
 export interface PageObject {
     component: string;

@@ -62,7 +62,7 @@ type Entries = SitemapEntries<Record<string, string | number>>;
 /**
  * The sitemap and robots.txt of `routes`; their URLs begin with `appUrl`. A localized route is listed once per entry and locale
  * (`locales`, each in its URL spelling), every `<url>` naming all of its language versions and the address without a locale as
- * `x-default`. `claimed` says whether another route, a package or the framework answers a decoded path in the route's place
+ * `x-default`; an entry that names its `locale` is that language's `<url>` alone, with the `alternates` it gives. `claimed` says whether another route, a package or the framework answers a decoded path in the route's place
  * (a fallback's entry on such a path is left out, with one warning per route).
  */
 export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], claimed, logger, report }: { appUrl: string; locales?: readonly string[]; claimed?: (route: RouteDefinition, path: string) => boolean; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
@@ -81,29 +81,50 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
     warnedAlternates.add(route);
     logger.warn(message);
   };
+  const warnedDefault = new Set<RouteDefinition>();
   const warnedClaimed = new Set<RouteDefinition>();
   let truncated = false;
 
   /**
-   * The `<xhtml:link>`s for the `alternates` of an entry of a route that is not localized. Every address is built like the
-   * `<loc>`: `APP_URL`, `fillPath` and the route's own pattern. One bad key or value drops all of the entry's links.
+   * The `<xhtml:link>`s for the `alternates` of an entry. Every address is built like the `<loc>`: `APP_URL`, `fillPath` and the
+   * route's own pattern. On a localized route a value with `locale` is that language's page; one without is the address
+   * without a locale for `x-default`, and the key's own language for any other key. One bad key or value drops all of the
+   * entry's links.
    */
   function alternatesOf(route: RouteDefinition, name: string, alternates: Readonly<Record<string, unknown>>): string {
     try {
       const links = Object.entries(alternates).map(([language, params]) => {
         if (!HREFLANG.test(language)) throw new Error('the key is no language tag');
         if (typeof params !== 'object' || params === null) throw new Error('the value is no parameters object');
-        const path = fillPath(name, route.path, params as Record<string, string | number>).path;
-        if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+        let pattern = route.path;
+        let filled = params as Record<string, string | number>;
+        if (route.localized) {
+          const own = (params as Record<string, unknown>).locale;
+          // The app's locales only: a value never chooses a prefix of its own.
+          // Any key but `x-default` is its own locale: a value naming another one contradicts its key.
+          if (language !== 'x-default' && own !== undefined && own !== language) throw new Error('the locale differs from the key');
+          const locale = language === 'x-default' ? own : language;
+          if (locale !== undefined && (typeof locale !== 'string' || !locales.includes(locale))) throw new Error('the locale is not a supported one');
+          if (locale === undefined) pattern = route.path.replace(/^\/:locale/, '') || '/';
+          filled = { ...filled, ...(locale === undefined ? {} : { locale }) };
+        }
+        const path = fillPath(name, pattern, filled).path;
+        if (!matchesPath(pattern, decodeURIComponent(path))) throw new Error('the path does not match the route');
         if (claimed?.(route, decodeURIComponent(path))) throw new Error('another route answers the path');
         return `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`;
       });
       return links.join('');
     } catch {
-      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route, or one that another route or the framework answers. See docs/seo.md#sitemap-and-robotstxt.`);
+      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route (or a locale other than its key's), or one that another route or the framework answers. See docs/seo.md#sitemap-and-robotstxt.`);
       return '';
     }
   }
+
+  /**
+   * For a localized route without parameters of its own whose hook names some entries by `locale` and others not: the locales
+   * the named ones list, by every entry of the route. These entries all carry the full automatic set of links.
+   */
+  const takenOver = new WeakMap<object, ReadonlySet<unknown>>();
 
   async function* entriesOf(route: RouteDefinition): AsyncGenerator<SitemapEntry<Record<string, string | number>>> {
     // Its own scope: a controller built for the sitemap shares nothing with a request.
@@ -119,13 +140,34 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
       yield* entries;
       return;
     }
-    // A page without parameters is one entry; its hook only says when it changed.
+    // A page without parameters is one entry; its hook only says when it changed. On a localized route an entry that names its
+    // `locale` is that language's page and passes through, one per language (the latest date): it replaces the generated entry
+    // for its language, and when the hook has entries without `locale` too, every entry carries the same links.
     let latest: Date | undefined;
-    for await (const entry of entries) {
+    let plain = false;
+    const dateOf = (entry: SitemapEntry<Record<string, string | number>>): Date | undefined => {
       const date = entry?.lastModified;
-      if (date instanceof Date && !Number.isNaN(date.getTime()) && (!latest || date > latest)) latest = date;
+      return date instanceof Date && !Number.isNaN(date.getTime()) ? date : undefined;
+    };
+    const named = new Map<unknown, SitemapEntry<Record<string, string | number>>>();
+    for await (const entry of entries) {
+      const locale = route.localized ? (entry?.params as Record<string, unknown> | undefined)?.locale : undefined;
+      const date = dateOf(entry);
+      if (locale !== undefined) {
+        const kept = named.get(locale);
+        const keptDate = kept && dateOf(kept);
+        if (!kept || (date && (!keptDate || date > keptDate))) named.set(locale, entry);
+        continue;
+      }
+      plain = true;
+      if (date && (!latest || date > latest)) latest = date;
     }
-    yield { params: {}, ...(latest ? { lastModified: latest } : {}) };
+    if (plain) for (const entry of named.values()) takenOver.set(entry, new Set(named.keys()));
+    yield* named.values();
+    if (!plain && named.size > 0) return;
+    const generated: SitemapEntry<Record<string, string | number>> = { params: {}, ...(latest ? { lastModified: latest } : {}) };
+    if (named.size > 0) takenOver.set(generated, new Set(named.keys()));
+    yield generated;
   }
 
   async function build(): Promise<string> {
@@ -136,8 +178,19 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
     collect: for (const route of routes) {
       const name = route.routeName ?? route.path;
       for await (const entry of entriesOf(route)) {
-        // A localized route's hook names the page, not its language: one `<url>` for each of the app's locales.
-        const versions = route.localized ? locales : [undefined];
+        // An entry of a localized route that names its `locale` is that language's page alone, with the versions it lists itself.
+        const ownLocale = route.localized ? (entry.params as Record<string, unknown>).locale : undefined;
+        if (ownLocale !== undefined && (typeof ownLocale !== 'string' || !locales.includes(ownLocale))) {
+          warnOnce(route, `A sitemap entry of ${route.methods.join('|')} ${route.path} names a locale the app does not support, so it is left out. See docs/seo.md#sitemap-and-robotstxt.`);
+          continue;
+        }
+        // Otherwise a localized route's hook names the page, not its language: one `<url>` for each of the app's locales.
+        const taken = takenOver.get(entry);
+        // The links name every language the route lists when the entry is generated, or when the hook also has entries without a locale.
+        const automatic = route.localized && (ownLocale === undefined || taken !== undefined);
+        const versions = route.localized ? (automatic ? locales : [ownLocale as string]) : [undefined];
+        const listed = versions.filter((locale) => ownLocale !== undefined ? locale === ownLocale : !taken?.has(locale));
+        if (listed.length === 0) continue;
         let paths: string[];
         let unprefixed: string | undefined;
         try {
@@ -148,7 +201,7 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
             if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
             return path;
           });
-          if (route.localized) unprefixed = fillPath(name, route.path.replace(/^\/:locale/, '') || '/', entry.params as Record<string, string | number>).path;
+          if (automatic) unprefixed = fillPath(name, route.path.replace(/^\/:locale/, '') || '/', entry.params as Record<string, string | number>).path;
         } catch {
           warnOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} include parameters that name no page of the route (a missing one, a dot segment, one its constraint refuses); they are left out.`);
           continue;
@@ -162,23 +215,31 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
           continue;
         }
         // The limit counts URLs, each locale one: an entry that does not fit whole is left out, so no `<url>` names a version that is missing.
-        if (count + paths.length > SITEMAP_LIMIT_URLS) {
+        if (count + listed.length > SITEMAP_LIMIT_URLS) {
           if (!truncated) logger.warn(withCode('H10', `The sitemap lists ${SITEMAP_LIMIT_URLS} URLs, the most one file may hold: the rest is left out. See docs/seo.md#sitemap-and-robotstxt.`));
           truncated = true;
           break collect;
         }
         const lastmod = day(entry.lastModified);
-        let alternates = unprefixed === undefined ? '' : [...versions.map((locale, index) => [locale!, paths[index]!] as const), ['x-default', unprefixed] as const].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
-        if (route.localized && entry.alternates !== undefined) {
-          warnAlternatesOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} name alternates, which are ignored: a localized route's versions come from its locales. See docs/seo.md#sitemap-and-robotstxt.`);
-        } else if (!route.localized && entry.alternates !== undefined) {
+        let alternates = '';
+        if (automatic) {
+          // The address without a locale is `x-default` only where the route itself answers it: a path another route takes would send the visitor elsewhere.
+          const defaultTaken = unprefixed !== undefined && claimed?.(route, decodeURIComponent(unprefixed)) === true;
+          if (defaultTaken && !warnedDefault.has(route)) {
+            warnedDefault.add(route);
+            logger.warn(`The x-default of a sitemap entry of ${route.methods.join('|')} ${route.path} is left out: another route or the framework answers the address without a locale. See docs/seo.md#sitemap-and-robotstxt.`);
+          }
+          alternates = [...versions.map((locale, index) => [locale!, paths[index]!] as const), ...(defaultTaken ? [] : [['x-default', unprefixed!] as const])].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
+          if (entry.alternates !== undefined) warnAlternatesOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} name alternates, which are ignored: this route lists a page in every language, with its versions derived from the locales. Give every entry a locale to list its versions yourself. See docs/seo.md#sitemap-and-robotstxt.`);
+        } else if (entry.alternates !== undefined) {
           alternates = alternatesOf(route, name, entry.alternates);
         }
         if (alternates) localizedSeen = true;
-        for (const path of paths) {
+        const emitted = paths.filter((_, index) => listed.includes(versions[index]));
+        for (const path of emitted) {
           lines.push(`  <url><loc>${escapeXml(new URL(path, appUrl).href)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}${alternates}</url>`);
         }
-        count += paths.length;
+        count += emitted.length;
       }
     }
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${localizedSeen ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : ''}>\n${lines.join('\n')}${lines.length > 0 ? '\n' : ''}</urlset>\n`;

@@ -221,6 +221,12 @@ export type Next<TAdd extends object> = unknown extends TAdd ? (extension?: TAdd
 export type NoReservedKeys = {
     readonly [K in ReservedContextKey]?: never;
 };
+// PageAlternates
+export declare class PageAlternates {
+    #private;
+    replace(versions: Readonly<Record<string, Readonly<Record<string, Param>>>>): void;
+    none(): void;
+}
 // Param
 export type Param = string | number;
 // ParamsOf
