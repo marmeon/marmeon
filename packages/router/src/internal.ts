@@ -8,7 +8,7 @@ export type { RouteLookup } from './url.ts';
 export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './access.ts';
 export { ensuresOf } from './ensures.ts';
 export type { DispatchOptions, ResponseFactory } from './router.ts';
-export { defaultToResponse, describeMiddlewareProblem, FRAMEWORK_ROUTES, isControllerClass, isIslandAction } from './router.ts';
+export { defaultToResponse, describeMiddlewareProblem, describeRouteConflict, FRAMEWORK_ROUTES, isControllerClass, isIslandAction } from './router.ts';
 export { PageAlternates } from './page-alternates.ts';
 export { UrlLocales } from './url-locales.ts';
 export { matchParams, tokenizePattern } from './pattern.ts';

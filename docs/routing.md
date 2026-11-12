@@ -271,6 +271,13 @@ export default defineRoutes((Root) => {
 In the other order, `/notes/drafts` would reach `ShowNoteController` with `drafts` as the note. A trailing slash makes a
 different path: `/notes/` does not match `/notes`.
 
+Two routes with the same method and path can never both answer: the first one registered takes every request, and the second
+is dead code. `marmeon check` warns about it (`route-types`, [H15](errors.md#server-error-codes)) and so does the development
+server at start, naming both routes and where each was registered. Parameter names do not make a difference (`/notes/:id` and
+`/notes/:note` are one path), their constraints do (`/notes/:id{[0-9]+}` is another). `any()` counts for each method it lists,
+`HEAD` counts as `GET`, and a [localized](#routes-under-a-locale) route also holds its address without a locale. The check compares each route's own path form: it does not expand optional parameters, so `/a/:x?` against a later `/a` is not reported, and a localized route is compared with other localized routes only. It is a
+warning only: the app starts and the first route keeps answering. Remove one of the routes or change its path.
+
 ## Named routes
 
 A name gives a route an identity that does not change when its path does. Links, redirects and forms refer to routes by name:

@@ -332,6 +332,27 @@ export default defineModule({ name: 'twice', routes: defineRoutes((Route) => { R
     expect(problem.message).toContain('GET /twice: "first" and "second" both add "team" to the context');
   });
 
+  it('warns, with H15 and the place of the second, about two routes with the same method and path', () => {
+    const module = (name: string, body: string) => `
+import { defineModule } from '@marmeon/core';
+import { defineRoutes, everyone } from '@marmeon/router';
+export default defineModule({ name: '${name}', routes: defineRoutes((Route) => {
+${body}
+}) });
+`;
+    const root = app({
+      files: {
+        'modules/first/index.ts': module('first', "  Route.authorize(everyone).get('/notes/:id', () => 'a').name('first.show');"),
+        'modules/second/index.ts': module('second', "  Route.authorize(everyone).get('/notes/:note', () => 'b').name('second.show');"),
+      },
+    });
+    writeFileSync(join(root, 'bootstrap/app.ts'), readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').replace("import { AppConfig }", "import first from '#modules/first';\nimport second from '#modules/second';\nimport { AppConfig }").replace('modules: [system]', 'modules: [system, first, second]'));
+    const { stdout } = check(root, ['--only=route-types', '--json']);
+    const problem = reportOf(stdout, 'route-types').problems.find((found: { code: string | null }) => found.code === 'H15');
+    expect(problem).toMatchObject({ severity: 'warning', code: 'H15', file: 'modules/second/index.ts', line: 5 });
+    expect(problem.message).toContain('GET /notes/:note (modules/second/index.ts:5) never answers: GET /notes/:id (modules/first/index.ts:5)');
+  });
+
   it('reports out-of-date generated types with the command that fixes them, and nothing once they are current', () => {
     const root = migrated({ files: { 'modules/system/jobs/Send.ts': "export class SendJob {\n  static readonly job = 'system.send';\n}\n" } });
     rmSync(join(root, 'bootstrap/routes.ts'));
