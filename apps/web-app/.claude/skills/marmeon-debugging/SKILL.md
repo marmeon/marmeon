@@ -72,14 +72,15 @@ Ask only for what the error points at.
   In development a pending migration makes every query fail with D2 until `marmeon migrate` has run; running it on your machine is
   the fix (`docs/migrations.md#while-you-develop`). A migration the status says changed after it ran: do not edit it, put the file back and
   write a new one (`docs/migrations.md#a-migration-that-changed-after-it-ran`; `marmeon-migration` has the steps).
-- Which table holds a thing, and whether the connection is the one you think: tool `database` (`table` narrows it), or `marmeon db:show --json`. It
-  gives the driver, the server version and the tables with their column and row counts, and no row: use it before `query` to find the table. The terminal command also prints
-  `target`, where the connection points (host, user, database, path): do not copy it into your answer
-  (`docs/mcp.md#database`, `docs/database.md#inspecting-a-connection`).
+- Which table holds a thing, and whether the connection is the one you think: tool `database` (`table` narrows it). It gives the driver,
+  the server version and the tables with their column and row counts, and no row: use it before `query` to find the table. Do not run
+  `marmeon db:show` yourself instead: it also prints where the connection points (host, user, database, path), and that lands in your
+  context. Without the tool, ask the developer to run it (`docs/mcp.md#database`, `docs/database.md#inspecting-a-connection`).
 - What a command or generator takes: tool `commands`, or `marmeon list --json`. It lists the commands, the modules' too, with their options: look the
   flags up there instead of guessing them (`docs/mcp.md#commands`, `docs/console.md#machine-readable-output`).
-- Whether a variable is configured ("is X set?"): the `environment` field of `app_overview`, one entry per variable the app reads, with `set`, `required` and
+- Whether a variable is configured ("is X set?"): the `environment` field of `app_overview`, one entry per variable a configuration declares, with `set`, `required` and
   `hasDefault`; `runtime` has the versions and `nodeEnv`. It never holds a value: do not ask for one and do not read `.env` (`docs/mcp.md#app_overview`).
+  A variable missing from it is not proof that it is unset: a configuration that validates its environment with its own schema lists none and adds a `warnings` entry.
 - Where a thing lives, which listener runs on an event, what is scheduled: tool `app_overview` (`module` narrows it), or
   `marmeon modules:list` and `marmeon schedule:list`. It lists names and no values; a listener that a provider adds in `boot()` is not
   in it (`docs/modules.md#listing-the-modules`, `docs/scheduling.md#running-the-scheduler`).
