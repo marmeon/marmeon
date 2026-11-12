@@ -54,6 +54,9 @@ function day(date: Date | undefined): string | undefined {
 const XML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
 const escapeXml = (text: string): string => text.replace(/[&<>"']/g, (char) => XML_ESCAPES[char]!);
 
+/** A language tag as hreflang takes it (`de`, `en-GB`, `x-default`): nothing that could leave the attribute it is written into. */
+const HREFLANG = /^(?:x-default|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*)$/;
+
 type Entries = SitemapEntries<Record<string, string | number>>;
 
 /**
@@ -70,7 +73,34 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
     warned.add(route);
     logger.warn(message);
   };
+  /** The same for the `alternates` of an entry, apart from the warnings about the entry's parameters. */
+  const warnedAlternates = new Set<RouteDefinition>();
+  const warnAlternatesOnce = (route: RouteDefinition, message: string): void => {
+    if (warnedAlternates.has(route)) return;
+    warnedAlternates.add(route);
+    logger.warn(message);
+  };
   let truncated = false;
+
+  /**
+   * The `<xhtml:link>`s for the `alternates` of an entry of a route that is not localized. Every address is built like the
+   * `<loc>`: `APP_URL`, `fillPath` and the route's own pattern. One bad key or value drops all of the entry's links.
+   */
+  function alternatesOf(route: RouteDefinition, name: string, alternates: Readonly<Record<string, unknown>>): string {
+    try {
+      const links = Object.entries(alternates).map(([language, params]) => {
+        if (!HREFLANG.test(language)) throw new Error('the key is no language tag');
+        if (typeof params !== 'object' || params === null) throw new Error('the value is no parameters object');
+        const path = fillPath(name, route.path, params as Record<string, string | number>).path;
+        if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+        return `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`;
+      });
+      return links.join('');
+    } catch {
+      warnAlternatesOnce(route, `The alternates of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: a key is no language tag (de, en-GB, x-default), or a value names no page of the route. See docs/seo.md#sitemap-and-robotstxt.`);
+      return '';
+    }
+  }
 
   async function* entriesOf(route: RouteDefinition): AsyncGenerator<SitemapEntry<Record<string, string | number>>> {
     // Its own scope: a controller built for the sitemap shares nothing with a request.
@@ -127,7 +157,12 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
           break collect;
         }
         const lastmod = day(entry.lastModified);
-        const alternates = unprefixed === undefined ? '' : [...versions.map((locale, index) => [locale!, paths[index]!] as const), ['x-default', unprefixed] as const].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
+        let alternates = unprefixed === undefined ? '' : [...versions.map((locale, index) => [locale!, paths[index]!] as const), ['x-default', unprefixed] as const].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
+        if (route.localized && entry.alternates !== undefined) {
+          warnAlternatesOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} name alternates, which are ignored: a localized route's versions come from its locales. See docs/seo.md#sitemap-and-robotstxt.`);
+        } else if (!route.localized && entry.alternates !== undefined) {
+          alternates = alternatesOf(route, name, entry.alternates);
+        }
         if (alternates) localizedSeen = true;
         for (const path of paths) {
           lines.push(`  <url><loc>${escapeXml(new URL(path, appUrl).href)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}${alternates}</url>`);

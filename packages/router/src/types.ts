@@ -285,6 +285,11 @@ export type AnyAction = Action<any, any, any>;
 export interface SitemapEntry<TParams = Record<string, string | number>> {
   readonly params: TParams;
   readonly lastModified?: Date;
+  /**
+   * The language versions of this page, itself included, by hreflang (`de`, `en-GB`, `x-default`), each as the parameters of the same
+   * route; written as `<xhtml:link>`s. See docs/seo.md#sitemap-and-robotstxt.
+   */
+  readonly alternates?: Readonly<Record<string, TParams>>;
 }
 
 /**

@@ -37,7 +37,7 @@ class Reporting {
 }
 
 /** What the hooks of the controllers below return — set per test. */
-const state = { slugs: [] as { params: { slug: string }; lastModified?: Date }[], calls: 0, fail: false, pause: 0 };
+const state = { slugs: [] as { params: { slug: string }; lastModified?: Date; alternates?: Record<string, { slug: string }> }[], calls: 0, fail: false, pause: 0 };
 
 class PostController {
   handle() {
@@ -345,6 +345,90 @@ describe('/sitemap.xml', () => {
       } finally {
         await application.shutdown();
       }
+    });
+  });
+
+  describe('alternates of an entry', () => {
+    const help = openRoutes((Route) => void Route.get('/help/:slug{[a-z-]+}', PostController).name('help.show').sitemap());
+    const links = (xml: string): string[] => [...xml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"\/>/g)].map((match) => `${match[1]} ${match[2]}`);
+    const sitemapOf = async (routes: RouteDefinitions, urlLocales?: UrlLocales) => {
+      const { application, create, logger } = await boot({ routes, ...(urlLocales ? { urlLocales } : {}) });
+      try {
+        return { xml: await (await create().request('/sitemap.xml')).text(), logger };
+      } finally {
+        await application.shutdown();
+      }
+    };
+
+    it('writes a link for each version of a route that is not localized, and declares the namespace', async () => {
+      state.slugs = [{ params: { slug: 'about' }, alternates: { en: { slug: 'about' }, de: { slug: 'ueber-uns' }, 'x-default': { slug: 'about' } } }];
+      const { xml, logger } = await sitemapOf(help);
+      expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+      expect(links(xml)).toEqual([`en ${url}/help/about`, `de ${url}/help/ueber-uns`, `x-default ${url}/help/about`]);
+      expect(locs(xml)).toEqual([`${url}/help/about`]);
+      expect(logger.warnings).toEqual([]);
+    });
+
+    it('is byte for byte as before without alternates', async () => {
+      state.slugs = [{ params: { slug: 'a' } }];
+      const { xml } = await sitemapOf(help);
+      expect(xml).toBe(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${url}/help/a</loc></url>\n</urlset>\n`);
+    });
+
+    it('leaves out all links of an entry with a key that is no language tag, and keeps the entry', async () => {
+      state.slugs = [
+        { params: { slug: 'bad' } },
+        { params: { slug: 'good' }, alternates: { 'en-GB': { slug: 'good' } } },
+      ];
+      for (const key of ['"><evil/>', 'a"b', 'de<', 'e', 'de_DE', 'x-defaults', ' de', '']) {
+        state.slugs[0] = { params: { slug: 'bad' }, alternates: { [key]: { slug: 'bad' } } };
+        const { xml, logger } = await sitemapOf(help);
+        expect(locs(xml)).toEqual([`${url}/help/bad`, `${url}/help/good`]);
+        expect(links(xml)).toEqual([`en-GB ${url}/help/good`]);
+        expect(xml).not.toContain('evil');
+        expect(logger.warnings).toHaveLength(1);
+      }
+    });
+
+    it('leaves out all links of an entry with parameters the constraint refuses, and keeps the entry', async () => {
+      state.slugs = [
+        { params: { slug: 'a' }, alternates: { en: { slug: 'a' }, de: { slug: 'UPPER' } } },
+        { params: { slug: 'b' }, alternates: { de: { slug: '..' } } },
+        { params: { slug: 'c' }, alternates: { de: { slug: 'c/d' } } },
+        { params: { slug: 'd' }, alternates: { de: {} as { slug: string } } },
+        { params: { slug: 'e' }, alternates: { de: 'https://evil.example/x' as unknown as { slug: string } } },
+      ];
+      const { xml, logger } = await sitemapOf(help);
+      expect(locs(xml)).toEqual(['a', 'b', 'c', 'd', 'e'].map((slug) => `${url}/help/${slug}`));
+      expect(links(xml)).toEqual([]);
+      expect(xml).not.toContain('evil');
+      expect(xml).not.toContain('xmlns:xhtml');
+      expect(logger.warnings).toHaveLength(1);
+    });
+
+    it('builds every address from APP_URL, whatever an alternate says', async () => {
+      state.slugs = [{ params: { slug: 'a' }, alternates: { de: { slug: 'a', host: 'evil.example', locale: '//evil.example' } as unknown as { slug: string } } }];
+      const { xml } = await sitemapOf(help);
+      expect(links(xml)).toEqual([`de ${url}/help/a`]);
+      expect(xml).not.toContain('evil');
+    });
+
+    it('ignores the alternates of a localized route, and warns once', async () => {
+      const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'en' };
+      state.slugs = [{ params: { slug: 'a' }, alternates: { en: { slug: 'a' }, fr: { slug: 'x' } } }, { params: { slug: 'b' }, alternates: { en: { slug: 'b' } } }];
+      const { xml, logger } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/features/:slug', PostController).sitemap()), urlLocales);
+      expect(links(xml.split('<url>').slice(1, 2).join(''))).toEqual([`en ${url}/en/features/a`, `de ${url}/de/features/a`, `x-default ${url}/features/a`]);
+      expect(links(xml)).toHaveLength(12);
+      expect(xml).not.toContain('fr');
+      expect(logger.warnings).toHaveLength(1);
+    });
+
+    it('does not count the links against the limit', async () => {
+      const word = (index: number): string => [...index.toString(26)].map((char) => String.fromCharCode(97 + Number.parseInt(char, 26))).join('');
+      state.slugs = Array.from({ length: SITEMAP_LIMIT_URLS }, (_, index) => ({ params: { slug: word(index) }, alternates: { en: { slug: word(index) }, de: { slug: `q${word(index)}` } } }));
+      const { xml, logger } = await sitemapOf(help);
+      expect(locs(xml)).toHaveLength(SITEMAP_LIMIT_URLS);
+      expect(logger.warnings).toEqual([]);
     });
   });
 
