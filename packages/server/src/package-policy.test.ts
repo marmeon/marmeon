@@ -1,6 +1,7 @@
-import { createApplication, defineModule } from '@marmeon/core';
+import { createApplication, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { contentSecurityPolicy, HttpServiceProvider, view } from '@marmeon/http';
+import { cacheControl, contentSecurityPolicy, HttpServiceProvider, SharedData, view } from '@marmeon/http';
+import { defineMiddleware, type HttpContext, type Next } from '@marmeon/router';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { describe, expect, it } from 'vitest';
 import { packageTemplate } from './documents.ts';
@@ -18,10 +19,34 @@ interface Setup {
   renderer?: Partial<DocumentRendererOptions>;
   global?: unknown[];
   group?: unknown;
+  warnings?: string[];
 }
 
+/** Fails after the package document was made, and then makes every shared prop fail, so the error page cannot be built in the request's scope. */
+class FailsAfterwards {
+  readonly #shared: SharedData;
+  constructor(shared: SharedData) {
+    this.#shared = shared;
+  }
+  async handle(_ctx: HttpContext, next: Next<{}>): Promise<Response> {
+    const share = this.#shared as unknown as { share(key: string, value: unknown): void };
+    share.share('broken', () => 1);
+    await next();
+    // Shared props resolve once per request: sharing again is what makes the error page's evaluation fail.
+    share.share('broken', () => {
+      throw new Error('shared prop failed');
+    });
+    throw new Error('late');
+  }
+}
+
+const quiet = (warnings: string[]): Logger => {
+  const logger: Logger = { debug() {}, info() {}, warn: (message: string, _context?: LogContext) => void warnings.push(message), error() {}, child: () => logger };
+  return logger;
+};
+
 /** `/status` renders in the package's document, `/` in the app's, `/broken` fails in a package's page, `/boom` throws before any page. */
-async function appWith({ kernel = {}, renderer = {}, global = [], group }: Setup = {}) {
+async function appWith({ kernel = {}, renderer = {}, global = [], group, warnings }: Setup = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -36,11 +61,21 @@ async function appWith({ kernel = {}, renderer = {}, global = [], group }: Setup
             throw new Error('boom');
           });
           Route.get('/status', () => view('status::Index', {}));
+          Route.middleware(defineMiddleware('Late', async (_ctx, next) => {
+            await next();
+            throw new Error('late');
+          })).get('/status/late', () => view('status::Index', {}));
+          Route.middleware(FailsAfterwards).get('/status/broken', () => view('status::Index', {}));
+          Route.middleware(cacheControl('public, max-age=60')).get('/status/public', () => view('status::Index', {}));
+          Route.middleware(cacheControl('s-maxage=60')).get('/status/shared', () => view('status::Index', {}));
           (group ? Route.middleware(group as never) : Route).get('/status/area', () => view('status::Area', {}));
         }),
       }),
     ],
-  }, { env: { APP_KEY: generateKey() } });
+  }, {
+    env: { APP_KEY: generateKey() },
+    ...(warnings ? { override: (container: Container) => container.instance(Logger, quiet(warnings)) } : {}),
+  });
   const documentRenderer = createDocumentRenderer({
     template: () => FALLBACK_TEMPLATE,
     ssr: () => async (page) => {
@@ -116,6 +151,45 @@ describe("the document of a package's entry", () => {
     const nonce = STRICT.exec(response.headers.get('content-security-policy')!)![1]!;
     expect(nonceOf(await response.text())).toBe(nonce);
     expect(response.headers.get('content-security-policy-report-only')).toMatch(STRICT);
+  });
+
+  it('keeps the strict default and warns once when the document is cacheable by a shared cache', async () => {
+    const warnings: string[] = [];
+    const app = await appWith({ warnings });
+    for (const path of ['/status/public', '/status/public', '/status/shared']) {
+      const response = await app.request(path, { headers: html });
+      expect(response.headers.get('content-security-policy')).toMatch(STRICT);
+    }
+    expect(warnings.filter((message) => message.includes('cached publicly'))[0]).toContain('give its route group a contentSecurityPolicy() without NONCE');
+    expect(warnings.filter((message) => message.includes('cached publicly'))[0]).not.toContain('leave it out of');
+    expect(warnings.filter((message) => message.includes('cached publicly'))).toEqual([
+      expect.stringContaining('/status/public is cached publicly (Cache-Control: public, max-age=60) and carries a CSP nonce'),
+      expect.stringContaining('/status/shared is cached publicly (Cache-Control: s-maxage=60) and carries a CSP nonce'),
+    ]);
+  });
+
+  it('does not warn for a private document', async () => {
+    const warnings: string[] = [];
+    const app = await appWith({ warnings });
+    await app.request('/status', { headers: html });
+    expect(warnings.filter((message) => message.includes('cached publicly'))).toEqual([]);
+  });
+
+  it("does not give the app's error document the default when a middleware fails after the package document was made", async () => {
+    const app = await appWith();
+    const response = await app.request('/status/late', { headers: html });
+    expect(response.status).toBe(500);
+    const body = await response.text();
+    expect(body).not.toContain('pkg-status-a.js');
+    expect(response.headers.has('content-security-policy')).toBe(false);
+  });
+
+  it("does not give the app's fallback error page the default when the error page cannot be built in the request's scope", async () => {
+    const app = await appWith();
+    const response = await app.request('/status/broken', { headers: html });
+        expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain('pkg-status-a.js');
+    expect(response.headers.has('content-security-policy')).toBe(false);
   });
 
   it('is not sent to a visit, which gets the page as JSON and no document', async () => {

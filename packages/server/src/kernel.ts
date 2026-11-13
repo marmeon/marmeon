@@ -48,6 +48,7 @@ import {
   AssetVersion,
   LIVE_PATH,
   SESSION_PATH,
+  warnIfSharedNonce,
   withDefaultPolicy,
   type PropOrigins,
 } from '@marmeon/http/internal';
@@ -87,7 +88,7 @@ import { overrideMethod } from './method-override.ts';
 import { islandOpenedByItself, islandRefusalMessage, refuseIslandRequest } from './island-gate.ts';
 import { protocolGate } from './protocol-gate.ts';
 import { createProductionRenderer } from './production.ts';
-import { showedPackageDocument } from './documents.ts';
+import { showedPackageDocument, unmarkPackageDocument } from './documents.ts';
 import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
@@ -312,6 +313,7 @@ export function createHttpKernel(
   /** The pattern of the route a request reached; the log line and the error report mask the path by it when the request was refused before it matched. */
   const refusedBy = new WeakMap<Request, string>();
   const sharedCacheWarnings = new SharedCacheWarnings();
+  const packageCacheWarned = new Set<string>();
   const routeHandlers = new Map<unknown, RouteDefinition>();
 
   /**
@@ -568,6 +570,8 @@ export function createHttpKernel(
       // the request's scope, so with the error's own props only; server rendering failing is no reason (the browser
       // renders the page then). Only if even that fails: a plain answer rather than none.
       logger.error('Rendering the error response failed', { exception: redactor.text(String(failure)) });
+      // The fallback page is the app's, rendered without the scope: a package document made earlier in this request is not the answer.
+      if (scope?.has(RequestNonce)) unmarkPackageDocument(scope.make(RequestNonce));
       try {
         return await toResponse(handler.render(error, request, { debug: showsDebug(failed) }), { request });
       } catch {
@@ -863,7 +867,7 @@ export function createHttpKernel(
     // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
     else if (isVisit(request.headers) || upload) response = await leaveForeignRedirect(response, request);
     // A package's document without a policy of its own — after every middleware, so a route group's or the app's policy came first and stays.
-    if (showedPackageDocument(nonce)) response = withDefaultPolicy(response, nonce.value);
+    if (showedPackageDocument(nonce)) response = withDefaultPolicy(response, nonce.value, (document) => warnIfSharedNonce(logger, packageCacheWarned, matched.get(request)?.path ?? new URL(request.url).pathname, document, "Keep the document private (no cacheControl('public …')), or give its route group a contentSecurityPolicy() without NONCE."));
     // Cookies queued during the request reach the client whatever the outcome.
     let final = await withQueuedCookies(response, state.cookies);
     // An answer that sets a cookie is one person's: a shared cache that stored it would hand the cookie to the next visitor.

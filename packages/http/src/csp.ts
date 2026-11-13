@@ -133,15 +133,12 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     }
 
     #warnIfShared(ctx: HttpContext, response: Response): void {
-      const cache = response.headers.get('cache-control')?.toLowerCase() ?? '';
-      if (!/\bpublic\b|\bs-maxage\b/.test(cache)) return;
-      const path = ctx.route?.path ?? new URL(ctx.request.url).pathname;
-      if (warned.has(path) || warned.size > 100) return;
-      warned.add(path);
-      this.#logger.warn(
-        `${path} is cached publicly (Cache-Control: ${cache}) and carries a CSP nonce: a shared cache hands the same nonce to everybody, ` +
-          'and a script injected into the page could reuse it. Keep the page private (no cacheControl(\'public …\')) or leave it out of contentSecurityPolicy().',
-        { path },
+      warnIfSharedNonce(
+        this.#logger,
+        warned,
+        ctx.route?.path ?? new URL(ctx.request.url).pathname,
+        response,
+        "Keep the page private (no cacheControl('public …')) or leave it out of contentSecurityPolicy().",
       );
     }
   };
@@ -152,12 +149,29 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
 const DEFAULT_PIECES = compilePolicy(DEFAULT_CSP).pieces;
 
 /**
+ * @internal The kernel's too. Logs once per path (`warned` keeps the paths) that a response with a nonce asks shared caches to keep
+ * itself: a shared cache would hand the same nonce to everybody.
+ */
+export function warnIfSharedNonce(logger: Logger, warned: Set<string>, path: string, response: Response, remedy: string): void {
+  const cache = response.headers.get('cache-control')?.toLowerCase() ?? '';
+  if (!/\bpublic\b|\bs-maxage\b/.test(cache)) return;
+  if (warned.has(path) || warned.size > 100) return;
+  warned.add(path);
+  logger.warn(
+    `${path} is cached publicly (Cache-Control: ${cache}) and carries a CSP nonce: a shared cache hands the same nonce to everybody, ` +
+      `and a script injected into the page could reuse it. ${remedy}`,
+    { path },
+  );
+}
+
+/**
  * @internal The kernel's, for the document of a package entry. Gives an HTML response that carries no enforced policy — from a route group
- * or the app — {@link DEFAULT_CSP} with `nonce`, the one the document's tags carry. A report-only policy stays beside it. Any other
+ * or the app — {@link DEFAULT_CSP} with `nonce`, the one the document's tags carry. A report-only policy stays beside it. `onNonce` sees the response the default is added to. Any other
  * response is returned as it is. See docs/csp.md#policies-of-a-package-area.
  */
-export function withDefaultPolicy(response: Response, nonce: string): Response {
+export function withDefaultPolicy(response: Response, nonce: string, onNonce?: (response: Response) => void): Response {
   if (!isDocument(response.headers.get('content-type')) || response.headers.has(HEADER)) return response;
+  onNonce?.(response);
   const secured = editableResponse(response);
   secured.headers.set(HEADER, DEFAULT_PIECES.join(nonce));
   return secured;

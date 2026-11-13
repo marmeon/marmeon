@@ -150,6 +150,8 @@ The document of a [package's entry](package-development.md#pages-of-a-package) n
 
 This holds for the first load of a page, for the page without server rendering, and for the page the browser renders after server rendering failed. The error page of a first load is the app's document, so it follows the app's policy. The default does not restrict styles, images or connections: add those directives to the group's policy for the area.
 
+A package document that a shared cache may keep (`Cache-Control: public` or `s-maxage`) still gets the default, with a nonce, and the app logs the [same warning](#pages-in-a-shared-cache) once per path. Keep such a document private, or give its route group a policy without `NONCE`.
+
 The documents of your app are not affected: an app without package entries sends no header and carries no nonce unless it uses `contentSecurityPolicy()`.
 
 ## Which responses get the policy
