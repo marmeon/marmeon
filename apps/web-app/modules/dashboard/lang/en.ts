@@ -27,6 +27,7 @@ const en = {
     intro: 'The server chose these panels and sent the URL of each. The page loads them with Island href, and the route of each island decides who sees it.',
   },
   people: 'All people',
+  status_area: 'Open the status area',
   members_table: 'Members table',
 } as const;
 

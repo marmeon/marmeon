@@ -34,7 +34,13 @@ describe('a component of a package with a namespace, in the production build of 
 
       const manifest = JSON.parse(readFileSync(join(app, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, Chunk>;
       const page = manifest['modules/dashboard/views/Show.tsx']!;
-      const css = (chunk: Chunk) => (chunk.css ?? []).map((file) => readFileSync(join(app, 'dist/client', file), 'utf8')).join('\n');
+      // The stylesheets a chunk loads at once: its own and those of the chunks it imports (the package's area imports the component too, so its stylesheet lies in a chunk both share).
+      const css = (chunk: Chunk, seen = new Set<Chunk>()): string => {
+        if (seen.has(chunk)) return '';
+        seen.add(chunk);
+        const own = (chunk.css ?? []).map((file) => readFileSync(join(app, 'dist/client', file), 'utf8')).join('\n');
+        return [own, ...(chunk.imports ?? []).map((key) => css(manifest[key]!, seen))].join('\n');
+      };
       expect(css(page)).toContain('.status-board');
       // Not in the stylesheet every page loads.
       expect(css(manifest['index.html']!)).not.toContain('.status-board');

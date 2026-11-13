@@ -41,8 +41,8 @@ function shadowingApp(): string {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { '@fixtures/status-board': '*', '@marmeon/react': '*' } }),
     'index.html': '<!doctype html><html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>',
     // Both entries render the component to a string: the markup it makes shows which badge it was given.
-    'bootstrap/client.ts': "import { StatusBoard } from '@fixtures/status-board';\ndocument.title = JSON.stringify(StatusBoard({ services: [{ name: 'Web', state: 'up' }] }));\n",
-    'bootstrap/ssr.ts': "import { StatusBoard } from '@fixtures/status-board';\nexport const render = async () => ({ html: JSON.stringify(StatusBoard({ services: [{ name: 'Web', state: 'up' }] })) });\n",
+    'bootstrap/client.ts': "import { StatusBoard } from '@fixtures/status-board/components';\ndocument.title = JSON.stringify(StatusBoard({ services: [{ name: 'Web', state: 'up' }] }));\n",
+    'bootstrap/ssr.ts': "import { StatusBoard } from '@fixtures/status-board/components';\nexport const render = async () => ({ html: JSON.stringify(StatusBoard({ services: [{ name: 'Web', state: 'up' }] })) });\n",
     '.marmeon/routes.json': JSON.stringify({ version: 1, routes: { 'auth.sensitive': { method: 'get', path: '/settings/sensitive' } }, hidden: {} }),
     'shadow/Badge.js': `export const Badge = ({ state }) => '${SHADOW}:' + state;\n`,
     'node_modules/@marmeon/react/package.json': JSON.stringify({ name: '@marmeon/react', type: 'module', exports: './index.js' }),
@@ -70,9 +70,12 @@ function shadowingApp(): string {
     ].join('\n'),
   });
   // The package as published: its package.json as `pnpm pack` writes it (the `publishConfig` exports, without the source condition) and
-  // what the build made, nothing of its source.
-  const manifest = JSON.parse(readFileSync(join(fixture, 'package.json'), 'utf8')) as { exports: unknown; publishConfig: { exports: unknown } };
-  write(root, { 'node_modules/@fixtures/status-board/package.json': JSON.stringify({ ...manifest, exports: manifest.publishConfig.exports }) });
+  // what the build made, nothing of its source. Only its components: the app has no use for the package's area here, and the area's
+  // entry, pages and texts would be built with it.
+  const manifest = JSON.parse(readFileSync(join(fixture, 'package.json'), 'utf8')) as { publishConfig: { exports: Record<string, unknown> } };
+  write(root, {
+    'node_modules/@fixtures/status-board/package.json': JSON.stringify({ name: '@fixtures/status-board', type: 'module', sideEffects: ['**/*.css'], exports: { './components': manifest.publishConfig.exports['./components'] }, marmeon: { namespace: 'status' } }),
+  });
   cpSync(join(fixture, 'dist'), join(root, 'node_modules/@fixtures/status-board/dist'), { recursive: true });
   symlinkSync(vitePackage, join(root, 'node_modules/vite'), 'dir');
   symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@marmeon/vite'), 'dir');

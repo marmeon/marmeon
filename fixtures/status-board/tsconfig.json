@@ -6,8 +6,15 @@
     "outDir": "dist",
     "lib": ["ES2025", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": []
+    "types": ["@marmeon/vite/client"]
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/react" }]
+  "references": [
+    { "path": "../../packages/auth" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/http" },
+    { "path": "../../packages/i18n" },
+    { "path": "../../packages/react" },
+    { "path": "../../packages/vite" }
+  ]
 }

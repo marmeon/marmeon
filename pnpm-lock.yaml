@@ -535,9 +535,24 @@ importers:
 
   fixtures/status-board:
     devDependencies:
+      '@marmeon/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@marmeon/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@marmeon/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@marmeon/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@marmeon/vite':
+        specifier: workspace:*
+        version: link:../../packages/vite
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
