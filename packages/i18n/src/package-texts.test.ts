@@ -3,13 +3,16 @@ import { dirname, join } from 'node:path';
 import { createApplication } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
+import { marmeon } from '@marmeon/vite';
 import { SessionServiceProvider } from '@marmeon/session';
+import { createServer } from 'vite';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { I18nServiceProvider, Translator } from './index.ts';
+import { createMessageLoader } from './loader.ts';
 import { overrideFiles } from './overrides.ts';
 
-const EN = `export default { title: 'Status', saved: 'Saved {name}.', entries: { count: '{count, plural, one {# entry} other {# entries}}' } };`;
+const EN = `export default { title: 'Status', saved: 'Saved {name}.', entries: { count: '{count, plural, one {# entry} other {# entries}}', none: 'No entries' } };`;
 const DE = `export default { title: 'Zustand', saved: '{name} gespeichert.' };`;
 const PACKAGE_FILES = { 'dist/lang/en.js': EN, 'dist/lang/de.js': DE };
 
@@ -38,6 +41,7 @@ async function boot({ files = {}, packageFiles = PACKAGE_FILES, marmeon = { name
     { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', APP_LOCALES: 'en,de', ...env } },
   );
   return {
+    root,
     text: (key: string, locale = 'en', params: Record<string, unknown> = {}) => {
       const translator: { get(key: string, params?: Record<string, unknown>): string } = application.container.createScope().make(Translator).forLocale(locale);
       return translator.get(key, params);
@@ -211,5 +215,59 @@ describe('a namespace both a package and a module of the app have texts for', ()
   it('is no error for a module file that is no language file', async () => {
     const { text } = await boot({ files: { 'modules/status/lang/en.test.ts': 'export default {};', 'modules/status/lang/x.d.ts': '' } });
     expect(text('status.title')).toBe('Status');
+  });
+});
+
+describe('the texts of a package in the browser', () => {
+  const ENTRY = {
+    marmeon: { namespace: 'status', entry: { client: './area/client', ssr: './area/ssr' }, views: './views', lang: './lang' },
+    exports: { './area/client': './dist/area/client.js', './area/ssr': './dist/area/ssr.js', './views/*': './dist/views/*.js', './lang/*': './dist/lang/*.js' },
+    packageFiles: { ...PACKAGE_FILES, 'dist/area/client.js': '', 'dist/area/ssr.js': '', 'dist/views/Index.js': 'export default 1;' },
+  };
+  const OVERRIDES = {
+    'lang/status/en.ts': `export default { title: 'Health', entries: { count: '{count} items' } };`,
+    'lang/status/fr.ts': `export default { title: 'Etat' };`,
+  };
+  // The keys a locale's own files have: the browser loads one file of a namespace per locale, so a key left out of it is the loader's business, not the merge's.
+  const KEYS: Record<string, [string, Record<string, unknown>][]> = {
+    en: [['status.title', {}], ['status.saved', { name: 'A' }], ['status.entries.count', { count: 1 }], ['status.entries.count', { count: 3 }], ['status.entries.none', {}]],
+    de: [['status.title', {}], ['status.saved', { name: 'A' }]],
+    fr: [['status.title', {}]],
+  };
+
+  /** Every key in every locale: the browser's loader and the server's translator must give the same text. */
+  async function same(setup: Setup, module: string): Promise<void> {
+    const { text, root } = await boot({ ...setup, env: { APP_LOCALES: 'en,de,fr' } });
+    const server = await createServer({ root, configFile: false, logLevel: 'silent', appType: 'custom', plugins: [marmeon({ test: true })], server: { middlewareMode: true, hmr: false, ws: false } });
+    try {
+      const files = ((await server.ssrLoadModule(module)) as { default: Record<string, () => Promise<unknown>> }).default;
+      const loader = createMessageLoader(files);
+      for (const [locale, keys] of Object.entries(KEYS)) {
+        const catalog = await loader.load(locale);
+        for (const [key, params] of keys) expect(catalog.text(locale, key, params), `${key} in ${locale}`).toBe(text(key, locale, params));
+      }
+    } finally {
+      await server.close();
+    }
+  }
+
+  it('are the same as the server\'s for a package with an entry, with the app\'s rewording laid over them key by key', async () => {
+    await same({ ...ENTRY, files: OVERRIDES }, 'virtual:marmeon/lang/status');
+  });
+
+  it('are the same as the server\'s for a package without an entry, in the app\'s own module', async () => {
+    await same({ files: OVERRIDES }, 'virtual:marmeon/lang');
+  });
+
+  it('show the override, not the package\'s wording', async () => {
+    const { root } = await boot({ ...ENTRY, files: OVERRIDES });
+    const server = await createServer({ root, configFile: false, logLevel: 'silent', appType: 'custom', plugins: [marmeon({ test: true })], server: { middlewareMode: true, hmr: false, ws: false } });
+    try {
+      const files = ((await server.ssrLoadModule('virtual:marmeon/lang/status')) as { default: Record<string, () => Promise<unknown>> }).default;
+      expect(Object.keys(files).sort()).toEqual(['modules/status/lang/de.ts', 'modules/status/lang/en.ts', 'modules/status/lang/fr.ts']);
+      expect(((await files['modules/status/lang/en.ts']!()) as { default: { title: string; saved: string } }).default).toMatchObject({ title: 'Health', saved: 'Saved {name}.' });
+    } finally {
+      await server.close();
+    }
   });
 });

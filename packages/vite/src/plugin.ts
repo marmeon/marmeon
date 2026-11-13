@@ -5,6 +5,7 @@ import { defaultClientConditions, defaultServerConditions, normalizePath, search
 import { entryChunks, isThirdParty } from './entry-chunks.ts';
 import { checkFonts, fontFallbacks, preloadFonts, type MarmeonFont } from './fonts.ts';
 import { images, type ImageOptions } from './images.ts';
+import { packageLang, packageLangExtension } from './package-lang.ts';
 import { PACKAGE_ENTRY_MARK, clientInputs, entriesFile, entryPackages, packagePages, serverInputs, uiPackages, uiPackageSettings } from './package-pages.ts';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
@@ -157,6 +158,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
   const api: MarmeonPluginApi = { entries, surfaces: [] };
   let packages: readonly PackageSurface[] = [];
   let appRoot = process.cwd();
+  let clientConditions: readonly string[] = [];
 
   const main: Plugin & { api: MarmeonPluginApi } = {
     name: PLUGIN_NAME,
@@ -172,7 +174,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       const nodeEnv = process.env.NODE_ENV;
       const modeCondition = nodeEnv === 'development' || nodeEnv === 'test' ? 'development' : 'production';
       const conditions = defaultClientConditions.map((condition) => (condition === 'development|production' ? modeCondition : condition));
-      packages = uiPackages(root, [...source, ...conditions, 'import']);
+      clientConditions = [...source, ...conditions, 'import'];
+      packages = uiPackages(root, clientConditions);
       // A package's server entry is the one its `node` export names, not the browser's: only that subpath is read again, with the server's conditions.
       const serverConditions = defaultServerConditions.map((condition) => (condition === 'development|production' ? modeCondition : condition));
       const serverEntries = command === 'build' && isSsrBuild && entryPackages(packages).length > 0 ? packageServerEntries({ root, conditions: [...serverConditions, 'import'] }) : new Map<string, string>();
@@ -266,12 +269,15 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     },
   };
 
+  const langOptions = { root: () => appRoot, conditions: () => clientConditions, packages: () => packages };
+
   return [
     main,
     asyncEntry,
     marmeonInjection() as Plugin,
     virtualGlob('pages', PAGES),
-    virtualGlob('lang', LANG),
+    virtualGlob('lang', LANG, { extend: () => packageLangExtension(langOptions) }),
+    packageLang(langOptions),
     packagePages(() => packages),
     ...(options.test ? [] : [entriesFile(() => appRoot, () => packages)]),
     ...(options.fonts?.length ? [fontFallbacks(options.fonts)] : []),
@@ -284,9 +290,9 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
 
 /**
  * A virtual module `virtual:marmeon/<name>` whose default export is `import.meta.glob(pattern)`. Patterns are relative to
- * the app root; the keys are root-absolute (`/modules/…`).
+ * the app root; the keys are root-absolute (`/modules/…`). `extend` adds entries after the glob's own (code that has to be in the module).
  */
-export function virtualGlob(name: string, pattern: string | string[], options: { eager?: boolean } = {}): Plugin {
+export function virtualGlob(name: string, pattern: string | string[], options: { eager?: boolean; extend?: () => { imports: string; entries: string } | undefined } = {}): Plugin {
   const id = `virtual:marmeon/${name}`;
   const resolved = `\0${id}`;
   const patterns = (Array.isArray(pattern) ? pattern : [pattern]).map((glob) => (glob.startsWith('!') ? `!/${glob.slice(1).replace(/^\/+/, '')}` : `/${glob.replace(/^\/+/, '')}`));
@@ -297,7 +303,9 @@ export function virtualGlob(name: string, pattern: string | string[], options: {
     load(loaded) {
       if (loaded !== resolved) return undefined;
       const glob = `import.meta.glob(${JSON.stringify(patterns)}${options.eager ? ', { eager: true }' : ''})`;
-      return `export default ${glob};\n`;
+      const extension = options.extend?.();
+      // Without an extension the module is exactly the glob: an app with nothing to add keeps its bundle byte for byte.
+      return extension ? `${extension.imports}export default { ...${glob}, ${extension.entries} };\n` : `export default ${glob};\n`;
     },
   };
 }
