@@ -6,14 +6,15 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Application } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
-import { messageBase, withCode } from '@marmeon/core/internal';
+import { messageBase, packageServerEntries, withCode } from '@marmeon/core/internal';
 import type { SsrRender } from '@marmeon/http';
 import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
 import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
 import { acceptBrowserLog, BrowserLogLimiter, SHARED_BUDGET } from './browser-log.ts';
 import { withDevBody } from './dev-document.ts';
 import { devStyleTags, entryStylesheets } from './dev-styles.ts';
-import { createDocumentRenderer, type PageRenderer } from './render.ts';
+import { packageTemplate } from './documents.ts';
+import { createDocumentRenderer, type EntryDocumentOptions, type PageRenderer } from './render.ts';
 
 /** The app's Vite setup is incomplete: no `vite`, no `@marmeon/vite`, or no `marmeon()` plugin. The message says what to do. */
 export class ViteSetupError extends Error {
@@ -23,6 +24,8 @@ export class ViteSetupError extends Error {
 /** What `marmeon()` from `@marmeon/vite` exposes on its plugin (duck-typed: the server does not depend on that package). */
 interface MarmeonPluginApi {
   entries: { client: string; ssr: string };
+  /** The installed packages that declare a namespace: where each one's client entry is (absolute), if it has one. */
+  surfaces?: readonly { namespace: string; entry?: { client: string } }[];
 }
 
 const INSTALL = 'pnpm add -D vite@^8 @marmeon/vite@<version of your app>';
@@ -143,6 +146,18 @@ export async function createViteDevRenderer({ root, ssrEntry, app, httpServer, d
     throw error;
   }
 
+  const surfaces = (vite.config.plugins.find((plugin) => plugin.name === 'marmeon')?.api as MarmeonPluginApi | undefined)?.surfaces ?? [];
+  const withEntry = surfaces.filter((surface) => surface.entry !== undefined);
+  let serverEntries: ReadonlyMap<string, string> = new Map();
+  if (withEntry.length > 0) {
+    try {
+      serverEntries = packageServerEntries({ root });
+    } catch (error) {
+      await vite.close();
+      throw error;
+    }
+  }
+
   const ssr = vite.environments.ssr;
   if (!ssr || !isRunnableDevEnvironment(ssr)) {
     await vite.close();
@@ -154,7 +169,31 @@ export async function createViteDevRenderer({ root, ssrEntry, app, httpServer, d
   const client = vite.environments.client;
   const stylesheets = async () =>
     styles && clientEntry !== undefined && client ? devStyleTags(await entryStylesheets(client, `/${clientEntry}`, { base: vite.config.base, parse: parseAst, imports })) : '';
+  // The document of each package entry: the standard template with the entry served from where it lies (`/@fs`), which Vite transforms like the app's.
+  const packages = new Map<string, EntryDocumentOptions>();
+  for (const { namespace, entry } of withEntry) {
+    const server = serverEntries.get(namespace);
+    if (server === undefined) {
+      await vite.close();
+      throw new ViteSetupError(withCode('H16', `The package entry "${namespace}" has no server entry under the server's conditions.`));
+    }
+    const url = `/@fs${entry!.client}`;
+    const packageStylesheets = async () =>
+      styles && client ? devStyleTags(await entryStylesheets(client, url, { base: vite.config.base, parse: parseAst, imports })) : '';
+    packages.set(namespace, {
+      template: async (request) => {
+        const [html, links] = await Promise.all([
+          vite.transformIndexHtml(new URL(request.url).pathname, packageTemplate({ script: url, preloads: [], stylesheets: [] })),
+          packageStylesheets(),
+        ]);
+        return withDevBody(html, devBody?.() ?? '', [links, devHead?.() ?? ''].filter(Boolean).join('\n'));
+      },
+      ssr: async () => (await ssr.runner.import<{ render: SsrRender }>(`/@fs${server}`)).render,
+      version: `dev:${namespace}`,
+    });
+  }
   const renderer = createDocumentRenderer({
+    ...(packages.size > 0 ? { packages, version: 'dev:app' } : {}),
     template: async (request) => {
       const [html, links] = await Promise.all([
         readFile(join(root, 'index.html'), 'utf8').then((template) => vite.transformIndexHtml(new URL(request.url).pathname, template)),
