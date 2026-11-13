@@ -266,6 +266,41 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
+  it("names the package entry it runs in on every request — and sends nothing in the app's own document", async () => {
+    window.fetch = server as typeof fetch;
+    serverRenderedDocument(page('status::Index', '/users/1', {}, { entry: 'status' }));
+    const inEntry = new Navigator({ features: [historyFallback, islands], initialPage: readInitialPage(), render: async () => undefined });
+    const stopEntry = inEntry.start();
+    await inEntry.visit('/users/2');
+    await inEntry.use(islands).region('/islands/admins').load();
+    // The visit, its deferred props and the island: all of them.
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(requests.map((request) => request.headers['x-marmeon-entry'])).toEqual(requests.map(() => 'status'));
+    expect(requests.some((request) => request.headers[REGION_HEADER] === 'island')).toBe(true);
+    stopEntry();
+    requests.length = 0;
+
+    serverRenderedDocument(page('users/Show', '/users/1', {}));
+    const app = new Navigator({ features: [historyFallback], initialPage: readInitialPage(), render: async () => undefined });
+    const stopApp = app.start();
+    await app.visit('/users/2');
+    expect(requests.length).toBeGreaterThanOrEqual(1);
+    expect(requests.some((request) => 'x-marmeon-entry' in request.headers)).toBe(false);
+    stopApp();
+  });
+
+  it('loads a page of another entry fully: a 409 for `entry` is not postponed like a new build', async () => {
+    const loads: string[] = [];
+    window.location.assign = (url: string | URL) => void loads.push(String(url));
+    window.fetch = (async () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/status', [RELOAD_HEADER]: 'entry' } })) as typeof fetch;
+    serverRenderedDocument(page('users/Show', '/users/1', {}));
+    const navigator = new Navigator({ features: [historyFallback], initialPage: readInitialPage(), render: async () => undefined });
+    const stop = navigator.start();
+    await navigator.visit('/status');
+    expect(loads).toEqual([`${window.location.origin}/status`]);
+    stop();
+  });
+
   it('shows the exception of an island whose answer speaks another protocol version', async () => {
     window.fetch = (async (input: string, init: RequestInit = {}) => {
       const headers = { ...(init.headers as Record<string, string>) };

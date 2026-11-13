@@ -29,6 +29,7 @@ import {
   ReadOnly,
   ServerClosing,
   ServerServing,
+  ENTRY_HEADER,
   IncomingRequest,
   isViewResult,
   LOCATION_HEADER,
@@ -152,6 +153,8 @@ interface IslandParent {
   readonly request: Request;
   readonly scope: Container;
   readonly requestId: string | undefined;
+  /** The package entry whose document the page renders in — its island or layer base asks as a client of that document would. */
+  readonly entry?: string;
 }
 
 /**
@@ -413,6 +416,7 @@ export function createHttpKernel(
     }
     headers.set(REGION_HEADER, 'island');
     if (assetVersion) headers.set(VERSION_HEADER, assetVersion);
+    if (parent.entry) headers.set(ENTRY_HEADER, parent.entry);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
     const timeout = AbortSignal.timeout(islandTimeoutMs);
     const signal = AbortSignal.any([parent.request.signal, timeout]);
@@ -448,6 +452,7 @@ export function createHttpKernel(
     }
     headers.set(REGION_HEADER, 'layer');
     if (assetVersion) headers.set(VERSION_HEADER, assetVersion);
+    if (parent.entry) headers.set(ENTRY_HEADER, parent.entry);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
     const request = new Request(target, { method: 'GET', headers, signal: parent.request.signal });
     try {

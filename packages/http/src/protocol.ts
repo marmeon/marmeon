@@ -32,6 +32,11 @@ export interface PageObject {
   /** Build version of the assets (null in development). A client with another version reloads fully. */
   version?: string | null;
   /**
+   * The document the page renders in, when it is a package entry's (the namespace) — absent for the app's own, and in an app without
+   * package entries. The client sends it back with every request (`x-marmeon-entry`): a visit to a page of another document loads fully.
+   */
+  entry?: string;
+  /**
    * The language of the page (the request's locale, from @marmeon/i18n) — one of the app's supported locales.
    * The browser loads only this locale's messages (`virtual:marmeon/lang`), never the messages themselves from here.
    */
@@ -172,8 +177,8 @@ export const ONCE_SCOPE_HEADER = 'x-marmeon-once-scope';
 
 /**
  * Why a `409` with {@link LOCATION_HEADER} reloads the page: `version` — a new build, which the client may postpone; anything
- * else (`history`: signing in or out, or no header at all) is a document change nothing can stop. Only the exact value `version` is
- * cancelable; `ClearClientHistory` overwrites it on every 409 it makes.
+ * else (`entry`: the page belongs to another package entry's document; `history`: signing in or out, or no header at all) is a
+ * document change nothing can stop. Only the exact value `version` is cancelable; `ClearClientHistory` overwrites it on every 409 it makes.
  */
 export const RELOAD_HEADER = 'x-marmeon-reload';
 
@@ -274,6 +279,13 @@ export { UPLOAD_HEADER } from './upload-header.ts';
 
 /** The asset version the client was built with; a mismatch answers 409. */
 export const VERSION_HEADER = 'x-marmeon-version';
+
+/**
+ * The package entry whose document the client runs in (`PageObject.entry`) — sent only by a client of a package entry; none means the
+ * app's. A visit to a page of another document answers 409 (`x-marmeon-reload: entry`), so it is told apart whether or not the asset
+ * version is checked.
+ */
+export const ENTRY_HEADER = 'x-marmeon-entry';
 
 /**
  * With a 409: where the client loads fully — after a deployment (asset version)

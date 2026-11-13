@@ -90,6 +90,8 @@ export interface FeatureHost {
   readonly inbox: FlashMessage[];
   /** The asset version this tab runs. */
   readonly version: string | null;
+  /** The package entry whose document this tab runs in — null: the app's. */
+  readonly packageEntry: string | null;
 
   /** The page on screen — under the layers, when some are open. */
   readonly page: PageObject;
