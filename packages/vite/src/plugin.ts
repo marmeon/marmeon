@@ -169,7 +169,12 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       // Sources only while serving in development or test; a build always takes what a published package ships.
       const source = command === 'serve' && (mode === 'development' || mode === 'test') ? [SOURCE_CONDITION] : [];
       // `import` and `default` are what Node and the bundler match on top of the client's conditions.
-      packages = uiPackages(root, [...source, ...defaultClientConditions, 'import']);
+      // Vite swaps its `development|production` marker for the mode's condition when it resolves; discovery matches keys literally, so
+      // it gets the condition itself. Vite has settled NODE_ENV before it runs this hook (a build without one is production).
+      const nodeEnv = process.env.NODE_ENV;
+      const modeCondition = nodeEnv === 'development' || nodeEnv === 'test' ? 'development' : 'production';
+      const conditions = defaultClientConditions.map((condition) => (condition === 'development|production' ? modeCondition : condition));
+      packages = uiPackages(root, [...source, ...conditions, 'import']);
       api.surfaces = packages;
       const result: UserConfig = {
         resolve: { conditions: [...source, ...defaultClientConditions], dedupe: adapterPeers(root) },

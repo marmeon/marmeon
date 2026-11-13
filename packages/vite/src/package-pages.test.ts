@@ -1,7 +1,7 @@
 import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { mergeConfig, searchForWorkspaceRoot, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { codeString, PACKAGE_ENTRY_MARK, packagePages, uiPackages } from './package-pages.ts';
 import { marmeon, PLUGIN_NAME } from './plugin.ts';
 import { routesModule } from './routes-module.ts';
@@ -110,6 +110,31 @@ describe('the packages that declare a namespace', () => {
     const test = configFor(appWith(), { mode: 'test' }, true).config;
     expect(test.ssr).not.toHaveProperty('noExternal');
     expect(test).not.toHaveProperty('optimizeDeps');
+  });
+
+  it('resolves a package whose exports name only the development and production conditions as Vite does', () => {
+    const both = (path: string) => ({ development: `./dev/${path}`, production: `./prod/${path}` });
+    const files: Record<string, unknown> = {
+      'node_modules/status-board/package.json': {
+        name: 'status-board',
+        type: 'module',
+        exports: { './client': both('client.js'), './ssr': both('ssr.js'), './views/*': both('views/*.js') },
+        marmeon: { namespace: 'status', entry: { client: './client', ssr: './ssr' }, views: './views' },
+      },
+    };
+    for (const mode of ['dev', 'prod']) for (const file of ['client.js', 'ssr.js', 'views/Index.js']) files[`node_modules/status-board/${mode}/${file}`] = 'export default 1;\n';
+    const root = appWith(files, { 'status-board': '*' });
+    const entryOf = (env: Partial<ConfigEnv>) => (main(configFor(root, env).plugins).api.surfaces[0] as { entry: { client: string }; views: Record<string, string> });
+
+    vi.stubEnv('NODE_ENV', 'development');
+    const served = entryOf({});
+    vi.stubEnv('NODE_ENV', 'production');
+    const built = entryOf({ command: 'build', mode: 'production' });
+    vi.unstubAllEnvs();
+    expect(served.entry.client).toBe(join(root, 'node_modules/status-board/dev/client.js'));
+    expect(Object.values(served.views)).toEqual([join(root, 'node_modules/status-board/dev/views/Index.js')]);
+    expect(built.entry.client).toBe(join(root, 'node_modules/status-board/prod/client.js'));
+    expect(Object.values(built.views)).toEqual([join(root, 'node_modules/status-board/prod/views/Index.js')]);
   });
 
   it('hands the surfaces to the server through the plugin api', () => {
