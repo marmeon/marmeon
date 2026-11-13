@@ -18,6 +18,14 @@ describe('httpSolutions', () => {
     expect(solution?.title).toBe('Create modules/users/views/Show.tsx');
   });
 
+  it('says for the page of a package which package should ship it', async () => {
+    const [solution] = await solutions.find(new Error('[marmeon:R2] Page [status::entries/Edit] not found. Expected the package with the namespace "status" to ship views/entries/Edit'));
+    expect(solution?.code).toBe('R2');
+    expect(solution?.title).toBe('Ship the view entries/Edit in the package "status"');
+    expect(solution?.docs).toBe('docs/pages.md#pages-of-a-package');
+    expect(solution?.text).not.toContain('modules/');
+  });
+
   it('finds routes without a decision by their code H3', async () => {
     const [solution] = await solutions.find(new RouteAccessError('[marmeon:H3] 1 route does not say who may call it:'));
     expect(solution?.code).toBe('H3');

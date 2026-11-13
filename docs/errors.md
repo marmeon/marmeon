@@ -549,7 +549,7 @@ included, gets the code alone.
 | C13 | the navigator | A warning in development: the browser has no Navigation API, and the history fallback was not attached. |
 | C14 | the navigator | A warning in development: a plain `GET` visit took more than a second with no placeholder and nothing fetched ahead — once per route and document. |
 | R1 | pages | A page's `layout` is not a component or a list of them. |
-| R2 | pages | No page of that name: no default export in `modules/<module>/views/…`. |
+| R2 | pages | No page of that name: no default export in `modules/<module>/views/…`, or for `namespace::View` no installed package with that namespace ships the view. |
 | R3 | pages | A page module without a default export. |
 | R4 | pages | A page's `ssr` is not `true`, `false` or `'complete'`. |
 | R5 | pages | A page's `placeholder` is not a component. |
