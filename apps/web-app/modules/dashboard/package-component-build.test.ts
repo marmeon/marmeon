@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 import { appCopy } from '../../../../packages/react/src/__fixtures__/bundle.ts';
 
 // No trailing separator: the copy's filter reads paths relative to it.
@@ -20,7 +21,7 @@ const files = (dir: string, extension: string) =>
 describe('a component of a package with a namespace, in the production build of the app', () => {
   it('has its route name in the browser manifest, its stylesheet in the chunk of the page, and no loose import in the server bundle', () => {
     // A copy of the app: the build writes `dist/`, `.marmeon/` and `bootstrap/routes.ts`, which a test booting the app or a developer's own `dist` must not meet.
-    const app = appCopy(source);
+    const app = appCopy(source, workspaceTempDir('marmeon-app-web-app-'));
     try {
       // As an app builds: a fresh process without the test environment. The type check is the typecheck job's.
       const env: Record<string, string | undefined> = { ...process.env };

@@ -1,4 +1,4 @@
-import { UserRepository, type User } from '#modules/auth';
+import { UserFactory, UserRepository, type User } from '#modules/auth';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -31,6 +31,17 @@ describe("the area's route", () => {
     const member = await app.actingAs(alan).get('/status', html()).assertForbidden();
     expect(member.body).not.toContain('data-area');
     expect(member.body).not.toContain('area/client');
+  });
+
+  it('refuses an account that has not confirmed its address, even with an administrator’s address, and lets the confirmed one in', async () => {
+    // The default administrator address, on an account that never confirmed it (a sign-up can use any address).
+    const users = app.make(UserRepository);
+    await users.update(ada.id, { email: 'former-admin@example.com' });
+    const unconfirmed = await app.factory(UserFactory).state('unverified').create({ email: 'ada@example.com' });
+    const refused = await app.actingAs(unconfirmed).get('/status', html()).assertForbidden();
+    expect(refused.body).not.toContain('data-area');
+    await users.update(unconfirmed.id, { email_verified_at: new Date().toISOString() });
+    await app.actingAs(unconfirmed).get('/status', html()).assertOk();
   });
 
   it('refuses everybody while the app binds no access', async () => {

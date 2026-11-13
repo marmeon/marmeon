@@ -707,6 +707,7 @@ The app decides who may open the area, by binding the token in a provider of one
 
 ```ts title="modules/dashboard/StatusAccessServiceProvider.ts"
 import { StatusAccess } from '@acme/status-board';
+import type { VerifiableUser } from '@marmeon/auth';
 import type { Container, ServiceProvider } from '@marmeon/core';
 import { DashboardConfig } from './config.ts';
 
@@ -714,7 +715,7 @@ export class StatusAccessServiceProvider implements ServiceProvider {
   register(container: Container): void {
     container.singleton(StatusAccess, (resolver) => {
       const { admins } = resolver.make(DashboardConfig);
-      return { allows: (user) => admins.includes(user.email.toLowerCase()) };
+      return { allows: (user) => (user as VerifiableUser).email_verified_at != null && admins.includes(user.email.toLowerCase()) };
     });
   }
 }
@@ -728,6 +729,9 @@ export default {
   title: 'Systemzustand',
 } satisfies MessageOverrides<typeof en>;
 ```
+
+An allowlist of addresses needs confirmed addresses: anybody can sign up with a listed one, so the check above also asks for
+`email_verified_at`, the notion `verified()` uses. An account that has not confirmed its address gets a 403 whatever its address.
 
 A page of the app links to the area by `<Link route="status.index">`. That visit loads the area's document fully: the answer is a `409` that
 names the address, and the browser loads it (see [a visit into another entry](navigation.md#a-visit-into-another-entry)). The link back
