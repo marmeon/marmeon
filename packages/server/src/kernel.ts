@@ -551,6 +551,9 @@ export function createHttpKernel(
       exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, host: failed.headers.get('host') ?? new URL(failed.url).host, ...(routePath === undefined ? {} : { routePath }), ...fetchSite(failed) });
     }
     const handler = container.make(ExceptionHandler);
+    // The handler's answer replaces whatever was rendered before the failure: a package document made earlier is not it. An error page that
+    // is one marks the request again while it renders.
+    if (scope?.has(RequestNonce)) unmarkPackageDocument(scope.make(RequestNonce));
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);
     // An upload is answered as JSON whatever it accepts — never back to a form with flashed errors (it is read-only).
     const request = failed.headers.has(UPLOAD_HEADER) ? new Request(failed.url, { method: failed.method, headers: { ...Object.fromEntries(failed.headers), accept: 'application/json' } }) : failed;
@@ -867,7 +870,8 @@ export function createHttpKernel(
     // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
     else if (isVisit(request.headers) || upload) response = await leaveForeignRedirect(response, request);
     // A package's document without a policy of its own — after every middleware, so a route group's or the app's policy came first and stays.
-    if (showedPackageDocument(nonce)) response = withDefaultPolicy(response, nonce.value, (document) => warnIfSharedNonce(logger, packageCacheWarned, matched.get(request)?.path ?? new URL(request.url).pathname, document, "Keep the document private (no cacheControl('public …')), or give its route group a contentSecurityPolicy() without NONCE."));
+    let defaulted = false;
+    if (showedPackageDocument(nonce)) response = withDefaultPolicy(response, nonce.value, () => void (defaulted = true));
     // Cookies queued during the request reach the client whatever the outcome.
     let final = await withQueuedCookies(response, state.cookies);
     // An answer that sets a cookie is one person's: a shared cache that stored it would hand the cookie to the next visitor.
@@ -884,6 +888,11 @@ export function createHttpKernel(
           ? `${request.method} ${route.path} asks shared caches to keep its answer, but its layer's base belongs to a session or is private, so the deep link is sent as private. Drop public, or make the base's answer shareable.`
           : `${request.method} ${route.path} asks shared caches to keep its answer, but the answer ${session ? 'belongs to a session' : 'sets a cookie'}, so it is sent as private. Serve the route without the session (a group without StartSession), or drop public.`);
       }
+    }
+
+    // Against the answer as it leaves: one made private above is no risk for a nonce.
+    if (defaulted) {
+      warnIfSharedNonce(logger, packageCacheWarned, matched.get(request)?.path ?? new URL(request.url).pathname, final, "Keep the document private (no cacheControl('public …')), or give its route group a contentSecurityPolicy() without NONCE.");
     }
 
     if (terminable.length > 0) {

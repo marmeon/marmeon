@@ -1,6 +1,6 @@
 import { createApplication, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { cacheControl, contentSecurityPolicy, HttpServiceProvider, SharedData, view } from '@marmeon/http';
+import { cacheControl, contentSecurityPolicy, ExceptionHandler, HttpServiceProvider, SharedData, view } from '@marmeon/http';
 import { defineMiddleware, type HttpContext, type Next } from '@marmeon/router';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { describe, expect, it } from 'vitest';
@@ -20,6 +20,8 @@ interface Setup {
   global?: unknown[];
   group?: unknown;
   warnings?: string[];
+  /** Answers every error: what a custom exception handler makes of it. */
+  onError?: () => unknown;
 }
 
 /** Fails after the package document was made, and then makes every shared prop fail, so the error page cannot be built in the request's scope. */
@@ -46,11 +48,15 @@ const quiet = (warnings: string[]): Logger => {
 };
 
 /** `/status` renders in the package's document, `/` in the app's, `/broken` fails in a package's page, `/boom` throws before any page. */
-async function appWith({ kernel = {}, renderer = {}, global = [], group, warnings }: Setup = {}) {
+async function appWith({ kernel = {}, renderer = {}, global = [], group, warnings, onError }: Setup = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider],
+    providers: [
+      EncryptionServiceProvider,
+      HttpServiceProvider,
+      ...(onError ? [class { register(container: Container) { container.instance(ExceptionHandler, { render: onError } as never); } }] : []),
+    ],
     middleware: { global: global as never },
     modules: [
       defineModule({
@@ -66,6 +72,10 @@ async function appWith({ kernel = {}, renderer = {}, global = [], group, warning
             throw new Error('late');
           })).get('/status/late', () => view('status::Index', {}));
           Route.middleware(FailsAfterwards).get('/status/broken', () => view('status::Index', {}));
+          Route.middleware(cacheControl('public, max-age=60')).get('/status/cookie', (ctx: HttpContext) => {
+            ctx.cookies.set('visited', 'yes');
+            return view('status::Index', {});
+          });
           Route.middleware(cacheControl('public, max-age=60')).get('/status/public', () => view('status::Index', {}));
           Route.middleware(cacheControl('s-maxage=60')).get('/status/shared', () => view('status::Index', {}));
           (group ? Route.middleware(group as never) : Route).get('/status/area', () => view('status::Area', {}));
@@ -190,6 +200,32 @@ describe("the document of a package's entry", () => {
         expect(response.status).toBe(500);
     expect(await response.text()).not.toContain('pkg-status-a.js');
     expect(response.headers.has('content-security-policy')).toBe(false);
+  });
+
+  it("does not give a custom exception handler's own app page the default after a package document was made", async () => {
+    const app = await appWith({ onError: () => new Response('<p>custom error</p>', { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } }) });
+    const response = await app.request('/status/late', { headers: html });
+    expect(await response.text()).toBe('<p>custom error</p>');
+    expect(response.headers.has('content-security-policy')).toBe(false);
+  });
+
+  it('still gives the default to an error page the handler renders in a package document', async () => {
+    const app = await appWith({ onError: () => view('status::Index', {}) });
+    const response = await app.request('/status/late', { headers: html });
+    const body = await response.text();
+    expect(body).toContain('pkg-status-a.js');
+    expect(nonceOf(body)).toBe(STRICT.exec(response.headers.get('content-security-policy')!)![1]);
+  });
+
+  it('does not warn about a shared cache for an answer that sets a cookie: the kernel makes it private', async () => {
+    const warnings: string[] = [];
+    const app = await appWith({ warnings });
+    const response = await app.request('/status/cookie', { headers: html });
+    expect(response.headers.get('content-security-policy')).toMatch(STRICT);
+    expect(response.headers.get('cache-control')).toContain('private');
+    expect(warnings.filter((message) => message.includes('carries a CSP nonce'))).toEqual([]);
+    await app.request('/status/public', { headers: html });
+    expect(warnings.filter((message) => message.includes('carries a CSP nonce'))).toHaveLength(1);
   });
 
   it('is not sent to a visit, which gets the page as JSON and no document', async () => {
