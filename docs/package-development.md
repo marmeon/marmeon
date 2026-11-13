@@ -519,7 +519,8 @@ the app reads the declaration without running a line of the package: from `packa
 Every path is a subpath of `exports`, not a path in the package, so the conditions apply as they do for any import: in a monorepo
 `@marmeon/source` can lead to `src/views/*.tsx` while the published package leads to `dist/views/*.js`.
 
-- `entry.client` and `entry.ssr` are exact subpaths: `"./area/client"` needs the key `"./area/client"` in `exports`.
+- `entry.client` and `entry.ssr` are exact subpaths: `"./area/client"` needs the key `"./area/client"` in `exports`. The client entry is
+  resolved with the browser's conditions and the server entry with the server's, so `"./area/ssr"` may have a `node` target alone.
 - `views` and `lang` name a folder: `"./views"` needs the pattern `"./views/*"`, whose target ends in `/*` and an extension
   (`./dist/views/*.js`). The files below that directory are the package's views, and its texts for `lang`.
 - A view's name is its path below the pattern without the extension: `dist/views/entries/Edit.js` is `entries/Edit`. Each segment holds

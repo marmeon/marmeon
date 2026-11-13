@@ -81,6 +81,22 @@ after `index` has run: the page's chunk, the chunks it imports and the one for t
 The server reads them from `dist/client/.vite/manifest.json` when it starts. Without that file the documents preload nothing; a
 file that is no Vite manifest stops the start. Nothing is preloaded in development, and the manifest is never served.
 
+### Packages with an entry
+
+When an installed package declares a `namespace` and an `entry` (see [packages with pages or components](#packages-with-pages-or-components)),
+`marmeon build` still runs one client build and one server build, and each entry is an input of it: `index.html` for the app, the package's
+client entry for the package, and `dist/server/ssr-<namespace>.js` next to `ssr.js`. Without such a package nothing changes: the same inputs,
+the same chunks, the same file names.
+
+A document loads only code its own entry imports, through any import. A module only the package's entry reaches never lands in a chunk the
+app's first page loads, and the other way round, and the stylesheets stay separate. A module that several entries import lies in a chunk
+shared by exactly those entries, named by a hash of them: React and other npm packages in `vendor-shared-*`, the framework and your code
+in `shared-*`. With more entries, each combination of them has chunks of its own. A page of the app that imports a module of the package
+loads just that module.
+
+The build also writes `dist/client/.vite/marmeon-entries.json` (format `1`): `entries` gives each namespace the key of its client entry
+in `manifest.json`, `pages` each `<namespace>::<view>` the key of its page. Like the manifest, it is read by the server and never served.
+
 ### The base
 
 The server serves `dist/client` under `/`, so Vite's `base` is `/` (the default) or an absolute URL where you put the assets

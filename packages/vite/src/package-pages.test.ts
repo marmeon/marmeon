@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'nod
 import { dirname, join } from 'node:path';
 import { mergeConfig, searchForWorkspaceRoot, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
-import { codeString, PACKAGE_ENTRY_MARK, packagePages, uiPackages } from './package-pages.ts';
+import { clientInputs, codeString, PACKAGE_ENTRY_MARK, packagePages, uiPackages } from './package-pages.ts';
 import { marmeon, PLUGIN_NAME } from './plugin.ts';
 import { routesModule } from './routes-module.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -260,5 +260,16 @@ describe('codeString', () => {
     expect(code).not.toMatch(/[<>\u2028\u2029]/);
     expect(JSON.parse(code)).toBe(value);
     expect(new Function(`return ${code}`)()).toBe(value);
+  });
+});
+
+describe('the inputs of the client build', () => {
+  it('names the app\'s index.html by the path the bundler records, and gives the input the path as written', () => {
+    const real = tree({ 'index.html': '<!doctype html>' });
+    const link = join(tempDir('marmeon-vite-link-'), 'app');
+    symlinkSync(real, link, 'dir');
+    const { input, names } = clientInputs(link, []);
+    expect(input).toEqual({ index: `${link}/index.html` });
+    expect([...names]).toEqual([[`${real}/index.html`, 'index']]);
   });
 });

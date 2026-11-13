@@ -74,7 +74,9 @@ asks the migrator for the projection uses the file only if every migration file 
 itself. See [What the migrations describe](migrations.md#what-the-migrations-describe).
 
 Only `dist/client/assets/` is public. `dist/client/.vite/manifest.json` lists the source path of every page: the server reads it
-at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`.
+at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`. An app that installs a package with
+an entry of its own gets two more files: `dist/client/.vite/marmeon-entries.json` beside the manifest, and `dist/server/ssr-<namespace>.js` for
+each such package beside `ssr.js`. Ship them with the rest of `dist/`; see [packages with an entry](vite.md#packages-with-an-entry).
 
 `--no-typecheck` skips the type check. The build needs no `.env` and no key: it loads the app without booting it, so no secret
 can end up in `dist/`. The [configuration](configuration.md#configuration-and-the-build) page explains what that means for a

@@ -1,5 +1,5 @@
 import { readFileSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { belongsTo, isInside, isNamespace, isViewName, packageSurfaces, type PackageSurface } from '@marmeon/core/internal';
 import { normalizePath, type Plugin } from 'vite';
 
@@ -76,6 +76,86 @@ export function packagePages(packages: () => readonly PackageSurface[]): Plugin 
         entries.push(`  ${codeString(`${surface.namespace}::${view}`)}: () => import(${codeString(normalizePath(real))}),`);
       }
       return `export default {\n${entries.join('\n')}\n};\n`;
+    },
+  };
+}
+
+/** The file that tells the server which manifest key starts each package entry and holds each package page (docs/vite.md#building). */
+export const ENTRIES_FILE = '.vite/marmeon-entries.json';
+
+/** The packages whose entry the client build takes as an input of its own. */
+export function entryPackages(packages: readonly PackageSurface[]): PackageSurface[] {
+  return packages.filter((surface) => surface.entry !== undefined);
+}
+
+/** Module id of a file as Vite's bundler names it. */
+function moduleId(file: string): string {
+  return normalizePath(realpathSync.native(file));
+}
+
+/** The client build's inputs and the name each entry's chunks take: `index` for the app's `index.html`, `pkg-<namespace>` for a package. */
+export function clientInputs(root: string, packages: readonly PackageSurface[]): { input: Record<string, string>; names: Map<string, string> } {
+  const html = normalizePath(join(root, 'index.html'));
+  const input: Record<string, string> = { index: html };
+  // The bundler records a module under its real path, which differs from `html` when the app's root is reached through a link.
+  let recorded = html;
+  try {
+    recorded = moduleId(html);
+  } catch {
+    // No index.html yet: the build fails on it with its own message.
+  }
+  const names = new Map<string, string>([[recorded, 'index']]);
+  for (const surface of entryPackages(packages)) {
+    const file = moduleId(surface.entry!.client);
+    input[`pkg-${surface.namespace}`] = file;
+    names.set(file, `pkg-${surface.namespace}`);
+  }
+  return { input, names };
+}
+
+/** The server build's inputs: the app's `ssr` and `ssr-<namespace>` for each package with an entry (`serverEntries`: its file under the server's conditions), written as `dist/server/ssr-<namespace>.js`. */
+export function serverInputs(appEntry: string, packages: readonly PackageSurface[], serverEntries: ReadonlyMap<string, string>): Record<string, string> {
+  const input: Record<string, string> = { ssr: appEntry };
+  for (const surface of entryPackages(packages)) {
+    const file = serverEntries.get(surface.namespace);
+    if (file === undefined) throw new Error(`${surface.package} has no server entry for the build.`);
+    input[`ssr-${surface.namespace}`] = moduleId(file);
+  }
+  return input;
+}
+
+/**
+ * Writes `.vite/marmeon-entries.json` into the client build when a package has an entry: `entries` maps each namespace to the manifest key of
+ * its client entry, `pages` each `<namespace>::<view>` the build made a chunk of to its manifest key. A view no chunk starts at is left out,
+ * so every key listed is in `.vite/manifest.json`.
+ */
+export function entriesFile(root: () => string, packages: () => readonly PackageSurface[]): Plugin {
+  return {
+    name: 'marmeon:entries-file',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      if (this.environment.name !== 'client') return;
+      const withEntry = entryPackages(packages());
+      if (withEntry.length === 0) return;
+      // Vite's manifest names a chunk by its starting module, relative to the root.
+      const keys = new Map<string, string>();
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type === 'chunk' && chunk.facadeModuleId !== null && (chunk.isEntry || chunk.isDynamicEntry)) {
+          keys.set(normalizePath(chunk.facadeModuleId), normalizePath(relative(root(), chunk.facadeModuleId)));
+        }
+      }
+      const entries: Record<string, { client: string }> = {};
+      const pages: Record<string, string> = {};
+      for (const surface of [...withEntry].sort((a, b) => (a.namespace < b.namespace ? -1 : 1))) {
+        const client = keys.get(moduleId(surface.entry!.client));
+        if (client === undefined) this.error(`${surface.package} has a client entry that the build left out.`);
+        entries[surface.namespace] = { client };
+        for (const [view, file] of Object.entries(surface.views)) {
+          const key = keys.get(moduleId(file));
+          if (key !== undefined) pages[`${surface.namespace}::${view}`] = key;
+        }
+      }
+      this.emitFile({ type: 'asset', fileName: ENTRIES_FILE, source: `${JSON.stringify({ format: 1, entries, pages }, null, 2)}\n` });
     },
   };
 }

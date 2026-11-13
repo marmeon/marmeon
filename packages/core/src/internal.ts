@@ -15,12 +15,10 @@ export { describeError, maskUrlPasswords, REDACTED_KEYS, redactorFor } from './r
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
-export { packageSurfaces } from './discovery/discover.ts';
+export { packageServerEntries, packageSurfaces } from './discovery/discover.ts';
 export { isNamespace, isViewName } from './discovery/surface.ts';
 export type { PackageSurface } from './discovery/surface.ts';
 export { belongsTo, isInside } from './discovery/contain.ts';
-export { packageSurfaces } from './discovery/discover.ts';
-export { isNamespace, isViewName, type PackageSurface } from './discovery/surface.ts';
 export { findPackage, printable, resolveExports, runtimeConditions } from './discovery/resolve.ts';
 export { canonicalTimeZone, isTimeZone } from './time-zone.ts';
 export { startedByReporter } from './error-reports.ts';
