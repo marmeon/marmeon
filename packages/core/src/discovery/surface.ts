@@ -219,3 +219,8 @@ export function resolveSurface(pkg: PackageInfo, field: PackageUiField, conditio
   const lang = field.lang === undefined ? new Map() : listPattern(pkg, field.lang, 'lang', conditions, { recursive: false, max: MAX_LANG_FILES });
   return { package: pkg.name, namespace: field.namespace, dir: pkg.dir, ...(entry ? { entry } : {}), views: sorted(views), lang: sorted(lang) };
 }
+
+/** The language files a package's `lang` pattern lists under `conditions` — locale → real path, with the checks `resolveSurface` makes of them. */
+export function resolveSurfaceTexts(pkg: PackageInfo, lang: string, conditions: readonly string[]): Readonly<Record<string, string>> {
+  return sorted(listPattern(pkg, lang, 'lang', conditions, { recursive: false, max: MAX_LANG_FILES }));
+}

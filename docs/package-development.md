@@ -522,7 +522,8 @@ Every path is a subpath of `exports`, not a path in the package, so the conditio
 - `entry.client` and `entry.ssr` are exact subpaths: `"./area/client"` needs the key `"./area/client"` in `exports`. The client entry is
   resolved with the browser's conditions and the server entry with the server's, so `"./area/ssr"` may have a `node` target alone.
 - `views` and `lang` name a folder: `"./views"` needs the pattern `"./views/*"`, whose target ends in `/*` and an extension
-  (`./dist/views/*.js`). The files below that directory are the package's views, and its texts for `lang`.
+  (`./dist/views/*.js`). The files below that directory are the package's views, and its texts for `lang`. The `lang` pattern must resolve under the
+  server's conditions, because the server loads the texts: a `"./lang/*"` with only a `browser` target stops the start with `K7`.
 - A view's name is its path below the pattern without the extension: `dist/views/entries/Edit.js` is `entries/Edit`. Each segment holds
   letters, digits, `_` and `-`, joined by `/`. A language file's name is its language tag, `en` or `de-AT`, and `lang` has no folders.
 - Only that directory of the package is listed, never `node_modules`. Files whose names start with a dot, files with `.test.`, `.spec.`

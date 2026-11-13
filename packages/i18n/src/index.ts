@@ -1,17 +1,18 @@
+import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
-import { canonicalTimeZone, PreferredLocale } from '@marmeon/core/internal';
+import { canonicalTimeZone, packageTexts, PreferredLocale } from '@marmeon/core/internal';
 import { editableResponse, HttpError, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
 import { fillPath, PageAlternates, UrlLocales, type PageAlternatesSource } from '@marmeon/router/internal';
 import { Session } from '@marmeon/session';
 import { Catalog, MessageError } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
 import frameworkEn from './lang/en.ts';
-import { MessageSyntaxError, parseMessage, type Part } from './format.ts';
 import { langFileOf } from './loader.ts';
 import { isLanguageTag, negotiateLocale, supportedLocale } from './locale.ts';
+import { checkOverride, FRAMEWORK, isTree, mergeTexts, overrideFiles, packageOwner, type Tree } from './overrides.ts';
 import { createTranslator, CurrentLocale, Translator } from './translator.ts';
 import type { CheckTranslationKey, MessageOf, MessageParamsOf, TranslationKey } from './types.ts';
 
@@ -350,104 +351,105 @@ async function langFiles(root: string): Promise<string[]> {
   return files;
 }
 
-/** The app's rewording and translations of the framework's texts: `lang/marmeon/<locale>.ts`, by locale tag. */
-async function frameworkFiles(root: string): Promise<{ path: string; locale: string }[]> {
-  const dir = join(root, 'lang', 'marmeon');
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-  const files: { path: string; locale: string }[] = [];
-  for (const entry of entries) {
-    const match = /^([^/]+)\.[jt]s$/.exec(entry.name);
-    if (!entry.isFile() || !match || !isLanguageTag(match[1])) continue; // `fr.test.ts`, `fr.d.ts` are no language tags
-    files.push({ path: join(dir, entry.name), locale: match[1] });
-  }
-  return files;
-}
-
-type Tree = { readonly [key: string]: unknown };
-
-const isTree = (value: unknown): value is Tree => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** The dot paths of a message tree's texts (and, apart, of its groups). Anything that is neither is left to the catalog's own error. */
-function textsOf(tree: Tree, texts = new Map<string, string>(), groups = new Set<string>(), path = ''): { texts: Map<string, string>; groups: Set<string> } {
-  for (const [key, value] of Object.entries(tree)) {
-    const at = path ? `${path}.${key}` : key;
-    if (typeof value === 'string') texts.set(at, value);
-    else if (isTree(value)) {
-      groups.add(at);
-      textsOf(value, texts, groups, at);
-    }
-  }
-  return { texts, groups };
-}
-
-/** The placeholder names of a message, nested ones included. */
-function placeholderNames(parts: readonly Part[], names = new Set<string>()): Set<string> {
-  for (const part of parts) {
-    if (typeof part === 'string' || part.kind === 'pound') continue;
-    names.add(part.name);
-    if ('branches' in part) for (const branch of Object.values(part.branches)) placeholderNames(branch, names);
-  }
-  return names;
-}
-
-/**
- * Checks an app's `lang/marmeon/<locale>.ts` against the framework's English texts — every key must exist there, and each text must keep
- * the placeholders of the English one (a translation may reorder or leave out words, never the values a text is given). Syntax errors
- * are the catalog's, when the merged messages are added.
- */
-function checkFrameworkTexts(path: string, root: string, tree: Tree): void {
-  const file = relative(root, path).replaceAll('\\', '/');
-  const source = textsOf(frameworkEn);
-  const own = textsOf(tree);
-  for (const group of own.groups) {
-    if (source.groups.has(group)) continue;
-    throw new MessageError(
-      `[marmeon:S6] ${file} has the key ${group}, ${source.texts.has(group) ? "which is a text of the framework's, not a group" : "which the framework's texts do not have"}.`,
-    );
-  }
-  for (const [key, text] of own.texts) {
-    const original = source.texts.get(key);
-    if (original === undefined) {
-      throw new MessageError(`[marmeon:S6] ${file} has the key ${key}, which the framework's texts do not have${source.groups.has(key) ? ' (it is a group of texts, not a text)' : ''}.`);
-    }
-    let kept: ReadonlySet<string>;
-    try {
-      kept = placeholderNames(parseMessage(text));
-    } catch (error) {
-      if (error instanceof MessageSyntaxError) throw new MessageError(`[marmeon:S5] Message marmeon.${key} in ${path} is malformed: ${error.message.replace(/^\[marmeon:S5\] /, '')}`);
-      throw error;
-    }
-    for (const name of placeholderNames(parseMessage(original))) {
-      if (!kept.has(name)) throw new MessageError(`[marmeon:S6] ${file} drops the placeholder {${name}} of ${key}.`);
-    }
-  }
-}
-
-/** `base` with `overrides` laid over it, key by key. */
-function mergeTexts(base: Tree, overrides: Tree): Tree {
-  const merged: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(overrides)) {
-    const current = merged[key];
-    merged[key] = isTree(current) && isTree(value) ? mergeTexts(current, value) : value;
-  }
-  return merged;
-}
-
 const frameworkTexts = new Map<string, Tree>([
   ['en', frameworkEn],
   ['de', frameworkDe],
 ]);
 
+/** Loads the module of a language file, which must export an object of messages. */
+async function importTexts(path: string): Promise<Tree> {
+  const module = (await importLangFile(pathToFileURL(path).href)) as { default?: unknown };
+  if (!isTree(module.default)) throw new MessageError(`${path} must export an object of messages (strings, nested in objects).`);
+  return module.default;
+}
+
+type PackageText = ReturnType<typeof packageTexts>[number];
+
+/**
+ * The installed packages that declare a namespace and language files, in dependency order. An app without a `package.json` has no
+ * packages. Read under the server's conditions, and only `lang`: a package may map its client entry for the browser alone.
+ */
+function packagesWithTexts(root: string): readonly PackageText[] {
+  if (!existsSync(join(root, 'package.json'))) return [];
+  return packageTexts({ root });
+}
+
+/**
+ * Loads one package's texts into `catalog` under the package's namespace, with the app's `lang/<namespace>/<locale>.ts` laid over them
+ * key by key. An override of a locale the package has is checked against the package's English texts (S6), or, when the package has no English one, its keys against all its files and its placeholders against the file of that locale. An override of a locale the package lacks is the app's own translation: its keys
+ * must exist in one of the package's files, its placeholders are the app's.
+ */
+async function loadPackageTexts(root: string, surface: PackageText, catalog: Catalog, locales: Locales, loaded: string[], skipped: string[]): Promise<void> {
+  const owner = packageOwner(surface.package, surface.namespace);
+  const overrides = new Map<string, { path: string; tree: Tree }>();
+  for (const { path, locale: tag } of await overrideFiles(root, surface.namespace)) {
+    const locale = addLocale(locales, tag);
+    if (!locale) {
+      skipped.push(path);
+      continue;
+    }
+    if (overrides.has(locale)) throw new MessageError(`The ${surface.namespace} messages in ${locale} are reworded twice (${path}).`);
+    const tree = await importTexts(path);
+    overrides.set(locale, { path, tree });
+  }
+  const packageLocales = new Set<string>();
+  const accepted = new Map<string, string>(); // accepted spelling → tag in the package
+  for (const [tag, path] of Object.entries(surface.lang)) {
+    const locale = addLocale(locales, tag);
+    if (!locale) {
+      skipped.push(path);
+      continue;
+    }
+    packageLocales.add(locale);
+    accepted.set(locale, tag);
+  }
+  const allFiles = (): Promise<Tree[]> => Promise.all(Object.values(surface.lang).map(importTexts));
+  for (const [locale, tag] of accepted) {
+    const path = surface.lang[tag]!;
+    const base = await importTexts(path);
+    const override = overrides.get(locale);
+    if (override === undefined) {
+      catalog.add(locale, surface.namespace, base, path);
+      loaded.push(path);
+      continue;
+    }
+    if (surface.lang.en === undefined) checkOverride(override.path, root, override.tree, await allFiles(), owner, base);
+    else checkOverride(override.path, root, override.tree, await importTexts(surface.lang.en), owner);
+    catalog.add(locale, surface.namespace, mergeTexts(base, override.tree), `${path} + ${override.path}`);
+    loaded.push(path, override.path);
+  }
+  let union: Tree[] | undefined;
+  for (const [locale, { path, tree }] of overrides) {
+    if (packageLocales.has(locale)) continue;
+    union ??= await allFiles();
+    checkOverride(path, root, tree, union, owner, false);
+    catalog.add(locale, surface.namespace, tree, path);
+    loaded.push(path);
+  }
+}
+
 /**
  * Loads the app's language files into `catalog` — the locales `locales` accepts (all, unless `APP_LOCALES` names
- * them; a file for another locale is skipped). The paths come from the app's folders, never from a request.
+ * them; a file for another locale is skipped). The paths come from the app's folders and the packages' declared
+ * `lang` paths, never from a request.
  */
 async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): Promise<{ loaded: string[]; skipped: string[] }> {
   const loaded: string[] = [];
   const skipped: string[] = [];
-  for (const path of await langFiles(root)) {
+  const files = (await langFiles(root)).flatMap((path) => {
     const file = langFileOf(path.slice(root.length));
-    if (!file || /\.(test|type-test)\.[jt]s$/.test(path) || path.endsWith('.d.ts')) continue;
+    return !file || /\.(test|type-test)\.[jt]s$/.test(path) || path.endsWith('.d.ts') ? [] : [{ path, ...file }];
+  });
+  const packages = packagesWithTexts(root);
+  // Exactly when both have texts: a namespace one package and one module of the app both fill would have to be merged by guesswork.
+  for (const surface of packages) {
+    if (files.some((file) => file.namespace === surface.namespace)) {
+      throw new MessageError(
+        `[marmeon:S7] The namespace "${surface.namespace}" has texts in ${surface.package} and in the app's modules/${surface.namespace}/lang — rename the module, and reword the package's texts in lang/${surface.namespace}/<locale>.ts.`,
+      );
+    }
+  }
+  for (const { path, ...file } of files) {
     if (file.namespace === 'marmeon') throw new Error(`${path}: the namespace "marmeon" belongs to the framework — rename the module.`);
     const locale = addLocale(locales, file.locale);
     if (!locale) {
@@ -459,7 +461,7 @@ async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): 
     loaded.push(path);
   }
   const reworded = new Set<string>();
-  for (const { path, locale: tag } of await frameworkFiles(root)) {
+  for (const { path, locale: tag } of await overrideFiles(root, FRAMEWORK.namespace)) {
     const locale = addLocale(locales, tag);
     if (!locale) {
       skipped.push(path);
@@ -467,12 +469,12 @@ async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): 
     }
     if (reworded.has(locale)) throw new MessageError(`The marmeon messages in ${locale} are defined twice (${path}).`);
     reworded.add(locale);
-    const module = (await importLangFile(pathToFileURL(path).href)) as { default?: unknown };
-    if (!isTree(module.default)) throw new MessageError(`${path} must export an object of messages (strings, nested in objects).`);
-    checkFrameworkTexts(path, root, module.default);
-    catalog.replace(locale, 'marmeon', mergeTexts(frameworkTexts.get(locale) ?? {}, module.default), `${frameworkTexts.has(locale) ? `@marmeon/i18n (${locale}) + ` : ''}${path}`);
+    const tree = await importTexts(path);
+    checkOverride(path, root, tree, frameworkEn, FRAMEWORK);
+    catalog.replace(locale, 'marmeon', mergeTexts(frameworkTexts.get(locale) ?? {}, tree), `${frameworkTexts.has(locale) ? `@marmeon/i18n (${locale}) + ` : ''}${path}`);
     loaded.push(path);
   }
+  for (const surface of packages) await loadPackageTexts(root, surface, catalog, locales, loaded, skipped);
   return { loaded, skipped };
 }
 
