@@ -333,9 +333,15 @@ and the view's path below the package's `views` folder: `dist/views/entries/Edit
 `status::entries/Edit`. The package declares what it ships, and
 [Pages of a package](package-development.md#pages-of-a-package) shows how.
 
-```ts
+The package's own controllers render them, from the routes the package registers:
+
+```ts title="src/entries/edit-controller.ts (in the package)"
 return this.view('status::entries/Edit', { entry });
 ```
+
+The page takes its props from that controller with `PageProps<EditEntryController>`, as an app page does. The app adapts a package's
+pages through the package's own options, not by rendering them from its controllers: there only the name would be checked, not the
+props.
 
 - **Type:** `marmeon route:types` lists every view of every installed package that declares a namespace in `interface Views`, so a
   name with no file behind it is a compile error, as for the app's own pages. The app's `bootstrap/routes.ts` is generated from
