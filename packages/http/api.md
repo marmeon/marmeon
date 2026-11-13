@@ -363,6 +363,7 @@ export interface PageObject {
     props: ViewProps;
     url: string;
     version?: string | null;
+    entry?: string;
     locale?: string;
     fallbackLocale?: string;
     timeZone?: string;
@@ -2368,6 +2369,7 @@ export interface PageObject {
     props: ViewProps;
     url: string;
     version?: string | null;
+    entry?: string;
     locale?: string;
     fallbackLocale?: string;
     timeZone?: string;
@@ -2864,6 +2866,7 @@ export interface PageObject {
     props: ViewProps;
     url: string;
     version?: string | null;
+    entry?: string;
     locale?: string;
     fallbackLocale?: string;
     timeZone?: string;
@@ -2959,6 +2962,8 @@ export declare const ACTION_HEADER = "x-marmeon-action";
 export declare const ACTION_REDIRECT_HEADER = "x-marmeon-redirect";
 // BROWSER_LOG_EVENT
 export declare const BROWSER_LOG_EVENT = "marmeon:browser-log";
+// ENTRY_HEADER
+export declare const ENTRY_HEADER = "x-marmeon-entry";
 // FLASH_HEADER
 export declare const FLASH_HEADER = "x-marmeon-flash";
 // FLASH_WAITING_HEADER
@@ -3021,6 +3026,7 @@ export interface PageObject {
     props: ViewProps;
     url: string;
     version?: string | null;
+    entry?: string;
     locale?: string;
     fallbackLocale?: string;
     timeZone?: string;

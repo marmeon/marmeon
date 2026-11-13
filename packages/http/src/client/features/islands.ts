@@ -3,7 +3,7 @@
  * the server answers becomes the region's outcome — never a navigation of the page — except a 409: a new build (or a document
  * change), so the whole page loads again (the island's code of this build may be gone).
  */
-import { LOCATION_HEADER, protocolHeaders, REGION_HEADER, REGION_STATUS_HEADER, speaksProtocol, VERSION_HEADER, type RegionObject } from '../../protocol.ts';
+import { ENTRY_HEADER, LOCATION_HEADER, protocolHeaders, REGION_HEADER, REGION_STATUS_HEADER, speaksProtocol, VERSION_HEADER, type RegionObject } from '../../protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
 import { follow } from '../load-live.ts';
@@ -11,7 +11,7 @@ import { isMintedOwner, REGIONS, type RegionOwner } from '../owner.ts';
 import { atOrigin } from '../request.ts';
 import { ownedRegion, type Region, type RegionInitial, type RegionResponse, type RegionTransport } from '../region.ts';
 
-type IslandsCore = Pick<FeatureHost, 'window' | 'left' | 'version' | 'documentChange'>;
+type IslandsCore = Pick<FeatureHost, 'window' | 'left' | 'version' | 'packageEntry' | 'documentChange'>;
 
 /** How the islands of one navigator send their requests. */
 export function regionTransport(core: IslandsCore): RegionTransport {
@@ -24,7 +24,7 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
   try {
     response = await core.window.fetch(atOrigin(url, core.window), {
       method: 'GET',
-      headers: { ...protocolHeaders(), [REGION_HEADER]: 'island', ...(core.version ? { [VERSION_HEADER]: core.version } : {}), ...headers },
+      headers: { ...protocolHeaders(), [REGION_HEADER]: 'island', ...(core.version ? { [VERSION_HEADER]: core.version } : {}), ...(core.packageEntry ? { [ENTRY_HEADER]: core.packageEntry } : {}), ...headers },
       signal,
       redirect: 'manual',
     });
