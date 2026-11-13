@@ -3,8 +3,9 @@ import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { CLIENT_CHUNKS, marmeon } from './plugin.ts';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const vitePackage = dirname(createRequire(import.meta.url).resolve('vite/package.json'));
@@ -385,6 +386,285 @@ describe('a package that declares a namespace, in a build', () => {
       env: { PATH: process.env.PATH },
     });
     expect(ssr.stdout.trim()).toBe('status-board:/status-path:object');
+  }, 60_000);
+});
+
+/**
+ * An app and a package with an entry of its own, in one build. Every module carries a marker the tests look for in the chunks an entry loads
+ * first: `fake-react` is what both share, `app-lib`/`admin-lib` and `appOnly`/`adminOnly` what only one reaches, `pkgmod` what the package's
+ * entry and an app page import, and the package's page imports `appOnly` from the app.
+ */
+function twoEntryApp(extra: Record<string, string> = {}, aliases: Record<string, string> = {}): string {
+  return app({
+    files: {
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { '@marmeon/fake': '*', 'status-board': '*', 'fake-react': '*', 'app-lib': '*' } }),
+      'vite.config.ts': [
+        "import { marmeon } from '@marmeon/vite';",
+        "import { writeFileSync } from 'node:fs';",
+        "import { fileURLToPath } from 'node:url';",
+        `const alias = Object.fromEntries(Object.entries({ 'app-mod': 'modules/demo/appOnly.ts', ...${JSON.stringify(aliases)} }).map(([name, file]) => [name, fileURLToPath(new URL(\`./\${file}\`, import.meta.url))]));`,
+        // Writes what the build made of the client: each chunk's modules and each module's imports, for the tests to check against.
+        'const record = { name: "record", generateBundle(_, bundle) { if (this.environment.name !== "client") return; const chunks = {}; const modules = {}; for (const chunk of Object.values(bundle)) { if (chunk.type !== "chunk") continue; chunks[chunk.fileName] = { facade: chunk.facadeModuleId, moduleIds: chunk.moduleIds }; for (const id of chunk.moduleIds) { const info = this.getModuleInfo(id); if (info) modules[id] = { imports: info.importedIds, dynamic: info.dynamicallyImportedIds }; } } writeFileSync(fileURLToPath(new URL("./graph.json", import.meta.url)), JSON.stringify({ chunks, modules })); } };',
+        "export default { resolve: { alias }, plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } }), record] };",
+      ].join('\n'),
+      'node_modules/fake-react/package.json': JSON.stringify({ name: 'fake-react', type: 'module', exports: './index.js' }),
+      'node_modules/fake-react/index.js': "export const react = 'REACT_MARK';\n",
+      'node_modules/app-lib/package.json': JSON.stringify({ name: 'app-lib', type: 'module', exports: './index.js' }),
+      'node_modules/app-lib/index.js': "export const lib = 'APP_LIB_MARK';\n",
+      'bootstrap/app.css': '.app-css-mark { color: red; }\n',
+      'bootstrap/client.ts': [
+        "import { origin } from '@marmeon/fake';",
+        "import { react } from 'fake-react';",
+        "import { lib } from 'app-lib';",
+        "import { appOnly } from '../modules/demo/appOnly.ts';",
+        "import pages from 'virtual:marmeon/pages';",
+        "import './app.css';",
+        'document.title = `${origin} ${react} ${lib} ${appOnly}`;',
+        'for (const load of Object.values(pages)) void load();',
+      ].join('\n'),
+      'modules/demo/appOnly.ts': "export const appOnly = 'APP_ONLY_MARK';\n",
+      'modules/demo/views/Home.tsx': "export default 'home page';\n",
+      // A page of the app that imports one module of the package's first-load graph.
+      'modules/demo/views/A.tsx': "import { pkgmod } from 'status-board/pkgmod';\nexport default `page ${pkgmod}`;\n",
+      'node_modules/status-board/package.json': JSON.stringify({
+        name: 'status-board',
+        type: 'module',
+        exports: { './client': './dist/client.js', './ssr': './dist/ssr.js', './pkgmod': './dist/pkgmod.js', './views/*': './dist/views/*.js' },
+        marmeon: { namespace: 'status', entry: { client: './client', ssr: './ssr' }, views: './views' },
+      }),
+      'node_modules/status-board/dist/client.js': [
+        "import { origin } from '@marmeon/fake';",
+        "import { react } from 'fake-react';",
+        "import { lib } from 'admin-lib';",
+        "import { adminOnly } from './adminOnly.js';",
+        "import { pkgmod } from './pkgmod.js';",
+        "import pages from 'virtual:marmeon/pages/status';",
+        "import './status.css';",
+        'document.title = `${origin} ${react} ${lib} ${adminOnly} ${pkgmod}`;',
+        'for (const load of Object.values(pages)) void load();',
+      ].join('\n'),
+      'node_modules/status-board/dist/ssr.js': "export const render = () => 'status ssr';\n",
+      'node_modules/status-board/dist/adminOnly.js': "export const adminOnly = 'ADMIN_ONLY_MARK';\n",
+      'node_modules/status-board/dist/pkgmod.js': "export const pkgmod = 'PKGMOD_MARK';\n",
+      'node_modules/status-board/dist/status.css': '.admin-css-mark { color: teal; }\n',
+      'node_modules/status-board/dist/views/Index.js': "import { appOnly } from 'app-mod';\nexport default `status page ${appOnly}`;\n",
+      'node_modules/admin-lib/package.json': JSON.stringify({ name: 'admin-lib', type: 'module', exports: './index.js' }),
+      'node_modules/admin-lib/index.js': "export const lib = 'ADMIN_LIB_MARK';\n",
+      ...extra,
+    },
+  });
+}
+
+/**
+ * The modules an entry loads first that it does not reach itself (empty is right). The graph comes from the build (`graph.json`, written by
+ * the app's test plugin), so modules without a marker count too: the pages module, the entry itself, stylesheets. The first-load set is the
+ * entry's chunk and, transitively, the chunks it imports statically; a module belongs when any import path from the entry leads to it.
+ */
+function strays(root: string, manifestKey: string, entryId: string): string[] {
+  const manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, { file: string; imports?: string[] }>;
+  const graph = JSON.parse(readFileSync(join(root, 'graph.json'), 'utf8')) as { chunks: Record<string, { moduleIds: string[] }>; modules: Record<string, { imports: string[]; dynamic: string[] }> };
+  const reached = new Set<string>();
+  for (const stack = [entryId]; stack.length > 0; ) {
+    const id = stack.pop()!;
+    if (reached.has(id)) continue;
+    reached.add(id);
+    stack.push(...(graph.modules[id]?.imports ?? []), ...(graph.modules[id]?.dynamic ?? []));
+  }
+  const seen = new Set<string>();
+  const walk = (key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    for (const imported of manifest[key]!.imports ?? []) walk(imported);
+  };
+  walk(manifestKey);
+  const loaded = [...seen].flatMap((key) => graph.chunks[manifest[key]!.file]?.moduleIds ?? []);
+  expect(loaded.length).toBeGreaterThan(0);
+  return loaded.filter((id) => id in graph.modules && !reached.has(id));
+}
+
+/** The module id of a file the way the bundler names it. */
+const idOf = (root: string, file: string) => realpathSync.native(join(root, file)).replaceAll('\\', '/');
+
+/** Two packages with an entry besides the app: `m` is reached by the app and the status package, `n`, which `m` imports, by all three. */
+function threeEntryApp(): string {
+  const dependencies = { '@marmeon/fake': '*', 'status-board': '*', 'report-board': '*', 'fake-react': '*', 'app-lib': '*' };
+  return twoEntryApp(
+    {
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies }),
+      'bootstrap/client.ts': [
+        "import { m } from 'shared-m';",
+        "import { n } from 'shared-n';",
+        "import pages from 'virtual:marmeon/pages';",
+        'document.title = `APP_MARK ${m} ${n}`;',
+        'for (const load of Object.values(pages)) void load();',
+      ].join('\n'),
+      'modules/demo/m.ts': "import { n } from 'shared-n';\nexport const m = `M_MARK ${n}`;\n",
+      'modules/demo/n.ts': "export const n = 'N_MARK';\n",
+      'node_modules/status-board/dist/client.js': "import { m } from 'shared-m';\nimport pages from 'virtual:marmeon/pages/status';\ndocument.title = `STATUS_MARK ${m}`;\nfor (const load of Object.values(pages)) void load();\n",
+      'node_modules/report-board/package.json': JSON.stringify({
+        name: 'report-board',
+        type: 'module',
+        exports: { './client': './dist/client.js', './ssr': './dist/ssr.js', './views/*': './dist/views/*.js' },
+        marmeon: { namespace: 'report', entry: { client: './client', ssr: './ssr' }, views: './views' },
+      }),
+      'node_modules/report-board/dist/client.js': "import { n } from 'shared-n';\nimport pages from 'virtual:marmeon/pages/report';\ndocument.title = `REPORT_MARK ${n}`;\nfor (const load of Object.values(pages)) void load();\n",
+      'node_modules/report-board/dist/ssr.js': "export const render = () => 'report ssr';\n",
+      'node_modules/report-board/dist/views/Index.js': "export default 'report page';\n",
+    },
+    { 'shared-m': 'modules/demo/m.ts', 'shared-n': 'modules/demo/n.ts' },
+  );
+}
+
+interface ManifestChunk {
+  file: string;
+  isEntry?: boolean;
+  imports?: string[];
+  css?: string[];
+}
+
+describe('an app and a package entry in one client build', () => {
+  let root = '';
+  let manifest: Record<string, ManifestChunk> = {};
+  let first: string[] = [];
+
+  /** Every file below `dist/client/assets`, sorted. */
+  const listing = (dir: string) => readdirSync(join(dir, 'dist/client/assets')).sort();
+  /** The chunks an entry loads first: its own and, transitively, those it imports statically. */
+  const hull = (key: string): string[] => {
+    const seen = new Set<string>();
+    const walk = (name: string) => {
+      if (seen.has(name)) return;
+      seen.add(name);
+      for (const imported of manifest[name]!.imports ?? []) walk(imported);
+    };
+    walk(key);
+    return [...seen];
+  };
+  const files = (keys: string[]) => keys.map((key) => manifest[key]!.file);
+  const code = (keys: string[]) => files(keys).map((file) => readFileSync(join(root, 'dist/client', file), 'utf8')).join('\n');
+  const styles = (keys: string[]) => [...new Set(keys.flatMap((key) => manifest[key]!.css ?? []))].sort();
+  const entriesJson = () => JSON.parse(readFileSync(join(root, 'dist/client/.vite/marmeon-entries.json'), 'utf8')) as { format: number; entries: Record<string, { client: string }>; pages: Record<string, string> };
+
+  beforeAll(() => {
+    root = twoEntryApp();
+    const { code: status, out } = build(root, '--no-typecheck');
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(status).toBe(0);
+    manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as typeof manifest;
+    first = listing(root);
+  }, 90_000);
+
+  it('loads no module only the package reaches in the app entry, and none only the app reaches in the package entry', () => {
+    const app = code(hull('index.html'));
+    const pkg = code(hull(entriesJson().entries.status!.client));
+    expect(app).toContain('APP_ONLY_MARK');
+    expect(app).toContain('APP_LIB_MARK');
+    for (const mark of ['ADMIN_ONLY_MARK', 'ADMIN_LIB_MARK', 'PKGMOD_MARK']) expect(app, mark).not.toContain(mark);
+    expect(pkg).toContain('ADMIN_ONLY_MARK');
+    expect(pkg).toContain('ADMIN_LIB_MARK');
+    expect(pkg).toContain('PKGMOD_MARK');
+    for (const mark of ['APP_ONLY_MARK', 'APP_LIB_MARK']) expect(pkg, mark).not.toContain(mark);
+  }, 60_000);
+
+  it('keeps the stylesheets of the two entries apart', () => {
+    const appStyles = styles(hull('index.html'));
+    const pkgStyles = styles(hull(entriesJson().entries.status!.client));
+    const read = (list: string[]) => list.map((file) => readFileSync(join(root, 'dist/client', file), 'utf8')).join('\n');
+    expect(appStyles.length).toBeGreaterThan(0);
+    expect(pkgStyles.length).toBeGreaterThan(0);
+    expect(appStyles.filter((file) => pkgStyles.includes(file))).toEqual([]);
+    expect(read(appStyles)).toContain('app-css-mark');
+    expect(read(appStyles)).not.toContain('admin-css-mark');
+    expect(read(pkgStyles)).toContain('admin-css-mark');
+    expect(read(pkgStyles)).not.toContain('app-css-mark');
+  });
+
+  it('loads from the package only the module a page of the app imports', () => {
+    const page = code(hull('modules/demo/views/A.tsx'));
+    expect(page).toContain('PKGMOD_MARK');
+    for (const mark of ['ADMIN_ONLY_MARK', 'ADMIN_LIB_MARK']) expect(page, mark).not.toContain(mark);
+    expect(styles(hull('modules/demo/views/A.tsx')).some((file) => readFileSync(join(root, 'dist/client', file), 'utf8').includes('admin-css-mark'))).toBe(false);
+  });
+
+  it('keeps the page of the package from loading app code first, and shares the library both use in one chunk', () => {
+    const pkg = hull(entriesJson().entries.status!.client);
+    expect(code(pkg)).not.toContain('APP_ONLY_MARK');
+    const holders = (keys: string[]) => files(keys).filter((file) => readFileSync(join(root, 'dist/client', file), 'utf8').includes('REACT_MARK'));
+    const both = holders(hull('index.html'));
+    expect(both).toHaveLength(1);
+    expect(holders(pkg)).toEqual(both);
+  });
+
+  it('puts only modules an entry reaches itself into the chunks it loads first, unmarked ones included', () => {
+    const { status } = entriesJson().entries;
+    expect(strays(root, 'index.html', idOf(root, 'index.html'))).toEqual([]);
+    expect(strays(root, status!.client, idOf(root, 'node_modules/status-board/dist/client.js'))).toEqual([]);
+  });
+
+  it('lists in marmeon-entries.json only keys of the manifest, and builds the server entry of the package', () => {
+    const json = entriesJson();
+    expect(json.format).toBe(1);
+    expect(Object.keys(json.entries)).toEqual(['status']);
+    expect(manifest[json.entries.status!.client]!.isEntry).toBe(true);
+    expect(Object.keys(json.pages)).toEqual(['status::Index']);
+    for (const key of [json.entries.status!.client, ...Object.values(json.pages)]) expect(manifest[key], key).toBeDefined();
+    expect(readdirSync(join(root, 'dist/server'))).toEqual(expect.arrayContaining(['ssr.js', 'ssr-status.js']));
+    // A chunk both entries share is named by a hash, so a public file name never gives a namespace away.
+    const shared = first.filter((file) => /^(?:vendor-)?shared-/.test(file));
+    expect(shared.length).toBeGreaterThan(0);
+    expect(shared.filter((file) => file.includes('status'))).toEqual([]);
+  });
+
+  it('makes the same file names in a second build', () => {
+    const again = twoEntryApp();
+    const { code: status } = build(again, '--no-typecheck');
+    expect(status).toBe(0);
+    expect(listing(again)).toEqual(first);
+  }, 90_000);
+});
+
+describe('an app and two package entries in one client build', () => {
+  it('keeps a module only two entries reach out of the chunk the third loads, although a dependency of it is reached by all three', () => {
+    const root = threeEntryApp();
+    const { code: status, out } = build(root, '--no-typecheck');
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(status).toBe(0);
+    const manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, ManifestChunk>;
+    const { entries } = JSON.parse(readFileSync(join(root, 'dist/client/.vite/marmeon-entries.json'), 'utf8')) as { entries: Record<string, { client: string }> };
+    const first = (key: string) => {
+      const seen = new Set<string>();
+      const walk = (name: string) => {
+        if (seen.has(name)) return;
+        seen.add(name);
+        for (const imported of manifest[name]!.imports ?? []) walk(imported);
+      };
+      walk(key);
+      return [...seen].map((name) => readFileSync(join(root, 'dist/client', manifest[name]!.file), 'utf8')).join('\n');
+    };
+    expect(first('index.html')).toContain('M_MARK');
+    expect(first(entries.status!.client)).toContain('M_MARK');
+    expect(first(entries.report!.client)).not.toContain('M_MARK');
+    expect(first(entries.report!.client)).toContain('N_MARK');
+    expect(strays(root, 'index.html', idOf(root, 'index.html'))).toEqual([]);
+    expect(strays(root, entries.status!.client, idOf(root, 'node_modules/status-board/dist/client.js'))).toEqual([]);
+    expect(strays(root, entries.report!.client, idOf(root, 'node_modules/report-board/dist/client.js'))).toEqual([]);
+  }, 90_000);
+});
+
+describe('a build without a package entry', () => {
+  it('keeps the chunking and the inputs it had, and writes no marmeon-entries.json', () => {
+    const root = app();
+    const [main] = marmeon() as unknown as [{ config: (config: object, env: object) => { build: { rolldownOptions: { input?: unknown; output: { codeSplitting: unknown } } } } }];
+    const result = main.config({ root }, { command: 'build', mode: 'production', isSsrBuild: false });
+    expect(result.build.rolldownOptions.output.codeSplitting).toBe(CLIENT_CHUNKS);
+    expect(result.build.rolldownOptions.input).toBeUndefined();
+    const server = main.config({ root }, { command: 'build', mode: 'production', isSsrBuild: true });
+    expect(server.build.rolldownOptions.input).toEqual({ ssr: join(root, 'bootstrap/ssr.tsx') });
+
+    const { code: status } = build(root, '--no-typecheck');
+    expect(status).toBe(0);
+    expect(readdirSync(join(root, 'dist/client/.vite'))).toEqual(['manifest.json']);
+    expect(readdirSync(join(root, 'dist/server')).filter((file) => file.startsWith('ssr-'))).toEqual([]);
   }, 60_000);
 });
 

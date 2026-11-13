@@ -218,6 +218,7 @@ describe('marmeon()', () => {
       'marmeon:virtual-pages',
       'marmeon:virtual-lang',
       'marmeon:package-pages',
+      'marmeon:entries-file',
       'marmeon:routes',
       'marmeon:server-imports',
       'marmeon:images',

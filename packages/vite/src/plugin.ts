@@ -2,9 +2,10 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { marmeonInjection, CSP_NONCE_PLACEHOLDER, PAGE_TESTS_GLOB, PAGES_GLOB, type PackageSurface } from '@marmeon/core/internal';
 import { defaultClientConditions, defaultServerConditions, normalizePath, searchForWorkspaceRoot, type Plugin, type Rolldown, type UserConfig } from 'vite';
+import { entryChunks, isThirdParty } from './entry-chunks.ts';
 import { checkFonts, fontFallbacks, preloadFonts, type MarmeonFont } from './fonts.ts';
 import { images, type ImageOptions } from './images.ts';
-import { PACKAGE_ENTRY_MARK, packagePages, uiPackages, uiPackageSettings } from './package-pages.ts';
+import { PACKAGE_ENTRY_MARK, clientInputs, entriesFile, entryPackages, packagePages, serverInputs, uiPackages, uiPackageSettings } from './package-pages.ts';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
 import { serverImports } from './server-imports.ts';
@@ -104,11 +105,6 @@ export interface MarmeonOptions {
   viteEnv?: boolean;
 }
 
-/** A module of a third-party package — not one of the framework's (`@marmeon/*`), not the app's own. */
-function isThirdParty(id: string): boolean {
-  return /[\\/]node_modules[\\/]/.test(id) && !/[\\/]node_modules[\\/]@marmeon[\\/]/.test(id);
-}
-
 /**
  * How the client build splits what the first page loads: `vendor` (third-party libraries, cached across the app's own
  * deployments) and `index` (the framework, the app's entry and layouts). Without it, every module a lazy chunk shares with the
@@ -160,12 +156,14 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
   const entries: MarmeonEntries = { ...DEFAULT_ENTRIES, ...options.entries };
   const api: MarmeonPluginApi = { entries, surfaces: [] };
   let packages: readonly PackageSurface[] = [];
+  let appRoot = process.cwd();
 
   const main: Plugin & { api: MarmeonPluginApi } = {
     name: PLUGIN_NAME,
     api,
     config(config, { command, mode, isSsrBuild }) {
       const root = resolve(config.root ?? process.cwd());
+      appRoot = root;
       // Sources only while serving in development or test; a build always takes what a published package ships.
       const source = command === 'serve' && (mode === 'development' || mode === 'test') ? [SOURCE_CONDITION] : [];
       // `import` and `default` are what Node and the bundler match on top of the client's conditions.
@@ -211,10 +209,21 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
         result.server = { fs: { deny: privateFiles(root), ...(ui.directories.length > 0 ? { allow: [...base, ...ui.directories] } : {}) } };
       }
       if (command === 'build' && !options.test) {
-        result.build = isSsrBuild
-          ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }
-          : // `manifest`: the server reads it at start to preload each page's chunks (docs/vite.md#building).
-            { outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } };
+        // A package with an entry is one more input of the same build; without one the build stays as it was.
+        const several = entryPackages(packages).length > 0;
+        const ssrInput = resolve(root, entries.ssr);
+        if (isSsrBuild) {
+          result.build = { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: several ? serverInputs(ssrInput, packages) : { ssr: ssrInput } } };
+        } else {
+          // `manifest`: the server reads it at start to preload each page's chunks (docs/vite.md#building).
+          const { input, names } = clientInputs(root, packages);
+          result.build = {
+            outDir: 'dist/client',
+            emptyOutDir: true,
+            manifest: true,
+            rolldownOptions: several ? { input, output: { codeSplitting: entryChunks(names) } } : { output: { codeSplitting: CLIENT_CHUNKS } },
+          };
+        }
       }
       return result;
     },
@@ -262,6 +271,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     virtualGlob('pages', PAGES),
     virtualGlob('lang', LANG),
     packagePages(() => packages),
+    ...(options.test ? [] : [entriesFile(() => appRoot, () => packages)]),
     ...(options.fonts?.length ? [fontFallbacks(options.fonts)] : []),
     ...(options.fonts?.length && !options.test ? [preloadFonts(options.fonts)] : []),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], packageDirectories: () => uiPackageSettings(packages).directories, ...(options.test ? { test: true } : {}) }),
