@@ -24,6 +24,8 @@ interface BrowserRoutes {
 export interface RoutesModuleOptions {
   /** Where client code hands route names to the framework (default: the React adapter's, {@link ROUTE_SINKS}). */
   readonly sinks?: readonly RouteSink[];
+  /** Real directories of the packages that declare a namespace: their files are the app's own code, so their route names count too. */
+  readonly packageDirectories?: () => readonly string[];
   /** Vitest: serve the module, collect nothing. */
   readonly test?: boolean;
 }
@@ -42,6 +44,12 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
   let roots: string[] = [];
   let command: 'build' | 'serve' = 'serve';
   let cache: { text: string; routes: BrowserRoutes } | undefined;
+
+  /** The package directory (with `/`) a module belongs to, not counting a `node_modules` below it: another package's code stays out. */
+  const packageOf = (path: string): string | undefined =>
+    (options.packageDirectories?.() ?? [])
+      .map((dir) => `${dir.replaceAll('\\', '/')}/`)
+      .find((dir) => path.startsWith(dir) && !path.slice(dir.length).toLowerCase().split('/').includes('node_modules'));
 
   const file = () => join(root, BROWSER_ROUTES_FILE);
   const read = (): BrowserRoutes | undefined => {
@@ -93,7 +101,9 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
     transform(code, id) {
       if (options.test) return undefined;
       const path = id.split('?')[0]!;
-      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?$/.test(path) || path.includes('/node_modules/') || !roots.some((dir) => path.startsWith(dir))) return undefined;
+      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?$/.test(path)) return undefined;
+      const ownPackage = packageOf(path);
+      if (ownPackage === undefined && (path.includes('/node_modules/') || !roots.some((dir) => path.startsWith(dir)))) return undefined;
       if (command === 'build' && isServer(this, undefined)) return undefined;
 
       const routes = read();
@@ -109,7 +119,7 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
         all.push({ message: reason ? hiddenMessage(name, reason) : unknownMessage(name, allowed), start });
       }
       if (all.length > 0) {
-        const where = relative(roots.find((dir) => path.startsWith(dir)) ?? root, path).split(sep).join('/');
+        const where = relative(ownPackage ?? roots.find((dir) => path.startsWith(dir)) ?? root, path).split(sep).join('/');
         this.error(all.sort((a, b) => a.start - b.start).map(({ message, start }) => `[marmeon] ${where}:${position(code, start)} — ${message}`).join('\n'));
       }
 
