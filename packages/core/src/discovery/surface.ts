@@ -41,8 +41,10 @@ export const MAX_LANG_FILES = 100;
 const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
 /** Deeper than any real view tree: a hostile package ends here. */
 const MAX_DEPTH = 16;
-/** Files that are no views or texts: tests and declarations. */
-const NOT_A_SOURCE = /\.(?:test|spec|type-test)\.|\.d\.[cm]?ts$/;
+/** Test files are no views or texts, wherever the marker sits in the name. */
+const TEST_FILE = /\.(?:test|spec|type-test)\./;
+/** Declaration files are no views or texts. */
+const DECLARATION_FILE = /\.d\.[cm]?ts$/;
 
 /** Whether `value` is a namespace a package may take: the right shape, short enough and not reserved. */
 export function isNamespace(value: unknown): value is string {
@@ -107,7 +109,7 @@ function listPattern(
         }
         continue;
       }
-      if (!entry.name.endsWith(extension) || NOT_A_SOURCE.test(entry.name)) continue;
+      if (!entry.name.endsWith(extension) || TEST_FILE.test(entry.name) || DECLARATION_FILE.test(entry.name)) continue;
       const name = `${prefix}${entry.name.slice(0, -extension.length)}`;
       const valid = key === 'views' ? isViewName(name) : LOCALE.test(name) && name.length <= 35;
       if (!valid) {
