@@ -63,6 +63,29 @@ describe('resolveModulePages', () => {
     await expect(reserved('a/x::y')).rejects.toThrow(/\[marmeon:R2\]/);
   });
 
+  it('takes the key of a package\'s page as its name', async () => {
+    const modules = resolveModulePages({
+      'status::Index': async () => ({ default: Greeting }),
+      'status::entries/Edit': async () => ({ default: Greeting }),
+    });
+    expect(await modules('status::Index')).toBe(Greeting);
+    expect(await modules('status::entries/Edit')).toBe(Greeting);
+  });
+
+  it('registers only a key of exactly the form <namespace>::<view>', async () => {
+    const load = async () => ({ default: Greeting });
+    const modules = resolveModulePages({ 'Status::A': load, 'status::': load, '::A': load, 'a::b::C': load, 'a::../C': load, [`${'a'.repeat(33)}::X`]: load, 'a::b c': load, 'app::x\n': load, 'app::X': load, 'marmeon::X': load });
+    for (const name of ['Status::A', 'status::', '::A', 'a::b::C', 'a::../C', `${'a'.repeat(33)}::X`, 'a::b c', 'app::x\n', 'app::X', 'marmeon::X']) {
+      await expect(modules(name)).rejects.toThrow(/\[marmeon:R2\]/);
+    }
+  });
+
+  it('names the package side when the page of a package is missing', async () => {
+    const modules = resolveModulePages({});
+    await expect(modules('status::entries/Edit')).rejects.toThrow('[marmeon:R2] Page [status::entries/Edit] not found. Expected the package with the namespace "status" to ship views/entries/Edit');
+    await expect(modules('a/B')).rejects.toThrow('Expected a default export in modules/a/views/B.tsx');
+  });
+
   it('ignores a file outside the app’s modules, even with the shape of a view', async () => {
     const outside = resolveModulePages({ '/node_modules/x/modules/a/views/B.tsx': async () => ({ default: Greeting }) });
     await expect(outside('a/B')).rejects.toThrow(/\[marmeon:R2\]/);

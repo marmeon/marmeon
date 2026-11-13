@@ -2183,6 +2183,8 @@ export declare function isDevelopment(): boolean;
 export declare function isDirtyPath(dirty: readonly string[], path?: string): boolean;
 // isHistoryState
 export declare function isHistoryState(value: unknown): value is HistoryState;
+// isPackagePageName
+export declare function isPackagePageName(key: string): boolean;
 // isSensitiveRememberField
 export declare function isSensitiveRememberField(field: string, include?: readonly string[]): boolean;
 // islands

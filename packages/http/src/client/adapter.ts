@@ -79,7 +79,7 @@ export { assertQueryPage, QueryState } from './query-state.ts';
 export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadOptimistic, loadTabSync, observeWith, prefetchWith } from './lazy.ts';
 export { loadUploads } from './load-uploads.ts';
 export type { FormLiveValidation } from './lazy.ts';
-export { ERROR_PAGE, LAYER_BACKDROP, pageInfo, pageName, scriptJson } from '../page-support.ts';
+export { ERROR_PAGE, isPackagePageName, LAYER_BACKDROP, pageInfo, pageName, scriptJson } from '../page-support.ts';
 export type { ErrorPageProps } from '../page-support.ts';
 export { matchesPath } from '@marmeon/router/url';
 export type { FlashChannel, FlashListener } from './flash.ts';

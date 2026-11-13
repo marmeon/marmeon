@@ -1,7 +1,7 @@
 import type { ErrorPageProps, Feature } from '@marmeon/http/client/adapter';
 import { revalidateOnBack } from '@marmeon/http/client/adapter';
 import type { InstantProps, IslandProps, PageProps } from '@marmeon/http/page';
-import { ERROR_PAGE, LAYER_BACKDROP, pageName } from '@marmeon/http/client/adapter';
+import { ERROR_PAGE, isPackagePageName, LAYER_BACKDROP, pageName } from '@marmeon/http/client/adapter';
 import type { ComponentType, ReactNode } from 'react';
 import { Backdrop } from './backdrop.tsx';
 import type { PageLayer } from './layer.tsx';
@@ -161,10 +161,16 @@ export function viewName(resolve: ResolvePage, component: string, props: object)
  * import pages from 'virtual:marmeon/pages'; // from marmeon() in @marmeon/vite
  * resolveModulePages(pages)
  * ```
+ *
+ * A key like `status::entries/Edit` is the page of a package, named as it is. See docs/pages.md#pages-of-a-package.
  */
 export function resolveModulePages(modules: PageModules): ResolvePage {
   const pages = new Map<string, PageModules[string]>();
   for (const [path, load] of Object.entries(modules)) {
+    if (isPackagePageName(path)) {
+      pages.set(path, load); // the key of a package's page, made by the build from its declared views: taken as it is
+      continue;
+    }
     const name = pageName(path);
     if (name && !name.includes('::')) pages.set(name, load); // `::` belongs to the pages of packages; `route:types` refuses it, this holds if it did not run
   }
@@ -175,9 +181,10 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     if (!load && name === LAYER_BACKDROP) return Backdrop; // the neutral surface under a layer whose base is not shown
     if (!load) {
       const [module, ...rest] = name.split('/');
-      throw new Error(
-        process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R2] Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx` : `[marmeon:R2] ${name}`,
-      );
+      const expected = isPackagePageName(name)
+        ? `Expected the package with the namespace "${name.split('::')[0]}" to ship views/${name.split('::')[1]}`
+        : `Expected a default export in modules/${module}/views/${rest.join('/')}.tsx`;
+      throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R2] Page [${name}] not found. ${expected}` : `[marmeon:R2] ${name}`);
     }
     const module = await load();
     if (typeof module !== 'object' || module === null || !('default' in module)) {

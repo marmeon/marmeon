@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { Application } from '@marmeon/core';
 import { defineRequest, defineRoutes, everyone, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
@@ -69,5 +69,62 @@ describe('RouteTypes — a controller no file of the app exports', () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('[hidden.show]');
     expect(warnings[0]).toContain('HiddenController is not exported by any file of the app');
+  });
+});
+
+describe('RouteTypes — the views of a package', () => {
+  const router = new Router();
+
+  function appWith(packages: Record<string, { marmeon: unknown; files: readonly string[] }>): string {
+    const root = join(realpathSync(tempDir('marmeon-route-types-')), 'app');
+    mkdirSync(root);
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', type: 'module', dependencies: Object.fromEntries(Object.keys(packages).map((name) => [name, '1.0.0'])) }));
+    for (const [name, { marmeon, files }] of Object.entries(packages)) {
+      const dir = join(root, 'node_modules', name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0', type: 'module', exports: { './views/*': './dist/views/*.js', './area/client': './dist/area/client.js', './area/ssr': './dist/area/ssr.js', './lang/*': './dist/lang/*.js' }, marmeon }));
+      for (const file of files) {
+        mkdirSync(dirname(join(dir, file)), { recursive: true });
+        writeFileSync(join(dir, file), '');
+      }
+    }
+    return root;
+  }
+
+  const render = (root: string) => new RouteTypes({ root, definition: {} } as unknown as Application, router).render();
+
+  it('lists every view of a package as <namespace>::<view>', async () => {
+    const root = appWith({
+      '@acme/status-board': {
+        marmeon: { namespace: 'status', entry: { client: './area/client', ssr: './area/ssr' }, views: './views' },
+        files: ['dist/area/client.js', 'dist/area/ssr.js', 'dist/views/Index.js', 'dist/views/entries/Edit.js'],
+      },
+      '@acme/more': { marmeon: { namespace: 'more', entry: { client: './area/client', ssr: './area/ssr' }, views: './views' }, files: ['dist/views/Card.js'] },
+    });
+    const { source } = await render(root);
+    expect(source).toContain("'status::Index': true;");
+    expect(source).toContain("'status::entries/Edit': true;");
+    expect(source).toContain("'more::Card': true;");
+  });
+
+  it('lists nothing for a package without views, or without a namespace', async () => {
+    const root = appWith({
+      '@acme/texts': { marmeon: { namespace: 'texts', lang: './lang' }, files: [] },
+      '@acme/plain': { marmeon: { providers: [] }, files: ['dist/views/Card.js'] },
+    });
+    const { source } = await render(root);
+    expect(source).not.toContain('::');
+    expect(source).toContain("interface Views {\n    'system/errors/Error': true;\n  }");
+  });
+
+  it('writes a view name as a string literal, quoted', async () => {
+    const root = appWith({ '@acme/status-board': { marmeon: { namespace: 'status', entry: { client: './area/client', ssr: './area/ssr' }, views: './views' }, files: ['dist/views/Index.js'] } });
+    const { source } = await render(root);
+    expect(source).toContain(`    ${JSON.stringify('status::Index').replaceAll('"', "'")}: true;`);
+  });
+
+  it('stops on a package that declares its views wrongly', async () => {
+    const root = appWith({ '@acme/status-board': { marmeon: { namespace: 'App', views: './views' }, files: [] } });
+    await expect(render(root)).rejects.toThrow('"namespace" is not valid');
   });
 });
