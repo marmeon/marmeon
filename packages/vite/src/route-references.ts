@@ -8,6 +8,9 @@ import { parseSync } from 'oxc-parser';
  * - `call`: an argument of a function, `useForm('…', …)`. `minArguments`: calls with fewer arguments take no name
  *   (`useForm(initial)` types a form by controller instead).
  * - `route-function`: the function a hook returns, called with the name first: `const route = useRoute(); route('…')`.
+ *
+ * An `element` sink is also found in compiled JSX, as a package ships it: `jsx(Link, { route: '…' })` (also `jsxs`, `jsxDEV`) imported from
+ * `react/jsx-runtime` or `react/jsx-dev-runtime`, and `createElement(Link, { route: '…' })` from `react`.
  */
 export type RouteSink =
   | { readonly module: string; readonly export: string; readonly kind: 'element'; readonly prop: string }
@@ -15,6 +18,13 @@ export type RouteSink =
   | { readonly module: string; readonly export: string; readonly kind: 'route-function' };
 
 const REACT = '@marmeon/react';
+
+/** The functions compiled JSX calls with the component first and its props as an object literal second: module → exports. */
+const ELEMENT_FACTORIES: Readonly<Record<string, readonly string[]>> = {
+  'react/jsx-runtime': ['jsx', 'jsxs'],
+  'react/jsx-dev-runtime': ['jsxDEV'],
+  react: ['createElement'],
+};
 
 /**
  * The sinks of the React adapter. A layer link needs no row of its own: `layer` is a flag, the name is the `route` row's.
@@ -132,8 +142,63 @@ export function collectRouteReferences(code: string, filename: string, options: 
     problems.push({ message: dynamicMessage(code, expression, sink, names), start: expression.start });
   };
 
+  /** Whether `callee` is `jsx`, `jsxs`, `jsxDEV` or `createElement` as imported (under any local name, or as a member of the module). */
+  const isElementFactory = (callee: Node, scope: Scope): boolean => {
+    const target = unwrap(callee);
+    const factory = (module: string, name: string) => ELEMENT_FACTORIES[module]?.includes(name) === true;
+    if (target.type === 'Identifier') {
+      const binding = scope.lookup(target.name);
+      return binding?.kind === 'import' && factory(binding.module, binding.imported);
+    }
+    if (target.type === 'MemberExpression' && !target.computed && target.object.type === 'Identifier' && target.property.type === 'Identifier') {
+      const binding = scope.lookup(target.object.name);
+      if (binding?.kind === 'namespace') return factory(binding.module, target.property.name);
+      // `import React from 'react'`: `React.createElement(…)`.
+      return binding?.kind === 'import' && binding.imported === 'default' && binding.module === 'react' && target.property.name === 'createElement';
+    }
+    return false;
+  };
+
+  /** `jsx(Link, { route: '…' })`: the props of a compiled element, read as `visitElement` reads a JSX element's attributes. */
+  const visitCompiledElement = (node: Node, scope: Scope): void => {
+    const args = node.arguments as Node[];
+    if (args.length < 2 || args[0]!.type === 'SpreadElement' || args[1]!.type === 'SpreadElement') return;
+    const elementSinks = sinksAt(unwrap(args[0]!), scope).filter((sink): sink is RouteSink & { kind: 'element' } => sink.kind === 'element');
+    const props = unwrap(args[1]!);
+    if (elementSinks.length === 0 || props.type !== 'ObjectExpression') return;
+    const element = elementSinks[0]!.export;
+    const wanted = new Set(elementSinks.map((sink) => sink.prop));
+    const members = props.properties as Node[];
+    const keyOf = (member: Node): string | undefined =>
+      member.type !== 'Property' || member.kind !== 'init' || member.computed ? undefined : ((member.key.type === 'Identifier' ? member.key.name : member.key.value) as string | undefined);
+    const lastSpread = members.findLastIndex((member) => member.type === 'SpreadElement');
+    if (lastSpread !== -1) {
+      const explicit = members.slice(lastSpread + 1).some((member) => {
+        const key = keyOf(member);
+        return key !== undefined && (wanted.has(key) || key === 'href');
+      });
+      if (!explicit) {
+        const spread = members[lastSpread]!;
+        problems.push({
+          message:
+            `${element}'s props ${code.slice(spread.start, spread.end)} may carry a route name the build cannot see, so the browser's route manifest would lack it. ` +
+            `Write ${elementSinks[0]!.prop}: '…' on the ${element} itself (after the spread), or pass a URL as href.`,
+          start: spread.start,
+        });
+      }
+    }
+    for (const member of members) {
+      const key = keyOf(member);
+      if (key !== undefined && wanted.has(key)) check(member.value as Node, scope, `${element} ${key}`);
+    }
+  };
+
   const visitCall = (node: Node, scope: Scope): void => {
     const args = node.arguments as Node[];
+    if (isElementFactory(node.callee, scope)) {
+      visitCompiledElement(node, scope);
+      return;
+    }
     if (isRouteFunction(node.callee, scope)) {
       if (args[0] && args[0].type !== 'SpreadElement') check(args[0], scope, 'route()');
       else problems.push({ message: dynamicMessage(code, args[0] ?? node, 'route()', names), start: (args[0] ?? node).start });

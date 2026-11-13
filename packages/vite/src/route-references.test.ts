@@ -95,6 +95,57 @@ describe('collectRouteReferences', () => {
     expect(names).toEqual([]);
   });
 
+  it('collects the names of compiled JSX, as a package ships it: jsx, jsxs, jsxDEV and createElement, under any local name', () => {
+    const { names, problems } = collect(`
+      import { Link as L, Form, Island } from '@marmeon/react';
+      import { jsx as _jsx, jsxs } from 'react/jsx-runtime';
+      import { jsxDEV } from 'react/jsx-dev-runtime';
+      import * as runtime from 'react/jsx-runtime';
+      import React, { createElement as h } from 'react';
+      export const a = _jsx(L, { route: 'user-profile.show', params: { user: 1 }, children: 'x' });
+      export const b = jsxs(Form, { 'route': 'auth.login', children: [] });
+      export const c = jsxDEV(Island, { route: \`user-profile.me\` }, void 0, false, {}, this);
+      export const d = runtime.jsx(L, { route: 'user-profile.edit' });
+      export const e = h(L, { route: 'auth.logout' });
+      export const f = React.createElement(L, { route: 'user-profile.update' });
+      export const g = _jsx(L, { href: '/elsewhere' });
+    `);
+    expect(problems).toEqual([]);
+    expect(names).toEqual(['auth.login', 'auth.logout', 'user-profile.edit', 'user-profile.me', 'user-profile.show', 'user-profile.update']);
+  });
+
+  it('ignores compiled look-alikes: a jsx from elsewhere, a component that is no sink, a computed key, a props variable', () => {
+    const { names, problems } = collect(`
+      import { Link } from '@marmeon/react';
+      import { jsx } from 'other-runtime';
+      import { jsx as real } from 'react/jsx-runtime';
+      import { createElement } from 'preact';
+      const Box = () => null;
+      const props = { route: 'user-profile.show' };
+      export const a = jsx(Link, { route: 'user-profile.show' });
+      export const b = real(Box, { route: 'user-profile.edit' });
+      export const c = real(Link, { ['route']: 'user-profile.me' });
+      export const d = createElement(Link, { route: 'user-profile.update' });
+      export const e = real(Link, props);
+      export const f = real('a', { route: 'auth.login' });
+    `);
+    expect(problems).toEqual([]);
+    expect(names).toEqual([]);
+  });
+
+  it('refuses a compiled route that is built at runtime, or hidden behind a spread, as the JSX form does', () => {
+    const { problems } = collect(`
+      import { Link } from '@marmeon/react';
+      import { jsx } from 'react/jsx-runtime';
+      export const a = (tab) => jsx(Link, { route: \`user-profile.\${tab}\` });
+      export const b = (rest) => jsx(Link, { ...rest, children: 'x' });
+      export const c = (rest) => jsx(Link, { ...rest, route: 'user-profile.show' });
+    `);
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toContain('built at runtime');
+    expect(problems[1]).toContain('may carry a route name the build cannot see');
+  });
+
   it('refuses a name built at runtime — with the literal prefix matched against the routes ("did you mean")', () => {
     const { problems } = collect(`
       import { useRoute } from '@marmeon/react';

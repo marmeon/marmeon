@@ -184,7 +184,10 @@ sees its modules. For each such package the plugin
   the plugin chain instead of pre-bundling them;
 - lets the dev server serve its folder (`server.fs.allow`: added to your own list, or, when you set none, to the workspace the app lies in; `server.fs.deny` stays);
 - collects the route names its code writes out (`<Link route>`, `useRoute()`), so they reach the browser's route manifest like
-  the app's own. Only declared packages count: the code of any other package in `node_modules` stays out.
+  the app's own. Only declared packages count: the code of any other package in `node_modules` stays out. A package ships compiled JSX, so the build also reads the compiled form
+  `jsx(Link, { route: 'status.index' })` (`jsx`, `jsxs` and `jsxDEV` from `react/jsx-runtime` or `react/jsx-dev-runtime`, and
+  `createElement` from `react`), with the component imported from `@marmeon/react` and the props written as an object literal. This needs ES module output:
+  props built by a helper (`Object.assign`, `_objectSpread`) or CommonJS `require` calls are not read, and their route names are missing.
 
 Nothing is scanned: the plugin acts on the packages the app's dependencies declare, resolved from `package.json` alone. A package
 with a client entry also gets `virtual:marmeon/pages/<namespace>`, the same as `virtual:marmeon/pages` for the pages the package

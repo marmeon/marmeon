@@ -337,7 +337,10 @@ function uiPackageApp(): string {
         hidden: {},
       }),
       'node_modules/@marmeon/react/package.json': JSON.stringify({ name: '@marmeon/react', type: 'module', exports: './index.js' }),
-      'node_modules/@marmeon/react/index.js': 'export const useRoute = (routes) => (name) => routes[name].path;\n',
+      'node_modules/@marmeon/react/index.js': 'export const useRoute = (routes) => (name) => routes[name].path;\nexport const Link = () => null;\n',
+      'node_modules/react/package.json': JSON.stringify({ name: 'react', type: 'module', exports: { '.': './index.js', './jsx-runtime': './jsx-runtime.js' } }),
+      'node_modules/react/index.js': 'export {};\n',
+      'node_modules/react/jsx-runtime.js': 'export const jsx = (type, props) => ({ type, props });\n',
       'node_modules/status-board/package.json': JSON.stringify({
         name: 'status-board',
         type: 'module',
@@ -347,11 +350,12 @@ function uiPackageApp(): string {
       'node_modules/status-board/dist/client.js': 'export {};\n',
       'node_modules/status-board/dist/ssr.js': 'export {};\n',
       'node_modules/status-board/dist/views/Index.js': [
-        "import { useRoute } from '@marmeon/react';",
+        "import { Link } from '@marmeon/react';",
+        "import { jsx } from 'react/jsx-runtime';",
         "import { routes } from 'virtual:marmeon/routes';",
         "import './status.css';",
-        'const route = useRoute(routes);',
-        "export default () => `status-board:${route('status.index')}`;",
+        // Compiled JSX, as a package ships it: the route name sits in the props of a `jsx()` call.
+        "export default () => `status-board:${routes['status.index'].path}:${typeof jsx(Link, { route: 'status.index' })}`;",
       ].join('\n'),
       'node_modules/status-board/dist/views/status.css': '.status-board { color: teal; }\n',
       'bootstrap/client.ts': "import pages from 'virtual:marmeon/pages/status';\nfor (const load of Object.values(pages)) void load();\ndocument.title = Object.keys(pages).join(',');\n",
@@ -380,7 +384,7 @@ describe('a package that declares a namespace, in a build', () => {
       encoding: 'utf8',
       env: { PATH: process.env.PATH },
     });
-    expect(ssr.stdout.trim()).toBe('status-board:/status-path');
+    expect(ssr.stdout.trim()).toBe('status-board:/status-path:object');
   }, 60_000);
 });
 
