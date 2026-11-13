@@ -162,10 +162,11 @@ const copies = new Map<string, string>();
 /**
  * A copy of the app, with the app's `node_modules` (a symlink) and without what the app generates: the build reads the
  * route manifest, and the app's own may be stale (`.marmeon/` survives a change of branch) or rewritten right now by a test
- * that boots the app — the copy gets its own, from the routes as they are.
+ * that boots the app — the copy gets its own, from the routes as they are. `into`: an empty directory to copy into (an app whose modules
+ * come from the repository belongs in the workspace: `workspaceTempDir`), removed again when the copy fails; default a directory in the OS's temp.
  */
-export function appCopy(root: string): string {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), `marmeon-app-${basename(root)}-`));
+export function appCopy(root: string, into?: string): string {
+  const dir = into ?? mkdtempSync(join(realpathSync(tmpdir()), `marmeon-app-${basename(root)}-`));
   try {
     cpSync(root, dir, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(root.length)) && !/[/\\]\.env$/.test(source) });
     symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'), 'dir');

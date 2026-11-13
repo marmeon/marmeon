@@ -2,7 +2,7 @@
   "name": "@fixtures/status-board",
   "version": "0.0.0",
   "private": true,
-  "description": "A package of user interface components with a namespace, built like a package an app installs: the tests show its components rendering on an app's pages and its modules passing through the app's Vite plugins.",
+  "description": "A package with an area of its own, built like a package an app installs: a status board in its own document (routes behind the app's access check, its own policy and texts), and components an app's pages render. The tests show the area in the web app, its components hydrating on an app page and its modules passing through the app's Vite plugins.",
   "type": "module",
   "sideEffects": [
     "**/*.css"
@@ -12,6 +12,28 @@
       "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./components": {
+      "@marmeon/source": "./src/components.ts",
+      "types": "./dist/components.d.ts",
+      "default": "./dist/components.js"
+    },
+    "./area/client": {
+      "@marmeon/source": "./src/area/client.tsx",
+      "default": "./dist/area/client.js"
+    },
+    "./area/ssr": {
+      "@marmeon/source": "./src/area/ssr.tsx",
+      "default": "./dist/area/ssr.js"
+    },
+    "./views/*": {
+      "@marmeon/source": "./src/views/*.tsx",
+      "default": "./dist/views/*.js"
+    },
+    "./lang/*": {
+      "@marmeon/source": "./src/lang/*.ts",
+      "types": "./dist/lang/*.d.ts",
+      "default": "./dist/lang/*.js"
     }
   },
   "publishConfig": {
@@ -19,6 +41,23 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./components": {
+        "types": "./dist/components.d.ts",
+        "default": "./dist/components.js"
+      },
+      "./area/client": {
+        "default": "./dist/area/client.js"
+      },
+      "./area/ssr": {
+        "default": "./dist/area/ssr.js"
+      },
+      "./views/*": {
+        "default": "./dist/views/*.js"
+      },
+      "./lang/*": {
+        "types": "./dist/lang/*.d.ts",
+        "default": "./dist/lang/*.js"
       }
     }
   },
@@ -26,18 +65,40 @@
     "build:css": "node copy-css.ts"
   },
   "devDependencies": {
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
     "@marmeon/react": "workspace:*",
+    "@marmeon/vite": "workspace:*",
     "@types/react": "^19.3.0",
     "react": "^19.3.1"
   },
   "peerDependencies": {
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
     "@marmeon/react": "workspace:*",
     "react": "^19.3.0"
   },
   "marmeon": {
+    "providers": [
+      "StatusBoardServiceProvider"
+    ],
     "namespace": "status",
+    "entry": {
+      "client": "./area/client",
+      "ssr": "./area/ssr"
+    },
+    "views": "./views",
+    "lang": "./lang",
     "browser": [
-      "src/**"
+      "src/area/**",
+      "src/views/**",
+      "src/components.ts",
+      "src/StatusBoard.tsx",
+      "src/Badge.tsx"
     ]
   }
 }

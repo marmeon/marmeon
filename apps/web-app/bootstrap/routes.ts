@@ -172,6 +172,7 @@ declare module '@marmeon/router' {
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
     'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
+    'status.index': { method: 'get'; path: '/status' };
     'support.contact': { method: 'get'; path: '/:locale/help/contact'; controller: typeof ShowContactController; localized: true };
     'talks.ask': { method: 'post'; path: '/talks/:talk/questions'; controller: typeof AskQuestionController };
     'talks.show': { method: 'get'; path: '/talks/:talk'; controller: typeof ShowTalkController };
@@ -235,6 +236,7 @@ declare module '@marmeon/http/page' {
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;
     'notifications/Index': true;
+    'status::Index': true;
     'support/Contact': true;
     'system/errors/404': true;
     'system/errors/Error': true;

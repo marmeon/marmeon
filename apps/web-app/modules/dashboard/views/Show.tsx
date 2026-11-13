@@ -1,4 +1,4 @@
-import { StatusBoard } from '@fixtures/status-board';
+import { StatusBoard } from '@fixtures/status-board/components';
 import type { PageProps } from '@marmeon/http';
 import { Head, Island, Link, useTranslation, type Placeholder } from '@marmeon/react';
 import type { ShowDashboardController } from '../controllers/ShowDashboardController.ts';
@@ -49,6 +49,9 @@ export default function Show(_props: Props) {
         {' · '}
         {/* By URL, not by route name: a name client code writes goes into the route manifest of the first download. */}
         <Link href="/members">{t('members_table')}</Link>
+        {' · '}
+        {/* The package's area is a document of its own: this visit loads it fully (administrators only, its route's access check). */}
+        <Link route="status.index">{t('status_area')}</Link>
       </p>
       {/* Further down on purpose: it loads once it scrolls into view, then polls (paused while the tab is hidden). */}
       <section aria-labelledby="activity" className="below-the-fold">

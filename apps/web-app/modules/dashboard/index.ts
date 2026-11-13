@@ -1,6 +1,7 @@
 import { defineModule } from '@marmeon/core';
 import { DashboardConfig } from './config.ts';
 import routes from './routes.ts';
+import { StatusAccessServiceProvider } from './StatusAccessServiceProvider.ts';
 
 // Public API of the module — the members table asks who the administrators are.
 export { DashboardConfig } from './config.ts';
@@ -9,5 +10,7 @@ export { DashboardConfig } from './config.ts';
 export default defineModule({
   name: 'dashboard',
   config: [DashboardConfig],
+  // Who may open the status board package's area.
+  providers: [StatusAccessServiceProvider],
   routes,
 });
