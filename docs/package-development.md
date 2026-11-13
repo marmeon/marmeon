@@ -554,6 +554,11 @@ A package can bring components that an app renders on its own pages. The package
 ```tsx title="modules/dashboard/views/Show.tsx"
 import { StatusBoard } from '@acme/status-board';
 
+const services = [
+  { name: 'Mail', state: 'up' },
+  { name: 'Search', state: 'degraded' },
+] as const;
+
 export default function Show() {
   return <StatusBoard services={services} />;
 }
