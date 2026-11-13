@@ -72,7 +72,7 @@ import { ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router
 import { localLocation } from '@marmeon/router/internal';
 import { urlFor } from '@marmeon/router/url';
 import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory, type RouteLookup } from '@marmeon/router/internal';
-import { documentFor, markPackageDocument, type DocumentName } from './documents.ts';
+import { documentFor, markPackageDocument, unmarkPackageDocument, type DocumentName } from './documents.ts';
 import { documentOf as documentFromResult, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads, withStyles } from './html.ts';
 import { preloadTags, stylesheetTags, type AssetPreloads } from './preloads.ts';
 
@@ -461,6 +461,9 @@ export function createResponseFactory(
       if (!requestNonce) throw new Error(`The document of [${page.component}] is a package's and needs the response's nonce, which this request has none of.`);
       requestNonce.want();
       markPackageDocument(requestNonce);
+    } else if (requestNonce) {
+      // A package's document made earlier in this request was dropped (a middleware failed after it): this one is the answer.
+      unmarkPackageDocument(requestNonce);
     }
     const nonce = requestNonce?.forDocument();
     if (!ssr) return renderer.shell(page, request, nonce, appUrl);

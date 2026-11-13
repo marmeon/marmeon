@@ -10,7 +10,7 @@ export { isLayerResult } from './layer.ts';
 export { flashableInput, Flasher, INTENDED_KEY, isRedirectResult, OLD_INPUT_KEY } from './redirect.ts';
 export { PageSession } from './page-session.ts';
 export { ServerClosing, ServerServing } from './server-closing.ts';
-export { withDefaultPolicy } from './csp.ts';
+export { warnIfSharedNonce, withDefaultPolicy } from './csp.ts';
 export { ReadOnly } from './read-only.ts';
 export { ParentRequest } from './parent-request.ts';
 export { AssetVersion } from './asset-version.ts';

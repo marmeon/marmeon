@@ -40,6 +40,11 @@ export function markPackageDocument(nonce: RequestNonce): void {
   packageDocuments.add(nonce);
 }
 
+/** The response shows the app's document after all (an error page, once a middleware failed): nothing of a package's is left to secure. */
+export function unmarkPackageDocument(nonce: RequestNonce): void {
+  packageDocuments.delete(nonce);
+}
+
 /** Whether {@link markPackageDocument} was called for this response. */
 export function showedPackageDocument(nonce: RequestNonce): boolean {
   return packageDocuments.has(nonce);
