@@ -17,6 +17,8 @@ export interface PackageSurface {
   /** The package's name in the dependency list. */
   readonly package: string;
   readonly namespace: string;
+  /** Real path of the package's directory. */
+  readonly dir: string;
   /** Absolute paths of the client and server entry the `entry` subpaths resolve to. */
   readonly entry?: { readonly client: string; readonly ssr: string };
   /** View name (`entries/Edit`, from the path below the pattern) → real path of its file. Sorted by name. */
@@ -210,5 +212,5 @@ export function resolveSurface(pkg: PackageInfo, field: PackageUiField, conditio
   }
   const views = field.views === undefined ? new Map() : listPattern(pkg, field.views, 'views', conditions, { recursive: true, max: MAX_VIEWS });
   const lang = field.lang === undefined ? new Map() : listPattern(pkg, field.lang, 'lang', conditions, { recursive: false, max: MAX_LANG_FILES });
-  return { package: pkg.name, namespace: field.namespace, ...(entry ? { entry } : {}), views: sorted(views), lang: sorted(lang) };
+  return { package: pkg.name, namespace: field.namespace, dir: pkg.dir, ...(entry ? { entry } : {}), views: sorted(views), lang: sorted(lang) };
 }

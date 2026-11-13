@@ -127,6 +127,7 @@ describe('the files a package declares, resolved', () => {
     expect(surface).toEqual({
       package: '@acme/status-board',
       namespace: 'status',
+      dir,
       entry: { client: join(dir, 'dist/area/client.js'), ssr: join(dir, 'dist/area/ssr.js') },
       views: { Index: join(dir, 'dist/views/Index.js'), 'entries/Edit': join(dir, 'dist/views/entries/Edit.js') },
       lang: { 'de-AT': join(dir, 'dist/lang/de-AT.js'), en: join(dir, 'dist/lang/en.js') },
@@ -159,7 +160,7 @@ describe('the files a package declares, resolved', () => {
 
   it('allows a package with a namespace alone and no entry', () => {
     const [surface] = packageSurfaces({ root: appWith({ '@acme/ui-kit': { marmeon: { namespace: 'ui-kit' } } }) });
-    expect(surface).toEqual({ package: '@acme/ui-kit', namespace: 'ui-kit', views: {}, lang: {} });
+    expect(surface).toEqual({ package: '@acme/ui-kit', namespace: 'ui-kit', dir: expect.stringMatching(/ui-kit$/), views: {}, lang: {} });
   });
 
   it('refuses a declared subpath the exports do not have', () => {

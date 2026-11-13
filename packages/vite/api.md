@@ -72,6 +72,8 @@ const image: import('@marmeon/http/page').ImageSource;
 const lang: Record<string, () => Promise<unknown>>;
 // virtual:marmeon/pages.pages
 const pages: Record<string, () => Promise<unknown>>;
+// virtual:marmeon/pages/*.pages
+const pages: Record<string, () => Promise<unknown>>;
 // virtual:marmeon/routes.routes
 export const routes: Readonly<Record<string, { readonly method: string; readonly path: string }>>;
 ```

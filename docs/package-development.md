@@ -528,6 +528,8 @@ Every path is a subpath of `exports`, not a path in the package, so the conditio
   or `.type-test.` in the name and `.d.ts` files are not views or texts. A package may have at most 1000 views and 100 language files, and its views may nest at most 16 folders deep.
 - `namespace` is required with any of the others. `entry` and `views` come together: a package's pages are always rendered by its own
   entry. `lang` can stand alone, and so can `namespace`.
+- A package with a `namespace` is compiled by the app's Vite like the app's own source, in development, in the build and in server
+  rendering, so the app's Vite plugins see its modules (see [Packages with pages or components](vite.md#packages-with-pages-or-components)).
 - Two installed packages cannot share a namespace, and neither can two installed copies of one package.
 - A directory below `views` that is a link is not followed, so a link cannot lead the listing out of the package or into a loop.
 

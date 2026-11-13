@@ -323,6 +323,67 @@ describe('virtual:marmeon/routes in a build', () => {
   }, 60_000);
 });
 
+/**
+ * An app with a package of compiled ESM in `node_modules` that declares a namespace: a page that names a route, imports a
+ * stylesheet and reads the route manifest, as built code of a package does.
+ */
+function uiPackageApp(): string {
+  return app({
+    files: {
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { '@marmeon/fake': '*', '@marmeon/react': '*', 'status-board': '*' } }),
+      '.marmeon/routes.json': JSON.stringify({
+        version: 1,
+        routes: { 'status.index': { method: 'get', path: '/status-path' }, 'admin.secret': { method: 'get', path: '/admin/secret-path' } },
+        hidden: {},
+      }),
+      'node_modules/@marmeon/react/package.json': JSON.stringify({ name: '@marmeon/react', type: 'module', exports: './index.js' }),
+      'node_modules/@marmeon/react/index.js': 'export const useRoute = (routes) => (name) => routes[name].path;\n',
+      'node_modules/status-board/package.json': JSON.stringify({
+        name: 'status-board',
+        type: 'module',
+        exports: { './client': './dist/client.js', './ssr': './dist/ssr.js', './views/*': './dist/views/*.js' },
+        marmeon: { namespace: 'status', entry: { client: './client', ssr: './ssr' }, views: './views' },
+      }),
+      'node_modules/status-board/dist/client.js': 'export {};\n',
+      'node_modules/status-board/dist/ssr.js': 'export {};\n',
+      'node_modules/status-board/dist/views/Index.js': [
+        "import { useRoute } from '@marmeon/react';",
+        "import { routes } from 'virtual:marmeon/routes';",
+        "import './status.css';",
+        'const route = useRoute(routes);',
+        "export default () => `status-board:${route('status.index')}`;",
+      ].join('\n'),
+      'node_modules/status-board/dist/views/status.css': '.status-board { color: teal; }\n',
+      'bootstrap/client.ts': "import pages from 'virtual:marmeon/pages/status';\nfor (const load of Object.values(pages)) void load();\ndocument.title = Object.keys(pages).join(',');\n",
+      'bootstrap/ssr.ts': "import Index from 'status-board/views/Index';\nexport const render = async () => ({ html: Index() });\n",
+    },
+  });
+}
+
+describe('a package that declares a namespace, in a build', () => {
+  it('is bundled with the app: its route names reach the browser manifest, and server rendering runs it with no loose import left', () => {
+    const root = uiPackageApp();
+    const { code, out } = build(root);
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(code).toBe(0);
+
+    const client = bundle(join(root, 'dist/client'));
+    expect(client).toContain('status::Index');
+    // The name is written out in the package only; the route no code names stays on the server.
+    expect(client).toContain('/status-path');
+    expect(client).not.toContain('admin.secret');
+    expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.endsWith('.css'))).toBe(true);
+
+    // The server bundle holds the package's page itself (and the stylesheet is no import Node must load): it runs from `dist`.
+    expect(bundle(join(root, 'dist/server'))).toContain('status-board:');
+    const ssr = spawnSync(process.execPath, ['--input-type=module', '-e', `const { render } = await import(${JSON.stringify(pathToFileURL(join(root, 'dist/server/ssr.js')).href)}); console.log((await render()).html);`], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    expect(ssr.stdout.trim()).toBe('status-board:/status-path');
+  }, 60_000);
+});
+
 /** An app with a controller that imports nothing: without the check, a value import would build green and ship it. */
 function serverCodeApp(files: Record<string, string>): string {
   return app({

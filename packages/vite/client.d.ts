@@ -9,6 +9,15 @@ declare module 'virtual:marmeon/pages' {
   export default pages;
 }
 
+declare module 'virtual:marmeon/pages/*' {
+  /**
+   * The page components of the package that declares the namespace (`virtual:marmeon/pages/status`), keyed `<namespace>::<view>`
+   * (`status::entries/Edit`) and loaded lazily. See docs/vite.md#packages-with-pages-or-components.
+   */
+  const pages: Record<string, () => Promise<unknown>>;
+  export default pages;
+}
+
 declare module 'virtual:marmeon/lang' {
   /**
    * Every language file (`modules/<module>/lang/<locale>.ts` and `lang/<locale>.ts`), keyed by its path from the app root and loaded lazily, one chunk

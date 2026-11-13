@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { marmeonInjection, CSP_NONCE_PLACEHOLDER, PAGE_TESTS_GLOB, PAGES_GLOB } from '@marmeon/core/internal';
-import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
+import { marmeonInjection, CSP_NONCE_PLACEHOLDER, PAGE_TESTS_GLOB, PAGES_GLOB, type PackageSurface } from '@marmeon/core/internal';
+import { defaultClientConditions, defaultServerConditions, normalizePath, searchForWorkspaceRoot, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { checkFonts, fontFallbacks, preloadFonts, type MarmeonFont } from './fonts.ts';
 import { images, type ImageOptions } from './images.ts';
+import { PACKAGE_ENTRY_MARK, packagePages, uiPackages, uiPackageSettings } from './package-pages.ts';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
 import { serverImports } from './server-imports.ts';
@@ -19,6 +20,11 @@ export const PLUGIN_NAME = 'marmeon';
 
 /** Vite's default `server.fs.deny`. A list of its own replaces this one rather than extending it, so ours has to repeat it. */
 const VITE_DEFAULT_DENY = ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**'];
+
+/** A path as a glob that matches only itself: Vite reads `optimizeDeps.entries` as globs, in which `[`, `(` or `{` in a folder's name would match nothing. */
+function globLiteral(path: string): string {
+  return normalizePath(path).replace(/[\\[\]{}()*?!+@|"]/g, (char) => (char === '\\' ? '?' : `\\${char}`));
+}
 
 /** What the dev server must never serve, even to a client that reaches it over the network: storage, databases, build output. */
 function privateFiles(root: string): string[] {
@@ -53,6 +59,8 @@ export interface MarmeonEntries {
 /** What the server and the CLI read from the resolved Vite config (`plugins.find(p => p.name === 'marmeon').api`). */
 export interface MarmeonPluginApi {
   entries: MarmeonEntries;
+  /** The packages that declare a namespace, as the config hook read them (empty until it ran). */
+  surfaces: readonly PackageSurface[];
 }
 
 export interface MarmeonOptions {
@@ -150,7 +158,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
   }
   checkFonts(options.fonts ?? []);
   const entries: MarmeonEntries = { ...DEFAULT_ENTRIES, ...options.entries };
-  const api: MarmeonPluginApi = { entries };
+  const api: MarmeonPluginApi = { entries, surfaces: [] };
+  let packages: readonly PackageSurface[] = [];
 
   const main: Plugin & { api: MarmeonPluginApi } = {
     name: PLUGIN_NAME,
@@ -159,6 +168,9 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       const root = resolve(config.root ?? process.cwd());
       // Sources only while serving in development or test; a build always takes what a published package ships.
       const source = command === 'serve' && (mode === 'development' || mode === 'test') ? [SOURCE_CONDITION] : [];
+      // `import` and `default` are what Node and the bundler match on top of the client's conditions.
+      packages = uiPackages(root, [...source, ...defaultClientConditions, 'import']);
+      api.surfaces = packages;
       const result: UserConfig = {
         resolve: { conditions: [...source, ...defaultClientConditions], dedupe: adapterPeers(root) },
         // Vitest hands the server conditions to its Node workers (`--conditions`). Node itself never matches `module`: with
@@ -176,14 +188,23 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       // Tags (and the `csp-nonce` meta Vite reads) carry the placeholder; the server replaces only this value with the
       // response's nonce, or takes the attribute out.
       if (!options.test) result.html = { cspNonce: CSP_NONCE_PLACEHOLDER };
+      // Packages with a namespace are compiled like the app's own source, so its plugins see their modules: not pre-bundled in
+      // development, not left to Node in server rendering.
+      const ui = uiPackageSettings(packages);
+      if (packages.length > 0 && !options.test) result.ssr!.noExternal = ui.names;
       if (command === 'serve' && !options.test) {
         // Vite scans index.html as written, which lacks the client entry and the devtools' bar: found only on the first request,
         // each re-bundling reloads the page (a 504 "Outdated Optimize Dep").
-        result.optimizeDeps = { entries: [entries.client, ...PAGES], include: installedModules(root, PREBUNDLED) };
+        result.optimizeDeps = { entries: [entries.client, ...ui.clientEntries.map(globLiteral), ...PAGES], include: installedModules(root, PREBUNDLED), ...(packages.length > 0 ? { exclude: ui.names } : {}) };
       }
       // An app's own `server.fs.deny` is extended by this list, not replaced (Vite concatenates arrays). A pattern
       // with a slash is matched against the absolute path, so the app's directories carry the root.
-      if (command === 'serve' && !options.test) result.server = { fs: { deny: privateFiles(root) } };
+      // A list of `allow` replaces Vite's default (the workspace the app lies in), and Vite concatenates the app's own list with ours:
+      // the workspace comes back only for an app that sets none, otherwise just the packages' folders join its list.
+      if (command === 'serve' && !options.test) {
+        const base = config.server?.fs?.allow === undefined ? [searchForWorkspaceRoot(root)] : [];
+        result.server = { fs: { deny: privateFiles(root), ...(ui.directories.length > 0 ? { allow: [...base, ...ui.directories] } : {}) } };
+      }
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild
           ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }
@@ -208,7 +229,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     transformIndexHtml: {
       order: 'pre',
       handler(html) {
-        if (options.test || html.includes(`src="/${entries.client}"`)) return undefined;
+        if (options.test || html.includes(`src="/${entries.client}"`) || html.includes(PACKAGE_ENTRY_MARK)) return undefined;
         return [{ tag: 'script', attrs: { type: 'module', src: `/${entries.client}` }, injectTo: 'body' }];
       },
     },
@@ -235,9 +256,10 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     marmeonInjection() as Plugin,
     virtualGlob('pages', PAGES),
     virtualGlob('lang', LANG),
+    packagePages(() => packages),
     ...(options.fonts?.length ? [fontFallbacks(options.fonts)] : []),
     ...(options.fonts?.length && !options.test ? [preloadFonts(options.fonts)] : []),
-    routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
+    routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], packageDirectories: () => uiPackageSettings(packages).directories, ...(options.test ? { test: true } : {}) }),
     serverImports({ pages: [PAGES_GLOB], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
     images(options.images),
   ];
