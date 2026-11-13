@@ -27,8 +27,10 @@ export interface Preload {
 
 /** The preloads of an app's build, computed once. */
 export interface AssetPreloads {
-  /** The entry's own chunks — which `index.html` already names. */
+  /** The entry's own chunks — which `index.html` already names. With an `entry`: that entry first, then what it imports statically. */
   readonly initial: readonly Preload[];
+  /** The stylesheets of the entry's chunks, as hrefs, in the order they apply — what a document of the entry links itself. */
+  readonly entryStylesheets: readonly string[];
   /** The page's chunk, the chunks it imports, its layers' and tab sync — and the loading of deferred props, when it has some; without what `initial` has. */
   forPage(page: Pick<PageObject, 'component' | 'layers' | 'deferredProps' | 'streamedProps'>): readonly Preload[];
   /**
@@ -153,15 +155,27 @@ export function baseOf(template: string, manifest?: ViteManifest): string {
   return found ?? '/';
 }
 
+/** Which entry and which pages {@link assetPreloads} computes for; without either, the app's. */
+export interface AssetPreloadsOptions {
+  /** The build's `base` (see `baseOf`). */
+  base?: string;
+  /** The manifest key of the one entry the document starts at: its static imports are the initial set, nothing of another entry. Without it every `isEntry` chunk counts (the app's own build). */
+  entry?: string;
+  /** View name → manifest key of the pages to preload, instead of the names `pageName` derives from the keys. */
+  pages?: Readonly<Record<string, string>>;
+}
+
 /**
  * The preloads of every page and of tab sync in `manifest`, computed once. `base` is the build's (see `baseOf`): every href
- * starts with it; the manifest's own entries are checked as paths and stay on `base`.
+ * starts with it; the manifest's own entries are checked as paths and stay on `base`. With `entry`, `initial` and the entry's
+ * styles come from the closure of that one chunk; `pages` names the pages (a package's, keyed `<namespace>::<view>`).
  */
-export function assetPreloads(manifest: ViteManifest, { base = '/' }: { base?: string } = {}): AssetPreloads {
+export function assetPreloads(manifest: ViteManifest, { base = '/', entry: only, pages: named }: AssetPreloadsOptions = {}): AssetPreloads {
   if (!isBase(base)) throw new Error(`assetPreloads: base must be '/' or an absolute URL ending in '/', not '${base}'.`);
   const href = (file: string): string => `${base}${new URL(`/${file}`, 'http://h/').pathname.slice(1)}`;
   const script = (key: string): Preload => ({ href: href(manifest[key]!.file), as: 'script' });
-  const entries = Object.keys(manifest).filter((key) => manifest[key]!.isEntry);
+  const entries = only === undefined ? Object.keys(manifest).filter((key) => manifest[key]!.isEntry) : Object.hasOwn(manifest, only) ? [only] : [];
+  if (only !== undefined && entries.length === 0) throw new Error(`assetPreloads: the manifest has no entry '${only}'.`);
   const initialKeys = new Set<string>();
   for (const entry of entries) closure(manifest, (manifest[entry]!.imports ?? []), initialKeys);
   const initial = [...closure(manifest, entries)].map(script);
@@ -171,9 +185,12 @@ export function assetPreloads(manifest: ViteManifest, { base = '/' }: { base?: s
   const withoutInitial = (keys: string[]) => keys.filter((key) => Object.hasOwn(manifest, key) && !initialKeys.has(key) && !manifest[key]!.isEntry).map(script);
 
   const pages = new Map<string, readonly Preload[]>();
-  for (const key of Object.keys(manifest)) {
+  const pairs = named === undefined ? Object.keys(manifest).flatMap((key) => {
     const name = pageName(key);
-    if (name === undefined || name.includes('::')) continue;
+    return name === undefined || name.includes('::') ? [] : [[name, key] as const];
+  }) : Object.entries(named);
+  for (const [name, key] of pairs) {
+    if (!Object.hasOwn(manifest, key)) continue;
     pages.set(name, withoutInitial([...closure(manifest, [key])]));
     pageStyles.set(name, stylesOf(manifest, [key]));
   }
@@ -185,6 +202,7 @@ export function assetPreloads(manifest: ViteManifest, { base = '/' }: { base?: s
 
   return {
     initial,
+    entryStylesheets: [...entryStyles].map(href),
     forPage(page) {
       const seen = new Set<string>();
       const result: Preload[] = [];

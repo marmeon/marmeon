@@ -206,3 +206,42 @@ describe('baseOf', () => {
     expect(() => baseOf(page('./assets/index-a.js'), manifest)).toThrow(/'\.\/'/);
   });
 });
+
+describe('assetPreloads of one entry', () => {
+  // An app entry and a package entry sharing a React chunk; each with its own library and stylesheet.
+  const split: ViteManifest = {
+    'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_react', '_app-lib'], css: ['assets/index-a.css'] },
+    '../pkg/client.js': { file: 'assets/pkg-status-a.js', isEntry: true, imports: ['_react', '_status-lib'], css: ['assets/pkg-status-a.css'] },
+    _react: { file: 'assets/react-a.js' },
+    '_app-lib': { file: 'assets/app-lib-a.js' },
+    '_status-lib': { file: 'assets/status-lib-a.js', css: ['assets/status-lib-a.css'] },
+    'modules/site/views/Home.tsx': { file: 'assets/Home-a.js', isDynamicEntry: true, imports: ['_react', 'index.html'] },
+    '../pkg/views/Index.js': { file: 'assets/Index-a.js', isDynamicEntry: true, imports: ['_react', '_status-lib', '../pkg/client.js'], css: ['assets/Index-a.css'] },
+  };
+
+  it("takes the initial set from the entry's own closure — nothing only the other entry reaches", () => {
+    const app = assetPreloads(split, { entry: 'index.html' });
+    expect(hrefs(app.initial)).toEqual(['/assets/index-a.js', '/assets/react-a.js', '/assets/app-lib-a.js']);
+    expect(app.entryStylesheets).toEqual(['/assets/index-a.css']);
+
+    const status = assetPreloads(split, { entry: '../pkg/client.js', pages: { 'status::Index': '../pkg/views/Index.js' } });
+    expect(hrefs(status.initial)).toEqual(['/assets/pkg-status-a.js', '/assets/react-a.js', '/assets/status-lib-a.js']);
+    expect(status.entryStylesheets).toEqual(['/assets/status-lib-a.css', '/assets/pkg-status-a.css']);
+  });
+
+  it("preloads a package page's own chunk without the entry's, and names pages only from the map it is given", () => {
+    const status = assetPreloads(split, { entry: '../pkg/client.js', pages: { 'status::Index': '../pkg/views/Index.js' } });
+    expect(hrefs(status.forPage({ component: 'status::Index' }))).toEqual(['/assets/Index-a.js']);
+    expect(status.stylesFor({ component: 'status::Index' })).toEqual(['/assets/Index-a.css']);
+    // The app's page is not one of this entry's.
+    expect(hrefs(status.forPage({ component: 'site/Home' }))).toEqual([]);
+  });
+
+  it('refuses an entry the manifest lacks', () => {
+    expect(() => assetPreloads(split, { entry: 'nope.html' })).toThrow("no entry 'nope.html'");
+  });
+
+  it('takes the union of every entry without one', () => {
+    expect(hrefs(assetPreloads(split).initial)).toEqual(expect.arrayContaining(['/assets/app-lib-a.js', '/assets/status-lib-a.js']));
+  });
+});

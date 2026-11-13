@@ -349,6 +349,18 @@ props.
 - **Resolution:** `resolveModulePages()` takes a key of exactly the form `<namespace>::<view>` as the page's name. The keys of the
   app's own pages begin with `/` and keep their names. An app file whose path holds `::` is still no page.
 
+### Their document
+
+A package with an `entry` renders its pages in a document of its own, not in the app's `index.html`. The document follows the page's name:
+a name without `::` is the app's; `status::…` of a package with an entry is that entry's; a namespace without an entry is an error. In an app with a package
+entry, such a page fails with `H16` (status 500), not the app's document: a typo never shows an area's page in the public one.
+
+The server writes the entry's document itself: the standard template, the entry's script (with the response's nonce), and the
+stylesheets and preloads of what that entry loads, and nothing of the app's entry. The package brings no HTML. Each document has its
+own [asset version](navigation.md#a-new-version-of-the-app); with `SERVER_ASSET_VERSION` set it is that value for the app and
+`<value>+<namespace>` for a package. A client with the version of any current document is not stale. The build
+[lists the entries](vite.md#packages-with-an-entry); an app without a package entry renders exactly as before.
+
 ## Server rendering
 
 Every page renders on the server first. The response streams: the page's frame goes out at once, and parts that wait for data

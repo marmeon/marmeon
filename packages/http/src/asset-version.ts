@@ -6,6 +6,8 @@ import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, speaksProtocol, VERSION_HE
 /** The current build's asset version — set by the server kernel; null means "do not check" (development). */
 export interface AssetVersion {
   readonly value: string | null;
+  /** The versions of the documents of package entries, which are current too: a client with one of them is not stale. */
+  readonly others?: readonly string[];
 }
 export const AssetVersion = token<AssetVersion>('AssetVersion');
 
@@ -29,7 +31,7 @@ export class CheckAssetVersion {
     const current = this.#version.value;
     const client = request.headers.get(VERSION_HEADER);
     const stale =
-      current !== null && client !== null && client !== current && request.method === 'GET' && speaksProtocol(request.headers);
+      current !== null && client !== null && client !== current && !this.#version.others?.includes(client) && request.method === 'GET' && speaksProtocol(request.headers);
     if (!stale) return next();
     const url = new URL(request.url);
     return new Response(null, {

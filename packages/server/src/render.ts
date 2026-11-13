@@ -67,7 +67,8 @@ import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory, type RouteLookup } from '@marmeon/router/internal';
-import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads, withStyles } from './html.ts';
+import { documentFor, type DocumentName } from './documents.ts';
+import { documentOf as documentFromResult, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads, withStyles } from './html.ts';
 import { preloadTags, stylesheetTags, type AssetPreloads } from './preloads.ts';
 
 export interface PageRenderOptions {
@@ -101,8 +102,12 @@ export interface PageRenderer {
   render(page: PageObject, request: Request, options: PageRenderOptions): Promise<string | ReadableStream<Uint8Array>>;
   /** The document without markup: the browser renders the page (server rendering failed, or is off). `nonce` and `appUrl`: as for {@link render}. */
   shell(page: PageObject, request: Request, nonce?: string, appUrl?: string): Promise<string>;
-  /** Version of the built assets; undefined in development (no checks while Vite serves sources). */
+  /** Version of the built assets; undefined in development without package entries (no checks while Vite serves sources); `dev:app` with them. */
   readonly version?: string;
+  /** Version of the built assets of each package entry's document (by namespace); absent without package entries. */
+  readonly entryVersions?: ReadonlyMap<string, string>;
+  /** The document the view renders in (`app`, or a namespace) — throws `H16` for a namespace no package has. Absent without package entries: every view is the app's. */
+  documentOf?(view: string): DocumentName;
   /**
    * Development: server rendering of a page failed and its document goes out without markup — tell the developer
    * (the Vite dev renderer shows it in Vite's overlay). What it returns goes into that document, before `</body>`.
@@ -122,6 +127,14 @@ export interface RenderFailureDetails {
   readonly nonce?: string;
 }
 
+/** What the document of a package's entry is made of; `version` is that document's asset version. */
+export interface EntryDocumentOptions {
+  template(request: Request): string | Promise<string>;
+  ssr(): SsrRender | Promise<SsrRender>;
+  preloads?: AssetPreloads;
+  version?: string;
+}
+
 export interface DocumentRendererOptions {
   /** The app's `index.html`, per request (Vite transforms it in development). */
   template(request: Request): string | Promise<string>;
@@ -134,6 +147,8 @@ export interface DocumentRendererOptions {
   /** What each document preloads for its page (production: computed from the build's manifest). */
   preloads?: AssetPreloads;
   version?: string;
+  /** The documents of the packages with an entry, by namespace. Each view renders in the one `documentFor` names. */
+  packages?: ReadonlyMap<string, EntryDocumentOptions>;
 }
 
 const renders = channels.tracing('render.ssr');
@@ -153,20 +168,30 @@ function appOriginTag(appUrl: string | undefined): string {
 }
 
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
-export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version }: DocumentRendererOptions): PageRenderer {
+export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version, packages }: DocumentRendererOptions): PageRenderer {
   // After `withNonce`, so the tags carry the real nonce and never meet the placeholder.
-  const documentFor = (document: string, page: PageObject, nonce: string | undefined, appUrl: string | undefined) =>
+  const documentWith = (parts: { preloads?: AssetPreloads | undefined }, document: string, page: PageObject, nonce: string | undefined, appUrl: string | undefined) =>
     withStyles(
-      withPreloads(withNonce(document, nonce), (preloads ? preloadTags(preloads.forPage(page), nonce) : '') + appOriginTag(appUrl)),
-      preloads ? stylesheetTags(preloads.stylesFor(page), nonce) : '',
+      withPreloads(withNonce(document, nonce), (parts.preloads ? preloadTags(parts.preloads.forPage(page), nonce) : '') + appOriginTag(appUrl)),
+      parts.preloads ? stylesheetTags(parts.preloads.stylesFor(page), nonce) : '',
     );
   const fixed = (error: unknown) => {
     if (error instanceof Error) fixStack?.(error);
     return error;
   };
+  const app: EntryDocumentOptions = { template, ssr, ...(preloads ? { preloads } : {}) };
+  const table = packages ? { entries: new Set(packages.keys()) } : undefined;
+  // Without package entries there is one document and nothing to decide: every view is the app's.
+  const documentOf = table ? (view: string): DocumentName => documentFor(view, table) : undefined;
+  const partsOf = (view: string): EntryDocumentOptions => {
+    const name = documentOf?.(view) ?? 'app';
+    return name === 'app' ? app : packages!.get(name)!;
+  };
+  const versions = packages ? new Map([...packages].flatMap(([name, entry]) => (entry.version === undefined ? [] : [[name, entry.version] as const]))) : undefined;
   return {
     async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, appUrl }) {
-      const [document, render] = await Promise.all([template(request), ssr()]);
+      const parts = partsOf(page.component);
+      const [document, render] = await Promise.all([parts.template(request), parts.ssr()]);
       // Rendering stops when the client goes away — the request aborts, or the server cancels the body. Not an error.
       const stopped = new AbortController();
       try {
@@ -180,16 +205,19 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, preloa
           ...(nonce ? { nonce } : {}),
           ...(appUrl ? { appUrl } : {}),
         });
-        return await documentOf(documentFor(document, page, nonce, appUrl), page, result, (reason) => stopped.abort(reason));
+        return await documentFromResult(documentWith(parts, document, page, nonce, appUrl), page, result, (reason) => stopped.abort(reason));
       } catch (error) {
         throw fixed(error);
       }
     },
     async shell(page, request, nonce, appUrl) {
-      return renderDocument(documentFor(await template(request), page, nonce, appUrl), page, { html: '' });
+      const parts = partsOf(page.component);
+      return renderDocument(documentWith(parts, await parts.template(request), page, nonce, appUrl), page, { html: '' });
     },
     ...(failed ? { failed } : {}),
     version,
+    ...(versions ? { entryVersions: versions } : {}),
+    ...(documentOf ? { documentOf } : {}),
   };
 }
 
@@ -257,6 +285,8 @@ async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
 
 export interface ResponseFactoryOptions {
+  /** The asset version of each package entry's document, by namespace; a view of a package without one carries the app's. */
+  entryVersions?: ReadonlyMap<string, string>;
   /** The app whose pages these are — server rendering is reported on its `render.ssr` channel. */
   app?: Application;
   /** The app's `APP_URL` (`ServerConfig.appUrl`): the head's relative URLs are resolved against it, never against the request. */
@@ -311,11 +341,16 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { app, appUrl, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = () => false, islands, deferredTimeoutMs = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
+  { app, appUrl, entryVersions, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = () => false, islands, deferredTimeoutMs = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   // What the error lines below mask their text with: the app's (the names its packages add — the session cookie — count too).
   const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
   const describe = (error: unknown) => errorFields(error, redactor);
+  // The version of the document the view renders in; the renderer throws (`H16`) for a view no document can show.
+  const versionOf = (view: string): string | null => {
+    const name = renderer.documentOf?.(view);
+    return name === undefined || name === 'app' ? version : (entryVersions?.get(name) ?? version);
+  };
   const noRouter: RouteLookup = {
     findByName: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
@@ -503,7 +538,7 @@ export function createResponseFactory(
       // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
-    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug(ctx.request), scope, onPage);
+    if (isIslandResult(result)) return islandResponse(result, ctx, versionOf(result.component), debug(ctx.request), scope, onPage);
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
       // An action's data: with the messages its controller flashed — an API client's JSON leaves them for a page.
@@ -522,6 +557,8 @@ export function createResponseFactory(
       throw new HttpError(404, debug(ctx.request) ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
     }
 
+    // Before any prop is computed: a view no document can show fails first.
+    const pageVersion = versionOf(result.component);
     const url = new URL(ctx.request.url);
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     // Who the page is for: the session's scope for once props, its CSRF token for forms without JavaScript.
@@ -549,7 +586,7 @@ export function createResponseFactory(
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
     // The channels it follows: its own and — a page, which shows the layout — the shared ones, signed for this session.
     const live = await liveSubscriptions([...(layer ? [] : (shared?.liveChannels() ?? [])), ...liveOf(result)], scope, result.component);
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version: pageVersion, ...language, ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
     // Shown to the user: it takes the flash messages — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));

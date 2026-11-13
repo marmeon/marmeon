@@ -280,7 +280,12 @@ export function createHttpKernel(
   // The routes marked with `.sitemap()`: the start stops here when their sitemap could not be written.
   const appUrl = container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined;
   const listed = sitemapRoutes(router, appUrl, (route) => redactor.path(route.path, route.path));
-  container.instance(AssetVersion, { value: assetVersion });
+  // One version per package entry's document: the build's own, or — with an assetVersion set by the app — that value and `+<namespace>`.
+  const entryVersions =
+    assetVersion === null || !renderer?.entryVersions
+      ? undefined
+      : new Map([...renderer.entryVersions].map(([namespace, own]) => [namespace, assetVersion === (renderer.version ?? null) ? own : `${assetVersion}+${namespace}`]));
+  container.instance(AssetVersion, { value: assetVersion, ...(entryVersions ? { others: [...entryVersions.values()] } : {}) });
   // SERVER_TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
   const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   const trusts = proxyMatcher(proxies);
@@ -468,6 +473,7 @@ export function createHttpKernel(
 
   const toResponse = createResponseFactory(renderer, router, assetVersion, {
     app: application,
+    ...(entryVersions ? { entryVersions } : {}),
     appUrl: container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined,
     // Prop sizes for the `http.request` message — measured only while something listens.
     onPage: (request, page, kind, origins) => {

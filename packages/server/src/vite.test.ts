@@ -16,7 +16,7 @@ const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const vitePackage = dirname(createRequire(import.meta.url).resolve('vite/package.json'));
 
 /** A UI-free app: `marmeon()` with its own entries, a page, and Vite + @marmeon/vite linked in (or not). */
-function app({ vite = true, framework = true, config }: { vite?: boolean; framework?: boolean; config?: string } = {}): string {
+function app({ vite = true, framework = true, config, extra = {} }: { vite?: boolean; framework?: boolean; config?: string; extra?: Record<string, string> } = {}): string {
   const root = tempDir('marmeon-vite-dev-');
   const files: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
@@ -33,7 +33,7 @@ function app({ vite = true, framework = true, config }: { vite?: boolean; framew
         "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } })] };",
       ].join('\n'),
   };
-  for (const [path, content] of Object.entries(files)) {
+  for (const [path, content] of Object.entries({ ...files, ...extra })) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), content);
   }
@@ -52,7 +52,58 @@ async function start(root: string) {
   }
 }
 
+/** `app()` with a package of compiled ESM in `node_modules` that declares the namespace `status`, with an entry, and one without an entry (`help`). */
+function appWithPackages(): string {
+  const manifest = (name: string, field: Record<string, unknown>, exports: Record<string, unknown>) =>
+    JSON.stringify({ name, type: 'module', exports, marmeon: field });
+  return app({
+    extra: {
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { 'status-board': '*', 'help-center': '*' } }),
+      'node_modules/status-board/package.json': manifest('status-board', { namespace: 'status', entry: { client: './client', ssr: './ssr' }, views: './views' }, { './client': { browser: './dist/client.js' }, './ssr': './dist/ssr.js', './views/*': './dist/views/*.js' }),
+      'node_modules/status-board/dist/client.js': 'export {};\n',
+      'node_modules/status-board/dist/ssr.js': "export const render = async (page) => ({ html: `status ssr: ${page.component}` });\n",
+      'node_modules/status-board/dist/views/Index.js': "export default 'status index';\n",
+      'node_modules/help-center/package.json': manifest('help-center', { namespace: 'help', lang: './lang' }, { './lang/*': './dist/lang/*.js' }),
+      'node_modules/help-center/dist/lang/en.js': "export default {};\n",
+    },
+  });
+}
+
 describe('createViteDevRenderer', () => {
+  it("renders a package's page in the package's own document, which the app's client is not part of — and the app's page in the app's", async () => {
+    const httpServer = createServer();
+    const { vite, renderer } = await createViteDevRenderer({ root: appWithPackages(), httpServer });
+    try {
+      const render = async (component: string) =>
+        String(await renderer.render({ component, props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: true, onError() {}, onWarning() {}, nonce: 'N0NCE' }));
+      const status = await render('status::Index');
+      expect(status).toContain('status ssr: status::Index');
+      expect(status).toContain('/@fs/');
+      expect(status).toContain('nonce="N0NCE"');
+      expect(status).not.toContain('/bootstrap/client.ts');
+      // Only packages with an entry have a document: a page of one without an entry fails closed too.
+      await expect(render('help::Article')).rejects.toThrow(/^\[marmeon:H16\]/);
+      expect(await render('demo/Home')).toContain('/bootstrap/client.ts');
+      await expect(render('nope::X')).rejects.toThrow(/^\[marmeon:H16\]/);
+      // One development version per document — and none at all without a package entry (below).
+      expect([renderer.version, [...renderer.entryVersions!]]).toEqual(['dev:app', [['status', 'dev:status']]]);
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  }, 120_000);
+
+  it('keeps no version and one document in development without a package entry', async () => {
+    const httpServer = createServer();
+    const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer });
+    try {
+      expect([renderer.version, renderer.entryVersions, renderer.documentOf]).toEqual([undefined, undefined, undefined]);
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
   it('keeps publishing browser reports after Vite restarts in-process (a changed .env, vite.restart())', async () => {
     const application = await createApplication({ root: import.meta.dirname, discover: false, providers: [] }, { env: { NODE_ENV: 'test' } });
     const heard: string[] = [];

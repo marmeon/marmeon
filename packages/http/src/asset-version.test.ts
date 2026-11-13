@@ -2,12 +2,17 @@ import type { HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 
-const check = async (url: string, { version = 'v1', current = 'v2', method = 'GET' } = {}) => {
+const check = async (url: string, { version = 'v1', current = 'v2', method = 'GET', others }: { version?: string; current?: string; method?: string; others?: readonly string[] } = {}) => {
   const ctx = { request: new Request(url, { method, headers: { 'x-marmeon': '1', 'x-marmeon-version': version } }) } as unknown as HttpContext;
-  return new CheckAssetVersion({ value: current } satisfies AssetVersion).handle(ctx, async () => new Response('page'));
+  return new CheckAssetVersion({ value: current, ...(others ? { others } : {}) } satisfies AssetVersion).handle(ctx, async () => new Response('page'));
 };
 
 describe('CheckAssetVersion', () => {
+  it('counts the version of a package entry as current too — and refuses one no entry has', async () => {
+    expect((await check('http://h/x', { version: 'pkg', others: ['pkg'] })).status).toBe(200);
+    expect((await check('http://h/x', { version: 'gone', others: ['pkg'] })).status).toBe(409);
+  });
+
   it('names only path and query, not the address a proxy forwarded to', async () => {
     const response = await check('http://10.0.0.5:3000/x?y=1');
     expect([response.status, response.headers.get('x-marmeon-location')]).toEqual([409, '/x?y=1']);
