@@ -1,4 +1,5 @@
 import { escapeHtml } from '@marmeon/core';
+import type { RequestNonce } from '@marmeon/router';
 import { CSP_NONCE_PLACEHOLDER, withCode } from '@marmeon/core/internal';
 import { FALLBACK_TEMPLATE, HEAD_OUTLET } from './html.ts';
 
@@ -29,6 +30,19 @@ export function documentFor(view: string, { entries }: DocumentTable): DocumentN
   const namespace = view.slice(0, at);
   if (entries.has(namespace)) return namespace;
   throw new UnknownEntryError(namespace);
+}
+
+/** The responses that showed a document of a package entry, by their nonce — one per request. */
+const packageDocuments = new WeakSet<RequestNonce>();
+
+/** Notes that this response shows a package's document: when it leaves without a policy, the kernel gives it the strict default. */
+export function markPackageDocument(nonce: RequestNonce): void {
+  packageDocuments.add(nonce);
+}
+
+/** Whether {@link markPackageDocument} was called for this response. */
+export function showedPackageDocument(nonce: RequestNonce): boolean {
+  return packageDocuments.has(nonce);
 }
 
 /** The comment that tells `@marmeon/vite` this document brings its own entry, so it adds none (`PACKAGE_ENTRY_MARK` there: change both together). */

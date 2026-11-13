@@ -144,6 +144,14 @@ An `<iframe srcdoc="…">` has no response of its own, so its document runs unde
 what the document may do but does not replace the policy. With `styleSrc: ["'self'"]`, the inline styles of a mail shown in such a
 frame ([mail previews](mail.md#lists-and-stored-templates)) are blocked, and the frame shows the mail without them. Either name none of `styleSrc`, `styleSrcElem`, `styleSrcAttr` and `defaultSrc` on that page, or allow inline styles with `'unsafe-inline'` in a `styleSrc` that has no `NONCE` (and set no `styleSrcElem` or `styleSrcAttr`, which win over it), since a browser ignores `'unsafe-inline'` next to a nonce. For style attributes alone, `styleSrcAttr: ["'unsafe-inline'"]` is enough. A nonce does not help the mail, whose markup carries none.
 
+## Policies of a package area
+
+The document of a [package's entry](package-development.md#pages-of-a-package) never goes out without a policy. Set one for the area with `contentSecurityPolicy({ … })` on the route group that serves it: that policy stays. A package document is always enforced: by the group's policy, by an enforced policy of the app (`contentSecurityPolicy()` as a global middleware), or, where neither sets one, by the default. A `reportOnly` policy does not count: the document gets the default beside it. The default is the [default policy](#the-default-policy) with the response's nonce, which is on its entry script, stylesheets and preloads. The server asks for the nonce before it renders such a document, whether the app sends a policy or not.
+
+This holds for the first load of a page, for the page without server rendering, and for the page the browser renders after server rendering failed. The error page of a first load is the app's document, so it follows the app's policy. The default does not restrict styles, images or connections: add those directives to the group's policy for the area.
+
+The documents of your app are not affected: an app without package entries sends no header and carries no nonce unless it uses `contentSecurityPolicy()`.
+
 ## Which responses get the policy
 
 Only documents get the header: responses whose `Content-Type` is `text/html` or `application/xhtml+xml`. A response that brings a

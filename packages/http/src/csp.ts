@@ -149,6 +149,20 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
   return ContentSecurityPolicy;
 }
 
+const DEFAULT_PIECES = compilePolicy(DEFAULT_CSP).pieces;
+
+/**
+ * @internal The kernel's, for the document of a package entry. Gives an HTML response that carries no enforced policy — from a route group
+ * or the app — {@link DEFAULT_CSP} with `nonce`, the one the document's tags carry. A report-only policy stays beside it. Any other
+ * response is returned as it is. See docs/csp.md#policies-of-a-package-area.
+ */
+export function withDefaultPolicy(response: Response, nonce: string): Response {
+  if (!isDocument(response.headers.get('content-type')) || response.headers.has(HEADER)) return response;
+  const secured = editableResponse(response);
+  secured.headers.set(HEADER, DEFAULT_PIECES.join(nonce));
+  return secured;
+}
+
 /** A document a browser runs scripts in: HTML or XHTML — a media type is case-insensitive (`Text/HTML` is HTML too). */
 function isDocument(contentType: string | null): boolean {
   const type = contentType?.split(';')[0]!.trim().toLowerCase();

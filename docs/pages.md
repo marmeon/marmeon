@@ -356,7 +356,7 @@ a name without `::` is the app's; `status::…` of a package with an entry is th
 entry, such a page fails with `H16` (status 500), not the app's document: a typo never shows an area's page in the public one.
 
 The server writes the entry's document itself: the standard template, the entry's script (with the response's nonce), and the
-stylesheets and preloads of what that entry loads, and nothing of the app's entry. The package brings no HTML. Each document has its
+stylesheets and preloads of what that entry loads, and nothing of the app's entry. The package brings no HTML. The document carries a [strict policy](csp.md#policies-of-a-package-area) unless the route group or the app sets one. Each document has its
 own [asset version](navigation.md#a-new-version-of-the-app); with `SERVER_ASSET_VERSION` set it is that value for the app and
 `<value>+<namespace>` for a package. A client with the version of any current document is not stale. A visit from one document to a page of another loads the page fully, see
 [a visit into another entry](navigation.md#a-visit-into-another-entry). The build

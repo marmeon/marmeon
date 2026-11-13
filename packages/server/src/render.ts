@@ -72,7 +72,7 @@ import { ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router
 import { localLocation } from '@marmeon/router/internal';
 import { urlFor } from '@marmeon/router/url';
 import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory, type RouteLookup } from '@marmeon/router/internal';
-import { documentFor, type DocumentName } from './documents.ts';
+import { documentFor, markPackageDocument, type DocumentName } from './documents.ts';
 import { documentOf as documentFromResult, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads, withStyles } from './html.ts';
 import { preloadTags, stylesheetTags, type AssetPreloads } from './preloads.ts';
 
@@ -454,7 +454,15 @@ export function createResponseFactory(
     scope?: Container,
   ): Promise<string | ReadableStream<Uint8Array>> => {
     // The response's CSP nonce — when `contentSecurityPolicy()` wants one (or the app made one): made here, read by the header.
-    const nonce = scope?.has(RequestNonce) ? scope.make(RequestNonce).forDocument() : undefined;
+    const requestNonce = scope?.has(RequestNonce) ? scope.make(RequestNonce) : undefined;
+    // A package's document never leaves without a policy: it asks for the nonce whatever the app configured (the tags carry it), and
+    // the kernel gives the response the strict default unless a route or the app set a policy. Without a nonce to carry, it is not shown.
+    if ((renderer.documentOf?.(shownView(page)) ?? 'app') !== 'app') {
+      if (!requestNonce) throw new Error(`The document of [${page.component}] is a package's and needs the response's nonce, which this request has none of.`);
+      requestNonce.want();
+      markPackageDocument(requestNonce);
+    }
+    const nonce = requestNonce?.forDocument();
     if (!ssr) return renderer.shell(page, request, nonce, appUrl);
     const report = (message: string) => (error: unknown) => logger.error(message, { component: page.component, ...describe(error) });
     const complete = isBot(request);

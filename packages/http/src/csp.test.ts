@@ -1,7 +1,7 @@
 import { ConsoleLogger } from '@marmeon/core';
 import { RequestNonce, type HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
-import { compilePolicy, contentSecurityPolicy, DEFAULT_CSP, NONCE } from './csp.ts';
+import { compilePolicy, contentSecurityPolicy, DEFAULT_CSP, NONCE, withDefaultPolicy } from './csp.ts';
 
 const html = () => new Response('<p>page</p>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
 const ctx = { request: new Request('http://app.test/page'), route: { path: '/page' } } as unknown as HttpContext;
@@ -53,5 +53,26 @@ describe('contentSecurityPolicy()', () => {
     const Policy = contentSecurityPolicy();
     const own = await new Policy(new RequestNonce(), new ConsoleLogger()).handle(ctx, async () => new Response('', { headers: { 'content-type': 'text/html', 'content-security-policy': 'sandbox' } }));
     expect(own.headers.get('content-security-policy')).toBe('sandbox');
+  });
+});
+
+describe('withDefaultPolicy()', () => {
+  const page = (headers: Record<string, string> = {}) => new Response('<p>', { headers: { 'content-type': 'text/html', ...headers } });
+
+  it('gives a document without a policy the default, with the nonce', () => {
+    expect(withDefaultPolicy(page(), 'abc=').headers.get('content-security-policy')).toBe("script-src 'nonce-abc=' 'strict-dynamic'; object-src 'none'; base-uri 'self'");
+  });
+
+  it('leaves a document with an enforced policy, and anything that is no document', () => {
+    const own = page({ 'content-security-policy': "default-src 'self'" });
+    expect(withDefaultPolicy(own, 'abc=')).toBe(own);
+    const json = Response.json({});
+    expect(withDefaultPolicy(json, 'abc=')).toBe(json);
+  });
+
+  it('adds the default beside a report-only policy, which stays', () => {
+    const secured = withDefaultPolicy(page({ 'content-security-policy-report-only': "default-src 'self'" }), 'abc=');
+    expect(secured.headers.get('content-security-policy')).toContain("'nonce-abc='");
+    expect(secured.headers.get('content-security-policy-report-only')).toBe("default-src 'self'");
   });
 });
