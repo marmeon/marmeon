@@ -386,6 +386,8 @@ export const PAGE_VARY = [
 ];
 ```
 
+An app with package entries adds `ENTRY_HEADER` (`x-marmeon-entry`, the document the tab runs in) to that list: the same URL is a page for one document and a `409` for another.
+
 The same entry has the `PageObject` and `RegionObject` types of the answer, and the checks `isPrefetch(request)`,
 `isActionRequest(request)` and `regionOf(request)`. The header names and the page object are public API, so a change to
 them is a breaking change of the framework. The types you augment (`Views`, `SharedProps`, `FlashData`) are in

@@ -29,8 +29,11 @@ import {
   isLayerResult,
   isRedirectResult,
   isViewResult,
+  ERROR_PAGE,
   LAYER_BACKDROP,
+  ENTRY_HEADER,
   epochOf,
+  isProtocolRequest,
   liveOf,
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
@@ -48,6 +51,7 @@ import {
   partialReloadOf,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  RELOAD_HEADER,
   propOrigins,
   resolvePageProps,
   ResponseLifecycle,
@@ -65,6 +69,7 @@ import {
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router';
+import { localLocation } from '@marmeon/router/internal';
 import { urlFor } from '@marmeon/router/url';
 import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory, type RouteLookup } from '@marmeon/router/internal';
 import { documentFor, type DocumentName } from './documents.ts';
@@ -167,6 +172,11 @@ function appOriginTag(appUrl: string | undefined): string {
   }
 }
 
+/** The view whose document `page` renders in: the neutral surface under a layer belongs to its layers' view, the layer is the entry's, the surface only a backdrop. */
+function shownView(page: PageObject): string {
+  return page.component === LAYER_BACKDROP && page.layers?.[0] ? page.layers[0].component : page.component;
+}
+
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
 export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version, packages }: DocumentRendererOptions): PageRenderer {
   // After `withNonce`, so the tags carry the real nonce and never meet the placeholder.
@@ -183,14 +193,15 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, preloa
   const table = packages ? { entries: new Set(packages.keys()) } : undefined;
   // Without package entries there is one document and nothing to decide: every view is the app's.
   const documentOf = table ? (view: string): DocumentName => documentFor(view, table) : undefined;
-  const partsOf = (view: string): EntryDocumentOptions => {
-    const name = documentOf?.(view) ?? 'app';
+  const partsOf = (page: PageObject): EntryDocumentOptions => {
+    // The neutral surface under a layer renders in its layers' document: the layer is that entry's, the surface only a backdrop.
+    const name = documentOf?.(shownView(page)) ?? 'app';
     return name === 'app' ? app : packages!.get(name)!;
   };
   const versions = packages ? new Map([...packages].flatMap(([name, entry]) => (entry.version === undefined ? [] : [[name, entry.version] as const]))) : undefined;
   return {
     async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, appUrl }) {
-      const parts = partsOf(page.component);
+      const parts = partsOf(page);
       const [document, render] = await Promise.all([parts.template(request), parts.ssr()]);
       // Rendering stops when the client goes away — the request aborts, or the server cancels the body. Not an error.
       const stopped = new AbortController();
@@ -211,7 +222,7 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, preloa
       }
     },
     async shell(page, request, nonce, appUrl) {
-      const parts = partsOf(page.component);
+      const parts = partsOf(page);
       return renderDocument(documentWith(parts, await parts.template(request), page, nonce, appUrl), page, { html: '' });
     },
     ...(failed ? { failed } : {}),
@@ -284,6 +295,17 @@ async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope
 /** A response factory that may use the request's container scope (the kernel passes it). */
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
 
+/**
+ * The page request an island or a layer's base is resolved for, in-process. `entry`: the package entry whose document the page renders
+ * in — absent for the app's; the request carries it as a client of that document would.
+ */
+export interface PageParent {
+  readonly request: Request;
+  readonly scope: Container;
+  readonly requestId: string | undefined;
+  readonly entry?: string;
+}
+
 export interface ResponseFactoryOptions {
   /** The asset version of each package entry's document, by namespace; a view of a package without one carries the app's. */
   entryVersions?: ReadonlyMap<string, string>;
@@ -311,7 +333,7 @@ export interface ResponseFactoryOptions {
    * Resolves an island of a page in-process while the page renders — the kernel's: through the island route's own
    * middleware, read-only. Without it, islands load in the browser.
    */
-  islands?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<RegionResult>;
+  islands?: (url: string, parent: PageParent) => Promise<RegionResult>;
   /** How long a deferred group streamed with its page may take before the browser loads it instead (in milliseconds, default 10 000). */
   deferredTimeoutMs?: number;
   /**
@@ -319,7 +341,7 @@ export interface ResponseFactoryOptions {
    * `url` in-process through the base route's own middleware and authorization, read-only. Without it, a layer's document
    * shows the layer over the neutral surface.
    */
-  layerBases?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<LayerBaseResult>;
+  layerBases?: (url: string, parent: PageParent) => Promise<LayerBaseResult>;
 }
 
 /**
@@ -351,6 +373,19 @@ export function createResponseFactory(
     const name = renderer.documentOf?.(view);
     return name === undefined || name === 'app' ? version : (entryVersions?.get(name) ?? version);
   };
+  // The page carries its document only when it is a package entry's: nothing is added where there is one document.
+  const entryOf = (view: string): { entry?: string } => {
+    const name = renderer.documentOf?.(view);
+    return name === undefined || name === 'app' ? {} : { entry: name };
+  };
+  // A request of the page protocol comes from a client that runs in one document (`x-marmeon-entry`, none: the app's); a page of
+  // another document is not for it — before anything of the page is computed it loads fully, whatever the method.
+  // The error page and the backdrop are neutral: on a visit they render in the client's own document, whichever it is.
+  const crossesEntry = (request: Request, view: string): boolean => {
+    if (!renderer.documentOf || !isProtocolRequest(request) || view === ERROR_PAGE || view === LAYER_BACKDROP) return false;
+    return (request.headers.get(ENTRY_HEADER) ?? 'app') !== renderer.documentOf(view);
+  };
+  const varied = (vary: string): string => (renderer.documentOf && vary !== '*' ? `${vary}, ${ENTRY_HEADER}` : vary);
   const noRouter: RouteLookup = {
     findByName: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
@@ -367,7 +402,7 @@ export function createResponseFactory(
     // A prefetched document (`Sec-Purpose: prefetch`) leaves its islands to the browser: islands never load ahead.
     const resolveIsland = islands && !isPrefetch(request)
       ? async (url: string): Promise<RegionResult> => {
-          const result = await islands(url, { request, scope, requestId });
+          const result = await islands(url, { request, scope, requestId, ...entryOf(shownView(page)) });
           if (result.status === 'exception') logger.error(`The island ${redactor.text(url)} on [${page.component}] failed — it shows its error`, { component: page.component, island: redactor.text(url), status: result.failure.status });
           return result;
         }
@@ -478,7 +513,7 @@ export function createResponseFactory(
     const layers: PageObject[] = [layer];
     let base: PageObject | undefined;
     let next = layer.layer?.base;
-    const parent = scope ? { request, scope, requestId: currentRequest()?.requestId } : undefined;
+    const parent: PageParent | undefined = scope ? { request, scope, requestId: currentRequest()?.requestId, ...entryOf(layer.component) } : undefined;
     while (layerBases && parent && next !== undefined) {
       const answer = await layerBases(next, parent);
       if (answer.status !== 'page') {
@@ -507,7 +542,8 @@ export function createResponseFactory(
       component: LAYER_BACKDROP,
       ...resolved,
       url: layers[0]!.layer?.base ?? layer.url,
-      version,
+      version: versionOf(layer.component),
+      ...entryOf(layer.component),
       ...(csrf !== undefined ? { csrf } : {}),
       ...(epoch !== undefined ? { epoch } : {}),
       // What every page follows (the layout's bell) — the surface shows the layout.
@@ -538,7 +574,9 @@ export function createResponseFactory(
       // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
-    if (isIslandResult(result)) return islandResponse(result, ctx, versionOf(result.component), debug(ctx.request), scope, onPage);
+    if (isIslandResult(result)) {
+      return islandResponse(result, ctx, versionOf(result.component), debug(ctx.request), scope, onPage, varied(PAGE_VARY), crossesEntry(ctx.request, result.component));
+    }
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
       // An action's data: with the messages its controller flashed — an API client's JSON leaves them for a page.
@@ -557,8 +595,14 @@ export function createResponseFactory(
       throw new HttpError(404, debug(ctx.request) ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
     }
 
-    // Before any prop is computed: a view no document can show fails first.
+    // Before any prop is computed: a view no document can show fails first, and a client of another document loads the page fully.
     const pageVersion = versionOf(result.component);
+    if (crossesEntry(ctx.request, result.component)) {
+      if (debug(ctx.request) && ctx.request.method !== 'GET' && ctx.request.method !== 'HEAD') {
+        logger.warn(`[${result.component}] answered a ${ctx.request.method} from another package entry's document: the controller has run, and the browser loads this URL again with GET. A write that shows a page of another entry should redirect to it instead.`, { component: result.component });
+      }
+      return entryChange(ctx.request, varied(PAGE_VARY));
+    }
     const url = new URL(ctx.request.url);
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     // Who the page is for: the session's scope for once props, its CSRF token for forms without JavaScript.
@@ -586,7 +630,7 @@ export function createResponseFactory(
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
     // The channels it follows: its own and — a page, which shows the layout — the shared ones, signed for this session.
     const live = await liveSubscriptions([...(layer ? [] : (shared?.liveChannels() ?? [])), ...liveOf(result)], scope, result.component);
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version: pageVersion, ...language, ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version: pageVersion, ...entryOf(result.component), ...language, ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
     // Shown to the user: it takes the flash messages — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));
@@ -596,7 +640,7 @@ export function createResponseFactory(
     const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash(documentOfRequest(ctx.request))));
     const headers = {
       ...withoutVary(result.headers),
-      vary: pageVary(result.headers),
+      vary: varied(pageVary(result.headers)),
       ...(flash.length > 0 ? { 'cache-control': 'no-store' } : {}),
       ...(waiting ? { [FLASH_WAITING_HEADER]: 'true' } : {}),
     };
@@ -633,6 +677,19 @@ export function createResponseFactory(
   };
 }
 
+/**
+ * The answer to a visit of a page that belongs to another package entry's document: `409` with the address to load fully and
+ * `x-marmeon-reload: entry` — no page object, so no prop of the page was computed and none is sent. The location is path and query only
+ * (never a URL a proxy forwarded to), and the answer is never cached.
+ */
+function entryChange(request: Request, vary: string): Response {
+  const url = new URL(request.url);
+  return ownResponse(new Response(null, {
+    status: 409,
+    headers: { [LOCATION_HEADER]: localLocation(url.pathname, url.search), [RELOAD_HEADER]: 'entry', 'cache-control': 'no-store', vary },
+  }));
+}
+
 /** `response` with the flash messages it delivers — in a header: an action's body is its controller's data. */
 function withFlash(response: Response, flash: readonly FlashMessage[]): Response {
   if (flash.length === 0) return response;
@@ -653,7 +710,9 @@ async function islandResponse(
   version: string | null,
   debug: boolean,
   scope: Container | undefined,
-  onPage?: ResponseFactoryOptions['onPage'],
+  onPage: ResponseFactoryOptions['onPage'],
+  vary: string,
+  crossesEntry: boolean,
 ): Promise<Response> {
   const { request } = ctx;
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -668,6 +727,10 @@ async function islandResponse(
         : undefined,
     );
   }
+  // An island of another document's entry is not this document's to load: nothing of it is computed.
+  if (crossesEntry) {
+    throw new HttpError(404, debug ? `[${result.component}] belongs to another package entry than the document that asks for it — an island is loaded by a page of its own entry.` : undefined);
+  }
   const url = new URL(request.url);
   // Its own props only: the page around it has the shared ones. Partial reloads of the island name its component.
   const resolved = await resolvePageProps(result.props, undefined, partialReloadOf(request, result.component));
@@ -678,7 +741,7 @@ async function islandResponse(
   onPage?.(request, region, 'island', () => propOrigins(result.props, undefined, Object.keys(resolved.props)));
   return ownResponse(new Response(JSON.stringify(region), {
     status: 200,
-    headers: { vary: PAGE_VARY, 'content-type': 'application/json', ...protocolHeaders(), [REGION_HEADER]: 'island' },
+    headers: { vary, 'content-type': 'application/json', ...protocolHeaders(), [REGION_HEADER]: 'island' },
   }));
 }
 

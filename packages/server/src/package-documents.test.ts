@@ -40,7 +40,7 @@ async function appWith(options: KernelOptions = {}, renderer: Partial<DocumentRe
 }
 
 const html = { accept: 'text/html' };
-const visit = (version?: string) => ({ [PAGE_HEADER]: PROTOCOL_VERSION, ...(version ? { 'x-marmeon-version': version } : {}) });
+const visit = (version?: string, entry?: string) => ({ [PAGE_HEADER]: PROTOCOL_VERSION, ...(version ? { 'x-marmeon-version': version } : {}), ...(entry ? { 'x-marmeon-entry': entry } : {}) });
 
 describe('a package entry in the kernel', () => {
   it("renders each view in its own document: the package's page in the package's, the app's in the app's", async () => {
@@ -57,7 +57,7 @@ describe('a package entry in the kernel', () => {
 
   it("carries the version of the document the page renders in", async () => {
     const app = await appWith();
-    expect(((await (await app.request('/status', { headers: visit('status-v') })).json()) as PageObject).version).toBe('status-v');
+    expect(((await (await app.request('/status', { headers: visit('status-v', 'status') })).json()) as PageObject).version).toBe('status-v');
     expect(((await (await app.request('/', { headers: visit('app-v') })).json()) as PageObject).version).toBe('app-v');
   });
 
@@ -73,10 +73,11 @@ describe('a package entry in the kernel', () => {
 
   it('counts every entry\'s version as current: only a version no entry has is stale', async () => {
     const app = await appWith();
-    for (const version of ['app-v', 'status-v']) {
-      expect((await app.request('/', { headers: visit(version) })).status).toBe(200);
-      expect((await app.request('/status', { headers: visit(version) })).status).toBe(200);
-    }
+    // Each client visits a page of its own document; a visit across is about the entry (entry-change.test.ts), not the version.
+    expect((await app.request('/', { headers: visit('app-v') })).status).toBe(200);
+    expect((await app.request('/status', { headers: visit('status-v', 'status') })).status).toBe(200);
+    const across = await app.request('/status', { headers: visit('app-v') });
+    expect([across.status, across.headers.get('x-marmeon-reload')]).toEqual([409, 'entry']);
     const stale = await app.request('/status', { headers: visit('old-v') });
     expect([stale.status, stale.headers.get('x-marmeon-reload')]).toEqual([409, 'version']);
   });
@@ -84,8 +85,8 @@ describe('a package entry in the kernel', () => {
   it('derives the versions from an assetVersion the app sets: the value for the app, `<value>+<namespace>` for a package', async () => {
     const app = await appWith({ assetVersion: 'v9' });
     expect(((await (await app.request('/', { headers: visit('v9') })).json()) as PageObject).version).toBe('v9');
-    expect(((await (await app.request('/status', { headers: visit('v9+status') })).json()) as PageObject).version).toBe('v9+status');
-    expect((await app.request('/status', { headers: visit('status-v') })).status).toBe(409);
+    expect(((await (await app.request('/status', { headers: visit('v9+status', 'status') })).json()) as PageObject).version).toBe('v9+status');
+    expect((await app.request('/status', { headers: visit('status-v', 'status') })).status).toBe(409);
   });
 });
 

@@ -70,6 +70,8 @@ Types from other packages: none
 const image: import('@marmeon/http/page').ImageSource;
 // virtual:marmeon/lang.lang
 const lang: Record<string, () => Promise<unknown>>;
+// virtual:marmeon/lang/*.lang
+const lang: Record<string, () => Promise<unknown>>;
 // virtual:marmeon/pages.pages
 const pages: Record<string, () => Promise<unknown>>;
 // virtual:marmeon/pages/*.pages

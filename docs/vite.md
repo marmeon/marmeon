@@ -174,6 +174,7 @@ The plugin serves these modules for your entries to import:
 | --- | --- | --- |
 | `virtual:marmeon/pages` | Every page, each loaded on its own, keyed by its path | `resolveModulePages(pages)` |
 | `virtual:marmeon/lang` | Every language file, each loaded on its own | `createMessageLoader(lang)` of `@marmeon/i18n/messages` |
+| `virtual:marmeon/lang/<namespace>` | The language files of one package with an entry, with the app's `lang/<namespace>/` laid over them, each loaded on its own; the app's `virtual:marmeon/lang` holds none of them ([texts of a package](localization.md#in-the-browser)) | the package's entry, `createMessageLoader(lang)` |
 | `virtual:marmeon/pages/<namespace>` | The pages of one [package with pages](#packages-with-pages-or-components), keyed `<namespace>::<view>`, each loaded on its own | `resolveModulePages(pages)` |
 | `virtual:marmeon/routes` | `routes`: the named routes the browser knows | `createMarmeonApp({ routes })`, `createSsrRenderer(…, { routes })` |
 | `virtual:marmeon/fonts.css` | The stylesheet of the fallback fonts, once `fonts` has an entry | the client entry, `import 'virtual:marmeon/fonts.css'` ([fonts](#fonts)) |

@@ -781,3 +781,54 @@ describe('server imports in a build', () => {
     expect(stopped.code).toBe(1);
   }, 60_000);
 });
+
+describe('the texts of packages in a build', () => {
+  const dependencies = { '@marmeon/fake': '*', 'status-board': '*', 'fake-react': '*', 'app-lib': '*', 'shared-texts': '*' };
+  const packageJson = (name: string, extra: Record<string, unknown>) => JSON.stringify({ name, type: 'module', exports: { './lang/*': './dist/lang/*.js', ...(extra.exports as object) }, marmeon: extra.marmeon });
+  const build_ = () =>
+    twoEntryApp({
+      'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies }),
+      'bootstrap/client.ts': "import pages from 'virtual:marmeon/pages';\nimport lang from 'virtual:marmeon/lang';\ndocument.title = Object.keys(lang).join();\nfor (const load of Object.values(pages)) void load();\n",
+      'node_modules/status-board/dist/client.js': "import pages from 'virtual:marmeon/pages/status';\nimport lang from 'virtual:marmeon/lang/status';\ndocument.title = Object.keys(lang).join();\nfor (const load of Object.values(pages)) void load();\n",
+      'node_modules/status-board/package.json': packageJson('status-board', {
+        exports: { './client': './dist/client.js', './ssr': './dist/ssr.js', './pkgmod': './dist/pkgmod.js', './views/*': './dist/views/*.js' },
+        marmeon: { namespace: 'status', entry: { client: './client', ssr: './ssr' }, views: './views', lang: './lang' },
+      }),
+      'node_modules/status-board/dist/lang/en.js': "export default { title: 'ADMIN_TEXT_MARK', other: 'PACKAGE_WORDING_MARK' };\n",
+      'node_modules/shared-texts/package.json': packageJson('shared-texts', { marmeon: { namespace: 'shared', lang: './lang' } }),
+      'node_modules/shared-texts/dist/lang/en.js': "export default { title: 'SHARED_TEXT_MARK' };\n",
+      'lang/status/en.ts': "export default { title: 'OVERRIDE_TEXT_MARK' };\n",
+    });
+
+  it('keeps the texts of a package with an entry out of everything a public page can load, and puts the app\'s rewording with them', () => {
+    const root = build_();
+    const { code: status, out } = build(root, '--no-typecheck');
+    expect(out).toContain('Built dist/client');
+    expect(status).toBe(0);
+    const manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, ManifestChunk & { dynamicImports?: string[] }>;
+    const { entries } = JSON.parse(readFileSync(join(root, 'dist/client/.vite/marmeon-entries.json'), 'utf8')) as { entries: Record<string, { client: string }> };
+    // Everything an entry can ever load: its static imports and what it imports lazily.
+    const reachable = (key: string): string => {
+      const seen = new Set<string>();
+      const walk = (name: string) => {
+        if (seen.has(name)) return;
+        seen.add(name);
+        for (const next of [...(manifest[name]!.imports ?? []), ...(manifest[name]!.dynamicImports ?? [])]) walk(next);
+      };
+      walk(key);
+      return [...seen].map((name) => readFileSync(join(root, 'dist/client', manifest[name]!.file), 'utf8')).join('\n');
+    };
+    const app = reachable('index.html');
+    const pkg = reachable(entries.status!.client);
+    for (const mark of ['ADMIN_TEXT_MARK', 'OVERRIDE_TEXT_MARK', 'PACKAGE_WORDING_MARK']) expect(app, mark).not.toContain(mark);
+    // The package's file and the app's rewording of it are both in the entry's texts; the merge happens in the browser.
+    expect(pkg).toContain('OVERRIDE_TEXT_MARK');
+    expect(pkg).toContain('PACKAGE_WORDING_MARK');
+    expect(pkg).toContain('ADMIN_TEXT_MARK');
+    // A package without an entry has no document of its own: its texts are the app's.
+    expect(app).toContain('SHARED_TEXT_MARK');
+    expect(pkg).not.toContain('SHARED_TEXT_MARK');
+    expect(strays(root, 'index.html', idOf(root, 'index.html'))).toEqual([]);
+    expect(strays(root, entries.status!.client, idOf(root, 'node_modules/status-board/dist/client.js'))).toEqual([]);
+  }, 90_000);
+});

@@ -8,7 +8,7 @@
  * No UI framework in here — an adapter (`<MarmeonApp>` of @marmeon/react) renders what the navigator hands it.
  */
 import type { DeferredResult, FlashKey, FlashMessage, ValidationErrors } from '../page.ts';
-import { LOCATION_HEADER, protocolHeaders, REGION_HEADER, speaksProtocol, VERSION_HEADER, type PageObject } from '../protocol.ts';
+import { ENTRY_HEADER, LOCATION_HEADER, protocolHeaders, REGION_HEADER, speaksProtocol, VERSION_HEADER, type PageObject } from '../protocol.ts';
 import { pageInfo } from '../page-support.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
@@ -434,6 +434,7 @@ export class Navigator {
     } satisfies Partial<NavigatorCore> as Partial<Writable<NavigatorCore>> as Writable<NavigatorCore>;
     this.#core = core;
     core.version = initialPage.version ?? null;
+    core.packageEntry = initialPage.entry ?? null;
     core.documentChange = new DocumentChange(core);
     // What the adapter attaches from the start (a deep link's layers take theirs from `initial`, until the history is taken over).
     for (const feature of features) this.use(feature);
@@ -1192,7 +1193,7 @@ export class Navigator {
     const init = {
       method: method.toUpperCase(),
       // The once props held: the server does not compute them again.
-      headers: { ...protocolHeaders(), ...(this.#core.version ? { [VERSION_HEADER]: this.#core.version } : {}), ...this.#core.once.headers(), ...headers },
+      headers: { ...protocolHeaders(), ...(this.#core.version ? { [VERSION_HEADER]: this.#core.version } : {}), ...(this.#core.packageEntry ? { [ENTRY_HEADER]: this.#core.packageEntry } : {}), ...this.#core.once.headers(), ...headers },
       body,
       signal,
     };
