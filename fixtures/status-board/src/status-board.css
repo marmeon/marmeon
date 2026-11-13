@@ -1,0 +1,9 @@
+@layer status {
+  .status-board {
+    border: 1px solid currentColor;
+    padding: 0.5rem 1rem;
+  }
+  .status-board [data-state='down'] {
+    color: crimson;
+  }
+}

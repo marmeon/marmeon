@@ -546,6 +546,39 @@ The app refuses only what it can see to be wrong: a missing `exports` key, a tar
 a folder below `views` or `lang` that cannot be read, views nested deeper than the limit, a shared namespace. A folder that does not exist yet (the package is not built) lists nothing, and an entry whose file does not exist
 yet is not an error here: the build and the server say so when they need the file.
 
+## Components on the app's pages
+
+A package can bring components that an app renders on its own pages. The package declares a `namespace` in its `"marmeon"` field
+(nothing else is needed: no `entry`, no `views`), and the app imports the component like any other:
+
+```tsx title="modules/dashboard/views/Show.tsx"
+import { StatusBoard } from '@acme/status-board';
+
+const services = [
+  { name: 'Mail', state: 'up' },
+  { name: 'Search', state: 'degraded' },
+] as const;
+
+export default function Show() {
+  return <StatusBoard services={services} />;
+}
+```
+
+The component renders on the server with the page and hydrates in the browser. The app's Vite compiles the package like the app's own
+source, so the pieces work as they do for a component of the app:
+
+- A `<Link route="…">` or `useRoute()` in the package's compiled code puts that route name into the browser's route manifest, as if
+  the page had written it (see [Packages with pages or components](vite.md#packages-with-pages-or-components) for the compiled form the build reads).
+- A stylesheet the component imports (`import './status-board.css'`) ships in the package's `dist` and lands in the chunk of the page
+  that imports the component when a lazily loaded page does, not in the stylesheet every page loads. A component imported by a layout or the client
+  entry puts its stylesheet into the first one. It must be finished CSS: the app's Tailwind does not see directives in it.
+- The package lists `@marmeon/react`, `react` and `react-dom` (when it uses it) as peer dependencies, never as dependencies, so the app and the
+  package share one copy and a `<Link>` of the package finds the router of the app.
+
+The package's stylesheet and the app's share one document. Wrap the package's rules in `@layer <namespace>` (`@layer status { … }`),
+so the app's own layers decide when both style an element, and give its classes a prefix (`.status-board-…`) so they do not meet the
+app's. Marmeon enforces neither.
+
 ## Extending the app's types
 
 A package that adds a key to a module's definition declares it by declaration merging, as the queue adds `jobs`:

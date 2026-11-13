@@ -164,7 +164,7 @@ const copies = new Map<string, string>();
  * route manifest, and the app's own may be stale (`.marmeon/` survives a change of branch) or rewritten right now by a test
  * that boots the app — the copy gets its own, from the routes as they are.
  */
-function appCopy(root: string): string {
+export function appCopy(root: string): string {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), `marmeon-app-${basename(root)}-`));
   try {
     cpSync(root, dir, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(root.length)) && !/[/\\]\.env$/.test(source) });
