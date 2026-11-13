@@ -301,3 +301,40 @@ describe('what discovery refuses instead of passing over', () => {
     expect(messageOf(() => packageSurfaces({ root }))).toContain('must be a folder below the package root');
   });
 });
+
+describe('what the raw declaration and the real path must not hide', () => {
+  it('validates the declared surface when the manifest is generated', () => {
+    const root = appWith({ '@acme/ui-kit': { marmeon: { namespace: 'status', lang: './lang' }, exports: { '.': './dist/index.js' } } });
+    const message = messageOf(() => generateManifest({ root }));
+    expect(message).toContain('@acme/ui-kit');
+    expect(message).toContain('"lang"');
+    const browserOnly = appWith({ '@acme/status-board': { exports: { ...EXPORTS, './area/client': { browser: './dist/area/client.js' } }, files: FILES } });
+    expect(() => generateManifest({ root: browserOnly })).not.toThrow();
+    const fine = appWith({ '@acme/status-board': { files: FILES } });
+    expect(() => generateManifest({ root: fine })).not.toThrow();
+  });
+
+  it('refuses an exports target with a dot, dot-dot or node_modules segment, as Node does', () => {
+    const refused = (exports: unknown) => messageOf(() => packageSurfaces({ root: appWith({ '@acme/status-board': { exports, files: FILES } }) }));
+    expect(refused({ ...EXPORTS, './views/*': './dist/../dist/views/*.js' })).toContain('segment');
+    expect(refused({ ...EXPORTS, './lang/*': './dist/./lang/*.js' })).toContain('segment');
+    expect(refused({ ...EXPORTS, './views/*': './dist//views/*.js' })).toContain('segment');
+    expect(refused({ ...EXPORTS, './area/client': './dist/../dist/area/client.js' })).toContain('segment');
+    expect(refused({ ...EXPORTS, './area/ssr': './dist/./area/ssr.js' })).toContain('segment');
+  });
+
+  it('refuses a view that is a link into the package\'s own node_modules, and a linked pattern directory', () => {
+    const root = appWith({ '@acme/status-board': { files: FILES } });
+    const dir = join(root, 'node_modules/@acme/status-board');
+    mkdirSync(join(dir, 'node_modules/dep'), { recursive: true });
+    writeFileSync(join(dir, 'node_modules/dep/View.js'), '');
+    symlinkSync(join(dir, 'node_modules/dep/View.js'), join(dir, 'dist/views/Alias.js'));
+    expect(messageOf(() => packageSurfaces({ root }))).toContain('link leading out of the package');
+
+    const linkedDirectory = appWith({ '@acme/status-board': { files: { 'dist/area/client.js': '', 'dist/area/ssr.js': '' } } });
+    const other = join(linkedDirectory, 'node_modules/@acme/status-board');
+    mkdirSync(join(other, 'node_modules/dep/views'), { recursive: true });
+    symlinkSync(join(other, 'node_modules/dep/views'), join(other, 'dist/views'));
+    expect(messageOf(() => packageSurfaces({ root: linkedDirectory }))).toContain('"views" to a directory outside the package');
+  });
+});

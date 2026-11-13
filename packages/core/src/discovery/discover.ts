@@ -14,7 +14,7 @@ import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
-import { isNamespace, resolveSurface, type PackageSurface, type PackageUiField } from './surface.ts';
+import { checkExportKeys, isNamespace, resolveSurface, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
 export type { PackageSurface };
@@ -103,8 +103,12 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const namespaces: { package: string; dir: string; namespace: string }[] = [];
 
   for (const pkg of walkDependencies(root)) {
-    const namespace = marmeonField(pkg)?.namespace;
-    if (namespace !== undefined) namespaces.push({ package: pkg.name, dir: pkg.dir, namespace });
+    const ui = marmeonField(pkg);
+    if (ui?.namespace !== undefined) {
+      namespaces.push({ package: pkg.name, dir: pkg.dir, namespace: ui.namespace });
+      // Only what holds under every condition: the keys the field names. Targets are resolved by whoever reads the surface, with its own conditions.
+      checkExportKeys(pkg, ui as PackageUiField);
+    }
     const rootEntry = jsEntryOf(pkg, '.', conditions);
     names.push(pkg.name);
 

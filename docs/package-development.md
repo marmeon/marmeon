@@ -529,13 +529,14 @@ Every path is a subpath of `exports`, not a path in the package, so the conditio
 - `namespace` is required with any of the others. `entry` and `views` come together: a package's pages are always rendered by its own
   entry. `lang` can stand alone, and so can `namespace`.
 - Two installed packages cannot share a namespace, and neither can two installed copies of one package.
-- A package with a `namespace` is compiled by the app's Vite like the app's own source, in development, in the build and in server
-  rendering, so the app's Vite plugins see its modules.
 - A directory below `views` that is a link is not followed, so a link cannot lead the listing out of the package or into a loop.
 
 Everything the field names must lie in the package, also by its real path. A target with `..`, an absolute path, a `node_modules`
 folder, or a file that is a link leading out of the package stops the app with `K7`; a link to a file inside the package is followed.
 The message names the package and the key and never repeats a value of the file.
+
+A malformed field, a missing `exports` key and a shared namespace stop the app at start, whatever the conditions. The other refusals
+depend on the conditions in force and come when the build or the server reads the surface.
 
 The app refuses only what it can see to be wrong: a missing `exports` key, a target outside the package or in its root, a name that is no view name,
 a folder below `views` or `lang` that cannot be read, views nested deeper than the limit, a shared namespace. A folder that does not exist yet (the package is not built) lists nothing, and an entry whose file does not exist

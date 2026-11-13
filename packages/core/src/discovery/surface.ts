@@ -1,8 +1,8 @@
 import { readdirSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
-import { entryInside } from './contain.ts';
+import { basename, dirname, join, relative, sep } from 'node:path';
+import { entryInside, isInside } from './contain.ts';
 import { DiscoveryError } from './error.ts';
-import { resolveExports, type PackageInfo } from './resolve.ts';
+import { resolveExports, selectExportsTarget, type PackageInfo } from './resolve.ts';
 
 /** The user interface a package declares in its `"marmeon"` field, as written: shape checked, nothing resolved yet. */
 export interface PackageUiField {
@@ -57,6 +57,31 @@ export function isViewName(name: string): boolean {
 }
 
 /**
+ * Whether `path` belongs to the package: `entryInside`, and also by its real path no `node_modules` of the package — a link into
+ * a dependency installed below the package is another package's file.
+ */
+function inside(pkg: PackageInfo, path: string): boolean {
+  if (!entryInside(pkg.dir, path)) return false;
+  let real;
+  try {
+    real = realpathSync.native(path);
+  } catch (error) {
+    // Not built yet: `entryInside` judged the nearest directory that exists. Any other failure is a fact worth refusing for.
+    return (error as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+  const below = relative(realpathSync.native(pkg.dir), real);
+  return isInside(realpathSync.native(pkg.dir), real) && !below.split(sep).some((segment) => segment.toLowerCase() === 'node_modules');
+}
+
+/** Node refuses a target with a `.`, `..` or `node_modules` segment after the leading `./`; so does the app, before anything is normalized. */
+function checkRawTarget(pkg: PackageInfo, subpath: string, conditions: readonly string[], what: string): void {
+  const raw = selectExportsTarget(pkg, subpath, conditions);
+  if (raw !== undefined && raw.startsWith('./') && raw.slice(2).split(/[\\/]/).some((segment) => ['.', '..', ''].includes(segment) || segment.toLowerCase() === 'node_modules')) {
+    throw new DiscoveryError(`${pkg.name} maps ${what} to a target with a "." or ".." or "node_modules" segment or an empty one, which "exports" does not allow.`);
+  }
+}
+
+/**
  * The files of the pattern `<subpath>/*` in the package's `exports`: its target must end in `/*<extension>` (`./dist/views/*.js`).
  * Only the directory the pattern leads to is listed — never `node_modules` — and every file must lie in the package, also by its
  * real path. A directory that does not exist yet (an unbuilt package) lists nothing.
@@ -79,10 +104,11 @@ function listPattern(
     throw new DiscoveryError(`${pkg.name} maps the "exports" pattern of its "${key}" to a target that does not end in "/*" and an extension (such as "./dist/${key}/*.js").`);
   }
   const directory = dirname(target);
-  if (!entryInside(pkg.dir, directory)) {
+  if (!inside(pkg, directory)) {
     throw new DiscoveryError(`${pkg.name} maps the "exports" pattern of its "${key}" to a directory outside the package, or to the package root itself: the target must be a folder below the package root.`);
   }
 
+  checkRawTarget(pkg, pattern, conditions, `the "exports" pattern of its "${key}"`);
   const found = new Map<string, string>();
   const walk = (dir: string, prefix: string, depth: number): void => {
     let entries;
@@ -98,7 +124,7 @@ function listPattern(
       if (entry.name.startsWith('.') || entry.name.toLowerCase() === 'node_modules') continue;
       const link = entry.isSymbolicLink();
       // A link is followed only to a file of the package; a linked directory is not walked, so no loop can arise.
-      if (link && !entryInside(pkg.dir, path)) {
+      if (link && !inside(pkg, path)) {
         throw new DiscoveryError(`${pkg.name} has a file in its "${key}" that is a link leading out of the package.`);
       }
       const directoryLike = link ? statSync(path, { throwIfNoEntry: false })?.isDirectory() === true : entry.isDirectory();
@@ -134,6 +160,30 @@ function sorted(found: Map<string, string>): Readonly<Record<string, string>> {
 }
 
 /**
+ * Throws when an `exports` of the package lacks a key the field names: the `entry` subpaths and the `"<views>/*"` and `"<lang>/*"`
+ * patterns. A key is there under every condition, so this holds whatever conditions the reader resolves with; targets are left to
+ * `resolveSurface`.
+ */
+export function checkExportKeys(pkg: PackageInfo, field: PackageUiField): void {
+  const { exports } = pkg.json;
+  const keys = typeof exports === 'object' && exports !== null && !Array.isArray(exports) ? Object.keys(exports) : [];
+  const has = (key: string): boolean => keys.includes(key);
+  if (field.entry !== undefined) {
+    for (const which of ['client', 'ssr'] as const) {
+      if (!has(field.entry[which])) {
+        throw new DiscoveryError(`${pkg.name} declares an "entry" in its "marmeon" field, but its "exports" has no subpath for the ${which} entry.`);
+      }
+    }
+  }
+  for (const key of ['views', 'lang'] as const) {
+    const subpath = field[key];
+    if (subpath !== undefined && !has(`${subpath}/*`)) {
+      throw new DiscoveryError(`${pkg.name} declares "${key}" in its "marmeon" field, but its "exports" has no entry for that subpath with "/*" (a pattern such as "./${key}/*").`);
+    }
+  }
+}
+
+/**
  * Resolves what a package's field declares: the `entry` subpaths and the files under the `views` and `lang` patterns of its `exports`,
  * under `conditions` (the ones the app resolves with). Everything must lie in the package, also by its real path. Reads package.json
  * and lists directories; runs no code of the package.
@@ -146,9 +196,10 @@ export function resolveSurface(pkg: PackageInfo, field: PackageUiField, conditio
       if (target === undefined) {
         throw new DiscoveryError(`${pkg.name} declares an "entry" in its "marmeon" field, but its "exports" has no subpath for the ${which} entry that applies here.`);
       }
-      if (!entryInside(pkg.dir, target)) {
+      if (!inside(pkg, target)) {
         throw new DiscoveryError(`${pkg.name} maps the ${which} "entry" to a file outside the package.`);
       }
+      checkRawTarget(pkg, field.entry![which], conditions, `the ${which} "entry"`);
       try {
         return realpathSync.native(target);
       } catch {
