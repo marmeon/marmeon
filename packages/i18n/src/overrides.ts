@@ -25,7 +25,11 @@ export const packageOwner = (name: string, namespace: string): TextOwner => ({ n
 /** The app's rewording and translations of one namespace's texts: `lang/<namespace>/<locale>.ts`, by locale tag. */
 export async function overrideFiles(root: string, namespace: string): Promise<{ path: string; locale: string }[]> {
   const dir = join(root, 'lang', namespace);
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  // Only a folder that is not there means no overrides; one that cannot be read must not leave the app on the package's own wording.
+  const entries = await readdir(dir, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return [];
+    throw error;
+  });
   const files: { path: string; locale: string }[] = [];
   for (const entry of entries) {
     const match = /^([^/]+)\.[jt]s$/.exec(entry.name);
@@ -63,9 +67,11 @@ function placeholderNames(parts: readonly Part[], names = new Set<string>()): Se
  * must keep the placeholders of the English one (a translation may reorder or leave out words, never the values a text is given).
  * Keys are checked against `source`, placeholders against `placeholderSource` (the same by default; `false` checks none, and a key it lacks is not checked). Syntax errors are the catalog's, when the merged messages are added.
  */
-export function checkOverride(path: string, root: string, tree: Tree, source: Tree, owner: TextOwner, placeholderSource: Tree | false = source): void {
+export function checkOverride(path: string, root: string, tree: Tree, source: Tree | readonly Tree[], owner: TextOwner, placeholderSource: Tree | false = Array.isArray(source) ? false : (source as Tree)): void {
   const file = relative(root, path).replaceAll('\\', '/');
-  const original = textsOf(source);
+  // Several sources count as one set of paths, kept apart: a path that is a text in one file and a group in another is both.
+  const original = { texts: new Map<string, string>(), groups: new Set<string>() };
+  for (const one of Array.isArray(source) ? (source as readonly Tree[]) : [source as Tree]) textsOf(one, original.texts, original.groups);
   const own = textsOf(tree);
   const placeholderTexts = placeholderSource === false ? undefined : textsOf(placeholderSource).texts;
   for (const group of own.groups) {

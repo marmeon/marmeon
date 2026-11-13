@@ -403,11 +403,7 @@ async function loadPackageTexts(root: string, surface: PackageText, catalog: Cat
     packageLocales.add(locale);
     accepted.set(locale, tag);
   }
-  const allFiles = async (): Promise<Tree> => {
-    let union: Tree = {};
-    for (const path of Object.values(surface.lang)) union = mergeTexts(union, await importTexts(path));
-    return union;
-  };
+  const allFiles = (): Promise<Tree[]> => Promise.all(Object.values(surface.lang).map(importTexts));
   for (const [locale, tag] of accepted) {
     const path = surface.lang[tag]!;
     const base = await importTexts(path);
@@ -422,7 +418,7 @@ async function loadPackageTexts(root: string, surface: PackageText, catalog: Cat
     catalog.add(locale, surface.namespace, mergeTexts(base, override.tree), `${path} + ${override.path}`);
     loaded.push(path, override.path);
   }
-  let union: Tree | undefined;
+  let union: Tree[] | undefined;
   for (const [locale, { path, tree }] of overrides) {
     if (packageLocales.has(locale)) continue;
     union ??= await allFiles();

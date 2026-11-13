@@ -1,12 +1,13 @@
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createApplication } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { SessionServiceProvider } from '@marmeon/session';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { I18nServiceProvider, Translator } from './index.ts';
+import { overrideFiles } from './overrides.ts';
 
 const EN = `export default { title: 'Status', saved: 'Saved {name}.', entries: { count: '{count, plural, one {# entry} other {# entries}}' } };`;
 const DE = `export default { title: 'Zustand', saved: '{name} gespeichert.' };`;
@@ -139,6 +140,12 @@ describe('lang/<namespace>/<locale>.ts — the app rewords a package’s texts k
     expect(text('status.title', 'de')).toBe('Zustand');
   });
 
+  it('without an English file, a path that is a text in one file and a group in another keeps its keys', async () => {
+    const packageFiles = { 'dist/lang/de.js': `export default { section: { label: 'Bereich' } };`, 'dist/lang/fr.js': `export default { section: 'Section' };` };
+    const { text } = await boot({ packageFiles, files: { 'lang/status/de.ts': `export default { section: { label: 'Zone' } };` } });
+    expect(text('status.section.label', 'de')).toBe('Zone');
+  });
+
   it('a package whose texts have no target for the server stops the start with K7', async () => {
     await expect(boot({ exports: { './lang/*': { browser: './dist/lang/*.js' } } })).rejects.toThrow(
       '[marmeon:K7] @acme/status-board declares "lang" in its "marmeon" field, but its "exports" has no entry for that subpath with "/*" (a pattern such as "./views/*") that applies here.',
@@ -166,6 +173,16 @@ describe('lang/<namespace>/<locale>.ts — the app rewords a package’s texts k
     await expect(
       boot({ files: { 'lang/status/en.ts': `export default { title: 'A' };`, 'lang/status/en.js': `export default { title: 'B' };` } }),
     ).rejects.toThrow(/status messages in en are reworded twice/);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('a lang/<namespace> folder that cannot be read stops the start instead of leaving the package’s wording', async () => {
+    const dir = realpathSync(tempDir('marmeon-package-texts-locked-'));
+    mkdirSync(join(dir, 'lang', 'status'), { recursive: true });
+    writeFileSync(join(dir, 'lang', 'status', 'en.ts'), `export default { title: 'Health' };`);
+    chmodSync(join(dir, 'lang', 'status'), 0o000);
+    onTestFinished(() => chmodSync(join(dir, 'lang', 'status'), 0o755));
+    await expect(overrideFiles(dir, 'status')).rejects.toThrow(/EACCES/);
+    await expect(overrideFiles(dir, 'marmeon')).resolves.toEqual([]);
   });
 
   it('keeps ignoring lang/<x>/ for a namespace nobody has texts for', async () => {
