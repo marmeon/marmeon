@@ -136,7 +136,8 @@ namespace and a package that ships no texts is no conflict.
 ### In the browser
 
 The browser gets a package's texts through a virtual module, merged the way the server merges them: the package's file with the app's
-`lang/<namespace>/<locale>.ts` laid over it key by key, so a key shows the same text on both sides. Where they go depends on the package:
+`lang/<namespace>/<locale>.ts` laid over it key by key, so a key the locale's file has shows the same text on both sides (a key it leaves
+out falls back on the server only, see below). Where they go depends on the package:
 
 - A package **with an entry** (see [Pages of a package](package-development.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
   loads that module. A page of the app, and any other entry, never loads them, so texts meant for an admin area stay out of the public bundle.
