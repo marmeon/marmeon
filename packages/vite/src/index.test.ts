@@ -217,6 +217,7 @@ describe('marmeon()', () => {
       'marmeon:injection',
       'marmeon:virtual-pages',
       'marmeon:virtual-lang',
+      'marmeon:package-lang',
       'marmeon:package-pages',
       'marmeon:entries-file',
       'marmeon:routes',

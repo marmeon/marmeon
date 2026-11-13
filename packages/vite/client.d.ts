@@ -27,6 +27,16 @@ declare module 'virtual:marmeon/lang' {
   export default lang;
 }
 
+declare module 'virtual:marmeon/lang/*' {
+  /**
+   * The language files of the installed package with this namespace and an entry (`modules/<namespace>/lang/<locale>.ts` keys, loaded lazily), the app's
+   * `lang/<namespace>/<locale>.ts` laid over them key by key. The package's entry hands it to `createMessageLoader(lang)`; the app's own `virtual:marmeon/lang`
+   * does not hold these texts.
+   */
+  const lang: Record<string, () => Promise<unknown>>;
+  export default lang;
+}
+
 declare module 'virtual:marmeon/routes' {
   /**
    * The named routes the browser knows — hand them to `createMarmeonApp({ routes })` and `createSsrRenderer(…, { routes })`.

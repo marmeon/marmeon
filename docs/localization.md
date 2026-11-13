@@ -131,7 +131,25 @@ placeholders is approximate (`{names}` passes where the package has `{name}`); t
 
 A package's namespace and a module of the app cannot both hold texts: if `modules/status/lang/` and a package with the namespace `status` and `lang` both
 have files, the start fails with `S7`. Rename the module, and reword the package's texts in `lang/status/` instead. A module with a package's
-namespace and a package that ships no texts is no conflict. These texts exist on the server.
+namespace and a package that ships no texts is no conflict.
+
+### In the browser
+
+The browser gets a package's texts through a virtual module, merged the way the server merges them: the package's file with the app's
+`lang/<namespace>/<locale>.ts` laid over it key by key, so a key the locale's file has shows the same text on both sides (a key it leaves
+out falls back on the server only, see below). Where they go depends on the package:
+
+- A package **with an entry** (see [Pages of a package](package-development.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
+  loads that module. A page of the app, and any other entry, never loads them, so texts meant for an admin area stay out of the public bundle.
+  The entry hands them to the loader: `createMessageLoader(lang)` with `import lang from 'virtual:marmeon/lang/status'`. A namespace that no package declares with an entry is a build error.
+- A package **without an entry**: its texts are part of the app's `virtual:marmeon/lang`, next to the app's own.
+
+Both modules key their files `modules/<namespace>/lang/<locale>.ts`, so a loader for several modules takes the spread of them:
+`createMessageLoader({ ...appLang, ...statusLang })`. The browser reads the texts under the browser's conditions, so a package's `lang` subpath needs a target for them (the one the server uses
+does, as long as it names no `node`-only file). The package's client entry, views and `lang` are resolved the same way; only its server entry may have a target for the server alone.
+A package with an entry but no `lang` has no `virtual:marmeon/lang/<namespace>`.
+Like every language file, the loader reads one file of a namespace per locale: a text a locale's file leaves out is not
+filled in from the fallback locale in the browser, so a translation of a package's texts should name every key.
 
 ## Messages
 
