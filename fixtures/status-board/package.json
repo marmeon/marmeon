@@ -1,0 +1,43 @@
+{
+  "name": "@fixtures/status-board",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A package of user interface components with a namespace, built like a package an app installs: the tests show its components rendering on an app's pages and its modules passing through the app's Vite plugins.",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "@marmeon/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build:css": "node copy-css.ts"
+  },
+  "devDependencies": {
+    "@marmeon/react": "workspace:*",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1"
+  },
+  "peerDependencies": {
+    "@marmeon/react": "workspace:*",
+    "react": "^19.3.0"
+  },
+  "marmeon": {
+    "namespace": "status",
+    "browser": [
+      "src/**"
+    ]
+  }
+}

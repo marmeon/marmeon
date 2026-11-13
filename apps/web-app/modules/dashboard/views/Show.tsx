@@ -1,8 +1,15 @@
+import { StatusBoard } from '@fixtures/status-board';
 import type { PageProps } from '@marmeon/http';
 import { Head, Island, Link, useTranslation, type Placeholder } from '@marmeon/react';
 import type { ShowDashboardController } from '../controllers/ShowDashboardController.ts';
 
 type Props = PageProps<ShowDashboardController>;
+
+/** What the status board of the package shows. */
+const SERVICES = [
+  { name: 'Web', state: 'up' },
+  { name: 'Mail', state: 'degraded' },
+] as const;
 
 /** How often "My activity" refreshes itself while it is on screen (ms). */
 const ACTIVITY_POLL = 15_000;
@@ -21,6 +28,8 @@ export default function Show(_props: Props) {
       <Head title={t('title')} />
       <h1>{t('title')}</h1>
       <p>{t('intro')}</p>
+      {/* A component of an installed package: rendered with the page, hydrated in the browser, its stylesheet in the page's chunk. */}
+      <StatusBoard services={SERVICES} />
       <div className="panels">
         <section aria-labelledby="sign-ins">
           <h2 id="sign-ins">{t('sign_ins.title')}</h2>

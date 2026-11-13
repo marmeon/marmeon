@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - apps/*
+  - fixtures/*
 
 # Supply-chain policy for installs.
 # A release younger than three days (4320 minutes) is not installed.
