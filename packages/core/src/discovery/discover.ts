@@ -14,8 +14,10 @@ import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
+import { checkExportKeys, isNamespace, resolveSurface, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
+export type { PackageSurface };
 import {
   exportedSubpaths,
   findPackage,
@@ -98,8 +100,15 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const injections: Manifest['injections'][number][] = [];
   const providers: ExportRef[] = [];
   const names: string[] = [];
+  const namespaces: { package: string; dir: string; namespace: string }[] = [];
 
   for (const pkg of walkDependencies(root)) {
+    const ui = marmeonField(pkg);
+    if (ui?.namespace !== undefined) {
+      namespaces.push({ package: pkg.name, dir: pkg.dir, namespace: ui.namespace });
+      // Only what holds under every condition: the keys the field names. Targets are resolved by whoever reads the surface, with its own conditions.
+      checkExportKeys(pkg, ui as PackageUiField);
+    }
     const rootEntry = jsEntryOf(pkg, '.', conditions);
     names.push(pkg.name);
 
@@ -158,6 +167,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
     }
   }
 
+  checkNamespaces(namespaces);
   const manifest: Manifest = {
     version: MANIFEST_VERSION,
     hash: manifestHash(root, conditions),
@@ -177,7 +187,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
  * The keys of the `"marmeon"` field (docs/package-development.md#the-package-protocol); a new key is a minor release, so an older core refuses it.
  * `serverModules` is for the app's own package.json (`declaredServerModules`): in a dependency it is accepted and ignored.
  */
-export const MARMEON_KEYS = ['providers', 'browser', 'experimental', 'serverModules'] as const;
+export const MARMEON_KEYS = ['providers', 'browser', 'experimental', 'serverModules', 'namespace', 'entry', 'views', 'lang'] as const;
 const CLASS_NAME = /^[A-Za-z_$][\w$]*$/;
 /** A key the message may repeat: short and identifier-shaped, so a hostile `package.json` cannot put text of its own into it. */
 const SHOWN_KEY = /^[A-Za-z_$][\w$]{0,63}$/;
@@ -188,7 +198,7 @@ const SHOWN_KEY = /^[A-Za-z_$][\w$]{0,63}$/;
  * providers out without a word. The messages name the package (from the dependency list) and, when it looks like an identifier,
  * the key — never a value of the field.
  */
-export function marmeonField(pkg: PackageInfo): { readonly providers: readonly string[] } | undefined {
+export function marmeonField(pkg: PackageInfo): ({ readonly providers: readonly string[] } & Partial<PackageUiField>) | undefined {
   const json = pkg.json as { marmeon?: unknown };
   if (!Object.hasOwn(json, 'marmeon')) return undefined;
   const field = json.marmeon;
@@ -218,7 +228,93 @@ export function marmeonField(pkg: PackageInfo): { readonly providers: readonly s
   if (experimental !== undefined && experimental !== true && (!Array.isArray(experimental) || !experimental.every((subpath) => typeof subpath === 'string'))) {
     throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "experimental" is neither true nor a list of subpaths of its exports.`);
   }
-  return { providers: (providers as string[] | undefined) ?? [] };
+  const ui = uiField(pkg, own);
+  return { providers: (providers as string[] | undefined) ?? [], ...ui };
+}
+
+/** A subpath of `exports` as a field names it: `./area/client`, never a pattern. */
+function isSubpath(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 256 && value.startsWith('./') && value.length > 2 && !value.includes('*');
+}
+
+/**
+ * The user interface a package declares: `namespace`, `entry` (`client` and `ssr`), `views` and `lang`, shape checked and nothing
+ * resolved (`resolveSurface` does that). `namespace` is required with any of the others; `entry` and `views` come together.
+ * The messages name the package and the key, never a value.
+ */
+function uiField(pkg: PackageInfo, own: (key: string) => unknown): PackageUiField | undefined {
+  const namespace = own('namespace');
+  const entry = own('entry');
+  const views = own('views');
+  const lang = own('lang');
+  if (namespace === undefined && entry === undefined && views === undefined && lang === undefined) return undefined;
+  if (namespace === undefined) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field with "entry", "views" or "lang" but no "namespace" — the namespace is the prefix of its pages and texts.`);
+  }
+  if (!isNamespace(namespace)) {
+    throw new DiscoveryError(
+      `${pkg.name} has a "marmeon" field whose "namespace" is not valid: lowercase letters, digits and single hyphens, starting with a letter, at most 32 characters, and not "app" or "marmeon".`,
+    );
+  }
+  let checked: PackageUiField['entry'];
+  if (entry !== undefined) {
+    const shape = typeof entry === 'object' && entry !== null && !Array.isArray(entry);
+    const keys = shape ? Object.keys(entry) : [];
+    const client = shape && Object.hasOwn(entry, 'client') ? (entry as Record<string, unknown>).client : undefined;
+    const ssr = shape && Object.hasOwn(entry, 'ssr') ? (entry as Record<string, unknown>).ssr : undefined;
+    if (!shape || keys.length !== 2 || !isSubpath(client) || !isSubpath(ssr)) {
+      throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "entry" is not an object with exactly "client" and "ssr", each a subpath of its exports such as "./area/client".`);
+    }
+    checked = { client, ssr };
+  }
+  if (views !== undefined && !isSubpath(views)) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "views" is not a subpath of its exports such as "./views" (the pattern "./views/*" lists the files).`);
+  }
+  if (lang !== undefined && !isSubpath(lang)) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "lang" is not a subpath of its exports such as "./lang" (the pattern "./lang/*" lists the files).`);
+  }
+  if ((checked === undefined) !== (views === undefined)) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field with only one of "entry" and "views" — a package's pages need both: the entry that renders them and the views it lists.`);
+  }
+  return { namespace, ...(checked ? { entry: checked } : {}), ...(views !== undefined ? { views } : {}), ...(lang !== undefined ? { lang } : {}) };
+}
+
+/**
+ * Throws when two packages declare one namespace. Packages are told apart by their real directory, so one package reached twice
+ * (a workspace link) is one; two copies of a package (two versions) are two. Both are named, the namespace is shown (it passed the
+ * namespace check).
+ */
+function checkNamespaces(declared: readonly { readonly package: string; readonly dir: string; readonly namespace: string }[]): void {
+  const owners = new Map<string, { package: string; dir: string }>();
+  for (const { package: name, dir, namespace } of declared) {
+    const first = owners.get(namespace);
+    if (first !== undefined && first.dir !== dir) {
+      throw new DiscoveryError(
+        first.package === name
+          ? `${name} is installed twice, and both copies declare the namespace "${namespace}" in their "marmeon" field — a namespace belongs to one package.`
+          : `${first.package} and ${name} both declare the namespace "${namespace}" in their "marmeon" field — a namespace belongs to one package.`,
+      );
+    }
+    owners.set(namespace, { package: name, dir });
+  }
+}
+
+/**
+ * The user interface of every installed package that declares one, resolved under `conditions` and in dependency order: its
+ * namespace, entry, view files and language files. Reads `package.json` files and lists the declared directories; runs no code
+ * of a package. Throws `K7` for a field that is wrong, a path that leaves its package and a namespace two packages share.
+ */
+export function packageSurfaces({ root, conditions = runtimeConditions() }: DiscoverOptions): readonly PackageSurface[] {
+  const surfaces: PackageSurface[] = [];
+  const declared: { package: string; dir: string; namespace: string }[] = [];
+  for (const pkg of walkDependencies(root)) {
+    const field = marmeonField(pkg);
+    if (field?.namespace === undefined) continue;
+    declared.push({ package: pkg.name, dir: pkg.dir, namespace: field.namespace });
+    surfaces.push(resolveSurface(pkg, field as PackageUiField, conditions));
+  }
+  checkNamespaces(declared);
+  return surfaces;
 }
 
 /** Post-order walk over installed dependencies: a package's dependencies come before it. */

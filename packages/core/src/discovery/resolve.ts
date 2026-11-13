@@ -92,17 +92,22 @@ export function findPackage(name: string, fromDir: string): PackageInfo | undefi
  * object's key order, like Node. Subpath patterns (`./*`) are not supported yet.
  */
 export function resolveExports(pkg: PackageInfo, subpath: string, conditions: readonly string[]): string | undefined {
+  const resolved = selectExportsTarget(pkg, subpath, conditions);
+  // `resolve`, not `join`: an absolute target stays absolute, so the containment check sees it instead of reading it as relative.
+  return resolved ? resolve(pkg.dir, resolved) : undefined;
+}
+
+/** The target `exports` selects for `subpath` under `conditions`, as written in the file: not resolved, not normalized. */
+export function selectExportsTarget(pkg: PackageInfo, subpath: string, conditions: readonly string[]): string | undefined {
   const { exports } = pkg.json;
   if (exports === undefined) {
-    return subpath === '.' && typeof pkg.json.main === 'string' && pkg.json.main ? resolve(pkg.dir, pkg.json.main) : undefined;
+    return subpath === '.' && typeof pkg.json.main === 'string' && pkg.json.main ? pkg.json.main : undefined;
   }
 
   const isSubpathMap =
     typeof exports === 'object' && exports !== null && !Array.isArray(exports) && Object.keys(exports).some((key) => key.startsWith('.'));
   const target = isSubpathMap ? (exports as Record<string, unknown>)[subpath] : subpath === '.' ? exports : undefined;
-  const resolved = pickTarget(target, conditions, pkg.name, 0);
-  // `resolve`, not `join`: an absolute target stays absolute, so the containment check sees it instead of reading it as relative.
-  return resolved ? resolve(pkg.dir, resolved) : undefined;
+  return pickTarget(target, conditions, pkg.name, 0);
 }
 
 /** All explicit subpaths a package exports (`.`, `./testing`, …). */

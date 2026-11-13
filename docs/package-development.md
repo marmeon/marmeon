@@ -61,6 +61,10 @@ The tables below list every part.
 | `providers` | The names of service provider classes that the package's entry exports, each a JavaScript identifier. |
 | `browser` | Globs of the package's files that run only in the browser, relative to the package, such as `["src/client/**"]`. |
 | `experimental` | `true`, or a list of the package's `exports` subpaths: marks the package, or those entries, as [experimental](releases.md#experimental). |
+| `namespace` | The prefix of the package's pages and texts, such as `"status"`: lowercase letters, digits and single hyphens, starting with a letter, at most 32 characters, and not `app` or `marmeon`. Required with `entry`, `views` or `lang`; alone it marks a package whose code is user interface. See [Pages of a package](#pages-of-a-package). |
+| `entry` | `{ "client": "./area/client", "ssr": "./area/ssr" }`: two subpaths of the package's `exports` that start its own document. Only with `views`. |
+| `views` | The subpath of the package's pages, such as `"./views"`. Its `exports` holds the pattern `"./views/*"`. Only with `entry`. |
+| `lang` | The subpath of the package's texts, such as `"./lang"`, with the pattern `"./lang/*"` in `exports`. |
 | `serverModules` | Only in the app's own package.json: globs of server code beyond the conventions. Ignored in a dependency. See [Server folders of your own](vite.md#server-folders-of-your-own). |
 
 The field is an object with these keys and no others. The app finds it when it walks its dependencies, the dev dependencies
@@ -68,11 +72,14 @@ included, and the dependencies of those, and a field that does not hold to this 
 is someone else's file and a key that is silently skipped hides a mistake:
 
 - A key that is not listed, such as `provider` for `providers`, ends discovery with `K7`: `@acme/marmeon-request-log has an unknown key
-  "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules) — a misspelt key would leave its providers out.`
+  "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules, namespace, entry, views, lang) — a misspelt key would leave its providers out.`
   The message names the package and the key, and the key only if it is a plain identifier; it never repeats a value of the field.
   The same holds for a `migrations` key, since migrations are a static of the provider (below).
 - A field that is not an object (an array, a string, `null`), a `providers` that is not a list of class names, or a `browser` that
   is not a list of strings also ends discovery with `K7`.
+
+- A `namespace` that is not valid, `entry`, `views` or `lang` without a `namespace`, an `entry` without exactly `client` and `ssr`, `entry`
+  without `views` or the reverse, or two packages with one namespace also end discovery with `K7`, naming both packages in the last case.
 
 A package's providers register after the providers of the packages it depends on, so list the framework packages you build on as
 dependencies. A name in `providers` that the entry does not export stops the app with
@@ -481,6 +488,59 @@ Two hooks let a package take part in every request. Add them in `boot()`:
 
 A hook runs for every route of every app that installs the package, so keep it narrow: claim requests by a header of your own, and
 leave everything else alone.
+
+## Pages of a package
+
+A package can bring pages, an entry of its own and texts. It declares them in the `"marmeon"` field of its `package.json`, and
+the app reads the declaration without running a line of the package: from `package.json` and the directories it names.
+
+### Declaring the interface in `package.json`
+
+```json
+{
+  "name": "@acme/status-board",
+  "exports": {
+    ".": "./dist/index.js",
+    "./area/client": "./dist/area/client.js",
+    "./area/ssr": "./dist/area/ssr.js",
+    "./views/*": "./dist/views/*.js",
+    "./lang/*": "./dist/lang/*.js"
+  },
+  "marmeon": {
+    "providers": ["StatusBoardServiceProvider"],
+    "namespace": "status",
+    "entry": { "client": "./area/client", "ssr": "./area/ssr" },
+    "views": "./views",
+    "lang": "./lang"
+  }
+}
+```
+
+Every path is a subpath of `exports`, not a path in the package, so the conditions apply as they do for any import: in a monorepo
+`@marmeon/source` can lead to `src/views/*.tsx` while the published package leads to `dist/views/*.js`.
+
+- `entry.client` and `entry.ssr` are exact subpaths: `"./area/client"` needs the key `"./area/client"` in `exports`.
+- `views` and `lang` name a folder: `"./views"` needs the pattern `"./views/*"`, whose target ends in `/*` and an extension
+  (`./dist/views/*.js`). The files below that directory are the package's views, and its texts for `lang`.
+- A view's name is its path below the pattern without the extension: `dist/views/entries/Edit.js` is `entries/Edit`. Each segment holds
+  letters, digits, `_` and `-`, joined by `/`. A language file's name is its language tag, `en` or `de-AT`, and `lang` has no folders.
+- Only that directory of the package is listed, never `node_modules`. Files whose names start with a dot, files with `.test.`, `.spec.`
+  or `.type-test.` in the name and `.d.ts` files are not views or texts. A package may have at most 1000 views and 100 language files, and its views may nest at most 16 folders deep.
+- `namespace` is required with any of the others. `entry` and `views` come together: a package's pages are always rendered by its own
+  entry. `lang` can stand alone, and so can `namespace`.
+- Two installed packages cannot share a namespace, and neither can two installed copies of one package.
+- A directory below `views` that is a link is not followed, so a link cannot lead the listing out of the package or into a loop.
+
+Everything the field names must lie in the package, also by its real path. A target with `..`, an absolute path, a `node_modules`
+folder, or a file that is a link leading out of the package stops the app with `K7`; a link to a file inside the package is followed.
+The message names the package and the key and never repeats a value of the file.
+
+A malformed field, a missing `exports` key and a shared namespace stop the app at start, whatever the conditions. The other refusals
+depend on the conditions in force and come when the build or the server reads the surface.
+
+The app refuses only what it can see to be wrong: a missing `exports` key, a target outside the package or in its root, a name that is no view name,
+a folder below `views` or `lang` that cannot be read, views nested deeper than the limit, a shared namespace. A folder that does not exist yet (the package is not built) lists nothing, and an entry whose file does not exist
+yet is not an error here: the build and the server say so when they need the file.
 
 ## Extending the app's types
 

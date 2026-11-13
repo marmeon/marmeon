@@ -399,7 +399,7 @@ describe('the "marmeon" field of a package', () => {
 
   it('refuses a key it does not know, naming the package, the key and the known keys — a misspelt "provider" is not ignored', () => {
     expect(messageOf(field({ provider: ['AuditServiceProvider'] }))).toBe(
-      '[marmeon:K7] @acme/marmeon-audit has an unknown key "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules) — a misspelt key would leave its providers out.',
+      '[marmeon:K7] @acme/marmeon-audit has an unknown key "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules, namespace, entry, views, lang) — a misspelt key would leave its providers out.',
     );
     expect(messageOf(field({ providers: ['A'], migrations: 'stubs' }))).toContain('unknown key "migrations"');
   });
