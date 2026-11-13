@@ -456,9 +456,10 @@ function twoEntryApp(extra: Record<string, string> = {}, aliases: Record<string,
 }
 
 /**
- * The modules an entry loads first that it does not reach itself (empty is right). The graph comes from the build (`graph.json`, written by
- * the app's test plugin), so modules without a marker count too: the pages module, the entry itself, stylesheets. The first-load set is the
- * entry's chunk and, transitively, the chunks it imports statically; a module belongs when any import path from the entry leads to it.
+ * The modules an entry loads first that it does not import statically itself (empty is right). The graph comes from the build (`graph.json`,
+ * written by the app's test plugin), so modules without a marker count too: the pages module, the entry itself, stylesheets. The first-load
+ * set is the entry's chunk and, transitively, the chunks it imports statically; a module belongs when a chain of static imports from the
+ * entry leads to it, so code the entry loads lazily never runs first.
  */
 function strays(root: string, manifestKey: string, entryId: string): string[] {
   const manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, { file: string; imports?: string[] }>;
@@ -468,7 +469,7 @@ function strays(root: string, manifestKey: string, entryId: string): string[] {
     const id = stack.pop()!;
     if (reached.has(id)) continue;
     reached.add(id);
-    stack.push(...(graph.modules[id]?.imports ?? []), ...(graph.modules[id]?.dynamic ?? []));
+    stack.push(...(graph.modules[id]?.imports ?? []));
   }
   const seen = new Set<string>();
   const walk = (key: string) => {
@@ -648,6 +649,50 @@ describe('an app and two package entries in one client build', () => {
     expect(strays(root, 'index.html', idOf(root, 'index.html'))).toEqual([]);
     expect(strays(root, entries.status!.client, idOf(root, 'node_modules/status-board/dist/client.js'))).toEqual([]);
     expect(strays(root, entries.report!.client, idOf(root, 'node_modules/report-board/dist/client.js'))).toEqual([]);
+  }, 90_000);
+});
+
+describe('an app and a package entry that loads lazily what the app loads first', () => {
+  it('keeps a module the package imports dynamically out of its first load, although the framework code it imports is loaded first by both', () => {
+    const root = twoEntryApp(
+      {
+        'bootstrap/client.ts': "import { x } from 'lazy-x';\nimport { y } from 'shared-y';\nimport pages from 'virtual:marmeon/pages';\ndocument.title = `${x} ${y}`;\nfor (const load of Object.values(pages)) void load();\n",
+        'modules/demo/y.ts': "export const y = 'Y_MARK';\n",
+        'node_modules/lazy-x/package.json': JSON.stringify({ name: 'lazy-x', type: 'module', exports: './index.js' }),
+        'node_modules/lazy-x/index.js': "import { y } from 'shared-y';\nexport const x = `X_MARK ${y}`;\n",
+        'node_modules/status-board/dist/client.js': "import { y } from 'shared-y';\nimport pages from 'virtual:marmeon/pages/status';\ndocument.title = y;\nvoid import('lazy-x');\nfor (const load of Object.values(pages)) void load();\n",
+      },
+      { 'shared-y': 'modules/demo/y.ts' },
+    );
+    const { code: status } = build(root, '--no-typecheck');
+    expect(status).toBe(0);
+    const { entries } = JSON.parse(readFileSync(join(root, 'dist/client/.vite/marmeon-entries.json'), 'utf8')) as { entries: Record<string, { client: string }> };
+    expect(strays(root, 'index.html', idOf(root, 'index.html'))).toEqual([]);
+    expect(strays(root, entries.status!.client, idOf(root, 'node_modules/status-board/dist/client.js'))).toEqual([]);
+  }, 90_000);
+});
+
+describe('a package entry in a build, read as the app is', () => {
+  it('takes the package\'s node-only server entry, with a client entry and views that only the browser has a target for', () => {
+    const root = twoEntryApp({
+      'node_modules/status-board/package.json': JSON.stringify({
+        name: 'status-board',
+        type: 'module',
+        // The client entry and the views have a target for the browser alone, which the server's conditions cannot resolve.
+        exports: {
+          './client': { browser: './dist/client.js' },
+          './ssr': { node: './dist/ssr-node.js' },
+          './pkgmod': './dist/pkgmod.js',
+          './views/*': { browser: './dist/views/*.js' },
+        },
+        marmeon: { namespace: 'status', entry: { client: './client', ssr: './ssr' }, views: './views' },
+      }),
+      'node_modules/status-board/dist/ssr-node.js': "export const render = () => 'NODE_SSR_MARK';\n",
+    });
+    const { code: status } = build(root, '--no-typecheck');
+    expect(status).toBe(0);
+    const server = readFileSync(join(root, 'dist/server/ssr-status.js'), 'utf8');
+    expect(server).toContain('NODE_SSR_MARK');
   }, 90_000);
 });
 

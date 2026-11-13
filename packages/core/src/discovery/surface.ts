@@ -19,8 +19,8 @@ export interface PackageSurface {
   readonly namespace: string;
   /** Real path of the package's directory. */
   readonly dir: string;
-  /** Absolute paths of the client and server entry the `entry` subpaths resolve to. */
-  readonly entry?: { readonly client: string; readonly ssr: string };
+  /** Absolute path of the client entry the `entry` subpath resolves to. The server entry depends on the server's conditions: `packageServerEntries`. */
+  readonly entry?: { readonly client: string };
   /** View name (`entries/Edit`, from the path below the pattern) → real path of its file. Sorted by name. */
   readonly views: Readonly<Record<string, string>>;
   /** Locale (`en`, `de-AT`) → real path of its language file. Sorted by locale. */
@@ -186,29 +186,34 @@ export function checkExportKeys(pkg: PackageInfo, field: PackageUiField): void {
 }
 
 /**
- * Resolves what a package's field declares: the `entry` subpaths and the files under the `views` and `lang` patterns of its `exports`,
+ * The file one entry of a package's `entry` field resolves to under `conditions`, with the checks `resolveSurface` makes of an entry: the
+ * subpath has a target here, no raw `.`/`..`/`node_modules` segment, and the file lies in the package, also by its real path.
+ */
+export function resolveSurfaceEntry(pkg: PackageInfo, entry: { readonly client: string; readonly ssr: string }, which: 'client' | 'ssr', conditions: readonly string[]): string {
+  const target = resolveExports(pkg, entry[which], conditions);
+  if (target === undefined) {
+    throw new DiscoveryError(`${pkg.name} declares an "entry" in its "marmeon" field, but its "exports" has no subpath for the ${which} entry that applies here.`);
+  }
+  if (!inside(pkg, target)) {
+    throw new DiscoveryError(`${pkg.name} maps the ${which} "entry" to a file outside the package.`);
+  }
+  checkRawTarget(pkg, entry[which], conditions, `the ${which} "entry"`);
+  try {
+    return realpathSync.native(target);
+  } catch {
+    return target; // not built yet
+  }
+}
+
+/**
+ * Resolves what a package's field declares: the client `entry` subpath and the files under the `views` and `lang` patterns of its `exports`,
  * under `conditions` (the ones the app resolves with). Everything must lie in the package, also by its real path. Reads package.json
  * and lists directories; runs no code of the package.
  */
 export function resolveSurface(pkg: PackageInfo, field: PackageUiField, conditions: readonly string[]): PackageSurface {
   let entry: PackageSurface['entry'];
   if (field.entry !== undefined) {
-    const resolve = (which: 'client' | 'ssr'): string => {
-      const target = resolveExports(pkg, field.entry![which], conditions);
-      if (target === undefined) {
-        throw new DiscoveryError(`${pkg.name} declares an "entry" in its "marmeon" field, but its "exports" has no subpath for the ${which} entry that applies here.`);
-      }
-      if (!inside(pkg, target)) {
-        throw new DiscoveryError(`${pkg.name} maps the ${which} "entry" to a file outside the package.`);
-      }
-      checkRawTarget(pkg, field.entry![which], conditions, `the ${which} "entry"`);
-      try {
-        return realpathSync.native(target);
-      } catch {
-        return target; // not built yet
-      }
-    };
-    entry = { client: resolve('client'), ssr: resolve('ssr') };
+    entry = { client: resolveSurfaceEntry(pkg, field.entry, 'client', conditions) };
   }
   const views = field.views === undefined ? new Map() : listPattern(pkg, field.views, 'views', conditions, { recursive: true, max: MAX_VIEWS });
   const lang = field.lang === undefined ? new Map() : listPattern(pkg, field.lang, 'lang', conditions, { recursive: false, max: MAX_LANG_FILES });

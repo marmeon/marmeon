@@ -97,7 +97,14 @@ function moduleId(file: string): string {
 export function clientInputs(root: string, packages: readonly PackageSurface[]): { input: Record<string, string>; names: Map<string, string> } {
   const html = normalizePath(join(root, 'index.html'));
   const input: Record<string, string> = { index: html };
-  const names = new Map<string, string>([[html, 'index']]);
+  // The bundler records a module under its real path, which differs from `html` when the app's root is reached through a link.
+  let recorded = html;
+  try {
+    recorded = moduleId(html);
+  } catch {
+    // No index.html yet: the build fails on it with its own message.
+  }
+  const names = new Map<string, string>([[recorded, 'index']]);
   for (const surface of entryPackages(packages)) {
     const file = moduleId(surface.entry!.client);
     input[`pkg-${surface.namespace}`] = file;
@@ -106,10 +113,14 @@ export function clientInputs(root: string, packages: readonly PackageSurface[]):
   return { input, names };
 }
 
-/** The server build's inputs: the app's `ssr` and `ssr-<namespace>` for each package with an entry, written as `dist/server/ssr-<namespace>.js`. */
-export function serverInputs(appEntry: string, packages: readonly PackageSurface[]): Record<string, string> {
+/** The server build's inputs: the app's `ssr` and `ssr-<namespace>` for each package with an entry (`serverEntries`: its file under the server's conditions), written as `dist/server/ssr-<namespace>.js`. */
+export function serverInputs(appEntry: string, packages: readonly PackageSurface[], serverEntries: ReadonlyMap<string, string>): Record<string, string> {
   const input: Record<string, string> = { ssr: appEntry };
-  for (const surface of entryPackages(packages)) input[`ssr-${surface.namespace}`] = moduleId(surface.entry!.ssr);
+  for (const surface of entryPackages(packages)) {
+    const file = serverEntries.get(surface.namespace);
+    if (file === undefined) throw new Error(`${surface.package} has no server entry for the build.`);
+    input[`ssr-${surface.namespace}`] = moduleId(file);
+  }
   return input;
 }
 

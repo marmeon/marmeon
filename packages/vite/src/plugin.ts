@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { marmeonInjection, CSP_NONCE_PLACEHOLDER, PAGE_TESTS_GLOB, PAGES_GLOB, type PackageSurface } from '@marmeon/core/internal';
+import { marmeonInjection, CSP_NONCE_PLACEHOLDER, PAGE_TESTS_GLOB, packageServerEntries, PAGES_GLOB, type PackageSurface } from '@marmeon/core/internal';
 import { defaultClientConditions, defaultServerConditions, normalizePath, searchForWorkspaceRoot, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { entryChunks, isThirdParty } from './entry-chunks.ts';
 import { checkFonts, fontFallbacks, preloadFonts, type MarmeonFont } from './fonts.ts';
@@ -173,6 +173,9 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       const modeCondition = nodeEnv === 'development' || nodeEnv === 'test' ? 'development' : 'production';
       const conditions = defaultClientConditions.map((condition) => (condition === 'development|production' ? modeCondition : condition));
       packages = uiPackages(root, [...source, ...conditions, 'import']);
+      // A package's server entry is the one its `node` export names, not the browser's: only that subpath is read again, with the server's conditions.
+      const serverConditions = defaultServerConditions.map((condition) => (condition === 'development|production' ? modeCondition : condition));
+      const serverEntries = command === 'build' && isSsrBuild && entryPackages(packages).length > 0 ? packageServerEntries({ root, conditions: [...serverConditions, 'import'] }) : new Map<string, string>();
       api.surfaces = packages;
       const result: UserConfig = {
         resolve: { conditions: [...source, ...defaultClientConditions], dedupe: adapterPeers(root) },
@@ -213,16 +216,15 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
         const several = entryPackages(packages).length > 0;
         const ssrInput = resolve(root, entries.ssr);
         if (isSsrBuild) {
-          result.build = { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: several ? serverInputs(ssrInput, packages) : { ssr: ssrInput } } };
+          result.build = { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: several ? serverInputs(ssrInput, packages, serverEntries) : { ssr: ssrInput } } };
         } else {
           // `manifest`: the server reads it at start to preload each page's chunks (docs/vite.md#building).
-          const { input, names } = clientInputs(root, packages);
-          result.build = {
-            outDir: 'dist/client',
-            emptyOutDir: true,
-            manifest: true,
-            rolldownOptions: several ? { input, output: { codeSplitting: entryChunks(names) } } : { output: { codeSplitting: CLIENT_CHUNKS } },
-          };
+          let rolldownOptions: Rolldown.RolldownOptions = { output: { codeSplitting: CLIENT_CHUNKS } };
+          if (several) {
+            const { input, names } = clientInputs(root, packages);
+            rolldownOptions = { input, output: { codeSplitting: entryChunks(names) } };
+          }
+          result.build = { outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions };
         }
       }
       return result;

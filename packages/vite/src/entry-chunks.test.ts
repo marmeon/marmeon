@@ -9,8 +9,8 @@ function chunking(edges: Edges, entries: Record<string, string>) {
   const ctx = {
     getModuleInfo: (id: string) => (id in edges ? { importedIds: edges[id]!.imports ?? [], dynamicallyImportedIds: edges[id]!.dynamic ?? [] } : null),
   } as unknown as Rolldown.ChunkingContext;
-  const groups = (entryChunks(new Map(Object.entries(entries))) as { groups: { name: (id: string, ctx: Rolldown.ChunkingContext) => string | null; test?: (id: string) => boolean }[] }).groups;
-  /** The chunk the first group that names `id` puts it in, highest priority first (the groups are listed from the highest). */
+  const groups = (entryChunks(new Map(Object.entries(entries))) as { groups: { name: (id: string, ctx: Rolldown.ChunkingContext) => string | null; test?: (id: string) => boolean; priority: number }[] }).groups.toSorted((a, b) => b.priority - a.priority);
+  /** The chunk the first group that names `id` puts it in, highest priority first. */
   return (id: string): string | null => {
     for (const group of groups) {
       if (group.test !== undefined && !group.test(id)) continue;

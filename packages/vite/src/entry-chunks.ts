@@ -13,6 +13,16 @@ interface Reach {
 }
 
 /**
+ * The (entries reaching a module, entries loading it first) pairs a shared module can have, from the lowest to the highest. A module's
+ * static dependency is reached and loaded first by at least the same entries, so it never sits in a lower tier than its importer.
+ */
+function tiers(entries: number): [number, number][] {
+  const pairs: [number, number][] = [];
+  for (let size = 2; size <= entries; size++) for (let loaded = 0; loaded <= size; loaded++) pairs.push([size, loaded]);
+  return pairs;
+}
+
+/**
  * How one client build with several entries splits what each entry loads first. The keys of `entries` are the module ids of the
  * entries (`<root>/index.html`, a package's client entry), the values their names (`index`, `pkg-<namespace>`).
  *
@@ -20,9 +30,9 @@ interface Reach {
  * `vendor-pkg-<namespace>` for a package). A module that several reach goes into a chunk shared by exactly that combination, so no entry
  * loads first what only another entry needs. File names carry a hash of the combination, never a namespace.
  *
- * One pair of groups per number of entries that reach a module, from all of them down to two, each with a priority above the next: a
- * dependency is reached by at least the entries that reach its importer, so a larger combination is placed first and a group only ever pulls
- * along a dependency of the same combination.
+ * One pair of groups per tier of (entries that reach a module, entries that load it first), the higher tier with the higher priority: a
+ * dependency is reached and loaded first by at least the entries that do so for its importer, so a group only ever pulls along a dependency
+ * of the same combination. Code one entry imports lazily and another statically never ends up in the first load of the first.
  */
 export function entryChunks(entries: ReadonlyMap<string, string>): Rolldown.CodeSplittingOptions {
   // Computed once per chunking context: a rebuild (watch mode) gets a context of its own and so reads its graph again.
@@ -52,9 +62,9 @@ export function entryChunks(entries: ReadonlyMap<string, string>): Rolldown.Code
 
   const of = (id: string, ctx: Rolldown.ChunkingContext): Reach | undefined => (runs.get(ctx) ?? runs.set(ctx, compute(ctx)).get(ctx)!).get(id);
   const hash = ({ initial, any }: Reach): string => createHash('sha256').update(`${initial.join('+')}|${any.join('+')}`).digest('hex').slice(0, 8);
-  const shared = (prefix: string, size: number) => (id: string, ctx: Rolldown.ChunkingContext) => {
+  const shared = (prefix: string, size: number, loaded: number) => (id: string, ctx: Rolldown.ChunkingContext) => {
     const found = of(id, ctx);
-    return found !== undefined && found.any.length === size ? `${prefix}-${hash(found)}` : null;
+    return found !== undefined && found.any.length === size && found.initial.length === loaded ? `${prefix}-${hash(found)}` : null;
   };
   // The app's chunk is `index` (`vendor` for third-party code), a package's `pkg-<namespace>` (`vendor-pkg-<namespace>`).
   const alone = (vendor: boolean) => (id: string, ctx: Rolldown.ChunkingContext) => {
@@ -67,9 +77,9 @@ export function entryChunks(entries: ReadonlyMap<string, string>): Rolldown.Code
 
   return {
     groups: [
-      ...[...Array(entries.size - 1).keys()].map((i) => entries.size - i).flatMap((size) => [
-        { name: shared('vendor-shared', size), test: isThirdParty, tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 + 2 * size },
-        { name: shared('shared', size), tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 1 + 2 * size },
+      ...tiers(entries.size).flatMap(([size, loaded], rank) => [
+        { name: shared('vendor-shared', size, loaded), test: isThirdParty, tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 * rank + 4 },
+        { name: shared('shared', size, loaded), tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 * rank + 3 },
       ]),
       { name: alone(true), test: isThirdParty, tags: ['$initial'], priority: 2 },
       { name: alone(false), tags: ['$initial'], priority: 1 },

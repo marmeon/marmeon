@@ -14,7 +14,7 @@ import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
-import { checkExportKeys, isNamespace, resolveSurface, type PackageSurface, type PackageUiField } from './surface.ts';
+import { checkExportKeys, isNamespace, resolveSurface, resolveSurfaceEntry, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
 export type { PackageSurface };
@@ -315,6 +315,21 @@ export function packageSurfaces({ root, conditions = runtimeConditions() }: Disc
   }
   checkNamespaces(declared);
   return surfaces;
+}
+
+/**
+ * The server entry of every installed package that declares a namespace and an entry, by namespace, resolved under `conditions`: one file
+ * per package, with the checks `packageSurfaces` makes of an entry, and no other part of the field read. Under the server's conditions a
+ * package may map its client entry, views or texts to a browser-only target, which `packageSurfaces` would refuse there.
+ */
+export function packageServerEntries({ root, conditions = runtimeConditions() }: DiscoverOptions): ReadonlyMap<string, string> {
+  const entries = new Map<string, string>();
+  for (const pkg of walkDependencies(root)) {
+    const field = marmeonField(pkg);
+    if (field?.namespace === undefined || field.entry === undefined) continue;
+    entries.set(field.namespace, resolveSurfaceEntry(pkg, field.entry, 'ssr', conditions));
+  }
+  return entries;
 }
 
 /** Post-order walk over installed dependencies: a package's dependencies come before it. */

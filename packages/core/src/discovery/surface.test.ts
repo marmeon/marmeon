@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
-import { DiscoveryError, generateManifest, marmeonField, packageSurfaces } from './discover.ts';
+import { DiscoveryError, generateManifest, marmeonField, packageServerEntries, packageSurfaces } from './discover.ts';
 import type { PackageInfo } from './resolve.ts';
 import { isNamespace, isViewName } from './surface.ts';
 
@@ -128,7 +128,7 @@ describe('the files a package declares, resolved', () => {
       package: '@acme/status-board',
       namespace: 'status',
       dir,
-      entry: { client: join(dir, 'dist/area/client.js'), ssr: join(dir, 'dist/area/ssr.js') },
+      entry: { client: join(dir, 'dist/area/client.js') },
       views: { Index: join(dir, 'dist/views/Index.js'), 'entries/Edit': join(dir, 'dist/views/entries/Edit.js') },
       lang: { 'de-AT': join(dir, 'dist/lang/de-AT.js'), en: join(dir, 'dist/lang/en.js') },
     });
@@ -166,7 +166,6 @@ describe('the files a package declares, resolved', () => {
   it('refuses a declared subpath the exports do not have', () => {
     const missing = (exports: unknown, marmeon: unknown = UI) => messageOf(() => packageSurfaces({ root: appWith({ '@acme/status-board': { exports, marmeon, files: FILES } }) }));
     expect(missing({ ...EXPORTS, './area/client': undefined })).toContain('no subpath for the client entry');
-    expect(missing({ ...EXPORTS, './area/ssr': undefined })).toContain('no subpath for the ssr entry');
     expect(missing({ ...EXPORTS, './views/*': undefined })).toContain('"views"');
     expect(missing({ ...EXPORTS, './lang/*': undefined })).toContain('"lang"');
     // A target of the pattern that is not a directory and an extension:
@@ -180,8 +179,6 @@ describe('the files a package declares, resolved', () => {
     expect(outside({ ...EXPORTS, './views/*': './../evil/*.js' })).toContain('"views" to a directory outside the package');
     expect(outside({ ...EXPORTS, './lang/*': '../../evil/*.js' })).toContain('"lang" to a directory outside the package');
     expect(outside({ ...EXPORTS, './area/client': './../evil/client.js' })).toContain('client "entry" to a file outside the package');
-    expect(outside({ ...EXPORTS, './area/ssr': '/etc/passwd' })).toContain('ssr "entry" to a file outside the package');
-    expect(outside({ ...EXPORTS, './area/ssr': './node_modules/x/ssr.js' })).toContain('ssr "entry" to a file outside the package');
   });
 
   it('refuses a view or text that is a link leading out of the package, also through a directory', () => {
@@ -321,7 +318,6 @@ describe('what the raw declaration and the real path must not hide', () => {
     expect(refused({ ...EXPORTS, './lang/*': './dist/./lang/*.js' })).toContain('segment');
     expect(refused({ ...EXPORTS, './views/*': './dist//views/*.js' })).toContain('segment');
     expect(refused({ ...EXPORTS, './area/client': './dist/../dist/area/client.js' })).toContain('segment');
-    expect(refused({ ...EXPORTS, './area/ssr': './dist/./area/ssr.js' })).toContain('segment');
   });
 
   it('refuses a view that is a link into the package\'s own node_modules, and a linked pattern directory', () => {
@@ -337,5 +333,43 @@ describe('what the raw declaration and the real path must not hide', () => {
     mkdirSync(join(other, 'node_modules/dep/views'), { recursive: true });
     symlinkSync(join(other, 'node_modules/dep/views'), join(other, 'dist/views'));
     expect(messageOf(() => packageSurfaces({ root: linkedDirectory }))).toContain('"views" to a directory outside the package');
+  });
+});
+
+describe('the server entry of a package', () => {
+  const ssr = { './area/ssr': { browser: './dist/area/ssr-browser.js', node: './dist/area/ssr-node.js' } };
+  const files = { ...FILES, 'dist/area/ssr-browser.js': '', 'dist/area/ssr-node.js': '' };
+
+  it('is the one the server\'s conditions name, whatever the rest of the package maps for the browser alone', () => {
+    // A client entry, views and texts that only the browser has a target for: `packageSurfaces` refuses them under server conditions.
+    const exports = { './area/client': { browser: './dist/area/client.js' }, './views/*': { browser: './dist/views/*.js' }, './lang/*': { browser: './dist/lang/*.js' }, ...ssr };
+    const root = appWith({ '@acme/status-board': { exports, files } });
+    const entries = packageServerEntries({ root, conditions: ['node', 'import'] });
+    expect([...entries]).toEqual([['status', join(root, 'node_modules/@acme/status-board/dist/area/ssr-node.js')]]);
+    // The surface itself is read with the client's conditions and names no server entry.
+    expect(packageSurfaces({ root, conditions: ['browser', 'import'] })[0]!.entry).toEqual({ client: join(root, 'node_modules/@acme/status-board/dist/area/client.js') });
+  });
+
+  it('is refused for a raw ".." segment, a target outside the package, and a subpath without a target', () => {
+    const refuse = (exports: unknown) => messageOf(() => packageServerEntries({ root: appWith({ '@acme/status-board': { exports, files } }), conditions: ['node', 'import'] }));
+    expect(refuse({ ...EXPORTS, './area/ssr': './dist/../dist/area/ssr.js' })).toContain('"." or ".." or "node_modules" segment');
+    expect(refuse({ ...EXPORTS, './area/ssr': './../evil/ssr.js' })).toContain('ssr "entry" to a file outside the package');
+    expect(refuse({ ...EXPORTS, './area/ssr': { browser: './dist/area/ssr.js' } })).toContain('no subpath for the ssr entry that applies here');
+    expect(refuse({ ...EXPORTS, './area/ssr': './dist/./area/ssr.js' })).toContain('segment');
+    expect(refuse({ ...EXPORTS, './area/ssr': undefined })).toContain('no subpath for the ssr entry');
+    expect(refuse({ ...EXPORTS, './area/ssr': '/etc/passwd' })).toContain('ssr "entry" to a file outside the package');
+    expect(refuse({ ...EXPORTS, './area/ssr': './node_modules/x/ssr.js' })).toContain('ssr "entry" to a file outside the package');
+  });
+
+  it('may exist under the node condition alone: the client\'s reading of the package accepts that', () => {
+    const exports = { ...EXPORTS, './area/ssr': { node: './dist/area/ssr.js' } };
+    const root = appWith({ '@acme/status-board': { exports, files: FILES } });
+    expect(packageSurfaces({ root, conditions: ['browser', 'import'] })[0]!.namespace).toBe('status');
+    expect([...packageServerEntries({ root, conditions: ['node', 'import'] }).keys()]).toEqual(['status']);
+  });
+
+  it('is left out for a package without an entry', () => {
+    const root = appWith({ '@acme/kit': { marmeon: { namespace: 'kit' } }, '@acme/status-board': { exports: { ...EXPORTS, ...ssr }, files } });
+    expect([...packageServerEntries({ root, conditions: ['node', 'import'] }).keys()]).toEqual(['status']);
   });
 });
