@@ -326,6 +326,23 @@ The browser loads only the files of the page's locale, before the page renders. 
 server and the browser render the same text. The [localization](localization.md) page covers language files and switching the
 language.
 
+## Pages of a package
+
+A package that declares a `namespace` and `views` in its `package.json` brings pages of its own. A page's name is the namespace, `::`
+and the view's path below the package's `views` folder: `dist/views/entries/Edit.js` of the package with the namespace `status` is
+`status::entries/Edit`. The package declares what it ships, and
+[Pages of a package](package-development.md#pages-of-a-package) shows how.
+
+```ts
+return this.view('status::entries/Edit', { entry });
+```
+
+- **Type:** `marmeon route:types` lists every view of every installed package that declares a namespace in `interface Views`, so a
+  name with no file behind it is a compile error, as for the app's own pages. The app's `bootstrap/routes.ts` is generated from
+  `package.json` files and folders alone; no code of a package runs.
+- **Resolution:** `resolveModulePages()` takes a key of exactly the form `<namespace>::<view>` as the page's name. The keys of the
+  app's own pages begin with `/` and keep their names. An app file whose path holds `::` is still no page.
+
 ## Server rendering
 
 Every page renders on the server first. The response streams: the page's frame goes out at once, and parts that wait for data

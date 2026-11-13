@@ -1,5 +1,6 @@
 import { defineSolutions } from '@marmeon/core';
 import { RouteAccessError, Router } from '@marmeon/router';
+import { isPackagePageName } from './page-support.ts';
 
 const UNDEFINED_ROUTE = /^\[marmeon:H4\] Route \[([^\]]+)\] is not defined\.$/;
 const MISSING_PAGE = /^\[marmeon:R2\] Page \[([^\]]+)\] not found/;
@@ -44,6 +45,17 @@ export const httpSolutions = defineSolutions([
     code: 'R2',
     solve: (e) => {
       const name = MISSING_PAGE.exec(e.message)![1]!;
+      if (isPackagePageName(name)) {
+        const [namespace, view] = name.split('::') as [string, string];
+        return {
+          title: `Ship the view ${view} in the package "${namespace}"`,
+          text:
+            `The controller renders the page [${name}], but no installed package with the namespace "${namespace}" ships a view ${view}. ` +
+            'The package lists its views under "views" in the "marmeon" field of its package.json; check the spelling in this.view(…) and that the package is installed and built.',
+          command: 'marmeon route:types',
+          docs: 'docs/pages.md#pages-of-a-package',
+        };
+      }
       const [module, ...rest] = name.split('/');
       const file = `modules/${module}/views/${rest.join('/') || 'Index'}.tsx`;
       return {

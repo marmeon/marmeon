@@ -55,6 +55,14 @@ export function pageName(path: string): string | undefined {
   return match ? `${match[1]}/${match[2]}` : undefined;
 }
 
+/** Namespaces a package cannot take, and the longest one: the rule of `isNamespace()` in `@marmeon/core`, which the browser cannot import. */
+const PACKAGE_PAGE = /^(?!(?:app|marmeon)::)(?=[^:]{1,32}::)[a-z][a-z0-9]*(?:-[a-z0-9]+)*::[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/;
+
+/** Whether `key` names the page of a package, exactly `<namespace>::<view>`: `status::entries/Edit`. The name an app's own page never has. */
+export function isPackagePageName(key: string): boolean {
+  return PACKAGE_PAGE.test(key);
+}
+
 /**
  * Where the framework's own pages (the error pages, the layer backdrop) live now, for a file in the former place of one:
  * `modules/errors/views/404.tsx` → `modules/system/views/errors/404.tsx`. Undefined for every other file, so a module
