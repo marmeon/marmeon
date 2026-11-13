@@ -11,7 +11,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 
 const document = packageTemplate({ script: '/assets/pkg-status-a.js', preloads: [], stylesheets: [] });
 
-/** An app whose `/status` page belongs to the package entry "status", `/help` to an installed package without an entry. */
+/** An app whose `/status` page belongs to the package entry "status", `/help` to a package without one. */
 async function appWith(options: KernelOptions = {}, renderer: Partial<DocumentRendererOptions> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
@@ -34,7 +34,6 @@ async function appWith(options: KernelOptions = {}, renderer: Partial<DocumentRe
     ssr: () => async () => ({ html: '<p>app</p>' }),
     version: 'app-v',
     packages: new Map([['status', { template: () => document, ssr: () => async () => ({ html: '<p>status</p>' }), version: 'status-v' }]]),
-    installed: new Set(['status', 'help']),
     ...renderer,
   });
   return createHttpKernel(application, { renderer: documentRenderer, ...options });
@@ -52,8 +51,8 @@ describe('a package entry in the kernel', () => {
     const home = await (await app.request('/', { headers: html })).text();
     expect(home).toContain('<p>app</p>');
     expect(home).not.toContain('pkg-status-a.js');
-    // A package that is installed without an entry shows its page in the app's document.
-    expect(await (await app.request('/help', { headers: html })).text()).toContain('<p>app</p>');
+    // A namespace without an entry has no document.
+    expect((await app.request('/help', { headers: html })).status).toBe(500);
   });
 
   it("carries the version of the document the page renders in", async () => {
@@ -92,7 +91,7 @@ describe('a package entry in the kernel', () => {
 
 describe('an app without package entries', () => {
   it('keeps one version and one document: every view is the app\'s, whatever its name', async () => {
-    const app = await appWith({}, { packages: undefined, installed: undefined });
+    const app = await appWith({}, { packages: undefined });
     const nope = await app.request('/nope', { headers: html });
     expect(nope.status).toBe(200);
     expect(await nope.text()).toContain('<p>app</p>');

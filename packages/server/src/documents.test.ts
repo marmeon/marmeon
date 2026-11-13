@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { documentFor, packageTemplate, PACKAGE_ENTRY_MARK, UnknownEntryError } from './documents.ts';
 import { withNonce } from './html.ts';
 
-const table = { entries: new Set(['status']), installed: new Set(['status', 'help']) };
+const table = { entries: new Set(['status']) };
 
 describe('documentFor', () => {
   it("is the app's for a view without a namespace", () => {
     expect(documentFor('users/Show', table)).toBe('app');
-    expect(documentFor('users/Show', { entries: new Set(), installed: new Set() })).toBe('app');
+    expect(documentFor('users/Show', { entries: new Set<string>() })).toBe('app');
   });
 
   it("is the entry's for a package with one", () => {
@@ -15,12 +15,10 @@ describe('documentFor', () => {
     expect(documentFor('status::entries/Edit', table)).toBe('status');
   });
 
-  it("is the app's for an installed package without an entry", () => {
-    expect(documentFor('help::Article', table)).toBe('app');
-  });
-
   it('refuses an unknown namespace with H16 — never the app document', () => {
     expect(() => documentFor('nope::X', table)).toThrow(UnknownEntryError);
+    // A package without an entry has no document either.
+    expect(() => documentFor('help::Article', table)).toThrow(/^\[marmeon:H16\] /);
     expect(() => documentFor('nope::X', table)).toThrow(/^\[marmeon:H16\] /);
     // The name is read up to the first `::` only; a namespace that merely starts like another is another.
     expect(() => documentFor('statusx::X', table)).toThrow(UnknownEntryError);

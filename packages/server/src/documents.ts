@@ -5,11 +5,11 @@ import { FALLBACK_TEMPLATE, HEAD_OUTLET } from './html.ts';
 /** The document a page renders in: the app's (`app`) or the namespace of a package with an entry of its own. */
 export type DocumentName = string;
 
-/** A view names a namespace the app has no package for — or a package whose entry the build does not know. */
+/** A view names a namespace no package entry belongs to. */
 export class UnknownEntryError extends Error {
   override name = 'UnknownEntryError';
   constructor(namespace: string) {
-    super(withCode('H16', `The view's namespace "${namespace}" belongs to no installed package, so no document can show it: check the namespace in its name, and that the package is installed and built.`));
+    super(withCode('H16', `The view's namespace "${namespace}" belongs to no package with an entry, so no document can show it: check the namespace in its name, and that the package is installed and built.`));
   }
 }
 
@@ -17,20 +17,17 @@ export class UnknownEntryError extends Error {
 export interface DocumentTable {
   /** Namespaces of the packages with an entry: each has a document of its own. */
   readonly entries: ReadonlySet<string>;
-  /** Namespaces of every installed package (those with an entry too): a page of one without an entry renders in the app's document. */
-  readonly installed: ReadonlySet<string>;
 }
 
 /**
  * The document `view` renders in — the one place that decides. A view without `::` is the app's; `<namespace>::…` of a package with an
- * entry is that entry's; of an installed package without one, the app's; of an unknown namespace it is `H16`, never the app's document.
+ * entry is that entry's; of any other namespace it is `H16`, never the app's document.
  */
-export function documentFor(view: string, { entries, installed }: DocumentTable): DocumentName {
+export function documentFor(view: string, { entries }: DocumentTable): DocumentName {
   const at = view.indexOf('::');
   if (at === -1) return 'app';
   const namespace = view.slice(0, at);
   if (entries.has(namespace)) return namespace;
-  if (installed.has(namespace)) return 'app';
   throw new UnknownEntryError(namespace);
 }
 

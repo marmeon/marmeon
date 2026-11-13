@@ -149,8 +149,6 @@ export interface DocumentRendererOptions {
   version?: string;
   /** The documents of the packages with an entry, by namespace. Each view renders in the one `documentFor` names. */
   packages?: ReadonlyMap<string, EntryDocumentOptions>;
-  /** The namespaces of every installed package, those with an entry included; defaults to the entries'. */
-  installed?: ReadonlySet<string>;
 }
 
 const renders = channels.tracing('render.ssr');
@@ -170,7 +168,7 @@ function appOriginTag(appUrl: string | undefined): string {
 }
 
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
-export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version, packages, installed }: DocumentRendererOptions): PageRenderer {
+export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version, packages }: DocumentRendererOptions): PageRenderer {
   // After `withNonce`, so the tags carry the real nonce and never meet the placeholder.
   const documentWith = (parts: { preloads?: AssetPreloads | undefined }, document: string, page: PageObject, nonce: string | undefined, appUrl: string | undefined) =>
     withStyles(
@@ -182,7 +180,7 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, preloa
     return error;
   };
   const app: EntryDocumentOptions = { template, ssr, ...(preloads ? { preloads } : {}) };
-  const table = packages ? { entries: new Set(packages.keys()), installed: installed ?? new Set(packages.keys()) } : undefined;
+  const table = packages ? { entries: new Set(packages.keys()) } : undefined;
   // Without package entries there is one document and nothing to decide: every view is the app's.
   const documentOf = table ? (view: string): DocumentName => documentFor(view, table) : undefined;
   const partsOf = (view: string): EntryDocumentOptions => {
