@@ -48,6 +48,7 @@ import {
   AssetVersion,
   LIVE_PATH,
   SESSION_PATH,
+  withDefaultPolicy,
   type PropOrigins,
 } from '@marmeon/http/internal';
 import { sitePath, UPLOAD_HEADER } from '@marmeon/http/protocol';
@@ -86,6 +87,7 @@ import { overrideMethod } from './method-override.ts';
 import { islandOpenedByItself, islandRefusalMessage, refuseIslandRequest } from './island-gate.ts';
 import { protocolGate } from './protocol-gate.ts';
 import { createProductionRenderer } from './production.ts';
+import { showedPackageDocument } from './documents.ts';
 import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
@@ -860,6 +862,8 @@ export function createHttpKernel(
     else if (isActionRequest(request)) response = await toActionResponse(response);
     // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
     else if (isVisit(request.headers) || upload) response = await leaveForeignRedirect(response, request);
+    // A package's document without a policy of its own — after every middleware, so a route group's or the app's policy came first and stays.
+    if (showedPackageDocument(nonce)) response = withDefaultPolicy(response, nonce.value);
     // Cookies queued during the request reach the client whatever the outcome.
     let final = await withQueuedCookies(response, state.cookies);
     // An answer that sets a cookie is one person's: a shared cache that stored it would hand the cookie to the next visitor.
