@@ -8,6 +8,14 @@ export const PACKAGE_ENTRY_MARK = '<!--marmeon:package-entry-->';
 
 const PAGES_PREFIX = 'virtual:marmeon/pages/';
 
+/**
+ * A string literal for generated module code. `JSON.stringify` alone leaves `<`, `>` and the line separators U+2028/U+2029 raw;
+ * a path holding them must not be able to end the literal or the module's context.
+ */
+export function codeString(value: string): string {
+  return JSON.stringify(value).replace(/[<>\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 /** Every installed package that declares a namespace, with the real directory discovery found it in (`dir`). */
 export function uiPackages(root: string, conditions: readonly string[]): readonly PackageSurface[] {
   // An app without a readable package.json has no packages to read; the check that names that file's problem runs elsewhere (H14).
@@ -65,7 +73,7 @@ export function packagePages(packages: () => readonly PackageSurface[]): Plugin 
           this.error(`${surface.package} lists a view that cannot be read.`);
         }
         if (!isInside(directory, real) || !belongsTo(directory, real)) this.error(`${surface.package} lists a view that lies outside the package.`);
-        entries.push(`  ${JSON.stringify(`${surface.namespace}::${view}`)}: () => import(${JSON.stringify(normalizePath(real))}),`);
+        entries.push(`  ${codeString(`${surface.namespace}::${view}`)}: () => import(${codeString(normalizePath(real))}),`);
       }
       return `export default {\n${entries.join('\n')}\n};\n`;
     },

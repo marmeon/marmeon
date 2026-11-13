@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'nod
 import { dirname, join } from 'node:path';
 import { mergeConfig, searchForWorkspaceRoot, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { describe, expect, it } from 'vitest';
-import { PACKAGE_ENTRY_MARK, packagePages, uiPackages } from './package-pages.ts';
+import { codeString, PACKAGE_ENTRY_MARK, packagePages, uiPackages } from './package-pages.ts';
 import { marmeon, PLUGIN_NAME } from './plugin.ts';
 import { routesModule } from './routes-module.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -225,5 +225,15 @@ describe('route names in the code of a package', () => {
     expect(transform(`${status}-evil/dist/Page.js`)).toBeUndefined();
     // Without a declared package, node_modules stays out as before.
     expect(tracked(root, [])(join(status, 'dist/views/Page.js'))).toBeUndefined();
+  });
+});
+
+describe('codeString', () => {
+  it('escapes what could end a literal or a context and reads back unchanged', () => {
+    const value = '/a/</script>/b>\u2028\u2029"\\x';
+    const code = codeString(value);
+    expect(code).not.toMatch(/[<>\u2028\u2029]/);
+    expect(JSON.parse(code)).toBe(value);
+    expect(new Function(`return ${code}`)()).toBe(value);
   });
 });
