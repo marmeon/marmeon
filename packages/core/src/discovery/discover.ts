@@ -14,7 +14,7 @@ import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
-import { checkExportKeys, isNamespace, resolveSurface, resolveSurfaceEntry, type PackageSurface, type PackageUiField } from './surface.ts';
+import { checkExportKeys, isNamespace, resolveSurface, resolveSurfaceEntry, resolveSurfaceTexts, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
 export type { PackageSurface };
@@ -330,6 +330,24 @@ export function packageServerEntries({ root, conditions = runtimeConditions() }:
     entries.set(field.namespace, resolveSurfaceEntry(pkg, field.entry, 'ssr', conditions));
   }
   return entries;
+}
+
+/**
+ * The language files of every installed package that declares a namespace and `lang`, in dependency order, resolved under `conditions`:
+ * the package, its namespace and its locale → real path map, with the checks `packageSurfaces` makes of `lang`, and no other part of the
+ * field resolved. A package whose client entry or views have no target under the server's conditions is no reason to refuse its texts.
+ */
+export function packageTexts({ root, conditions = runtimeConditions() }: DiscoverOptions): readonly { readonly package: string; readonly namespace: string; readonly lang: Readonly<Record<string, string>> }[] {
+  const texts: { package: string; namespace: string; lang: Readonly<Record<string, string>> }[] = [];
+  const declared: { package: string; dir: string; namespace: string }[] = [];
+  for (const pkg of walkDependencies(root)) {
+    const field = marmeonField(pkg);
+    if (field?.namespace === undefined || field.lang === undefined) continue;
+    declared.push({ package: pkg.name, dir: pkg.dir, namespace: field.namespace });
+    texts.push({ package: pkg.name, namespace: field.namespace, lang: resolveSurfaceTexts(pkg, field.lang, conditions) });
+  }
+  checkNamespaces(declared);
+  return texts.filter((entry) => Object.keys(entry.lang).length > 0);
 }
 
 /** Post-order walk over installed dependencies: a package's dependencies come before it. */

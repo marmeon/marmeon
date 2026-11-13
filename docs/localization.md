@@ -99,6 +99,39 @@ any file of yours. A file that is already there stays as it is (the command says
 refused, and so is a `lang/marmeon` that is not a real directory. The files are recorded in `marmeon-stubs.json`. Without a package the command lists
 what is published and, at a terminal, asks. `--check` is for migrations only: the language files you published are yours.
 
+### Texts of a package
+
+A package that declares a `namespace` and `lang` in its `package.json` ships texts of its own (see [Pages of a package](package-development.md#pages-of-a-package)).
+They load with the app's, under the package's namespace: a package with the namespace `status` and `lang/en.js` gives `status.title`
+and so on, in every locale the package has a file for. The package's English file declares its keys in `Translations` itself, as a
+module's does, so `t('title')` of `useTranslation('status')` is typed without anything in the app.
+
+The app rewords them key by key in `lang/<namespace>/<locale>.ts`, as `lang/marmeon/<locale>.ts` rewords the framework's. Name only the texts to
+change; every other text stays the package's:
+
+```ts title="lang/status/en.ts"
+import type { MessageOverrides } from '@marmeon/i18n/messages';
+import type en from '@acme/status-board/lang/en';
+
+export default {
+  title: 'Health',
+} satisfies MessageOverrides<typeof en>;
+```
+
+`satisfies MessageOverrides<typeof en>` rejects a key the package does not have and a text that leaves out a placeholder.
+
+- A locale the package has: the file is checked when the app starts against the package's English texts, or, when it has no
+  English one, its keys against all of the package's files and its placeholders against the file of that locale (a key that file lacks keeps the app's placeholders).
+  A key the package does not have, or a text that leaves out a placeholder of the package's, stops the start with `S6`; a syntax error is `S5`.
+- A locale the package lacks (`lang/status/fr.ts` for a package with English and German): the file is a translation of its own, and keys it leaves out fall back like any
+  message, to `APP_FALLBACK_LOCALE`. The start checks that every key exists in one of the package's files (`S6` otherwise), not the placeholders;
+  `satisfies Messages<typeof en>` asks for every key.
+- A file for a locale outside `APP_LOCALES` is skipped, and so is a file whose name is no language tag. A folder `lang/<x>/` for a namespace no package has texts for is ignored.
+
+A package's namespace and a module of the app cannot both hold texts: if `modules/status/lang/` and a package with the namespace `status` and `lang` both
+have files, the start fails with `S7`. Rename the module, and reword the package's texts in `lang/status/` instead. A module with a package's
+namespace and a package that ships no texts is no conflict. These texts exist on the server.
+
 ## Messages
 
 A message is text with placeholders, in a subset of ICU's message format. It is parsed once and formatted with `Intl`:

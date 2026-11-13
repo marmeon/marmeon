@@ -15,7 +15,7 @@ export { describeError, maskUrlPasswords, REDACTED_KEYS, redactorFor } from './r
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
-export { packageServerEntries, packageSurfaces } from './discovery/discover.ts';
+export { packageServerEntries, packageSurfaces, packageTexts } from './discovery/discover.ts';
 export { isNamespace, isViewName } from './discovery/surface.ts';
 export type { PackageSurface } from './discovery/surface.ts';
 export { belongsTo, isInside } from './discovery/contain.ts';

@@ -505,7 +505,8 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | S3 | `storage` | A storage key a disk refuses: `..`, an absolute path, a backslash, a control character or a symlink out of the disk's root. [Keys](storage.md#keys) |
 | S4 | `otel` | The OpenTelemetry API is not installed, or is not version 1. [Installation](observability.md#installation) |
 | S5 | `i18n` | A message with a syntax error, such as an unclosed placeholder. [Messages](localization.md#messages) |
-| S6 | `i18n` | A file in `lang/marmeon/` that names a key the framework's texts do not have, or a text that drops a placeholder of the framework's. [The framework's texts](localization.md#the-frameworks-texts) |
+| S6 | `i18n` | A file in `lang/marmeon/` or in `lang/<namespace>/` that names a key the texts it rewords do not have, or a text that drops a placeholder of theirs. [The framework's texts](localization.md#the-frameworks-texts), [Texts of a package](localization.md#texts-of-a-package) |
+| S7 | `i18n` | A package with texts and a module of the app (`modules/<namespace>/lang/`) both have texts under one namespace. [Texts of a package](localization.md#texts-of-a-package) |
 
 ## Errors in the browser
 

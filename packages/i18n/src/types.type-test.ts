@@ -113,6 +113,26 @@ export function frameworkOverrides() {
   return [reworded, empty, wrong, nested, lost, partial];
 }
 
+/** What a package ships as its English file: the app rewords it with `satisfies MessageOverrides<typeof en>`. */
+const packageEn = { title: 'Status', saved: 'Saved {name}.', entries: { count: '{count, plural, one {# entry} other {# entries}}' } } as const;
+
+export function packageOverrides() {
+  const reworded = { title: 'Health', entries: { count: '{count} items' } } satisfies MessageOverrides<typeof packageEn>;
+  const wrong = {
+    // @ts-expect-error — a key the package's texts do not have
+    surplus: 'x',
+  } satisfies MessageOverrides<typeof packageEn>;
+  const lost = {
+    // @ts-expect-error — the text must keep the placeholder of the package's: {name}
+    saved: 'Saved.',
+  } satisfies MessageOverrides<typeof packageEn>;
+  const group = {
+    // @ts-expect-error — a group of texts is no text
+    entries: 'x',
+  } satisfies MessageOverrides<typeof packageEn>;
+  return [reworded, wrong, lost, group];
+}
+
 export type Unused = [KeyOf<string>, ParamsOf<string>, CheckKey<'a', {}, 'b'>, CoreKeyOf<string>];
 
 declare const locales: Locales;
