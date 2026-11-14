@@ -127,3 +127,10 @@ export function theOptionsPromiseWhatTheyDeliver() {
   const wrong: GuardOptions<OfficeUser> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor };
   return wrong;
 }
+
+export function aMaybeOptionPromisesNothing(maybe: typeof TwoFactor | undefined) {
+  // @ts-expect-error a value that may be undefined cannot promise the TwoFactor services
+  defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: maybe });
+  // @ts-expect-error naming the class as the second generic still needs the option
+  defineGuard<OfficeUser, typeof TwoFactor>('office', { users: OfficeUsers, tablePrefix: 'office_' });
+}
