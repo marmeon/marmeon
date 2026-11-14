@@ -31,6 +31,9 @@ export type AuthUser = UserOf<AuthTypes>;
 /** The type of a user's id. */
 export type AuthUserId = AuthUser extends { readonly id: infer Id } ? Id : string | number;
 
+/** The type of the id of a user of type `U`: what `GuardAuth<U>.id()` answers. */
+export type IdOf<U> = U extends { readonly id: infer Id } ? Id : string | number;
+
 /** A user together with their password hash — which never becomes part of the user. */
 export interface Credentials<U = AuthUser> {
   readonly user: U;

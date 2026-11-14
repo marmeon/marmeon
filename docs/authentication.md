@@ -1221,6 +1221,104 @@ it('signs the other browser out', async () => {
 To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
 does that in the starter kit.
 
+## Guards of a package
+
+A package whose users are not the app's users, such as a back office with its own staff table, defines a guard of its own. The
+guard signs its users in and out, asks for the password again before a sensitive action, lists and ends their sign-ins, sends
+password reset links and ends every session of one of them. It reads its own table of users and keeps its own sign-in rows,
+so an account of the app with the same id is a different person to it.
+
+```ts title="office/src/guard.ts"
+import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardPasswordBroker } from '@marmeon/auth';
+import { OfficeUsers } from './OfficeUsers.ts';
+import type { OfficeUser } from './OfficeUser.ts';
+
+export const OfficeGuard = defineGuard('office', {
+  users: OfficeUsers,
+  tablePrefix: 'office_',
+  settings: { sessionMaxHours: 8, rememberDays: 0 },
+});
+
+// A type alias and a constant of the same name: a controller takes `auth: OfficeAuth`, and the container finds the guard's service.
+export type OfficeAuth = GuardAuth<OfficeUser>;
+export const OfficeAuth = OfficeGuard.Auth;
+export type OfficeAccountSessions = GuardAccountSessions<OfficeUser>;
+export const OfficeAccountSessions = OfficeGuard.AccountSessions;
+export type OfficePasswordBroker = GuardPasswordBroker<OfficeUser>;
+export const OfficePasswordBroker = OfficeGuard.PasswordBroker;
+```
+
+The package registers the guard in the `register()` of its service provider with `OfficeGuard.register(container)`. The order of
+the providers does not matter. `users` is a class that implements [`UserProvider`](#the-user-type-and-where-users-come-from) on a
+table of the package's own; the container builds it, so it may take the connection or the hasher as constructor parameters. A
+controller of the package takes the guard's services and calls these methods on them, as it does on `Auth`, `AccountSessions` and
+`PasswordBroker`: `attempt()`, `signIn()`, `signOut()`, `user()`, `checkPassword()`, `signIns()`, `endSignIn()`, `updatePassword()`,
+`createToken()`, `reset()` and `end()`. The types name the guard's user instead of the app's.
+
+The guard's name is lower case letters, digits and single hyphens, starts with a letter and has at most 32 characters. `web`,
+`api`, `app`, `auth` and `marmeon` are taken. The table prefix has lower case letters, digits and underscores, starts with a letter
+and ends with an underscore. A name or prefix that is invalid, a name or prefix that two guards share, or a `users` that is not a
+class stops the start with error [A8](errors.md#server-error-codes).
+
+### What is separate and what is shared
+
+Everything that holds an identity or a count carries the guard's name, so the same id in two tables never reads, resets or ends
+the other's session, cookie or counter. The app guard keeps the names it always had.
+
+| What | App guard | Guard `office` |
+|---|---|---|
+| Session keys | `_auth_id`, `_auth_password`, … | `_auth:office:id`, `_auth:office:password`, … |
+| Fingerprint of a session and a remember-me token | derived for the app | derived for `office` |
+| Remember-me and device cookie | `marmeon_remember`, `marmeon_device` | `marmeon_remember.office`, `marmeon_device.office.device` (with `__Host-` over HTTPS) |
+| Counts of password sign-ins and checks | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` … on the account's id | the same limits, counted under the guard's name |
+| Live streams of an account | the scope of the id | the scope of the guard and the id |
+| Tables | `sign_ins`, `password_reset_tokens` | `office_sign_ins`, `office_password_reset_tokens` |
+| Events | the `auth.*` events | none yet: a listener of the app never hears a sign-in of the guard |
+
+What stays shared is the browser's session cookie, the CSRF token, the `Hasher` and `APP_KEY`. A guard also reads the
+`AUTH_*` limits the app set, and `settings` overrides them for the guard alone, each within the limits of the variable it replaces:
+`rememberDays` (0 to 30), `sessionMaxHours` (1 to 720), `passwordTimeoutSeconds`, `loginAttemptsPerMinute` (1 to 60),
+`accountSignInsPerDay` (10 to 100000), `deviceCookieDays` (0 to 365), `resetMinutes` (1 to 1440) and `resetThrottleSeconds`. Give
+`settings` a function when a value comes from the configuration: it receives the container and runs when the guard is first used
+and at boot. A setting outside its limits, or one that does not exist, stops the start with A8.
+
+### Signing out
+
+`signOut()` of any guard ends the browser's session, so the browser is signed out of every guard. The remember-me cookie is the
+one exception: the guard's own `signOut()` deletes it, and no other guard's does. Someone who chose "Keep me signed in" for the
+back office is signed in there again after signing out of the app, until they sign out of the back office itself.
+
+### The tables
+
+The package ships the migrations for its tables like any package table (see [package development](package-development.md#tables)),
+and the app takes them over with `marmeon publish`. A guard needs two tables. Their names are the prefix and the name below,
+and `/up/ready` is red until each has every column, naming the migration that is missing.
+
+| Table | Columns |
+|---|---|
+| `office_sign_ins` | `id`, `user_id`, `user_agent`, `remember_selector`, `remember_until`, `remember_validator_hash`, `remember_previous_validator_hash`, `remember_rotated_at`, `remember_created_at`, `remember_fingerprint`, `signed_in_at`, `last_seen_at`, `created_at`, `updated_at` |
+| `office_password_reset_tokens` | `email`, `token_hash`, `created_at` |
+
+The selector, both validators and the token hash are `secret()` columns, as in the app's tables (see [the tables of the
+stores](#the-tables-of-the-stores)). The columns are those of `sign_ins` and `password_reset_tokens`, which the starter kit's
+migrations create. Copy a migration into the package's stubs under the guard's table names and never change it afterwards.
+
+### What a package guard does not have
+
+A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
+audience. Two-factor authentication and passkeys are not part of it yet either. A service that ends a guard's sessions
+(`end()`) never touches the app's `sessions` rows, tokens or links: it ends the guard's own sign-ins, replaces the account's
+session key and tells the live streams of the guard's account. Ending the sessions of every account of a guard
+(`endEveryone()`) is not available yet: the guard's `AccountSessions` has no such method, and calling it anyway throws.
+
+Two things stay with you. The framework cannot see whether the `UserProvider` of a package reads a table of its own, so a
+provider that reads the app's table gives up every guarantee above. And it does not compare the stores of your own with the guard's
+table names.
+
+> [!WARNING]
+> The app's `Auth`, `EmailVerification` and `EmailChange` still act for the app's users when a controller of the package asks for them.
+> A controller of the package takes the guard's services and nothing else.
+
 ## What your app implements
 
 Most apps implement one contract: the `UserProvider`, which the starter kit's `UserRepository` already is. The rest ship with
