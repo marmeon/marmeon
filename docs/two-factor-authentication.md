@@ -416,7 +416,7 @@ Everything is apart from the app's factors, and from the factors of another guar
 
 The middleware `OfficeGuard.twoFactor({ setup, verify, loginRoute, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify, loginRoute })` act like
 [`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them, which
-sends a request without a user to the guard's login page, never the app's.
+sends a browser request without a user to the guard's login page, never the app's, and answers a JSON request without one with 401.
 On a route of another guard, or one without the guard's `authenticate()`, they fail with error [A9](errors.md#server-error-codes), as the app's middleware does on
 a route of the guard.
 
