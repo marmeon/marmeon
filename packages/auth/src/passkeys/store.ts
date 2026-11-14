@@ -3,6 +3,7 @@ import { Clock, err, ok, type Result } from '@marmeon/core';
 import { Connections, Repository, type Generated, type RowOf } from '@marmeon/database';
 import { TwoFactorState, type SecondFactor } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
+import { assertTableName } from '../table-names.ts';
 import type { AuthUserId } from '../user.ts';
 
 /** The table the app's migration creates — see {@link PasskeyTable}. */
@@ -73,8 +74,13 @@ export interface NewPasskey {
   readonly name: string;
 }
 
-class PasskeyRows extends Repository<typeof PASSKEYS_TABLE, Tables> {
-  static readonly table = PASSKEYS_TABLE;
+abstract class PasskeyRows extends Repository<typeof PASSKEYS_TABLE, Tables> {}
+
+/** The repository of the passkey rows in `table`; a repository takes its table from a static, so each store makes a class of its own. */
+function rowsIn(table: typeof PASSKEYS_TABLE) {
+  return class extends PasskeyRows {
+    static readonly table = table;
+  };
 }
 
 const flag = (value: unknown) => value === true || value === 1 || value === '1' || value === 't';
@@ -109,23 +115,39 @@ function recordOf(row: RowOf<PasskeyTable>): PasskeyRecord {
 export class PasskeyStore extends TwoFactorState {
   readonly #connections: Connections;
   readonly #clock: Clock;
+  readonly #passkeys: typeof PASSKEYS_TABLE;
+  readonly #twoFactor: typeof TWO_FACTOR_TABLE;
+  readonly #recoveryCodes: typeof RECOVERY_CODES_TABLE;
+  readonly #rows: ReturnType<typeof rowsIn>;
 
-  /** @internal Built by the container. */
-  constructor(connections: Connections, clock: Clock) {
+  /**
+   * @internal Built by the container. `tables`: the tables of the passkeys and, for the removal of the last factor, of the TOTP factor and
+   * the recovery codes (default `passkeys`, `two_factor_authentications` and `two_factor_recovery_codes`, plain lower-case names).
+   */
+  constructor(
+    connections: Connections,
+    clock: Clock,
+    options: { readonly tables?: { readonly passkeys?: string; readonly twoFactor?: string; readonly recoveryCodes?: string } } = {},
+  ) {
     super();
     this.#connections = connections;
     this.#clock = clock;
+    // The statements are typed on the default names; the names given here are checked and reach them as identifiers only.
+    this.#passkeys = assertTableName('PasskeyStore', options.tables?.passkeys ?? PASSKEYS_TABLE) as typeof PASSKEYS_TABLE;
+    this.#twoFactor = assertTableName('PasskeyStore', options.tables?.twoFactor ?? TWO_FACTOR_TABLE) as typeof TWO_FACTOR_TABLE;
+    this.#recoveryCodes = assertTableName('PasskeyStore', options.tables?.recoveryCodes ?? RECOVERY_CODES_TABLE) as typeof RECOVERY_CODES_TABLE;
+    this.#rows = rowsIn(this.#passkeys);
   }
 
   /** `['passkey']` when the account has at least one passkey. */
   async factors(userId: AuthUserId): Promise<readonly SecondFactor[]> {
-    const row = await this.#db().selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).executeTakeFirst();
+    const row = await this.#db().selectFrom(this.#passkeys).select('id').where('user_id', '=', userId).executeTakeFirst();
     return row === undefined ? [] : ['passkey'];
   }
 
   /** The registration of the account's oldest passkey. */
   async enabledSince(userId: AuthUserId): Promise<Date | undefined> {
-    const row = await this.#db().selectFrom(PASSKEYS_TABLE).select('created_at').where('user_id', '=', userId).orderBy('created_at', 'asc').executeTakeFirst();
+    const row = await this.#db().selectFrom(this.#passkeys).select('created_at').where('user_id', '=', userId).orderBy('created_at', 'asc').executeTakeFirst();
     return row === undefined ? undefined : new Date(row.created_at);
   }
 
@@ -137,7 +159,7 @@ export class PasskeyStore extends TwoFactorState {
    * with another one could not sign in. An account may therefore end up with two handles after a race; that is harmless.
    */
   async userHandle(userId: AuthUserId): Promise<string> {
-    const row = await this.#db().selectFrom(PASSKEYS_TABLE).select('user_handle').where('user_id', '=', userId).executeTakeFirst();
+    const row = await this.#db().selectFrom(this.#passkeys).select('user_handle').where('user_id', '=', userId).executeTakeFirst();
     return row?.user_handle ?? randomBytes(32).toString('base64url');
   }
 
@@ -145,7 +167,7 @@ export class PasskeyStore extends TwoFactorState {
   async create(passkey: NewPasskey): Promise<Result<PasskeyRecord, { kind: 'duplicate' }>> {
     const now = this.#now();
     // Stored exactly as given: it is the handle the authenticator got in the options (see `userHandle()`).
-    const result = await new PasskeyRows(this.#connections).tryInsert({
+    const result = await new this.#rows(this.#connections).tryInsert({
       user_id: passkey.userId,
       user_handle: passkey.userHandle,
       credential_id: passkey.credentialId,
@@ -168,13 +190,13 @@ export class PasskeyStore extends TwoFactorState {
   /** @internal The usable (not suspended) passkey with this credential id, of any account — the caller checks that it belongs to the one expected. */
   async findByCredentialId(credentialId: string): Promise<PasskeyRecord | undefined> {
     // A suspended passkey is not found: it signs nobody in until it is released.
-    const row = await this.#db().selectFrom(PASSKEYS_TABLE).selectAll().where('credential_id', '=', credentialId).where('suspended_at', 'is', null).executeTakeFirst();
+    const row = await this.#db().selectFrom(this.#passkeys).selectAll().where('credential_id', '=', credentialId).where('suspended_at', 'is', null).executeTakeFirst();
     return row === undefined ? undefined : recordOf(row);
   }
 
   /** The account's passkeys, oldest first. */
   async forUser(userId: AuthUserId): Promise<readonly PasskeyRecord[]> {
-    const rows = await this.#db().selectFrom(PASSKEYS_TABLE).selectAll().where('user_id', '=', userId).orderBy('id', 'asc').execute();
+    const rows = await this.#db().selectFrom(this.#passkeys).selectAll().where('user_id', '=', userId).orderBy('id', 'asc').execute();
     return rows.map(recordOf);
   }
 
@@ -186,7 +208,7 @@ export class PasskeyStore extends TwoFactorState {
   async updateCounter(id: number, previous: number, next: number, backedUp: boolean): Promise<boolean> {
     const now = this.#now();
     const result = await this.#db()
-      .updateTable(PASSKEYS_TABLE)
+      .updateTable(this.#passkeys)
       .set({ sign_count: next, backed_up: backedUp, last_used_at: now, updated_at: now })
       .where('id', '=', id)
       .where('sign_count', '=', previous)
@@ -197,19 +219,19 @@ export class PasskeyStore extends TwoFactorState {
   /** @internal Suspends a passkey (a possible clone); `false` if it was already suspended or is gone. */
   async suspend(id: number): Promise<boolean> {
     const now = this.#now();
-    const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: now, updated_at: now }).where('id', '=', id).where('suspended_at', 'is', null).executeTakeFirst();
+    const result = await this.#db().updateTable(this.#passkeys).set({ suspended_at: now, updated_at: now }).where('id', '=', id).where('suspended_at', 'is', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
   /** @internal Lets the account's suspended passkey sign in again; `false` when it has none that is suspended. The caller has checked the password. */
   async release(userId: AuthUserId, id: number): Promise<boolean> {
-    const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: null, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).where('suspended_at', 'is not', null).executeTakeFirst();
+    const result = await this.#db().updateTable(this.#passkeys).set({ suspended_at: null, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).where('suspended_at', 'is not', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
   /** @internal Renames the account's passkey; `false` when it has none with this id. */
   async rename(userId: AuthUserId, id: number, name: string): Promise<boolean> {
-    const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ name, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
+    const result = await this.#db().updateTable(this.#passkeys).set({ name, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
@@ -224,21 +246,21 @@ export class PasskeyStore extends TwoFactorState {
   async remove(userId: AuthUserId, id: number, { lastFactorAllowed }: { lastFactorAllowed: boolean }): Promise<Result<{ lastFactor: boolean }, { kind: 'not-found' } | { kind: 'last-factor' }>> {
     return this.#connections.transaction(async () => {
       const db = this.#db();
-      await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
-      const result = await db.deleteFrom(PASSKEYS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
+      await db.selectFrom(this.#passkeys).select('id').where('user_id', '=', userId).forUpdate().execute();
+      const result = await db.deleteFrom(this.#passkeys).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
       if (result.numDeletedRows === 0n) return err({ kind: 'not-found' as const });
-      const otherPasskey = await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).executeTakeFirst();
-      const totp = await db.selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
+      const otherPasskey = await db.selectFrom(this.#passkeys).select('id').where('user_id', '=', userId).executeTakeFirst();
+      const totp = await db.selectFrom(this.#twoFactor).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
       const lastFactor = otherPasskey === undefined && totp === undefined;
       if (lastFactor && !lastFactorAllowed) return err({ kind: 'last-factor' as const }); // an err rolls the delete back
-      if (lastFactor) await db.deleteFrom(RECOVERY_CODES_TABLE).where('user_id', '=', userId).execute();
+      if (lastFactor) await db.deleteFrom(this.#recoveryCodes).where('user_id', '=', userId).execute();
       return ok({ lastFactor });
     });
   }
 
   /** Removes every passkey of the account (the operator's reset); the recovery codes are the caller's. */
   async removeAll(userId: AuthUserId): Promise<void> {
-    await this.#db().deleteFrom(PASSKEYS_TABLE).where('user_id', '=', userId).execute();
+    await this.#db().deleteFrom(this.#passkeys).where('user_id', '=', userId).execute();
   }
 
   #now(): Date {

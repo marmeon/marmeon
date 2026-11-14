@@ -1,5 +1,5 @@
 import type { Container, Key } from '@marmeon/core';
-import { Connections } from '@marmeon/database';
+import { Connections, type SchemaRequirements } from '@marmeon/database';
 import { DatabaseEmailChanges, EMAIL_CHANGE_COLUMNS, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_COLUMNS, PASSWORD_RESET_TABLE, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseSignIns, SIGN_INS_COLUMNS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
@@ -34,6 +34,32 @@ export function requireSignInFinder(container: Container): void {
   assertSignInFinder(users);
 }
 
+/** The tables of the stores to wait for, by store: an entry is a store in use, its value the table it keeps its rows in. */
+export interface StoreTables {
+  readonly signIns?: string;
+  readonly passwordResets?: string;
+  readonly emailChanges?: string;
+  readonly accessTokens?: string;
+  /** The TOTP factor and its recovery codes, which the factor cannot be used without: both tables or none. */
+  readonly twoFactor?: { readonly factor: string; readonly recoveryCodes: string };
+}
+
+/**
+ * Makes `/up/ready` red until each of these tables has every column its store reads and writes. Package-internal. The passkeys' table is
+ * not here: the main entry must not reach the `passkeys` subpath, so its provider names it.
+ */
+export function requireStoreTables(requirements: SchemaRequirements, { connection, tables }: { readonly connection: string; readonly tables: StoreTables }): void {
+  const need = (table: string | undefined, columns: readonly string[], secrets: readonly string[]) => {
+    if (table !== undefined) requirements.require({ connection, table, columns, secrets });
+  };
+  need(tables.passwordResets, PASSWORD_RESET_COLUMNS, ['token_hash']);
+  need(tables.emailChanges, EMAIL_CHANGE_COLUMNS, ['session_key', 'token_hash']);
+  need(tables.accessTokens, ACCESS_TOKEN_COLUMNS, ['token_hash']);
+  need(tables.signIns, SIGN_INS_COLUMNS, ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash']);
+  need(tables.twoFactor?.factor, TWO_FACTOR_COLUMNS, ['secret']);
+  need(tables.twoFactor?.recoveryCodes, RECOVERY_CODE_COLUMNS, ['code_hash']);
+}
+
 /**
  * Makes `/up/ready` red until the tables of the stores the app uses have every column the stores read and write.
  * A table is waited for only where its store is the database one: a store of the app's own keeps its own table, and an app that
@@ -43,7 +69,6 @@ export async function requireAuthTables(container: Container): Promise<void> {
   if (!container.has(Connections) || !authenticationIsSetUp(container)) return;
   const { SchemaRequirements } = await import('@marmeon/database');
   const requirements = container.make(SchemaRequirements);
-  const need = (table: string, columns: readonly string[], secrets: readonly string[]) => requirements.require({ connection: 'default', table, columns, secrets });
   // A store that cannot be built here (it depends on something scoped, say) is the app's own, not ours.
   const bound = <T>(key: Key<T>): T | undefined => {
     try {
@@ -53,14 +78,17 @@ export async function requireAuthTables(container: Container): Promise<void> {
     }
   };
 
-  if (bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens) need(PASSWORD_RESET_TABLE, PASSWORD_RESET_COLUMNS, ['token_hash']);
-  if (bound(EmailChangeStore) instanceof DatabaseEmailChanges) need(EMAIL_CHANGES_TABLE, EMAIL_CHANGE_COLUMNS, ['session_key', 'token_hash']);
-  if (bound(AccessTokenStore) instanceof DatabaseAccessTokens) need(ACCESS_TOKEN_TABLE, ACCESS_TOKEN_COLUMNS, ['token_hash']);
-  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash']);
   // The authenticator app is a source of the state the app bound, alone or joined with the passkeys.
   const state = bound(TwoFactorState);
-  if (state && factorSources(state).some((source) => source instanceof TwoFactorStore)) {
-    need(TWO_FACTOR_TABLE, TWO_FACTOR_COLUMNS, ['secret']);
-    need(RECOVERY_CODES_TABLE, RECOVERY_CODE_COLUMNS, ['code_hash']);
-  }
+  const totp = state !== undefined && factorSources(state).some((source) => source instanceof TwoFactorStore);
+  requireStoreTables(requirements, {
+    connection: 'default',
+    tables: {
+      passwordResets: bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens ? PASSWORD_RESET_TABLE : undefined,
+      emailChanges: bound(EmailChangeStore) instanceof DatabaseEmailChanges ? EMAIL_CHANGES_TABLE : undefined,
+      accessTokens: bound(AccessTokenStore) instanceof DatabaseAccessTokens ? ACCESS_TOKEN_TABLE : undefined,
+      signIns: bound(SignInStore) instanceof DatabaseSignIns ? SIGN_INS_TABLE : undefined,
+      twoFactor: totp ? { factor: TWO_FACTOR_TABLE, recoveryCodes: RECOVERY_CODES_TABLE } : undefined,
+    },
+  });
 }

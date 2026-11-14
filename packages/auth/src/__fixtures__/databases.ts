@@ -7,8 +7,8 @@ export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] 
 
 const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
-/** Connections on a fresh, migrated database (the auth fixture migrations); `close()` drops it. */
-export async function migratedConnections(driver: 'sqlite' | 'pgsql', migrations = new URL('./migrations/', import.meta.url), now?: () => number): Promise<{ connections: Connections; close: () => Promise<void> }> {
+/** Connections on a fresh, migrated database (the auth fixture migrations, and with `withOffice` the `office_*` set of the same tables, named by prefix); `close()` drops it. */
+export async function migratedConnections(driver: 'sqlite' | 'pgsql', migrations = new URL('./migrations/', import.meta.url), now?: () => number, withOffice = false): Promise<{ connections: Connections; close: () => Promise<void> }> {
   let options: ConnectionOptions = { driver: 'sqlite', database: ':memory:' };
   let drop = async () => {};
   if (driver === 'pgsql') {
@@ -24,7 +24,8 @@ export async function migratedConnections(driver: 'sqlite' | 'pgsql', migrations
     };
   }
   const connections = new Connections({ connections: { default: options }, root: '/', logger: silent, ...(now ? { now } : {}) });
-  const modules = [{ name: 'auth', migrations }];
+  // One run for both: the secret columns of the tables are known from the migrations of the run that made them.
+  const modules = [{ name: 'auth', migrations }, ...(withOffice ? [{ name: 'office', migrations: new URL('./office-migrations/', import.meta.url) }] : [])];
   await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
   return {
     connections,

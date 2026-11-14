@@ -4,6 +4,7 @@ import { secret, type Connections } from '@marmeon/database';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
+import { expectUnchanged, optionsFor, setCases, setsOf, snapshot } from './__fixtures__/table-sets.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, type PasswordResetTokenTable } from './password-reset.ts';
 import { AuthConfig } from './config.ts';
 import { PasswordHasher, type PasswordHash } from './hashing.ts';
@@ -23,11 +24,14 @@ function must<T>(result: Result<T, { readonly kind: string }>): T {
   return result.value;
 }
 
-describe.each(drivers)('password reset on %s', (driver) => {
+// Each case runs on a set of tables (the app's, then a prefixed one) with the other set holding a token of the same address, which must come out unchanged.
+describe.each(setCases)('password reset on %s, on the %s tables', (driver, setName) => {
+  const { own, other } = setsOf(setName);
+  let before: string;
   let connections: Connections;
   let close: () => Promise<void>;
   let tokens: DatabasePasswordResetTokens;
-  const rows = () => connections.get<{ [PASSWORD_RESET_TABLE]: PasswordResetTokenTable }>().selectFrom(PASSWORD_RESET_TABLE).select((eb) => ['email', secret(eb, 'token_hash')]).execute();
+  const rows = () => connections.get<{ [PASSWORD_RESET_TABLE]: PasswordResetTokenTable }>().selectFrom(own.passwordResets as typeof PASSWORD_RESET_TABLE).select((eb) => ['email', secret(eb, 'token_hash')]).execute();
 
   const hasher = new PasswordHasher({ driver: 'argon2id', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } });
   const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
@@ -61,13 +65,16 @@ describe.each(drivers)('password reset on %s', (driver) => {
   let apiTokens: DatabaseAccessTokens;
 
   beforeAll(async () => {
-    ({ connections, close } = await migratedConnections(driver));
-    tokens = new DatabasePasswordResetTokens(connections, new SystemClock());
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+    tokens = new DatabasePasswordResetTokens(connections, new SystemClock(), optionsFor(own).passwordResets);
     apiTokens = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, new SystemClock());
   });
   afterAll(() => close());
   beforeEach(async () => {
-    await connections.get<any>().deleteFrom(PASSWORD_RESET_TABLE).execute();
+    await connections.get<any>().deleteFrom(own.passwordResets).execute();
+    await connections.get<any>().deleteFrom(other.passwordResets).execute();
+    await new DatabasePasswordResetTokens(connections, new SystemClock(), optionsFor(other).passwordResets).create('ada@example.com', 0);
+    before = await snapshot(connections, [other.passwordResets]);
     accountGone = false;
     refuseWrites = false;
     hash = await hasher.make('old password');
@@ -78,7 +85,10 @@ describe.each(drivers)('password reset on %s', (driver) => {
     cleared.length = 0;
     logged.length = 0;
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(async () => {
+    vi.useRealTimers();
+    expectUnchanged(before, await snapshot(connections, [other.passwordResets]));
+  });
 
   it('stores one token per e-mail, only as a hash', async () => {
     const created = await tokens.create('ada@example.com', 0);
@@ -88,7 +98,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     const stored = await rows();
     expect(stored).toHaveLength(1);
     expect(stored[0]!.token_hash).not.toBe(value);
-    expect(JSON.stringify(await connections.get<any>().selectFrom(PASSWORD_RESET_TABLE).selectAll().execute())).not.toContain(value);
+    expect(JSON.stringify(await connections.get<any>().selectFrom(own.passwordResets).selectAll().execute())).not.toContain(value);
   });
 
   it('resets the password with a fresh token, once — then drops the remember-me tokens', async () => {
@@ -313,7 +323,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     const config = (await resolveConfig([AuthConfig], { AUTH_RESET_MINUTES: '1', AUTH_RESET_THROTTLE_SECONDS: '30' })).get(AuthConfig) as AuthConfig;
     const clock = new TestClock();
     clock.freeze(Date.now());
-    const timed = new DatabasePasswordResetTokens(connections, clock);
+    const timed = new DatabasePasswordResetTokens(connections, clock, optionsFor(own).passwordResets);
     const timedBroker = new PasswordBroker(users, timed, hasher, { dispatch: async () => {} } as never, config, new NewPassword(() => apiTokens, () => connections, { revokeTokensOnPasswordChange: false } as never, logger, () => signIns), NO_LOGIN_LIMITS as never);
 
     const fresh = must(await timedBroker.createToken('ada@example.com'));
@@ -329,5 +339,57 @@ describe.each(drivers)('password reset on %s', (driver) => {
     const late = must(await timedBroker.createToken('ada@example.com'));
     clock.travel({ seconds: 61 });
     expect(await timedBroker.reset('ada@example.com', late.token, 'newer password'), '61 s: refused').toStrictEqual(err({ kind: 'invalid-token' }));
+  });
+  it('forgetEveryone() and prune() delete the tokens of their own table only, and count them', async () => {
+    must(await tokens.create('ada@example.com', 0));
+    expect(await tokens.prune(3600), 'nothing is old yet').toBe(0);
+    expect(await tokens.prune(-1), 'everything is older than a negative age').toBe(1);
+    must(await tokens.create('ada@example.com', 0));
+    must(await tokens.create('bob@example.com', 0));
+    expect(await tokens.forgetEveryone()).toBe(2);
+    expect(await rows()).toEqual([]);
+    await tokens.forget('ada@example.com');
+  });
+});
+
+describe.each(drivers)('DatabasePasswordResetTokens on a table of its own on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const count = async (table: string) => (await connections.get<any>().selectFrom(table).selectAll().execute()).length;
+
+  beforeAll(async () => {
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+  });
+  afterAll(() => close());
+  beforeEach(async () => {
+    await connections.get<any>().deleteFrom(PASSWORD_RESET_TABLE).execute();
+    await connections.get<any>().deleteFrom('office_password_reset_tokens').execute();
+  });
+
+  it('keeps its tokens in the table it was given and leaves the app table empty', async () => {
+    const office = new DatabasePasswordResetTokens(connections, new SystemClock(), { table: 'office_password_reset_tokens' });
+    const created = await office.create('a@b.example', 60);
+    expect(created.ok).toBe(true);
+    expect(await count('office_password_reset_tokens')).toBe(1);
+    expect(await count(PASSWORD_RESET_TABLE)).toBe(0);
+    expect((await office.consume('a@b.example', created.ok ? created.value : '', 3600)).ok).toBe(true);
+    expect(await count('office_password_reset_tokens')).toBe(0);
+  });
+
+  it('does not find a token of the app table for the same address', async () => {
+    const app = new DatabasePasswordResetTokens(connections, new SystemClock());
+    const office = new DatabasePasswordResetTokens(connections, new SystemClock(), { table: 'office_password_reset_tokens' });
+    const created = await app.create('a@b.example', 60);
+    const token = created.ok ? created.value : '';
+    expect(await office.consume('a@b.example', token, 3600)).toStrictEqual(err({ kind: 'invalid-token' }));
+    expect(await count(PASSWORD_RESET_TABLE)).toBe(1);
+    expect((await office.create('a@b.example', 60)).ok, 'no throttle from the app table').toBe(true);
+    await office.forget('a@b.example');
+    expect(await count(PASSWORD_RESET_TABLE), 'forgetting an address touches its own table only').toBe(1);
+    expect((await app.consume('a@b.example', token, 3600)).ok).toBe(true);
+  });
+
+  it('refuses a table name that is not plain', () => {
+    expect(() => new DatabasePasswordResetTokens(connections, new SystemClock(), { table: 'x;drop' })).toThrow(TypeError);
   });
 });

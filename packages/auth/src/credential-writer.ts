@@ -2,12 +2,12 @@ import type { Connection } from '@marmeon/database';
 import { sql } from '@marmeon/database';
 import { nowOf } from '@marmeon/database/internal';
 import type { PasswordHash } from './hashing.ts';
+import { assertTableName } from './table-names.ts';
 import type { UserProvider } from './user.ts';
 
 /** The writes of a `UserProvider` that decide whether a session survives. */
 export type CredentialWriter = Pick<UserProvider, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
 
-const TABLE_NAME = /^[a-z_][a-z0-9_]*$/;
 const SHORT_KEY = 'A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.';
 
 /**
@@ -18,7 +18,7 @@ const SHORT_KEY = 'A session key is at least 32 characters: use a random value, 
  */
 export function credentialWriter(db: Connection<any>, options: { table?: string } = {}): CredentialWriter {
   const table = options.table ?? 'users';
-  if (!TABLE_NAME.test(table)) throw new TypeError(`credentialWriter(): "${table}" is not a plain table name (lower case letters, digits and underscores).`);
+  assertTableName('credentialWriter()', table);
   // `Connection<any>` types no table; the name is checked above and reaches the statement as an identifier only.
   const tbl = db as Connection<Record<string, any>>;
 

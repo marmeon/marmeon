@@ -1,13 +1,17 @@
 import { TestClock } from '@marmeon/core/testing';
 import type { Connections } from '@marmeon/database';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
+import { expectUnchanged, optionsFor, setCases, setsOf, snapshot } from './__fixtures__/table-sets.ts';
 import { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, type SignInsTable, type SignInWindow } from './sign-ins.ts';
 
 const WINDOW: SignInWindow = { idleSeconds: 3600, maxSeconds: 86_400 };
 const FINGERPRINT = 'f'.repeat(43);
 
-describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
+// Each case runs on a set of tables (the app's, then a prefixed one) with the other set holding rows of the same user, which must come out unchanged.
+describe.each(setCases)('DatabaseSignIns on %s, on the %s tables', (driver, setName) => {
+  const { own, other } = setsOf(setName);
+  let before: string;
   let connections: Connections;
   let close: () => Promise<void>;
   let clock: TestClock;
@@ -18,18 +22,25 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
     const id = await signIns.create({ userId, userAgent });
     return { id, cookie: await signIns.issueToken(userId, id, { until, fingerprint: FINGERPRINT }) };
   };
-  const rows = () => connections.get<{ [SIGN_INS_TABLE]: SignInsTable }>().selectFrom(SIGN_INS_TABLE).selectAll().execute();
+  const rows = () => connections.get<{ [SIGN_INS_TABLE]: SignInsTable }>().selectFrom(own.signIns as typeof SIGN_INS_TABLE).selectAll().execute();
 
   beforeAll(async () => {
-    ({ connections, close } = await migratedConnections(driver));
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
   });
   afterAll(() => close());
   beforeEach(async () => {
-    await connections.get<any>().deleteFrom(SIGN_INS_TABLE).execute();
+    await connections.get<any>().deleteFrom(own.signIns).execute();
+    await connections.get<any>().deleteFrom(other.signIns).execute();
     clock = new TestClock();
     clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
-    signIns = new DatabaseSignIns(connections, clock);
+    signIns = new DatabaseSignIns(connections, clock, optionsFor(own).signIns);
+    // The same account, signed in with a remember-me token, in the other set.
+    const others = new DatabaseSignIns(connections, clock, optionsFor(other).signIns);
+    const otherId = await others.create({ userId: 1, userAgent: 'other set' });
+    await others.issueToken(1, otherId, { until: inAMonth(), fingerprint: FINGERPRINT });
+    before = await snapshot(connections, [other.signIns]);
   });
+  afterEach(async () => expectUnchanged(before, await snapshot(connections, [other.signIns])));
 
   it('creates a sign-in with a 128-bit id, which is then seen; ending it removes it', async () => {
     const id = await signIns.create({ userId: 1, userAgent: 'Agent' });
@@ -128,7 +139,7 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
       const { id: expiredRemember } = await remembered(1, 'expired remember', new Date(clock.now() + 3_600_000));
       const other = await signIns.create({ userId: 2, userAgent: 'other' });
       const db = connections.get<any>();
-      const set = (id: string, values: Record<string, Date>) => db.updateTable(SIGN_INS_TABLE).set(values).where('id', '=', id).execute();
+      const set = (id: string, values: Record<string, Date>) => db.updateTable(own.signIns).set(values).where('id', '=', id).execute();
       const ago = (seconds: number) => new Date(clock.now() - seconds * 1000);
       await set(idle, { last_seen_at: ago(WINDOW.idleSeconds + SEEN_GRANULARITY_SECONDS + 60) });
       await set(old, { signed_in_at: ago(WINDOW.maxSeconds + 60) });
@@ -185,5 +196,47 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
     expect(agents).toContain('EvilAgent');
     expect(agents).toContain('x'.repeat(255));
     expect(agents.filter((agent) => agent === null)).toHaveLength(2);
+  });
+});
+
+describe.each(drivers)('DatabaseSignIns on tables of its own on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const count = async (table: string) => (await connections.get<any>().selectFrom(table).selectAll().execute()).length;
+
+  beforeAll(async () => {
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+  });
+  afterAll(() => close());
+  beforeEach(async () => {
+    await connections.get<any>().deleteFrom(SIGN_INS_TABLE).execute();
+    await connections.get<any>().deleteFrom('office_sign_ins').execute();
+  });
+
+  it('keeps its rows in the table it was given and leaves the app table empty', async () => {
+    const office = new DatabaseSignIns(connections, new TestClock(), { table: 'office_sign_ins' });
+    const id = await office.create({ userId: 1, userAgent: 'Agent' });
+    expect(await count('office_sign_ins')).toBe(1);
+    expect(await count(SIGN_INS_TABLE)).toBe(0);
+    expect(await office.seen(1, id, false)).toBe(true);
+    expect(await office.end(1, id)).toBe(true);
+    expect(await count('office_sign_ins')).toBe(0);
+  });
+
+  it('does not find a sign-in of the other table, in either direction', async () => {
+    const app = new DatabaseSignIns(connections, new TestClock());
+    const office = new DatabaseSignIns(connections, new TestClock(), { table: 'office_sign_ins' });
+    const appId = await app.create({ userId: 1, userAgent: undefined });
+    const officeId = await office.create({ userId: 1, userAgent: undefined });
+    expect(await office.seen(1, appId, false)).toBe(false);
+    expect(await app.seen(1, officeId, false)).toBe(false);
+    expect(await office.end(1, appId)).toBe(false);
+    expect(await office.endAll(1)).toBe(1);
+    expect(await app.seen(1, appId, false)).toBe(true);
+  });
+
+  it('refuses a table name that is not plain', () => {
+    expect(() => new DatabaseSignIns(connections, new TestClock(), { table: 'x;drop' })).toThrow(TypeError);
+    expect(() => new DatabaseSignIns(connections, new TestClock(), { table: 'Office' })).toThrow(TypeError);
   });
 });

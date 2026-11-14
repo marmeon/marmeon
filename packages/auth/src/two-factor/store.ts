@@ -1,5 +1,6 @@
 import { Clock } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
+import { assertTableName } from '../table-names.ts';
 import type { AuthUserId } from '../user.ts';
 import { TwoFactorState, type SecondFactor } from './state.ts';
 
@@ -53,29 +54,37 @@ type Tables = { [TWO_FACTOR_TABLE]: TwoFactorTable; [RECOVERY_CODES_TABLE]: Reco
 export class TwoFactorStore extends TwoFactorState {
   readonly #connections: Connections;
   readonly #clock: Clock;
+  readonly #twoFactor: typeof TWO_FACTOR_TABLE;
+  readonly #recoveryCodes: typeof RECOVERY_CODES_TABLE;
 
-  /** @internal Built by the container. */
-  constructor(connections: Connections, clock: Clock) {
+  /**
+   * @internal Built by the container. `tables`: the tables of the factor and of the recovery codes (default `two_factor_authentications`
+   * and `two_factor_recovery_codes`, plain lower-case names).
+   */
+  constructor(connections: Connections, clock: Clock, options: { readonly tables?: { readonly twoFactor?: string; readonly recoveryCodes?: string } } = {}) {
     super();
     this.#connections = connections;
     this.#clock = clock;
+    // The statements are typed on the default names; the names given here are checked and reach them as identifiers only.
+    this.#twoFactor = assertTableName('TwoFactorStore', options.tables?.twoFactor ?? TWO_FACTOR_TABLE) as typeof TWO_FACTOR_TABLE;
+    this.#recoveryCodes = assertTableName('TwoFactorStore', options.tables?.recoveryCodes ?? RECOVERY_CODES_TABLE) as typeof RECOVERY_CODES_TABLE;
   }
 
   /** `['totp']` once the authenticator is confirmed; a setup that was begun but not confirmed changes nothing about signing in. */
   async factors(userId: AuthUserId): Promise<readonly SecondFactor[]> {
-    const row = await this.#db().selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
+    const row = await this.#db().selectFrom(this.#twoFactor).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
     return row === undefined ? [] : ['totp'];
   }
 
   async enabledSince(userId: AuthUserId): Promise<Date | undefined> {
-    const row = await this.#db().selectFrom(TWO_FACTOR_TABLE).select('confirmed_at').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
+    const row = await this.#db().selectFrom(this.#twoFactor).select('confirmed_at').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
     return row?.confirmed_at == null ? undefined : new Date(row.confirmed_at);
   }
 
   /** @internal The account's authenticator row, confirmed or not; the service decrypts the secret. */
   async find(userId: AuthUserId): Promise<TotpRecord | undefined> {
     const row = await this.#db()
-      .selectFrom(TWO_FACTOR_TABLE)
+      .selectFrom(this.#twoFactor)
       .select((eb) => [secret(eb, 'secret'), 'confirmed_at', 'last_used_step'])
       .where('user_id', '=', userId)
       .executeTakeFirst();
@@ -89,13 +98,13 @@ export class TwoFactorStore extends TwoFactorState {
     // One statement decides, so parallel starts (a double click) never collide: the unique index on `user_id` turns the second into an
     // update of the unconfirmed row, and a confirmed row is never touched — then nothing changes and we refuse.
     const result = await this.#db()
-      .insertInto(TWO_FACTOR_TABLE)
+      .insertInto(this.#twoFactor)
       .values({ user_id: userId, secret: encryptedSecret, confirmed_at: null, last_used_step: null, created_at: now, updated_at: now })
       .onConflict((conflict) =>
         conflict
           .column('user_id')
           .doUpdateSet({ secret: encryptedSecret, last_used_step: null, created_at: now, updated_at: now })
-          .where(`${TWO_FACTOR_TABLE}.confirmed_at`, 'is', null),
+          .where(`${this.#twoFactor}.confirmed_at`, 'is', null),
       )
       .executeTakeFirst();
     if (result.numInsertedOrUpdatedRows === 0n) throw new Error('Two-factor authentication with an authenticator app is already on for this account: disable it first.');
@@ -115,7 +124,7 @@ export class TwoFactorStore extends TwoFactorState {
     return this.#connections.transaction(async () => {
       const now = this.#now();
       const result = await this.#db()
-        .updateTable(TWO_FACTOR_TABLE)
+        .updateTable(this.#twoFactor)
         .set({ confirmed_at: now, last_used_step: step, secret: reencryptedSecret, updated_at: now })
         .where('user_id', '=', userId)
         .where('confirmed_at', 'is', null)
@@ -133,7 +142,7 @@ export class TwoFactorStore extends TwoFactorState {
    */
   async useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean> {
     const result = await this.#db()
-      .updateTable(TWO_FACTOR_TABLE)
+      .updateTable(this.#twoFactor)
       .set({ last_used_step: step, secret: reencryptedSecret, updated_at: this.#now() })
       .where('user_id', '=', userId)
       .where('confirmed_at', 'is not', null)
@@ -146,7 +155,7 @@ export class TwoFactorStore extends TwoFactorState {
   async consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined> {
     const now = this.#now();
     const result = await this.#db()
-      .updateTable(RECOVERY_CODES_TABLE)
+      .updateTable(this.#recoveryCodes)
       .set({ used_at: now, updated_at: now })
       .where('user_id', '=', userId)
       .where(sql<boolean>`${sql.ref('code_hash')} = ${codeHash}`)
@@ -160,7 +169,7 @@ export class TwoFactorStore extends TwoFactorState {
   async replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
     await this.#connections.transaction(async () => {
       // Two requests making new codes at once would interleave their deletes and inserts: the account's row is the lock.
-      await this.#db().selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
+      await this.#db().selectFrom(this.#twoFactor).select('id').where('user_id', '=', userId).forUpdate().execute();
       await this.#replaceCodes(userId, codeHashes);
     });
   }
@@ -168,7 +177,7 @@ export class TwoFactorStore extends TwoFactorState {
   /** @internal How many recovery codes of the account are unspent; `TwoFactor.status()` reports it. */
   async remainingRecoveryCodes(userId: AuthUserId): Promise<number> {
     const row = await this.#db()
-      .selectFrom(RECOVERY_CODES_TABLE)
+      .selectFrom(this.#recoveryCodes)
       .select((eb) => eb.fn.countAll<number | string>().as('remaining'))
       .where('user_id', '=', userId)
       .where('used_at', 'is', null)
@@ -179,8 +188,8 @@ export class TwoFactorStore extends TwoFactorState {
   /** @internal Removes the authenticator; with `lastFactor` the recovery codes go in the same transaction (they belong to the account's factors, not to this one). */
   async removeTotp(userId: AuthUserId, { lastFactor }: { lastFactor: boolean }): Promise<void> {
     await this.#connections.transaction(async () => {
-      await this.#db().deleteFrom(TWO_FACTOR_TABLE).where('user_id', '=', userId).execute();
-      if (lastFactor) await this.#db().deleteFrom(RECOVERY_CODES_TABLE).where('user_id', '=', userId).execute();
+      await this.#db().deleteFrom(this.#twoFactor).where('user_id', '=', userId).execute();
+      if (lastFactor) await this.#db().deleteFrom(this.#recoveryCodes).where('user_id', '=', userId).execute();
     });
   }
 
@@ -191,11 +200,11 @@ export class TwoFactorStore extends TwoFactorState {
 
   async #replaceCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
     const db = this.#db();
-    await db.deleteFrom(RECOVERY_CODES_TABLE).where('user_id', '=', userId).execute();
+    await db.deleteFrom(this.#recoveryCodes).where('user_id', '=', userId).execute();
     if (codeHashes.length === 0) return;
     const now = this.#now();
     await db
-      .insertInto(RECOVERY_CODES_TABLE)
+      .insertInto(this.#recoveryCodes)
       .values(codeHashes.map((hash) => ({ user_id: userId, code_hash: hash, used_at: null, created_at: now, updated_at: now })))
       .execute();
   }

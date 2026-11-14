@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Clock, ContainerError } from '@marmeon/core';
 import { Connections, secretEquals, sql, type Secret } from '@marmeon/database';
+import { assertTableName } from './table-names.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -71,7 +72,6 @@ export abstract class EmailChangeStore {
   abstract forgetEveryone(): Promise<number>;
 }
 
-const TABLE_NAME = /^[a-z_][a-z0-9_]*$/;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 /** The default {@link EmailChangeStore}, on the app's `email_changes` table. */
@@ -84,7 +84,7 @@ export class DatabaseEmailChanges extends EmailChangeStore {
   constructor(connections: Connections, clock: Clock, options: { readonly usersTable?: string } = {}) {
     super();
     const usersTable = options.usersTable ?? 'users';
-    if (!TABLE_NAME.test(usersTable)) throw new TypeError(`DatabaseEmailChanges: "${usersTable}" is not a plain table name (lower case letters, digits and underscores).`);
+    assertTableName('DatabaseEmailChanges', usersTable);
     this.#connections = connections;
     this.#clock = clock;
     this.#users = usersTable;
