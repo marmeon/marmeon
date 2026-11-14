@@ -1,4 +1,4 @@
-import { Html, Redactor } from '@marmeon/core';
+import { Html, Redactor, type ErrorCode } from '@marmeon/core';
 import { ISLAND_CONTROLLER, withCode } from '@marmeon/core/internal';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { buildWithNew } from './default-resolver.ts';
@@ -158,6 +158,24 @@ const showPath = (route: RouteDefinition): string => shown.path(route.path, rout
 /** What {@link Router.checkRoutes} runs on a route: it throws to refuse it. */
 export type RouteCheck = (route: RouteDefinition, resolve: ClassResolver) => void;
 
+/** What {@link Router.beforeMiddleware} runs at every dispatch of a route: it throws to answer the request with that error. */
+export type RouteStartHook = (route: RouteDefinition, pipeline: readonly AnyMiddleware[], resolve: ClassResolver) => void;
+
+/** What {@link Router.checkPipelines} asks of every route's middleware list: a finding refuses the start, `undefined` accepts. */
+export type PipelineCheck = (route: RouteDefinition, pipeline: readonly AnyMiddleware[]) => PipelineFinding | undefined;
+
+/** One refusal of a {@link PipelineCheck}. The message carries no code; `code` and `docs` are shown beside it. */
+export interface PipelineFinding {
+  readonly message: string;
+  readonly code: ErrorCode;
+  readonly docs?: string;
+}
+
+/** A route whose middleware list a {@link PipelineCheck} refused (see {@link Router.pipelineProblems}). */
+export interface PipelineProblem extends PipelineFinding {
+  readonly route: RouteDefinition;
+}
+
 /** A route whose middleware declares a key twice (see {@link Router.middlewareProblems}). */
 export interface MiddlewareProblem extends AddsConflict {
   readonly route: RouteDefinition;
@@ -247,6 +265,8 @@ export class Router {
   readonly #validationHooks: ValidationHook[] = [];
   readonly #interceptors: RouteInterceptor[] = [];
   readonly #routeChecks: RouteCheck[] = [];
+  readonly #startHooks: RouteStartHook[] = [];
+  readonly #pipelineChecks: PipelineCheck[] = [];
 
   /** @internal Built by the container. */
   constructor(options: RouterOptions = {}) {
@@ -475,6 +495,28 @@ export class Router {
   }
 
   /**
+   * Runs `hook` at every dispatch of a route, before its first middleware, with the route's whole middleware list (global, group,
+   * route) — synchronously; what it throws answers the request like the error of a middleware. For packages, while booting.
+   *
+   * @internal
+   */
+  beforeMiddleware(hook: RouteStartHook): this {
+    this.#startHooks.push(hook);
+    return this;
+  }
+
+  /**
+   * Asks `check` about the middleware list of every route when {@link Router.pipelineProblems} is called: the kernel and
+   * `marmeon check` refuse the start for each finding. For packages, while booting.
+   *
+   * @internal
+   */
+  checkPipelines(check: PipelineCheck): this {
+    this.#pipelineChecks.push(check);
+    return this;
+  }
+
+  /**
    * Runs `hook` before every body schema validates (after `authorize`; a submit and a live validation alike) — it may replace
    * input values with what the schema expects (see {@link ValidationHook}). For packages, while booting.
    */
@@ -502,10 +544,25 @@ export class Router {
     // Worked out once per route (every request of it needs the same list) — again only after a group changed.
     const cached = this.#middlewareOf.get(route);
     if (cached?.version === this.middleware.version) return cached.list;
-    const all = [...this.middleware.get(GLOBAL), ...(route.group ? this.middleware.get(route.group) : []), ...route.middleware];
-    const list = Object.freeze([...new Set(all)]);
+    const list = this.#pipelineOf(route);
     this.#middlewareOf.set(route, { version: this.middleware.version, list });
     return list;
+  }
+
+  /**
+   * The list a route runs, layer by layer: the router's global, then `declared.global`, the router's group, `declared[group]`, the
+   * route's own. As at boot, where the app's definition is appended after the framework's own. Deduplicated at the first place.
+   */
+  #pipelineOf(route: RouteDefinition, declared: Partial<Record<string, readonly AnyMiddleware[]>> = {}): readonly AnyMiddleware[] {
+    const group = route.group;
+    const all = [
+      ...this.middleware.get(GLOBAL),
+      ...(declared[GLOBAL] ?? []),
+      ...(group ? this.middleware.get(group) : []),
+      ...(group ? (declared[group] ?? []) : []),
+      ...route.middleware,
+    ];
+    return Object.freeze([...new Set(all)]);
   }
 
   /**
@@ -516,6 +573,24 @@ export class Router {
    */
   middlewareProblems(): MiddlewareProblem[] {
     return this.#routes.flatMap((route) => addsConflicts(this.middlewareFor(route)).map((conflict) => ({ route, ...conflict })));
+  }
+
+  /**
+   * What the {@link Router.checkPipelines} checks refuse, per route: the kernel and `marmeon check` stop the start with it. `declared`
+   * is what the app's definition lists for `global` and for a group (`web`, `api`): an app that is registered and not booted has not
+   * handed it to the router yet, so `marmeon check` passes it here.
+   *
+   * @internal
+   */
+  pipelineProblems(declared: Partial<Record<string, readonly AnyMiddleware[]>> = {}): PipelineProblem[] {
+    if (this.#pipelineChecks.length === 0) return [];
+    return this.#routes.flatMap((route) => {
+      const pipeline = Object.keys(declared).length === 0 ? this.middlewareFor(route) : this.#pipelineOf(route, declared);
+      return this.#pipelineChecks.flatMap((check) => {
+        const finding = check(route, pipeline);
+        return finding === undefined ? [] : [{ route, ...finding }];
+      });
+    });
   }
 
   /**
@@ -670,8 +745,18 @@ export class Router {
       },
       { resolve, onTerminable: options.onTerminable, onError: options.onError },
     );
+    // Before the first middleware, so whatever a package decides about the route holds for the global middleware too.
+    const start = () => {
+      const pipeline = this.middlewareFor(route);
+      try {
+        for (const hook of this.#startHooks) hook(route, pipeline, resolve);
+      } catch (error) {
+        return options.onError ? Promise.resolve(options.onError(error, ctx)) : Promise.reject(error);
+      }
+      return run();
+    };
     // A declared length over the limit, or a body read before the match that is over it, ends the request with the 413 before any middleware.
-    return tooLarge ? tooLarge.then(run, (error: unknown) => (options.onError ? options.onError(error, ctx) : Promise.reject(error))) : run();
+    return tooLarge ? tooLarge.then(start, (error: unknown) => (options.onError ? options.onError(error, ctx) : Promise.reject(error))) : start();
   }
 
   /**

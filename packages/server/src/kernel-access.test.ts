@@ -1,7 +1,7 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { createApplication, defineModule } from '@marmeon/core';
 import { HttpServiceProvider } from '@marmeon/http';
-import { defineMiddleware, defineRoutes, everyone, RouteAccessError, type RouteBinder, type RouteDefinitions } from '@marmeon/router';
+import { defineMiddleware, defineRoutes, everyone, RouteAccessError, Router, type RouteBinder, type RouteDefinitions } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -52,6 +52,20 @@ describe('createHttpKernel — routes that do not say who may call them', () => 
     try {
       expect(() => createHttpKernel(application)).toThrow(RouteAccessError);
       expect(() => createHttpKernel(application)).toThrow(/\[marmeon:H8\].*GET \/twice: "first" and "second" both add "team"/s);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('refuses a route whose middleware list a package check refuses, with the finding\'s code and the path through the redactor', async () => {
+    const marked = defineMiddleware('marked', (_ctx, next) => next());
+    const application = await boot(defineRoutes((Route) => Route.authorize(everyone).middleware(marked).get('/mixed', ShowNoteController)));
+    try {
+      const router = application.container.make(Router);
+      expect(() => createHttpKernel(application)).not.toThrow();
+      router.checkPipelines((_route, pipeline) => (pipeline.includes(marked) ? { message: 'a route belongs to one guard.', code: 'A9' } : undefined));
+      expect(() => createHttpKernel(application)).toThrow(RouteAccessError);
+      expect(() => createHttpKernel(application)).toThrow(/\[marmeon:A9\] GET \/mixed: a route belongs to one guard\./);
     } finally {
       await application.shutdown();
     }

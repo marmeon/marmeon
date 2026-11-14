@@ -797,7 +797,7 @@ export class ShowUserProfileController extends Controller {
 The e-mail address leaves the server only for its owner. The controller decides what a page gets, so a prop the user may not see
 is never sent.
 
-On a route of a [package guard](authentication.md#protecting-the-routes) the gate and `can()` refuse with error A9 whatever the policy says, because a policy asks about the app's users: the package decides such a route on `ctx.user` with `describeAccess()`. A policy that runs before the guard's `authenticate()` or `guest()` judges the app's user and makes the route the app's, so that middleware fails with A9. A global middleware that asks a policy at once therefore belongs on the app's routes or in a group, not in the global list.
+On a route of a [package guard](authentication.md#protecting-the-routes) the gate answers no for a policy of the app, see [middleware that asks a policy](#middleware-that-asks-a-policy); the package decides such a route on `ctx.user` with `describeAccess()`.
 
 | Method | Returns |
 | --- | --- |
@@ -805,6 +805,22 @@ On a route of a [package guard](authentication.md#protecting-the-routes) the gat
 | `denies(Policy, ability, ...resources)` | The opposite. |
 | `authorize(Policy, ability, ...resources)` | Nothing, or throws `AuthorizationError`: 403 with the policy's reason, or 404. |
 | `inspect(Policy, ability, ...resources)` | The policy's full answer, a `PolicyResponse` with `allowed`, `status` and `message`. |
+
+### Middleware that asks a policy
+
+Middleware that asks a policy as soon as it runs (an admin flag for the shared props, say) belongs on the route tree of your app, in a
+group, and not in the global middleware. The global list runs on every route, the routes of a [package guard](authentication.md#protecting-the-routes)
+included, and a policy of your app judges your app's users, not the guard's.
+
+The router knows the guard of a route before its first middleware runs, so the gate does not guess. On a route that belongs to a package
+guard, a policy of the app gets no answer but no: `allows()` is `false`, `denies()` is `true`, `authorize()` and `can()` throw a 403
+`AuthorizationError`, `inspect()` is a denied `PolicyResponse`, and every ability of a projection is `false`. The policy is not built, its
+`before()` does not run and no user is loaded. The answer is never yes, and a global middleware that takes the no and goes on (`allows()`, a projection) does not take down the login
+page of a package. One that awaits `authorize()` ends the request with the 403 before the login controller runs: put it on the app's routes. In development the first such question for a policy and a guard writes a warning with error [A9](errors.md#server-error-codes)
+that names the policy, the gate method and both guards; production writes nothing.
+
+A route that no middleware gives a guard (a public page) has no such rule: every policy asks its own users there. The case is rare, since
+it needs a package guard next to a global middleware that asks a policy.
 
 ## Abilities for the page
 

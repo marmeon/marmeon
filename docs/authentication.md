@@ -1341,22 +1341,26 @@ export default defineRoutes((Route) => {
   the app's; define one of that name yourself to replace it. Because the limiter's name is part of every counter's key, user 1 of the guard
   and user 1 of the app never share a count.
 
-The first middleware that names a guard sets whose route this is: `authenticate()` for `web`, `authenticate('api')` for `api`,
-`OfficeGuard.authenticate()` for `office`. The app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` stamp `web` when nothing has stamped yet, so a guard's `authenticate()` after them fails too. After that every middleware that acts for a guard checks it, and a route that mixes two
+The middleware that names a guard sets whose route this is: `authenticate()` for `web`, `authenticate('api')` for `api`,
+`OfficeGuard.authenticate()` for `office`. The app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` stamp `web` when nothing has stamped yet, so a guard's `authenticate()` after them fails too. Every middleware that acts for a guard checks it, and a route that mixes two
 guards fails with error [A9](errors.md#server-error-codes) (a 500 whose log line names both guards):
 
 - the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` on a route of a package guard (`verified()` also refuses a user of a package guard when an app built it by hand);
 - the guard's `confirmedPassword()` on a route of the app, or on one where its own `authenticate()` has not run before it;
-- `OfficeGuard.guest()` and the app's `authenticate()` on one route, in either order. Two `authenticate()` on one route stop the start already, as they add `user` twice.
+- a package guard's `authenticate()` or `guest()` that another middleware calls, after a policy of the app decided on the request.
 
-A gate that asks a policy before the guard's `authenticate()` or `guest()` on the route counts as the app's too: it has judged the app's user, so the route is the app's from there and a package guard's `authenticate()` or `guest()` after it is A9. Put the guard's middleware first. A global middleware of the app that asks a policy at once (an admin flag for shared props, say) therefore fails every route of a package guard with A9: put it on the app's routes or in a group, not in the global list.
+The guard of a route is known before its first middleware runs, global middleware included: the router reads it from the route's whole
+list (global, group, route), where `authenticate()`, `authenticate('api')`, `OfficeGuard.authenticate()` and `OfficeGuard.guest()` name it.
+The app's `guest()` and the middleware that only needs a guard (`confirmedPassword()`, `twoFactor()`, `verified()`) name none. A route whose list
+names two guards that cannot share it (`OfficeGuard.guest()` and the app's `authenticate()`, say; two `authenticate()` add `user` twice and stop the start as well) stops the start with A9 (`marmeon check` reports it too); the app's session and token guard
+may share one. So the sudo window or the second factor of an app user can never open a route of the back office, and the other way round.
+A route has one guard: put the routes of a package guard in a group of their own.
 
-So the sudo window or the second factor of an app user can never open a route of the back office, and the other way round. A route has
-one guard: put the routes of a package guard in a group of their own.
-
-The `Gate` and `can()` refuse every route of a package guard with A9 for now, whatever the policy says: a policy asks about the app's
-users, and a policy of the app would otherwise judge the app's user who has the same id. Decide such a route on `ctx.user` with
-[`describeAccess()`](authorization.md#open-routes-and-bindings) instead.
+A policy of the app on a route of a package guard answers no, never yes. A global middleware that takes the no and goes on (`allows()`,
+a projection) therefore leaves the login page of a package working; one that awaits `authorize()` ends the request with a 403 before the
+login controller runs. Neither is what you want:
+[put it on the app's routes](authorization.md#middleware-that-asks-a-policy). Decide a route of a package guard on `ctx.user` with
+[`describeAccess()`](authorization.md#open-routes-and-bindings).
 
 > [!NOTE]
 > The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or

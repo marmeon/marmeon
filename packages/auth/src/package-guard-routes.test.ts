@@ -176,13 +176,14 @@ const routes = openRoutes((Route) => {
   officeOnly.middleware(OfficeGuard.confirmedPassword(OFFICE)).get('/r/office-sudo', () => 'office sudo page');
   officeOnly.middleware(confirmedPassword()).get('/r/office-app-sudo', () => 'confirmed with the app window');
   appOnly.middleware(OfficeGuard.confirmedPassword(OFFICE)).get('/r/app-office-sudo', () => 'confirmed with the office window');
-  Route.middleware(OfficeGuard.guest(OFFICE)).middleware(authenticate()).get('/r/guest-then-app', () => 'mixed');
   officeOnly.middleware(twoFactor({ setup: 'office.confirm', verify: 'office.confirm' })).get('/r/office-two-factor', () => 'app two factor');
   officeOnly.middleware(HandBuiltVerified as never).get('/r/office-hand-verified', () => 'hand built');
   officeOnly.middleware(verified() as never).get('/r/office-verified', () => 'app verification');
   // The types refuse most mixtures; the casts are an untyped caller's.
   Route.middleware(OfficeGuard.confirmedPassword(OFFICE) as never).get('/r/sudo-without-authenticate', () => 'no stamp');
   Route.middleware(confirmedPassword() as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/sudo-then-office', () => 'mixed');
+  // The router stamps `office` ahead of everything here, but the guard's authenticate() has not run when its confirmation does.
+  Route.middleware(OfficeGuard.confirmedPassword(OFFICE) as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/sudo-before-authenticate', () => 'no authenticate yet');
   Route.middleware(OfficeGuard.guest(OFFICE)).get('/r/office-guest', () => 'office guest page');
   Route.middleware(guest({ homeRoute: 'office.home' })).get('/r/app-guest', () => 'app guest page');
   officeOnly.authorize(can(OpenPolicy, 'view')).get('/r/office-can', () => 'policy');
@@ -297,14 +298,12 @@ describe('the routes of a package guard', () => {
     await expectA9(both, failures, '/r/app-office-sudo');
   });
 
-  it('refuses the package guard\'s confirmation without the guard\'s own authenticate() before it, and a route that mixes the two guards', async () => {
+  it('refuses the package guard\'s confirmation without the guard\'s own authenticate() before it, and a password window ahead of the guard\'s authenticate()', async () => {
     const { signedIn, failures } = await boot();
     const both = await signedIn('app', 'office');
-    for (const path of ['/r/sudo-without-authenticate', '/r/sudo-then-office']) {
+    for (const path of ['/r/sudo-without-authenticate', '/r/sudo-then-office', '/r/sudo-before-authenticate']) {
       await expectA9(both, failures, path);
     }
-    const onlyApp = await signedIn('app');
-    await expectA9(onlyApp, failures, '/r/guest-then-app');
   });
 
   it('refuses the app\'s second factor and e-mail verification on a route of the package guard (A9)', async () => {
@@ -383,36 +382,46 @@ describe('the routes of a package guard', () => {
 });
 
 describe('the gate on the routes of a package guard', () => {
-  it('takes a route for the app\'s once a policy has judged the app\'s user on it, so a package guard\'s authenticate() after it is A9', async () => {
+  it('says no to a policy that asks ahead of the guard\'s authenticate(), because the route is the guard\'s from the start', async () => {
     const { signedIn, failures } = await boot();
     const both = await signedIn('app', 'office');
-    await expectA9(both, failures, '/r/early-policy');
-    await expectA9(both, failures, '/r/early-projection');
+    const before = failures.length;
+    // The policy would say yes to the app's user 1; the route belongs to `office`.
+    expect((await both.call('GET', '/r/early-policy')).status).toBe(403);
+    expect((await both.call('GET', '/r/early-projection')).status).toBe(200);
+    expect(failures.slice(before).join('\n')).not.toContain('A9');
   });
 
-  it('refuses a projection made ahead of the guard\'s authenticate() when the page computes it', async () => {
+  it('answers false for a projection made ahead of the guard\'s authenticate() when the page computes it', async () => {
     const { signedIn } = await boot();
     const both = await signedIn('app', 'office');
     const answer = (await (await both.call('GET', '/r/late-projection')).json()) as { threw?: string; value?: unknown };
-    expect(answer.threw).toMatch(/A9/);
-    expect(answer.value).toBeUndefined();
+    expect(answer).toEqual({ value: { view: false } });
   });
 
-  it('refuses can() with A9, though the policy would say yes to the app\'s user of the same id', async () => {
-    const { signedIn, failures } = await boot();
+  it('answers 403 for can(), though the policy would say yes to the app\'s user of the same id', async () => {
+    const { signedIn } = await boot();
     const both = await signedIn('app', 'office');
-    await expectA9(both, failures, '/r/office-can');
+    expect((await both.call('GET', '/r/office-can')).status).toBe(403);
     expect((await both.call('GET', '/r/app-can')).status, 'a route of the app is unchanged').toBe(200);
   });
 
-  it.each(['allows', 'denies', 'authorize', 'inspect', 'abilities', 'withAbilities'])('refuses Gate.%s() in a controller of the package guard, and answers on a route of the app', async (method) => {
+  it.each([
+    ['allows', false],
+    ['denies', true],
+    ['authorize', 'AuthorizationError'],
+    ['inspect', false],
+    ['abilities', { view: false }],
+    ['withAbilities', [{ id: 1, can: { view: false } }]],
+  ])('answers no to Gate.%s() in a controller of the package guard, and as before on a route of the app', async (method, no) => {
     const { signedIn } = await boot();
     const both = await signedIn('app', 'office');
     const refused = (await (await both.call('GET', `/r/office-gate/${method}`)).json()) as { threw?: string; value?: unknown };
-    expect(refused.threw, method).toMatch(/A9/);
-    expect(refused.value).toBeUndefined();
+    if (no === 'AuthorizationError') expect(refused.threw, method).toMatch(/unauthorized/i);
+    else expect(refused, method).toEqual({ value: no });
     const answered = (await (await both.call('GET', `/r/app-gate/${method}`)).json()) as { threw?: string; value?: unknown };
     expect(answered.threw, method).toBeUndefined();
     expect(answered.value).not.toBeUndefined();
+    expect(answered.value, 'the same policy says yes on the app\'s route').not.toEqual(no);
   });
 });
