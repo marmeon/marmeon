@@ -415,8 +415,8 @@ Everything is apart from the app's factors, and from the factors of another guar
 | Events | None of the app's classes (`TwoFactorEnabled`, `RecoveryCodeUsed`, …): a listener of the app would mail the app's user with the same id. |
 
 The middleware `OfficeGuard.twoFactor({ setup, verify, loginRoute, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify, loginRoute })` act like
-[`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them and
-send a request without a user to the guard's `loginRoute`, which is required here because the app's `auth.login` is the app's page.
+[`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them, which
+sends a request without a user to the guard's login page, never the app's.
 On a route of another guard, or one without the guard's `authenticate()`, they fail with error [A9](errors.md#server-error-codes), as the app's middleware does on
 a route of the guard.
 
