@@ -1,5 +1,5 @@
 import type { RateLimiter } from '@marmeon/cache';
-import { Container } from '@marmeon/core';
+import { Container, type EventDispatcher } from '@marmeon/core';
 import type { ClientInfo } from '@marmeon/http';
 import type { CookieJar } from '@marmeon/router';
 import { Session, type SessionConfig } from '@marmeon/session';
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { Auth } from '../auth.ts';
 import { APP_PASSKEY_STORE, AppGuardContext } from '../app-guard-context.ts';
 import { APP_GUARD_NAMES, guardNames, type GuardNames } from '../guard-names.ts';
-import { guardContext } from '../test-helpers/guard-context.ts';
+import { guardContext, type GuardParts } from '../test-helpers/guard-context.ts';
 import { twoFactorState } from '../test-helpers/stores.ts';
 import type { TwoFactorStore } from '../two-factor/store.ts';
 import type { AuthUser } from '../user.ts';
@@ -33,6 +33,10 @@ async function startedSession(): Promise<Session> {
 }
 
 function serviceFor(names: GuardNames, session: Session, limiter: RateLimiter, ...stores: [object?]): Passkeys {
+  return serviceWith(names, session, limiter, {}, ...stores);
+}
+
+function serviceWith(names: GuardNames, session: Session, limiter: RateLimiter, parts: GuardParts, ...stores: [object?]): Passkeys {
   const store = stores.length === 0 ? passkeyStore() : stores[0];
   const context = guardContext({
     names,
@@ -42,6 +46,7 @@ function serviceFor(names: GuardNames, session: Session, limiter: RateLimiter, .
     users: {} as never,
     auth: { user: async () => ada } as unknown as Auth,
     accountSessions: {} as never,
+    ...parts,
   });
   const config = { relyingParty: () => ({ rpId: 'example.com', origins: ['https://example.com'] }) } as PasskeyConfig;
   return new Passkeys(context, session, config, limiter, { ip: '203.0.113.9', userAgent: 'test' } as ClientInfo, {} as CookieJar, { secure: false } as SessionConfig);
@@ -79,6 +84,27 @@ describe('Passkeys for a guard', () => {
     expect(keys.filter((key) => key.includes('passkey-sign-in:')).length).toBeGreaterThan(0);
     expect(keys.filter((key) => key.includes('passkey-challenge:')).length).toBeGreaterThan(0);
     expect(keys.filter((key) => !key.startsWith('guard:office|'))).toEqual([]);
+  });
+
+  it('raises the events its guard maps them to: none, or another one, but never the app\'s own', async () => {
+    class Mapped {}
+    const dispatched: object[] = [];
+    const events = { dispatch: async (event: object) => void dispatched.push(event) } as unknown as EventDispatcher;
+    const store = Object.assign(passkeyStore(), { remove: async () => ({ ok: true, value: { lastFactor: true } }) });
+    const auth = { user: async () => ada, passwordRecentlyConfirmed: () => true, checkPassword: async () => ({ ok: true }), updateSessionKey: async () => true } as unknown as Auth;
+    const session = await startedSession();
+    const remove = (parts: GuardParts) => serviceWith(office, session, {} as RateLimiter, { events, auth, ...parts }, store).remove(1, 'secret');
+
+    await remove({});
+    expect(dispatched.map((event) => event.constructor.name), 'unmapped, as the app guard').toEqual(['PasskeyRemoved', 'TwoFactorDisabled']);
+
+    dispatched.length = 0;
+    await remove({ event: () => undefined });
+    expect(dispatched, 'a guard with no events of the app\'s').toEqual([]);
+
+    const other = new Mapped();
+    await remove({ event: () => other });
+    expect(dispatched).toEqual([other, other]);
   });
 
   it('is not built for a guard whose passkey store is missing or is not a PasskeyStore, nor takes another in its place', async () => {

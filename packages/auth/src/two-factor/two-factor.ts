@@ -69,6 +69,7 @@ export type SecondFactorInput = { readonly code: string } | { readonly recoveryC
  * only for the account the factor was proven for.
  */
 export class TwoFactor {
+  readonly #guard: GuardContext;
   readonly #names: GuardNames;
   readonly #auth: Auth;
   readonly #session: Session;
@@ -92,6 +93,7 @@ export class TwoFactor {
     const store = guard.totp();
     // A guard that offers no authenticator has no store to run this on: fail closed rather than reach for another guard's.
     if (store === undefined) throw new TypeError(`Two-factor authentication is not available for the guard "${guard.names.name}": it has no TwoFactorStore.`);
+    this.#guard = guard;
     this.#names = guard.names;
     this.#auth = guard.auth();
     this.#session = session;
@@ -109,6 +111,12 @@ export class TwoFactor {
     this.#passkeys = guard.secondFactorPasskeys();
     this.#connections = guard.connections();
     this.#rememberCookie = guard.names.rememberCookie(guard.settings, sessionConfig);
+  }
+
+  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  async #emit(event: object): Promise<void> {
+    const mapped = this.#guard.event(event);
+    if (mapped !== undefined) await this.#events.dispatch(mapped);
   }
 
   /**
@@ -132,7 +140,7 @@ export class TwoFactor {
       const failures = this.#auth[RECORD_PENDING_FAILURE]() ?? PENDING_MAX_FAILURES;
       const found = await this.#users.findById(userId as never);
       // The owner is told of a wrong answer only, not of a challenge that timed out or was sent twice: the client sees `invalid-code` either way.
-      if (found && verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }, new Date(this.#clock.now())));
+      if (found && verdict === 'wrong') await this.#emit(new TwoFactorChallengeFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }, new Date(this.#clock.now())));
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, PENDING_MAX_FAILURES - failures) });
     }
     // Only the minute counter: hour and day keep the attempts that guessing used up.
@@ -161,7 +169,7 @@ export class TwoFactor {
     const minute = recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId);
     const verdict = await this.#verify(userId, input, 'step-up');
     if (verdict !== 'valid') {
-      if (verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }, new Date(this.#clock.now())));
+      if (verdict === 'wrong') await this.#emit(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }, new Date(this.#clock.now())));
       const budget = recovery ? RECOVERY_WINDOW.attempts : TOTP_WINDOWS[0].attempts;
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, budget - (await this.#limiter.attempts(minute))) });
     }
@@ -286,8 +294,8 @@ export class TwoFactor {
     // Only the first factor proves anything about this session: a further one, set up with just the password, must not stand for the one already there.
     if (first) writeAuth(this.#session, 'twoFactorAt', this.#now(), this.#names);
     await this.#limiter.clear(this.#codeKey('minute', id));
-    await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
-    if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));
+    await this.#emit(new TwoFactorEnabled(user, 'totp'));
+    if (first) await this.#emit(new RecoveryCodesGenerated(user));
     return ok({ recoveryCodes });
   }
 
@@ -305,7 +313,7 @@ export class TwoFactor {
     if (!checked.ok) return err(checked.error);
     const codes = generateRecoveryCodes();
     await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
-    await this.#events.dispatch(new RecoveryCodesGenerated(user));
+    await this.#emit(new RecoveryCodesGenerated(user));
     return ok(codes);
   }
 
@@ -327,7 +335,7 @@ export class TwoFactor {
       return ok();
     }
     await this.#store.removeTotp(id, { lastFactor: factors.every((factor) => factor === 'totp') });
-    await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
+    await this.#emit(new TwoFactorDisabled(user, 'user'));
     return ok();
   }
 
@@ -344,7 +352,7 @@ export class TwoFactor {
       const remaining = await this.#store.consumeRecoveryCode(userId, hashRecoveryCode(userId, input.recoveryCode));
       if (remaining === undefined) return false;
       const found = await this.#users.findById(userId as never);
-      if (found) await this.#events.dispatch(new RecoveryCodeUsed(found.user, remaining));
+      if (found) await this.#emit(new RecoveryCodeUsed(found.user, remaining));
       return true;
     }
     const row = await this.#store.find(userId);

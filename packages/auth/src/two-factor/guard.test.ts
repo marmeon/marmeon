@@ -1,4 +1,5 @@
 import type { RateLimiter } from '@marmeon/cache';
+import type { EventDispatcher } from '@marmeon/core';
 import type { Encrypter } from '@marmeon/encryption';
 import type { ClientInfo } from '@marmeon/http';
 import type { CookieJar, Router } from '@marmeon/router';
@@ -7,7 +8,7 @@ import { MemorySessionStore, plainSessionCodec } from '@marmeon/session/internal
 import { describe, expect, it } from 'vitest';
 import type { Auth } from '../auth.ts';
 import { APP_GUARD_NAMES, guardNames, type GuardNames } from '../guard-names.ts';
-import { guardContext } from '../test-helpers/guard-context.ts';
+import { guardContext, type GuardParts } from '../test-helpers/guard-context.ts';
 import { twoFactorState } from '../test-helpers/stores.ts';
 import type { AuthUser } from '../user.ts';
 import { confirmedSecondFactor } from './confirmed.ts';
@@ -37,17 +38,18 @@ function recordingLimiter(): { limiter: RateLimiter; keys: string[] } {
   return { limiter, keys };
 }
 
-const contextOf = (names: GuardNames) =>
+const contextOf = (names: GuardNames, parts: GuardParts = {}) =>
   guardContext({
     names,
     factors,
     totp: { consumeRecoveryCode: async () => 5, find: async () => undefined } as unknown as TwoFactorStore,
     users: { findById: async () => ({ user: ada, passwordHash: null, sessionKey: null }) } as never,
     auth: { user: async () => ada } as unknown as Auth,
+    ...parts,
   });
 
-function serviceFor(names: GuardNames, session: Session, limiter: RateLimiter): TwoFactor {
-  return new TwoFactor(contextOf(names), session, {} as Encrypter, limiter, { ip: '203.0.113.9', userAgent: 'test' } as ClientInfo, {} as CookieJar, { secure: false } as SessionConfig);
+function serviceFor(names: GuardNames, session: Session, limiter: RateLimiter, parts: GuardParts = {}): TwoFactor {
+  return new TwoFactor(contextOf(names, parts), session, {} as Encrypter, limiter, { ip: '203.0.113.9', userAgent: 'test' } as ClientInfo, {} as CookieJar, { secure: false } as SessionConfig);
 }
 
 describe('TwoFactor for a guard', () => {
@@ -76,6 +78,29 @@ describe('TwoFactor for a guard', () => {
     expect((await serviceFor(office, session, recordingLimiter().limiter).stepUp({ recoveryCode: 'ABCD-EFGH-IJKL-MNOP' })).ok).toBe(true);
     expect(session.has('_auth:office:two_factor_at')).toBe(true);
     expect(session.has('_auth_two_factor_at'), 'the app guard has proven nothing').toBe(false);
+  });
+
+  it('raises the events its guard maps them to: none, or another one, but never the app\'s own', async () => {
+    class Mapped {}
+    const dispatched: object[] = [];
+    const events = { dispatch: async (event: object) => void dispatched.push(event) } as unknown as EventDispatcher;
+    // A valid recovery code raises `RecoveryCodeUsed`; a wrong one, `TwoFactorChallengeFailed`.
+    const session = await startedSession();
+    const use = (parts: GuardParts, remaining: number | undefined) =>
+      serviceFor(office, session, recordingLimiter().limiter, { events, totp: { consumeRecoveryCode: async () => remaining, find: async () => undefined } as unknown as TwoFactorStore, ...parts }).stepUp({ recoveryCode: 'ABCD-EFGH-IJKL-MNOP' });
+
+    await use({}, 5);
+    await use({}, undefined);
+    expect(dispatched.map((event) => event.constructor.name), 'unmapped, as the app guard').toEqual(['RecoveryCodeUsed', 'TwoFactorChallengeFailed']);
+
+    dispatched.length = 0;
+    await use({ event: () => undefined }, 5);
+    await use({ event: () => undefined }, undefined);
+    expect(dispatched, 'a guard with no events of the app\'s').toEqual([]);
+
+    const other = new Mapped();
+    await use({ event: () => other }, 5);
+    expect(dispatched).toEqual([other]);
   });
 
   it('is not built for a guard that has no TwoFactorStore', () => {

@@ -99,6 +99,7 @@ export interface PasskeySummary {
  * devices' sessions, and so does removing one. Every failure refuses.
  */
 export class Passkeys {
+  readonly #guard: GuardContext;
   readonly #names: GuardNames;
   readonly #auth: Auth;
   readonly #accountSessions: AccountSessions;
@@ -125,6 +126,7 @@ export class Passkeys {
     // The context types its passkey store loosely (the main entry may not reach this folder), so it is checked here: whatever is not a
     // `PasskeyStore` — nothing, or another kind of object — means the guard has no passkeys, and nothing is taken in its place.
     if (!(store instanceof PasskeyStore) || twoFactorStore === undefined) throw new TypeError(`Passkeys are not available for the guard "${guard.names.name}": it has no PasskeyStore and TwoFactorStore.`);
+    this.#guard = guard;
     this.#names = guard.names;
     this.#auth = guard.auth();
     this.#accountSessions = guard.accountSessions();
@@ -143,6 +145,12 @@ export class Passkeys {
     this.#clock = guard.clock();
     this.#logger = guard.logger();
     this.#rememberCookie = guard.names.rememberCookie(guard.settings, sessionConfig);
+  }
+
+  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  async #emit(event: object): Promise<void> {
+    const mapped = this.#guard.event(event);
+    if (mapped !== undefined) await this.#events.dispatch(mapped);
   }
 
   // -- Registration ----------------------------------------------------------------------------------------------------------
@@ -258,10 +266,10 @@ export class Passkeys {
       throw new Error('The TwoFactorState does not report the passkey that was just registered: bind it to combineFactors(TwoFactorStore, PasskeyStore). The registration was rolled back.');
     }
     if (first) writeAuth(this.#session, 'twoFactorAt', this.#now(), this.#names);
-    await this.#events.dispatch(new PasskeyRegistered(user, cleanName));
+    await this.#emit(new PasskeyRegistered(user, cleanName));
     if (first) {
-      await this.#events.dispatch(new TwoFactorEnabled(user, 'passkey'));
-      await this.#events.dispatch(new RecoveryCodesGenerated(user));
+      await this.#emit(new TwoFactorEnabled(user, 'passkey'));
+      await this.#emit(new RecoveryCodesGenerated(user));
     }
     return ok({ recoveryCodes });
   }
@@ -353,7 +361,7 @@ export class Passkeys {
     if (!checked.ok) {
       // An answer that was given and failed: the owner may want to know. The client learns nothing more.
       if (checked.error.kind === 'invalid' || checked.error.kind === 'clone-suspected') {
-        await this.#events.dispatch(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }, new Date(this.#clock.now())));
+        await this.#emit(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }, new Date(this.#clock.now())));
       }
       return err(checked.error);
     }
@@ -414,8 +422,8 @@ export class Passkeys {
     // Before the events: a listener that throws (a queue that cannot be reached) must not leave the thief's sessions alive. The other devices'
     // sessions and remember-me tokens end here and this one stays.
     await this.#auth.updateSessionKey();
-    await this.#events.dispatch(new PasskeyRemoved(user));
-    if (removed.value.lastFactor) await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
+    await this.#emit(new PasskeyRemoved(user));
+    if (removed.value.lastFactor) await this.#emit(new TwoFactorDisabled(user, 'user'));
     return ok();
   }
 
@@ -485,10 +493,10 @@ export class Passkeys {
         // transaction — after it, so the owner is told first.
         this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
         await this.#endSessionsOfClone(record);
-        if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
+        if (found) await this.#emit(new PasskeyCloneSuspected(found.user, record.id));
       } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
-        await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }, new Date(this.#clock.now())));
+        await this.#emit(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }, new Date(this.#clock.now())));
       }
       return err(verified.error);
     }
