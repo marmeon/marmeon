@@ -54,8 +54,7 @@ export interface GuardSettings {
   readonly twoFactorIssuer?: string;
 }
 
-/** What `defineGuard()` takes: where the guard's users come from, which tables it owns, and what it sets for itself. */
-export interface GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> {
+interface GuardBaseOptions<U> {
   /**
    * A class implementing `UserProvider` on a table of the package's own. The container builds it; a package guard never reads the
    * app's `UserProvider`. Whether it reads a table of its own cannot be checked: see `docs/authentication.md#guards-of-a-package`.
@@ -65,12 +64,22 @@ export interface GuardOptions<U, TF extends typeof TwoFactor | undefined = undef
   readonly tablePrefix: string;
   /** Settings of the guard, or a function that reads them (from the config, say) when the guard is first used and at boot. */
   readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
+}
+
+/**
+ * What `defineGuard()` takes: where the guard's users come from, which tables it owns, and what it sets for itself. With `TF` the `TwoFactor`
+ * class, `twoFactor` is required, so the type never promises a guard that has none.
+ */
+export type GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> = GuardBaseOptions<U> & (TF extends typeof TwoFactor ? GuardTwoFactorOption<TF> : { readonly twoFactor?: undefined });
+
+/** The `twoFactor` option of {@link GuardOptions}. */
+interface GuardTwoFactorOption<TF> {
   /**
    * `TwoFactor` (from `@marmeon/auth/two-factor`) gives the guard an authenticator app and recovery codes on tables of its own
    * (`office_two_factor_authentications`, `office_two_factor_recovery_codes`), the challenge after the password and the middleware
    * `twoFactor()` and `confirmedSecondFactor()`. Passed as the class so that a guard without it does not carry it. See `docs/two-factor-authentication.md#for-a-guard-of-a-package`.
    */
-  readonly twoFactor?: TF;
+  readonly twoFactor: TF;
 }
 
 /** What the type `Auth` has, for the users of a guard: `U` instead of the app's user. */
@@ -436,7 +445,8 @@ export class Guard {
  */
 export function defineGuard<U extends { readonly id: string | number }, TF extends typeof TwoFactor | undefined = undefined>(
   name: string,
-  options: GuardOptions<U, TF>,
+  // `TF` is read from the option; the second part only makes `twoFactor` required once it is the class.
+  options: GuardBaseOptions<U> & { readonly twoFactor?: TF } & GuardOptions<U, NoInfer<TF>>,
 ): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>) {
   return new Guard(name, options as GuardOptions<unknown, typeof TwoFactor | undefined>) as never;
 }

@@ -381,6 +381,8 @@ factors, and nobody of it is asked for one.
 ```ts title="office/src/guard.ts"
 import { defineGuard, type GuardTwoFactor } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
+import { OfficeUsers } from './OfficeUsers.ts';
+import type { OfficeUser } from './OfficeUser.ts';
 
 export const OfficeGuard = defineGuard('office', {
   users: OfficeUsers,
@@ -419,9 +421,15 @@ On a route of another guard, or one without the guard's `authenticate()`, they f
 a route of the guard.
 
 ```ts title="office/src/routes.ts"
-Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))
-  .middleware(OfficeGuard.twoFactor({ setup: 'office.two-factor.setup', verify: 'office.two-factor.verify', loginRoute: 'office.login' }))
-  .get('/office', Dashboard);
+import { defineRoutes } from '@marmeon/http';
+import { Dashboard } from './controllers/Dashboard.ts';
+import { OfficeGuard } from './guard.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))
+    .middleware(OfficeGuard.twoFactor({ setup: 'office.two-factor.setup', verify: 'office.two-factor.verify', loginRoute: 'office.login' }))
+    .get('/office', Dashboard);
+});
 ```
 
 An authenticator app lists an account under the name it is given. The issuer is `APP_NAME` unless the guard sets `twoFactorIssuer`; a back office and

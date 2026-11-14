@@ -4,7 +4,7 @@ import type { MiddlewareClass } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth, AttemptError } from './auth.ts';
-import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardDefinition, type GuardPasswordBroker, type GuardTwoFactor, type GuardTwoFactorDefinition } from './define-guard.ts';
+import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardDefinition, type GuardOptions, type GuardPasswordBroker, type GuardTwoFactor, type GuardTwoFactorDefinition } from './define-guard.ts';
 import type { PasswordBroker } from './password-reset.ts';
 import type { ChallengeError } from './two-factor/two-factor.ts';
 import { TwoFactor } from './two-factor/two-factor.ts';
@@ -105,4 +105,25 @@ export function aGuardWithoutTwoFactorHasNone() {
   OfficeGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' });
   // @ts-expect-error only the TwoFactor class is one
   defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: class Other {} });
+}
+
+export function theOptionsPromiseWhatTheyDeliver() {
+  // @ts-expect-error a guard typed as having two-factor authentication must be given the class
+  const missing: GuardOptions<OfficeUser, typeof TwoFactor> = { users: OfficeUsers, tablePrefix: 'office_' };
+  const promised = defineGuard('office', missing);
+  promised.twoFactor;
+
+  const given: GuardOptions<OfficeUser, typeof TwoFactor> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor };
+  expectTypeOf(defineGuard('office', given).TwoFactor).toEqualTypeOf<Token<GuardTwoFactor<OfficeUser>>>();
+
+  // The second generic stays optional: `GuardOptions<U>` has no `twoFactor`, or an undefined one.
+  const plain: GuardOptions<OfficeUser> = { users: OfficeUsers, tablePrefix: 'office_' };
+  const undefinedOption: GuardOptions<OfficeUser> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: undefined };
+  expectTypeOf(defineGuard('office', plain)).toEqualTypeOf<GuardDefinition<OfficeUser>>();
+  expectTypeOf(defineGuard('office', undefinedOption)).toEqualTypeOf<GuardDefinition<OfficeUser>>();
+  // @ts-expect-error without the option the guard has no TwoFactor
+  defineGuard('office', plain).TwoFactor;
+  // @ts-expect-error GuardOptions<U> takes no TwoFactor class
+  const wrong: GuardOptions<OfficeUser> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor };
+  return wrong;
 }

@@ -472,12 +472,9 @@ export interface GuardGuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
 }
 // GuardOptions
-export interface GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> {
-    readonly users: Concrete<UserProvider<U>>;
-    readonly tablePrefix: string;
-    readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
-    readonly twoFactor?: TF;
-}
+export type GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> = GuardBaseOptions<U> & (TF extends typeof TwoFactor ? GuardTwoFactorOption<TF> : {
+    readonly twoFactor?: undefined;
+});
 // GuardPasswordBroker
 export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'deviceCookie' | 'reset'> & {
     createToken(email: string): Promise<Result<{
@@ -1115,7 +1112,9 @@ export declare function credentialWriter(db: Connection<any>, options?: {
 // defineGuard
 export declare function defineGuard<U extends {
     readonly id: string | number;
-}, TF extends typeof TwoFactor | undefined = undefined>(name: string, options: GuardOptions<U, TF>): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>);
+}, TF extends typeof TwoFactor | undefined = undefined>(name: string, options: GuardBaseOptions<U> & {
+    readonly twoFactor?: TF;
+} & GuardOptions<U, NoInfer<TF>>): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>);
 // deny
 export declare function deny(message?: string): PolicyResponse;
 // denyAsNotFound
@@ -1177,6 +1176,16 @@ export type ConfirmError = {
 };
 // Contravariant
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
+// GuardBaseOptions
+interface GuardBaseOptions<U> {
+    readonly users: Concrete<UserProvider<U>>;
+    readonly tablePrefix: string;
+    readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
+}
+// GuardTwoFactorOption
+interface GuardTwoFactorOption<TF> {
+    readonly twoFactor: TF;
+}
 // GuestOptions
 export interface GuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;

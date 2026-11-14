@@ -527,8 +527,8 @@ describe('a guard without two-factor authentication', () => {
 
 describe('defining a guard with two-factor authentication', () => {
   it('refuses a twoFactor option that is not the TwoFactor class, and an issuer that is empty or too long (A8)', () => {
-    expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: class Other {} as never })).toThrow(/\[marmeon:A8\].*twoFactor/);
-    expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: {} as never })).toThrow(/\[marmeon:A8\].*twoFactor/);
+    expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: class Other {} as unknown as typeof TwoFactor })).toThrow(/\[marmeon:A8\].*twoFactor/);
+    expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: {} as unknown as typeof TwoFactor })).toThrow(/\[marmeon:A8\].*twoFactor/);
     for (const issuer of ['', '   ', 'x'.repeat(65), 7 as never]) {
       expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: TwoFactor, settings: { twoFactorIssuer: issuer } })).toThrow(/\[marmeon:A8\].*twoFactorIssuer/);
     }
@@ -537,7 +537,7 @@ describe('defining a guard with two-factor authentication', () => {
   it('knows the TwoFactor class by its brand, not its name: a class of that name without it is refused, a renamed subclass is taken', () => {
     class Impostor {}
     Object.defineProperty(Impostor, 'name', { value: 'TwoFactor' });
-    expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: Impostor as never })).toThrow(/\[marmeon:A8\].*twoFactor/);
+    expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: Impostor as unknown as typeof TwoFactor })).toThrow(/\[marmeon:A8\].*twoFactor/);
     class Renamed extends TwoFactor {}
     Object.defineProperty(Renamed, 'name', { value: 'TwoFactor$1' });
     expect(() => defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: Renamed })).not.toThrow();
