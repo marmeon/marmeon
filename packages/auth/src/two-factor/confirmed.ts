@@ -1,13 +1,11 @@
-import { Clock } from '@marmeon/core';
 import { isPrefetch } from '@marmeon/http';
 import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
-import { Auth } from '../auth.ts';
+import { GuardContext } from '../guard-context.ts';
 import { idOf, type Authenticated } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
-import { TwoFactorState } from './state.ts';
 
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);
 
@@ -27,29 +25,25 @@ export interface ConfirmedSecondFactorOptions<V extends string = string> {
  */
 export function confirmedSecondFactor<const V extends RouteNameInput = never>(options: ConfirmedSecondFactorOptions<V>): MiddlewareClass<Authenticated, {}> {
   const Confirmed = class {
-    readonly #auth: Auth;
+    readonly #guard: GuardContext;
     readonly #session: Session;
     readonly #router: Router;
-    readonly #state: TwoFactorState;
-    readonly #clock: Clock;
 
-    constructor(auth: Auth, session: Session, router: Router, state: TwoFactorState, clock: Clock) {
-      this.#auth = auth;
+    constructor(guard: GuardContext, session: Session, router: Router) {
+      this.#guard = guard;
       this.#session = session;
       this.#router = router;
-      this.#state = state;
-      this.#clock = clock;
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
       // Asked of the session itself, not of `ctx.user`: a pending sign-in, a token or a missing `authenticate()` are all "nobody" here.
-      const user = await this.#auth.user();
+      const user = await this.#guard.auth().user();
       if (!user) {
         if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: VARY });
         return this.#redirect(ctx, 'auth.login');
       }
-      if ((await this.#state.factors(idOf(user))).length === 0) return next();
-      if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, Math.floor(this.#clock.now() / 1000))) return next();
+      if ((await this.#guard.factors().factors(idOf(user))).length === 0) return next();
+      if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, Math.floor(this.#guard.clock().now() / 1000), this.#guard.names)) return next();
       if (ctx.expectsJson()) return Response.json({ error: 'two_factor_unverified' }, { status: 403, headers: VARY });
       return this.#redirect(ctx, options.verify);
     }

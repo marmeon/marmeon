@@ -1,21 +1,23 @@
 import { createHash } from 'node:crypto';
 import { clientKey, RateLimiter } from '@marmeon/cache';
-import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
-import { Connections } from '@marmeon/database';
+import { afterCommit, afterRollback, err, ok, type Clock, type EventDispatcher, type Logger, type Result } from '@marmeon/core';
+import type { Connections } from '@marmeon/database';
 import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
-import { AccountSessions, claimRefused } from '../account-sessions.ts';
-import { ACCOUNT_STILL_CLAIMED, Auth, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
+import { claimRefused, type AccountSessions } from '../account-sessions.ts';
+import { ACCOUNT_STILL_CLAIMED, type Auth, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
 import { writeAuth } from '../session-keys.ts';
-import { AuthConfig, rememberCookieName } from '../config.ts';
+import type { AuthConfig } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import type { PasswordThrottled } from '../password-throttle.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
-import { NoTwoFactorState, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
-import { TwoFactorStore } from '../two-factor/store.ts';
-import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from '../user.ts';
+import { GuardContext } from '../guard-context.ts';
+import type { GuardNames } from '../guard-names.ts';
+import { NoTwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type TwoFactorState } from '../two-factor/state.ts';
+import type { TwoFactorStore } from '../two-factor/store.ts';
+import { idOf, type AuthUser, type AuthUserId, type Credentials, type UserProvider } from '../user.ts';
 import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
 import { PasskeyConfig } from './config.ts';
 import { PasskeyStore, type PasskeyRecord } from './store.ts';
@@ -97,6 +99,8 @@ export interface PasskeySummary {
  * devices' sessions, and so does removing one. Every failure refuses.
  */
 export class Passkeys {
+  readonly #guard: GuardContext;
+  readonly #names: GuardNames;
   readonly #auth: Auth;
   readonly #accountSessions: AccountSessions;
   readonly #session: Session;
@@ -115,43 +119,38 @@ export class Passkeys {
   readonly #clock: Clock;
   readonly #logger: Logger;
 
-  /** @internal Built by the container. */
-  constructor(
-    auth: Auth,
-    session: Session,
-    store: PasskeyStore,
-    twoFactorStore: TwoFactorStore,
-    state: TwoFactorState,
-    config: PasskeyConfig,
-    authConfig: AuthConfig,
-    connections: Connections,
-    limiter: RateLimiter,
-    events: EventDispatcher,
-    request: ClientInfo,
-    users: UserProvider,
-    cookies: CookieJar,
-    clock: Clock,
-    logger: Logger,
-    sessionConfig: SessionConfig,
-    accountSessions: AccountSessions,
-  ) {
-    this.#auth = auth;
-    this.#accountSessions = accountSessions;
+  /** @internal Built by the container. The users, stores, settings, names and events of the guard come from `guard`. */
+  constructor(guard: GuardContext, session: Session, config: PasskeyConfig, limiter: RateLimiter, request: ClientInfo, cookies: CookieJar, sessionConfig: SessionConfig) {
+    const store = guard.passkeyStore();
+    const twoFactorStore = guard.totp();
+    // The context types its passkey store loosely (the main entry may not reach this folder), so it is checked here: whatever is not a
+    // `PasskeyStore` — nothing, or another kind of object — means the guard has no passkeys, and nothing is taken in its place.
+    if (!(store instanceof PasskeyStore) || twoFactorStore === undefined) throw new TypeError(`Passkeys are not available for the guard "${guard.names.name}": it has no PasskeyStore and TwoFactorStore.`);
+    this.#guard = guard;
+    this.#names = guard.names;
+    this.#auth = guard.auth();
+    this.#accountSessions = guard.accountSessions();
     this.#session = session;
     this.#store = store;
     this.#twoFactorStore = twoFactorStore;
-    this.#state = state;
+    this.#state = guard.factors();
     this.#config = config;
-    this.#authConfig = authConfig;
-    this.#connections = connections;
+    this.#authConfig = guard.settings;
+    this.#connections = guard.connections();
     this.#limiter = limiter;
-    this.#events = events;
+    this.#events = guard.events();
     this.#request = request;
-    this.#users = users;
+    this.#users = guard.users();
     this.#cookies = cookies;
-    this.#clock = clock;
-    this.#logger = logger;
-    this.#rememberCookie = rememberCookieName(authConfig, sessionConfig);
+    this.#clock = guard.clock();
+    this.#logger = guard.logger();
+    this.#rememberCookie = guard.names.rememberCookie(guard.settings, sessionConfig);
+  }
+
+  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  async #emit(event: object): Promise<void> {
+    const mapped = this.#guard.event(event);
+    if (mapped !== undefined) await this.#events.dispatch(mapped);
   }
 
   // -- Registration ----------------------------------------------------------------------------------------------------------
@@ -169,7 +168,7 @@ export class Passkeys {
     await this.#requireRecentSecondFactor('registrationOptions', id);
     const relyingParty = this.#config.relyingParty();
     const userHandle = await this.#store.userHandle(id);
-    const { bytes } = issueChallenge(this.#session, 'register', this.#now(), id, userHandle);
+    const { bytes } = issueChallenge(this.#session, 'register', this.#now(), id, userHandle, this.#names);
     const account = user as { email?: unknown; name?: unknown };
     const email = typeof account.email === 'string' ? account.email : String(id);
     return registrationOptions({
@@ -199,7 +198,7 @@ export class Passkeys {
     // Before the challenge is taken: a session that may not add a passkey keeps the challenge it holds.
     await this.#requireRecentSecondFactor('register', id);
     // First of all, so that this challenge is spent whatever happens next.
-    const taken = takeChallenge(this.#session, 'register', this.#now(), id);
+    const taken = takeChallenge(this.#session, 'register', this.#now(), id, this.#names);
     if (!taken.ok) return err(taken.error);
     if (!(await this.#spend(taken.value.challenge))) return err({ kind: 'no-challenge' });
     const handle = taken.value.userHandle;
@@ -266,11 +265,11 @@ export class Passkeys {
       await this.#store.remove(id, created.value.id, { lastFactorAllowed: true });
       throw new Error('The TwoFactorState does not report the passkey that was just registered: bind it to combineFactors(TwoFactorStore, PasskeyStore). The registration was rolled back.');
     }
-    if (first) writeAuth(this.#session, 'twoFactorAt', this.#now());
-    await this.#events.dispatch(new PasskeyRegistered(user, cleanName));
+    if (first) writeAuth(this.#session, 'twoFactorAt', this.#now(), this.#names);
+    await this.#emit(new PasskeyRegistered(user, cleanName));
     if (first) {
-      await this.#events.dispatch(new TwoFactorEnabled(user, 'passkey'));
-      await this.#events.dispatch(new RecoveryCodesGenerated(user));
+      await this.#emit(new TwoFactorEnabled(user, 'passkey'));
+      await this.#emit(new RecoveryCodesGenerated(user));
     }
     return ok({ recoveryCodes });
   }
@@ -279,7 +278,7 @@ export class Passkeys {
 
   /** The options for a passwordless sign-in: no list of credentials (nothing is learnt about who exists), user verification required. */
   async signInOptions(): Promise<PublicKeyCredentialRequestOptionsJSON> {
-    const { bytes } = issueChallenge(this.#session, 'sign-in', this.#now());
+    const { bytes } = issueChallenge(this.#session, 'sign-in', this.#now(), undefined, undefined, this.#names);
     return authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes });
   }
 
@@ -309,7 +308,7 @@ export class Passkeys {
     const pending = await this.#auth[READ_PENDING]();
     if (pending === undefined) return err({ kind: 'no-challenge' });
     if (pending === 'expired') return err({ kind: 'expired' });
-    const { bytes } = issueChallenge(this.#session, 'second-factor', this.#now(), pending.userId);
+    const { bytes } = issueChallenge(this.#session, 'second-factor', this.#now(), pending.userId, undefined, this.#names);
     const allow = (await this.#store.forUser(pending.userId)).filter((passkey) => passkey.suspendedAt === null).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
     return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
   }
@@ -324,7 +323,7 @@ export class Passkeys {
     const id = idOf(user);
     const allow = (await this.#store.forUser(id)).filter((passkey) => passkey.suspendedAt === null).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
     if (allow.length === 0) return err({ kind: 'no-challenge' });
-    const { bytes } = issueChallenge(this.#session, 'step-up', this.#now(), id);
+    const { bytes } = issueChallenge(this.#session, 'step-up', this.#now(), id, undefined, this.#names);
     return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
   }
 
@@ -338,7 +337,7 @@ export class Passkeys {
     const id = idOf(user);
     const allow = (await this.#store.forUser(id)).filter((passkey) => passkey.suspendedAt === null).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
     if (allow.length === 0) return err({ kind: 'no-challenge' });
-    const { bytes } = issueChallenge(this.#session, 'confirm', this.#now(), id);
+    const { bytes } = issueChallenge(this.#session, 'confirm', this.#now(), id, undefined, this.#names);
     return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
   }
 
@@ -350,7 +349,7 @@ export class Passkeys {
   async confirm(response: AuthenticationResponseJSON): Promise<Result<void, PasskeyError>> {
     const user = await this.#requireUser('confirm');
     const id = idOf(user);
-    const key = `passkey-confirm:${id}`;
+    const key = this.#names.limiterKey(`passkey-confirm:${id}`);
     if (!(await this.#limiter.attempt(key, { maxAttempts: CONFIRM_WINDOW.attempts, decay: CONFIRM_WINDOW.seconds }))) return err({ kind: 'throttled', retryAfterSeconds: Math.max(1, await this.#limiter.availableInSeconds(key)) });
     // No open challenge, or an answer signed for another one (a second tab, a double click), is not judged: the owner's own correct passkey can meet it.
     const challenge = await this.#takeChallenge('confirm', id);
@@ -362,7 +361,7 @@ export class Passkeys {
     if (!checked.ok) {
       // An answer that was given and failed: the owner may want to know. The client learns nothing more.
       if (checked.error.kind === 'invalid' || checked.error.kind === 'clone-suspected') {
-        await this.#events.dispatch(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }, new Date(this.#clock.now())));
+        await this.#emit(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }, new Date(this.#clock.now())));
       }
       return err(checked.error);
     }
@@ -370,8 +369,8 @@ export class Passkeys {
     // The session gains a privilege it did not have: a new id, as at sign-in and in a step-up.
     this.#session.regenerate();
     const now = this.#now();
-    writeAuth(this.#session, 'confirmedAt', now);
-    writeAuth(this.#session, 'twoFactorAt', now);
+    writeAuth(this.#session, 'confirmedAt', now, this.#names);
+    writeAuth(this.#session, 'twoFactorAt', now, this.#names);
     return ok();
   }
 
@@ -423,8 +422,8 @@ export class Passkeys {
     // Before the events: a listener that throws (a queue that cannot be reached) must not leave the thief's sessions alive. The other devices'
     // sessions and remember-me tokens end here and this one stays.
     await this.#auth.updateSessionKey();
-    await this.#events.dispatch(new PasskeyRemoved(user));
-    if (removed.value.lastFactor) await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
+    await this.#emit(new PasskeyRemoved(user));
+    if (removed.value.lastFactor) await this.#emit(new TwoFactorDisabled(user, 'user'));
     return ok();
   }
 
@@ -461,7 +460,7 @@ export class Passkeys {
    * of them removed it, and a synchronised passkey (counter 0) could be replayed without limit.
    */
   async #takeChallenge(purpose: ChallengePurpose, expectedUser?: number | string): Promise<Result<string, PasskeyError>> {
-    const taken = takeChallenge(this.#session, purpose, this.#now(), expectedUser);
+    const taken = takeChallenge(this.#session, purpose, this.#now(), expectedUser, this.#names);
     if (!taken.ok) return err(taken.error);
     if (!(await this.#spend(taken.value.challenge))) return err({ kind: 'no-challenge' });
     return ok(taken.value.challenge);
@@ -494,10 +493,10 @@ export class Passkeys {
         // transaction — after it, so the owner is told first.
         this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
         await this.#endSessionsOfClone(record);
-        if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
+        if (found) await this.#emit(new PasskeyCloneSuspected(found.user, record.id));
       } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
-        await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }, new Date(this.#clock.now())));
+        await this.#emit(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }, new Date(this.#clock.now())));
       }
       return err(verified.error);
     }
@@ -538,11 +537,11 @@ export class Passkeys {
 
   /** Uses a challenge up, atomically: `false` when another request already did. */
   async #spend(challenge: string): Promise<boolean> {
-    return this.#limiter.attempt(`passkey-challenge:${createHash('sha256').update(challenge).digest('base64url')}`, { maxAttempts: 1, decay: CHALLENGE_SECONDS });
+    return this.#limiter.attempt(this.#names.limiterKey(`passkey-challenge:${createHash('sha256').update(challenge).digest('base64url')}`), { maxAttempts: 1, decay: CHALLENGE_SECONDS });
   }
 
   #signInKey(): string {
-    return `passkey-sign-in:${clientKey(this.#request.ip)}`;
+    return this.#names.limiterKey(`passkey-sign-in:${clientKey(this.#request.ip)}`);
   }
 
   #now(): number {
@@ -563,7 +562,7 @@ export class Passkeys {
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
   async #requireRecentSecondFactor(method: string, userId: AuthUserId): Promise<void> {
-    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, this.#now())) {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, this.#now(), this.#names)) {
       throw new Error(`passkeys.${method}() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }

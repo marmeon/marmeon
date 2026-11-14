@@ -1,5 +1,6 @@
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
+import { APP_PASSKEY_STORE } from '../app-guard-context.ts';
 import { SecondFactorPasskeys } from '../two-factor/state.ts';
 import { PasskeyConfig } from './config.ts';
 import { Passkeys } from './passkeys.ts';
@@ -17,6 +18,7 @@ export class PasskeyServiceProvider implements ServiceProvider {
 
   register(container: Container): void {
     container.singleton(PasskeyStore);
+    container.bind(APP_PASSKEY_STORE, (c) => c.make(PasskeyStore));
     container.scoped(Passkeys);
     container.scoped(SecondFactorPasskeys, (scope) => scope.make(Passkeys));
   }

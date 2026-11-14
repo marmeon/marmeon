@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { err, ok, type Result } from '@marmeon/core';
 import type { Session } from '@marmeon/session';
-import { APP_GUARD_NAMES, type GuardNames } from '../guard-names.ts';
+import type { GuardNames } from '../guard-names.ts';
 
 /** What a challenge was issued for; it works for nothing else. */
 export type ChallengePurpose = 'register' | 'sign-in' | 'second-factor' | 'step-up' | 'confirm';
@@ -31,7 +31,7 @@ const keyOf = (names: Pick<GuardNames, 'session'>): string => names.session.weba
 export type ChallengeError = { kind: 'no-challenge' } | { kind: 'expired' } | { kind: 'invalid' };
 
 /** Opens a challenge for `purpose`; a session holds one, so a new one replaces the old. */
-export function issueChallenge(session: Session, purpose: ChallengePurpose, nowSeconds: number, userId?: string | number, userHandle?: string, names: Pick<GuardNames, 'session'> = APP_GUARD_NAMES): { bytes: Uint8Array; challenge: string } {
+export function issueChallenge(session: Session, purpose: ChallengePurpose, nowSeconds: number, userId: string | number | undefined, userHandle: string | undefined, names: Pick<GuardNames, 'session'>): { bytes: Uint8Array; challenge: string } {
   const bytes = randomBytes(32);
   const challenge = bytes.toString('base64url');
   session.put(keyOf(names), { challenge, purpose, ...(userId === undefined ? {} : { userId }), ...(userHandle === undefined ? {} : { userHandle }), until: nowSeconds + CHALLENGE_SECONDS });
@@ -46,8 +46,8 @@ export function takeChallenge(
   session: Session,
   purpose: ChallengePurpose,
   nowSeconds: number,
-  userId?: string | number,
-  names: Pick<GuardNames, 'session'> = APP_GUARD_NAMES,
+  userId: string | number | undefined,
+  names: Pick<GuardNames, 'session'>,
 ): Result<{ challenge: string; userHandle?: string }, ChallengeError> {
   // The key is a name, not a `SessionData` field: what came out of the store is checked below.
   const open = (session.started ? session.pull(keyOf(names)) : undefined) as Partial<OpenChallenge> | undefined;

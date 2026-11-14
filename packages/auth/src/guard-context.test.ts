@@ -16,6 +16,8 @@ import { APP_GUARD_NAMES, guardNames } from './guard-names.ts';
 import { SignInAudience } from './live-audience.ts';
 import { authenticate, confirmedPassword, guest } from './middleware.ts';
 import { NewPassword } from './new-password.ts';
+import { Passkeys } from './passkeys/passkeys.ts';
+import { PasskeyStore } from './passkeys/store.ts';
 import { PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 import { SignInStore } from './sign-ins.ts';
 import { SignInThrottle } from './sign-in-throttle.ts';
@@ -25,8 +27,11 @@ import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { AccessTokenStore } from './tokens.ts';
+import { confirmedSecondFactor } from './two-factor/confirmed.ts';
+import { twoFactor } from './two-factor/middleware.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
+import { TwoFactor } from './two-factor/two-factor.ts';
 import { UserProvider, type AuthUser } from './user.ts';
 
 type Injectable = { readonly inject?: readonly Key[] };
@@ -48,6 +53,7 @@ const OWNED_BY_A_GUARD: readonly unknown[] = [
   UserSessions,
   AuthConfig,
   Auth,
+  PasskeyStore,
 ];
 
 describe('the services that act for a guard', () => {
@@ -60,6 +66,10 @@ describe('the services that act for a guard', () => {
     'authenticate()': authenticate() as Injectable,
     'guest()': guest() as Injectable,
     'confirmedPassword()': confirmedPassword() as Injectable,
+    TwoFactor: TwoFactor as unknown as Injectable,
+    Passkeys: Passkeys as unknown as Injectable,
+    'twoFactor()': twoFactor({ setup: 'a', verify: 'b' } as never) as Injectable,
+    'confirmedSecondFactor()': confirmedSecondFactor({ verify: 'b' } as never) as Injectable,
   };
 
   it.each(Object.entries(services))('%s takes the GuardContext first and nothing a guard owns besides', (_name, Class) => {
@@ -92,15 +102,94 @@ describe('the sources of the guard services', () => {
 
   // `buildForGuard()` cannot see a default value (`Class.length` stops before it, and the injection list does too), so the sources must have none.
   it('have no optional or defaulted constructor parameter', () => {
-    const files = ['./auth.ts', './account-sessions.ts', './new-password.ts', './password-reset.ts', './live-audience.ts', './middleware.ts'];
+    const files = ['./auth.ts', './account-sessions.ts', './new-password.ts', './password-reset.ts', './live-audience.ts', './middleware.ts', './two-factor/two-factor.ts', './two-factor/middleware.ts', './two-factor/confirmed.ts', './passkeys/passkeys.ts'];
     const constructors = files.flatMap(guardConstructors);
-    // Auth, AccountSessions, NewPassword, PasswordBroker, SignInAudience and the three middleware classes.
-    expect(constructors.length).toBe(8);
+    // Auth, AccountSessions, NewPassword, PasswordBroker, SignInAudience and the three middleware classes, then TwoFactor, Passkeys and their two middleware classes.
+    expect(constructors.length).toBe(12);
     for (const { source, params } of constructors) {
       for (const param of params) {
         expect(param.type === 'AssignmentPattern' || param.optional === true, source.slice(param.start, param.end)).toBe(false);
       }
     }
+  });
+});
+
+describe('the events of the guard services', () => {
+  type Node = { type: string; start: number; end: number; [key: string]: any };
+
+  const files = [
+    './auth.ts',
+    './account-sessions.ts',
+    './new-password.ts',
+    './password-reset.ts',
+    './live-audience.ts',
+    './middleware.ts',
+    './two-factor/two-factor.ts',
+    './two-factor/middleware.ts',
+    './two-factor/confirmed.ts',
+    './passkeys/passkeys.ts',
+  ];
+
+  const isNode = (value: unknown): value is Node => typeof value === 'object' && value !== null && typeof (value as Node).type === 'string';
+
+  /** Calls `visit` for `node` and everything below it; a nested method is left out when `skipMethods` is set. */
+  function walk(node: unknown, parent: Node | undefined, visit: (node: Node, parent: Node | undefined) => void, skipMethods = false): void {
+    if (Array.isArray(node)) return node.forEach((child) => (skipMethods && isNode(child) && child.type === 'MethodDefinition' ? undefined : walk(child, parent, visit, skipMethods)));
+    if (!isNode(node)) return;
+    visit(node, parent);
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'parent' || typeof value !== 'object') continue;
+      if (skipMethods && isNode(value) && value.type === 'MethodDefinition') continue;
+      walk(value, node, visit, skipMethods);
+    }
+  }
+
+  /** What a use of a `dispatch` property in `file` does against the rule, one line each: it may only be called with a `const x = guard.event(…)` of its own method. */
+  function unmappedDispatches(file: string): string[] {
+    const path = new URL(file, import.meta.url);
+    const source = readFileSync(path, 'utf8');
+    const found: string[] = [];
+    const at = (node: Node) => `${file}: ${source.slice(node.start, node.start + 60)}`;
+    const named = (property: Node | undefined, computed: boolean) =>
+      property !== undefined && ((!computed && property.type === 'Identifier' && property.name === 'dispatch') || (computed && property.type === 'Literal' && property.value === 'dispatch'));
+
+    const checkMethod = (method: Node): void => {
+      // `const x = <anything>.event(…)`: the only names a dispatch may be given.
+      const mapped = new Set<string>();
+      walk(method, undefined, (node) => {
+        if (node.type !== 'VariableDeclarator' || node.id?.type !== 'Identifier') return;
+        const init = node.init as Node | undefined;
+        const callee = init?.type === 'CallExpression' ? (init.callee as Node) : undefined;
+        if (callee?.type === 'MemberExpression' && !callee.computed && callee.property?.type === 'Identifier' && callee.property.name === 'event') mapped.add(node.id.name);
+      }, true);
+      walk(method, undefined, (node, parent) => {
+        const isUse = (node.type === 'MemberExpression' && named(node.property, node.computed === true)) || (node.type === 'Property' && named(node.key, node.computed === true));
+        if (!isUse) return;
+        const [argument, ...rest] = parent?.type === 'CallExpression' && parent.callee === node ? (parent.arguments as Node[]) : [];
+        if (node.type === 'MemberExpression' && argument?.type === 'Identifier' && rest.length === 0 && mapped.has(argument.name)) return;
+        found.push(at(node));
+      }, true);
+    };
+
+    // Every method, and anything that uses a `dispatch` property outside of one.
+    const methods = new Set<Node>();
+    const program = parseSync(path.pathname, source).program;
+    walk(program, undefined, (node) => {
+      if (node.type === 'MethodDefinition') methods.add(node);
+    });
+    for (const method of methods) checkMethod(method);
+    walk(program, undefined, (node) => {
+      if ((node.type === 'MemberExpression' && named(node.property, node.computed === true)) || (node.type === 'Property' && named(node.key, node.computed === true))) {
+        if (![...methods].some((method) => method.start <= node.start && node.end <= method.end)) found.push(at(node));
+      }
+    });
+    return found;
+  }
+
+  // A package guard maps the app's events to none until it has its own: a service that dispatches straight to the app's listeners would
+  // let one guard's account events (a mail to the account's owner) reach listeners that read the id as the app's user.
+  it.each(files)('%s dispatches only what its guard has mapped', (file) => {
+    expect(unmappedDispatches(file)).toEqual([]);
   });
 });
 

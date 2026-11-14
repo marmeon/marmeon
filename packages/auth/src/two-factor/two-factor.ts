@@ -1,22 +1,24 @@
 import { RateLimiter } from '@marmeon/cache';
-import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
-import { Connections } from '@marmeon/database';
+import { err, ok, type Clock, type EventDispatcher, type Logger, type Result } from '@marmeon/core';
+import type { Connections } from '@marmeon/database';
 import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
-import { ACCOUNT_STILL_CLAIMED, Auth, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, type Auth, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
 import { writeAuth } from '../session-keys.ts';
 import { claimRefused } from '../account-sessions.ts';
-import { AuthConfig, rememberCookieName } from '../config.ts';
+import type { AuthConfig } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
-import { idOf, UserProvider, type AuthUser, type AuthUserId } from '../user.ts';
+import { GuardContext } from '../guard-context.ts';
+import type { GuardNames } from '../guard-names.ts';
+import { idOf, type AuthUser, type AuthUserId, type UserProvider } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
 import type { PasswordCheckError } from '../password-throttle.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
-import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type SecondFactor } from './state.ts';
-import { TwoFactorStore } from './store.ts';
+import { NoTwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type SecondFactor, type SecondFactorPasskeys, type TwoFactorState } from './state.ts';
+import type { TwoFactorStore } from './store.ts';
 import { generateSecret, otpauthUri, verifyTotp } from './totp.ts';
 
 /**
@@ -67,6 +69,8 @@ export type SecondFactorInput = { readonly code: string } | { readonly recoveryC
  * only for the account the factor was proven for.
  */
 export class TwoFactor {
+  readonly #guard: GuardContext;
+  readonly #names: GuardNames;
   readonly #auth: Auth;
   readonly #session: Session;
   readonly #state: TwoFactorState;
@@ -84,41 +88,35 @@ export class TwoFactor {
   readonly #logger: Logger;
   readonly #connections: Connections;
 
-  /** @internal Built by the container. */
-  constructor(
-    auth: Auth,
-    session: Session,
-    state: TwoFactorState,
-    store: TwoFactorStore,
-    encrypter: Encrypter,
-    limiter: RateLimiter,
-    events: EventDispatcher,
-    request: ClientInfo,
-    users: UserProvider,
-    cookies: CookieJar,
-    config: AuthConfig,
-    clock: Clock,
-    logger: Logger,
-    passkeys: SecondFactorPasskeys,
-    connections: Connections,
-    sessionConfig: SessionConfig,
-  ) {
-    this.#auth = auth;
+  /** @internal Built by the container. The users, stores, settings, names and events of the guard come from `guard`. */
+  constructor(guard: GuardContext, session: Session, encrypter: Encrypter, limiter: RateLimiter, request: ClientInfo, cookies: CookieJar, sessionConfig: SessionConfig) {
+    const store = guard.totp();
+    // A guard that offers no authenticator has no store to run this on: fail closed rather than reach for another guard's.
+    if (store === undefined) throw new TypeError(`Two-factor authentication is not available for the guard "${guard.names.name}": it has no TwoFactorStore.`);
+    this.#guard = guard;
+    this.#names = guard.names;
+    this.#auth = guard.auth();
     this.#session = session;
-    this.#state = state;
+    this.#state = guard.factors();
     this.#store = store;
     this.#encrypter = encrypter;
     this.#limiter = limiter;
-    this.#events = events;
+    this.#events = guard.events();
     this.#request = request;
-    this.#users = users;
+    this.#users = guard.users();
     this.#cookies = cookies;
-    this.#config = config;
-    this.#clock = clock;
-    this.#logger = logger;
-    this.#passkeys = passkeys;
-    this.#connections = connections;
-    this.#rememberCookie = rememberCookieName(config, sessionConfig);
+    this.#config = guard.settings;
+    this.#clock = guard.clock();
+    this.#logger = guard.logger();
+    this.#passkeys = guard.secondFactorPasskeys();
+    this.#connections = guard.connections();
+    this.#rememberCookie = guard.names.rememberCookie(guard.settings, sessionConfig);
+  }
+
+  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  async #emit(event: object): Promise<void> {
+    const mapped = this.#guard.event(event);
+    if (mapped !== undefined) await this.#events.dispatch(mapped);
   }
 
   /**
@@ -142,7 +140,7 @@ export class TwoFactor {
       const failures = this.#auth[RECORD_PENDING_FAILURE]() ?? PENDING_MAX_FAILURES;
       const found = await this.#users.findById(userId as never);
       // The owner is told of a wrong answer only, not of a challenge that timed out or was sent twice: the client sees `invalid-code` either way.
-      if (found && verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }, new Date(this.#clock.now())));
+      if (found && verdict === 'wrong') await this.#emit(new TwoFactorChallengeFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }, new Date(this.#clock.now())));
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, PENDING_MAX_FAILURES - failures) });
     }
     // Only the minute counter: hour and day keep the attempts that guessing used up.
@@ -171,14 +169,14 @@ export class TwoFactor {
     const minute = recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId);
     const verdict = await this.#verify(userId, input, 'step-up');
     if (verdict !== 'valid') {
-      if (verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }, new Date(this.#clock.now())));
+      if (verdict === 'wrong') await this.#emit(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }, new Date(this.#clock.now())));
       const budget = recovery ? RECOVERY_WINDOW.attempts : TOTP_WINDOWS[0].attempts;
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, budget - (await this.#limiter.attempts(minute))) });
     }
     await this.#limiter.clear(minute);
     // The session gains a privilege it did not have: a new id, as at sign-in, so that an id known from before is worth nothing now.
     this.#session.regenerate();
-    writeAuth(this.#session, 'twoFactorAt', this.#now()); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
+    writeAuth(this.#session, 'twoFactorAt', this.#now(), this.#names); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
     return ok(undefined);
   }
 
@@ -294,10 +292,10 @@ export class TwoFactor {
       throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
     }
     // Only the first factor proves anything about this session: a further one, set up with just the password, must not stand for the one already there.
-    if (first) writeAuth(this.#session, 'twoFactorAt', this.#now());
+    if (first) writeAuth(this.#session, 'twoFactorAt', this.#now(), this.#names);
     await this.#limiter.clear(this.#codeKey('minute', id));
-    await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
-    if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));
+    await this.#emit(new TwoFactorEnabled(user, 'totp'));
+    if (first) await this.#emit(new RecoveryCodesGenerated(user));
     return ok({ recoveryCodes });
   }
 
@@ -315,7 +313,7 @@ export class TwoFactor {
     if (!checked.ok) return err(checked.error);
     const codes = generateRecoveryCodes();
     await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
-    await this.#events.dispatch(new RecoveryCodesGenerated(user));
+    await this.#emit(new RecoveryCodesGenerated(user));
     return ok(codes);
   }
 
@@ -337,7 +335,7 @@ export class TwoFactor {
       return ok();
     }
     await this.#store.removeTotp(id, { lastFactor: factors.every((factor) => factor === 'totp') });
-    await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
+    await this.#emit(new TwoFactorDisabled(user, 'user'));
     return ok();
   }
 
@@ -354,7 +352,7 @@ export class TwoFactor {
       const remaining = await this.#store.consumeRecoveryCode(userId, hashRecoveryCode(userId, input.recoveryCode));
       if (remaining === undefined) return false;
       const found = await this.#users.findById(userId as never);
-      if (found) await this.#events.dispatch(new RecoveryCodeUsed(found.user, remaining));
+      if (found) await this.#emit(new RecoveryCodeUsed(found.user, remaining));
       return true;
     }
     const row = await this.#store.find(userId);
@@ -374,11 +372,11 @@ export class TwoFactor {
 
   // Per account only: a password reset, which whoever controls the mailbox can ask for, must not hand out fresh attempts.
   #codeKey(window: (typeof TOTP_WINDOWS)[number]['name'], userId: AuthUserId): string {
-    return `two-factor-${window}:${userId}`;
+    return this.#names.limiterKey(`two-factor-${window}:${userId}`);
   }
 
   #recoveryKey(userId: AuthUserId): string {
-    return `two-factor-recovery:${userId}`;
+    return this.#names.limiterKey(`two-factor-recovery:${userId}`);
   }
 
   /** Counts one code attempt in the three windows; the seconds to wait when any is used up, else `undefined`. */
@@ -449,7 +447,7 @@ export class TwoFactor {
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
   async #requireRecentSecondFactor(method: string, userId: AuthUserId, call = `${method}()`): Promise<void> {
-    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, this.#now())) {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, this.#now(), this.#names)) {
       throw new Error(`twoFactor.${call} needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }
