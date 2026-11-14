@@ -199,8 +199,13 @@ export function pageSessionOf(session: Session): PageSession {
     // A guest's is none: their session (a failed login's flash data) does not make the other tabs reload.
     generation: () =>
       started(() => {
-        const user: unknown = session.get(SESSION_USER_KEY);
-        return typeof user === 'string' || typeof user === 'number' || typeof user === 'bigint' ? `${sessionScope(session.id)}\n${String(user)}` : undefined;
+        // The app guard's id as it always was; a package guard's id with its key, so two guards never produce the same text.
+        const users = session.identityKeys().flatMap((key) => {
+          const user: unknown = session.get(key);
+          if (typeof user !== 'string' && typeof user !== 'number' && typeof user !== 'bigint') return [];
+          return [key === SESSION_USER_KEY ? String(user) : `${key}=${String(user)}`];
+        });
+        return users.length === 0 ? undefined : [sessionScope(session.id), ...users].join('\n');
       }),
   };
 }

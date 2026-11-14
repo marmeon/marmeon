@@ -4,6 +4,7 @@ import type { Clock, Logger } from '@marmeon/core';
 import type { EncryptionConfig } from '@marmeon/encryption';
 import type { SessionConfig } from '@marmeon/session';
 import type { AuthConfig } from './config.ts';
+import { APP_GUARD_NAMES, type GuardNames } from './guard-names.ts';
 import { idOf, type Credentials } from './user.ts';
 
 const CLIENT_SECONDS = 60;
@@ -44,6 +45,7 @@ export class SignInThrottle {
   readonly #session: Pick<SessionConfig, 'secure' | 'sameSite'>;
   readonly #clock: Clock;
   readonly #logger: Logger;
+  readonly #names: Pick<GuardNames, 'loginThrottleContext' | 'deviceContext' | 'deviceCookie' | 'limiterKey'>;
 
   /** @internal Built by the container. */
   constructor(
@@ -53,12 +55,14 @@ export class SignInThrottle {
     session: Pick<SessionConfig, 'secure' | 'sameSite'>,
     clock: Clock,
     logger: Logger,
+    names: Pick<GuardNames, 'loginThrottleContext' | 'deviceContext' | 'deviceCookie' | 'limiterKey'> = APP_GUARD_NAMES,
   ) {
+    this.#names = names;
     this.#limiter = limiter;
     // A domain separator of stored counter keys, not a name: changing it resets every count at deploy.
-    this.#key = derive(key, 'marmeon:auth-login-throttle');
+    this.#key = derive(key, names.loginThrottleContext);
     // A device cookie lives for months, so it is also accepted under the keys of APP_PREVIOUS_KEYS.
-    this.#deviceKeys = [key, ...previousKeys].map((secret) => derive(secret, 'marmeon:auth-device'));
+    this.#deviceKeys = [key, ...previousKeys].map((secret) => derive(secret, names.deviceContext));
     this.#perMinute = config.loginAttemptsPerMinute;
     this.#perDay = config.accountSignInsPerDay;
     this.#deviceDays = config.deviceCookieDays;
@@ -96,7 +100,7 @@ export class SignInThrottle {
    * then the cookie counts for nothing until the hour is over: the attempt goes against the account's shared ceiling like any other.
    */
   async takeDevice(nonce: string): Promise<boolean> {
-    return this.#limiter.attempt(`login-device:${this.#digest(`device:${nonce}`)}`, { maxAttempts: DEVICE_ATTEMPTS, decay: DEVICE_SECONDS });
+    return this.#limiter.attempt(this.#names.limiterKey(`login-device:${this.#digest(`device:${nonce}`)}`), { maxAttempts: DEVICE_ATTEMPTS, decay: DEVICE_SECONDS });
   }
 
   /** The owner is in (a password, a passkey, a second factor): this client's minute starts over. Best effort, see {@link clearAccount}. */
@@ -115,7 +119,7 @@ export class SignInThrottle {
 
   /** The name of the device cookie: `__Host-` over HTTPS, like the remember-me cookie. */
   get deviceCookieName(): string {
-    return this.#session.secure ? '__Host-marmeon_device' : 'marmeon_device';
+    return this.#names.deviceCookie(this.#session.secure);
   }
 
   /**
@@ -171,11 +175,11 @@ export class SignInThrottle {
 
   // The client's address is hashed too: a dump of the cache is no list of the addresses that tried an account.
   #clientKey(identifier: string, ip: string | undefined): string {
-    return `login:${this.#digest(identifier)}|${this.#digest(`ip:${clientKey(ip)}`)}`;
+    return this.#names.limiterKey(`login:${this.#digest(identifier)}|${this.#digest(`ip:${clientKey(ip)}`)}`);
   }
 
   #accountKey(identifier: string, userId: string | number | undefined): string {
-    return userId === undefined ? `login-account:identifier:${this.#digest(identifier)}` : `login-account:id:${String(userId)}`;
+    return this.#names.limiterKey(userId === undefined ? `login-account:identifier:${this.#digest(identifier)}` : `login-account:id:${String(userId)}`);
   }
 
   // Trimmed and lower-cased, as the sign-in form normalizes it: spellings of one address share their counters.

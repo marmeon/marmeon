@@ -82,6 +82,18 @@ export const SESSION_KEY = /^[0-9a-f]{64}$/;
  */
 export const SESSION_USER_KEY = '_auth_id';
 
+/** The session key holding the id of the user a package guard signed in (`_auth:<guard>:id`). */
+export function guardUserKey(guard: string): string {
+  return `_auth:${guard}:id`;
+}
+
+const GUARD_USER_KEY = /^_auth:[a-z0-9-]+:id$/;
+
+/** Whether `key` holds the id of a signed-in user: the app guard's {@link SESSION_USER_KEY} or a package guard's {@link guardUserKey}. */
+export function isSessionIdentityKey(key: string): boolean {
+  return key === SESSION_USER_KEY || GUARD_USER_KEY.test(key);
+}
+
 export function createSessionId(): string {
   return crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
 }

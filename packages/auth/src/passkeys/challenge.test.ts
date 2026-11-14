@@ -1,5 +1,6 @@
 import type { Session } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
+import { guardNames } from '../guard-names.ts';
 import { issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
 
 /** Just what the challenge helpers use of a session. */
@@ -22,6 +23,15 @@ describe('challenges', () => {
       const { challenge } = issueChallenge(session, issued, 1000, 7);
       expect(takeChallenge(session, issued, 1001, 7)).toMatchObject({ ok: true, value: { challenge } });
     }
+  });
+
+  it('are kept per guard: a ceremony opened for one guard serves neither the app nor another guard', () => {
+    const session = fakeSession();
+    const office = guardNames('office');
+    const { challenge } = issueChallenge(session, 'sign-in', 1000, undefined, undefined, office);
+    expect(takeChallenge(session, 'sign-in', 1001), 'app').toEqual({ ok: false, error: { kind: 'no-challenge' } });
+    expect(takeChallenge(session, 'sign-in', 1001, undefined, guardNames('shop')), 'other guard').toEqual({ ok: false, error: { kind: 'no-challenge' } });
+    expect(takeChallenge(session, 'sign-in', 1001, undefined, office)).toMatchObject({ ok: true, value: { challenge } });
   });
 
   it('are gone after one take, and after their five minutes', () => {

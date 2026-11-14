@@ -4,6 +4,6 @@
  */
 export { plainSessionCodec } from './codec.ts';
 export { accountScope, sessionScope } from './ended.ts';
-export { createSessionId, SESSION_ID } from './store.ts';
+export { createSessionId, guardUserKey, isSessionIdentityKey, SESSION_ID } from './store.ts';
 export { MemorySessionStore } from './stores/memory.ts';
 export { openPayload, sealPayload } from './format.ts';
