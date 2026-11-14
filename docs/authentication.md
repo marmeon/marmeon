@@ -1310,6 +1310,10 @@ app's defaults (`auth.login`, `auth.password.confirm`) are pages of the app:
 
 ```ts title="office/src/routes.ts"
 import { defineRoutes, everyone } from '@marmeon/http';
+import { Login } from './controllers/Login.ts';
+import { RemoveStaff } from './controllers/RemoveStaff.ts';
+import { ShowHome } from './controllers/ShowHome.ts';
+import { ShowLogin } from './controllers/ShowLogin.ts';
 import { OfficeGuard } from './guard.ts';
 
 export default defineRoutes((Route) => {
@@ -1344,6 +1348,8 @@ guards fails with error [A9](errors.md#server-error-codes) (a 500 whose log line
 - the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` on a route of a package guard (`verified()` also refuses a user of a package guard when an app built it by hand);
 - the guard's `confirmedPassword()` on a route of the app, or on one where its own `authenticate()` has not run before it;
 - `OfficeGuard.guest()` and the app's `authenticate()` on one route, in either order. Two `authenticate()` on one route stop the start already, as they add `user` twice.
+
+A gate that asks a policy before the guard's `authenticate()` or `guest()` on the route counts as the app's too: it has judged the app's user, so the route is the app's from there and a package guard's `authenticate()` or `guest()` after it is A9. Put the guard's middleware first. A global middleware of the app that asks a policy at once (an admin flag for shared props, say) therefore fails every route of a package guard with A9: put it on the app's routes or in a group, not in the global list.
 
 So the sudo window or the second factor of an app user can never open a route of the back office, and the other way round. A route has
 one guard: put the routes of a package guard in a group of their own.

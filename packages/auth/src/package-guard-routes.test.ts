@@ -135,6 +135,30 @@ class ProjectEarly {
   }
 }
 
+/** A middleware that asks a policy before any guard's `authenticate()`: it judges the app's user, so the route is the app's from there. */
+class AuthorizeEarly {
+  readonly #gate: Gate;
+  constructor(gate: Gate) {
+    this.#gate = gate;
+  }
+  async handle(_ctx: HttpContext, next: () => Promise<Response>) {
+    await this.#gate.authorize(OpenPolicy, 'view');
+    return next();
+  }
+}
+
+/** Makes a projection and awaits it ahead of any guard's `authenticate()`: the policy has judged the app's user by then. */
+class ProjectAndAwaitEarly {
+  readonly #gate: Gate;
+  constructor(gate: Gate) {
+    this.#gate = gate;
+  }
+  async handle(_ctx: HttpContext, next: () => Promise<Response>) {
+    await this.#gate.abilities(OpenPolicy, ['view']);
+    return next();
+  }
+}
+
 const OFFICE = { loginRoute: 'office.login', homeRoute: 'office.home', confirmRoute: 'office.confirm' } as const;
 
 const routes = openRoutes((Route) => {
@@ -172,6 +196,8 @@ const routes = openRoutes((Route) => {
         return { threw: (error as Error).message };
       }
     });
+  Route.middleware(AuthorizeEarly as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/early-policy', () => 'office page');
+  Route.middleware(ProjectAndAwaitEarly as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/early-projection', () => 'office page');
   officeOnly.get('/r/office-gate/:method', AskGate);
   appOnly.get('/r/app-gate/:method', AskGate);
   officeOnly.middleware(OfficeGuard.throttle('passkey-confirm-options')).get('/r/office-throttle', () => 'ok');
@@ -345,23 +371,25 @@ describe('the routes of a package guard', () => {
   it('gives a route with the guard\'s throttle() the rate-limited mark that marmeon check reads, and refuses a name that is not a limit', () => {
     expect(ensuresOf(OfficeGuard.throttle('login'))).toContain('rate-limited');
     expect(ensuresOf(OfficeGuard.authenticate(OFFICE))).toContain('authenticated');
-    // @ts-expect-error — not the name of an auth route's limit
-    expect(() => OfficeGuard.throttle('nothing')).toThrow(TypeError);
-    // @ts-expect-error — a limit of the app's routes that a guard has none of
-    expect(() => OfficeGuard.throttle('verification')).toThrow(TypeError);
+    expect(() => OfficeGuard.throttle('nothing' as never)).toThrow(TypeError);
+    expect(() => OfficeGuard.throttle('verification' as never)).toThrow(TypeError);
   });
 
-  it('needs the guard\'s own pages: the app\'s defaults belong to the app', () => {
-    // @ts-expect-error — loginRoute is required
-    expect(() => OfficeGuard.authenticate({})).toThrow(TypeError);
-    // @ts-expect-error — homeRoute is required
-    expect(() => OfficeGuard.guest({})).toThrow(TypeError);
-    // @ts-expect-error — confirmRoute is required
-    expect(() => OfficeGuard.confirmedPassword({})).toThrow(TypeError);
+  it('needs the guard\'s own pages, also from a caller TypeScript does not check (the types refuse it in define-guard.type-test.ts)', () => {
+    expect(() => OfficeGuard.authenticate({} as never)).toThrow(TypeError);
+    expect(() => OfficeGuard.guest({} as never)).toThrow(TypeError);
+    expect(() => OfficeGuard.confirmedPassword({} as never)).toThrow(TypeError);
   });
 });
 
 describe('the gate on the routes of a package guard', () => {
+  it('takes a route for the app\'s once a policy has judged the app\'s user on it, so a package guard\'s authenticate() after it is A9', async () => {
+    const { signedIn, failures } = await boot();
+    const both = await signedIn('app', 'office');
+    await expectA9(both, failures, '/r/early-policy');
+    await expectA9(both, failures, '/r/early-projection');
+  });
+
   it('refuses a projection made ahead of the guard\'s authenticate() when the page computes it', async () => {
     const { signedIn } = await boot();
     const both = await signedIn('app', 'office');

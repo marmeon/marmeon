@@ -56,11 +56,15 @@ export class RequestGuard {
   }
 
   /**
+   * `decide` is for a gate that asks a policy now; a projection that is only made, to be computed when a page renders, just checks.
    * The `Gate` on a route of a package guard: A9 for now, whatever the policy. The gate asks the app's `Auth`, which is not who the
    * route's controller acts for; refusing is the fail-closed answer until a policy names the guard whose users it judges.
    */
-  refuseGate(method: string): void {
+  refuseGate(method: string, decide = false): void {
     const current = this.#name;
+    // A policy that runs now has judged the app's user: the route is the app's from here, so a package guard's `authenticate()` after it
+    // is A9 and cannot make a controller act for another user than the one the policy saw.
+    if (decide && current === undefined) this.#name = 'web';
     if (current !== undefined && !isApp(current)) {
       refuse(`Gate.${method}() asks the policies about the app's users, but this route belongs to the guard '${current}': a policy cannot judge the users of a package guard yet; authorize on ctx.user (describeAccess) instead.`);
     }
