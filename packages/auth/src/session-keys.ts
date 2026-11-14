@@ -1,6 +1,7 @@
 import type { Session } from '@marmeon/session';
 import { SESSION_USER_KEY } from '@marmeon/session';
 import type { SignInVia } from './events.ts';
+import type { GuardNames } from './guard-names.ts';
 import type { SecondFactor } from './two-factor/state.ts';
 
 /** Session keys of the signed-in user — `_`-prefixed: framework bookkeeping, left out of `session.all()`. */
@@ -66,12 +67,15 @@ export interface AuthSessionKeys {
   typedPassword: boolean;
 }
 
-/** Reads a sign-in key. The value came from the session store, so it is `unknown`: every reader checks the type it needs. */
-export function readAuth(session: Session, key: keyof AuthSessionKeys): unknown {
-  return session.get(AUTH_SESSION_KEYS[key]);
+/**
+ * Reads a sign-in key — the app guard's, or `names`' (a package guard's). The value came from the session store, so it is `unknown`:
+ * every reader checks the type it needs.
+ */
+export function readAuth(session: Session, key: keyof AuthSessionKeys, names?: Pick<GuardNames, 'session'>): unknown {
+  return session.get((names?.session ?? AUTH_SESSION_KEYS)[key]);
 }
 
 /** Writes a sign-in key with the type {@link AuthSessionKeys} names for it. */
-export function writeAuth<K extends keyof AuthSessionKeys>(session: Session, key: K, value: AuthSessionKeys[K]): void {
-  session.put<string>(AUTH_SESSION_KEYS[key], value);
+export function writeAuth<K extends keyof AuthSessionKeys>(session: Session, key: K, value: AuthSessionKeys[K], names?: Pick<GuardNames, 'session'>): void {
+  session.put<string>((names?.session ?? AUTH_SESSION_KEYS)[key], value);
 }

@@ -6,7 +6,7 @@ import { flashableInput, OLD_INPUT_KEY, type FlashEntry } from '@marmeon/http/in
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
 import { EMPTY_PAYLOAD, openPayload, sealPayload } from './format.ts';
-import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
+import { createSessionId, isSessionIdentityKey, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
 
 /**
  * Typed session keys, declared by apps and packages through declaration merging:
@@ -220,6 +220,15 @@ export class Session {
     // Forgetting what is not there changes nothing — not even for a read-only request.
     if (present.length === 0 || !this.#may(`session.forget('${present.join("', '")}')`)) return;
     for (const key of present) delete data[key];
+  }
+
+  /**
+   * The keys holding the id of a signed-in user (one per guard that signed somebody in), sorted, the app guard's first.
+   * @internal For the tab-sync epoch and no-store: a sign-in of any guard counts.
+   */
+  identityKeys(): string[] {
+    const keys = Object.keys(this.#ensureStarted()).filter(isSessionIdentityKey);
+    return keys.sort((a, b) => (a === SESSION_USER_KEY ? -1 : b === SESSION_USER_KEY ? 1 : a < b ? -1 : a > b ? 1 : 0));
   }
 
   /** Everything except the framework's bookkeeping (`_token`, `_flash`, …). */

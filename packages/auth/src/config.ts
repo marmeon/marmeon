@@ -134,7 +134,8 @@ function refuseOldKeys<T extends object>(config: T): T {
 
 /**
  * The name the remember-me cookie goes by: `AUTH_REMEMBER_COOKIE`, with the `__Host-` prefix when the session's cookies are
- * `Secure` (`secure` is theirs). Over plain HTTP (development) there is no prefix. Only this name is ever read.
+ * `Secure` (`secure` is theirs). Over plain HTTP (development) there is no prefix. Only this name is ever read. This is the app
+ * guard's cookie; a package guard's carries its name (`GuardNames.rememberCookie()`), so signing in to one never restores the other.
  */
 export function rememberCookieName(config: Pick<AuthConfig, 'rememberCookie'>, session: Pick<SessionConfig, 'secure'>): string {
   return session.secure ? `__Host-${config.rememberCookie}` : config.rememberCookie;

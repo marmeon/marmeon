@@ -8,6 +8,7 @@ import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { Auth, AuthConfig, AuthServiceProvider, authenticate, Hasher, SignInLockedOut, TwoFactorState, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
+import { guardNames } from './guard-names.ts';
 import { SignInThrottle } from './sign-in-throttle.ts';
 import type { Clock, Logger } from '@marmeon/core';
 import { openRoutes } from './test-helpers/open-routes.ts';
@@ -341,6 +342,75 @@ describe('SignInThrottle', () => {
       'login-account:id:42',
       'login-device:JtEqR0GFyCrfbb0WVuOziocpooBegGjDzUC1LFYXFJo',
     ]);
+  });
+
+  describe('of a package guard', () => {
+    const counting = () => {
+      const counts = new Map<string, number>();
+      const limiter = {
+        attempt: async (key: string, { maxAttempts }: { maxAttempts: number }) => {
+          const used = (counts.get(key) ?? 0) + 1;
+          counts.set(key, used);
+          return used <= maxAttempts;
+        },
+        availableInSeconds: async () => 1,
+        clear: async (key: string) => void counts.delete(key),
+      } as unknown as RateLimiter;
+      return limiter;
+    };
+    const secret = { key: new Uint8Array(32).fill(7), previousKeys: [] };
+    const throttleOf = (limiter: RateLimiter, guard?: string) => new SignInThrottle(limiter, secret, { ...config, accountSignInsPerDay: 2 }, session, clock, logger, guard === undefined ? undefined : guardNames(guard));
+
+    it('counts the account per guard: the day of account 1 of one guard leaves account 1 of the other free', async () => {
+      const limiter = counting();
+      const app = throttleOf(limiter);
+      const office = throttleOf(limiter, 'office');
+      expect(await office.takeAccount('ada@example.com', 1)).toBeUndefined();
+      expect(await office.takeAccount('ada@example.com', 1)).toBeUndefined();
+      expect(await office.takeAccount('ada@example.com', 1)).toMatchObject({ first: true });
+      expect(await app.takeAccount('ada@example.com', 1), 'the app account 1 is a different account').toBeUndefined();
+      expect(await app.takeAccount('ada@example.com', 1)).toBeUndefined();
+      expect(await app.takeAccount('ada@example.com', 1)).toMatchObject({ first: true });
+    });
+
+    it('does not let the sign-in of the app account clear the count of the guard’s account, nor the reverse', async () => {
+      const limiter = counting();
+      const app = throttleOf(limiter);
+      const office = throttleOf(limiter, 'office');
+      await office.takeAccount('ada@example.com', 1);
+      await office.takeAccount('ada@example.com', 1);
+      await app.takeAccount('ada@example.com', 1);
+      await app.clearAccount(1);
+      expect(await office.takeAccount('ada@example.com', 1), 'still over the guard’s ceiling').toBeDefined();
+      await office.clearAccount(1);
+      expect(await app.takeAccount('ada@example.com', 1)).toBeUndefined();
+    });
+
+    it('counts clients and device cookies per guard', async () => {
+      const limiter = counting();
+      const app = throttleOf(limiter);
+      const office = throttleOf(limiter, 'office');
+      for (let i = 0; i < 5; i++) expect(await office.takeClient('ada@example.com', '203.0.113.1')).toBeUndefined();
+      expect(await office.takeClient('ada@example.com', '203.0.113.1')).toBeDefined();
+      expect(await app.takeClient('ada@example.com', '203.0.113.1')).toBeUndefined();
+      for (let i = 0; i < 10; i++) expect(await office.takeDevice('n')).toBe(true);
+      expect(await office.takeDevice('n')).toBe(false);
+      expect(await app.takeDevice('n')).toBe(true);
+    });
+
+    it('names its device cookie after the guard, and a device cookie of one guard is worth nothing to the other', () => {
+      const limiter = counting();
+      const app = throttleOf(limiter);
+      const office = throttleOf(limiter, 'office');
+      expect(app.deviceCookieName).toBe('marmeon_device');
+      expect(office.deviceCookieName).toBe('marmeon_device.office.device');
+      const cookie = office.issueDevice(credentials(1))!;
+      expect(cookie.name).toBe('marmeon_device.office.device');
+      expect(office.deviceNonce(cookie.value, credentials(1))).toBeDefined();
+      expect(app.deviceNonce(cookie.value, credentials(1))).toBeUndefined();
+      const own = app.issueDevice(credentials(1))!;
+      expect(office.deviceNonce(own.value, credentials(1))).toBeUndefined();
+    });
   });
 
   it('keeps neither the address, the client address nor a plain hash of them in a cache key, only an HMAC under a key derived from APP_KEY', async () => {

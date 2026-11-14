@@ -12,10 +12,14 @@ export function sessionScope(id: string): string {
 
 /**
  * The scope of an account: a hash of its id under a prefix of its own, so it never equals the scope of a session. It outlives every
- * sign-in of the account; it is an unkeyed hash and stays on the server. The live package files the account's streams under it.
+ * sign-in of the account; it is an unkeyed hash and stays on the server. The live package files the account's streams under it. `guard`
+ * names a package guard: its accounts have scopes of their own, whatever their ids.
  */
-export function accountScope(userId: string | number): string {
-  return hash('sha256', `marmeon-account-scope:${userId}`, 'base64url').slice(0, 22);
+export function accountScope(userId: string | number, guard?: string): string {
+  // A package guard's input starts `marmeon-account-scope@`, which the app's `marmeon-account-scope:` never does; a guard name has
+  // neither `@` nor `:`, so the first `:` ends it — no id of the app (a string id may hold any text) equals a guard's.
+  const input = guard === undefined ? `marmeon-account-scope:${userId}` : `marmeon-account-scope@${guard}:${userId}`;
+  return hash('sha256', input, 'base64url').slice(0, 22);
 }
 
 /** Told the scope of a session that ended. */

@@ -1,5 +1,6 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import type { EncryptionConfig } from '@marmeon/encryption';
+import { APP_GUARD_NAMES, type GuardNames } from './guard-names.ts';
 import { idOf, type Credentials } from './user.ts';
 
 /**
@@ -13,8 +14,9 @@ export class SessionFingerprints {
   readonly #keys: readonly Uint8Array[];
 
   /** @internal Built by the container. */
-  constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>) {
-    this.#keys = [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:auth-session', 32)));
+  constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, names: Pick<GuardNames, 'fingerprintContext'> = APP_GUARD_NAMES) {
+    // The guard is in the HKDF context: the same id and session key (both `null` for a seeded user) under two guards never match.
+    this.#keys = [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), names.fingerprintContext, 32)));
   }
 
   /** The fingerprint of `credentials` under the current key. */

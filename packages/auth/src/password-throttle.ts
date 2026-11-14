@@ -1,4 +1,5 @@
 import type { RateLimiter } from '@marmeon/cache';
+import { APP_GUARD_NAMES, type GuardNames } from './guard-names.ts';
 
 /**
  * Whose password check this is: the sign-in's own random key (it survives `regenerate()` within a sign-in, a new sign-in has a new one),
@@ -21,9 +22,11 @@ const ACCOUNT_WINDOW = { attempts: 20, seconds: 3600 } as const;
 /** Per account, for every sign-in, typed or not: stolen sessions cannot add their own limits up past it. */
 const ACCOUNT_DAY_WINDOW = { attempts: 100, seconds: 86_400 } as const;
 
-const sessionKey = (window: string, scope: PasswordCheckScope) => `password-check-${window}:session:${scope.session}`;
-const accountKey = (userId: number | string) => `password-check-hour:account:${userId}`;
-const accountDayKey = (userId: number | string) => `password-check-day:account:${userId}`;
+type Names = Pick<GuardNames, 'limiterKey'>;
+
+const sessionKey = (window: string, scope: PasswordCheckScope, names: Names) => names.limiterKey(`password-check-${window}:session:${scope.session}`);
+const accountKey = (userId: number | string, names: Names) => names.limiterKey(`password-check-hour:account:${userId}`);
+const accountDayKey = (userId: number | string, names: Names) => names.limiterKey(`password-check-day:account:${userId}`);
 
 /** A password check that is held up: the seconds to wait, and `account: true` when it is the account's cap and not the sign-in's own windows. */
 export interface PasswordThrottled {
@@ -45,23 +48,28 @@ export type PasswordCheckError = { readonly kind: 'invalid-password' } | Passwor
  * cap does not apply to — show that, not a wait.
  * For a password, `Auth.checkPassword()` is the way: it counts, checks and clears. This is for the app's own secrets of a signed-in user.
  */
-export async function takePasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope, userId: number | string): Promise<PasswordThrottled | undefined> {
+export function takePasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope, userId: number | string): Promise<PasswordThrottled | undefined> {
+  return takeGuardPasswordCheck(limiter, scope, userId, APP_GUARD_NAMES);
+}
+
+/** {@link takePasswordCheck} for the guard of `names`: its counters carry the guard's name. @internal */
+export async function takeGuardPasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope, userId: number | string, names: Names): Promise<PasswordThrottled | undefined> {
   const waits: number[] = [];
   let account = false;
   for (const window of SESSION_WINDOWS) {
-    const key = sessionKey(window.name, scope);
+    const key = sessionKey(window.name, scope, names);
     if (!(await limiter.attempt(key, { maxAttempts: window.attempts, decay: window.seconds }))) waits.push(await limiter.availableInSeconds(key));
   }
   // Only a check the sign-in itself allows counts against the account: one that is held up has guessed nothing.
   if (waits.length === 0 && !scope.typed) {
-    const key = accountKey(userId);
+    const key = accountKey(userId, names);
     if (!(await limiter.attempt(key, { maxAttempts: ACCOUNT_WINDOW.attempts, decay: ACCOUNT_WINDOW.seconds }))) {
       waits.push(await limiter.availableInSeconds(key));
       account = true;
     }
   }
   if (waits.length === 0) {
-    const key = accountDayKey(userId);
+    const key = accountDayKey(userId, names);
     if (!(await limiter.attempt(key, { maxAttempts: ACCOUNT_DAY_WINDOW.attempts, decay: ACCOUNT_DAY_WINDOW.seconds }))) {
       waits.push(await limiter.availableInSeconds(key));
       account = true;
@@ -72,6 +80,11 @@ export async function takePasswordCheck(limiter: RateLimiter, scope: PasswordChe
 }
 
 /** A right password clears the sign-in's minute (the hours stay: a slow guesser is still counted). */
-export async function clearPasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope): Promise<void> {
-  await limiter.clear(sessionKey('minute', scope));
+export function clearPasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope): Promise<void> {
+  return clearGuardPasswordCheck(limiter, scope, APP_GUARD_NAMES);
+}
+
+/** {@link clearPasswordCheck} for the guard of `names`. @internal */
+export async function clearGuardPasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope, names: Names): Promise<void> {
+  await limiter.clear(sessionKey('minute', scope, names));
 }
