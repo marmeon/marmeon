@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { Container, type Key } from '@marmeon/core';
+import { parseSync } from '@marmeon/core/internal';
 import { ClientHistory } from '@marmeon/http';
 import { Session, UserSessions, type SessionConfig } from '@marmeon/session';
 import { MemorySessionStore, plainSessionCodec } from '@marmeon/session/internal';
@@ -63,6 +65,42 @@ describe('the services that act for a guard', () => {
   it.each(Object.entries(services))('%s takes the GuardContext first and nothing a guard owns besides', (_name, Class) => {
     expect(Class.inject?.[0]).toBe(GuardContext);
     expect(Class.inject!.slice(1).filter((key) => OWNED_BY_A_GUARD.includes(key))).toEqual([]);
+  });
+});
+
+describe('the sources of the guard services', () => {
+  type Node = { type: string; start: number; end: number; [key: string]: any };
+
+  /** Every constructor whose first parameter is the `GuardContext`, with its parameters. */
+  function guardConstructors(file: string): { source: string; params: Node[] }[] {
+    const path = new URL(file, import.meta.url);
+    const source = readFileSync(path, 'utf8');
+    const found: { source: string; params: Node[] }[] = [];
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (typeof node !== 'object' || node === null) return;
+      const current = node as Node;
+      if (current.type === 'MethodDefinition' && current.kind === 'constructor') {
+        const params: Node[] = current.value.params;
+        if (params[0] && source.slice(params[0].start, params[0].end).includes(': GuardContext')) found.push({ source, params });
+      }
+      for (const value of Object.values(current)) if (typeof value === 'object') visit(value);
+    };
+    visit(parseSync(path.pathname, source).program);
+    return found;
+  }
+
+  // `buildForGuard()` cannot see a default value (`Class.length` stops before it, and the injection list does too), so the sources must have none.
+  it('have no optional or defaulted constructor parameter', () => {
+    const files = ['./auth.ts', './account-sessions.ts', './new-password.ts', './password-reset.ts', './live-audience.ts', './middleware.ts'];
+    const constructors = files.flatMap(guardConstructors);
+    // Auth, AccountSessions, NewPassword, PasswordBroker, SignInAudience and the three middleware classes.
+    expect(constructors.length).toBe(8);
+    for (const { source, params } of constructors) {
+      for (const param of params) {
+        expect(param.type === 'AssignmentPattern' || param.optional === true, source.slice(param.start, param.end)).toBe(false);
+      }
+    }
   });
 });
 

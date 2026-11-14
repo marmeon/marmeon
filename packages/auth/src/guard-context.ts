@@ -77,7 +77,8 @@ export function buildForGuard<T>(Class: Injectable<T>, resolver: Resolver, conte
   if (inject === undefined || inject[0] !== GuardContext) {
     throw new TypeError(`${Class.name} cannot be built for a guard: its first constructor parameter is not the GuardContext.`);
   }
-  // An optional or defaulted parameter is never injected, so the class would be built without it, silently.
+  // An optional parameter (`?`) counts in `Class.length`, so it is caught here. A default (`= …`) does not count and is not injected
+  // either: the structure test of the guard services rules defaults out in their sources.
   if (inject.length < Class.length) {
     throw new TypeError(`${Class.name} cannot be built for a guard: ${Class.length - inject.length} of its constructor parameters would be left out (optional parameters are not injected).`);
   }
