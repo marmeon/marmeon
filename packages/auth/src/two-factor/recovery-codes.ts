@@ -1,5 +1,4 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { AuthUserId } from '../user.ts';
 
 /** Crockford Base32: no I, L, O, U, so a code read aloud or copied by hand survives. */
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -33,9 +32,10 @@ export function normalizeRecoveryCode(code: string): string {
 }
 
 /**
- * SHA-256 of the normalized code under a fixed prefix and the user's id, so a hash copied to another account is no code there. A
- * fast hash is enough at 80 bits of entropy, and the hash does not depend on `APP_KEY`, so codes stay valid when the key rotates.
+ * SHA-256 of the normalized code under `context` (`GuardNames.recoveryCodeContext(id)`: a fixed prefix, the guard where it is a package's
+ * and the user's id), so a hash copied to another account or guard is no code there. A fast hash is enough at 80 bits of entropy, and the
+ * hash does not depend on `APP_KEY`, so codes stay valid when the key rotates.
  */
-export function hashRecoveryCode(userId: AuthUserId, code: string): string {
-  return createHash('sha256').update(`marmeon-auth:recovery:${userId}:${normalizeRecoveryCode(code)}`).digest('hex');
+export function hashRecoveryCode(context: string, code: string): string {
+  return createHash('sha256').update(`${context}:${normalizeRecoveryCode(code)}`).digest('hex');
 }

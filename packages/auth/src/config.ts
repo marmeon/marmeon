@@ -88,6 +88,8 @@ export const AuthConfig = defineConfig('auth', {
     sessionMaxSeconds: e.AUTH_SESSION_MAX_HOURS * 3600,
     rememberCookie: e.AUTH_REMEMBER_COOKIE,
     appName: e.APP_NAME,
+    /** The issuer a package guard shows for its second factor, in place of `appName`; `undefined` for the app. */
+    twoFactorIssuer: undefined as string | undefined,
     loginAttemptsPerMinute: e.AUTH_LOGIN_ATTEMPTS_PER_MINUTE,
     accountSignInsPerDay: e.AUTH_ACCOUNT_SIGN_INS_PER_DAY,
     deviceCookieDays: e.AUTH_DEVICE_COOKIE_DAYS,

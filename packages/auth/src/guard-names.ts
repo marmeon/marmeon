@@ -24,6 +24,10 @@ export interface GuardNames {
   routeLimit(name: string): string;
   /** The scope the live package files an account's streams under. */
   accountScope(id: string | number): string;
+  /** What an authenticator secret of account `id` is encrypted for: a row copied to another account or guard does not decrypt. */
+  factorSecretContext(id: string | number): string;
+  /** What a recovery code of account `id` is hashed under: a hash copied to another account or guard is no code there. */
+  recoveryCodeContext(id: string | number): string;
 }
 
 const APP_NAME = 'web';
@@ -54,6 +58,8 @@ export const APP_GUARD_NAMES: GuardNames = {
   limiterKey: (base) => base,
   routeLimit: (name) => name,
   accountScope: (id) => accountScope(id),
+  factorSecretContext: (id) => `marmeon-auth:two-factor:${id}`,
+  recoveryCodeContext: (id) => `marmeon-auth:recovery:${id}`,
 };
 
 const GUARD_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -88,5 +94,8 @@ export function guardNames(name: string): GuardNames {
     limiterKey: (base) => `guard:${name}|${base}`,
     routeLimit: (limit) => `auth.${name}.${limit.replace(/^auth\./, '')}`,
     accountScope: (id) => accountScope(id, name),
+    // `@` joins the guard to the purpose, so the app's `two-factor:<id>` never equals `two-factor@<guard>:<id>`.
+    factorSecretContext: (id) => `marmeon-auth:two-factor@${name}:${id}`,
+    recoveryCodeContext: (id) => `marmeon-auth:recovery@${name}:${id}`,
   };
 }

@@ -55,6 +55,24 @@ describe('APP_GUARD_NAMES', () => {
   });
 });
 
+describe('the encryption and hashing contexts of the factors', () => {
+  it('are the app\'s own for the app guard, byte for byte, so stored secrets and recovery codes stay valid', () => {
+    expect(APP_GUARD_NAMES.factorSecretContext(7)).toBe('marmeon-auth:two-factor:7');
+    expect(APP_GUARD_NAMES.recoveryCodeContext(7)).toBe('marmeon-auth:recovery:7');
+  });
+
+  it('carry the guard\'s name for a package guard, and no two guards\' or the app\'s are equal for any id', () => {
+    const [office, depot] = [guardNames('office'), guardNames('depot')];
+    expect(office.factorSecretContext(7)).toBe('marmeon-auth:two-factor@office:7');
+    expect(office.recoveryCodeContext(7)).toBe('marmeon-auth:recovery@office:7');
+    for (const id of [1, 7, 'office:7', '@office:7']) {
+      const contexts = [APP_GUARD_NAMES, office, depot].flatMap((names) => [names.factorSecretContext(id), names.recoveryCodeContext(id)]);
+      expect(new Set(contexts).size).toBe(6);
+    }
+    expect(APP_GUARD_NAMES.factorSecretContext('@office:7')).not.toBe(office.factorSecretContext(7));
+  });
+});
+
 describe('guardNames()', () => {
   const office = guardNames('office');
   const other = guardNames('shop');

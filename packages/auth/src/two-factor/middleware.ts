@@ -5,6 +5,7 @@ import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpConte
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { GuardContext } from '../guard-context.ts';
+import { APP_MIDDLEWARE_GUARD, type MiddlewareGuard } from '../middleware.ts';
 import { RequestGuard } from '../request-guard.ts';
 import { idOf, type Authenticated } from '../user.ts';
 import { secondFactorProvenWithin } from './proof.ts';
@@ -37,10 +38,17 @@ export interface TwoFactorMiddlewareOptions<S extends string = string, V extends
 export function twoFactor<const S extends RouteNameInput = never, const V extends RouteNameInput = never, const L extends RouteNameInput = never>(
   options: TwoFactorMiddlewareOptions<S, V, L>,
 ): MiddlewareClass<Authenticated, {}> {
+  return twoFactorFor(APP_MIDDLEWARE_GUARD, options.loginRoute ?? 'auth.login', options);
+}
+
+/** `twoFactor()` for `whose`: the guard's own proof and factors, and A9 on a route that belongs to another guard. @internal */
+export function twoFactorFor(whose: MiddlewareGuard, loginRoute: string, options: { readonly setup: string; readonly verify: string; readonly maxAge?: Duration }): MiddlewareClass<Authenticated, {}> {
   const maxAgeSeconds = durationToSeconds(options.maxAge ?? DEFAULT_MAX_AGE);
   if (!(Number.isFinite(maxAgeSeconds) && maxAgeSeconds > 0)) throw new Error('twoFactor({ maxAge }) takes a Duration above zero.');
-  const loginRoute: string = options.loginRoute ?? 'auth.login';
   const RequireTwoFactor = class {
+    // Written out: the generated list cannot name a package guard's context.
+    static readonly inject = [whose.context, Session, Router, RequestGuard] as const;
+
     readonly #guard: GuardContext;
     readonly #session: Session;
     readonly #router: Router;
@@ -54,8 +62,9 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
-      // The proof is the app guard's: on a route of a package guard it proves nothing about that guard's user.
-      this.#request.requireApp('twoFactor()');
+      // The proof is the guard's own: on a route of another guard it proves nothing about this guard's user.
+      if (whose.name === undefined) this.#request.requireApp('twoFactor()');
+      else this.#request.requireGuard(whose.name, 'twoFactor()');
       // Asked of the session itself, not of `ctx.user`: a pending sign-in, a token or a missing `authenticate()` are all "nobody" here.
       const user = await this.#guard.auth().user();
       if (!user) {
@@ -81,6 +90,6 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
       return new Response(null, { status: 302, headers: { location: urlFor(this.#router, route), ...VARY } });
     }
   };
-  Object.defineProperty(RequireTwoFactor, 'name', { value: 'twoFactor' });
+  Object.defineProperty(RequireTwoFactor, 'name', { value: whose.name === undefined ? 'twoFactor' : `twoFactor:${whose.name}` });
   return RequireTwoFactor;
 }
