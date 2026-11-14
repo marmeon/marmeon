@@ -1,11 +1,11 @@
 import type { Container, Key } from '@marmeon/core';
 import { Connections, type SchemaRequirements } from '@marmeon/database';
 import { DatabaseEmailChanges, EMAIL_CHANGE_COLUMNS, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
-import { DatabasePasswordResetTokens, PASSWORD_RESET_COLUMNS, PASSWORD_RESET_TABLE, PasswordResetTokenStore } from './password-reset.ts';
-import { DatabaseSignIns, SIGN_INS_COLUMNS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
+import { DatabasePasswordResetTokens, PASSWORD_RESET_COLUMNS, PasswordResetTokenStore } from './password-reset.ts';
+import { DatabaseSignIns, SIGN_INS_COLUMNS, SignInStore } from './sign-ins.ts';
 import { ACCESS_TOKEN_COLUMNS, ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { factorSources, TwoFactorState } from './two-factor/state.ts';
-import { RECOVERY_CODE_COLUMNS, RECOVERY_CODES_TABLE, TWO_FACTOR_COLUMNS, TWO_FACTOR_TABLE, TwoFactorStore } from './two-factor/store.ts';
+import { RECOVERY_CODE_COLUMNS, TWO_FACTOR_COLUMNS, TwoFactorStore } from './two-factor/store.ts';
 import { assertSignInFinder, UserProvider } from './user.ts';
 
 /** Thrown by the `UserProvider` nothing replaced: authentication is not set up. */
@@ -80,15 +80,18 @@ export async function requireAuthTables(container: Container): Promise<void> {
 
   // The authenticator app is a source of the state the app bound, alone or joined with the passkeys.
   const state = bound(TwoFactorState);
-  const totp = state !== undefined && factorSources(state).some((source) => source instanceof TwoFactorStore);
+  const totp = state === undefined ? undefined : factorSources(state).find((source): source is TwoFactorStore => source instanceof TwoFactorStore);
+  const passwordResets = bound(PasswordResetTokenStore);
+  const signIns = bound(SignInStore);
+  // The tables the bound stores were given, not the defaults: a store on other tables is waited for there.
   requireStoreTables(requirements, {
     connection: 'default',
     tables: {
-      passwordResets: bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens ? PASSWORD_RESET_TABLE : undefined,
+      passwordResets: passwordResets instanceof DatabasePasswordResetTokens ? passwordResets.table : undefined,
       emailChanges: bound(EmailChangeStore) instanceof DatabaseEmailChanges ? EMAIL_CHANGES_TABLE : undefined,
       accessTokens: bound(AccessTokenStore) instanceof DatabaseAccessTokens ? ACCESS_TOKEN_TABLE : undefined,
-      signIns: bound(SignInStore) instanceof DatabaseSignIns ? SIGN_INS_TABLE : undefined,
-      twoFactor: totp ? { factor: TWO_FACTOR_TABLE, recoveryCodes: RECOVERY_CODES_TABLE } : undefined,
+      signIns: signIns instanceof DatabaseSignIns ? signIns.table : undefined,
+      twoFactor: totp?.tables,
     },
   });
 }

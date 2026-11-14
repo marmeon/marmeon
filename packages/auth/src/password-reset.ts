@@ -87,6 +87,11 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
     this.#table = assertTableName('DatabasePasswordResetTokens', options.table ?? PASSWORD_RESET_TABLE) as typeof PASSWORD_RESET_TABLE;
   }
 
+  /** @internal The table the tokens are in; the readiness check waits for it. */
+  get table(): string {
+    return this.#table;
+  }
+
   async create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>> {
     const db = this.#db();
     const existing = await db.selectFrom(this.#table).select('created_at').where('email', '=', email).executeTakeFirst();

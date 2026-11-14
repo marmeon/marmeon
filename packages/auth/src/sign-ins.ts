@@ -232,6 +232,11 @@ export class DatabaseSignIns extends SignInStore {
     this.#table = assertTableName('DatabaseSignIns', options.table ?? SIGN_INS_TABLE) as typeof SIGN_INS_TABLE;
   }
 
+  /** @internal The table the rows are in; the readiness check waits for it. */
+  get table(): string {
+    return this.#table;
+  }
+
   async create(input: { userId: AuthUserId; userAgent: string | undefined }): Promise<string> {
     const id = randomBytes(16).toString('base64url');
     const now = this.#now();

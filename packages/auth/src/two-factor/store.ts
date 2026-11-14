@@ -70,6 +70,11 @@ export class TwoFactorStore extends TwoFactorState {
     this.#recoveryCodes = assertTableName('TwoFactorStore', options.tables?.recoveryCodes ?? RECOVERY_CODES_TABLE) as typeof RECOVERY_CODES_TABLE;
   }
 
+  /** @internal The tables the factor and the recovery codes are in; the readiness check waits for them. */
+  get tables(): { readonly factor: string; readonly recoveryCodes: string } {
+    return { factor: this.#twoFactor, recoveryCodes: this.#recoveryCodes };
+  }
+
   /** `['totp']` once the authenticator is confirmed; a setup that was begun but not confirmed changes nothing about signing in. */
   async factors(userId: AuthUserId): Promise<readonly SecondFactor[]> {
     const row = await this.#db().selectFrom(this.#twoFactor).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
