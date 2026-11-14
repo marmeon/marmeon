@@ -119,6 +119,7 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     sessionMaxSeconds: number;
     rememberCookie: string;
     appName: string | undefined;
+    twoFactorIssuer: string | undefined;
     loginAttemptsPerMinute: number;
     accountSignInsPerDay: number;
     deviceCookieDays: number;
@@ -141,6 +142,7 @@ export declare class AuthServiceProvider implements ServiceProvider {
         sessionMaxSeconds: number;
         rememberCookie: string;
         appName: string | undefined;
+        twoFactorIssuer: string | undefined;
         loginAttemptsPerMinute: number;
         accountSignInsPerDay: number;
         deviceCookieDays: number;
@@ -443,6 +445,11 @@ export interface GuardConfirmedPasswordOptions<N extends string = string> {
     readonly confirmRoute: CheckRouteName<N>;
     readonly maxAge?: Duration;
 }
+// GuardConfirmedSecondFactorOptions
+export interface GuardConfirmedSecondFactorOptions<V extends string = string, L extends string = string> {
+    readonly verify: CheckRouteName<V>;
+    readonly loginRoute: CheckRouteName<L>;
+}
 // GuardDefinition
 export interface GuardDefinition<U> {
     readonly name: string;
@@ -465,10 +472,11 @@ export interface GuardGuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
 }
 // GuardOptions
-export interface GuardOptions<U> {
+export interface GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> {
     readonly users: Concrete<UserProvider<U>>;
     readonly tablePrefix: string;
     readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
+    readonly twoFactor?: TF;
 }
 // GuardPasswordBroker
 export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'deviceCookie' | 'reset'> & {
@@ -495,6 +503,28 @@ export interface GuardSettings {
     readonly deviceCookieDays?: number;
     readonly resetMinutes?: number;
     readonly resetThrottleSeconds?: number;
+    readonly twoFactorIssuer?: string;
+}
+// GuardTwoFactor
+export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
+    challenge(input: SecondFactorInput): Promise<Result<U, ChallengeError>>;
+};
+// GuardTwoFactorDefinition
+export interface GuardTwoFactorDefinition<U> {
+    readonly TwoFactor: Token<GuardTwoFactor<U>>;
+    twoFactor<const S extends RouteNameInput, const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardTwoFactorOptions<S, V, L>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+    confirmedSecondFactor<const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V, L>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+}
+// GuardTwoFactorOptions
+export interface GuardTwoFactorOptions<S extends string = string, V extends string = string, L extends string = string> {
+    readonly setup: CheckRouteName<S>;
+    readonly verify: CheckRouteName<V>;
+    readonly loginRoute: CheckRouteName<L>;
+    readonly maxAge?: Duration;
 }
 // HashConfig
 export declare const HashConfig: import("@marmeon/core").ConfigDefinition<{
@@ -1085,7 +1115,7 @@ export declare function credentialWriter(db: Connection<any>, options?: {
 // defineGuard
 export declare function defineGuard<U extends {
     readonly id: string | number;
-}>(name: string, options: GuardOptions<U>): GuardDefinition<U>;
+}, TF extends typeof TwoFactor | undefined = undefined>(name: string, options: GuardOptions<U, TF>): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>);
 // deny
 export declare function deny(message?: string): PolicyResponse;
 // denyAsNotFound
@@ -1116,16 +1146,83 @@ export declare function verified<const N extends RouteNameInput = never>(options
 ### Referenced, not exported
 
 ```ts
+// ChallengeError
+export type ChallengeError = {
+    readonly kind: 'no-challenge';
+} | {
+    readonly kind: 'expired';
+} | {
+    readonly kind: 'invalid-code';
+    readonly attemptsLeft: number;
+} | {
+    readonly kind: 'throttled';
+    readonly retryAfterSeconds: number;
+};
 // CheckAbility
 export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string> = string extends K ? Allowed : K extends Allowed ? K : K extends AbilityOf<P> ? K extends ProjectableAbility<P> ? `'${K}' ${Missing}` : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
+// ConfirmError
+export type ConfirmError = {
+    readonly kind: 'not-started';
+} | {
+    readonly kind: 'invalid-password';
+} | {
+    readonly kind: 'invalid-code';
+} | {
+    readonly kind: 'throttled';
+    readonly retryAfterSeconds: number;
+    readonly account?: true;
+}
+ | {
+    readonly kind: 'signed-out';
+};
 // Contravariant
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
 // GuestOptions
 export interface GuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
 }
+// PasskeyAssertion
+export type PasskeyAssertion = object;
 // Projectable
 type Projectable<P, K> = Extract<K, ProjectableAbility<P>>;
+// QrPath
+export interface QrPath {
+    readonly size: number;
+    readonly path: string;
+}
+// SecondFactorInput
+export type SecondFactorInput = {
+    readonly code: string;
+} | {
+    readonly recoveryCode: string;
+} | {
+    readonly passkey: PasskeyAssertion;
+};
+// TotpSetup
+export interface TotpSetup {
+    readonly secret: string;
+    readonly uri: string;
+    readonly qr: QrPath;
+}
+// TwoFactor
+export declare class TwoFactor {
+    #private;
+    challenge(input: SecondFactorInput): Promise<Result<AuthUser, ChallengeError>>;
+    stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>>;
+    status(): Promise<{
+        factors: readonly SecondFactor[];
+        settingUpTotp: boolean;
+        recoveryCodesLeft: number;
+    }>;
+    begin(): Promise<TotpSetup>;
+    setup(): Promise<TotpSetup | undefined>;
+    confirm(code: string, password: string): Promise<Result<{
+        recoveryCodes: readonly string[] | null;
+    }, ConfirmError>>;
+    regenerateRecoveryCodes(password: string): Promise<Result<readonly string[], PasswordCheckError>>;
+    disable(password: string): Promise<Result<void, PasswordCheckError>>;
+    requireRecentProof(action: string): Promise<void>;
+}
 // missing
 declare const missing: unique symbol;
 // passwordHash

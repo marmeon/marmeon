@@ -17,6 +17,14 @@ import type { TwoFactorStore } from './two-factor/store.ts';
 import type { UserProvider } from './user.ts';
 
 /**
+ * The brand of a service class that a package guard may be given as an option (`TwoFactor` as `twoFactor`). A symbol on the class, not its
+ * name: a bundler renames a class, and a subclass keeps the brand it inherits.
+ *
+ * @internal
+ */
+export const GUARD_FEATURE: unique symbol = Symbol('marmeon-auth.guard-feature');
+
+/**
  * Everything one guard owns that the auth services use: its users, stores, settings, names and events. A service takes it as its
  * first constructor parameter and nothing else of the guard's, so a service built for one guard cannot pick up another's
  * `UserProvider`, store or counter by a forgotten argument. Members that a guard may not have answer `undefined`: the service

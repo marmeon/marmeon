@@ -1257,7 +1257,9 @@ controller of the package takes the guard's services and calls these methods on 
 
 The guard's name is lower case letters, digits and single hyphens, starts with a letter and has at most 32 characters. `web`,
 `api`, `app`, `auth` and `marmeon` are taken. The table prefix has lower case letters, digits and underscores, starts with a letter
-and ends with an underscore. A name or prefix that is invalid, a name or prefix that two guards share, or a `users` that is not a
+and ends with an underscore. A guard that should have an authenticator app and recovery codes takes `twoFactor: TwoFactor` (from `@marmeon/auth/two-factor`), and `settings.twoFactorIssuer`
+sets the name an authenticator app shows for it; [two-factor authentication](two-factor-authentication.md#for-a-guard-of-a-package) has the tables and the middleware.
+A name or prefix that is invalid, a name or prefix that two guards share, or a `users` that is not a
 class stops the start with error [A8](errors.md#server-error-codes).
 
 ### What is separate and what is shared
@@ -1365,7 +1367,7 @@ users, and a policy of the app would otherwise judge the app's user who has the 
 ### What a package guard does not have
 
 A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
-audience. Two-factor authentication and passkeys are not part of it yet either. A service that ends a guard's sessions
+audience. Two-factor authentication is there when the guard is defined with `twoFactor` ([for a guard of a package](two-factor-authentication.md#for-a-guard-of-a-package)); passkeys are not part of it yet. A service that ends a guard's sessions
 (`end()`) never touches the app's `sessions` rows, tokens or links: it ends the guard's own sign-ins, replaces the account's
 session key and tells the live streams of the guard's account. Ending the sessions of every account of a guard
 (`endEveryone()`) is not available yet: the guard's `AccountSessions` has no such method, and calling it anyway throws.

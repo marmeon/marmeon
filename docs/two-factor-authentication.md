@@ -372,6 +372,64 @@ await app.withCookie(session, cookie).post('/settings/two-factor/confirm', { for
 `twoFactorCode(secret, at?)` takes the key `begin()` returned. A code works once, so a second sign-in in the same test needs a code of
 the next step: `twoFactorCode(secret, new Date(Date.now() + 30_000))`.
 
+## For a guard of a package
+
+A [guard of a package](authentication.md#guards-of-a-package) gets an authenticator app, recovery codes, the challenge after the
+password and the two middleware by passing the `TwoFactor` class as `twoFactor`. Nothing else turns it on: a guard without the option has no
+factors, and nobody of it is asked for one.
+
+```ts title="office/src/guard.ts"
+import { defineGuard, type GuardTwoFactor } from '@marmeon/auth';
+import { TwoFactor } from '@marmeon/auth/two-factor';
+
+export const OfficeGuard = defineGuard('office', {
+  users: OfficeUsers,
+  tablePrefix: 'office_',
+  twoFactor: TwoFactor,
+  settings: { twoFactorIssuer: 'Back Office' },
+});
+
+export type OfficeTwoFactor = GuardTwoFactor<OfficeUser>;
+export const OfficeTwoFactor = OfficeGuard.TwoFactor;
+```
+
+A controller of the package takes `twoFactor: OfficeTwoFactor` and calls the methods of [`TwoFactor`](#the-sign-in) on it, with the
+guard's user in the result of `challenge()`. The guard's `Auth` answers `two-factor-required` for a user who has a factor, and
+`OfficeTwoFactor.challenge()` finishes that sign-in.
+
+The package ships the migration of two tables with the guard's prefix, in the shape of the app's tables
+[above](#setting-up): `office_two_factor_authentications` and `office_two_factor_recovery_codes`. `user_id` is the type of the guard's user id. The
+readiness check waits for both with every column, as it does for the guard's other tables.
+
+Everything is apart from the app's factors, and from the factors of another guard:
+
+| What | For the guard |
+|---|---|
+| Tables | `<prefix>two_factor_authentications` and `<prefix>two_factor_recovery_codes`. |
+| Proof of a factor in the session | A key of the guard's own: a challenge of the guard opens no route of the app, and the app's opens none of the guard's. |
+| Waiting sign-in | The guard's own: the app's `TwoFactor.challenge()` finds nothing to finish. |
+| Attempt counters | One counter per window (minute, hour, day, recovery codes) for each guard: wrong codes of the guard's user 1 do not use the attempts of the app's user 1. |
+| Encrypted secret and recovery code hashes | Bound to the guard as well as to the account: a row copied between the guard's table and the app's table, or another guard's, does not decrypt and matches no code. The app's own secrets and codes are read as before. |
+| Events | None of the app's classes (`TwoFactorEnabled`, `RecoveryCodeUsed`, …): a listener of the app would mail the app's user with the same id. |
+
+The middleware `OfficeGuard.twoFactor({ setup, verify, loginRoute, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify, loginRoute })` act like
+[`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them and
+send a request without a user to the guard's `loginRoute`, which is required here because the app's `auth.login` is the app's page.
+On a route of another guard, or one without the guard's `authenticate()`, they fail with error [A9](errors.md#server-error-codes), as the app's middleware does on
+a route of the guard.
+
+```ts title="office/src/routes.ts"
+Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))
+  .middleware(OfficeGuard.twoFactor({ setup: 'office.two-factor.setup', verify: 'office.two-factor.verify', loginRoute: 'office.login' }))
+  .get('/office', Dashboard);
+```
+
+An authenticator app lists an account under the name it is given. The issuer is `APP_NAME` unless the guard sets `twoFactorIssuer`; a back office and
+the app that carries it show up as two entries of the same name and the same address unless they have different issuers, so set one.
+The setting takes 1 to 64 characters; another value stops the start with error [A8](errors.md#server-error-codes).
+
+The guard offers no passkeys as a second factor, and `auth:reset-two-factor` does not reach its tables (see [operator reset](#operator-reset)).
+
 ## Operator reset
 
 A user who lost both the phone and the recovery codes has to be let in by an operator, who must be sure it is the owner.
@@ -381,7 +439,9 @@ A user who lost both the phone and the recovery codes has to be let in by an ope
 marmeon auth:reset-two-factor ada@example.com --force
 ```
 
-The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForSignIn()`.
+The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForSignIn()`
+of the app. The command acts on the app's users only: when the same address also has an account of a [guard of a package](#for-a-guard-of-a-package), the app's
+account is reset and the guard's stays as it was.
 Without `--force` the command exits with 1 and changes nothing. It removes whatever the bound [`TwoFactorState`](authentication.md#your-own-stores) holds
 (the authenticator, every passkey, every recovery code) through `removeAll(userId)`, which dispatches nothing; the command dispatches `TwoFactorDisabled` with
 `via: 'operator'` itself, so that listeners (the mail to the owner, an audit log) hear of it.

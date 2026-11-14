@@ -11,7 +11,7 @@ import { Auth, type AttemptError, type SignInOptions } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import type { EmailChangeStore } from './email-changes.ts';
 import { SessionFingerprints } from './fingerprint.ts';
-import { buildForGuard, GuardContext } from './guard-context.ts';
+import { buildForGuard, GUARD_FEATURE, GuardContext } from './guard-context.ts';
 import { authenticateFor, confirmedPasswordFor, guestFor, type MiddlewareGuard } from './middleware.ts';
 import { bindRequestGuard } from './request-guard.ts';
 import { guardLimiterName, isGuardRouteLimit, type GuardRouteLimit } from './route-limits.ts';
@@ -22,7 +22,10 @@ import { DatabaseSignIns, type SignInStore } from './sign-ins.ts';
 import { SignInThrottle } from './sign-in-throttle.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, type SecondFactorPasskeys, type TwoFactorState } from './two-factor/state.ts';
-import type { TwoFactorStore } from './two-factor/store.ts';
+import { confirmedSecondFactorFor } from './two-factor/confirmed.ts';
+import { twoFactorFor } from './two-factor/middleware.ts';
+import { TwoFactorStore } from './two-factor/store.ts';
+import type { ChallengeError, SecondFactorInput, TwoFactor } from './two-factor/two-factor.ts';
 import { requireStoreTables } from './upgrades.ts';
 import { assertSignInFinder, type IdOf, type UserProvider } from './user.ts';
 
@@ -47,10 +50,12 @@ export interface GuardSettings {
   readonly resetMinutes?: number;
   /** Seconds before another reset link goes to the same address, 0 or more (`AUTH_RESET_THROTTLE_SECONDS`). */
   readonly resetThrottleSeconds?: number;
+  /** What an authenticator app shows as the guard's name, 1 to 64 characters; the app's `APP_NAME` where left out. Without a different one an authenticator app lists the guard's account and the app's account of the same address as two entries of the same name. */
+  readonly twoFactorIssuer?: string;
 }
 
 /** What `defineGuard()` takes: where the guard's users come from, which tables it owns, and what it sets for itself. */
-export interface GuardOptions<U> {
+export interface GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> {
   /**
    * A class implementing `UserProvider` on a table of the package's own. The container builds it; a package guard never reads the
    * app's `UserProvider`. Whether it reads a table of its own cannot be checked: see `docs/authentication.md#guards-of-a-package`.
@@ -60,6 +65,12 @@ export interface GuardOptions<U> {
   readonly tablePrefix: string;
   /** Settings of the guard, or a function that reads them (from the config, say) when the guard is first used and at boot. */
   readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
+  /**
+   * `TwoFactor` (from `@marmeon/auth/two-factor`) gives the guard an authenticator app and recovery codes on tables of its own
+   * (`office_two_factor_authentications`, `office_two_factor_recovery_codes`), the challenge after the password and the middleware
+   * `twoFactor()` and `confirmedSecondFactor()`. Passed as the class so that a guard without it does not carry it. See `docs/two-factor-authentication.md#for-a-guard-of-a-package`.
+   */
+  readonly twoFactor?: TF;
 }
 
 /** What the type `Auth` has, for the users of a guard: `U` instead of the app's user. */
@@ -97,6 +108,42 @@ export interface GuardConfirmedPasswordOptions<N extends string = string> {
   readonly confirmRoute: CheckRouteName<N>;
   /** How long a confirmation counts, a {@link Duration} above zero (default: the guard's `passwordTimeoutSeconds`). */
   readonly maxAge?: Duration;
+}
+
+export interface GuardTwoFactorOptions<S extends string = string, V extends string = string, L extends string = string> {
+  /** Named route of the page where a user without a second factor sets one up. */
+  readonly setup: CheckRouteName<S>;
+  /** Named route of the page that asks this session for its second factor. */
+  readonly verify: CheckRouteName<V>;
+  /** Named route of the guard's login page, for a request without a user. Required: the app's `auth.login` is the app's page. */
+  readonly loginRoute: CheckRouteName<L>;
+  /** How long a proven second factor counts, a {@link Duration} above zero (a number is seconds). Default: 24 hours. */
+  readonly maxAge?: Duration;
+}
+
+export interface GuardConfirmedSecondFactorOptions<V extends string = string, L extends string = string> {
+  /** Named route of the page that asks this session for its second factor. */
+  readonly verify: CheckRouteName<V>;
+  /** Named route of the guard's login page, for a request without a user. Required: the app's `auth.login` is the app's page. */
+  readonly loginRoute: CheckRouteName<L>;
+}
+
+/** What the type `TwoFactor` has, for the users of a guard: `U` instead of the app's user. */
+export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
+  challenge(input: SecondFactorInput): Promise<Result<U, ChallengeError>>;
+};
+
+/** What a guard defined with `twoFactor` has besides {@link GuardDefinition}. */
+export interface GuardTwoFactorDefinition<U> {
+  /** The guard's `TwoFactor`, per request: its challenge, setup, recovery codes and step-up, on the guard's tables, counters and encryption context. */
+  readonly TwoFactor: Token<GuardTwoFactor<U>>;
+  /**
+   * Only for the guard's users with a second factor proven within `maxAge` (24 hours): one without a factor goes to `setup`, one that has not
+   * proven it to `verify`. Needs the guard's `authenticate()` before it; the app's `twoFactor()` is refused on the guard's routes (error A9).
+   */
+  twoFactor<const S extends RouteNameInput, const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardTwoFactorOptions<S, V, L>): MiddlewareClass<{ readonly user: U }, {}>;
+  /** For the routes that change the guard's factors: a session that has not proven its second factor lately goes to `verify`; an account without a factor passes. */
+  confirmedSecondFactor<const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V, L>): MiddlewareClass<{ readonly user: U }, {}>;
 }
 
 /**
@@ -138,7 +185,9 @@ const LIMITS = {
   deviceCookieDays: [0, 365],
   resetMinutes: [1, 1440],
   resetThrottleSeconds: [0, Number.MAX_SAFE_INTEGER],
-} as const satisfies Record<keyof GuardSettings, readonly [number, number]>;
+} as const satisfies Record<Exclude<keyof GuardSettings, 'twoFactorIssuer'>, readonly [number, number]>;
+
+const ISSUER_MAX = 64;
 
 const refuse = (message: string): never => {
   throw new TypeError(withCode('A8', message));
@@ -149,7 +198,11 @@ function overlay(name: string, base: AuthConfig, given: unknown): AuthConfig {
   if (typeof given !== 'object' || given === null || Array.isArray(given)) refuse(`defineGuard('${name}'): settings must be an object of ${Object.keys(LIMITS).join(', ')}.`);
   const settings = given as Record<string, unknown>;
   for (const key of Object.keys(settings)) {
-    if (!Object.hasOwn(LIMITS, key)) refuse(`defineGuard('${name}'): settings.${key} is not a setting of a guard (${Object.keys(LIMITS).join(', ')}).`);
+    if (!Object.hasOwn(LIMITS, key) && key !== 'twoFactorIssuer') refuse(`defineGuard('${name}'): settings.${key} is not a setting of a guard (${[...Object.keys(LIMITS), 'twoFactorIssuer'].join(', ')}); twoFactorIssuer is the only one without an AUTH_ variable.`);
+  }
+  const issuer = settings.twoFactorIssuer;
+  if (issuer !== undefined && (typeof issuer !== 'string' || issuer.trim() === '' || issuer.length > ISSUER_MAX)) {
+    refuse(`defineGuard('${name}'): settings.twoFactorIssuer must be a text of 1 to ${ISSUER_MAX} characters.`);
   }
   const checked: Partial<Record<keyof GuardSettings, number>> = {};
   for (const [key, [min, max]] of Object.entries(LIMITS) as [keyof GuardSettings, readonly [number, number]][]) {
@@ -165,6 +218,8 @@ function overlay(name: string, base: AuthConfig, given: unknown): AuthConfig {
     out.rememberDays = checked.rememberDays;
     out.remember = checked.rememberDays > 0;
   }
+  // Its own field: `appName` stays the app's, which other services (a passkey's relying-party name) read.
+  if (issuer !== undefined) out.twoFactorIssuer = issuer as string;
   if (checked.sessionMaxHours !== undefined) out.sessionMaxSeconds = checked.sessionMaxHours * 3600;
   for (const key of ['passwordTimeoutSeconds', 'loginAttemptsPerMinute', 'accountSignInsPerDay', 'deviceCookieDays', 'resetMinutes', 'resetThrottleSeconds'] as const) {
     if (checked[key] !== undefined) out[key] = checked[key];
@@ -182,12 +237,16 @@ interface GuardTokens {
   readonly signInThrottle: Token<SignInThrottle>;
   readonly newPassword: Token<NewPassword>;
   readonly context: Token<GuardContext>;
+  /** The authenticator and recovery code store; bound for a guard with `twoFactor` only. */
+  readonly totp: Token<TwoFactorStore>;
 }
 
 /** The tables of a guard: its prefix and the name of each store's table. */
 export interface GuardTables {
   readonly signIns: string;
   readonly passwordResets: string;
+  /** The authenticator and its recovery codes, for a guard with `twoFactor`. */
+  readonly twoFactor?: { readonly factor: string; readonly recoveryCodes: string };
 }
 
 /**
@@ -237,12 +296,14 @@ export class Guard {
   readonly Auth: Token<Auth>;
   readonly AccountSessions: Token<AccountSessions>;
   readonly PasswordBroker: Token<PasswordBroker>;
+  readonly TwoFactor: Token<TwoFactor>;
   readonly #users: Concrete<UserProvider>;
+  readonly #twoFactor: typeof TwoFactor | undefined;
   readonly #settings: unknown;
 
-  constructor(name: string, options: GuardOptions<unknown>) {
+  constructor(name: string, options: GuardOptions<unknown, typeof TwoFactor | undefined>) {
     if (!isGuardName(name)) refuse(`defineGuard() takes a name of lower case letters, digits and single hyphens, starting with a letter, at most 32 characters and none of web, api, app, auth, marmeon; got ${JSON.stringify(name)}.`);
-    const { users, tablePrefix, settings } = options ?? ({} as GuardOptions<unknown>);
+    const { users, tablePrefix, settings, twoFactor } = options ?? ({} as GuardOptions<unknown, typeof TwoFactor | undefined>);
     if (typeof tablePrefix !== 'string' || tablePrefix.length > 32 || !PREFIX.test(tablePrefix)) {
       refuse(`defineGuard('${name}'): tablePrefix is lower case letters, digits and underscores, starts with a letter, ends with an underscore (office_) and has at most 32 characters.`);
     }
@@ -250,11 +311,18 @@ export class Guard {
     if (typeof users !== 'function' || !/^class[\s{]/.test(Function.prototype.toString.call(users))) {
       refuse(`defineGuard('${name}'): users is a class that implements UserProvider, not an instance or a function.`);
     }
+    // The class is built for the guard (`buildForGuard`), so anything else is refused here, not at the first request.
+    if (twoFactor !== undefined && (typeof twoFactor !== 'function' || (twoFactor as { [GUARD_FEATURE]?: unknown })[GUARD_FEATURE] !== 'two-factor')) refuse(`defineGuard('${name}'): twoFactor is the TwoFactor class of @marmeon/auth/two-factor.`);
     if (settings !== undefined && typeof settings !== 'function') overlay(name, {} as AuthConfig, settings);
     this.name = name;
     this.tablePrefix = tablePrefix;
     this.names = guardNames(name);
-    this.tables = { signIns: `${tablePrefix}sign_ins`, passwordResets: `${tablePrefix}password_reset_tokens` };
+    this.tables = {
+      signIns: `${tablePrefix}sign_ins`,
+      passwordResets: `${tablePrefix}password_reset_tokens`,
+      ...(twoFactor === undefined ? {} : { twoFactor: { factor: `${tablePrefix}two_factor_authentications`, recoveryCodes: `${tablePrefix}two_factor_recovery_codes` } }),
+    };
+    this.#twoFactor = twoFactor;
     this.#users = users as Concrete<UserProvider>;
     this.#settings = settings;
     const key = <T>(what: string) => token<T>(`${name}.${what}`);
@@ -267,10 +335,12 @@ export class Guard {
       signInThrottle: key('signInThrottle'),
       newPassword: key('newPassword'),
       context: key('context'),
+      totp: key('totp'),
     };
     this.Auth = key('Auth');
     this.AccountSessions = key('AccountSessions');
     this.PasswordBroker = key('PasswordBroker');
+    this.TwoFactor = key('TwoFactor');
   }
 
   register(container: Container): void {
@@ -294,6 +364,12 @@ export class Guard {
     container.bind(this.AccountSessions, (c) => buildForGuard(AccountSessions, c, context(c)));
     container.bind(this.PasswordBroker, (c) => buildForGuard(PasswordBroker, c, context(c)));
     container.scoped(this.Auth, (c) => buildForGuard(Auth, c, context(c)));
+    const twoFactor = this.#twoFactor;
+    if (twoFactor !== undefined) {
+      // The guard's own tables: the same id in the app's `two_factor_*` tables is another account. The store is the guard's source of factors.
+      container.singleton(tokens.totp, (c) => new TwoFactorStore(c.make(Connections), c.make(Clock), { tables: { twoFactor: this.tables.twoFactor!.factor, recoveryCodes: this.tables.twoFactor!.recoveryCodes } }));
+      container.scoped(this.TwoFactor, (c) => buildForGuard(twoFactor, c, context(c)));
+    }
   }
 
   /** What a middleware of this guard is injected with, and the name it stamps on the request. */
@@ -316,6 +392,21 @@ export class Guard {
   throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}> {
     if (!isGuardRouteLimit(name)) throw new TypeError(`Guard '${this.name}'.throttle() takes the name of an auth route's limit (login, password-reset, …); got ${JSON.stringify(name)}.`);
     return throttle(guardLimiterName(this.name, name));
+  }
+
+  twoFactor(options: GuardTwoFactorOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
+    this.#requireTwoFactor('twoFactor');
+    return twoFactorFor(this.#acting, this.#route('twoFactor', 'loginRoute', options?.loginRoute), options) as never;
+  }
+
+  confirmedSecondFactor(options: GuardConfirmedSecondFactorOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
+    this.#requireTwoFactor('confirmedSecondFactor');
+    return confirmedSecondFactorFor(this.#acting, this.#route('confirmedSecondFactor', 'loginRoute', options?.loginRoute), options) as never;
+  }
+
+  /** Without `twoFactor` the guard has no factors, and a middleware that asked for one would send everybody to a setup page that cannot work. */
+  #requireTwoFactor(method: string): void {
+    if (this.#twoFactor === undefined) refuse(`Guard '${this.name}'.${method}() needs the guard to be defined with \`twoFactor: TwoFactor\`.`);
   }
 
   /** The route a guard's middleware sends to: the app's defaults are the app's pages, so a guard names its own. */
@@ -343,8 +434,11 @@ export class Guard {
  * export const OfficeAuth = OfficeGuard.Auth; // a controller takes `auth: OfficeAuth`
  * ```
  */
-export function defineGuard<U extends { readonly id: string | number }>(name: string, options: GuardOptions<U>): GuardDefinition<U> {
-  return new Guard(name, options as GuardOptions<unknown>) as unknown as GuardDefinition<U>;
+export function defineGuard<U extends { readonly id: string | number }, TF extends typeof TwoFactor | undefined = undefined>(
+  name: string,
+  options: GuardOptions<U, TF>,
+): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>) {
+  return new Guard(name, options as GuardOptions<unknown, typeof TwoFactor | undefined>) as never;
 }
 
 /** Everything a package guard owns, as the services of the guard see it: its own stores, names and settings, and what it shares with the app. */
@@ -402,12 +496,13 @@ class PackageGuardContext extends GuardContext {
     return undefined;
   }
 
+  // The guard's own store where it has two-factor authentication, nobody's factors where not: never the app's.
   factors(): TwoFactorState {
-    return this.#factors;
+    return this.#guard.tables.twoFactor === undefined ? this.#factors : this.#resolver.make(this.#guard.tokens.totp);
   }
 
   totp(): TwoFactorStore | undefined {
-    return undefined;
+    return this.#guard.tables.twoFactor === undefined ? undefined : this.#resolver.make(this.#guard.tokens.totp);
   }
 
   passkeyStore(): object | undefined {

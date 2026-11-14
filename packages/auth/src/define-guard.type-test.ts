@@ -4,8 +4,10 @@ import type { MiddlewareClass } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth, AttemptError } from './auth.ts';
-import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardDefinition, type GuardPasswordBroker } from './define-guard.ts';
+import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardDefinition, type GuardPasswordBroker, type GuardTwoFactor, type GuardTwoFactorDefinition } from './define-guard.ts';
 import type { PasswordBroker } from './password-reset.ts';
+import type { ChallengeError } from './two-factor/two-factor.ts';
+import { TwoFactor } from './two-factor/two-factor.ts';
 import type { AuthUser, Credentials, UserProvider } from './user.ts';
 
 interface OfficeUser {
@@ -80,4 +82,27 @@ export function guardMiddlewareTypes() {
   OfficeGuard.throttle('email-change');
   // @ts-expect-error the limiter's full name is not the guard's name for it
   OfficeGuard.throttle('auth.login');
+}
+
+const TwoFactorGuard = defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor });
+
+export async function twoFactorTypes(factor: GuardTwoFactor<OfficeUser>) {
+  expectTypeOf(TwoFactorGuard).toEqualTypeOf<GuardDefinition<OfficeUser> & GuardTwoFactorDefinition<OfficeUser>>();
+  expectTypeOf(TwoFactorGuard.TwoFactor).toEqualTypeOf<Token<GuardTwoFactor<OfficeUser>>>();
+  const challenged = await factor.challenge({ code: '123456' });
+  expectTypeOf(challenged).toEqualTypeOf<Result<OfficeUser, ChallengeError>>();
+  expectTypeOf(TwoFactorGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' } as never)).toEqualTypeOf<MiddlewareClass<{ readonly user: OfficeUser }, {}>>();
+  // @ts-expect-error the guard's login page is the guard's own
+  TwoFactorGuard.twoFactor({ setup: 'a', verify: 'b' });
+  // @ts-expect-error the guard's login page is the guard's own
+  TwoFactorGuard.confirmedSecondFactor({ verify: 'b' });
+}
+
+export function aGuardWithoutTwoFactorHasNone() {
+  // @ts-expect-error the guard was defined without `twoFactor`
+  OfficeGuard.TwoFactor;
+  // @ts-expect-error the guard was defined without `twoFactor`
+  OfficeGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' });
+  // @ts-expect-error only the TwoFactor class is one
+  defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: class Other {} });
 }

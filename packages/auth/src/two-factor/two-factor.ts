@@ -10,7 +10,7 @@ import { writeAuth } from '../session-keys.ts';
 import { claimRefused } from '../account-sessions.ts';
 import type { AuthConfig } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
-import { GuardContext } from '../guard-context.ts';
+import { GUARD_FEATURE, GuardContext } from '../guard-context.ts';
 import type { GuardNames } from '../guard-names.ts';
 import { idOf, type AuthUser, type AuthUserId, type UserProvider } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
@@ -69,6 +69,9 @@ export type SecondFactorInput = { readonly code: string } | { readonly recoveryC
  * only for the account the factor was proven for.
  */
 export class TwoFactor {
+  /** @internal Read by `defineGuard()`, which takes this class as its `twoFactor` option. */
+  static readonly [GUARD_FEATURE] = 'two-factor';
+
   readonly #guard: GuardContext;
   readonly #names: GuardNames;
   readonly #auth: Auth;
@@ -249,7 +252,7 @@ export class TwoFactor {
     // `false`: this device's remember-me cookie was a copy, and everything of the account is ended, this session too.
     if (!(await this.#auth.updateSessionKey())) return err({ kind: 'signed-out' });
     const encrypted = await this.#encrypt(secret, id);
-    const hashes = recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode));
+    const hashes = recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(this.#names.recoveryCodeContext(id), recoveryCode));
     // The session is checked against the account in the transaction that stores the factor (with a session key, the account's row stays
     // locked until the commit): a session that ended meanwhile stores nothing.
     const stored = await this.#connections.transaction(async () => {
@@ -312,7 +315,7 @@ export class TwoFactor {
     const checked = await this.#auth.checkPassword(password);
     if (!checked.ok) return err(checked.error);
     const codes = generateRecoveryCodes();
-    await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
+    await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(this.#names.recoveryCodeContext(id), recoveryCode)));
     await this.#emit(new RecoveryCodesGenerated(user));
     return ok(codes);
   }
@@ -349,7 +352,7 @@ export class TwoFactor {
     if ('recoveryCode' in input) {
       // Recovery codes need no secret that decrypts; they work while the account has any factor.
       if ((await this.#state.factors(userId)).length === 0) return false;
-      const remaining = await this.#store.consumeRecoveryCode(userId, hashRecoveryCode(userId, input.recoveryCode));
+      const remaining = await this.#store.consumeRecoveryCode(userId, hashRecoveryCode(this.#names.recoveryCodeContext(userId), input.recoveryCode));
       if (remaining === undefined) return false;
       const found = await this.#users.findById(userId as never);
       if (found) await this.#emit(new RecoveryCodeUsed(found.user, remaining));
@@ -396,12 +399,12 @@ export class TwoFactor {
 
   /** The secret is bound to its account: a row copied to another account does not decrypt there. */
   #encrypt(secret: string, userId: AuthUserId): Promise<string> {
-    return this.#encrypter.encrypt(secret, context(userId));
+    return this.#encrypter.encrypt(secret, this.#names.factorSecretContext(userId));
   }
 
   async #decrypt(payload: string, userId: AuthUserId): Promise<string | undefined> {
     try {
-      return await this.#encrypter.decrypt(payload, context(userId));
+      return await this.#encrypter.decrypt(payload, this.#names.factorSecretContext(userId));
     } catch (error) {
       if (!(error instanceof DecryptError)) throw error;
       this.#logger.warn('The two-factor secret of a user cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS — was the key it was encrypted with removed?', { user: userId });
@@ -410,7 +413,7 @@ export class TwoFactor {
   }
 
   #issuer(): string {
-    const issuer = this.#config.appName;
+    const issuer = this.#config.twoFactorIssuer ?? this.#config.appName;
     if (issuer === undefined || issuer.trim() === '') throw new Error('Two-factor authentication needs the app\'s name for the authenticator app: set APP_NAME.');
     return issuer;
   }
@@ -451,8 +454,4 @@ export class TwoFactor {
       throw new Error(`twoFactor.${call} needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }
-}
-
-function context(userId: AuthUserId): string {
-  return `marmeon-auth:two-factor:${userId}`;
 }

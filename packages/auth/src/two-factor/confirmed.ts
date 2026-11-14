@@ -4,6 +4,7 @@ import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpConte
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { GuardContext } from '../guard-context.ts';
+import { APP_MIDDLEWARE_GUARD, type MiddlewareGuard } from '../middleware.ts';
 import { RequestGuard } from '../request-guard.ts';
 import { idOf, type Authenticated } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
@@ -25,7 +26,15 @@ export interface ConfirmedSecondFactorOptions<V extends string = string> {
  * answering 500. See `docs/two-factor-authentication.md#changing-the-factors`.
  */
 export function confirmedSecondFactor<const V extends RouteNameInput = never>(options: ConfirmedSecondFactorOptions<V>): MiddlewareClass<Authenticated, {}> {
+  return confirmedSecondFactorFor(APP_MIDDLEWARE_GUARD, 'auth.login', options);
+}
+
+/** `confirmedSecondFactor()` for `whose`: the guard's own proof and factors, and A9 on a route that belongs to another guard. @internal */
+export function confirmedSecondFactorFor(whose: MiddlewareGuard, loginRoute: string, options: { readonly verify: string }): MiddlewareClass<Authenticated, {}> {
   const Confirmed = class {
+    // Written out: the generated list cannot name a package guard's context.
+    static readonly inject = [whose.context, Session, Router, RequestGuard] as const;
+
     readonly #guard: GuardContext;
     readonly #session: Session;
     readonly #router: Router;
@@ -39,13 +48,14 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
-      // The proof is the app guard's: on a route of a package guard it proves nothing about that guard's user.
-      this.#request.requireApp('confirmedSecondFactor()');
+      // The proof is the guard's own: on a route of another guard it proves nothing about this guard's user.
+      if (whose.name === undefined) this.#request.requireApp('confirmedSecondFactor()');
+      else this.#request.requireGuard(whose.name, 'confirmedSecondFactor()');
       // Asked of the session itself, not of `ctx.user`: a pending sign-in, a token or a missing `authenticate()` are all "nobody" here.
       const user = await this.#guard.auth().user();
       if (!user) {
         if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: VARY });
-        return this.#redirect(ctx, 'auth.login');
+        return this.#redirect(ctx, loginRoute);
       }
       if ((await this.#guard.factors().factors(idOf(user))).length === 0) return next();
       if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, Math.floor(this.#guard.clock().now() / 1000), this.#guard.names)) return next();
@@ -62,6 +72,6 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
       return new Response(null, { status: 302, headers: { location: urlFor(this.#router, route), ...VARY } });
     }
   };
-  Object.defineProperty(Confirmed, 'name', { value: 'confirmedSecondFactor' });
+  Object.defineProperty(Confirmed, 'name', { value: whose.name === undefined ? 'confirmedSecondFactor' : `confirmedSecondFactor:${whose.name}` });
   return Confirmed;
 }

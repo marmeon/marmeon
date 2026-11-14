@@ -225,7 +225,7 @@ export class Passkeys {
       if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);
       const result = await this.#store.create({ userId: id, userHandle: handle, name: cleanName, ...verified.value });
       if (result.ok && recoveryCodes !== null) {
-        await this.#twoFactorStore.replaceRecoveryCodes(id, recoveryCodes.map((code) => hashRecoveryCode(id, code)));
+        await this.#twoFactorStore.replaceRecoveryCodes(id, recoveryCodes.map((code) => hashRecoveryCode(this.#names.recoveryCodeContext(id), code)));
         // An authenticator setup begun before this first factor has no confirmed secret to protect: left over, it could later be confirmed as a further factor.
         await this.#twoFactorStore.removeTotp(id, { lastFactor: false });
       }
