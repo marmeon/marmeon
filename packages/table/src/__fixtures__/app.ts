@@ -1,4 +1,5 @@
 import { can, Gate, type Auth, type Authenticated } from '@marmeon/auth';
+import { withRequestGuard } from '@marmeon/auth/internal';
 import { Clock, createApplication, defineModule, Logger, Translator, type Application } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Repository, sql, type QueryEvent } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
@@ -1036,7 +1037,7 @@ export async function tableApp(driver: TestDriver, options: { readonly translato
       // The request's user for the policies: from the same header the `acting` middleware reads.
       container.scoped(Gate, (scope) => {
         const auth = { user: async () => USERS[Number(scope.make(IncomingRequest).headers.get('x-test-user'))] } as unknown as Auth;
-        return new Gate(auth, (Class) => scope.make(Class));
+        return new Gate(auth, withRequestGuard((Class) => scope.make(Class)));
       });
     },
   });

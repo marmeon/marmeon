@@ -4,6 +4,7 @@ import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpConte
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { GuardContext } from '../guard-context.ts';
+import { RequestGuard } from '../request-guard.ts';
 import { idOf, type Authenticated } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
 
@@ -28,14 +29,18 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
     readonly #guard: GuardContext;
     readonly #session: Session;
     readonly #router: Router;
+    readonly #request: RequestGuard;
 
-    constructor(guard: GuardContext, session: Session, router: Router) {
+    constructor(guard: GuardContext, session: Session, router: Router, request: RequestGuard) {
       this.#guard = guard;
       this.#session = session;
       this.#router = router;
+      this.#request = request;
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
+      // The proof is the app guard's: on a route of a package guard it proves nothing about that guard's user.
+      this.#request.requireApp('confirmedSecondFactor()');
       // Asked of the session itself, not of `ctx.user`: a pending sign-in, a token or a missing `authenticate()` are all "nobody" here.
       const user = await this.#guard.auth().user();
       if (!user) {

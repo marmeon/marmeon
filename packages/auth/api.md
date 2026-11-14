@@ -434,6 +434,15 @@ export type GuardAuth<U> = Omit<Auth, 'attempt' | 'signIn' | 'user' | 'id'> & {
     user(): Promise<U | undefined>;
     id(): Promise<IdOf<U> | undefined>;
 };
+// GuardAuthenticateOptions
+export interface GuardAuthenticateOptions<N extends string = string> {
+    readonly loginRoute: CheckRouteName<N>;
+}
+// GuardConfirmedPasswordOptions
+export interface GuardConfirmedPasswordOptions<N extends string = string> {
+    readonly confirmRoute: CheckRouteName<N>;
+    readonly maxAge?: Duration;
+}
 // GuardDefinition
 export interface GuardDefinition<U> {
     readonly name: string;
@@ -441,7 +450,19 @@ export interface GuardDefinition<U> {
     readonly Auth: Token<GuardAuth<U>>;
     readonly AccountSessions: Token<GuardAccountSessions<U>>;
     readonly PasswordBroker: Token<GuardPasswordBroker<U>>;
+    authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, {
+        readonly user: U;
+    }>;
+    guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+    confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+    throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
     register(container: Container): void;
+}
+// GuardGuestOptions
+export interface GuardGuestOptions<N extends string = string> {
+    readonly homeRoute: CheckRouteName<N>;
 }
 // GuardOptions
 export interface GuardOptions<U> {
@@ -462,6 +483,8 @@ export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'devic
         readonly kind: 'invalid-token';
     }>>;
 };
+// GuardRouteLimit
+export type GuardRouteLimit = 'login' | 'register' | 'password-reset-link' | 'password-reset' | 'two-factor-challenge' | 'passkey-sign-in-options' | 'passkey-sign-in' | 'passkey-challenge-options' | 'passkey-challenge' | 'passkey-confirm-options' | 'passkey-step-up-options';
 // GuardSettings
 export interface GuardSettings {
     readonly rememberDays?: number;

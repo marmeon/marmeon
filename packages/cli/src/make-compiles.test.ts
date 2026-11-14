@@ -309,11 +309,11 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
 
   it('generates a policy that lets the owner in and answers everyone else with a 404', async () => {
     // The Gate comes through the app's own resolution, so it is the module instance the policy's answers belong to.
-    writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
-    const { Gate } = (await import(join(app, 'modules/billing/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
+    writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\nexport { withRequestGuard } from '@marmeon/auth/internal';\n");
+    const { Gate, withRequestGuard } = (await import(join(app, 'modules/billing/gate.ts'))) as { withRequestGuard: (resolve: (policy: new () => object) => object) => (policy: new () => object) => object; Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
     const { InvoicePolicy } = (await import(join(app, 'modules/billing/policies/InvoicePolicy.ts'))) as { InvoicePolicy: new () => object };
     const ask = (userId: number, ability: string, record: object) =>
-      new Gate({ user: async () => ({ id: userId }) } as never, (policy) => new policy()).inspect(InvoicePolicy as never, ability as never, record as never);
+      new Gate({ user: async () => ({ id: userId }) } as never, withRequestGuard((policy) => new policy())).inspect(InvoicePolicy as never, ability as never, record as never);
     for (const ability of ['view', 'update', 'delete']) {
       expect((await ask(7, ability, { user_id: 7 })).allowed).toBe(true);
       const other = await ask(8, ability, { user_id: 7 });
@@ -354,10 +354,10 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
     // Closed until the app decides: the ability answers false.
-    writeFileSync(join(app, 'modules/reports/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
-    const { Gate } = (await import(join(app, 'modules/reports/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record?: never): Promise<{ allowed: boolean; status: number }> } };
+    writeFileSync(join(app, 'modules/reports/gate.ts'), "export { Gate } from '@marmeon/auth';\nexport { withRequestGuard } from '@marmeon/auth/internal';\n");
+    const { Gate, withRequestGuard } = (await import(join(app, 'modules/reports/gate.ts'))) as { withRequestGuard: (resolve: (policy: new () => object) => object) => (policy: new () => object) => object; Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record?: never): Promise<{ allowed: boolean; status: number }> } };
     const { ReportPolicy } = (await import(join(app, 'modules/reports/policies/ReportPolicy.ts'))) as { ReportPolicy: new () => object };
-    const answer = await new Gate({ user: async () => ({ id: 1 }) } as never, (policy) => new policy()).inspect(ReportPolicy as never, 'exportAll' as never);
+    const answer = await new Gate({ user: async () => ({ id: 1 }) } as never, withRequestGuard((policy) => new policy())).inspect(ReportPolicy as never, 'exportAll' as never);
     expect([answer.allowed, answer.status]).toEqual([false, 403]);
     rmSync(join(app, 'modules/reports'), { recursive: true });
     rmSync(join(app, 'bootstrap'), { recursive: true });
@@ -436,11 +436,11 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       expect(typecheck.status).toBe(0);
 
       // The policy through the Gate: the owner passes, anyone else gets a 404.
-      writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
-      const { Gate } = (await import(join(app, 'modules/billing/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
+      writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\nexport { withRequestGuard } from '@marmeon/auth/internal';\n");
+      const { Gate, withRequestGuard } = (await import(join(app, 'modules/billing/gate.ts'))) as { withRequestGuard: (resolve: (policy: new () => object) => object) => (policy: new () => object) => object; Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
       const { BookmarkPolicy } = (await import(join(app, 'modules/bookmarks/policies/BookmarkPolicy.ts'))) as { BookmarkPolicy: new () => object };
       const ask = (userId: number, ability: string, record: object) =>
-        new Gate({ user: async () => ({ id: userId }) } as never, (policy) => new policy()).inspect(BookmarkPolicy as never, ability as never, record as never);
+        new Gate({ user: async () => ({ id: userId }) } as never, withRequestGuard((policy) => new policy())).inspect(BookmarkPolicy as never, ability as never, record as never);
       for (const ability of ['view', 'update', 'delete']) {
         expect((await ask(7, ability, { user_id: 7 })).allowed).toBe(true);
         const other = await ask(8, ability, { user_id: 7 });

@@ -8,6 +8,7 @@ import { MemorySessionStore, plainSessionCodec } from '@marmeon/session/internal
 import { describe, expect, it } from 'vitest';
 import type { Auth } from '../auth.ts';
 import { APP_GUARD_NAMES, guardNames, type GuardNames } from '../guard-names.ts';
+import { newRequestGuard } from '../request-guard.ts';
 import { guardContext, type GuardParts } from '../test-helpers/guard-context.ts';
 import { twoFactorState } from '../test-helpers/stores.ts';
 import type { AuthUser } from '../user.ts';
@@ -116,7 +117,7 @@ describe.each([
   /** The status of the request after the middleware, or `next` when it let it through. */
   async function run(names: GuardNames, session: Session): Promise<number> {
     const Class = middleware() as unknown as new (...parameters: unknown[]) => { handle(ctx: unknown, next: () => Promise<Response>): Promise<Response> };
-    const instance = new Class(contextOf(names), session, {} as Router);
+    const instance = new Class(contextOf(names), session, {} as Router, newRequestGuard());
     const response = await instance.handle({ expectsJson: () => true, request: new Request('https://example.com/') }, async () => new Response('next'));
     return response.status;
   }

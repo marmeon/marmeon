@@ -1303,6 +1303,59 @@ The selector, both validators and the token hash are `secret()` columns, as in t
 stores](#the-tables-of-the-stores)). The columns are those of `sign_ins` and `password_reset_tokens`, which the starter kit's
 migrations create. Copy a migration into the package's stubs under the guard's table names and never change it afterwards.
 
+### Protecting the routes
+
+The guard has its own middleware for the routes of the package. Each takes the named route of the guard's own page, because the
+app's defaults (`auth.login`, `auth.password.confirm`) are pages of the app:
+
+```ts title="office/src/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { OfficeGuard } from './guard.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone).get('/office/login', ShowLogin).name('office.login');
+  Route.authorize(everyone)
+    .middleware(OfficeGuard.guest({ homeRoute: 'office.home' }))
+    .middleware(OfficeGuard.throttle('login'))
+    .post('/office/login', Login);
+
+  const staff = Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }));
+  staff.get('/office', ShowHome).name('office.home');
+  staff.middleware(OfficeGuard.confirmedPassword({ confirmRoute: 'office.confirm' })).delete('/office/staff/:staff', RemoveStaff);
+});
+```
+
+- `OfficeGuard.authenticate({ loginRoute })` lets only the guard's signed-in users pass, like [`authenticate()`](#protecting-routes) does for
+  the app's: guests get 401 (JSON clients) or are sent to the login page and brought back afterwards. `ctx.user` is the guard's user. Someone
+  who is signed in to the app only is a guest here.
+- `OfficeGuard.guest({ homeRoute })` is for the login page: the guard's signed-in users are sent home, the app's are guests.
+- `OfficeGuard.confirmedPassword({ confirmRoute, maxAge })` asks the guard's users for their password again, with the guard's own window
+  (`passwordTimeoutSeconds`). A confirmation of the app opens nothing here, and the guard's opens nothing in the app.
+- `OfficeGuard.throttle(name)` is `throttle()` of the limit of an auth route, counted for the guard alone: the names are those of
+  [the limits of the auth routes](#the-limits-of-the-auth-routes) without `auth.` (`'login'`, `'password-reset-link'`, …), and
+  `OfficeGuard.throttle('login')` uses the limiter `auth.office.login`. The guard's limiters are defined at boot with the same limits as
+  the app's; define one of that name yourself to replace it. Because the limiter's name is part of every counter's key, user 1 of the guard
+  and user 1 of the app never share a count.
+
+The first middleware that names a guard sets whose route this is: `authenticate()` for `web`, `authenticate('api')` for `api`,
+`OfficeGuard.authenticate()` for `office`. The app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` stamp `web` when nothing has stamped yet, so a guard's `authenticate()` after them fails too. After that every middleware that acts for a guard checks it, and a route that mixes two
+guards fails with error [A9](errors.md#server-error-codes) (a 500 whose log line names both guards):
+
+- the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` on a route of a package guard (`verified()` also refuses a user of a package guard when an app built it by hand);
+- the guard's `confirmedPassword()` on a route of the app, or on one where its own `authenticate()` has not run before it;
+- `OfficeGuard.guest()` and the app's `authenticate()` on one route, in either order. Two `authenticate()` on one route stop the start already, as they add `user` twice.
+
+So the sudo window or the second factor of an app user can never open a route of the back office, and the other way round. A route has
+one guard: put the routes of a package guard in a group of their own.
+
+The `Gate` and `can()` refuse every route of a package guard with A9 for now, whatever the policy says: a policy asks about the app's
+users, and a policy of the app would otherwise judge the app's user who has the same id. Decide such a route on `ctx.user` with
+[`describeAccess()`](authorization.md#open-routes-and-bindings) instead.
+
+> [!NOTE]
+> The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or
+> `EmailChange` acts for the app's user, and nothing can tell that from a controller that means to. Take the guard's services there.
+
 ### What a package guard does not have
 
 A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's

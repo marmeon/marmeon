@@ -14,8 +14,10 @@ import { SessionFingerprints } from './fingerprint.ts';
 import { buildForGuard, GuardContext } from './guard-context.ts';
 import { APP_GUARD_NAMES, guardNames } from './guard-names.ts';
 import { SignInAudience } from './live-audience.ts';
+import { defineGuard, type Guard } from './define-guard.ts';
 import { authenticate, confirmedPassword, guest } from './middleware.ts';
 import { NewPassword } from './new-password.ts';
+import { RequestGuard } from './request-guard.ts';
 import { Passkeys } from './passkeys/passkeys.ts';
 import { PasskeyStore } from './passkeys/store.ts';
 import { PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
@@ -75,6 +77,33 @@ describe('the services that act for a guard', () => {
   it.each(Object.entries(services))('%s takes the GuardContext first and nothing a guard owns besides', (_name, Class) => {
     expect(Class.inject?.[0]).toBe(GuardContext);
     expect(Class.inject!.slice(1).filter((key) => OWNED_BY_A_GUARD.includes(key))).toEqual([]);
+  });
+});
+
+describe('the middleware of a package guard', () => {
+  const OfficeGuard = defineGuard('office', { users: MemoryUsers as never, tablePrefix: 'office_' });
+  const context = (OfficeGuard as unknown as Guard).tokens.context;
+  const middleware: Record<string, Injectable> = {
+    'authenticate()': OfficeGuard.authenticate({ loginRoute: 'a' as never }) as Injectable,
+    'guest()': OfficeGuard.guest({ homeRoute: 'a' as never }) as Injectable,
+    'confirmedPassword()': OfficeGuard.confirmedPassword({ confirmRoute: 'a' as never }) as Injectable,
+  };
+
+  it.each(Object.entries(middleware))('%s is injected with its own guard\'s context, never the app\'s, and nothing a guard owns besides', (_name, Class) => {
+    expect(Class.inject?.[0]).toBe(context);
+    expect(Class.inject?.[0]).not.toBe(GuardContext);
+    expect(Class.inject!.slice(1).filter((key) => OWNED_BY_A_GUARD.includes(key))).toEqual([]);
+  });
+
+  it.each(Object.entries(middleware))('%s asks the request for the route\'s guard', (_name, Class) => {
+    expect(Class.inject).toContain(RequestGuard);
+  });
+
+  it('is the app\'s own context for the app\'s middleware, and each takes the request\'s guard as well', () => {
+    for (const Class of [authenticate(), guest(), confirmedPassword(), twoFactor({ setup: 'a', verify: 'b' } as never), confirmedSecondFactor({ verify: 'b' } as never)] as Injectable[]) {
+      expect(Class.inject?.[0]).toBe(GuardContext);
+      expect(Class.inject).toContain(RequestGuard);
+    }
   });
 });
 

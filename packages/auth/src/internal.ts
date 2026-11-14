@@ -3,3 +3,4 @@
  * @internal
  */
 export { authenticatedToken } from './test-token.ts';
+export { withRequestGuard } from './request-guard.ts';

@@ -797,6 +797,8 @@ export class ShowUserProfileController extends Controller {
 The e-mail address leaves the server only for its owner. The controller decides what a page gets, so a prop the user may not see
 is never sent.
 
+On a route of a [package guard](authentication.md#protecting-the-routes) the gate and `can()` refuse with error A9 whatever the policy says, because a policy asks about the app's users: the package decides such a route on `ctx.user` with `describeAccess()`.
+
 | Method | Returns |
 | --- | --- |
 | `allows(Policy, ability, ...resources)` | Whether the user may. |
