@@ -7,6 +7,7 @@ import { Session, SessionConfig } from '@marmeon/session';
 import { MiddlewarePriority, Router } from '@marmeon/router';
 import { AccountSessions } from './account-sessions.ts';
 import { AppGuardContext } from './app-guard-context.ts';
+import { bootGuards, guardRegistry, hasPackageGuards } from './define-guard.ts';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
@@ -39,6 +40,8 @@ export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
+export { defineGuard } from './define-guard.ts';
+export type { GuardAccountSessions, GuardAuth, GuardDefinition, GuardOptions, GuardPasswordBroker, GuardSettings } from './define-guard.ts';
 export { credentialWriter } from './credential-writer.ts';
 export type { CredentialWriter } from './credential-writer.ts';
 export type { AttemptError, SignInOptions } from './auth.ts';
@@ -71,13 +74,13 @@ export type { PasswordRuleOptions } from './rules.ts';
 export { AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
 export type { AccessToken, AccessTokenId, AccessTokenOptions, WithToken } from './tokens.ts';
 export { UserProvider } from './user.ts';
-export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
+export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, IdOf, UserOf } from './user.ts';
 export { HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher } from './hashing.ts';
 export type { Argon2Options, HashDriver, HasherOptions, PasswordHash, ScryptOptions } from './hashing.ts';
 
-/** A password sign-in without a rate limiter is a free guessing oracle: with a `UserProvider` bound, the cache package has to be registered. */
+/** A password sign-in without a rate limiter is a free guessing oracle: with a `UserProvider` bound or a package guard registered, the cache package has to be registered. */
 function requireRateLimiter(container: Container): void {
-  if (!authenticationIsSetUp(container)) return;
+  if (!authenticationIsSetUp(container) && !hasPackageGuards(container)) return;
   if (!container.has(RateLimiter)) throw new Error(withCode('A7', 'Signing in needs @marmeon/cache: install it and register its provider (marmeon discover finds it).'));
 }
 
@@ -115,6 +118,8 @@ export class AuthServiceProvider implements ServiceProvider {
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   register(container: Container): void {
+    // Made by whichever provider comes first: a package may register a guard before this provider has run.
+    guardRegistry(container);
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.singleton(SessionFingerprints, (c) => new SessionFingerprints(c.make(EncryptionConfig)));
@@ -166,6 +171,8 @@ export class AuthServiceProvider implements ServiceProvider {
     // /up/ready is red until the tables of the stores in use have every column the stores need.
     await requireAuthTables(app.container);
     requireSignInFinder(app.container);
+    // The guards of packages: their settings, sign-in finders, tables and remember-me cookies.
+    await bootGuards(app.container);
     requireRateLimiter(app.container);
     // The limits of the auth routes (`throttle('auth.login')` …); an app's limiter of the same name replaces one. Without @marmeon/cache no route throttles.
     if (app.container.has(RateLimiter)) defineAuthRouteLimits(app.container.make(RateLimiter));

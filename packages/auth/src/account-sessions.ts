@@ -3,6 +3,7 @@ import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { EverySessionEnded } from './events.ts';
 import { GuardContext } from './guard-context.ts';
+import { APP_GUARD_NAMES } from './guard-names.ts';
 import { forgetResetLinks } from './password-reset.ts';
 import { idOf, UserProvider, type AuthUserId } from './user.ts';
 
@@ -263,6 +264,8 @@ export class AccountSessions {
    * `docs/authentication.md#ending-every-session-of-every-account`.
    */
   async endEveryone({ accessTokens = true, resetTokens = true }: { readonly accessTokens?: boolean; readonly resetTokens?: boolean } = {}): Promise<EveryoneEnded> {
+    // It would tell the live streams of every account, the app's too: nothing of a package guard's own ends every account's sessions.
+    if (this.#guard.names !== APP_GUARD_NAMES) throw new Error(`AccountSessions.endEveryone() is not available to the guard '${this.#guard.names.name}': it ends the sessions of the app's accounts.`);
     if (inTransaction()) {
       throw new Error('AccountSessions.endEveryone() must run outside a database transaction: each step commits on its own, and a rollback would bring the ended sign-ins back.');
     }

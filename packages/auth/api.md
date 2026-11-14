@@ -421,6 +421,58 @@ export declare class Gate {
     abilities<P extends object, const K extends string>(resource: NoInfer<ResourceOf<P, Projectable<P, K>>>, policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[]): Projection<Abilities<K>>;
     withAbilities<P extends object, const K extends string, T extends ResourceOf<P, Projectable<P, K>>>(rows: readonly T[], policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[]): Projection<WithAbilities<T, K>[]>;
 }
+// GuardAccountSessions
+export type GuardAccountSessions<U> = Omit<AccountSessions, 'end' | 'endEveryone'> & {
+    end(userId: IdOf<U>, options?: {
+        readonly accessTokens?: boolean;
+    }): ReturnType<AccountSessions['end']>;
+};
+// GuardAuth
+export type GuardAuth<U> = Omit<Auth, 'attempt' | 'signIn' | 'user' | 'id'> & {
+    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<U, AttemptError>>;
+    signIn(user: U, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
+    user(): Promise<U | undefined>;
+    id(): Promise<IdOf<U> | undefined>;
+};
+// GuardDefinition
+export interface GuardDefinition<U> {
+    readonly name: string;
+    readonly tablePrefix: string;
+    readonly Auth: Token<GuardAuth<U>>;
+    readonly AccountSessions: Token<GuardAccountSessions<U>>;
+    readonly PasswordBroker: Token<GuardPasswordBroker<U>>;
+    register(container: Container): void;
+}
+// GuardOptions
+export interface GuardOptions<U> {
+    readonly users: Concrete<UserProvider<U>>;
+    readonly tablePrefix: string;
+    readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
+}
+// GuardPasswordBroker
+export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'deviceCookie' | 'reset'> & {
+    createToken(email: string): Promise<Result<{
+        user: U;
+        token: string;
+    }, {
+        readonly kind: 'unavailable';
+    }>>;
+    deviceCookie(user: U): ReturnType<PasswordBroker['deviceCookie']>;
+    reset(email: string, value: string, password: string): Promise<Result<U, {
+        readonly kind: 'invalid-token';
+    }>>;
+};
+// GuardSettings
+export interface GuardSettings {
+    readonly rememberDays?: number;
+    readonly sessionMaxHours?: number;
+    readonly passwordTimeoutSeconds?: number;
+    readonly loginAttemptsPerMinute?: number;
+    readonly accountSignInsPerDay?: number;
+    readonly deviceCookieDays?: number;
+    readonly resetMinutes?: number;
+    readonly resetThrottleSeconds?: number;
+}
 // HashConfig
 export declare const HashConfig: import("@marmeon/core").ConfigDefinition<{
     driver: "argon2id" | "scrypt";
@@ -457,6 +509,10 @@ export interface HasherOptions {
     readonly argon2: Argon2Options;
     readonly scrypt: ScryptOptions;
 }
+// IdOf
+export type IdOf<U> = U extends {
+    readonly id: infer Id;
+} ? Id : string | number;
 // MAX_PASSWORD_BYTES
 export declare const MAX_PASSWORD_BYTES = 4096;
 // NO_STORE
@@ -1003,6 +1059,10 @@ export declare function confirmedPassword<const N extends RouteNameInput = never
 export declare function credentialWriter(db: Connection<any>, options?: {
     table?: string;
 }): CredentialWriter;
+// defineGuard
+export declare function defineGuard<U extends {
+    readonly id: string | number;
+}>(name: string, options: GuardOptions<U>): GuardDefinition<U>;
 // deny
 export declare function deny(message?: string): PolicyResponse;
 // denyAsNotFound
