@@ -105,16 +105,35 @@ describe('guardNames()', () => {
     expect(office.fingerprintContext).toBe('marmeon:auth-session:office');
     expect(office.loginThrottleContext).toBe('marmeon:auth-login-throttle:office');
     expect(office.deviceContext).toBe('marmeon:auth-device:office');
-    expect(office.rememberCookie(config, { secure: false })).toBe('marmeon_remember-office');
-    expect(office.rememberCookie(config, { secure: true })).toBe('__Host-marmeon_remember-office');
-    expect(office.deviceCookie(false)).toBe('marmeon_device-office');
-    expect(office.deviceCookie(true)).toBe('__Host-marmeon_device-office');
+    expect(office.rememberCookie(config, { secure: false })).toBe('marmeon_remember.office');
+    expect(office.rememberCookie(config, { secure: true })).toBe('__Host-marmeon_remember.office');
+    expect(office.deviceCookie(false)).toBe('marmeon_device.office.device');
+    expect(office.deviceCookie(true)).toBe('__Host-marmeon_device.office.device');
     expect(office.limiterKey('passkey-confirm:1')).toBe('guard:office|passkey-confirm:1');
     expect(office.routeLimit('auth.login')).toBe('auth.office.login');
     expect(office.accountScope(1)).not.toBe(accountScope(1));
     // An app user may have the string id `office:1`.
     expect(office.accountScope(1)).not.toBe(accountScope('office:1'));
     expect(office.accountScope('1')).not.toBe(accountScope('office:1'));
+  });
+
+  it.each(['marmeon_device-office', 'marmeon_device', 'marmeon_remember-office', 'marmeon_device-office-device', 'marmeon_remember'])('keeps the guard’s cookies apart from each other and from the app’s under AUTH_REMEMBER_COOKIE=%s', (rememberCookie) => {
+    for (const secure of [false, true]) {
+      const app = [APP_GUARD_NAMES.rememberCookie({ rememberCookie }, { secure }), APP_GUARD_NAMES.deviceCookie(secure)];
+      const own = [office.rememberCookie({ rememberCookie }, { secure }), office.deviceCookie(secure)];
+      for (const name of own) expect(app, name).not.toContain(name);
+      expect(own[0]).not.toBe(own[1]);
+    }
+  });
+
+  it('names a guard’s cookies with RFC 6265 token characters only, which the cookie parser and serializer take', () => {
+    for (const secure of [false, true]) {
+      for (const name of [office.rememberCookie(config, { secure }), office.deviceCookie(secure)]) expect(name).toMatch(/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
+    }
+  });
+
+  it('keeps a guard’s remember cookie apart from an app that names its own like it, and from the default', () => {
+    expect(office.rememberCookie(config, { secure: false })).not.toBe(APP_GUARD_NAMES.rememberCookie({ rememberCookie: 'marmeon_remember-office' }, { secure: false }));
   });
 
   it.each(['', 'web', 'api', 'app', 'auth', 'marmeon', 'Office', 'a b', 'x:y', '1office', 'office-', 'of--fice', 'a'.repeat(33)])('refuses the name %j', (name) => {
@@ -149,19 +168,34 @@ describe('what a guard keeps apart', () => {
   });
 
   it('counts the checks of a signed-in password per guard: the same account id in two guards shares no counter', async () => {
-    const { counts, limiter } = counting();
+    const { limiter } = counting();
     const office = guardNames('office');
-    const scope = { session: 'sign-in', typed: false };
+    const typed = { session: 'sign-in', typed: false };
     // The account's hour (20 for a sign-in without a typed password) of guard `office` 1 is used up …
     for (let i = 0; i < 20; i++) expect(await takeGuardPasswordCheck(limiter, { session: `s${i}`, typed: false }, 1, office)).toBeUndefined();
     expect(await takeGuardPasswordCheck(limiter, { session: 's20', typed: false }, 1, office)).toMatchObject({ kind: 'throttled', account: true });
     // … and the app's account 1 still has all of its own.
-    expect(await takePasswordCheck(limiter, scope, 1)).toBeUndefined();
-    // The app's clear does not touch a counter of the guard, nor the reverse.
+    expect(await takePasswordCheck(limiter, typed, 1)).toBeUndefined();
+  });
+
+  it('clears the minute of one guard’s sign-in only: the same sign-in scope in the app and in a guard are two counters', async () => {
+    const { counts, limiter } = counting();
+    const office = guardNames('office');
+    const scope = { session: 'sign-in', typed: false };
+    const appMinute = 'password-check-minute:session:sign-in';
+    const officeMinute = `guard:office|${appMinute}`;
+    await takePasswordCheck(limiter, scope, 1);
+    await takeGuardPasswordCheck(limiter, scope, 1, office);
+    expect([...counts.keys()]).toEqual(expect.arrayContaining([appMinute, officeMinute]));
+
     await clearPasswordCheck(limiter, scope);
+    expect(counts.has(appMinute), 'the app’s counter is gone').toBe(false);
+    expect(counts.has(officeMinute), 'the guard’s counter stays').toBe(true);
+
+    await takePasswordCheck(limiter, scope, 1);
     await clearGuardPasswordCheck(limiter, scope, office);
-    expect([...counts.keys()].filter((key) => key.startsWith('guard:office|')).length).toBeGreaterThan(0);
-    expect([...counts.keys()].filter((key) => !key.startsWith('guard:office|') && key.includes('office'))).toEqual([]);
+    expect(counts.has(officeMinute), 'the guard’s counter is gone').toBe(false);
+    expect(counts.has(appMinute), 'the app’s counter stays').toBe(true);
   });
 });
 

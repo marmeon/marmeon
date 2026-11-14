@@ -403,9 +403,9 @@ describe('SignInThrottle', () => {
       const app = throttleOf(limiter);
       const office = throttleOf(limiter, 'office');
       expect(app.deviceCookieName).toBe('marmeon_device');
-      expect(office.deviceCookieName).toBe('marmeon_device-office');
+      expect(office.deviceCookieName).toBe('marmeon_device.office.device');
       const cookie = office.issueDevice(credentials(1))!;
-      expect(cookie.name).toBe('marmeon_device-office');
+      expect(cookie.name).toBe('marmeon_device.office.device');
       expect(office.deviceNonce(cookie.value, credentials(1))).toBeDefined();
       expect(app.deviceNonce(cookie.value, credentials(1))).toBeUndefined();
       const own = app.issueDevice(credentials(1))!;

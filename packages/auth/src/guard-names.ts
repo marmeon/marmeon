@@ -80,8 +80,11 @@ export function guardNames(name: string): GuardNames {
     fingerprintContext: `marmeon:auth-session:${name}`,
     loginThrottleContext: `marmeon:auth-login-throttle:${name}`,
     deviceContext: `marmeon:auth-device:${name}`,
-    rememberCookie: (config, { secure }) => `${rememberCookieName(config, { secure })}-${name}`,
-    deviceCookie: (secure) => `${secure ? '__Host-' : ''}marmeon_device-${name}`,
+    // A `.` joins the guard to the cookie's name: `AUTH_REMEMBER_COOKIE` allows letters, digits, `_` and `-` and a guard name the same
+    // without `_`, so neither holds a `.` and no app name (`marmeon_device-office`, say) equals a guard's. RFC 6265 names allow it.
+    // The device cookie has a second `.`: a remember cookie has exactly one, so `AUTH_REMEMBER_COOKIE=marmeon_device` cannot meet it.
+    rememberCookie: (config, { secure }) => `${rememberCookieName(config, { secure })}.${name}`,
+    deviceCookie: (secure) => `${secure ? '__Host-' : ''}marmeon_device.${name}.device`,
     limiterKey: (base) => `guard:${name}|${base}`,
     routeLimit: (limit) => `auth.${name}.${limit.replace(/^auth\./, '')}`,
     accountScope: (id) => accountScope(id, name),
