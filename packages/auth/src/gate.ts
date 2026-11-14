@@ -1,3 +1,5 @@
+import { environment, Logger } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import { describeAccess, HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@marmeon/router';
 import { Auth } from './auth.ts';
 import { RequestGuard } from './request-guard.ts';
@@ -126,6 +128,12 @@ function projection<T>(compute: () => Promise<T>): Projection<T> {
   return Object.assign(run, { then: <A = T, B = never>(fulfilled?: ((value: T) => A | PromiseLike<A>) | null, rejected?: ((reason: unknown) => B | PromiseLike<B>) | null) => run().then(fulfilled, rejected) });
 }
 
+/** The guard every policy belongs to until a policy can name its own: the app's. */
+const POLICY_GUARD = 'web';
+
+/** The route guards each policy class was already warned about, per process. */
+const WARNED = new WeakMap<object, Set<string>>();
+
 /** Tells a request's gate the user the token guard authenticated — set once below, by the class itself. */
 let setTokenUser: (gate: Gate, user: AuthUser) => void;
 
@@ -152,12 +160,31 @@ export class Gate {
     this.#resolve = resolve;
   }
 
-  // On a route that belongs to a package guard every method refuses (A9): this gate asks the app's `Auth`, and a policy of the app
-  // would judge the app's user of the same id. Deliberately blunt: a targeted rule replaces it once a policy can name its guard.
-  #refuseOnPackageRoute(method: string, decide = false): void {
+  // On a route that belongs to another guard than the policy's, the answer is no, never yes: this gate asks the app's `Auth`, and a
+  // policy of the app would judge the app's user of the same id. Deliberately "no" and not an error, so one global middleware that asks
+  // a policy cannot take down every route of another guard. The policy is not built, `before()` does not run and no user is loaded.
+  #admit(policy: PolicyClass, method: string): boolean {
     // Read through the resolver, the request's scope in the container. Nobody but the binding can make a RequestGuard, so a resolver
     // that has none throws here rather than answering with an empty stamp that every check passes.
-    this.#resolve(RequestGuard).refuseGate(method, decide);
+    const request = this.#resolve(RequestGuard);
+    if (request.admit(POLICY_GUARD)) return true;
+    this.#warnForeign(policy, method, request.name ?? POLICY_GUARD);
+    return false;
+  }
+
+  /** In development, once per policy class and route guard and process: which policy was told no, by which gate method, for which two guards. */
+  #warnForeign(policy: PolicyClass, method: string, routeGuard: string): void {
+    if (!environment.isDevelopment()) return;
+    const seen = WARNED.get(policy) ?? new Set<string>();
+    if (seen.has(routeGuard)) return;
+    WARNED.set(policy, seen.add(routeGuard));
+    this.#resolve(Logger).warn(
+      withCode(
+        'A9',
+        `${policy.name || 'A policy'} judges the users of the guard '${POLICY_GUARD}', but Gate.${method}() asked it on a route of the guard '${routeGuard}': the answer is no. ` +
+          "Put middleware that asks a policy on the app's route tree (a group), not in the global pipeline. See docs/authorization.md#middleware-that-asks-a-policy.",
+      ),
+    );
   }
 
   /** Whom the policies are asked about: the token's user on an API route, else the session's. */
@@ -166,25 +193,25 @@ export class Gate {
   }
 
   async allows<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean> {
-    this.#refuseOnPackageRoute('allows', true);
+    if (!this.#admit(policy, 'allows')) return false;
     return (await this.inspect(policy, ability, ...resources)).allowed;
   }
 
   async denies<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean> {
-    this.#refuseOnPackageRoute('denies', true);
+    if (!this.#admit(policy, 'denies')) return true;
     return !(await this.allows(policy, ability, ...resources));
   }
 
   /** Throws `AuthorizationError` (403, or 404 for `denyAsNotFound()`) unless allowed. */
   async authorize<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<void> {
-    this.#refuseOnPackageRoute('authorize', true);
+    if (!this.#admit(policy, 'authorize')) throw new AuthorizationError(403);
     const response = await this.inspect(policy, ability, ...resources);
     if (!response.allowed) throw new AuthorizationError(response.status, response.message);
   }
 
   /** The policy's full answer. */
   async inspect<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<PolicyResponse> {
-    this.#refuseOnPackageRoute('inspect', true);
+    if (!this.#admit(policy, 'inspect')) return new PolicyResponse(false);
     const user = await this.#user();
     if (user === undefined) return new PolicyResponse(false);
     const instance = this.#resolve(policy) as P & Before;
@@ -214,9 +241,8 @@ export class Gate {
     names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[],
   ): Projection<Abilities<K>>;
   abilities(...args: [PolicyClass, readonly string[]] | [unknown, PolicyClass, readonly string[]]): Projection<Abilities<string>> {
-    this.#refuseOnPackageRoute('abilities');
     const [resources, policy, names] = args.length === 2 ? [[], args[0], args[1]] : [[args[0]], args[1], args[2]];
-    return projection(async () => (await this.#project(policy, names, [resources]))[0]!);
+    return projection(async () => (await this.#project('abilities', policy, names, [resources]))[0]!);
   }
 
   /**
@@ -229,20 +255,18 @@ export class Gate {
     policy: PolicyClass<P>,
     names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[],
   ): Projection<WithAbilities<T, K>[]> {
-    this.#refuseOnPackageRoute('withAbilities');
     return projection(async () => {
-      const answers = await this.#project(policy, names, rows.map((row) => [row]));
+      const answers = await this.#project('withAbilities', policy, names, rows.map((row) => [row]));
       return rows.map((row, index) => ({ ...(row as object), can: answers[index]! }) as unknown as WithAbilities<T, K>);
     });
   }
 
   /** One answer per resource list: the user and the policy once, `before()` once per ability, then every method call. */
-  async #project(policy: PolicyClass, names: readonly string[], resources: readonly unknown[][]): Promise<Abilities<string>[]> {
-    // Also here, and as a decision: a projection computes later than it was asked for, the stamp may have been set in between, and a policy
-    // that runs before any stamp has judged the app's user.
-    this.#refuseOnPackageRoute('abilities', true);
+  async #project(method: 'abilities' | 'withAbilities', policy: PolicyClass, names: readonly string[], resources: readonly unknown[][]): Promise<Abilities<string>[]> {
     const denied = () => Object.fromEntries(names.map((name) => [name, false]));
     if (resources.length === 0) return [];
+    // Where the projection is computed, not where it was asked for: the page renders after the middleware, the stamp is set by then.
+    if (!this.#admit(policy, method)) return resources.map(denied);
     const user = await this.#user();
     if (user === undefined) return resources.map(denied);
     const instance = this.#resolve(policy) as Record<string, unknown> & Before;

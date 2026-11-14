@@ -64,6 +64,15 @@ export class RouteTypesCheck implements AppCheck {
         docs: 'docs/middleware.md#listed-twice',
       });
     }
+    for (const problem of this.#router.pipelineProblems()) {
+      problems.push({
+        severity: 'error',
+        message: `${problem.route.methods.join('|')} ${redactor.path(problem.route.path, problem.route.path)}: ${problem.message}`,
+        ...placeOf(problem.route.site, this.#app.root),
+        code: problem.code,
+        ...(problem.docs !== undefined && { docs: problem.docs }),
+      });
+    }
     for (const conflict of this.#router.routeConflicts()) {
       problems.push({
         severity: 'warning',

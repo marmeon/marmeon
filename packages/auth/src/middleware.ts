@@ -6,7 +6,7 @@ import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { GuardContext } from './guard-context.ts';
 import { authenticatedByToken, Gate } from './gate.ts';
-import { markPackageUser, RequestGuard } from './request-guard.ts';
+import { markNamingMiddleware, markPackageUser, RequestGuard } from './request-guard.ts';
 import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
 import { UserProvider, type Authenticated } from './user.ts';
 
@@ -89,6 +89,8 @@ export function authenticateFor(whose: MiddlewareGuard, loginRoute: string): Mid
     }
   };
   Object.defineProperty(Authenticate, 'name', { value: whose.name === undefined ? 'authenticate' : `authenticate:${whose.name}` });
+  // Names the route's guard before its first middleware runs (see `markNamingMiddleware`).
+  markNamingMiddleware(Authenticate, () => whose.name ?? 'web');
   return Authenticate as unknown as MiddlewareClass<{}, Authenticated>;
 }
 
@@ -133,6 +135,8 @@ export function guestFor(whose: MiddlewareGuard, home: string, isPath: boolean):
     }
   };
   Object.defineProperty(RedirectIfAuthenticated, 'name', { value: whose.name === undefined ? 'guest' : `guest:${whose.name}` });
+  // The app's `guest()` names no guard: a public page may carry it next to a package guard's routes.
+  if (whose.name !== undefined) markNamingMiddleware(RedirectIfAuthenticated, () => whose.name!);
   return RedirectIfAuthenticated as unknown as MiddlewareClass<{}, {}>;
 }
 
@@ -223,6 +227,7 @@ function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
     }
   };
   Object.defineProperty(AuthenticateToken, 'name', { value: 'authenticate:api' });
+  markNamingMiddleware(AuthenticateToken, () => 'api');
   return AuthenticateToken;
 }
 

@@ -1,10 +1,14 @@
 import type { Container, Resolver } from '@marmeon/core';
+import type { Router } from '@marmeon/router';
 import { withCode } from '@marmeon/core/internal';
 
 /** The names an app guard stamps: the session guard and the token guard of the app. A package guard can have neither name. */
 const APP_STAMPS: readonly string[] = ['web', 'api'];
 
 const isApp = (stamp: string): boolean => APP_STAMPS.includes(stamp);
+
+/** The same guard, or the app's session and token guard, which are one circle of users. */
+const compatible = (a: string, b: string): boolean => a === b || (isApp(a) && isApp(b));
 
 /** Set while `makeRequestGuard()` builds one: the constructor refuses every other caller, the container's own autowiring included. */
 let making = false;
@@ -22,6 +26,8 @@ const refuse = (message: string): never => {
  */
 export class RequestGuard {
   #name: string | undefined;
+  /** The guards whose policies decided on this request while the route had no stamp. */
+  readonly #judged = new Set<string>();
 
   // The container builds a class nobody bound, on its own and for every caller: a gate and a middleware would each get an empty stamp and
   // every check would open. So only `bindRequestGuard()` can make one, and an unbound `RequestGuard` fails where it is asked for.
@@ -36,38 +42,47 @@ export class RequestGuard {
 
   /**
    * A middleware of `guard` that signs in or checks a user names it as the route's guard. Two package guards, or a package guard and the
-   * app's, on one route are error A9; the app's two guards (`web`, `api`) may follow each other.
+   * app's, on one route are error A9; the app's two guards (`web`, `api`) may follow each other. So is a guard that a policy has already
+   * judged for on this route (see {@link RequestGuard.admit}): the controller must not act for a user other than the one the policy saw.
    */
   claim(guard: string, by: string): void {
     const current = this.#name;
-    if (current !== undefined && current !== guard && !(isApp(current) && isApp(guard))) {
+    if (current !== undefined && !compatible(current, guard)) {
       refuse(`${by} acts for the guard '${guard}', but an earlier middleware of this route acts for '${current}': a route belongs to one guard.`);
+    }
+    for (const judged of this.#judged) {
+      if (!compatible(judged, guard)) refuse(`${by} acts for the guard '${guard}', but a policy of '${judged}' decided on this request before it: a route belongs to one guard.`);
     }
     this.#name = guard;
   }
 
-  /** The app guard's middleware: A9 on a route that belongs to a package guard; on a route with no guard yet it takes the app's, so a later package middleware cannot mix in. */
+  /** The guard the router found in the route's middleware list, before its first middleware runs: {@link RequestGuard.claim} by the route itself. */
+  stamp(guard: string): void {
+    this.claim(guard, 'The middleware of this route');
+  }
+
+  /** The app's middleware: A9 on a route that belongs to a package guard; on a route with no guard yet it takes the app's, so a later package middleware cannot mix in. */
   requireApp(by: string): void {
     const current = this.#name;
     if (current !== undefined && !isApp(current)) {
       refuse(`${by} asks the app's guard, but this route belongs to the guard '${current}': use the middleware of '${current}' (its sign-in, password confirmation and second factor are not the app's).`);
     }
+    for (const judged of this.#judged) {
+      if (!isApp(judged)) refuse(`${by} asks the app's guard, but a policy of '${judged}' decided on this request before it: a route belongs to one guard.`);
+    }
     this.#name ??= 'web';
   }
 
   /**
-   * `decide` is for a gate that asks a policy now; a projection that is only made, to be computed when a page renders, just checks.
-   * The `Gate` on a route of a package guard: A9 for now, whatever the policy. The gate asks the app's `Auth`, which is not who the
-   * route's controller acts for; refusing is the fail-closed answer until a policy names the guard whose users it judges.
+   * Whether a policy of `policyGuard` may decide on this request. On a route with a stamp only a policy of that guard may (`web` and
+   * `api` count as one); another one gets no, never yes. On a route without a stamp every policy may, and the guard is noted: a middleware
+   * that names an incompatible guard afterwards is A9 ({@link RequestGuard.claim}).
    */
-  refuseGate(method: string, decide = false): void {
+  admit(policyGuard: string): boolean {
     const current = this.#name;
-    // A policy that runs now has judged the app's user: the route is the app's from here, so a package guard's `authenticate()` after it
-    // is A9 and cannot make a controller act for another user than the one the policy saw.
-    if (decide && current === undefined) this.#name = 'web';
-    if (current !== undefined && !isApp(current)) {
-      refuse(`Gate.${method}() asks the policies about the app's users, but this route belongs to the guard '${current}': a policy cannot judge the users of a package guard yet; authorize on ctx.user (describeAccess) instead.`);
-    }
+    if (current !== undefined) return compatible(current, policyGuard);
+    this.#judged.add(policyGuard);
+    return true;
   }
 
   /** A package guard's middleware that needs a user already checked: A9 unless that guard's own `authenticate()` came first. */
@@ -87,6 +102,49 @@ export function bindRequestGuard(container: Container): void {
 /** The guard of the route `scope` serves: `web`, `api`, a package guard's name, or `undefined` before any middleware named one. @internal */
 export function requestGuard(scope: Resolver): string | undefined {
   return scope.make(RequestGuard).name;
+}
+
+/** The middleware classes that name the guard of the route they stand on, by class identity: the one thing the router's start hook goes by. */
+const NAMING = new WeakMap<object, () => string>();
+
+/**
+ * Marks `Class`, a middleware class made by a guard's factory, as naming the route's guard: `authenticate()`, `authenticate('api')`
+ * and a package guard's `authenticate()` and `guest()`. `guard` is read when a route is judged, not now (a slot is bound only at boot).
+ * Recognition is by the class itself, never by its name or shape. @internal
+ */
+export function markNamingMiddleware(Class: object, guard: () => string): void {
+  NAMING.set(Class, guard);
+}
+
+/** What the middleware list of a route says about its guard: the one it names, or two that cannot share a route. */
+export type RouteGuard = { readonly guard: string } | { readonly conflict: string };
+
+const ROUTE_GUARDS = new WeakMap<readonly object[], RouteGuard | undefined>();
+
+/**
+ * The guard a route's middleware list names, or `undefined` when no middleware in it does. The first naming middleware sets it; another
+ * that names an incompatible guard (anything but equal, or `web` with `api`) makes it a `conflict` whose text names both. The router hands
+ * the same frozen list for every request of a route, so the answer is worked out once per list. @internal
+ */
+export function routeGuardOf(pipeline: readonly object[]): RouteGuard | undefined {
+  if (ROUTE_GUARDS.has(pipeline)) return ROUTE_GUARDS.get(pipeline);
+  let found: { guard: string; by: string } | undefined;
+  let result: RouteGuard | undefined;
+  for (const middleware of pipeline) {
+    const named = NAMING.get(middleware);
+    if (named === undefined) continue;
+    const guard = named();
+    const by = (middleware as { name?: unknown }).name;
+    const label = typeof by === 'string' && by !== '' ? by : 'a middleware';
+    if (found === undefined) found = { guard, by: label };
+    else if (!compatible(found.guard, guard)) {
+      result = { conflict: `${found.by} acts for the guard '${found.guard}' and ${label} for '${guard}': a route belongs to one guard.` };
+      break;
+    }
+  }
+  result ??= found === undefined ? undefined : { guard: found.guard };
+  ROUTE_GUARDS.set(pipeline, result);
+  return result;
 }
 
 /** The users a package guard's `authenticate()` handed to the route, by guard: the object itself tells whose user it is. */
@@ -123,4 +181,25 @@ export function newRequestGuard(): RequestGuard {
 /** `resolve` that also hands out a fresh `RequestGuard`, for a test that builds a `Gate` with a resolver of its own. @internal */
 export function withRequestGuard<R extends (Class: never) => unknown>(resolve: R): R {
   return ((Class: unknown) => (Class === RequestGuard ? newRequestGuard() : (resolve as unknown as (c: unknown) => unknown)(Class))) as unknown as R;
+}
+
+const WIRED = new WeakSet<Router>();
+
+/**
+ * Makes the router stamp the guard of a route before its first middleware runs (a middleware list that names two guards fails the
+ * request with A9), and lets the kernel and `marmeon check` refuse such a route at start. Once per router, whichever provider step calls first. @internal
+ */
+export function stampRoutes(router: Router): void {
+  if (WIRED.has(router)) return;
+  WIRED.add(router);
+  router.beforeMiddleware((_route, pipeline, resolve) => {
+    const found = routeGuardOf(pipeline);
+    if (found === undefined) return;
+    if ('conflict' in found) return refuse(found.conflict);
+    resolve(RequestGuard).stamp(found.guard);
+  });
+  router.checkPipelines((_route, pipeline) => {
+    const found = routeGuardOf(pipeline);
+    return found !== undefined && 'conflict' in found ? { message: found.conflict, code: 'A9', docs: 'docs/errors.md#server-error-codes' } : undefined;
+  });
 }

@@ -219,7 +219,8 @@ export function refuseUndecidedRoutes(application: Application): void {
   const router = application.container.make(Router);
   const problems = router.accessProblems();
   const duplicates = router.middlewareProblems();
-  if (problems.length === 0 && duplicates.length === 0) return;
+  const pipelines = router.pipelineProblems();
+  if (problems.length === 0 && duplicates.length === 0 && pipelines.length === 0) return;
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   const path = (route: { path: string }) => redactor.path(route.path, route.path);
   const parts = [
@@ -227,6 +228,8 @@ export function refuseUndecidedRoutes(application: Application): void {
     ...(duplicates.length > 0
       ? [withCode('H8', `Two middleware add the same key to the context:\n${duplicates.map((problem) => `  ${describeMiddlewareProblem(problem, path)}`).join('\n')}`)]
       : []),
+    // What a package refuses in a route's middleware list (a route that two guards claim): the finding names its own code, in the form `withCode` writes.
+    ...pipelines.map((problem) => `[marmeon:${problem.code}] ${problem.route.methods.join('|')} ${path(problem.route)}: ${problem.message}`),
   ];
   throw new RouteAccessError(parts.join('\n\n'));
 }

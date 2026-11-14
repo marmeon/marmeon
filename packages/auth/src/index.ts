@@ -13,7 +13,7 @@ import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
-import { bindRequestGuard } from './request-guard.ts';
+import { bindRequestGuard, stampRoutes } from './request-guard.ts';
 import { GuardContext } from './guard-context.ts';
 import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
@@ -131,6 +131,8 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(Auth);
     // What the route's middleware says about whose users it serves: read by the other guards' middleware and by the gate.
     bindRequestGuard(container);
+    // The router is registered by now (this package depends on `@marmeon/http`): `marmeon check` registers the app and never boots it.
+    if (container.has(Router)) stampRoutes(container.make(Router));
     // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.
     container.scoped(EmailChange);
     // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
@@ -162,6 +164,8 @@ export class AuthServiceProvider implements ServiceProvider {
   }
 
   async boot(app: Application): Promise<void> {
+    // Again: the router may be bound only after this provider registered.
+    stampRoutes(app.container.make(Router));
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     // Private registration turned off where it counts: said once, at boot — like the log mailer.
