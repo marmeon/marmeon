@@ -6,6 +6,7 @@ import { Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { authenticate, EmailVerification, verified } from './index.ts';
 import { emailHash } from './verification.ts';
+import { markPackageUser, newRequestGuard } from './request-guard.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const router = new Router().load(
@@ -48,7 +49,7 @@ describe('EmailVerification', () => {
 describe('verified()', () => {
   const Verified = verified();
   const run = (user: { email_verified_at: string | null }, accept = 'text/html') =>
-    new Verified(router).handle(
+    new Verified(router, newRequestGuard()).handle(
       { user: { ...ada, ...user }, expectsJson: () => accept.includes('json') } as never,
       async () => new Response('ok'),
     );
@@ -58,6 +59,21 @@ describe('verified()', () => {
     const away = await run({ email_verified_at: null });
     expect([away.status, away.headers.get('location')]).toEqual([302, '/email/verify']);
     expect((await run({ email_verified_at: null }, 'application/json')).status).toBe(403);
+  });
+
+  it('still works when an app builds it by hand with the router alone, as the starter kit\'s wrapper does', async () => {
+    const byHand = new Verified(router);
+    const answer = await byHand.handle({ user: { ...ada, email_verified_at: '2026-10-01T00:00:00.000Z' }, expectsJson: () => true } as never, async () => new Response('ok'));
+    expect(answer.status).toBe(200);
+  });
+
+  it('refuses a package guard\'s user even when built by hand without the stamp (A9), and the app\'s own user still passes', async () => {
+    const byHand = new Verified(router);
+    const officer = { ...ada, email_verified_at: '2026-10-01T00:00:00.000Z' };
+    markPackageUser(officer, 'office');
+    expect(() => byHand.handle({ user: officer, expectsJson: () => true } as never, async () => new Response('ok'))).toThrow(/A9.*'office'/);
+    const appUser = { ...ada, email_verified_at: '2026-10-01T00:00:00.000Z' };
+    expect((await byHand.handle({ user: appUser, expectsJson: () => true } as never, async () => new Response('ok'))).status).toBe(200);
   });
 
   it('names the headers that choose between the redirect and the 403 in Vary — on both', async () => {

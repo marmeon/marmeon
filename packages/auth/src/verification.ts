@@ -3,6 +3,7 @@ import type { Duration } from '@marmeon/core';
 import { UrlSigner } from '@marmeon/http';
 import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
+import { refusePackageUser, RequestGuard } from './request-guard.ts';
 
 // These answers are chosen by `expectsJson`: a shared cache must not hand one variant to the other client.
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);
@@ -71,13 +72,22 @@ export interface VerifiedOptions<N extends string = string> {
 export function verified<const N extends RouteNameInput = never>(options: VerifiedOptions<N> = {}): MiddlewareClass<{ readonly user: VerifiableUser }, {}> {
   const noticeRoute: string = options.noticeRoute ?? 'auth.verification.notice';
   const EnsureEmailIsVerified = class {
-    readonly #router: Router;
+    // Written out because `request` is optional: an app wraps this middleware and builds it by hand (`new Verified(router)`, as the
+    // starter kit's `ConfirmedAddress` does). A hand-built instance has no stamp, but still refuses a package guard's user by the user itself.
+    static readonly inject = [Router, RequestGuard] as const;
 
-    constructor(router: Router) {
+    readonly #router: Router;
+    readonly #request: RequestGuard | undefined;
+
+    constructor(router: Router, request?: RequestGuard) {
       this.#router = router;
+      this.#request = request;
     }
 
     handle(ctx: HttpContext<{ readonly user: VerifiableUser }>, next: Next<{}>): Promise<Response> | Response {
+      // Verification is the app's: a package guard has no verified e-mail, and the app's column says nothing about its user.
+      refusePackageUser(ctx.user, 'verified()');
+      this.#request?.requireApp('verified()');
       // Fail closed: a user whose provider did not load the column (undefined) is not verified either.
       if (ctx.user.email_verified_at != null) return next();
       if (ctx.expectsJson()) return Response.json({ message: 'Your e-mail address is not verified.' }, { status: 403, headers: VARY });

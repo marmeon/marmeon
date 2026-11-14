@@ -1,8 +1,9 @@
-import { Clock, EventDispatcher, Logger, Redactor, token, type Concrete, type Container, type Resolver, type Token } from '@marmeon/core';
+import { Clock, EventDispatcher, Logger, Redactor, token, type Concrete, type Container, type Duration, type Resolver, type Token } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
-import { RateLimiter } from '@marmeon/cache';
+import { RateLimiter, throttle } from '@marmeon/cache';
 import { EncryptionConfig } from '@marmeon/encryption';
+import type { CheckRouteName, MiddlewareClass, RouteNameInput } from '@marmeon/router';
 import { SessionConfig, SessionEndings, type UserSessions } from '@marmeon/session';
 import type { Result } from '@marmeon/core';
 import { AccountSessions } from './account-sessions.ts';
@@ -11,6 +12,9 @@ import { AuthConfig } from './config.ts';
 import type { EmailChangeStore } from './email-changes.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { buildForGuard, GuardContext } from './guard-context.ts';
+import { authenticateFor, confirmedPasswordFor, guestFor, type MiddlewareGuard } from './middleware.ts';
+import { bindRequestGuard } from './request-guard.ts';
+import { guardLimiterName, isGuardRouteLimit, type GuardRouteLimit } from './route-limits.ts';
 import { guardNames, isGuardName, type GuardNames } from './guard-names.ts';
 import { NewPassword } from './new-password.ts';
 import { DatabasePasswordResetTokens, PasswordBroker, type PasswordResetTokenStore } from './password-reset.ts';
@@ -78,6 +82,23 @@ export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'devic
   reset(email: string, value: string, password: string): Promise<Result<U, { readonly kind: 'invalid-token' }>>;
 };
 
+export interface GuardAuthenticateOptions<N extends string = string> {
+  /** Named route of the guard's login page, where browsers are sent. Required: the app's `auth.login` is the app's page. */
+  readonly loginRoute: CheckRouteName<N>;
+}
+
+export interface GuardGuestOptions<N extends string = string> {
+  /** Named route the guard's signed-in users are sent to, resolved when the request arrives. Required: the app's home is the app's page. */
+  readonly homeRoute: CheckRouteName<N>;
+}
+
+export interface GuardConfirmedPasswordOptions<N extends string = string> {
+  /** Named route of the guard's confirmation page. Required: `auth.password.confirm` is the app's page. */
+  readonly confirmRoute: CheckRouteName<N>;
+  /** How long a confirmation counts, a {@link Duration} above zero (default: the guard's `passwordTimeoutSeconds`). */
+  readonly maxAge?: Duration;
+}
+
 /**
  * A guard on the users of a package: its own users, tables, session keys, cookies and counters. Made by {@link defineGuard}; the
  * package registers it in its provider (`OfficeGuard.register(container)`) and injects the services through the tokens.
@@ -91,6 +112,17 @@ export interface GuardDefinition<U> {
   readonly AccountSessions: Token<GuardAccountSessions<U>>;
   /** Reset links for the guard's users, on the guard's own table. */
   readonly PasswordBroker: Token<GuardPasswordBroker<U>>;
+  /**
+   * Only for the guard's signed-in users: `Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))`, then `ctx.user` is
+   * the guard's user. Names the guard as the route's: the app's middleware and the `Gate` refuse such a route (error A9).
+   */
+  authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, { readonly user: U }>;
+  /** Only for guests of the guard: its signed-in users are sent to `homeRoute`; the app's users are guests here. */
+  guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+  /** "Sudo mode" for the guard: asks its users for their password again; the app's confirmation opens nothing here (error A9 without the guard's `authenticate()` before it). */
+  confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{ readonly user: U }, {}>;
+  /** `throttle()` of the guard's own copy of an auth route's limit, counted apart from the app's (`throttle('auth.office.login')` for `'login'`). */
+  throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
   /** Binds the guard's services in `container`. Call it in the `register()` of the package's provider; a guard registered twice is a no-op. */
   register(container: Container): void;
 }
@@ -149,6 +181,7 @@ interface GuardTokens {
   readonly fingerprints: Token<SessionFingerprints>;
   readonly signInThrottle: Token<SignInThrottle>;
   readonly newPassword: Token<NewPassword>;
+  readonly context: Token<GuardContext>;
 }
 
 /** The tables of a guard: its prefix and the name of each store's table. */
@@ -233,6 +266,7 @@ export class Guard {
       fingerprints: key('fingerprints'),
       signInThrottle: key('signInThrottle'),
       newPassword: key('newPassword'),
+      context: key('context'),
     };
     this.Auth = key('Auth');
     this.AccountSessions = key('AccountSessions');
@@ -243,8 +277,11 @@ export class Guard {
     const registry = guardRegistry(container);
     if (registry.all().includes(this)) return;
     registry.add(this);
+    bindRequestGuard(container);
     const { tokens } = this;
     const context = (resolver: Resolver) => new PackageGuardContext(this, resolver, container);
+    // For the middleware of the guard, which the router makes in the request's scope.
+    container.bind(tokens.context, (c) => context(c));
     container.singleton(tokens.settings, (c) => this.settings(c));
     container.bind(tokens.users, this.#users as never);
     // Each store on the guard's own table: the same id in the app's table is another account.
@@ -257,6 +294,34 @@ export class Guard {
     container.bind(this.AccountSessions, (c) => buildForGuard(AccountSessions, c, context(c)));
     container.bind(this.PasswordBroker, (c) => buildForGuard(PasswordBroker, c, context(c)));
     container.scoped(this.Auth, (c) => buildForGuard(Auth, c, context(c)));
+  }
+
+  /** What a middleware of this guard is injected with, and the name it stamps on the request. */
+  get #acting(): MiddlewareGuard {
+    return { context: this.tokens.context, name: this.name };
+  }
+
+  authenticate(options: GuardAuthenticateOptions): MiddlewareClass<{}, { readonly user: unknown }> {
+    return authenticateFor(this.#acting, this.#route('authenticate', 'loginRoute', options?.loginRoute)) as never;
+  }
+
+  guest(options: GuardGuestOptions): MiddlewareClass<{}, {}> {
+    return guestFor(this.#acting, this.#route('guest', 'homeRoute', options?.homeRoute), false);
+  }
+
+  confirmedPassword(options: GuardConfirmedPasswordOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
+    return confirmedPasswordFor(this.#acting, this.#route('confirmedPassword', 'confirmRoute', options?.confirmRoute), options) as never;
+  }
+
+  throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}> {
+    if (!isGuardRouteLimit(name)) throw new TypeError(`Guard '${this.name}'.throttle() takes the name of an auth route's limit (login, password-reset, …); got ${JSON.stringify(name)}.`);
+    return throttle(guardLimiterName(this.name, name));
+  }
+
+  /** The route a guard's middleware sends to: the app's defaults are the app's pages, so a guard names its own. */
+  #route(method: string, option: string, route: unknown): string {
+    if (typeof route !== 'string' || route === '') throw new TypeError(`Guard '${this.name}'.${method}() needs \`${option}\`, the named route of the guard's own page: the app's default page belongs to the app.`);
+    return route;
   }
 
   /** The app's `AuthConfig` with the guard's settings over it; A8 for a setting outside its limits. */

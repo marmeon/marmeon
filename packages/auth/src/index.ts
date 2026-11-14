@@ -13,6 +13,7 @@ import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
+import { bindRequestGuard } from './request-guard.ts';
 import { GuardContext } from './guard-context.ts';
 import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
@@ -23,7 +24,7 @@ import { NewPassword } from './new-password.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { EndSessionsCommand } from './end-sessions.ts';
 import { ResetTwoFactorCommand } from './reset-two-factor.ts';
-import { defineAuthRouteLimits } from './route-limits.ts';
+import { defineAuthRouteLimits, defineGuardRouteLimits } from './route-limits.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
@@ -41,7 +42,8 @@ export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
 export { defineGuard } from './define-guard.ts';
-export type { GuardAccountSessions, GuardAuth, GuardDefinition, GuardOptions, GuardPasswordBroker, GuardSettings } from './define-guard.ts';
+export type { GuardAccountSessions, GuardAuth, GuardAuthenticateOptions, GuardConfirmedPasswordOptions, GuardDefinition, GuardGuestOptions, GuardOptions, GuardPasswordBroker, GuardSettings } from './define-guard.ts';
+export type { GuardRouteLimit } from './route-limits.ts';
 export { credentialWriter } from './credential-writer.ts';
 export type { CredentialWriter } from './credential-writer.ts';
 export type { AttemptError, SignInOptions } from './auth.ts';
@@ -127,6 +129,8 @@ export class AuthServiceProvider implements ServiceProvider {
     // One per service, built for the container that makes the service (a request's scope, or the root for a singleton and a command).
     container.bind(GuardContext, (c) => new AppGuardContext(c, container));
     container.scoped(Auth);
+    // What the route's middleware says about whose users it serves: read by the other guards' middleware and by the gate.
+    bindRequestGuard(container);
     // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.
     container.scoped(EmailChange);
     // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
@@ -175,6 +179,10 @@ export class AuthServiceProvider implements ServiceProvider {
     await bootGuards(app.container);
     requireRateLimiter(app.container);
     // The limits of the auth routes (`throttle('auth.login')` …); an app's limiter of the same name replaces one. Without @marmeon/cache no route throttles.
-    if (app.container.has(RateLimiter)) defineAuthRouteLimits(app.container.make(RateLimiter));
+    if (app.container.has(RateLimiter)) {
+      const limiter = app.container.make(RateLimiter);
+      defineAuthRouteLimits(limiter);
+      for (const guard of guardRegistry(app.container).all()) defineGuardRouteLimits(limiter, guard.name);
+    }
   }
 }

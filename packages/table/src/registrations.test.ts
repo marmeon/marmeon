@@ -1,4 +1,5 @@
 import { Gate } from '@marmeon/auth';
+import { withRequestGuard } from '@marmeon/auth/internal';
 import { Database } from '@marmeon/database';
 import { defineRoutes, everyone, Router, type Route } from '@marmeon/router';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -71,7 +72,7 @@ describe.each(drivers)('one table on several pages (%s)', (driver) => {
 /** A `DataTables` of the test app. */
 function tablesOn(application: TableTestApp): DataTables {
   const scope = application.application.container.createScope();
-  return new DataTables(scope.make(Database), () => new Gate({ user: async () => USERS[ADA] } as never, (Class) => scope.make(Class)), (Class) => scope.make(Class), () => scope.make(Encrypter));
+  return new DataTables(scope.make(Database), () => new Gate({ user: async () => USERS[ADA] } as never, withRequestGuard((Class) => scope.make(Class))), (Class) => scope.make(Class), () => scope.make(Encrypter));
 }
 
 const routerOf = (register: (Root: Route) => void) => new Router().load(defineRoutes((Root) => register(Root.authorize(everyone))));

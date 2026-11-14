@@ -1,5 +1,6 @@
 // Type guarantees of `defineGuard()` — checked by `tsc` (typecheck), never run.
 import type { Result, Token } from '@marmeon/core';
+import type { MiddlewareClass } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth, AttemptError } from './auth.ts';
@@ -58,3 +59,25 @@ defineGuard('office', { users: new OfficeUsers(), tablePrefix: 'office_' });
 defineGuard('office', { users: OfficeUsers });
 // @ts-expect-error a setting that does not exist
 defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', settings: { rememberDay: 1 } });
+
+export function guardMiddlewareTypes() {
+  expectTypeOf(OfficeGuard.authenticate({ loginRoute: 'office.login' })).toEqualTypeOf<MiddlewareClass<{}, { readonly user: OfficeUser }>>();
+  expectTypeOf(OfficeGuard.confirmedPassword({ confirmRoute: 'office.confirm' })).toEqualTypeOf<MiddlewareClass<{ readonly user: OfficeUser }, {}>>();
+  expectTypeOf(OfficeGuard.guest({ homeRoute: 'office.home' })).toEqualTypeOf<MiddlewareClass<{}, {}>>();
+  expectTypeOf(OfficeGuard.throttle('login')).toEqualTypeOf<MiddlewareClass<{}, {}>>();
+
+  // @ts-expect-error the app's login page is the app's: the guard names its own
+  OfficeGuard.authenticate();
+  // @ts-expect-error the app's confirmation page is the app's
+  OfficeGuard.confirmedPassword({});
+  // @ts-expect-error the guest's home is required too
+  OfficeGuard.guest({});
+  // @ts-expect-error only the limits of the auth routes
+  OfficeGuard.throttle('invoices');
+  // @ts-expect-error a guard has no e-mail verification
+  OfficeGuard.throttle('verification');
+  // @ts-expect-error nor a change of address
+  OfficeGuard.throttle('email-change');
+  // @ts-expect-error the limiter's full name is not the guard's name for it
+  OfficeGuard.throttle('auth.login');
+}

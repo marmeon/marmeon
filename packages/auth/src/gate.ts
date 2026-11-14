@@ -1,5 +1,6 @@
 import { describeAccess, HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@marmeon/router';
 import { Auth } from './auth.ts';
+import { RequestGuard } from './request-guard.ts';
 import type { AuthUser, Authenticated } from './user.ts';
 
 /** What a policy method may answer besides `true`/`false`: a reason, or "pretend it does not exist". */
@@ -151,27 +152,39 @@ export class Gate {
     this.#resolve = resolve;
   }
 
+  // On a route that belongs to a package guard every method refuses (A9): this gate asks the app's `Auth`, and a policy of the app
+  // would judge the app's user of the same id. Deliberately blunt: a targeted rule replaces it once a policy can name its guard.
+  #refuseOnPackageRoute(method: string, decide = false): void {
+    // Read through the resolver, the request's scope in the container. Nobody but the binding can make a RequestGuard, so a resolver
+    // that has none throws here rather than answering with an empty stamp that every check passes.
+    this.#resolve(RequestGuard).refuseGate(method, decide);
+  }
+
   /** Whom the policies are asked about: the token's user on an API route, else the session's. */
   #user(): Promise<AuthUser | undefined> {
     return this.#tokenUser === undefined ? this.#auth.user() : Promise.resolve(this.#tokenUser);
   }
 
   async allows<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean> {
+    this.#refuseOnPackageRoute('allows', true);
     return (await this.inspect(policy, ability, ...resources)).allowed;
   }
 
   async denies<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean> {
+    this.#refuseOnPackageRoute('denies', true);
     return !(await this.allows(policy, ability, ...resources));
   }
 
   /** Throws `AuthorizationError` (403, or 404 for `denyAsNotFound()`) unless allowed. */
   async authorize<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<void> {
+    this.#refuseOnPackageRoute('authorize', true);
     const response = await this.inspect(policy, ability, ...resources);
     if (!response.allowed) throw new AuthorizationError(response.status, response.message);
   }
 
   /** The policy's full answer. */
   async inspect<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<PolicyResponse> {
+    this.#refuseOnPackageRoute('inspect', true);
     const user = await this.#user();
     if (user === undefined) return new PolicyResponse(false);
     const instance = this.#resolve(policy) as P & Before;
@@ -201,6 +214,7 @@ export class Gate {
     names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[],
   ): Projection<Abilities<K>>;
   abilities(...args: [PolicyClass, readonly string[]] | [unknown, PolicyClass, readonly string[]]): Projection<Abilities<string>> {
+    this.#refuseOnPackageRoute('abilities');
     const [resources, policy, names] = args.length === 2 ? [[], args[0], args[1]] : [[args[0]], args[1], args[2]];
     return projection(async () => (await this.#project(policy, names, [resources]))[0]!);
   }
@@ -215,6 +229,7 @@ export class Gate {
     policy: PolicyClass<P>,
     names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[],
   ): Projection<WithAbilities<T, K>[]> {
+    this.#refuseOnPackageRoute('withAbilities');
     return projection(async () => {
       const answers = await this.#project(policy, names, rows.map((row) => [row]));
       return rows.map((row, index) => ({ ...(row as object), can: answers[index]! }) as unknown as WithAbilities<T, K>);
@@ -223,6 +238,9 @@ export class Gate {
 
   /** One answer per resource list: the user and the policy once, `before()` once per ability, then every method call. */
   async #project(policy: PolicyClass, names: readonly string[], resources: readonly unknown[][]): Promise<Abilities<string>[]> {
+    // Also here, and as a decision: a projection computes later than it was asked for, the stamp may have been set in between, and a policy
+    // that runs before any stamp has judged the app's user.
+    this.#refuseOnPackageRoute('abilities', true);
     const denied = () => Object.fromEntries(names.map((name) => [name, false]));
     if (resources.length === 0) return [];
     const user = await this.#user();
