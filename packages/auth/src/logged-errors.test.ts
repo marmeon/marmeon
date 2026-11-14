@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AccountSessions } from './account-sessions.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, Credentials, UserProvider } from './user.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 const ada: AuthUser = { id: 7, name: 'Ada', email: 'ada@example.com' };
 const leak = 'Cookie: a=1; marmeon_session=s3ss10nvalue';
@@ -30,7 +31,7 @@ describe('errors that quote a secret stay out of the log', () => {
   it('endEveryone(): neither the message nor the error field holds the cause, the thrown error keeps it', async () => {
     const { logger, entries } = recordingLogger();
     const signIns = signInStore({ endEveryone: async () => Promise.reject(new Error(`store refused: ${leak}`)) });
-    const accounts = new AccountSessions(users(), signIns, undefined, undefined, undefined, undefined, undefined, logger);
+    const accounts = new AccountSessions(guardContext({ users: users(), signIns, logger }));
     const thrown = (await accounts.endEveryone({ accessTokens: false, resetTokens: false }).catch((error: unknown) => error)) as Error;
     expect(thrown.message).toContain('s3ss10nvalue');
     expect(thrown.cause).toBeInstanceOf(Error);
@@ -48,7 +49,7 @@ describe('errors that quote a secret stay out of the log', () => {
       findById: async () => ({ user: ada, passwordHash: null, sessionKey: key }),
       updateEverySessionKey: async (next: string) => ((key = next), { accounts: 1, sampleId: ada.id }),
     });
-    const accounts = new AccountSessions(provider, signInStore({ endEveryone: async () => 1 }), undefined, undefined, undefined, undefined, undefined, logger, endings as never);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns: signInStore({ endEveryone: async () => 1 }), logger, endings: endings as never }));
     await accounts.endEveryone({ accessTokens: false, resetTokens: false });
     expect(entries.some((entry) => entry.includes('could not be told'))).toBe(true);
     for (const entry of entries) expect(entry).not.toContain('s3ss10nvalue');

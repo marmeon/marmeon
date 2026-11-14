@@ -1,18 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { afterCommit, type EventDispatcher, type Logger } from '@marmeon/core';
+import { afterCommit } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import type { Connections } from '@marmeon/database';
-import type { SessionEndings } from '@marmeon/session';
-import { accountScope } from '@marmeon/session/internal';
 import { keyNotStored, missingEmailChangeMethod, missingSignInMethod, passwordHashWritten, writeRefused } from './account-sessions.ts';
-import type { AuthConfig } from './config.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
-import type { EmailChangeStore } from './email-changes.ts';
 import type { PasswordHash } from './hashing.ts';
-import { forgetResetLinks, type PasswordResetTokenStore } from './password-reset.ts';
-import type { SignInStore } from './sign-ins.ts';
-import type { AccessTokenStore } from './tokens.ts';
-import { factorSources, NoTwoFactorState, type TwoFactorState } from './two-factor/state.ts';
+import { GuardContext } from './guard-context.ts';
+import { forgetResetLinks } from './password-reset.ts';
+import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
 
 /** Thrown by {@link NewPassword.store} when the session key of the account changed since the caller read it (an ending landed meanwhile): the password change is rolled back. */
@@ -33,41 +27,15 @@ export class AccountClaimLost extends Error {}
  * The factors are read again afterwards; one that survived is logged as an error. See `docs/passwords.md#resetting-the-password`.
  */
 export class NewPassword {
-  readonly #tokens: () => AccessTokenStore;
-  readonly #connections: () => Connections;
-  readonly #config: AuthConfig;
-  readonly #logger: Logger;
-  readonly #signIns: () => SignInStore;
-  readonly #endings: SessionEndings | undefined;
-  readonly #factors: (() => { readonly state: TwoFactorState; readonly events: EventDispatcher }) | undefined;
-  readonly #changes: (() => EmailChangeStore | undefined) | undefined;
-  readonly #resets: (() => PasswordResetTokenStore) | undefined;
+  readonly #guard: GuardContext;
   #warnedUnknownVerification = false;
 
   /**
-   * @internal Built by the container. `changes` hands back the change-of-address store the app bound, or `undefined`: a new password drops the account's pending change.
-   * `resets` hands back the password-reset store: a new password deletes the account's reset link.
+   * @internal Built by the container. Everything comes from `guard`: its stores and settings (a new password drops the account's pending
+   * change of address and reset link, and revokes API tokens only where the guard has them), and the connections, events, logger and live endings.
    */
-  constructor(
-    tokens: () => AccessTokenStore,
-    connections: () => Connections,
-    config: AuthConfig,
-    logger: Logger,
-    signIns: () => SignInStore,
-    endings?: SessionEndings,
-    factors?: () => { readonly state: TwoFactorState; readonly events: EventDispatcher },
-    changes?: () => EmailChangeStore | undefined,
-    resets?: () => PasswordResetTokenStore,
-  ) {
-    this.#resets = resets;
-    this.#changes = changes;
-    this.#factors = factors;
-    this.#endings = endings;
-    this.#tokens = tokens;
-    this.#connections = connections;
-    this.#config = config;
-    this.#logger = logger;
-    this.#signIns = signIns;
+  constructor(guard: GuardContext) {
+    this.#guard = guard;
   }
 
   /**
@@ -86,13 +54,13 @@ export class NewPassword {
     const sessionKey = randomBytes(32).toString('base64url');
     const unconfirmed = via === 'reset' && user !== undefined && neverConfirmed(user);
     if (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === undefined) this.#warnVerificationUnknown();
-    const changes = this.#changes?.();
+    const changes = this.#guard.emailChanges();
     if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('NewPassword', 'forget');
     const removed: { passkeys: boolean; factors: boolean } = { passkeys: false, factors: false };
     // A reset has no session of its own to keep: it writes over whatever key stands.
     const guarded = via === 'change' && read !== undefined;
     const write = async (revoke: boolean): Promise<number> => {
-      const state = unconfirmed ? this.#factors?.().state : undefined;
+      const state = unconfirmed ? this.#guard.factors() : undefined;
       if (state) {
         const had = await state.factors(id);
         // Always: `factors()` counts only confirmed factors, and an authenticator still being set up (its secret included) must go too.
@@ -101,14 +69,14 @@ export class NewPassword {
         removed.passkeys = had.includes('passkey') && !left.includes('passkey');
         // The owner is told only when nothing is left, so the mail is true.
         removed.factors = had.length > 0 && left.length === 0;
-        if (left.length > 0) this.#logger.error('A password reset could not remove every second factor of an account whose address is not confirmed', { user: id, left });
+        if (left.length > 0) this.#guard.logger().error('A password reset could not remove every second factor of an account whose address is not confirmed', { user: id, left });
       }
       // The tokens go first: a revocation that fails writes no hash, also where the provider keeps its accounts outside this
       // transaction — a new password never stands next to live tokens.
-      const revoked = revoke ? await this.#tokens().revokeAll(id) : 0;
+      const revoked = revoke ? ((await this.#guard.accessTokens()?.revokeAll(id)) ?? 0) : 0;
       // The sign-ins go before the hash and key, tokens with them: a remember-me sign-in that is running (it consumed its token, then
       // reads the account) must not see the new key next to a token that still exists. A change keeps its own sign-in, but not its token.
-      const signIns = this.#signIns();
+      const signIns = this.#guard.signIns();
       if (typeof signIns.endAll !== 'function' || typeof signIns.dropToken !== 'function') throw missingSignInMethod('NewPassword', typeof signIns.endAll !== 'function' ? 'endAll' : 'dropToken');
       await signIns.endAll(id, via === 'change' ? keep : undefined);
       if (via === 'change' && keep !== undefined) await signIns.dropToken(id, keep);
@@ -131,30 +99,28 @@ export class NewPassword {
         if (guarded) throw new AccountClaimLost('The sessions of the account ended before its password was changed.');
       }
       // A link mailed before the new password (to a mailbox a thief read) must not set another one.
-      const resets = this.#resets?.();
-      if (resets) await forgetResetLinks(resets, stored?.user ?? user ?? {});
+      await forgetResetLinks(this.#guard.passwordResets(), stored?.user ?? user ?? {});
       return revoked;
     };
     // The tokens go with every reset of an address nobody confirmed, also where `first_verified_at` keeps the factors: that mark may
     // be of an earlier address, whose holder made the tokens and then switched the account to this one (written at once with open
     // registration). The factors stay there, so the holder of a mistyped new address cannot wipe them; losing the tokens lets nobody in.
-    const revokeTokens = this.#config.revokeTokensOnPasswordChange || (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === null);
+    const revokeTokens = this.#guard.settings.revokeTokensOnPasswordChange || (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === null);
     // Always in a transaction: a provider that breaks its contract (error A5) or a lost claim leaves neither the hash nor the revocations.
-    const revoked = await this.#connections().transaction(() => write(revokeTokens));
-    if (revokeTokens) this.#logger.info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
+    const revoked = await this.#guard.connections().transaction(() => write(revokeTokens));
+    if (revokeTokens) this.#guard.logger().info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
     if (unconfirmed && user !== undefined) {
-      const events = this.#factors?.().events;
-      if (removed.passkeys) await events?.dispatch(new PasskeyRemoved(user, 'reset'));
-      if (removed.factors) await events?.dispatch(new TwoFactorDisabled(user, 'reset'));
+      if (removed.passkeys) await this.#dispatch(new PasskeyRemoved(user, 'reset'));
+      if (removed.factors) await this.#dispatch(new TwoFactorDisabled(user, 'reset'));
     }
     // A reset ends every sign-in: the live streams of the account close once it committed (a change is announced by `Auth`, which
     // keeps its own session). Clean-up after the real effect: a failure is logged, never thrown.
     if (via === 'reset') {
       await afterCommit(async () => {
         try {
-          await this.#endings?.endAccount(accountScope(id));
+          await this.#guard.endings()?.endAccount(this.#guard.names.accountScope(id));
         } catch (error) {
-          this.#logger.error('The live streams of an account could not be told its sign-ins ended', { error });
+          this.#guard.logger().error('The live streams of an account could not be told its sign-ins ended', { error });
         }
       });
     }
@@ -166,10 +132,10 @@ export class NewPassword {
    * the reset of an account with an unconfirmed address would otherwise fail after the token is used up, and the owner could never reset.
    */
   assertReady(): void {
-    const changes = this.#changes?.();
+    const changes = this.#guard.emailChanges();
     if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('NewPassword', 'forget');
-    const state = this.#factors?.().state;
-    if (state && factorSources(state).some((source) => typeof source.removeAll !== 'function')) {
+    const state = this.#guard.factors();
+    if (factorSources(state).some((source) => typeof source.removeAll !== 'function')) {
       throw new TypeError(
         withCode(
           'A6',
@@ -179,11 +145,16 @@ export class NewPassword {
     }
   }
 
+  async #dispatch(event: object): Promise<void> {
+    const mapped = this.#guard.event(event);
+    if (mapped !== undefined) await this.#guard.events().dispatch(mapped);
+  }
+
   /** A user without `email_verified_at` is never treated as unconfirmed — which with factors bound means the rule is off, and the app should know. */
   #warnVerificationUnknown(): void {
-    if (this.#warnedUnknownVerification || !this.#factors || this.#factors().state instanceof NoTwoFactorState) return;
+    if (this.#warnedUnknownVerification || this.#guard.factors() instanceof NoTwoFactorState) return;
     this.#warnedUnknownVerification = true;
-    this.#logger.warn('The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
+    this.#guard.logger().warn('The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
   }
 }
 

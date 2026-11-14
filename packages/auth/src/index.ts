@@ -1,17 +1,18 @@
-import { Clock, defineConfig, env, environment, EventDispatcher, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Clock, defineConfig, env, environment, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import type { ProviderMigrations } from '@marmeon/database';
 import { RateLimiter } from '@marmeon/cache';
 import { withCode } from '@marmeon/core/internal';
-import { Connections } from '@marmeon/database';
 import { LiveAudience } from '@marmeon/http';
-import { Session, SessionConfig, SessionEndings, UserSessions } from '@marmeon/session';
+import { Session, SessionConfig } from '@marmeon/session';
 import { MiddlewarePriority, Router } from '@marmeon/router';
 import { AccountSessions } from './account-sessions.ts';
+import { AppGuardContext } from './app-guard-context.ts';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
+import { GuardContext } from './guard-context.ts';
 import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { EncryptionConfig } from '@marmeon/encryption';
@@ -26,7 +27,6 @@ import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
 import { EmailChange } from './email-change.ts';
-import { EmailChangeStore } from './email-changes.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
@@ -119,11 +119,13 @@ export class AuthServiceProvider implements ServiceProvider {
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.singleton(SessionFingerprints, (c) => new SessionFingerprints(c.make(EncryptionConfig)));
     container.singleton(SignInThrottle, (c) => new SignInThrottle(c.make(RateLimiter), c.make(EncryptionConfig), c.make(AuthConfig), c.make(SessionConfig), c.make(Clock), c.make(Logger)));
+    // One per service, built for the container that makes the service (a request's scope, or the root for a singleton and a command).
+    container.bind(GuardContext, (c) => new AppGuardContext(c, container));
     container.scoped(Auth);
     // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.
     container.scoped(EmailChange);
     // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
-    container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));
+    container.scoped(LiveAudience, (c) => new SignInAudience(c.make(GuardContext), c.make(Session)));
     // Policies are built in the request's scope: they may depend on anything a controller can.
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
     // On the app's `sign_ins` table (its migration comes with make:auth, or `marmeon make:sign-ins-table`): a row per signed-in browser,
@@ -137,9 +139,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
-    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), () => c.make(SignInStore), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => ({ state: c.make(TwoFactorState), events: c.make(EventDispatcher) }), () => (container.has(EmailChangeStore) ? c.make(EmailChangeStore) : undefined), () => c.make(PasswordResetTokenStore)));
+    container.singleton(NewPassword, (c) => new NewPassword(c.make(GuardContext)));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(SignInStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => (container.has(EmailChangeStore) ? c.make(EmailChangeStore) : undefined)));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(GuardContext)));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new UserProviderNotBound(
