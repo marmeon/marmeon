@@ -6,6 +6,7 @@ import { PasswordReset } from './events.ts';
 import { assertHashable, Hasher } from './hashing.ts';
 import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
 import { NewPassword } from './new-password.ts';
+import { assertTableName } from './table-names.ts';
 import { assertSignInFinder, idOf, UserProvider, type AuthUser } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -71,27 +72,35 @@ export async function forgetResetLinks(store: PasswordResetTokenStore, user: obj
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
-/** The default {@link PasswordResetTokenStore}, on the app's `password_reset_tokens` table. */
+/** The default {@link PasswordResetTokenStore}, on the app's `password_reset_tokens` table (or the one named by `table`). */
 export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
   readonly #connections: Connections;
   readonly #clock: Clock;
+  readonly #table: typeof PASSWORD_RESET_TABLE;
 
-  /** @internal Built by the container. */
-  constructor(connections: Connections, clock: Clock) {
+  /** @internal Built by the container. `table`: the table of the tokens (default `password_reset_tokens`, a plain lower-case name). */
+  constructor(connections: Connections, clock: Clock, options: { readonly table?: string } = {}) {
     super();
     this.#connections = connections;
     this.#clock = clock;
+    // The statements are typed on the default name; the name given here is checked and reaches them as an identifier only.
+    this.#table = assertTableName('DatabasePasswordResetTokens', options.table ?? PASSWORD_RESET_TABLE) as typeof PASSWORD_RESET_TABLE;
+  }
+
+  /** @internal The table the tokens are in; the readiness check waits for it. */
+  get table(): string {
+    return this.#table;
   }
 
   async create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>> {
     const db = this.#db();
-    const existing = await db.selectFrom(PASSWORD_RESET_TABLE).select('created_at').where('email', '=', email).executeTakeFirst();
+    const existing = await db.selectFrom(this.#table).select('created_at').where('email', '=', email).executeTakeFirst();
     if (existing && this.#clock.now() - new Date(existing.created_at).getTime() < throttleSeconds * 1000) return err({ kind: 'throttled' });
     const value = randomBytes(32).toString('base64url');
     // The ambient transaction: `db` joins it — and inside a caller's transaction this becomes a savepoint.
     await this.#connections.transaction(async () => {
-      await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
-      await db.insertInto(PASSWORD_RESET_TABLE).values({ email, token_hash: sha256(value), created_at: new Date(this.#clock.now()) }).execute();
+      await db.deleteFrom(this.#table).where('email', '=', email).execute();
+      await db.insertInto(this.#table).values({ email, token_hash: sha256(value), created_at: new Date(this.#clock.now()) }).execute();
     });
     return ok(value);
   }
@@ -100,7 +109,7 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
     if (!TOKEN.test(value)) return err({ kind: 'invalid-token' }); // malformed: no query
     const db = this.#db();
     const hash = sha256(value);
-    const row = await db.selectFrom(PASSWORD_RESET_TABLE).select((eb) => [secret(eb, 'token_hash'), 'created_at']).where('email', '=', email).executeTakeFirst();
+    const row = await db.selectFrom(this.#table).select((eb) => [secret(eb, 'token_hash'), 'created_at']).where('email', '=', email).executeTakeFirst();
     if (!row) {
       // The same hash and compare as with a row, so the work does not time whether the address has a link; the result is discarded.
       equal(hash, NO_ROW_HASH);
@@ -113,21 +122,21 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
       return commitAnyway(err({ kind: 'invalid-token' })); // the deletion stays when an ambient transaction would roll back an err
     }
     // Used up — conditionally, so two requests with the same token cannot both succeed.
-    const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where((eb) => secretEquals(eb, 'token_hash', row.token_hash)).executeTakeFirst();
+    const deleted = await db.deleteFrom(this.#table).where('email', '=', email).where((eb) => secretEquals(eb, 'token_hash', row.token_hash)).executeTakeFirst();
     return deleted.numDeletedRows > 0n ? ok() : err({ kind: 'invalid-token' });
   }
 
   async forget(email: string): Promise<void> {
-    await this.#db().deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
+    await this.#db().deleteFrom(this.#table).where('email', '=', email).execute();
   }
 
   async forgetEveryone(): Promise<number> {
-    return Number((await this.#db().deleteFrom(PASSWORD_RESET_TABLE).executeTakeFirst()).numDeletedRows);
+    return Number((await this.#db().deleteFrom(this.#table).executeTakeFirst()).numDeletedRows);
   }
 
   async prune(maxAgeSeconds: number): Promise<number> {
     const result = await this.#db()
-      .deleteFrom(PASSWORD_RESET_TABLE)
+      .deleteFrom(this.#table)
       .where('created_at', '<=', new Date(this.#clock.now() - maxAgeSeconds * 1000))
       .executeTakeFirst();
     return Number(result.numDeletedRows);

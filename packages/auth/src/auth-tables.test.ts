@@ -1,4 +1,4 @@
-import { ConsoleLogger, createApplication, HealthChecks, Logger, type Application, type Container, type ModuleDefinition, type Logger as LoggerType } from '@marmeon/core';
+import { Clock, ConsoleLogger, createApplication, HealthChecks, Logger, type Application, type Container, type ModuleDefinition, type Logger as LoggerType } from '@marmeon/core';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, SchemaRequirements } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { PASSKEY_COLUMNS, PASSKEYS_TABLE } from './passkeys/store.ts';
 import { PasskeyServiceProvider } from './passkeys/provider.ts';
-import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseEmailChanges, EmailChangeStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
+import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseEmailChanges, DatabasePasswordResetTokens, DatabaseSignIns, EmailChangeStore, PasswordResetTokenStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
 
 const silent: LoggerType = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
@@ -113,6 +113,22 @@ describe('a database that lacks the auth tables', () => {
       container.singleton(SignInStore, OwnSignIns as never);
     });
     expect(await required(replaced)).toEqual(['password_reset_tokens', 'personal_access_tokens']);
+  });
+
+  it('waits for the tables a database store was given, not for the default ones', async () => {
+    await using application = await open({}, (container) => {
+      signedIn(container);
+      container.singleton(SignInStore, (c) => new DatabaseSignIns(c.make(Connections), c.make(Clock), { table: 'office_sign_ins' }));
+      container.singleton(PasswordResetTokenStore, (c) => new DatabasePasswordResetTokens(c.make(Connections), c.make(Clock), { table: 'office_password_reset_tokens' }));
+      container.bind(TwoFactorState, (c) => combineFactors(new TwoFactorStore(c.make(Connections), c.make(Clock), { tables: { twoFactor: 'office_two_factor_authentications', recoveryCodes: 'office_two_factor_recovery_codes' } })));
+    });
+    expect(await required(application)).toEqual([
+      'office_password_reset_tokens',
+      'office_sign_ins',
+      'office_two_factor_authentications',
+      'office_two_factor_recovery_codes',
+      'personal_access_tokens',
+    ]);
   });
 
   it('boots with a store of its own that depends on something scoped, and waits for no table of it', async () => {

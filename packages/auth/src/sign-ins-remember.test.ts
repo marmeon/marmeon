@@ -1,7 +1,8 @@
 import { err, SystemClock, type Result } from '@marmeon/core';
 import { secret, type Connections } from '@marmeon/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { drivers, migratedConnections } from './__fixtures__/databases.ts';
+import { migratedConnections } from './__fixtures__/databases.ts';
+import { expectUnchanged, optionsFor, setCases, setsOf, snapshot } from './__fixtures__/table-sets.ts';
 import { DatabaseSignIns, SIGN_INS_TABLE, type RememberedDevice, type RememberTokenError, type SignInsTable, type SignInWindow } from './sign-ins.ts';
 
 /** Every row is alive by its session: what a test looks at is the token. */
@@ -9,7 +10,10 @@ const LONG: SignInWindow = { idleSeconds: 365 * 86_400, maxSeconds: 365 * 86_400
 const NARROW: SignInWindow = { idleSeconds: 60, maxSeconds: 3600 };
 
 // The remember-me token on the sign-in row: every case of a remember-me store, and the ones the row adds.
-describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver) => {
+// Each case runs on a set of tables (the app's, then a prefixed one) with the other set holding a remembered sign-in of the same user, which must come out unchanged.
+describe.each(setCases)('the remember-me token of DatabaseSignIns on %s, on the %s tables', (driver, setName) => {
+  const { own, other } = setsOf(setName);
+  let before: string;
   let connections: Connections;
   let close: () => Promise<void>;
   let signIns: DatabaseSignIns;
@@ -18,7 +22,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
   const rows = () =>
     connections
       .get<{ [SIGN_INS_TABLE]: SignInsTable }>()
-      .selectFrom(SIGN_INS_TABLE)
+      .selectFrom(own.signIns as typeof SIGN_INS_TABLE)
       .select((eb) => ['id', 'user_id', secret(eb, 'remember_selector'), secret(eb, 'remember_validator_hash')])
       .execute();
   /** A new sign-in of the user with a token on it: the cookie, and the id of the row. */
@@ -26,15 +30,25 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     const id = await signIns.create({ userId, userAgent: 'Agent' });
     return { id, cookie: await signIns.issueToken(userId, id, { until, fingerprint }) };
   }
-  const tokenColumns = () => connections.get<any>().selectFrom(SIGN_INS_TABLE).selectAll().execute();
+  const tokenColumns = () => connections.get<any>().selectFrom(own.signIns).selectAll().execute();
 
   beforeAll(async () => {
-    ({ connections, close } = await migratedConnections(driver));
-    signIns = new DatabaseSignIns(connections, new SystemClock());
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+    signIns = new DatabaseSignIns(connections, new SystemClock(), optionsFor(own).signIns);
   });
   afterAll(() => close());
-  beforeEach(() => connections.get<any>().deleteFrom(SIGN_INS_TABLE).execute());
-  afterEach(() => vi.useRealTimers());
+  beforeEach(async () => {
+    await connections.get<any>().deleteFrom(own.signIns).execute();
+    await connections.get<any>().deleteFrom(other.signIns).execute();
+    const others = new DatabaseSignIns(connections, new SystemClock(), optionsFor(other).signIns);
+    const id = await others.create({ userId: 1, userAgent: 'other set' });
+    await others.issueToken(1, id, { until: inAMonth(), fingerprint: 'fp' });
+    before = await snapshot(connections, [other.signIns]);
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    expectUnchanged(before, await snapshot(connections, [other.signIns]));
+  });
 
   it('remembered() finds a token by its selector, and says false for an ended sign-in, a row without a token and a malformed cookie', async () => {
     const { id, cookie } = await issue(1);
@@ -67,7 +81,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     expect(await signIns.rebind(2, issued(first)!, 'foreign-fingerprint'), 'another user\'s id: not re-stamped').toStrictEqual(err({ kind: 'invalid' }));
     const second = await signIns.consume(issued(first)!);
     expect(second.ok && second.value.fingerprint).toBe('second-fingerprint');
-    await connections.get<any>().updateTable(SIGN_INS_TABLE).set({ remember_fingerprint: null }).execute();
+    await connections.get<any>().updateTable(own.signIns).set({ remember_fingerprint: null }).execute();
     const bare = await signIns.consume(issued(second)!);
     expect(bare.ok && bare.value.fingerprint).toBeUndefined();
   });
@@ -161,7 +175,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     await signIns.consume(copied.cookie);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     let armed = true;
-    const flaky = new DatabaseSignIns(failingOnce(connections, () => armed, () => (armed = false)), new SystemClock());
+    const flaky = new DatabaseSignIns(failingOnce(connections, () => armed, () => (armed = false)), new SystemClock(), optionsFor(own).signIns);
     await expect(flaky.consume(copied.cookie)).rejects.toThrow('connection lost');
     expect(await rows()).toHaveLength(2);
     expect(await flaky.consume(copied.cookie)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true }));
@@ -186,7 +200,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
   it('refuses the cookie when the row is deleted between the read and the rotation — no sign-in without a token', async () => {
     const { id, cookie } = await issue(1);
     let armed = true;
-    const racing = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.end(1, id); }), new SystemClock());
+    const racing = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.end(1, id); }), new SystemClock(), optionsFor(own).signIns);
     expect(await racing.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await rows()).toEqual([]);
   });
@@ -194,11 +208,11 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
   it('refuses the cookie when the token is dropped or replaced between the read and the rotation', async () => {
     const first = await issue(1);
     let armed = true;
-    const dropping = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.dropToken(1, first.id); }), new SystemClock());
+    const dropping = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.dropToken(1, first.id); }), new SystemClock(), optionsFor(own).signIns);
     expect(await dropping.consume(first.cookie)).toStrictEqual(err({ kind: 'invalid' }));
     const second = await issue(2);
     armed = true;
-    const replacing = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.issueToken(2, second.id, { until: inAMonth(), fingerprint: 'new' }); }), new SystemClock());
+    const replacing = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.issueToken(2, second.id, { until: inAMonth(), fingerprint: 'new' }); }), new SystemClock(), optionsFor(own).signIns);
     expect(await replacing.consume(second.cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await signIns.remembered(second.cookie), 'the new token is untouched by the stale request').toBe(false);
   });
@@ -206,7 +220,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
   it('takes a cookie that another request rotated between the read and the rotation as the grace case: signed in, without a new cookie', async () => {
     const { cookie } = await issue(1);
     let armed = true;
-    const racing = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.consume(cookie); }), new SystemClock());
+    const racing = new DatabaseSignIns(beforeRotation(connections, () => armed, async () => { armed = false; await signIns.consume(cookie); }), new SystemClock(), optionsFor(own).signIns);
     expect(await racing.consume(cookie)).toMatchObject({ ok: true, value: { userId: 1, cookie: undefined } });
   });
 
@@ -221,6 +235,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
         rotated = issued(await signIns.consume(rotated!));
       }),
       new SystemClock(),
+      optionsFor(own).signIns,
     );
     expect(await racing.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await rows()).toHaveLength(1);
@@ -237,6 +252,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
         fresh = await signIns.issueToken(1, id, { until: inAMonth(), fingerprint: 'new' });
       }),
       new SystemClock(),
+      optionsFor(own).signIns,
     );
     expect(await racing.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await signIns.remembered(fresh!)).toBe(true);
@@ -244,11 +260,11 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
 
   it('a rotation counts as a sign-in that starts now: the row outlives the session window while the token lives, and not after the token ends', async () => {
     const { id, cookie } = await issue(1);
-    await connections.get<any>().updateTable(SIGN_INS_TABLE).set({ signed_in_at: new Date(Date.now() - 5 * 3600_000) }).where('id', '=', id).execute();
+    await connections.get<any>().updateTable(own.signIns).set({ signed_in_at: new Date(Date.now() - 5 * 3600_000) }).where('id', '=', id).execute();
     expect((await signIns.consume(cookie)).ok).toBe(true);
     const [row] = await tokenColumns();
     expect(Date.now() - new Date(row!.signed_in_at).getTime()).toBeLessThan(60_000);
-    await connections.get<any>().updateTable(SIGN_INS_TABLE).set({ remember_until: new Date(Date.now() - 1000), last_seen_at: new Date(Date.now() - 300_000) }).execute();
+    await connections.get<any>().updateTable(own.signIns).set({ remember_until: new Date(Date.now() - 1000), last_seen_at: new Date(Date.now() - 300_000) }).execute();
     expect(await signIns.prune(NARROW, 30)).toBe(0);
     expect((await rows()).map((r) => r.id)).toEqual([id]);
   });
@@ -320,14 +336,14 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
   it('prune() with the days keeps a row whose session lives, and deletes one that is over', async () => {
     const { id } = await issue(1);
     const gone = await issue(2);
-    await connections.get<any>().updateTable(SIGN_INS_TABLE).set({ signed_in_at: new Date(Date.now() - 5 * 3600_000), last_seen_at: new Date(Date.now() - 5 * 3600_000) }).where('id', '=', gone.id).execute();
+    await connections.get<any>().updateTable(own.signIns).set({ signed_in_at: new Date(Date.now() - 5 * 3600_000), last_seen_at: new Date(Date.now() - 5 * 3600_000) }).where('id', '=', gone.id).execute();
     expect(await signIns.prune(NARROW, 0)).toBe(1);
     expect((await rows()).map((row) => row.id)).toEqual([id]);
   });
 
   it.runIf(driver === 'sqlite')('refuses a token with an unreadable expiry and takes it off', async () => {
     const { cookie } = await issue(1);
-    await connections.get<any>().updateTable(SIGN_INS_TABLE).set({ remember_until: 'not a date' }).execute();
+    await connections.get<any>().updateTable(own.signIns).set({ remember_until: 'not a date' }).execute();
     expect(await signIns.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await signIns.remembered(cookie)).toBe(false);
   });
@@ -417,7 +433,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     const now = new Date();
     await connections
       .get<any>()
-      .insertInto(SIGN_INS_TABLE)
+      .insertInto(own.signIns)
       .values({ id: 'c'.repeat(22), user_id: 1, remember_selector: selector, remember_until: inAMonth(), signed_in_at: now, last_seen_at: now, created_at: now, updated_at: now })
       .execute();
     const cookie = `${selector}.${'b'.repeat(43)}`;

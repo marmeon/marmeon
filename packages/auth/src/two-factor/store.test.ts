@@ -1,10 +1,14 @@
 import { SystemClock } from '@marmeon/core';
 import { secret, type Connections } from '@marmeon/database';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from '../__fixtures__/databases.ts';
+import { expectUnchanged, optionsFor, setCases, setsOf, snapshot } from '../__fixtures__/table-sets.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE, TwoFactorStore, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
 
-describe.each(drivers)('TwoFactorStore on %s', (driver) => {
+// Each case runs on a set of tables (the app's, then a prefixed one) with the other set holding a factor and codes of the same account, which must come out unchanged.
+describe.each(setCases)('TwoFactorStore on %s, on the %s tables', (driver, setName) => {
+  const { own, other } = setsOf(setName);
+  let before: string;
   let connections: Connections;
   let close: () => Promise<void>;
   let store: TwoFactorStore;
@@ -12,14 +16,18 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
   const rows = (table: string) => connections.get<any>().selectFrom(table).selectAll().execute();
 
   beforeAll(async () => {
-    ({ connections, close } = await migratedConnections(driver));
-    store = new TwoFactorStore(connections, new SystemClock());
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+    store = new TwoFactorStore(connections, new SystemClock(), optionsFor(own).twoFactor);
   });
   afterAll(() => close());
   beforeEach(async () => {
-    await connections.get<any>().deleteFrom(TWO_FACTOR_TABLE).execute();
-    await connections.get<any>().deleteFrom(RECOVERY_CODES_TABLE).execute();
+    for (const table of [own.twoFactor, own.recoveryCodes, other.twoFactor, other.recoveryCodes]) await connections.get<any>().deleteFrom(table).execute();
+    const others = new TwoFactorStore(connections, new SystemClock(), optionsFor(other).twoFactor);
+    await others.startSetup(1, 'other-secret');
+    await others.confirm(1, 7, 'other-secret', ['other-a', 'other-b']);
+    before = await snapshot(connections, [other.twoFactor, other.recoveryCodes]);
   });
+  afterEach(async () => expectUnchanged(before, await snapshot(connections, [other.twoFactor, other.recoveryCodes])));
 
   /** A confirmed authenticator whose last used step is 100. */
   async function confirmed(userId = 1, codes: string[] | null = null) {
@@ -57,7 +65,7 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
       await store.startSetup(1, 'enc-1');
       await store.startSetup(1, 'enc-new');
       expect((await store.find(1))?.encryptedSecret).toBe('enc-new');
-      expect(await rows(TWO_FACTOR_TABLE)).toHaveLength(1);
+      expect(await rows(own.twoFactor)).toHaveLength(1);
       await store.confirm(1, 5, 'enc-2', null);
       await expect(store.startSetup(1, 'enc-3')).rejects.toThrow('disable it first');
       expect((await store.find(1))?.encryptedSecret).toBe('enc-2');
@@ -66,7 +74,7 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
     it('survives parallel starts for one account: one row remains, none fails raw', async () => {
       const results = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => store.startSetup(1, `enc-${i}`)));
       expect(results.map((result) => result.status)).toEqual(Array.from({ length: 6 }, () => 'fulfilled'));
-      expect(await rows(TWO_FACTOR_TABLE)).toHaveLength(1);
+      expect(await rows(own.twoFactor)).toHaveLength(1);
       expect((await store.find(1))?.confirmed).toBe(false);
     });
 
@@ -81,8 +89,8 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
     it('keeps what it is given: the (already encrypted) secret and the hashes, nothing else', async () => {
       await confirmed(1, ['hash-a']);
       const db = connections.get<{ [TWO_FACTOR_TABLE]: TwoFactorTable; [RECOVERY_CODES_TABLE]: RecoveryCodeTable }>();
-      expect(await db.selectFrom(TWO_FACTOR_TABLE).select((eb) => [secret(eb, 'secret')]).execute()).toEqual([{ secret: 'enc-2' }]);
-      expect(await db.selectFrom(RECOVERY_CODES_TABLE).select((eb) => [secret(eb, 'code_hash'), 'used_at']).execute()).toEqual([{ code_hash: 'hash-a', used_at: null }]);
+      expect(await db.selectFrom(own.twoFactor as typeof TWO_FACTOR_TABLE).select((eb) => [secret(eb, 'secret')]).execute()).toEqual([{ secret: 'enc-2' }]);
+      expect(await db.selectFrom(own.recoveryCodes as typeof RECOVERY_CODES_TABLE).select((eb) => [secret(eb, 'code_hash'), 'used_at']).execute()).toEqual([{ code_hash: 'hash-a', used_at: null }]);
     });
 
     it('confirm rolls back completely when the recovery codes cannot be stored', async () => {
@@ -90,7 +98,7 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
       await expect(store.confirm(1, 100, 'enc-2', ['dup', 'dup'])).rejects.toThrow();
       expect(await store.factors(1)).toEqual([]);
       expect(await store.find(1)).toEqual({ encryptedSecret: 'enc-1', confirmed: false, lastUsedStep: null });
-      expect(await rows(RECOVERY_CODES_TABLE)).toEqual([]);
+      expect(await rows(own.recoveryCodes)).toEqual([]);
     });
 
     it('stores the recovery codes with the confirmation only when it is the first factor', async () => {
@@ -198,8 +206,56 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
     it('removeAll drops the setup, the factor and the codes', async () => {
       await confirmed(1, hashes(3));
       await store.removeAll(1);
-      expect(await rows(TWO_FACTOR_TABLE)).toEqual([]);
-      expect(await rows(RECOVERY_CODES_TABLE)).toEqual([]);
+      expect(await rows(own.twoFactor)).toEqual([]);
+      expect(await rows(own.recoveryCodes)).toEqual([]);
     });
+  });
+});
+
+describe.each(drivers)('TwoFactorStore on tables of its own on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const tables = { twoFactor: 'office_two_factor_authentications', recoveryCodes: 'office_two_factor_recovery_codes' };
+  const count = async (table: string) => (await connections.get<any>().selectFrom(table).selectAll().execute()).length;
+
+  beforeAll(async () => {
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+  });
+  afterAll(() => close());
+  beforeEach(async () => {
+    for (const table of [TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, tables.twoFactor, tables.recoveryCodes]) await connections.get<any>().deleteFrom(table).execute();
+  });
+
+  it('keeps the factor and the recovery codes in its tables and leaves the app tables empty', async () => {
+    const office = new TwoFactorStore(connections, new SystemClock(), { tables });
+    await office.startSetup(1, 'enc-1');
+    expect(await office.factors(1)).toEqual([]);
+    expect(await office.confirm(1, 5, 'enc-2', ['a', 'b'])).toBe(true);
+    expect(await office.factors(1)).toEqual(['totp']);
+    expect(await office.consumeRecoveryCode(1, 'a')).toBe(1);
+    expect(await count(tables.twoFactor)).toBe(1);
+    expect(await count(tables.recoveryCodes)).toBe(2);
+    expect(await count(TWO_FACTOR_TABLE)).toBe(0);
+    expect(await count(RECOVERY_CODES_TABLE)).toBe(0);
+    await office.removeAll(1);
+    expect(await count(tables.twoFactor)).toBe(0);
+    expect(await count(tables.recoveryCodes)).toBe(0);
+  });
+
+  it('does not see the factor of the same account in the app tables', async () => {
+    const app = new TwoFactorStore(connections, new SystemClock());
+    const office = new TwoFactorStore(connections, new SystemClock(), { tables });
+    await app.startSetup(1, 'enc-1');
+    await app.confirm(1, 5, 'enc-2', ['a']);
+    expect(await office.factors(1)).toEqual([]);
+    expect(await office.find(1)).toBeUndefined();
+    expect(await office.useStep(1, 99, 'enc-3')).toBe(false);
+    expect(await office.consumeRecoveryCode(1, 'a')).toBeUndefined();
+    expect(await app.factors(1)).toEqual(['totp']);
+  });
+
+  it('refuses a table name that is not plain', () => {
+    expect(() => new TwoFactorStore(connections, new SystemClock(), { tables: { twoFactor: 'x;drop' } })).toThrow(TypeError);
+    expect(() => new TwoFactorStore(connections, new SystemClock(), { tables: { recoveryCodes: 'x y' } })).toThrow(TypeError);
   });
 });

@@ -1,25 +1,36 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from '../__fixtures__/databases.ts';
+import { expectUnchanged, optionsFor, setCases, setsOf, snapshot } from '../__fixtures__/table-sets.ts';
 import { combineFactors } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE, TwoFactorStore } from '../two-factor/store.ts';
 import { PASSKEYS_TABLE, PasskeyStore, type NewPasskey } from './store.ts';
 
-describe.each(drivers)('PasskeyStore on %s', (driver) => {
+// Each case runs on a set of tables (the app's, then a prefixed one) with the other set holding a passkey, an authenticator and codes of the same account, which must come out unchanged.
+describe.each(setCases)('PasskeyStore on %s, on the %s tables', (driver, setName) => {
+  const { own, other } = setsOf(setName);
+  let before: string;
+  const otherTables = [other.passkeys, other.twoFactor, other.recoveryCodes];
   let connections: Connections;
   let close: () => Promise<void>;
   let store: PasskeyStore;
 
   beforeAll(async () => {
-    ({ connections, close } = await migratedConnections(driver));
-    store = new PasskeyStore(connections, new SystemClock());
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+    store = new PasskeyStore(connections, new SystemClock(), optionsFor(own).passkeys);
   });
   afterAll(() => close());
   beforeEach(async () => {
-    await connections.get<any>().deleteFrom(PASSKEYS_TABLE).execute();
-    await connections.get<any>().deleteFrom(RECOVERY_CODES_TABLE).execute();
+    for (const table of [own.passkeys, own.twoFactor, own.recoveryCodes, ...otherTables]) await connections.get<any>().deleteFrom(table).execute();
+    const others = new PasskeyStore(connections, new SystemClock(), optionsFor(other).passkeys);
+    await others.create({ ...passkey(), credentialId: 'other-credential', userHandle: 'other-handle' });
+    const otherTotp = new TwoFactorStore(connections, new SystemClock(), optionsFor(other).twoFactor);
+    await otherTotp.startSetup(1, 'other-secret');
+    await otherTotp.confirm(1, 7, 'other-secret', ['other-a']);
+    before = await snapshot(connections, otherTables);
   });
+  afterEach(async () => expectUnchanged(before, await snapshot(connections, otherTables)));
 
   const passkey = (overrides: Partial<NewPasskey> = {}): NewPasskey => ({
     userId: 1,
@@ -92,7 +103,7 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
   it('says since when the account has had a passkey: its oldest, moving on when that one goes', async () => {
     let now = Date.parse('2026-03-01T00:00:00Z');
     const clock: Clock = { now: () => now };
-    const timed = new PasskeyStore(connections, clock);
+    const timed = new PasskeyStore(connections, clock, optionsFor(own).passkeys);
     const first = await timed.create({ ...passkey(), credentialId: 'c-old' });
     now = Date.parse('2026-04-01T00:00:00Z');
     await timed.create({ ...passkey(), credentialId: 'c-new' });
@@ -104,8 +115,8 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
   it('combines with the authenticator: the factors of both, since the earlier of the two', async () => {
     let now = Date.parse('2026-05-01T00:00:00Z');
     const clock: Clock = { now: () => now };
-    const timed = new PasskeyStore(connections, clock);
-    const totp = new TwoFactorStore(connections, clock);
+    const timed = new PasskeyStore(connections, clock, optionsFor(own).passkeys);
+    const totp = new TwoFactorStore(connections, clock, optionsFor(own).twoFactor);
     const both = combineFactors(totp, timed);
     await totp.startSetup(1, 'enc');
     now = Date.parse('2026-06-01T00:00:00Z');
@@ -114,7 +125,7 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
     await timed.create(passkey());
     expect([...(await both.factors(1))].sort()).toEqual(['passkey', 'totp']);
     expect((await both.enabledSince(1))!.toISOString()).toBe('2026-05-15T00:00:00.000Z');
-    await connections.get<any>().deleteFrom(TWO_FACTOR_TABLE).execute();
+    await connections.get<any>().deleteFrom(own.twoFactor).execute();
   });
 
   it('lets exactly one of parallel sign-ins move the counter', async () => {
@@ -139,10 +150,10 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
   });
 
   describe('the recovery codes', () => {
-    const codes = () => connections.get<any>().selectFrom(RECOVERY_CODES_TABLE).selectAll().execute();
+    const codes = () => connections.get<any>().selectFrom(own.recoveryCodes).selectAll().execute();
     const seedCodes = async () => {
       const now = new Date();
-      await connections.get<any>().insertInto(RECOVERY_CODES_TABLE).values({ user_id: 1, code_hash: 'a', used_at: null, created_at: now, updated_at: now }).execute();
+      await connections.get<any>().insertInto(own.recoveryCodes).values({ user_id: 1, code_hash: 'a', used_at: null, created_at: now, updated_at: now }).execute();
     };
 
     it('stay while another passkey is left, and go with the last factor', async () => {
@@ -157,13 +168,13 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
 
     it('stay when the last passkey goes but a confirmed authenticator remains', async () => {
       const only = await created();
-      const totp = new TwoFactorStore(connections, new SystemClock());
+      const totp = new TwoFactorStore(connections, new SystemClock(), optionsFor(own).twoFactor);
       await totp.startSetup(1, 'enc');
       await totp.confirm(1, 5, 'enc', null);
       await seedCodes();
       expect(await store.remove(1, only.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: false } });
       expect(await codes()).toHaveLength(1);
-      await connections.get<any>().deleteFrom(TWO_FACTOR_TABLE).execute();
+      await connections.get<any>().deleteFrom(own.twoFactor).execute();
     });
 
     it('refuse the last factor unless it is allowed, and then change nothing', async () => {
@@ -186,12 +197,12 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
 
     it('go when only an unconfirmed authenticator setup remains: that is no factor', async () => {
       const only = await created();
-      const totp = new TwoFactorStore(connections, new SystemClock());
+      const totp = new TwoFactorStore(connections, new SystemClock(), optionsFor(own).twoFactor);
       await totp.startSetup(1, 'enc');
       await seedCodes();
       expect(await store.remove(1, only.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: true } });
       expect(await codes()).toHaveLength(0);
-      await connections.get<any>().deleteFrom(TWO_FACTOR_TABLE).execute();
+      await connections.get<any>().deleteFrom(own.twoFactor).execute();
     });
   });
 
@@ -215,5 +226,90 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
     await store.removeAll(1);
     expect(await store.forUser(1)).toHaveLength(0);
     expect(await store.forUser(2)).toHaveLength(1);
+  });
+});
+
+describe.each(drivers)('PasskeyStore on tables of its own on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const tables = { passkeys: 'office_passkeys', twoFactor: 'office_two_factor_authentications', recoveryCodes: 'office_two_factor_recovery_codes' };
+  const count = async (table: string) => (await connections.get<any>().selectFrom(table).selectAll().execute()).length;
+  const code = async (table: string, userId: number) => {
+    const now = new Date();
+    await connections.get<any>().insertInto(table).values({ user_id: userId, code_hash: 'a', used_at: null, created_at: now, updated_at: now }).execute();
+  };
+  const passkey = (overrides: Partial<NewPasskey> = {}): NewPasskey => ({
+    userId: 1,
+    userHandle: 'handle-1',
+    credentialId: 'cred-1',
+    publicKey: 'key-1',
+    algorithm: -7,
+    signCount: 0,
+    transports: ['internal'],
+    aaguid: '00000000-0000-0000-0000-000000000000',
+    backupEligible: true,
+    backedUp: false,
+    name: 'Laptop',
+    ...overrides,
+  });
+
+  beforeAll(async () => {
+    ({ connections, close } = await migratedConnections(driver, undefined, undefined, true));
+  });
+  afterAll(() => close());
+  beforeEach(async () => {
+    for (const table of [PASSKEYS_TABLE, TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, ...Object.values(tables)]) await connections.get<any>().deleteFrom(table).execute();
+  });
+
+  it('keeps the passkeys in its table and leaves the app table empty', async () => {
+    const office = new PasskeyStore(connections, new SystemClock(), { tables });
+    const result = await office.create(passkey());
+    expect(result.ok).toBe(true);
+    expect(await office.factors(1)).toEqual(['passkey']);
+    expect((await office.findByCredentialId('cred-1'))?.name).toBe('Laptop');
+    expect(await count(tables.passkeys)).toBe(1);
+    expect(await count(PASSKEYS_TABLE)).toBe(0);
+    await office.removeAll(1);
+    expect(await count(tables.passkeys)).toBe(0);
+  });
+
+  it('sees no passkey of the app table, and an app passkey does not make the credential a duplicate', async () => {
+    const app = new PasskeyStore(connections, new SystemClock());
+    const office = new PasskeyStore(connections, new SystemClock(), { tables });
+    await app.create(passkey());
+    expect(await office.factors(1)).toEqual([]);
+    expect(await office.findByCredentialId('cred-1')).toBeUndefined();
+    expect((await office.create(passkey())).ok).toBe(true);
+  });
+
+  it('deletes the recovery codes of its own table with the last factor, not those of the app table', async () => {
+    const office = new PasskeyStore(connections, new SystemClock(), { tables });
+    const created = await office.create(passkey());
+    if (!created.ok) throw new Error('duplicate');
+    await code(tables.recoveryCodes, 1);
+    await code(RECOVERY_CODES_TABLE, 1);
+    expect(await office.remove(1, created.value.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: true } });
+    expect(await count(tables.recoveryCodes)).toBe(0);
+    expect(await count(RECOVERY_CODES_TABLE)).toBe(1);
+  });
+
+  it('looks for a confirmed authenticator in its own table, not the app table', async () => {
+    const office = new PasskeyStore(connections, new SystemClock(), { tables });
+    const appTotp = new TwoFactorStore(connections, new SystemClock());
+    await appTotp.startSetup(1, 'enc');
+    await appTotp.confirm(1, 5, 'enc', null);
+    const created = await office.create(passkey());
+    if (!created.ok) throw new Error('duplicate');
+    await code(tables.recoveryCodes, 1);
+    // The app's authenticator is not a factor of this circle: refused as the last one, and the account's codes in this circle are kept.
+    expect(await office.remove(1, created.value.id, { lastFactorAllowed: false })).toMatchObject({ ok: false, error: { kind: 'last-factor' } });
+    expect(await count(tables.passkeys)).toBe(1);
+    expect(await count(tables.recoveryCodes)).toBe(1);
+  });
+
+  it('refuses a table name that is not plain', () => {
+    expect(() => new PasskeyStore(connections, new SystemClock(), { tables: { passkeys: 'x;drop' } })).toThrow(TypeError);
+    expect(() => new PasskeyStore(connections, new SystemClock(), { tables: { twoFactor: 'a.b' } })).toThrow(TypeError);
+    expect(() => new PasskeyStore(connections, new SystemClock(), { tables: { recoveryCodes: '' } })).toThrow(TypeError);
   });
 });

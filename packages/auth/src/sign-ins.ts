@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, ContainerError, err, ok, type Result } from '@marmeon/core';
 import { Connections, secret, secretEquals, sql, type Generated, type Secret } from '@marmeon/database';
 import type { DeviceDescription } from './device.ts';
+import { assertTableName } from './table-names.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -216,23 +217,31 @@ const NO_TOKEN = {
 } as const;
 const USER_AGENT_LENGTH = 255;
 
-/** The default {@link SignInStore}, on the app's `sign_ins` table. */
+/** The default {@link SignInStore}, on the app's `sign_ins` table (or the one named by `table`). */
 export class DatabaseSignIns extends SignInStore {
   readonly #connections: Connections;
   readonly #clock: Clock;
+  readonly #table: typeof SIGN_INS_TABLE;
 
-  /** @internal Built by the container. */
-  constructor(connections: Connections, clock: Clock) {
+  /** @internal Built by the container. `table`: the table of the rows (default `sign_ins`, a plain lower-case name). */
+  constructor(connections: Connections, clock: Clock, options: { readonly table?: string } = {}) {
     super();
     this.#connections = connections;
     this.#clock = clock;
+    // The statements are typed on the default name; the name given here is checked and reaches them as an identifier only.
+    this.#table = assertTableName('DatabaseSignIns', options.table ?? SIGN_INS_TABLE) as typeof SIGN_INS_TABLE;
+  }
+
+  /** @internal The table the rows are in; the readiness check waits for it. */
+  get table(): string {
+    return this.#table;
   }
 
   async create(input: { userId: AuthUserId; userAgent: string | undefined }): Promise<string> {
     const id = randomBytes(16).toString('base64url');
     const now = this.#now();
     await this.#db()
-      .insertInto(SIGN_INS_TABLE)
+      .insertInto(this.#table)
       .values({ id, user_id: input.userId, user_agent: cleanUserAgent(input.userAgent), signed_in_at: now, last_seen_at: now, created_at: now, updated_at: now })
       .execute();
     return id;
@@ -241,13 +250,13 @@ export class DatabaseSignIns extends SignInStore {
   async seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean> {
     if (!ID.test(id)) return false;
     const db = this.#db();
-    const row = await db.selectFrom(SIGN_INS_TABLE).select('last_seen_at').where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
+    const row = await db.selectFrom(this.#table).select('last_seen_at').where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     if (!row) return false;
     if (touch) {
       const now = this.#now();
       // `!(a > b)`: an unreadable time counts as old and is rewritten.
       if (!(new Date(row.last_seen_at).getTime() > now.getTime() - SEEN_GRANULARITY_SECONDS * 1000)) {
-        await db.updateTable(SIGN_INS_TABLE).set({ last_seen_at: now, updated_at: now }).where('id', '=', id).where('user_id', '=', userId).execute();
+        await db.updateTable(this.#table).set({ last_seen_at: now, updated_at: now }).where('id', '=', id).where('user_id', '=', userId).execute();
       }
     }
     return true;
@@ -256,7 +265,7 @@ export class DatabaseSignIns extends SignInStore {
   async list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]> {
     const now = this.#clock.now();
     const rows = await this.#db()
-      .selectFrom(SIGN_INS_TABLE)
+      .selectFrom(this.#table)
       .select(['id', 'user_id', 'user_agent', 'remember_until', 'signed_in_at', 'last_seen_at', 'created_at'])
       .where('user_id', '=', userId)
       .where((eb) =>
@@ -280,30 +289,30 @@ export class DatabaseSignIns extends SignInStore {
 
   async end(userId: AuthUserId, id: string): Promise<boolean> {
     if (!ID.test(id)) return false;
-    const result = await this.#db().deleteFrom(SIGN_INS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
+    const result = await this.#db().deleteFrom(this.#table).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
 
   async endAll(userId: AuthUserId, except?: string): Promise<number> {
-    let query = this.#db().deleteFrom(SIGN_INS_TABLE).where('user_id', '=', userId);
+    let query = this.#db().deleteFrom(this.#table).where('user_id', '=', userId);
     if (except !== undefined && ID.test(except)) query = query.where('id', '!=', except);
     return Number((await query.executeTakeFirst()).numDeletedRows);
   }
 
   async endEveryone(): Promise<number> {
-    return Number((await this.#db().deleteFrom(SIGN_INS_TABLE).executeTakeFirst()).numDeletedRows);
+    return Number((await this.#db().deleteFrom(this.#table).executeTakeFirst()).numDeletedRows);
   }
 
   async prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number> {
     const now = this.#clock.now();
     await this.#db()
-      .updateTable(SIGN_INS_TABLE)
+      .updateTable(this.#table)
       .set({ ...NO_TOKEN, updated_at: new Date(now) })
       .where(sql<boolean>`${sql.ref('remember_selector')} is not null`)
       .where((eb) => eb.or([eb('remember_until', '<=', new Date(now)), eb('remember_created_at', '<=', new Date(now - rememberMaxAgeDays * 86_400_000))]))
       .execute();
     const result = await this.#db()
-      .deleteFrom(SIGN_INS_TABLE)
+      .deleteFrom(this.#table)
       // Written positively, not as `not(alive)`: a null `remember_until` would make that null, and the row would stay.
       .where((eb) =>
         eb.and([
@@ -322,7 +331,7 @@ export class DatabaseSignIns extends SignInStore {
     // Named by id and user: a sign-in of another account never gets a token, and a cookie is handed out only for a row that holds it.
     const result = ID.test(id)
       ? await this.#db()
-          .updateTable(SIGN_INS_TABLE)
+          .updateTable(this.#table)
           .set({
             remember_selector: selector,
             remember_until: token.until,
@@ -344,7 +353,7 @@ export class DatabaseSignIns extends SignInStore {
   async dropToken(userId: AuthUserId, id: string): Promise<void> {
     if (!ID.test(id)) return;
     await this.#db()
-      .updateTable(SIGN_INS_TABLE)
+      .updateTable(this.#table)
       .set({ ...NO_TOKEN, updated_at: this.#now() })
       .where('id', '=', id)
       .where('user_id', '=', userId)
@@ -356,7 +365,7 @@ export class DatabaseSignIns extends SignInStore {
     if (!parts) return err({ kind: 'invalid' }); // malformed: no query
     const db = this.#db();
     const row = await db
-      .selectFrom(SIGN_INS_TABLE)
+      .selectFrom(this.#table)
       .select((eb) => [
         'id',
         'user_id',
@@ -375,7 +384,7 @@ export class DatabaseSignIns extends SignInStore {
     // `!(a > b)`: an unreadable time counts as expired.
     if (!(expiresAt.getTime() > this.#clock.now())) {
       // Only the token goes: the row is the sign-in, which lives by its own session.
-      await db.updateTable(SIGN_INS_TABLE).set({ ...NO_TOKEN, updated_at: this.#now() }).where('id', '=', row.id).where(selectorIs(parts.selector)).execute();
+      await db.updateTable(this.#table).set({ ...NO_TOKEN, updated_at: this.#now() }).where('id', '=', row.id).where(selectorIs(parts.selector)).execute();
       return commitAnyway(err({ kind: 'invalid' })); // the update stays when an ambient transaction would roll back an err
     }
 
@@ -389,7 +398,7 @@ export class DatabaseSignIns extends SignInStore {
       // Only if nobody rotated in between — a concurrent request with the same cookie is not a theft. `signed_in_at` moves with it: a
       // remembered browser that comes back is a sign-in that starts now, as the session window counts it.
       const result = await db
-        .updateTable(SIGN_INS_TABLE)
+        .updateTable(this.#table)
         .set({ remember_validator_hash: sha256(validator), remember_previous_validator_hash: row.remember_validator_hash, remember_rotated_at: now, signed_in_at: now, last_seen_at: now, updated_at: now })
         .where('id', '=', row.id)
         .where((eb) => secretEquals(eb, 'remember_validator_hash', row.remember_validator_hash))
@@ -398,7 +407,7 @@ export class DatabaseSignIns extends SignInStore {
       // The row changed after it was read: a rotation by another request, or a revocation, an end, a new token. Only a cookie that is the
       // row's previous validator now — the other tab's — still signs in; anything else finds no token.
       const current = await db
-        .selectFrom(SIGN_INS_TABLE)
+        .selectFrom(this.#table)
         .select((eb) => [secret(eb, 'remember_previous_validator_hash'), 'remember_rotated_at', 'remember_until', 'remember_created_at', 'remember_fingerprint'])
         .where('id', '=', row.id)
         .where(selectorIs(parts.selector))
@@ -416,7 +425,7 @@ export class DatabaseSignIns extends SignInStore {
     // and deciding who reports it are one statement: if it fails, nothing is deleted and the next replay starts over. Only the
     // request whose statement removed this row reports; parallel replays find it gone and are plain invalid ones, so the owner is
     // told once. No `outsideTransaction()`: SQLite has one connection.
-    const removed = await db.deleteFrom(SIGN_INS_TABLE).where('user_id', '=', row.user_id).returning('id').execute();
+    const removed = await db.deleteFrom(this.#table).where('user_id', '=', row.user_id).returning('id').execute();
     if (!removed.some((signIn) => signIn.id === row.id)) return commitAnyway(err({ kind: 'invalid' }));
     // The revocation must survive an ambient transaction that would roll back on an err.
     return commitAnyway(err({ kind: 'stolen', userId: row.user_id as AuthUserId, reused: previous }));
@@ -426,7 +435,7 @@ export class DatabaseSignIns extends SignInStore {
     const parts = parseCookie(cookie);
     if (!parts) return false;
     const row = await this.#db()
-      .selectFrom(SIGN_INS_TABLE)
+      .selectFrom(this.#table)
       .select('id')
       .where(selectorIs(parts.selector))
       .where(sql<boolean>`${sql.ref('remember_validator_hash')} is not null`)
@@ -436,7 +445,7 @@ export class DatabaseSignIns extends SignInStore {
 
   async forgetToken(cookie: string): Promise<void> {
     const parts = parseCookie(cookie);
-    if (parts) await this.#db().deleteFrom(SIGN_INS_TABLE).where(selectorIs(parts.selector)).execute();
+    if (parts) await this.#db().deleteFrom(this.#table).where(selectorIs(parts.selector)).execute();
   }
 
   async rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>> {
@@ -445,7 +454,7 @@ export class DatabaseSignIns extends SignInStore {
     const db = this.#db();
     // Scoped to the user: a cookie of another account's device is never re-stamped for this one.
     const row = await db
-      .selectFrom(SIGN_INS_TABLE)
+      .selectFrom(this.#table)
       .select((eb) => ['id', 'user_id', secret(eb, 'remember_validator_hash'), secret(eb, 'remember_previous_validator_hash'), 'remember_rotated_at', 'remember_until'])
       .where(selectorIs(parts.selector))
       .where('user_id', '=', userId)
@@ -458,7 +467,7 @@ export class DatabaseSignIns extends SignInStore {
     if (current || (previous && this.#clock.now() - rotatedAt < GRACE_MS)) {
       // Only the row whose validator is still the one that was checked: a rotation in between leaves it unstamped (refused later).
       const result = await db
-        .updateTable(SIGN_INS_TABLE)
+        .updateTable(this.#table)
         .set({ remember_fingerprint: fingerprint, updated_at: this.#now() })
         .where('id', '=', row.id)
         .where('user_id', '=', userId)
@@ -468,7 +477,7 @@ export class DatabaseSignIns extends SignInStore {
     }
     // A validator that is neither current nor just rotated: someone else holds a newer cookie of this token — the copy `consume()` reports.
     // Every sign-in of the account goes in one statement, and only the request that removed this row reports it.
-    const removed = await db.deleteFrom(SIGN_INS_TABLE).where('user_id', '=', row.user_id).returning('id').execute();
+    const removed = await db.deleteFrom(this.#table).where('user_id', '=', row.user_id).returning('id').execute();
     if (!removed.some((signIn) => signIn.id === row.id)) return commitAnyway(err({ kind: 'invalid' }));
     return commitAnyway(err({ kind: 'stolen', userId: row.user_id as AuthUserId, reused: previous }));
   }
