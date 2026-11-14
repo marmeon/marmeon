@@ -16,6 +16,8 @@ import { APP_GUARD_NAMES, guardNames } from './guard-names.ts';
 import { SignInAudience } from './live-audience.ts';
 import { authenticate, confirmedPassword, guest } from './middleware.ts';
 import { NewPassword } from './new-password.ts';
+import { Passkeys } from './passkeys/passkeys.ts';
+import { PasskeyStore } from './passkeys/store.ts';
 import { PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 import { SignInStore } from './sign-ins.ts';
 import { SignInThrottle } from './sign-in-throttle.ts';
@@ -25,8 +27,11 @@ import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { AccessTokenStore } from './tokens.ts';
+import { confirmedSecondFactor } from './two-factor/confirmed.ts';
+import { twoFactor } from './two-factor/middleware.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
+import { TwoFactor } from './two-factor/two-factor.ts';
 import { UserProvider, type AuthUser } from './user.ts';
 
 type Injectable = { readonly inject?: readonly Key[] };
@@ -48,6 +53,7 @@ const OWNED_BY_A_GUARD: readonly unknown[] = [
   UserSessions,
   AuthConfig,
   Auth,
+  PasskeyStore,
 ];
 
 describe('the services that act for a guard', () => {
@@ -60,6 +66,10 @@ describe('the services that act for a guard', () => {
     'authenticate()': authenticate() as Injectable,
     'guest()': guest() as Injectable,
     'confirmedPassword()': confirmedPassword() as Injectable,
+    TwoFactor: TwoFactor as unknown as Injectable,
+    Passkeys: Passkeys as unknown as Injectable,
+    'twoFactor()': twoFactor({ setup: 'a', verify: 'b' } as never) as Injectable,
+    'confirmedSecondFactor()': confirmedSecondFactor({ verify: 'b' } as never) as Injectable,
   };
 
   it.each(Object.entries(services))('%s takes the GuardContext first and nothing a guard owns besides', (_name, Class) => {
@@ -92,10 +102,10 @@ describe('the sources of the guard services', () => {
 
   // `buildForGuard()` cannot see a default value (`Class.length` stops before it, and the injection list does too), so the sources must have none.
   it('have no optional or defaulted constructor parameter', () => {
-    const files = ['./auth.ts', './account-sessions.ts', './new-password.ts', './password-reset.ts', './live-audience.ts', './middleware.ts'];
+    const files = ['./auth.ts', './account-sessions.ts', './new-password.ts', './password-reset.ts', './live-audience.ts', './middleware.ts', './two-factor/two-factor.ts', './two-factor/middleware.ts', './two-factor/confirmed.ts', './passkeys/passkeys.ts'];
     const constructors = files.flatMap(guardConstructors);
-    // Auth, AccountSessions, NewPassword, PasswordBroker, SignInAudience and the three middleware classes.
-    expect(constructors.length).toBe(8);
+    // Auth, AccountSessions, NewPassword, PasswordBroker, SignInAudience and the three middleware classes, then TwoFactor, Passkeys and their two middleware classes.
+    expect(constructors.length).toBe(12);
     for (const { source, params } of constructors) {
       for (const param of params) {
         expect(param.type === 'AssignmentPattern' || param.optional === true, source.slice(param.start, param.end)).toBe(false);

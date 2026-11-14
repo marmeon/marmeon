@@ -6,6 +6,7 @@ import { MemorySessionStore, plainSessionCodec } from '@marmeon/session/internal
 import { decodeAttestationObject, decodeCredentialPublicKey } from '@simplewebauthn/server/helpers';
 import { describe, expect, it } from 'vitest';
 import { cbor } from '../cbor.ts';
+import { APP_GUARD_NAMES } from '../guard-names.ts';
 import { softAuthenticator } from '../testing.ts';
 import { issueChallenge, takeChallenge } from './challenge.ts';
 import { authenticationOptions, registrationOptions, verifyAuthentication, verifyRegistration, type RelyingParty, type StoredPasskey } from './webauthn.ts';
@@ -276,51 +277,51 @@ describe('the challenge in the session', () => {
 
   it('works once, for its purpose: taking it removes it even when the check after fails', async () => {
     const session = await startSession();
-    const { challenge } = issueChallenge(session, 'sign-in', now);
-    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: true, value: { challenge } });
-    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
+    const { challenge } = issueChallenge(session, 'sign-in', now, undefined, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'sign-in', now + 1, undefined, APP_GUARD_NAMES)).toEqual({ ok: true, value: { challenge } });
+    expect(takeChallenge(session, 'sign-in', now + 1, undefined, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
   });
 
   it('is gone after a refused take: a wrong purpose burns it', async () => {
     const session = await startSession();
-    issueChallenge(session, 'sign-in', now);
-    expect(takeChallenge(session, 'register', now + 1)).toEqual({ ok: false, error: { kind: 'invalid' } });
-    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
+    issueChallenge(session, 'sign-in', now, undefined, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'register', now + 1, undefined, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'invalid' } });
+    expect(takeChallenge(session, 'sign-in', now + 1, undefined, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
   });
 
   it('expires after five minutes', async () => {
     const session = await startSession();
-    issueChallenge(session, 'sign-in', now);
-    expect(takeChallenge(session, 'sign-in', now + 300)).toEqual({ ok: false, error: { kind: 'expired' } });
+    issueChallenge(session, 'sign-in', now, undefined, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'sign-in', now + 300, undefined, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'expired' } });
   });
 
   it('belongs to the account it was issued for', async () => {
     const session = await startSession();
-    issueChallenge(session, 'second-factor', now, 7);
-    expect(takeChallenge(session, 'second-factor', now + 1, 8)).toEqual({ ok: false, error: { kind: 'invalid' } });
-    issueChallenge(session, 'second-factor', now, 7);
-    expect(takeChallenge(session, 'second-factor', now + 1, 7).ok).toBe(true);
+    issueChallenge(session, 'second-factor', now, 7, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'second-factor', now + 1, 8, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'invalid' } });
+    issueChallenge(session, 'second-factor', now, 7, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'second-factor', now + 1, 7, APP_GUARD_NAMES).ok).toBe(true);
   });
 
   it('refuses a challenge for an account when none is named, and the reverse', async () => {
     const session = await startSession();
-    issueChallenge(session, 'second-factor', now, 7);
-    expect(takeChallenge(session, 'second-factor', now + 1)).toEqual({ ok: false, error: { kind: 'invalid' } });
-    issueChallenge(session, 'sign-in', now);
-    expect(takeChallenge(session, 'sign-in', now + 1, 7)).toEqual({ ok: false, error: { kind: 'invalid' } });
+    issueChallenge(session, 'second-factor', now, 7, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'second-factor', now + 1, undefined, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'invalid' } });
+    issueChallenge(session, 'sign-in', now, undefined, undefined, APP_GUARD_NAMES);
+    expect(takeChallenge(session, 'sign-in', now + 1, 7, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'invalid' } });
   });
 
   it('is replaced by a newer one: a session holds one', async () => {
     const session = await startSession();
-    const first = issueChallenge(session, 'sign-in', now);
-    const second = issueChallenge(session, 'sign-in', now);
+    const first = issueChallenge(session, 'sign-in', now, undefined, undefined, APP_GUARD_NAMES);
+    const second = issueChallenge(session, 'sign-in', now, undefined, undefined, APP_GUARD_NAMES);
     expect(second.challenge).not.toBe(first.challenge);
-    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: true, value: { challenge: second.challenge } });
+    expect(takeChallenge(session, 'sign-in', now + 1, undefined, APP_GUARD_NAMES)).toEqual({ ok: true, value: { challenge: second.challenge } });
   });
 
   it('is not there in a session that never started', () => {
     const session = new Session(new MemorySessionStore(), config, plainSessionCodec);
-    expect(takeChallenge(session, 'sign-in', now)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
+    expect(takeChallenge(session, 'sign-in', now, undefined, APP_GUARD_NAMES)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
   });
 });
 

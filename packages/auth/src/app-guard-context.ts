@@ -1,4 +1,4 @@
-import { Clock, EventDispatcher, Logger, type Container, type Resolver } from '@marmeon/core';
+import { Clock, EventDispatcher, Logger, token, type Container, type Resolver } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { SessionEndings, UserSessions } from '@marmeon/session';
 import { AccountSessions } from './account-sessions.ts';
@@ -16,6 +16,14 @@ import { AccessTokenStore } from './tokens.ts';
 import { SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
+
+/**
+ * Where `PasskeyServiceProvider` hands the app's `PasskeyStore` to the app guard. A token of its own, because the main entry may not
+ * import the store (the passkeys subpath stays out of it, even for a type); without the provider nothing is bound and the guard has no passkeys.
+ *
+ * @internal
+ */
+export const APP_PASSKEY_STORE = token<object>('AppPasskeyStore');
 
 /**
  * The app's guard: every part is the service the container holds under the framework's own token, looked up on first use, so a binding
@@ -83,8 +91,8 @@ export class AppGuardContext extends GuardContext {
     return this.#resolver.make(TwoFactorStore);
   }
 
-  passkeyStore(): undefined {
-    return undefined;
+  passkeyStore(): object | undefined {
+    return this.#container.has(APP_PASSKEY_STORE) ? this.#resolver.make(APP_PASSKEY_STORE) : undefined;
   }
 
   secondFactorPasskeys(): SecondFactorPasskeys {
