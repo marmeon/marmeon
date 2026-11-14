@@ -1,5 +1,6 @@
 import type { EventDispatcher, Logger } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
+import { accountScope } from '@marmeon/session/internal';
 import { describe, expect, it } from 'vitest';
 import { PasswordBroker, type PasswordResetTokenStore } from './password-reset.ts';
 import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
@@ -11,6 +12,8 @@ import { combineFactors, NoTwoFactorState, type SecondFactor, type TwoFactorStat
 import { MemoryUsers } from './test-helpers/users.ts';
 import type { AuthUser, UserProvider } from './user.ts';
 import { signInStore, twoFactorState } from './test-helpers/stores.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
+import { guardNames } from './guard-names.ts';
 
 // What a reset of an account with an unconfirmed address takes away — and what it leaves alone.
 
@@ -56,15 +59,7 @@ function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFact
     endAll: async (...args) => (ended.push({ op: 'endAll', args }), 0),
     dropToken: async (...args) => void ended.push({ op: 'dropToken', args }),
   });
-  const newPassword = new NewPassword(
-    () => tokens,
-    () => connections,
-    { revokeTokensOnPasswordChange } as never,
-    logger,
-    () => signIns,
-    undefined,
-    () => ({ state, events: { dispatch: async (event: object) => void events.push(event) } as unknown as EventDispatcher }),
-  );
+  const newPassword = new NewPassword(guardContext({ accessTokens: tokens, settings: { revokeTokensOnPasswordChange } as never, signIns, factors: state, connections, logger, events: { dispatch: async (event: object) => void events.push(event) } as unknown as EventDispatcher }));
   const reset = (user: object) => newPassword.store(users, 1, hash, 'reset', user as never);
   return { reset, events, logged, revokedCount: () => revoked, rollbacks: () => rollbacks, newPassword, users, ended };
 }
@@ -81,7 +76,7 @@ describe('NewPassword and the sign-ins of the account', () => {
     const resets = { forget: async (email: string) => void forgotten.push(email) } as unknown as PasswordResetTokenStore;
     const { users } = setup({ state: source([]) });
     const connections = { transaction: async (run: () => Promise<unknown>) => run() } as unknown as Connections;
-    const newPassword = new NewPassword(() => ({}) as never, () => connections, { revokeTokensOnPasswordChange: false } as never, {} as never, () => signInStore({ endAll: async () => 0, dropToken: async () => {} }), undefined, undefined, undefined, () => resets);
+    const newPassword = new NewPassword(guardContext({ accessTokens: {} as never, settings: { revokeTokensOnPasswordChange: false } as never, signIns: signInStore({ endAll: async () => 0, dropToken: async () => {} }), passwordResets: resets, connections }));
     await newPassword.store(users, 1, hash, 'reset', { id: 1, email: 'ada@example.com' } as never);
     expect(forgotten).toEqual(['ada@example.com']);
     forgotten.length = 0;
@@ -106,10 +101,22 @@ describe('NewPassword and the sign-ins of the account', () => {
 
   it('refuses a sign-in store that lacks a method, with its code, before the hash is written', async () => {
     const { users, rollbacks } = setup({ state: source([]) });
-    const incomplete = new NewPassword(() => ({}) as never, () => ({ transaction: async (run: () => Promise<unknown>) => run() }) as never, {} as never, {} as never, () => ({ dropToken: async () => {} }) as never);
+    const incomplete = new NewPassword(guardContext({ accessTokens: {} as never, settings: {} as never, signIns: ({ dropToken: async () => {} }) as never, connections: { transaction: async (run: () => Promise<unknown>) => run() } as never }));
     await expect(incomplete.store(users, 1, hash, 'reset')).rejects.toThrow(/^\[marmeon:A6\] NewPassword needs SignInStore\.endAll\(\)/);
     expect(users.rows.get(1)?.hash, 'not written').toBe('old');
     expect(rollbacks()).toBe(0);
+  });
+});
+
+describe('NewPassword and the live streams', () => {
+  it('a reset tells the guard\'s endings that the account\'s sign-ins ended, under the guard\'s scope', async () => {
+    const heard: string[] = [];
+    const endings = { endAccount: async (scope: string) => void heard.push(scope) } as never;
+    const { users } = setup({ state: source([]) });
+    const connections = { transaction: async (run: () => Promise<unknown>) => run() } as unknown as Connections;
+    const newPassword = new NewPassword(guardContext({ settings: { revokeTokensOnPasswordChange: false } as never, signIns: signInStore({ endAll: async () => 0, dropToken: async () => {} }), connections, endings, names: guardNames('office') }));
+    await newPassword.store(users, 1, hash, 'reset', { id: 1 } as never);
+    expect(heard).toEqual([accountScope(1, 'office')]);
   });
 });
 
@@ -314,7 +321,7 @@ describe('a TwoFactorState without removeAll', () => {
     const old = { factors: async () => [], enabledSince: async () => undefined } as unknown as TwoFactorState; // a source without removeAll() (a cast)
     const { newPassword } = setup({ state: old });
     let consumed = 0;
-    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetMinutes: 60 } as never, newPassword, NO_LOGIN_LIMITS);
+    const broker = new PasswordBroker(guardContext({ users: {} as never, passwordResets: { consume: async () => (consumed++, { ok: true }) } as never, settings: { resetMinutes: 60 } as never, newPassword, signInThrottle: NO_LOGIN_LIMITS }), {} as never, {} as never);
     await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
   });
@@ -324,7 +331,7 @@ describe('a TwoFactorState without removeAll', () => {
     const { newPassword } = setup({ state: combineFactors(twoFactorState(), inner) });
     (inner as unknown as { removeAll: unknown }).removeAll = undefined;
     let consumed = 0;
-    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetMinutes: 60 } as never, newPassword, NO_LOGIN_LIMITS);
+    const broker = new PasswordBroker(guardContext({ users: {} as never, passwordResets: { consume: async () => (consumed++, { ok: true }) } as never, settings: { resetMinutes: 60 } as never, newPassword, signInThrottle: NO_LOGIN_LIMITS }), {} as never, {} as never);
     await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
   });

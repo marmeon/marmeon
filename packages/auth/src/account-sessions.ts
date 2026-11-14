@@ -1,13 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { type Clock, err, type EventDispatcher, inTransaction, type Logger, ok, type Result } from '@marmeon/core';
-import type { SessionEndings, UserSessions } from '@marmeon/session';
+import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { accountScope } from '@marmeon/session/internal';
 import { EverySessionEnded } from './events.ts';
-import type { EmailChangeStore } from './email-changes.ts';
-import { forgetResetLinks, type PasswordResetTokenStore } from './password-reset.ts';
-import type { SignInStore } from './sign-ins.ts';
-import type { AccessTokenStore } from './tokens.ts';
+import { GuardContext } from './guard-context.ts';
+import { forgetResetLinks } from './password-reset.ts';
 import { idOf, UserProvider, type AuthUserId } from './user.ts';
 
 /** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
@@ -174,43 +170,15 @@ export interface EveryoneEnded {
  * a command, a job or an admin controller. With sign-ins switched on, their rows go too. See `docs/authentication.md#ending-every-session-of-a-user`.
  */
 export class AccountSessions {
-  readonly #users: UserProvider;
-  readonly #signIns: SignInStore;
-  readonly #sessions: UserSessions | undefined;
-  readonly #events: EventDispatcher | undefined;
-  readonly #clock: Clock | undefined;
-  readonly #resets: (() => PasswordResetTokenStore) | undefined;
-  readonly #access: (() => AccessTokenStore) | undefined;
-  readonly #logger: Logger | undefined;
-  readonly #endings: SessionEndings | undefined;
-  readonly #changes: (() => EmailChangeStore | undefined) | undefined;
+  readonly #guard: GuardContext;
 
   /**
-   * @internal Built by the container. Built by hand without the reset-token or API-token store, `endEveryone()` refuses unless it keeps them.
-   * `changes` hands back the change-of-address store the app bound, or `undefined` when it bound none: the changes of the account go too.
+   * @internal Built by the container. The users, stores, events, clock, logger and live endings come from `guard`; a guard without API
+   * tokens, change-of-address store or user sessions (`accessTokens()`, `emailChanges()` or `userSessions()` answering `undefined`) has
+   * nothing of that kind to end.
    */
-  constructor(
-    users: UserProvider,
-    signIns: SignInStore,
-    sessions: UserSessions | undefined,
-    events?: EventDispatcher,
-    clock?: Clock,
-    resets?: () => PasswordResetTokenStore,
-    access?: () => AccessTokenStore,
-    logger?: Logger,
-    endings?: SessionEndings,
-    changes?: () => EmailChangeStore | undefined,
-  ) {
-    this.#changes = changes;
-    this.#users = users;
-    this.#signIns = signIns;
-    this.#sessions = sessions;
-    this.#events = events;
-    this.#clock = clock;
-    this.#resets = resets;
-    this.#access = access;
-    this.#logger = logger;
-    this.#endings = endings;
+  constructor(guard: GuardContext) {
+    this.#guard = guard;
   }
 
   /**
@@ -220,9 +188,9 @@ export class AccountSessions {
    */
   async [ANNOUNCE_ENDED](userId: string | number): Promise<void> {
     try {
-      await this.#endings?.endAccount(accountScope(userId));
+      await this.#guard.endings()?.endAccount(this.#guard.names.accountScope(userId));
     } catch (error) {
-      this.#logger?.error('The live streams of an account could not be told its sign-ins ended', { error });
+      this.#guard.logger().error('The live streams of an account could not be told its sign-ins ended', { error });
     }
   }
 
@@ -239,38 +207,38 @@ export class AccountSessions {
       throw new TypeError('AccountSessions.end() takes its options as an object: end(userId, { accessTokens: false }).');
     }
     const { accessTokens = true } = options;
-    if (typeof this.#signIns.endAll !== 'function') throw missingSignInMethod('AccountSessions.end()', 'endAll');
+    if (typeof this.#guard.signIns().endAll !== 'function') throw missingSignInMethod('AccountSessions.end()', 'endAll');
     if (inTransaction()) {
       throw new Error('AccountSessions.end() must run outside a database transaction: each step commits on its own, and a rollback would bring the ended sign-ins back.');
     }
-    if (typeof this.#users.updateSessionKey !== 'function') {
+    if (typeof this.#guard.users().updateSessionKey !== 'function') {
       throw missingSessionKeyMethod('AccountSessions.end()');
     }
-    const changes = this.#changes?.();
+    const changes = this.#guard.emailChanges();
     if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('AccountSessions.end()', 'forget');
-    const resets = this.#resets?.();
+    const resets = this.#guard.passwordResets();
     if (resets && typeof resets.forget !== 'function') throw refuseStore('PasswordResetTokenStore', 'forget');
-    const access = accessTokens ? this.#access?.() : undefined;
+    const access = accessTokens ? this.#guard.accessTokens() : undefined;
     if (access && typeof access.revokeAll !== 'function') throw refuseStore('AccessTokenStore', 'revokeAll');
     const id = userId as string | number;
     if (id === '' || (typeof id === 'number' && !Number.isSafeInteger(id))) return err({ kind: 'missing' });
-    const found = await this.#users.findById(id as never);
+    const found = await this.#guard.users().findById(id as never);
     if (found === undefined) return err({ kind: 'missing' });
     // The order is the invariant: tokens first, so that when a later step fails no remember-me cookie signs in again (and a
     // sign-in that is running finds its token gone); then the key, which ends the sessions of every driver; the store last, as a
     // tidy-up that frees the rows at once.
-    await this.#signIns.endAll(idOf(found.user));
+    await this.#guard.signIns().endAll(idOf(found.user));
     // Written regardless of the stored key (`expected` undefined): a request replacing it at the same time cannot make this fail.
     // A request that checked its session against an older key cannot bind itself to this one (`Auth` anchors to what it verified).
-    if ((await rotateSessionKey(this.#users, id, undefined, 'AccountSessions.end()')).kind === 'conflict') {
-      if ((await this.#users.findById(id as never)) === undefined) return err({ kind: 'missing' });
+    if ((await rotateSessionKey(this.#guard.users(), id, undefined, 'AccountSessions.end()')).kind === 'conflict') {
+      if ((await this.#guard.users().findById(id as never)) === undefined) return err({ kind: 'missing' });
       throw new Error('AccountSessions.end(): UserProvider.updateSessionKey(id, key, undefined) answered false for an account that exists — it must write regardless of the stored key.');
     }
     // The key is rotated: every session is over, and the open streams close, whatever the tidying up below does.
     try {
-      const removed = (await this.#sessions?.end(id)) ?? 0;
+      const removed = (await this.#guard.userSessions()?.end(id)) ?? 0;
       // Rows a request made since the first `endAll()` (a sign-in that was running) go too; the key has ended their sessions already.
-      await this.#signIns.endAll(idOf(found.user));
+      await this.#guard.signIns().endAll(idOf(found.user));
       // Last, after the key: every session is over whatever fails above, and a store that fails here leaves only the steps after it to run again.
       // The API tokens, the live credential, come first; then the reset link (a mailbox a thief read) and the pending change of address.
       const revoked = access ? await access.revokeAll(idOf(found.user)) : 0;
@@ -298,7 +266,7 @@ export class AccountSessions {
     if (inTransaction()) {
       throw new Error('AccountSessions.endEveryone() must run outside a database transaction: each step commits on its own, and a rollback would bring the ended sign-ins back.');
     }
-    const users = this.#users;
+    const users = this.#guard.users();
     if (typeof users.updateEverySessionKey !== 'function') {
       throw new Error(
         withCode(
@@ -316,15 +284,14 @@ export class AccountSessions {
           `AccountSessions.endEveryone() needs ${store}.${method}() — delete every row of the store in one statement${keep === undefined ? '' : `, or keep what it holds with ${keep}`}. Nothing was changed.`,
         ),
       );
-    if (typeof this.#signIns.endEveryone !== 'function') throw refuse('SignInStore', 'endEveryone');
+    if (typeof this.#guard.signIns().endEveryone !== 'function') throw refuse('SignInStore', 'endEveryone');
     const revokeResets = resetTokens;
-    if (revokeResets && this.#resets === undefined) throw new Error('AccountSessions.endEveryone() needs the PasswordResetTokenStore, which the container passes in (or pass { resetTokens: false } to keep the reset tokens).');
-    const resets = revokeResets ? this.#resets?.() : undefined;
+    const resets = revokeResets ? this.#guard.passwordResets() : undefined;
     if (revokeResets && typeof resets?.forgetEveryone !== 'function') throw refuse('PasswordResetTokenStore', 'forgetEveryone', '{ resetTokens: false } (--keep-reset-tokens)');
-    const changes = this.#changes?.();
+    const changes = this.#guard.emailChanges();
     if (changes && typeof changes.forgetEveryone !== 'function') throw refuse('EmailChangeStore', 'forgetEveryone');
     const revokeAccess = accessTokens;
-    const access = revokeAccess ? this.#access?.() : undefined;
+    const access = revokeAccess ? this.#guard.accessTokens() : undefined;
     if (revokeAccess && typeof access?.revokeEveryone !== 'function') throw refuse('AccessTokenStore', 'revokeEveryone', '{ accessTokens: false } (--keep-api-tokens)');
     // The order is the invariant. Only the sign-ins go before the keys: no remember-me cookie may sign in again once a later
     // step fails (and a remember-me sign-in that is running finds its token gone). Then the keys, which end the sessions of every
@@ -355,12 +322,12 @@ export class AccountSessions {
               : '';
         const advice = `${keys === 'unconfirmed' ? 'fix the UserProvider, then run it again' : 'run it again'}${optOut}`;
         // A log message is never masked, and the cause may quote a secret: the log gets the error as a field, the thrown error keeps the cause in its message.
-        this.#logger?.error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}) — ${advice}.`, { step: name, done, error });
+        this.#guard.logger().error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}) — ${advice}.`, { step: name, done, error });
         const cause = error instanceof Error ? error.message : String(error);
         throw new Error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}): ${cause} — ${advice}.`, { cause: error });
       }
     };
-    let signIns = (done.signIns = await step('sign-ins', () => this.#signIns.endEveryone()));
+    let signIns = (done.signIns = await step('sign-ins', () => this.#guard.signIns().endEveryone()));
     const key = randomBytes(32).toString('base64url');
     // 'unconfirmed' too: the keys may have been written, and a stream that stays open is the worse mistake.
     const rotated = () => keys !== 'not-rotated';
@@ -395,27 +362,28 @@ export class AccountSessions {
       });
       done.accounts = accounts;
       // Once more now that the keys are written: a sign-in that was running between the first pass and the keys made a row (and maybe a token), which no key ends.
-      done.signIns = signIns += await step('sign-ins', () => this.#signIns.endEveryone());
+      done.signIns = signIns += await step('sign-ins', () => this.#guard.signIns().endEveryone());
       const revokedResets = (done.resetTokens = resets ? await step('password-reset tokens', () => resets.forgetEveryone!()) : 0);
       const revokedAccess = (done.accessTokens = access ? await step('API tokens', () => access.revokeEveryone!()) : 0);
       // Last: the opt-in store must not hold back the API tokens when it fails.
       if (changes) done.emailChanges = await step('changes of address', () => changes.forgetEveryone());
       const ended: EveryoneEnded = { accounts, resetTokens: revokedResets, accessTokens: revokedAccess, signIns };
-      this.#logger?.warn('Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
+      this.#guard.logger().warn('Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
       // The work is done: a listener that fails must not make the caller run it again.
       try {
-        await this.#events?.dispatch(new EverySessionEnded(ended, new Date(this.#clock?.now() ?? Date.now())));
+        const event = this.#guard.event(new EverySessionEnded(ended, new Date(this.#guard.clock().now())));
+        if (event !== undefined) await this.#guard.events().dispatch(event);
       } catch (error) {
-        this.#logger?.error('A listener of EverySessionEnded failed', { error });
+        this.#guard.logger().error('A listener of EverySessionEnded failed', { error });
       }
       return ended;
     } finally {
       // As soon as the keys are rotated every session is over, whatever a later step does: the open streams close either way.
       if (rotated()) {
         try {
-          await this.#endings?.endEverySession();
+          await this.#guard.endings()?.endEverySession();
         } catch (error) {
-          this.#logger?.error('The live streams could not be told every sign-in ended', { error });
+          this.#guard.logger().error('The live streams could not be told every sign-in ended', { error });
         }
       }
     }

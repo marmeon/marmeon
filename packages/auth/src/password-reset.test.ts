@@ -13,6 +13,7 @@ import { NewPassword } from './new-password.ts';
 import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 vi.mock('node:crypto', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:crypto')>();
@@ -53,15 +54,7 @@ describe.each(setCases)('password reset on %s, on the %s tables', (driver, setNa
   const logged: unknown[] = [];
   const logger = Object.assign(new ConsoleLogger(), { info: (message: string, context?: unknown) => void logged.push({ message, context }) });
   const broker = (revokeTokensOnPasswordChange = false, accessTokens: AccessTokenStore = apiTokens) =>
-    new PasswordBroker(
-      users,
-      tokens,
-      hasher,
-      { dispatch: async (event: object) => void events.push(event) } as never,
-      { resetMinutes: 60, resetThrottleSeconds: 60 } as never,
-      new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger, () => signIns),
-      { ...NO_LOGIN_LIMITS, clearAccount: async (id: number | string) => void cleared.push(id) } as never,
-    );
+    new PasswordBroker(guardContext({ users, passwordResets: tokens, settings: { resetMinutes: 60, resetThrottleSeconds: 60 } as never, newPassword: new NewPassword(guardContext({ accessTokens, settings: { revokeTokensOnPasswordChange } as never, signIns, connections, logger })), signInThrottle: { ...NO_LOGIN_LIMITS, clearAccount: async (id: number | string) => void cleared.push(id) } as never }), hasher, { dispatch: async (event: object) => void events.push(event) } as never);
   let apiTokens: DatabaseAccessTokens;
 
   beforeAll(async () => {
@@ -324,7 +317,7 @@ describe.each(setCases)('password reset on %s, on the %s tables', (driver, setNa
     const clock = new TestClock();
     clock.freeze(Date.now());
     const timed = new DatabasePasswordResetTokens(connections, clock, optionsFor(own).passwordResets);
-    const timedBroker = new PasswordBroker(users, timed, hasher, { dispatch: async () => {} } as never, config, new NewPassword(() => apiTokens, () => connections, { revokeTokensOnPasswordChange: false } as never, logger, () => signIns), NO_LOGIN_LIMITS as never);
+    const timedBroker = new PasswordBroker(guardContext({ users, passwordResets: timed, settings: config, newPassword: new NewPassword(guardContext({ accessTokens: apiTokens, settings: { revokeTokensOnPasswordChange: false } as never, signIns, connections, logger })), signInThrottle: NO_LOGIN_LIMITS as never }), hasher, { dispatch: async () => {} } as never);
 
     const fresh = must(await timedBroker.createToken('ada@example.com'));
     clock.travel({ seconds: 29 });

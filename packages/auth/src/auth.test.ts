@@ -40,6 +40,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { DelegatingSignIns, signInStore, twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers as SharedUsers } from './test-helpers/users.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 interface TestUser {
   id: number;
@@ -411,7 +412,7 @@ describe('Auth (session guard)', () => {
       users.rows.set(1, { user: ada, hash: await real.make('secret'), key: null });
       const hasher = { make: vi.fn(real.make.bind(real)), verify: vi.fn(real.verify.bind(real)), needsRehash: vi.fn(real.needsRehash.bind(real)), dummyVerify: vi.fn(real.dummyVerify.bind(real)), failureFloorMs: vi.fn(real.failureFloorMs.bind(real)) };
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher as unknown as Hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+      const auth = new Auth(guardContext({ users: users as UserProvider, factors: new NoTwoFactorState(), signIns: signInStore(), fingerprints: new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), signInThrottle: NO_LOGIN_LIMITS }), session, hasher as unknown as Hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, { now: () => Date.now() } as never, {} as never);
       return { auth, hasher };
     };
 
@@ -440,7 +441,7 @@ describe('Auth (session guard)', () => {
       const failureFloorMs = vi.fn(() => floor);
       const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs }) } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+      const auth = new Auth(guardContext({ users: users as UserProvider, factors: new NoTwoFactorState(), signIns: signInStore(), fingerprints: new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), signInThrottle: NO_LOGIN_LIMITS }), session, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, { now: () => Date.now() } as never, {} as never);
       return { users, hasher, auth, failureFloorMs };
     };
     const timed = async (run: () => Promise<unknown>) => {
@@ -503,7 +504,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+    const auth = new Auth(guardContext({ users: users as UserProvider, factors: new NoTwoFactorState(), signIns: signInStore(), fingerprints: new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), signInThrottle: NO_LOGIN_LIMITS }), session, hasher, events, { get: () => undefined } as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, { now: () => Date.now() } as never, {} as never);
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),

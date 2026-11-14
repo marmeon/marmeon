@@ -1,13 +1,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, ContainerError, err, EventDispatcher, ok, type Result } from '@marmeon/core';
 import { Connections, secret, secretEquals, type Secret } from '@marmeon/database';
-import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { assertHashable, Hasher } from './hashing.ts';
-import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
-import { NewPassword } from './new-password.ts';
+import { GuardContext } from './guard-context.ts';
+import type { DeviceCookie } from './sign-in-throttle.ts';
 import { assertTableName } from './table-names.ts';
-import { assertSignInFinder, idOf, UserProvider, type AuthUser } from './user.ts';
+import { assertSignInFinder, idOf, type AuthUser } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link PasswordResetTokenTable}. */
@@ -154,31 +153,15 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
  * or not. See `docs/passwords.md#asking-for-a-link`.
  */
 export class PasswordBroker {
-  readonly #users: UserProvider;
-  readonly #tokens: PasswordResetTokenStore;
+  readonly #guard: GuardContext;
   readonly #hasher: Hasher;
   readonly #events: EventDispatcher;
-  readonly #config: AuthConfig;
-  readonly #newPassword: NewPassword;
-  readonly #signInThrottle: SignInThrottle;
 
   /** @internal Built by the container. */
-  constructor(
-    users: UserProvider,
-    tokens: PasswordResetTokenStore,
-    hasher: Hasher,
-    events: EventDispatcher,
-    config: AuthConfig,
-    newPassword: NewPassword,
-    signInThrottle: SignInThrottle,
-  ) {
-    this.#signInThrottle = signInThrottle;
-    this.#users = users;
-    this.#tokens = tokens;
+  constructor(guard: GuardContext, hasher: Hasher, events: EventDispatcher) {
+    this.#guard = guard;
     this.#hasher = hasher;
     this.#events = events;
-    this.#config = config;
-    this.#newPassword = newPassword;
   }
 
   /**
@@ -186,10 +169,11 @@ export class PasswordBroker {
    * one within `AUTH_RESET_THROTTLE_SECONDS` of the last token, so the answer never tells whether an account exists.
    */
   async createToken(email: string): Promise<Result<{ user: AuthUser; token: string }, { readonly kind: 'unavailable' }>> {
-    assertSignInFinder(this.#users);
-    const found = await this.#users.findForSignIn(email);
+    const users = this.#guard.users();
+    assertSignInFinder(users);
+    const found = await users.findForSignIn(email);
     if (!found) return err({ kind: 'unavailable' });
-    const created = await this.#tokens.create(email, this.#config.resetThrottleSeconds);
+    const created = await this.#guard.passwordResets().create(email, this.#guard.settings.resetThrottleSeconds);
     return created.ok ? ok({ user: found.user, token: created.value }) : err({ kind: 'unavailable' });
   }
 
@@ -200,8 +184,8 @@ export class PasswordBroker {
    * sign-ins. See `docs/authentication.md#limits-on-password-sign-ins`.
    */
   async deviceCookie(user: AuthUser): Promise<DeviceCookie | undefined> {
-    const credentials = await this.#users.findById(idOf(user) as never);
-    return credentials && this.#signInThrottle.issueDevice(credentials);
+    const credentials = await this.#guard.users().findById(idOf(user) as never);
+    return credentials && this.#guard.signInThrottle.issueDevice(credentials);
   }
 
   /**
@@ -211,17 +195,19 @@ export class PasswordBroker {
    * of the user is revoked in the transaction of the new hash.
    */
   async reset(email: string, value: string, password: string): Promise<Result<AuthUser, { readonly kind: 'invalid-token' }>> {
-    this.#newPassword.assertReady(); // before the token is spent
-    assertSignInFinder(this.#users);
+    const users = this.#guard.users();
+    this.#guard.newPassword().assertReady(); // before the token is spent
+    assertSignInFinder(users);
     assertHashable(password); // before the token is spent, for every request alike: a password that cannot be hashed must not use the link up
-    const consumed = await this.#tokens.consume(email, value, this.#config.resetMinutes * 60);
+    const consumed = await this.#guard.passwordResets().consume(email, value, this.#guard.settings.resetMinutes * 60);
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
-    const found = await this.#users.findForSignIn(email);
+    const found = await users.findForSignIn(email);
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
-    const { revoked } = await this.#newPassword.store(this.#users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
+    const { revoked } = await this.#guard.newPassword().store(users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
     // The owner is back in: the account takes passwords again, if guesses had shut it (best effort: the reset already stands).
-    await this.#signInThrottle.clearAccount(idOf(found.user));
-    await this.#events.dispatch(new PasswordReset(found.user, revoked));
+    await this.#guard.signInThrottle.clearAccount(idOf(found.user));
+    const event = this.#guard.event(new PasswordReset(found.user, revoked));
+    if (event !== undefined) await this.#events.dispatch(event);
     return ok(found.user);
   }
 }

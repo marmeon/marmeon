@@ -4,7 +4,7 @@ import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
-import { Auth } from './auth.ts';
+import { GuardContext } from './guard-context.ts';
 import { authenticatedByToken, Gate } from './gate.ts';
 import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
 import { UserProvider, type Authenticated } from './user.ts';
@@ -37,18 +37,18 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
     /** The keys it adds to the context: the router refuses a route with two middleware that add `user`. */
     static readonly adds = ['user'] as const;
 
-    readonly #auth: Auth;
+    readonly #guard: GuardContext;
     readonly #session: Session;
     readonly #router: Router;
 
-    constructor(auth: Auth, session: Session, router: Router) {
-      this.#auth = auth;
+    constructor(guard: GuardContext, session: Session, router: Router) {
+      this.#guard = guard;
       this.#session = session;
       this.#router = router;
     }
 
     async handle(ctx: HttpContext, next: Next<Authenticated>): Promise<Response> {
-      const user = await this.#auth.user();
+      const user = await this.#guard.auth().user();
       if (user) return next({ user });
       if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: VARY });
       // A prefetch (a hovered link) is not where the guest wanted to go — only a visit is remembered (an island's request,
@@ -80,16 +80,16 @@ export function guest(home?: string): MiddlewareClass<{}, {}>;
 export function guest<const N extends RouteNameInput>(options: GuestOptions<N>): MiddlewareClass<{}, {}>;
 export function guest(home: string | GuestOptions = '/'): MiddlewareClass<{}, {}> {
   const RedirectIfAuthenticated = class {
-    readonly #auth: Auth;
+    readonly #guard: GuardContext;
     readonly #router: Router;
 
-    constructor(auth: Auth, router: Router) {
-      this.#auth = auth;
+    constructor(guard: GuardContext, router: Router) {
+      this.#guard = guard;
       this.#router = router;
     }
 
     async handle(_ctx: HttpContext, next: Next<{}>): Promise<Response> {
-      if (!(await this.#auth.check())) return next();
+      if (!(await this.#guard.auth().check())) return next();
       const location = typeof home === 'string' ? home : urlFor(this.#router, home.homeRoute);
       return new Response(null, { status: 302, headers: { location } });
     }
@@ -117,18 +117,18 @@ export function confirmedPassword<const N extends RouteNameInput = never>(option
   const maxAgeSeconds = options.maxAge === undefined ? undefined : durationToSeconds(options.maxAge);
   if (maxAgeSeconds !== undefined && !(Number.isFinite(maxAgeSeconds) && maxAgeSeconds > 0)) throw new TypeError('confirmedPassword({ maxAge }) takes a Duration above zero.');
   const RequirePassword = class {
-    readonly #auth: Auth;
+    readonly #guard: GuardContext;
     readonly #session: Session;
     readonly #router: Router;
 
-    constructor(auth: Auth, session: Session, router: Router) {
-      this.#auth = auth;
+    constructor(guard: GuardContext, session: Session, router: Router) {
+      this.#guard = guard;
       this.#session = session;
       this.#router = router;
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
-      if (this.#auth.passwordRecentlyConfirmed(maxAgeSeconds)) return next();
+      if (this.#guard.auth().passwordRecentlyConfirmed(maxAgeSeconds)) return next();
       if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423, headers: VARY });
       if (ctx.request.method === 'GET' && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);

@@ -10,6 +10,7 @@ import { EndSessionsCommand } from './end-sessions.ts';
 import { AuthServiceProvider } from './index.ts';
 import { PasswordBroker } from './password-reset.ts';
 import { assertSignInFinder, UserProvider } from './user.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 const rest = {
   findById: async () => undefined,
@@ -60,40 +61,13 @@ describe('a UserProvider with the old name findForLogin()', () => {
   });
 
   it('is refused by attempt() with the same message, not as invalid-credentials', async () => {
-    const auth = new Auth(
-      {} as never,
-      new OldProvider() as unknown as UserProvider,
-      { failureFloorMs: () => 0 } as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      { ip: '127.0.0.1' } as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      { takeClient: async () => undefined } as never,
-    );
+    const auth = new Auth(guardContext({ users: new OldProvider() as unknown as UserProvider, signInThrottle: { takeClient: async () => undefined } as never }), {} as never, { failureFloorMs: () => 0 } as never, {} as never, {} as never, {} as never, {} as never, {} as never, { ip: '127.0.0.1' } as never, {} as never, {} as never);
     await expect(auth.attempt('ada@example.com', 'secret')).rejects.toThrow(/renamed findForSignIn\(\)/);
   });
 
   it('is refused by reset() before the token is spent', async () => {
     const consume = vi.fn();
-    const broker = new PasswordBroker(
-      new OldProvider() as unknown as UserProvider,
-      { consume } as never,
-      {} as never,
-      {} as never,
-      { resetMinutes: 60 } as never,
-      { assertReady() {} } as never,
-      {} as never,
-    );
+    const broker = new PasswordBroker(guardContext({ users: new OldProvider() as unknown as UserProvider, passwordResets: { consume } as never, settings: { resetMinutes: 60 } as never, newPassword: { assertReady() {} } as never, signInThrottle: {} as never }), {} as never, {} as never);
     await expect(broker.reset('ada@example.com', 'token', 'new password')).rejects.toThrow(/renamed findForSignIn\(\)/);
     expect(consume).not.toHaveBeenCalled();
   });

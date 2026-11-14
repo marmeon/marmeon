@@ -13,6 +13,7 @@ import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import type { AuthUser } from './user.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const grace: AuthUser = { id: 2, name: 'Grace', email: 'grace@example.com' };
@@ -233,9 +234,9 @@ describe.each(drivers)('changes of address on %s', (driver) => {
       return memory;
     };
     const newPassword = (store: EmailChangeStore | undefined) =>
-      new NewPassword(() => ({}) as never, () => connections, { revokeTokensOnPasswordChange: false } as never, { info() {}, warn() {}, error() {} } as never, () => signInStore({ endAll: async () => 0, dropToken: async () => {} }), undefined, undefined, store && (() => store));
+      new NewPassword(guardContext({ accessTokens: {} as never, settings: { revokeTokensOnPasswordChange: false } as never, signIns: signInStore({ endAll: async () => 0, dropToken: async () => {} }), emailChanges: store, connections, logger: { info() {}, warn() {}, error() {} } as never }));
     const accounts = (store: EmailChangeStore | undefined, memory = users()) =>
-      new AccountSessions(memory, signInStore({ endAll: async () => 0, endEveryone: async () => 0 }), undefined, undefined, clock, undefined, undefined, undefined, undefined, store && (() => store));
+      new AccountSessions(guardContext({ users: memory, signIns: signInStore({ endAll: async () => 0, endEveryone: async () => 0 }), emailChanges: store, clock }));
     // Postgres returns rows in no fixed order after an upsert.
     const pendingOf = async () => (await rows()).map((row) => Number(row.user_id)).sort((a, b) => a - b);
     beforeEach(async () => {
@@ -299,7 +300,7 @@ describe.each(drivers)('changes of address on %s', (driver) => {
         },
       }) as EmailChangeStore;
       const access = { revokeEveryone: async () => ++revoked } as never;
-      const sessions = new AccountSessions(users(), signInStore({ endEveryone: async () => 0 }), undefined, undefined, clock, undefined, () => access, undefined, undefined, () => failing);
+      const sessions = new AccountSessions(guardContext({ users: users(), signIns: signInStore({ endEveryone: async () => 0 }), accessTokens: access, emailChanges: failing, clock }));
       await expect(sessions.endEveryone({ resetTokens: false })).rejects.toThrow(/failed at "changes of address".*accessTokens 1/);
       expect(revoked).toBe(1);
     });
@@ -307,7 +308,7 @@ describe.each(drivers)('changes of address on %s', (driver) => {
     it('refuses a reset over a store that lacks forget() before the reset token is spent', async () => {
       const resets = new DatabasePasswordResetTokens(connections, clock);
       const memory = users();
-      const broker = new PasswordBroker(memory, resets, { make: async () => hash } as never, { dispatch: async () => {} } as never, { resetMinutes: 60, resetThrottleSeconds: 0 } as never, newPassword({} as unknown as EmailChangeStore), NO_LOGIN_LIMITS as never);
+      const broker = new PasswordBroker(guardContext({ users: memory, passwordResets: resets, settings: { resetMinutes: 60, resetThrottleSeconds: 0 } as never, newPassword: newPassword({} as unknown as EmailChangeStore), signInThrottle: NO_LOGIN_LIMITS as never }), { make: async () => hash } as never, { dispatch: async () => {} } as never);
       const created = await broker.createToken(ada.email!);
       if (!created.ok) throw new Error('no token');
       await expect(broker.reset(ada.email!, created.value.token, 'a new password')).rejects.toThrow(/^\[marmeon:A6\] NewPassword needs EmailChangeStore\.forget\(\)/);

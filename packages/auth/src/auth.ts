@@ -6,20 +6,20 @@ import { ClientHistory, ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { sessionScope } from '@marmeon/session/internal';
-import { ANNOUNCE_ENDED, AccountSessions, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
+import { ANNOUNCE_ENDED, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
-import { AuthConfig, rememberCookieName } from './config.ts';
 import { SignInFailed, SignInLockedOut, SignedIn, MAX_USER_AGENT, SignedOut, PasswordChanged, RememberTokenReused, type SignInVia } from './events.ts';
 import { Hasher } from './hashing.ts';
-import { AUTH_SESSION_KEYS, readAuth, writeAuth, type PendingSecondFactor } from './session-keys.ts';
-import { SessionFingerprints } from './fingerprint.ts';
-import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
-import { AccountClaimLost, NewPassword } from './new-password.ts';
-import { clearPasswordCheck, takePasswordCheck, type PasswordCheckError, type PasswordCheckScope } from './password-throttle.ts';
+import { readAuth, writeAuth, type AuthSessionKeys, type PendingSecondFactor } from './session-keys.ts';
+import { GuardContext } from './guard-context.ts';
+import type { GuardNames } from './guard-names.ts';
+import type { DeviceCookie } from './sign-in-throttle.ts';
+import { AccountClaimLost } from './new-password.ts';
+import { clearGuardPasswordCheck, takeGuardPasswordCheck, type PasswordCheckError, type PasswordCheckScope } from './password-throttle.ts';
 import { describeDevice } from './device.ts';
-import { SignInStore, type SignIn } from './sign-ins.ts';
-import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
-import { assertSignInFinder, idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
+import type { SignIn } from './sign-ins.ts';
+import type { SecondFactor } from './two-factor/state.ts';
+import { assertSignInFinder, idOf, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 import { RateLimiter } from '@marmeon/cache';
 
 export { AUTH_SESSION_KEYS, type PendingSecondFactor } from './session-keys.ts';
@@ -128,24 +128,19 @@ export function paddedTo(floor: unknown): number {
  * ```
  */
 export class Auth {
+  readonly #guard: GuardContext;
+  readonly #keys: GuardNames['session'];
   readonly #session: Session;
-  readonly #users: UserProvider;
   readonly #hasher: Hasher;
   readonly #events: EventDispatcher;
   readonly #cookies: CookieJar;
-  readonly #config: AuthConfig;
   readonly #sessionConfig: SessionConfig;
   readonly #rememberCookie: string;
   readonly #logger: Logger;
   readonly #history: ClientHistory;
   readonly #request: ClientInfo;
-  readonly #newPassword: NewPassword;
-  readonly #twoFactor: TwoFactorState;
-  readonly #accountSessions: AccountSessions;
-  readonly #signIns: SignInStore;
   readonly #clock: Clock;
   readonly #limiter: RateLimiter;
-  readonly #signInThrottle: SignInThrottle;
   #user: Promise<AuthUser | undefined> | undefined;
   /**
    * The credentials this request checked its session against (`#resolve`) or signed in with (`#completeSignIn`).
@@ -154,48 +149,50 @@ export class Auth {
    * read would bind it to the new state and let it survive.
    */
   #verified: Credentials | undefined;
-  readonly #fingerprints: SessionFingerprints;
 
   /** @internal Built by the container. */
   constructor(
+    guard: GuardContext,
     session: Session,
-    users: UserProvider,
     hasher: Hasher,
     events: EventDispatcher,
     cookies: CookieJar,
-    config: AuthConfig,
     sessionConfig: SessionConfig,
     logger: Logger,
     history: ClientHistory,
     request: ClientInfo,
-    newPassword: NewPassword,
-    twoFactor: TwoFactorState,
-    accountSessions: AccountSessions,
-    signIns: SignInStore,
     clock: Clock,
-    fingerprints: SessionFingerprints,
     limiter: RateLimiter,
-    signInThrottle: SignInThrottle,
   ) {
+    this.#guard = guard;
+    // Looked up now: an app without a `UserProvider` hears it at the first request that asks who is signed in, a guest's included.
+    guard.users();
+    this.#keys = guard.names.session;
     this.#limiter = limiter;
-    this.#signInThrottle = signInThrottle;
-    this.#fingerprints = fingerprints;
     this.#session = session;
-    this.#users = users;
     this.#hasher = hasher;
     this.#events = events;
     this.#cookies = cookies;
-    this.#config = config;
     this.#sessionConfig = sessionConfig;
-    this.#rememberCookie = rememberCookieName(config, sessionConfig);
+    this.#rememberCookie = guard.names.rememberCookie(guard.settings, sessionConfig);
     this.#logger = logger;
     this.#history = history;
     this.#request = request;
-    this.#newPassword = newPassword;
-    this.#twoFactor = twoFactor;
-    this.#accountSessions = accountSessions;
-    this.#signIns = signIns;
     this.#clock = clock;
+  }
+
+  #read(key: keyof AuthSessionKeys): unknown {
+    return readAuth(this.#session, key, this.#guard.names);
+  }
+
+  #write<K extends keyof AuthSessionKeys>(key: K, value: AuthSessionKeys[K]): void {
+    writeAuth(this.#session, key, value, this.#guard.names);
+  }
+
+  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  async #emit(event: object): Promise<void> {
+    const mapped = this.#guard.event(event);
+    if (mapped !== undefined) await this.#events.dispatch(mapped);
   }
 
   /**
@@ -212,25 +209,25 @@ export class Auth {
     if (typeof this.#hasher.failureFloorMs !== 'function') {
       throw new Error(withCode('A6', 'The Hasher needs failureFloorMs(): the time a failed sign-in is padded to, in milliseconds (0 gives up the padding). See docs/hashing.md#making-and-checking-hashes.'));
     }
-    assertSignInFinder(this.#users);
+    assertSignInFinder(this.#guard.users());
     const ip = options.ip ?? this.#request.ip;
     // Counted BEFORE anything is read or checked (see `SignInThrottle.takeClient()`).
-    const wait = await this.#signInThrottle.takeClient(identifier, ip);
+    const wait = await this.#guard.signInThrottle.takeClient(identifier, ip);
     if (wait !== undefined) {
-      await this.#events.dispatch(new SignInLockedOut(identifier, ip, 'client'));
+      await this.#emit(new SignInLockedOut(identifier, ip, 'client'));
       return err({ kind: 'throttled', retryAfterSeconds: wait });
     }
     const started = performance.now();
-    const found = await this.#users.findForSignIn(identifier);
+    const found = await this.#guard.users().findForSignIn(identifier);
     // The account's own ceiling, whichever clients the guesses come from, counted before the password is checked. Past it nothing is
     // checked — the right password included — and an unknown identifier gets the same answer and does the same work.
     // The one exception is the owner's own browser: a valid device cookie for exactly this account counts on a limit of its own instead.
     // A cookie that does not fit (none, forged, expired, of another account, from before a new key, or an unknown account) takes the
     // same path as no cookie, and the answer does not tell which it was.
-    const device = found && this.#signInThrottle.deviceNonce(this.#cookies.get(this.#signInThrottle.deviceCookieName), found);
-    const held = device !== undefined && (await this.#signInThrottle.takeDevice(device)) ? undefined : await this.#signInThrottle.takeAccount(identifier, found === undefined ? undefined : idOf(found.user));
+    const device = found && this.#guard.signInThrottle.deviceNonce(this.#cookies.get(this.#guard.signInThrottle.deviceCookieName), found);
+    const held = device !== undefined && (await this.#guard.signInThrottle.takeDevice(device)) ? undefined : await this.#guard.signInThrottle.takeAccount(identifier, found === undefined ? undefined : idOf(found.user));
     if (held !== undefined) {
-      if (held.first) await this.#events.dispatch(new SignInLockedOut(identifier, ip, 'account'));
+      if (held.first) await this.#emit(new SignInLockedOut(identifier, ip, 'account'));
       // Padded like a wrong password: the refusal is no faster than a check, and an unknown account costs the same.
       await this.#padFailure(started);
       return err({ kind: 'throttled', retryAfterSeconds: held.retryAfterSeconds, account: true as const });
@@ -242,19 +239,19 @@ export class Auth {
     // Only what was verified is bound (see `#verified`). A reset, a password change or an ending (each writes a new key) that committed during the slow
     // check changed the account since; the request cannot tell that from a wrong password, and a new attempt checks the new state.
     if (!(await this.#sameAccount(identifier, credentials, current))) {
-      await this.#events.dispatch(new SignInFailed(identifier, credentials.user));
+      await this.#emit(new SignInFailed(identifier, credentials.user));
       return err({ kind: 'invalid-credentials' });
     }
     // The password was right: the minute of this client starts over (the account's count is cleared by the sign-in, or below when a factor holds it).
-    await this.#signInThrottle.clearClient(identifier, ip);
+    await this.#guard.signInThrottle.clearClient(identifier, ip);
     // The one fork for every password sign-in: an account with a factor is never signed in here, whatever the caller does with the err.
     const factors = await this.#passwordSignIn(current, options, 'attempt');
     if (factors.length > 0) {
-      await this.#signInThrottle.clearAccount(idOf(current.user));
+      await this.#guard.signInThrottle.clearAccount(idOf(current.user));
       return err({ kind: 'two-factor-required', factors });
     }
-    writeAuth(this.#session, 'confirmedAt', this.#now()); // the password was just typed
-    writeAuth(this.#session, 'typedPassword', true);
+    this.#write('confirmedAt', this.#now()); // the password was just typed
+    this.#write('typedPassword', true);
     return ok(credentials.user);
   }
 
@@ -265,7 +262,7 @@ export class Auth {
    */
   async deviceCookie(): Promise<DeviceCookie | undefined> {
     const user = await this.user();
-    return user && this.#signInThrottle.issueDevice(await this.#credentials(user));
+    return user && this.#guard.signInThrottle.issueDevice(await this.#credentials(user));
   }
 
   /**
@@ -291,15 +288,15 @@ export class Auth {
    */
   async [READ_PENDING](): Promise<PendingView | 'expired' | undefined> {
     const pending = this.#pending();
-    if (pending === undefined) return this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending) ? this[DROP_EXPIRED]() : undefined;
-    const found = await this.#users.findById(pending.id as never);
-    if (!found || !this.#fingerprints.matches(pending.fingerprint, found)) return this[DROP_EXPIRED]();
+    if (pending === undefined) return this.#session.started && this.#session.has(this.#keys.pending) ? this[DROP_EXPIRED]() : undefined;
+    const found = await this.#guard.users().findById(pending.id as never);
+    if (!found || !this.#guard.fingerprints.matches(pending.fingerprint, found)) return this[DROP_EXPIRED]();
     return { userId: pending.id as AuthUserId, factors: pending.factors, failures: pending.failures, remember: pending.remember };
   }
 
   /** @internal */
   [DROP_EXPIRED](): 'expired' {
-    this.#session.forget(AUTH_SESSION_KEYS.pending);
+    this.#session.forget(this.#keys.pending);
     return 'expired';
   }
 
@@ -308,8 +305,8 @@ export class Auth {
     const pending = this.#pending();
     if (pending === undefined) return undefined;
     const failures = pending.failures + 1;
-    if (failures >= PENDING_MAX_FAILURES) this.#session.forget(AUTH_SESSION_KEYS.pending);
-    else writeAuth(this.#session, 'pending', { ...pending, failures });
+    if (failures >= PENDING_MAX_FAILURES) this.#session.forget(this.#keys.pending);
+    else this.#write('pending', { ...pending, failures });
     return failures;
   }
 
@@ -323,22 +320,22 @@ export class Auth {
   async [COMPLETE_PENDING](verifiedUserId: AuthUserId | string | number): Promise<Result<AuthUser, { readonly kind: 'no-challenge' } | { readonly kind: 'expired' }>> {
     const pending = this.#pending();
     if (pending === undefined) {
-      const stale = this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending);
-      if (stale) this.#session.forget(AUTH_SESSION_KEYS.pending);
+      const stale = this.#session.started && this.#session.has(this.#keys.pending);
+      if (stale) this.#session.forget(this.#keys.pending);
       return err({ kind: stale ? 'expired' : 'no-challenge' });
     }
-    this.#session.forget(AUTH_SESSION_KEYS.pending);
+    this.#session.forget(this.#keys.pending);
     if (String(pending.id) !== String(verifiedUserId)) return err({ kind: 'expired' });
-    const found = await this.#users.findById(pending.id as never);
-    if (!found || !this.#fingerprints.matches(pending.fingerprint, found)) return err({ kind: 'expired' });
+    const found = await this.#guard.users().findById(pending.id as never);
+    if (!found || !this.#guard.fingerprints.matches(pending.fingerprint, found)) return err({ kind: 'expired' });
     await (await this.#completeSignIn(found, { remember: pending.remember }, pending.via)).announce();
     // Only a typed password confirms, dated when it was typed. The sign-in starts then too, so the confirmation stays inside it (`passwordRecentlyConfirmed`).
     if (pending.via === 'attempt' && typeof pending.typedAt === 'number') {
-      writeAuth(this.#session, 'signedInAt', pending.typedAt);
-      writeAuth(this.#session, 'confirmedAt', pending.typedAt);
-      writeAuth(this.#session, 'typedPassword', true);
+      this.#write('signedInAt', pending.typedAt);
+      this.#write('confirmedAt', pending.typedAt);
+      this.#write('typedPassword', true);
     }
-    writeAuth(this.#session, 'twoFactorAt', this.#now());
+    this.#write('twoFactorAt', this.#now());
     return ok(found.user);
   }
 
@@ -356,12 +353,12 @@ export class Auth {
     options: { readonly remember?: boolean } = {},
     checkedAgainst?: Credentials,
   ): Promise<Result<AuthUser, { readonly kind: 'expired' }>> {
-    const found = await this.#users.findById(verifiedUserId as never);
+    const found = await this.#guard.users().findById(verifiedUserId as never);
     if (!found) return err({ kind: 'expired' });
-    if (checkedAgainst !== undefined && !this.#fingerprints.matches(this.#fingerprints.of(found), checkedAgainst)) return err({ kind: 'expired' });
+    if (checkedAgainst !== undefined && !this.#guard.fingerprints.matches(this.#guard.fingerprints.of(found), checkedAgainst)) return err({ kind: 'expired' });
     await (await this.#completeSignIn(checkedAgainst ?? found, { remember: options.remember === true }, 'passkey')).announce();
-    writeAuth(this.#session, 'confirmedAt', this.#now());
-    writeAuth(this.#session, 'twoFactorAt', this.#now());
+    this.#write('confirmedAt', this.#now());
+    this.#write('twoFactorAt', this.#now());
     return ok(found.user);
   }
 
@@ -386,7 +383,7 @@ export class Auth {
       if (this.#cookies.get(this.#rememberCookie) !== undefined) this.#cookies.delete(this.#rememberCookie);
       await this.#endSignIn(signIn);
     }
-    if (user) await this.#events.dispatch(new SignedOut(user));
+    if (user) await this.#emit(new SignedOut(user));
   }
 
   /** The signed-in user — looked up once per request; from the session, else from the remember-me cookie. */
@@ -406,7 +403,7 @@ export class Auth {
 
   /** Whether this session was signed in by the remember-me cookie rather than a password. */
   viaRemember(): boolean {
-    return this.#session.started && readAuth(this.#session, 'viaRemember') === true;
+    return this.#session.started && this.#read('viaRemember') === true;
   }
 
   /**
@@ -421,15 +418,15 @@ export class Auth {
     const user = await this.#requireUser('checkPassword');
     if (password === '') return err({ kind: 'invalid-password' });
     const scope = this.passwordCheckScope();
-    const held = await takePasswordCheck(this.#limiter, scope, idOf(user));
+    const held = await takeGuardPasswordCheck(this.#limiter, scope, idOf(user), this.#guard.names);
     if (held !== undefined) return err(held);
     const credentials = await this.#current();
     const right = credentials?.passwordHash ? await this.#hasher.verify(password, credentials.passwordHash) : await this.#hasher.dummyVerify(password);
     if (!right) return err({ kind: 'invalid-password' });
-    await clearPasswordCheck(this.#limiter, scope);
+    await clearGuardPasswordCheck(this.#limiter, scope, this.#guard.names);
     // A session id leaked before the confirmation must not ride into the window it opens (`throttleKey` stays, so the counts do).
     this.#session.regenerate();
-    writeAuth(this.#session, 'confirmedAt', this.#now());
+    this.#write('confirmedAt', this.#now());
     return ok();
   }
 
@@ -440,23 +437,23 @@ export class Auth {
    */
   passwordCheckScope(): PasswordCheckScope {
     if (!this.#session.started) throw new Error('auth.passwordCheckScope() needs a started session — a password check belongs to a signed-in user.');
-    const stored = readAuth(this.#session, 'throttleKey');
+    const stored = this.#read('throttleKey');
     let key: string;
     if (typeof stored === 'string') key = stored;
     else {
       if (this.#session.readOnly) return { session: sessionScope(this.#session.id), typed: false };
       key = randomBytes(16).toString('base64url');
-      writeAuth(this.#session, 'throttleKey', key);
+      this.#write('throttleKey', key);
     }
-    return { session: key, typed: readAuth(this.#session, 'typedPassword') === true };
+    return { session: key, typed: this.#read('typedPassword') === true };
   }
 
   /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
   passwordRecentlyConfirmed(within?: Duration): boolean {
-    const seconds = within === undefined ? this.#config.passwordTimeoutSeconds : durationToSeconds(within);
-    const at = this.#session.started ? readAuth(this.#session, 'confirmedAt') : undefined;
+    const seconds = within === undefined ? this.#guard.settings.passwordTimeoutSeconds : durationToSeconds(within);
+    const at = this.#session.started ? this.#read('confirmedAt') : undefined;
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
-    const signedInAt = this.#session.started ? readAuth(this.#session, 'signedInAt') : undefined;
+    const signedInAt = this.#session.started ? this.#read('signedInAt') : undefined;
     const current = this.#now();
     // A time further in the future than the clock skew is no confirmation (a clock that moved back, a value that did not come from
     // here). An earlier sign-in cannot slip in through the skew before `signedInAt`, because `#completeSignIn` forgets `confirmedAt`.
@@ -479,7 +476,7 @@ export class Auth {
   async signIns(): Promise<readonly SignIn[]> {
     const user = await this.#requireUser('signIns');
     const current = this.#ownSignIn()?.id;
-    const records = await this.#signIns.list(idOf(user), { idleSeconds: this.#sessionConfig.lifetimeMinutes * 60, maxSeconds: this.#config.sessionMaxSeconds });
+    const records = await this.#guard.signIns().list(idOf(user), { idleSeconds: this.#sessionConfig.lifetimeMinutes * 60, maxSeconds: this.#guard.settings.sessionMaxSeconds });
     const list = records.map((record): SignIn => ({
       id: record.id,
       current: record.id === current,
@@ -504,7 +501,7 @@ export class Auth {
     const user = await this.#requireUser('endSignIn');
     if (!this.passwordRecentlyConfirmed()) throw new Error('auth.endSignIn() needs a recent confirmation (a password or a passkey) — put the route behind confirmedPassword().');
     if (id === this.#ownSignIn()?.id) return err({ kind: 'current' });
-    if (!(await this.#signIns.end(idOf(user), id))) return err({ kind: 'missing' });
+    if (!(await this.#guard.signIns().end(idOf(user), id))) return err({ kind: 'missing' });
     await this.#announceEnded(idOf(user));
     return ok(undefined);
   }
@@ -522,7 +519,7 @@ export class Auth {
     const verified = this.#requireVerified();
     const hash = await this.#hasher.make(password);
     // The hash took its time: an `AccountSessions.end()` that landed meanwhile must not be written over — a session it ended stays ended.
-    const stored = await this.#newPassword.store(this.#users, idOf(user), hash, 'change', undefined, verified.sessionKey ?? null, this.#ownSignIn()?.id).catch(async (error: unknown) => {
+    const stored = await this.#guard.newPassword().store(this.#guard.users(), idOf(user), hash, 'change', undefined, verified.sessionKey ?? null, this.#ownSignIn()?.id).catch(async (error: unknown) => {
       if (!(error instanceof AccountClaimLost)) throw error;
       await this.#end();
       throw new Error('auth.updatePassword() needs a signed-in user — this session was ended while the password was changed.', { cause: error });
@@ -530,9 +527,9 @@ export class Auth {
     const { revoked, sessionKey } = stored;
     this.#cookies.delete(this.#rememberCookie);
     this.#anchor({ ...verified, passwordHash: hash, sessionKey });
-    writeAuth(this.#session, 'confirmedAt', this.#now());
+    this.#write('confirmedAt', this.#now());
     await this.#endOtherSignIns(idOf(user), true); // after the key: the key is what ends the other sessions, the rows only leave the list
-    await this.#events.dispatch(new PasswordChanged(user, revoked));
+    await this.#emit(new PasswordChanged(user, revoked));
     await this.#announceEnded(idOf(user)); // last: this tab's new session is saved by the time its stream connects again
   }
 
@@ -552,8 +549,8 @@ export class Auth {
     const user = await this.#requireUser('updateSessionKey');
     const verified = this.#requireVerified();
     // The other sign-ins, tokens with them, before the key, for the same reason as at `AccountSessions.end()`; this device's stays.
-    await this.#signIns.endAll(idOf(user), this.#ownSignIn()?.id);
-    const rotated = await rotateSessionKey(this.#users, idOf(user), verified.sessionKey ?? null, 'auth.updateSessionKey()');
+    await this.#guard.signIns().endAll(idOf(user), this.#ownSignIn()?.id);
+    const rotated = await rotateSessionKey(this.#guard.users(), idOf(user), verified.sessionKey ?? null, 'auth.updateSessionKey()');
     if (rotated.kind === 'conflict') {
       // The key is not the one this request checked: this session is over, and so is this device's token.
       await this.#end();
@@ -569,7 +566,7 @@ export class Auth {
   /** @internal */
   async [DROP_REMEMBER_TOKEN](): Promise<void> {
     const own = this.#ownSignIn();
-    if (own !== undefined) await this.#signIns.dropToken(own.userId, own.id);
+    if (own !== undefined) await this.#guard.signIns().dropToken(own.userId, own.id);
   }
 
   /**
@@ -586,9 +583,9 @@ export class Auth {
     const verified = this.#requireVerified();
     if (typeof verified.sessionKey === 'string') {
       // A provider without the method (JavaScript, a cast) would skip the lock without a word: refuse it.
-      if (typeof this.#users.updateSessionKey !== 'function') throw missingSessionKeyMethod('Auth');
+      if (typeof this.#guard.users().updateSessionKey !== 'function') throw missingSessionKeyMethod('Auth');
       // The same key, compare-and-set: writes nothing new, but takes the row's lock until the commit.
-      const held: unknown = await this.#users.updateSessionKey(idOf(verified.user) as never, verified.sessionKey, verified.sessionKey);
+      const held: unknown = await this.#guard.users().updateSessionKey(idOf(verified.user) as never, verified.sessionKey, verified.sessionKey);
       if (typeof held !== 'boolean') throw notABoolean('Auth');
       if (!held) return false;
     }
@@ -622,22 +619,22 @@ export class Auth {
       new Error(
         withCode(
           'A5',
-          `auth: ${this.#users.constructor.name}.${missing}() returned no sessionKey, but ${has}() returns one for this account. ` +
+          `auth: ${this.#guard.users().constructor.name}.${missing}() returned no sessionKey, but ${has}() returns one for this account. ` +
             'Hand the stored key back from both methods (see docs/authentication.md#the-user-type-and-where-users-come-from).',
         ),
       );
     if (credentials.sessionKey != null && current.sessionKey === undefined) throw contract('findById', 'findForSignIn');
     if (credentials.sessionKey === undefined && current.sessionKey != null) {
       // A key that appeared during the check is a race (a mismatch); a provider that still omits it on a second read breaks its contract.
-      const again = await this.#users.findForSignIn(identifier);
+      const again = await this.#guard.users().findForSignIn(identifier);
       if (again !== undefined && again.sessionKey === undefined) throw contract('findForSignIn', 'findById');
     }
-    return this.#fingerprints.matches(this.#fingerprints.of(current), credentials);
+    return this.#guard.fingerprints.matches(this.#guard.fingerprints.of(current), credentials);
   }
 
   async #fits(verified: Credentials): Promise<boolean> {
-    const found = await this.#users.findById(idOf(verified.user) as never);
-    return found !== undefined && this.#fingerprints.matches(this.#fingerprints.of(found), verified);
+    const found = await this.#guard.users().findById(idOf(verified.user) as never);
+    return found !== undefined && this.#guard.fingerprints.matches(this.#guard.fingerprints.of(found), verified);
   }
 
   /**
@@ -646,7 +643,7 @@ export class Auth {
    * the old key; a failure is logged by `AccountSessions`, never thrown.
    */
   async #announceEnded(userId: AuthUserId): Promise<void> {
-    await afterCommit(() => this.#accountSessions[ANNOUNCE_ENDED](userId));
+    await afterCommit(() => this.#guard.accountSessions()[ANNOUNCE_ENDED](userId));
   }
 
   /**
@@ -657,8 +654,8 @@ export class Auth {
     const own = this.#ownSignIn();
     // Clean-up after the real effect (the new key is stored): a failing store is logged, never turned into a failed password change.
     try {
-      await this.#signIns.endAll(userId, own?.id);
-      if (ownTokenGone && own !== undefined) await this.#signIns.dropToken(userId, own.id);
+      await this.#guard.signIns().endAll(userId, own?.id);
+      if (ownTokenGone && own !== undefined) await this.#guard.signIns().dropToken(userId, own.id);
     } catch (error) {
       this.#logger.error('The sign-in rows of the other devices could not be ended', { error });
     }
@@ -682,7 +679,7 @@ export class Auth {
 
   /** Binds this session to `credentials`, which are built from what this request verified and wrote itself (see `#verified`). */
   #anchor(credentials: Credentials): void {
-    writeAuth(this.#session, 'password', this.#fingerprints.of(credentials));
+    this.#write('password', this.#guard.fingerprints.of(credentials));
     this.#verified = credentials;
   }
 
@@ -695,7 +692,7 @@ export class Auth {
     const cookie = this.#cookies.get(this.#rememberCookie);
     if (cookie === undefined) return true;
     const verified = this.#requireVerified();
-    const result = await this.#signIns.rebind(idOf(verified.user), cookie, this.#fingerprints.of(verified));
+    const result = await this.#guard.signIns().rebind(idOf(verified.user), cookie, this.#guard.fingerprints.of(verified));
     if (result.ok) return true;
     if (result.error.kind === 'invalid') {
       this.#cookies.delete(this.#rememberCookie); // no row to keep: the cookie is of no use
@@ -730,18 +727,18 @@ export class Auth {
   async #check(identifier: string, password: string, found: Credentials | undefined, started: number): Promise<Credentials | undefined> {
     if (!found || found.passwordHash === null) {
       await this.#hasher.dummyVerify(password);
-      await this.#events.dispatch(new SignInFailed(identifier, found?.user));
+      await this.#emit(new SignInFailed(identifier, found?.user));
       return this.#padFailure(started);
     }
     if (!(await this.#hasher.verify(password, found.passwordHash))) {
-      await this.#events.dispatch(new SignInFailed(identifier, found.user));
+      await this.#emit(new SignInFailed(identifier, found.user));
       return this.#padFailure(started);
     }
     if (!this.#hasher.needsRehash(found.passwordHash)) return found;
     const passwordHash = await this.#hasher.make(password);
     // Only over the hash that was verified: a reset that landed during the slow check stays. The sign-in is then refused like a wrong
     // password (without a `SignInFailed` event); the next attempt checks the new state.
-    if (!passwordHashWritten(await this.#users.updatePasswordHash(idOf(found.user) as never, passwordHash, { expected: found.passwordHash }), 'auth.attempt()')) return undefined;
+    if (!passwordHashWritten(await this.#guard.users().updatePasswordHash(idOf(found.user) as never, passwordHash, { expected: found.passwordHash }), 'auth.attempt()')) return undefined;
     return { ...found, passwordHash };
   }
 
@@ -752,14 +749,14 @@ export class Auth {
    */
   async #passwordSignIn(credentials: Credentials, options: SignInOptions, via: SignInVia): Promise<readonly SecondFactor[]> {
     const id = idOf(credentials.user);
-    const factors = await this.#twoFactor.factors(id);
+    const factors = await this.#guard.factors().factors(id);
     if (factors.length > 0) {
       await this.#hold(credentials, factors, options, via);
       return factors;
     }
     const signedIn = await this.#completeSignIn(credentials, options, via);
     try {
-      const after = await this.#twoFactor.factors(id);
+      const after = await this.#guard.factors().factors(id);
       if (after.length === 0) {
         await signedIn.announce(); // only a sign-in that stays is announced: no listener sees one that is taken back
         return [];
@@ -767,17 +764,17 @@ export class Auth {
       // Taken back first, synchronously, then the token is forgotten: whatever fails later, nobody stays signed in.
       await this.#hold(credentials, after, options, via); // also ends the row the sign-in just made
       this.#cookies.delete(this.#rememberCookie);
-      if (signedIn.token !== undefined) await this.#signIns.forgetToken(signedIn.token);
+      if (signedIn.token !== undefined) await this.#guard.signIns().forgetToken(signedIn.token);
       return after;
     } catch (error) {
       // Fail closed: an error here (the second read of the factors, the removal of the token) must not leave the sign-in standing.
-      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn, AUTH_SESSION_KEYS.throttleKey, AUTH_SESSION_KEYS.typedPassword);
+      this.#session.forget(this.#keys.id, this.#keys.password, this.#keys.confirmedAt, this.#keys.viaRemember, this.#keys.twoFactorAt, this.#keys.signedInAt, this.#keys.rememberUntil, this.#keys.signIn, this.#keys.throttleKey, this.#keys.typedPassword);
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
       this.#cookies.delete(this.#rememberCookie);
-      await this.#signIns.end(idOf(credentials.user), signedIn.signIn).catch(() => undefined);
+      await this.#guard.signIns().end(idOf(credentials.user), signedIn.signIn).catch(() => undefined);
       // A token that cannot be removed now is refused later by its date, once the factor is committed (`enabledSince`).
-      if (signedIn.token !== undefined) await this.#signIns.forgetToken(signedIn.token).catch(() => undefined);
+      if (signedIn.token !== undefined) await this.#guard.signIns().forgetToken(signedIn.token).catch(() => undefined);
       throw error;
     }
   }
@@ -802,48 +799,48 @@ export class Auth {
     // goes (and the row of another user's token with it, a shared browser's: the cookie is replaced or removed below either way).
     if (!viaRemember) await this.#forgetDevice();
     // The row first, then its token: a token never exists without the row that is its authority.
-    const signIn = resumed ?? (await this.#signIns.create({ userId: idOf(user), userAgent }));
+    const signIn = resumed ?? (await this.#guard.signIns().create({ userId: idOf(user), userAgent }));
     let token: string | undefined;
     let expiresAt: Date | undefined;
     // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
-    if (remember && !viaRemember && this.#config.remember) {
-      expiresAt = new Date(this.#clock.now() + this.#config.rememberDays * 86_400_000);
+    if (remember && !viaRemember && this.#guard.settings.remember) {
+      expiresAt = new Date(this.#clock.now() + this.#guard.settings.rememberDays * 86_400_000);
       try {
         // Stamped with the fingerprint that was verified, never a fresh read: if the account changed since, the token no longer fits it
         // and `#fromRememberCookie` refuses it at its first use.
-        token = await this.#signIns.issueToken(idOf(user), signIn, { until: expiresAt, fingerprint: this.#fingerprints.of(credentials) });
+        token = await this.#guard.signIns().issueToken(idOf(user), signIn, { until: expiresAt, fingerprint: this.#guard.fingerprints.of(credentials) });
       } catch (error) {
-        await this.#signIns.end(idOf(user), signIn).catch(() => undefined);
+        await this.#guard.signIns().end(idOf(user), signIn).catch(() => undefined);
         throw error;
       }
     }
     // A session id (and CSRF token) handed out before sign-in must not survive it: session fixation.
     this.#session.regenerate();
-    this.#session.forget(AUTH_SESSION_KEYS.pending);
-    this.#session.forget(AUTH_SESSION_KEYS.twoFactorAt);
+    this.#session.forget(this.#keys.pending);
+    this.#session.forget(this.#keys.twoFactorAt);
     // A confirmation belongs to the account that was signed in when it was typed; whoever types now (`attempt()`, or the factor of an `attempt()`) sets it again.
-    this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
+    this.#session.forget(this.#keys.confirmedAt);
     // A new sign-in counts its password checks anew, and has typed no password until `attempt()` says so.
-    this.#session.forget(AUTH_SESSION_KEYS.typedPassword);
-    writeAuth(this.#session, 'throttleKey', randomBytes(16).toString('base64url'));
-    writeAuth(this.#session, 'id', idOf(user));
+    this.#session.forget(this.#keys.typedPassword);
+    this.#write('throttleKey', randomBytes(16).toString('base64url'));
+    this.#write('id', idOf(user));
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
-    writeAuth(this.#session, 'signedInAt', this.#now());
-    if (viaRemember) writeAuth(this.#session, 'viaRemember', true);
-    else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
-    if (viaRemember && rememberUntil !== undefined) writeAuth(this.#session, 'rememberUntil', rememberUntil);
-    else this.#session.forget(AUTH_SESSION_KEYS.rememberUntil);
+    this.#write('signedInAt', this.#now());
+    if (viaRemember) this.#write('viaRemember', true);
+    else this.#session.forget(this.#keys.viaRemember);
+    if (viaRemember && rememberUntil !== undefined) this.#write('rememberUntil', rememberUntil);
+    else this.#session.forget(this.#keys.rememberUntil);
     if (token !== undefined && expiresAt !== undefined) this.#setCookie(token, expiresAt);
-    writeAuth(this.#session, 'signIn', signIn);
+    this.#write('signIn', signIn);
     this.#user = Promise.resolve(user);
     // Another person may sit at this browser now: pages kept from before the sign-in must not come back.
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
     if (previous && previous.id !== signIn) await this.#endSignIn(previous); // a sign-in over a sign-in leaves no orphan
     // The owner is in (their password, a passkey or a second factor): the account's count and notice start over. A remember-me cookie is not that proof.
-    if (!viaRemember) await this.#signInThrottle.clearAccount(idOf(user));
+    if (!viaRemember) await this.#guard.signInThrottle.clearAccount(idOf(user));
     const at = new Date(this.#clock.now());
-    return { token, signIn, announce: () => this.#events.dispatch(new SignedIn(user, { remember: token !== undefined || viaRemember, via, ip, userAgent }, at)) };
+    return { token, signIn, announce: () => this.#emit(new SignedIn(user, { remember: token !== undefined || viaRemember, via, ip, userAgent }, at)) };
   }
 
   /**
@@ -853,12 +850,12 @@ export class Auth {
   async #hold(credentials: Credentials, factors: readonly SecondFactor[], { remember = false }: SignInOptions, via: SignInVia): Promise<void> {
     const previous = this.#ownSignIn();
     this.#session.regenerate();
-    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn, AUTH_SESSION_KEYS.throttleKey, AUTH_SESSION_KEYS.typedPassword] as const) {
+    for (const key of [this.#keys.id, this.#keys.password, this.#keys.confirmedAt, this.#keys.viaRemember, this.#keys.twoFactorAt, this.#keys.signedInAt, this.#keys.rememberUntil, this.#keys.signIn, this.#keys.throttleKey, this.#keys.typedPassword] as const) {
       this.#session.forget(key);
     }
-    writeAuth(this.#session, 'pending', {
+    this.#write('pending', {
       id: idOf(credentials.user),
-      fingerprint: this.#fingerprints.of(credentials),
+      fingerprint: this.#guard.fingerprints.of(credentials),
       remember,
       via,
       ...(via === 'attempt' ? { typedAt: this.#now() } : {}),
@@ -877,7 +874,7 @@ export class Auth {
   /** The pending sign-in if it is well-formed and has not run out; anything else counts as none. */
   #pending(): PendingSecondFactor | undefined {
     if (!this.#session.started) return undefined;
-    const pending = readAuth(this.#session, 'pending') as Partial<Record<keyof PendingSecondFactor, unknown>> | null | undefined;
+    const pending = this.#read('pending') as Partial<Record<keyof PendingSecondFactor, unknown>> | null | undefined;
     if (typeof pending !== 'object' || pending === null || typeof pending.until !== 'number' || pending.until <= this.#now()) return undefined;
     if (!Array.isArray(pending.factors) || typeof pending.fingerprint !== 'string') return undefined;
     // A wait that an earlier release began (`via: 'login'`) is not read: the user signs in again, as for any other unreadable wait.
@@ -887,17 +884,17 @@ export class Auth {
 
   async #resolve(): Promise<AuthUser | undefined> {
     if (!this.#session.started) return undefined; // the stateless `api` group has no session
-    const id = readAuth(this.#session, 'id');
+    const id = this.#read('id');
     if (id === undefined) return this.#fromRememberCookie();
-    const found = await this.#users.findById(id as never);
-    const fingerprint = readAuth(this.#session, 'password');
-    if (!found || !this.#fingerprints.matches(fingerprint, found)) {
+    const found = await this.#guard.users().findById(id as never);
+    const fingerprint = this.#read('password');
+    if (!found || !this.#guard.fingerprints.matches(fingerprint, found)) {
       // Deleted, or the session key changed since this session signed in (a new password writes one): this session ends — by the next request that may
       // write it (an island's is read-only: for it, nobody is signed in).
       if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
     }
-    const signedInAt = readAuth(this.#session, 'signedInAt');
+    const signedInAt = this.#read('signedInAt');
     // Invariant: a sign-in ends at most `AUTH_SESSION_MAX_HOURS` after it began, however active; after that only a still-valid
     // remember-me cookie signs in again, and `AUTH_REMEMBER_DAYS` bounds that. Unreadable times end it too (fail closed).
     if (this.#lifetimeOver(signedInAt)) {
@@ -908,19 +905,19 @@ export class Auth {
     // A session from before the lifetime was kept: its clock starts now, so a deploy signs nobody out.
     // A confirmation it holds is dated outside that sign-in, so it goes (the clock skew would otherwise let one just before count).
     if (signedInAt === undefined && !this.#session.readOnly) {
-      this.#session.forget(AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.typedPassword);
-      writeAuth(this.#session, 'signedInAt', this.#now());
+      this.#session.forget(this.#keys.confirmedAt, this.#keys.typedPassword);
+      this.#write('signedInAt', this.#now());
     }
     // Invariant: the row in the store is the authority over a sign-in. A session whose row is gone — ended from another device, by
     // the user's list or by `prune` — is over, whatever the session driver still holds; its remember-me cookie hangs on the same row.
-    const signIn = readAuth(this.#session, 'signIn');
+    const signIn = this.#read('signIn');
     if (signIn === undefined) {
       // A session made without a row (`actingAs()` in a test, a session that predates the rows): its row is made now. Only a session
       // without a key gets one — a session whose row was ended has the key and takes the branch below.
       if (!this.#session.readOnly) {
-        writeAuth(this.#session, 'signIn', await this.#signIns.create({ userId: idOf(found.user), userAgent: this.#request.userAgent }));
+        this.#write('signIn', await this.#guard.signIns().create({ userId: idOf(found.user), userAgent: this.#request.userAgent }));
       }
-    } else if (typeof signIn !== 'string' || !(await this.#signIns.seen(idOf(found.user), signIn, !this.#session.readOnly))) {
+    } else if (typeof signIn !== 'string' || !(await this.#guard.signIns().seen(idOf(found.user), signIn, !this.#session.readOnly))) {
       if (this.#session.readOnly) return undefined;
       this.#session.invalidate();
       return this.#fromRememberCookie();
@@ -940,7 +937,7 @@ export class Auth {
     const end = async () => {
       let sessionsEnded = false;
       try {
-        sessionsEnded = (await this.#accountSessions.end(userId as AuthUserId, { accessTokens: false })).ok;
+        sessionsEnded = (await this.#guard.accountSessions().end(userId as AuthUserId, { accessTokens: false })).ok;
       } catch (error) {
         this.#logger.error('A rotated remember-me token was used again, but the sessions of the user could not be ended', {
           user: userId,
@@ -951,7 +948,7 @@ export class Auth {
       if (!sessionsEnded) {
         // After a rollback the tokens are back, and `end()` did not take them again: without this every replay would find them.
         try {
-          await this.#signIns.endAll(userId as AuthUserId);
+          await this.#guard.signIns().endAll(userId as AuthUserId);
           tokensGone = true;
         } catch (error) {
           this.#logger.error('A rotated remember-me token was used again, but the remember-me tokens of the user could not be deleted', {
@@ -970,8 +967,8 @@ export class Auth {
   /** Dispatches `RememberTokenReused` for an account that still exists; a failing listener is logged, never thrown (the request is a guest anyway). */
   async #announceReuse(userId: AuthUserId, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly sessionsEnded: boolean }): Promise<void> {
     try {
-      const found = await this.#users.findById(userId as never);
-      if (found) await this.#events.dispatch(new RememberTokenReused(found.user, details, new Date()));
+      const found = await this.#guard.users().findById(userId as never);
+      if (found) await this.#emit(new RememberTokenReused(found.user, details, new Date()));
     } catch (error) {
       this.#logger.error('A rotated remember-me token was used again, but the event could not be dispatched', {
         user: userId,
@@ -987,9 +984,9 @@ export class Auth {
   #lifetimeOver(signedInAt: unknown): boolean {
     const at = this.#now();
     if (signedInAt !== undefined) {
-      if (typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || signedInAt > at + CLOCK_SKEW_SECONDS || at - signedInAt >= this.#config.sessionMaxSeconds) return true;
+      if (typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || signedInAt > at + CLOCK_SKEW_SECONDS || at - signedInAt >= this.#guard.settings.sessionMaxSeconds) return true;
     }
-    const until = readAuth(this.#session, 'rememberUntil');
+    const until = this.#read('rememberUntil');
     return until !== undefined && (typeof until !== 'number' || !Number.isFinite(until) || until <= at);
   }
 
@@ -999,12 +996,12 @@ export class Auth {
     // reach the browser (the next request would present the old one — "stolen"). The page's request signs in.
     if (!cookie || this.#session.readOnly) return undefined;
     // Remember-me is off: no cookie signs in, and its token goes (a lower `AUTH_REMEMBER_DAYS` ends what a higher one issued).
-    if (!this.#config.remember) {
-      await this.#signIns.forgetToken(cookie);
+    if (!this.#guard.settings.remember) {
+      await this.#guard.signIns().forgetToken(cookie);
       this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
-    const result = await this.#signIns.consume(cookie);
+    const result = await this.#guard.signIns().consume(cookie);
     if (!result.ok) {
       this.#cookies.delete(this.#rememberCookie);
       if (result.error.kind === 'stolen') {
@@ -1021,27 +1018,27 @@ export class Auth {
     const current = device.cookie ?? cookie;
     // The token is refused whole: its sign-in goes with it, so a refused cookie leaves no row that is listed as kept signed in.
     const refuse = async (): Promise<undefined> => {
-      await this.#signIns.forgetToken(current);
+      await this.#guard.signIns().forgetToken(current);
       this.#cookies.delete(this.#rememberCookie);
       return undefined;
     };
-    const found = await this.#users.findById(device.userId as never);
+    const found = await this.#guard.users().findById(device.userId as never);
     if (!found) return refuse();
     // Invariant: a token signs in only the account state it was issued under (the fingerprint sessions are bound to as well). A token
     // made before a reset, a new password or an ending, or one without a fingerprint, is refused whatever the order of those writes was;
     // it is never re-bound to the account's present key.
-    if (device.fingerprint == null || !this.#fingerprints.matches(device.fingerprint, found)) return refuse();
+    if (device.fingerprint == null || !this.#guard.fingerprints.matches(device.fingerprint, found)) return refuse();
     // Refused: a token made before the account's second factor existed (it proved none; a sign-in racing the activation can make one),
     // one past `AUTH_REMEMBER_DAYS` from its creation (also when issued under a longer setting), and any with an unreadable time
     // (an Invalid Date compares false with everything) — never taken as "after" or "not yet over".
-    const since = await this.#twoFactor.enabledSince(idOf(found.user));
+    const since = await this.#guard.factors().enabledSince(idOf(found.user));
     const madeAt = device.createdAt?.getTime();
-    const cap = Number.isFinite(madeAt) ? madeAt! + this.#config.rememberDays * 86_400_000 : Number.NaN;
+    const cap = Number.isFinite(madeAt) ? madeAt! + this.#guard.settings.rememberDays * 86_400_000 : Number.NaN;
     const expired = !(cap > this.#clock.now()) || !Number.isFinite(device.expiresAt.getTime());
     const refused = expired || (since !== undefined && !(madeAt! > since.getTime()));
     if (refused) return refuse();
     // A token that `AccountSessions.end()` deleted meanwhile is gone here (the fingerprint above covers the key it replaced).
-    if (!(await this.#signIns.remembered(current))) {
+    if (!(await this.#guard.signIns().remembered(current))) {
       this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
@@ -1052,29 +1049,29 @@ export class Auth {
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
-    if ((await this.#twoFactor.factors(idOf(found.user))).length > 0) writeAuth(this.#session, 'twoFactorAt', Math.floor(madeAt! / 1000));
+    if ((await this.#guard.factors().factors(idOf(found.user))).length > 0) this.#write('twoFactorAt', Math.floor(madeAt! / 1000));
     return found.user;
   }
 
   /** The row of this session's sign-in, with the user it belongs to — `undefined` without a started session, a user or a row. */
   #ownSignIn(): { readonly userId: AuthUserId; readonly id: string } | undefined {
     if (!this.#session.started) return undefined;
-    const userId = readAuth(this.#session, 'id');
-    const id = readAuth(this.#session, 'signIn');
+    const userId = this.#read('id');
+    const id = this.#read('signIn');
     return userId === undefined || typeof id !== 'string' ? undefined : { userId: userId as AuthUserId, id };
   }
 
   async #endSignIn(signIn: { readonly userId: AuthUserId; readonly id: string } | undefined): Promise<void> {
     if (signIn === undefined) return;
     // Clean-up only: the sign-in it belonged to is over or replaced already, so a store that fails here leaves a row that `prune` removes.
-    await this.#signIns.end(signIn.userId, signIn.id).catch((error: unknown) => {
+    await this.#guard.signIns().end(signIn.userId, signIn.id).catch((error: unknown) => {
       this.#logger.error('A sign-in row could not be ended', { error });
     });
   }
 
   async #forgetDevice(): Promise<void> {
     const cookie = this.#cookies.get(this.#rememberCookie);
-    if (cookie) await this.#signIns.forgetToken(cookie);
+    if (cookie) await this.#guard.signIns().forgetToken(cookie);
     if (cookie !== undefined) this.#cookies.delete(this.#rememberCookie);
   }
 
@@ -1091,11 +1088,11 @@ export class Auth {
 
   async #current(): Promise<Credentials | undefined> {
     const user = await this.user();
-    return user === undefined ? undefined : this.#users.findById(idOf(user) as never);
+    return user === undefined ? undefined : this.#guard.users().findById(idOf(user) as never);
   }
 
   async #credentials(user: AuthUser): Promise<Credentials> {
-    const credentials = await this.#users.findById(idOf(user) as never);
+    const credentials = await this.#guard.users().findById(idOf(user) as never);
     if (!credentials) throw new Error(`Cannot sign in user ${idOf(user)}: the UserProvider does not find them.`);
     return credentials;
   }

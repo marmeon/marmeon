@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AccountSessions } from './account-sessions.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, Credentials, UserProvider } from './user.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 const ada: AuthUser = { id: 7, name: 'Ada', email: 'ada@example.com' };
 
@@ -35,16 +36,16 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
       findById: async () => ({ user: ada, passwordHash: null, sessionKey: key }),
       updateSessionKey: async (_id: unknown, next: string) => ((key = next), true),
     });
-    const accounts = new AccountSessions(provider, signIns, sessions, undefined, undefined, undefined, undefined, undefined, endings);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns, userSessions: sessions, endings }));
     await expect(accounts.end('7' as never)).rejects.toThrow('store down');
     expect(heard.mock.calls).toEqual([[accountScope(7)]]);
   });
 
   it('end(): an unknown account, or a key that could not be replaced, announces nothing', async () => {
     const { endings, heard } = endingsSpy();
-    const missing = new AccountSessions(users({ findById: async () => undefined }), signIns, undefined, undefined, undefined, undefined, undefined, undefined, endings);
+    const missing = new AccountSessions(guardContext({ users: users({ findById: async () => undefined }), signIns, endings }));
     expect((await missing.end(7 as never)).ok).toBe(false);
-    const broken = new AccountSessions(users({ updateSessionKey: async () => Promise.reject(new Error('db down')) }), signIns, undefined, undefined, undefined, undefined, undefined, undefined, endings);
+    const broken = new AccountSessions(guardContext({ users: users({ updateSessionKey: async () => Promise.reject(new Error('db down')) }), signIns, endings }));
     await expect(broken.end(7 as never)).rejects.toThrow('db down');
     expect(heard).not.toHaveBeenCalled();
   });
@@ -57,7 +58,7 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
       findById: async () => ({ user: ada, passwordHash: null, sessionKey: key }),
       updateEverySessionKey: async (next: string) => ((key = next), { accounts: 1, sampleId: ada.id }),
     });
-    const accounts = new AccountSessions(provider, signIns, undefined, undefined, undefined, () => resets as never, undefined, undefined, endings);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns, passwordResets: resets as never, endings }));
     await expect(accounts.endEveryone({ accessTokens: false })).rejects.toThrow(/table missing/);
     expect(heard.mock.calls).toEqual([['*']]);
   });
@@ -65,7 +66,7 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
   it('endEveryone(): keys written but not confirmed on read-back are announced too — they may be live', async () => {
     const { endings, heard } = endingsSpy();
     const provider = users({ findById: async () => ({ user: ada, passwordHash: null, sessionKey: 'cached old key' }) });
-    const accounts = new AccountSessions(provider, signIns, undefined, undefined, undefined, undefined, undefined, undefined, endings);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns, endings }));
     await expect(accounts.endEveryone({ accessTokens: false, resetTokens: false })).rejects.toThrow(/cannot confirm the new key/);
     expect(heard.mock.calls).toEqual([['*']]);
   });
@@ -73,7 +74,7 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
   it('endEveryone(): keys that were not rotated announce nothing', async () => {
     const { endings, heard } = endingsSpy();
     const provider = users({ updateEverySessionKey: async () => Promise.reject(new Error('db down')) });
-    const accounts = new AccountSessions(provider, signIns, undefined, undefined, undefined, undefined, undefined, undefined, endings);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns, endings }));
     await expect(accounts.endEveryone({ accessTokens: false, resetTokens: false })).rejects.toThrow(/db down/);
     expect(heard).not.toHaveBeenCalled();
   });
@@ -115,7 +116,7 @@ describe('the sign-ins of the account are ended once more after the keys', () =>
         return n;
       },
     });
-    const accounts = new AccountSessions(provider, store, undefined);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns: store }));
     expect((await accounts.end(7 as never)).ok).toBe(true);
     expect([...rows], 'no row is left').toEqual([]);
     expect(ended).toHaveBeenCalledTimes(2);
@@ -132,14 +133,14 @@ describe('the sign-ins of the account are ended once more after the keys', () =>
         return { accounts: 1, sampleId: ada.id };
       },
     });
-    const accounts = new AccountSessions(provider, rowsOf(rows), undefined);
+    const accounts = new AccountSessions(guardContext({ users: provider, signIns: rowsOf(rows) }));
     expect(await accounts.endEveryone({ accessTokens: false, resetTokens: false })).toMatchObject({ accounts: 1, signIns: 2 });
     expect([...rows], 'no row is left').toEqual([]);
   });
 
   it('end(): refuses a sign-in store without endAll() with its code, before the key is replaced', async () => {
     const updateSessionKey = vi.fn(async () => true);
-    const accounts = new AccountSessions(users({ updateSessionKey }), {} as never, undefined);
+    const accounts = new AccountSessions(guardContext({ users: users({ updateSessionKey }), signIns: {} as never }));
     await expect(accounts.end(7 as never)).rejects.toThrow(/^\[marmeon:A6\] AccountSessions\.end\(\) needs SignInStore\.endAll\(\)/);
     expect(updateSessionKey).not.toHaveBeenCalled();
   });

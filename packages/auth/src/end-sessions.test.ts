@@ -10,6 +10,7 @@ import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-re
 import { DatabaseSignIns, SIGN_INS_TABLE } from './sign-ins.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -33,7 +34,7 @@ describe('auth:end-sessions', () => {
     const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock);
     await resets.create('ada@example.com', 0);
     const token = await access.create(1, 'ci', { abilities: ['*'], expiresIn: null });
-    const accounts = new AccountSessions(users, signIns, undefined, undefined, clock, () => resets, () => access);
+    const accounts = new AccountSessions(guardContext({ users, signIns, passwordResets: resets, accessTokens: access, clock }));
     const lines: string[] = [];
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const info = vi.fn();
@@ -85,7 +86,7 @@ describe('auth:end-sessions', () => {
   it('end() revokes the API tokens before it touches the reset store: a reset store that throws leaves no token', async () => {
     const { access, token, users } = await setup();
     const failing = { forget: async () => Promise.reject(new Error('reset store down')) } as never;
-    const accounts = new AccountSessions(users, new DatabaseSignIns(connections, new TestClock()), undefined, undefined, undefined, () => failing, () => access);
+    const accounts = new AccountSessions(guardContext({ users, signIns: new DatabaseSignIns(connections, new TestClock()), passwordResets: failing, accessTokens: access }));
     await expect(accounts.end(1)).rejects.toThrow('reset store down');
     expect(await access.find(token.plainText), 'the live credential is gone').toBeUndefined();
   });
@@ -93,7 +94,7 @@ describe('auth:end-sessions', () => {
   it('end() without an API-token or reset store bound reports zeros', async () => {
     const users = new MemoryUsers<AuthUser>();
     users.add(ada);
-    const bare = new AccountSessions(users, new DatabaseSignIns(connections, new TestClock()), undefined);
+    const bare = new AccountSessions(guardContext({ users, signIns: new DatabaseSignIns(connections, new TestClock()) }));
     expect(await bare.end(1)).toEqual(ok({ removed: 0, accessTokens: 0 }));
   });
 

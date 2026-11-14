@@ -11,6 +11,7 @@ import { DatabaseSignIns, SIGN_INS_TABLE } from './sign-ins.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
 import { AuthServiceProvider, type AuthUser } from './index.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { guardContext } from './test-helpers/guard-context.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -44,7 +45,7 @@ describe('auth:end-all-sessions', () => {
     await signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: undefined }), { until: new Date(clock.now() + 3_600_000), fingerprint: 'fingerprint' });
     await resets.create('ada@example.com', 0);
     const token = await access.create(1, 'ci', { abilities: ['*'], expiresIn: null });
-    const accounts = new AccountSessions(users, signIns, undefined, undefined, clock, () => resets, () => access);
+    const accounts = new AccountSessions(guardContext({ users, signIns, passwordResets: resets, accessTokens: access, clock }));
     const lines: string[] = [];
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const info = vi.fn();
@@ -147,7 +148,7 @@ describe('auth:end-all-sessions', () => {
   it('refuses before changing anything when an API-token store cannot revoke every token', async () => {
     const { users, run, lines, rows } = await setup();
     const signIns = new DatabaseSignIns(connections, new TestClock());
-    const stubborn = new AccountSessions(new Users(), signIns, undefined, undefined, undefined, () => ({ forgetEveryone: async () => 0 }) as never, () => ({}) as never);
+    const stubborn = new AccountSessions(guardContext({ users: new Users(), signIns, passwordResets: { forgetEveryone: async () => 0 } as never, accessTokens: {} as never }));
     expect(await run({ force: true }, stubborn)).toBe(1);
     expect(lines[1]).toContain('[marmeon:A6]');
     expect(lines[1]).toContain('AccessTokenStore.revokeEveryone()');
@@ -159,7 +160,7 @@ describe('auth:end-all-sessions', () => {
   it('refuses before changing anything when the sign-in store cannot end every sign-in', async () => {
     const { users, run, lines, rows } = await setup();
     // A JavaScript store (or a cast) that left a method out: TypeScript refuses to compile it.
-    const incomplete = new AccountSessions(new Users(), { endAll: async () => 0 } as never, undefined, undefined, undefined, undefined, undefined);
+    const incomplete = new AccountSessions(guardContext({ users: new Users(), signIns: { endAll: async () => 0 } as never }));
     expect(await run({ force: true, 'keep-api-tokens': true, 'keep-reset-tokens': true }, incomplete)).toBe(1);
     expect(lines[1]).toContain('[marmeon:A6]');
     expect(lines[1]).toContain('SignInStore.endEveryone()');
@@ -194,7 +195,7 @@ describe('auth:end-all-sessions', () => {
   it('refuses before changing anything when the provider cannot write every key', async () => {
     const { run, lines, rows } = await setup();
     const signIns = new DatabaseSignIns(connections, new TestClock());
-    const keyless = new AccountSessions({ ...new Users(), findById: async () => undefined } as never, signIns, undefined);
+    const keyless = new AccountSessions(guardContext({ users: { ...new Users(), findById: async () => undefined } as never, signIns }));
     // An object spread drops the prototype method, so the provider has no updateEverySessionKey().
     expect(await run({ force: true }, keyless)).toBe(1);
     expect(lines[1]).toContain('updateEverySessionKey');
