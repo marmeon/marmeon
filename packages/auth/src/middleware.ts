@@ -75,6 +75,7 @@ export function authenticateFor(whose: MiddlewareGuard, loginRoute: string): Mid
       this.#request.claim(whose.name ?? 'web', 'authenticate()');
       const user = await this.#guard.auth().user();
       if (user) {
+        this.#request.authenticated(whose.name ?? 'web');
         if (whose.name !== undefined) markPackageUser(user, whose.name);
         return next({ user });
       }

@@ -1356,8 +1356,9 @@ names two guards that cannot share it (`OfficeGuard.guest()` and the app's `auth
 may share one. So the sudo window or the second factor of an app user can never open a route of the back office, and the other way round.
 A route has one guard: put the routes of a package guard in a group of their own.
 
-A policy of the app on a route of a package guard answers no, never yes. A global middleware that asks a policy therefore leaves the
-login page of a package working, but it is rarely what you want:
+A policy of the app on a route of a package guard answers no, never yes. A global middleware that takes the no and goes on (`allows()`,
+a projection) therefore leaves the login page of a package working; one that awaits `authorize()` ends the request with a 403 before the
+login controller runs. Neither is what you want:
 [put it on the app's routes](authorization.md#middleware-that-asks-a-policy). Decide a route of a package guard on `ctx.user` with
 [`describeAccess()`](authorization.md#open-routes-and-bindings).
 

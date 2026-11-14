@@ -74,4 +74,20 @@ describe('Router.checkPipelines', () => {
     const problems = router.pipelineProblems();
     expect(problems.map((problem) => [problem.route.path, problem.message, problem.code, problem.docs])).toEqual([['/other', 'no', 'A9', 'docs/x.md']]);
   });
+
+  it('lists the declared middleware layer by layer, as boot does: global, declared global, group, declared group, route', () => {
+    const router = new Router();
+    const named = (name: string) => defineMiddleware(name, (_ctx, next) => next());
+    router.middleware.append(GLOBAL, named('framework global')).append('web', named('framework group'));
+    router.load(
+      { group: 'web' },
+      openRoutes((Route) => {
+        Route.middleware(named('route')).get('/page', () => 'page');
+      }),
+    );
+    const seen: string[][] = [];
+    router.checkPipelines((_route, pipeline) => (seen.push(pipeline.map((middleware) => middleware.name)), undefined));
+    router.pipelineProblems({ global: [named('app global')], web: [named('app group')], api: [named('other group')] });
+    expect(seen).toEqual([['framework global', 'app global', 'framework group', 'app group', 'route']]);
+  });
 });

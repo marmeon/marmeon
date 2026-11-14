@@ -1,7 +1,7 @@
 import { relative, resolve } from 'node:path';
 import { Application, Redactor, errorCodeOf } from '@marmeon/core';
 import { withoutCode } from '@marmeon/core/internal';
-import { Router } from '@marmeon/router';
+import { Router, type AnyMiddleware } from '@marmeon/router';
 import { describeMiddlewareProblem, describeRouteConflict } from '@marmeon/router/internal';
 import { RouteTypes } from '../route-types.ts';
 import type { AppCheck } from './registry.ts';
@@ -64,7 +64,9 @@ export class RouteTypesCheck implements AppCheck {
         docs: 'docs/middleware.md#listed-twice',
       });
     }
-    for (const problem of this.#router.pipelineProblems()) {
+    // The app is registered, not booted: the stacks of its definition are not in the router yet, and the kernel will see them.
+    const defined = (this.#app.definition as { middleware?: Partial<Record<string, readonly AnyMiddleware[]>> }).middleware ?? {};
+    for (const problem of this.#router.pipelineProblems(defined)) {
       problems.push({
         severity: 'error',
         message: `${problem.route.methods.join('|')} ${redactor.path(problem.route.path, problem.route.path)}: ${problem.message}`,

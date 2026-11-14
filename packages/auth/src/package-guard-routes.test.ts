@@ -182,6 +182,8 @@ const routes = openRoutes((Route) => {
   // The types refuse most mixtures; the casts are an untyped caller's.
   Route.middleware(OfficeGuard.confirmedPassword(OFFICE) as never).get('/r/sudo-without-authenticate', () => 'no stamp');
   Route.middleware(confirmedPassword() as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/sudo-then-office', () => 'mixed');
+  // The router stamps `office` ahead of everything here, but the guard's authenticate() has not run when its confirmation does.
+  Route.middleware(OfficeGuard.confirmedPassword(OFFICE) as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/sudo-before-authenticate', () => 'no authenticate yet');
   Route.middleware(OfficeGuard.guest(OFFICE)).get('/r/office-guest', () => 'office guest page');
   Route.middleware(guest({ homeRoute: 'office.home' })).get('/r/app-guest', () => 'app guest page');
   officeOnly.authorize(can(OpenPolicy, 'view')).get('/r/office-can', () => 'policy');
@@ -299,7 +301,7 @@ describe('the routes of a package guard', () => {
   it('refuses the package guard\'s confirmation without the guard\'s own authenticate() before it, and a password window ahead of the guard\'s authenticate()', async () => {
     const { signedIn, failures } = await boot();
     const both = await signedIn('app', 'office');
-    for (const path of ['/r/sudo-without-authenticate', '/r/sudo-then-office']) {
+    for (const path of ['/r/sudo-without-authenticate', '/r/sudo-then-office', '/r/sudo-before-authenticate']) {
       await expectA9(both, failures, path);
     }
   });

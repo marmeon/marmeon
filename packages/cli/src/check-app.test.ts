@@ -357,6 +357,34 @@ export default defineModule({ name: 'twoguards', routes: defineRoutes((Route) =>
     expect(found[0].message).toContain("a route belongs to one guard");
   });
 
+  it('sees the global middleware of the definition, which the router only gets at boot: a guard in it and a route of another guard is A9', () => {
+    const guards = `
+import { defineGuard } from '@marmeon/auth';
+class OfficeUsers {}
+export const OfficeGuard = defineGuard('office', { users: OfficeUsers as never, tablePrefix: 'office_' });
+`;
+    const routes = `
+import { defineModule } from '@marmeon/core';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/router';
+export default defineModule({ name: 'globalguard', routes: defineRoutes((Route) => {
+  Route.authorize(everyone).middleware(authenticate()).get('/mixed', () => 'x').name('mixed');
+}) });
+`;
+    const root = app({ files: { 'guards.ts': guards, 'modules/globalguard/index.ts': routes } });
+    const entry = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')
+      .replace("import { AppConfig }", "import globalguard from '#modules/globalguard';\nimport { OfficeGuard } from '../guards.ts';\nimport { AppConfig }")
+      .replace('modules: [system]', 'modules: [system, globalguard]')
+      .replace('global: [', "global: [OfficeGuard.guest({ homeRoute: 'mixed' } as never), ");
+    writeFileSync(join(root, 'bootstrap/app.ts'), entry);
+    const { code, stdout } = check(root, ['--only=route-types', '--json']);
+    expect(code).toBe(1);
+    const found = reportOf(stdout, 'route-types').problems.filter((problem: { code: string | null }) => problem.code === 'A9');
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: 'error', file: 'modules/globalguard/index.ts' });
+    expect(found[0].message).toContain('GET /mixed: ');
+  });
+
   it('warns, with H15 and the place of the second, about two routes with the same method and path', () => {
     const module = (name: string, body: string) => `
 import { defineModule } from '@marmeon/core';

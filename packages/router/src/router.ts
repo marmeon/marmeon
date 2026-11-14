@@ -544,10 +544,25 @@ export class Router {
     // Worked out once per route (every request of it needs the same list) — again only after a group changed.
     const cached = this.#middlewareOf.get(route);
     if (cached?.version === this.middleware.version) return cached.list;
-    const all = [...this.middleware.get(GLOBAL), ...(route.group ? this.middleware.get(route.group) : []), ...route.middleware];
-    const list = Object.freeze([...new Set(all)]);
+    const list = this.#pipelineOf(route);
     this.#middlewareOf.set(route, { version: this.middleware.version, list });
     return list;
+  }
+
+  /**
+   * The list a route runs, layer by layer: the router's global, then `declared.global`, the router's group, `declared[group]`, the
+   * route's own. As at boot, where the app's definition is appended after the framework's own. Deduplicated at the first place.
+   */
+  #pipelineOf(route: RouteDefinition, declared: Partial<Record<string, readonly AnyMiddleware[]>> = {}): readonly AnyMiddleware[] {
+    const group = route.group;
+    const all = [
+      ...this.middleware.get(GLOBAL),
+      ...(declared[GLOBAL] ?? []),
+      ...(group ? this.middleware.get(group) : []),
+      ...(group ? (declared[group] ?? []) : []),
+      ...route.middleware,
+    ];
+    return Object.freeze([...new Set(all)]);
   }
 
   /**
@@ -561,14 +576,16 @@ export class Router {
   }
 
   /**
-   * What the {@link Router.checkPipelines} checks refuse, per route: the kernel and `marmeon check` stop the start with it.
+   * What the {@link Router.checkPipelines} checks refuse, per route: the kernel and `marmeon check` stop the start with it. `declared`
+   * is what the app's definition lists for `global` and for a group (`web`, `api`): an app that is registered and not booted has not
+   * handed it to the router yet, so `marmeon check` passes it here.
    *
    * @internal
    */
-  pipelineProblems(): PipelineProblem[] {
+  pipelineProblems(declared: Partial<Record<string, readonly AnyMiddleware[]>> = {}): PipelineProblem[] {
     if (this.#pipelineChecks.length === 0) return [];
     return this.#routes.flatMap((route) => {
-      const pipeline = this.middlewareFor(route);
+      const pipeline = Object.keys(declared).length === 0 ? this.middlewareFor(route) : this.#pipelineOf(route, declared);
       return this.#pipelineChecks.flatMap((check) => {
         const finding = check(route, pipeline);
         return finding === undefined ? [] : [{ route, ...finding }];

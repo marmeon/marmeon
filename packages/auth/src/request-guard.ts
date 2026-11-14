@@ -20,12 +20,15 @@ const refuse = (message: string): never => {
 /**
  * The guard a request's route acts for, set by the first middleware that signs a user in or checks one (`authenticate()` stamps
  * `web`, `authenticate('api')` `api`, a package guard's `authenticate()` its own name) and read by every middleware and the `Gate`
- * after it. Whoever reads it decides on the stamp alone, so a sudo window or a policy of one guard never opens a route of another.
+ * after it. Whoever reads it decides on the stamp, so a sudo window or a policy of one guard never opens a route of another; a package guard's
+ * confirmation also asks whether its own `authenticate()` has run, as the router sets the stamp before any middleware does.
  *
  * @internal
  */
 export class RequestGuard {
   #name: string | undefined;
+  /** The guard whose `authenticate()` has actually run on this request: the stamp is known before it, so it cannot say. */
+  #authenticated: string | undefined;
   /** The guards whose policies decided on this request while the route had no stamp. */
   readonly #judged = new Set<string>();
 
@@ -85,10 +88,16 @@ export class RequestGuard {
     return true;
   }
 
-  /** A package guard's middleware that needs a user already checked: A9 unless that guard's own `authenticate()` came first. */
+  /** `guard`'s `authenticate()` runs now: what {@link RequestGuard.requireGuard} asks for. */
+  authenticated(guard: string): void {
+    this.#authenticated = guard;
+  }
+
+  /** A package guard's middleware that needs a user already checked: A9 unless that guard's own `authenticate()` has run before it: the stamp alone is set ahead of every middleware. */
   requireGuard(guard: string, by: string): void {
     const current = this.#name;
-    if (current === guard) return;
+    if (current === guard && this.#authenticated === guard) return;
+    if (current === guard) refuse(`${by} of the guard '${guard}' needs the guard's authenticate() before it: it has not run on this request yet.`);
     if (current === undefined) refuse(`${by} of the guard '${guard}' needs the guard's authenticate() before it: this route belongs to no guard yet.`);
     refuse(`${by} acts for the guard '${guard}', but this route belongs to '${current}': a route belongs to one guard.`);
   }

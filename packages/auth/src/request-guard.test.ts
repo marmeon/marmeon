@@ -82,6 +82,7 @@ describe('the guard of a request', () => {
   it('makes a package guard\'s middleware refuse another guard\'s route, and a route that no guard has claimed, with A9', () => {
     const own = newRequestGuard();
     own.claim('office', 'authenticate()');
+    own.authenticated('office');
     expect(() => own.requireGuard('office', 'confirmedPassword()')).not.toThrow();
 
     const app = newRequestGuard();
@@ -93,6 +94,18 @@ describe('the guard of a request', () => {
     expect(() => other.requireGuard('office', 'confirmedPassword()')).toThrow(/A9.*'office'.*'shop'/);
 
     expect(() => newRequestGuard().requireGuard('office', 'confirmedPassword()')).toThrow(/A9.*authenticate\(\)/);
+  });
+
+  it('makes a package guard\'s confirmation refuse a route the router stamped for it before its authenticate() ran (A9)', () => {
+    const request = newRequestGuard();
+    request.stamp('office');
+    expect(() => request.requireGuard('office', 'confirmedPassword()')).toThrow(/A9.*has not run/);
+    request.authenticated('office');
+    expect(() => request.requireGuard('office', 'confirmedPassword()')).not.toThrow();
+    const other = newRequestGuard();
+    other.stamp('office');
+    other.authenticated('shop');
+    expect(() => other.requireGuard('office', 'confirmedPassword()'), 'another guard\'s authenticate() does not count').toThrow(/A9/);
   });
 
   it('admits a policy of the route\'s guard only: the app\'s two guards are one circle, a package guard another', () => {

@@ -815,8 +815,8 @@ included, and a policy of your app judges your app's users, not the guard's.
 The router knows the guard of a route before its first middleware runs, so the gate does not guess. On a route that belongs to a package
 guard, a policy of the app gets no answer but no: `allows()` is `false`, `denies()` is `true`, `authorize()` and `can()` throw a 403
 `AuthorizationError`, `inspect()` is a denied `PolicyResponse`, and every ability of a projection is `false`. The policy is not built, its
-`before()` does not run and no user is loaded. The answer is never yes, and a global middleware that asks does not take down the login page
-of a package. In development the first such question for a policy and a guard writes a warning with error [A9](errors.md#server-error-codes)
+`before()` does not run and no user is loaded. The answer is never yes, and a global middleware that takes the no and goes on (`allows()`, a projection) does not take down the login
+page of a package. One that awaits `authorize()` ends the request with the 403 before the login controller runs: put it on the app's routes. In development the first such question for a policy and a guard writes a warning with error [A9](errors.md#server-error-codes)
 that names the policy, the gate method and both guards; production writes nothing.
 
 A route that no middleware gives a guard (a public page) has no such rule: every policy asks its own users there. The case is rare, since
