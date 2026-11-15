@@ -1,6 +1,6 @@
 import { isPrefetch } from '@marmeon/http';
 import { INTENDED_KEY } from '@marmeon/http/internal';
-import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
+import { addVary, EXPECTS_JSON_VARY, HttpError, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { GuardContext } from '../guard-context.ts';
@@ -30,7 +30,7 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
 }
 
 /** `confirmedSecondFactor()` for `whose`: the guard's own proof and factors, and A9 on a route that belongs to another guard. @internal */
-export function confirmedSecondFactorFor(whose: MiddlewareGuard, loginRoute: string, options: { readonly verify: string }): MiddlewareClass<Authenticated, {}> {
+export function confirmedSecondFactorFor(whose: MiddlewareGuard, loginRoute: string | undefined, options: { readonly verify: string }): MiddlewareClass<Authenticated, {}> {
   const Confirmed = class {
     // Written out: the generated list cannot name a package guard's context.
     static readonly inject = [whose.context, Session, Router, RequestGuard] as const;
@@ -55,6 +55,8 @@ export function confirmedSecondFactorFor(whose: MiddlewareGuard, loginRoute: str
       const user = await this.#guard.auth().user();
       if (!user) {
         if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: VARY });
+        // Past `requireGuard` only a middleware between `authenticate()` and here can end the sign-in; a package guard has no login route of its own, so a browser gets the 401 page instead of a redirect.
+        if (loginRoute === undefined) throw new HttpError(401, undefined, VARY);
         return this.#redirect(ctx, loginRoute);
       }
       if ((await this.#guard.factors().factors(idOf(user))).length === 0) return next();
