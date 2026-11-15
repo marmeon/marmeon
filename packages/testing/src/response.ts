@@ -25,6 +25,7 @@ import {
   type RegionOutcomeStatus,
 } from '@marmeon/http/protocol';
 import type { AuthUser } from '@marmeon/auth';
+import type { ActingAsGuard } from '@marmeon/auth/testing';
 import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
 import { misnested } from './markup.ts';
@@ -95,6 +96,8 @@ export class TestResponse {
   readonly #session: Record<string, unknown> | undefined;
   /** The session cookie the request came with, when this response did not send it again — the browser still holds it. */
   readonly #held: ReadonlyMap<string, string>;
+  /** The session key of the id of a guard's user, for `assertAuthenticated({ guard })`; undefined without @marmeon/auth. */
+  #guardKey: ((guard: unknown) => string) | undefined;
   /** What server rendering did — undefined without `createTestApp(…, { ssr: true })`. */
   readonly #ssr: SsrOutcome | undefined;
 
@@ -128,6 +131,7 @@ export class TestResponse {
     sessions?: SessionAccess,
     ssr?: (page: PageObject | undefined) => Promise<SsrOutcome | undefined>,
     sent?: string,
+    guardKey?: (guard: unknown) => string,
   ): Promise<TestResponse> {
     const cookies = new Map<string, string>();
     for (const header of response.headers.getSetCookie()) {
@@ -141,7 +145,9 @@ export class TestResponse {
     const bytes = new Uint8Array(await response.arrayBuffer());
     const body = new TextDecoder().decode(bytes);
     const page = response.headers.get('content-type')?.includes('text/html') ? pageIn(body) : undefined;
-    return new TestResponse(response, body, bytes, label, cookies, session, await ssr?.(page), new Map(sentId && sessions ? [[sessions.cookie, sentId]] : []));
+    const built = new TestResponse(response, body, bytes, label, cookies, session, await ssr?.(page), new Map(sentId && sessions ? [[sessions.cookie, sentId]] : []));
+    built.#guardKey = guardKey;
+    return built;
   }
 
   /** The session data after the request (from the store, via the session cookie). */
@@ -272,19 +278,41 @@ export class TestResponse {
 
   // --- Authentication (@marmeon/auth) -------------------------------------------
 
-  /** The session is signed in after the request — as `user`, when given (compared by id). */
-  assertAuthenticated(user?: AuthUser): this {
-    const id = this.session()[AUTH_ID];
+  /**
+   * The session is signed in after the request — as `user`, when given (compared by id). With `{ guard }` it asks about that guard of a
+   * package (or a guard slot) instead of the app's: a guard's session is separate, so the app's assertion sees a guard's user as a guest.
+   * A `guard` that is `undefined` throws. See `docs/authentication.md#testing-as-a-guard-of-a-package`.
+   */
+  assertAuthenticated<U extends { readonly id: string | number }>(user: NoInfer<U> | undefined, options: { readonly guard: ActingAsGuard<U> }): this;
+  assertAuthenticated(user?: AuthUser): this;
+  assertAuthenticated(user?: AuthUser | { readonly id: string | number }, options?: { readonly guard?: unknown }): this {
+    const id = this.session()[this.#idKey('assertAuthenticated', options, arguments.length > 1)];
     if (id === undefined) this.#fail('Expected the session to be signed in, but it is a guest');
     if (user !== undefined) this.#compare(() => deepStrictEqual(id, (user as unknown as { id: unknown }).id), 'Signed in as another user');
     return this;
   }
 
-  /** The session is not signed in after the request. */
-  assertGuest(): this {
-    const id = this.session()[AUTH_ID];
+  /**
+   * The session is not signed in after the request. With `{ guard }` it asks about that guard of a package (or a guard slot): without it, a
+   * guard's user does not count, because the app's guard is another one. A `guard` that is `undefined` throws.
+   * See `docs/authentication.md#testing-as-a-guard-of-a-package`.
+   */
+  assertGuest(options: { readonly guard: ActingAsGuard<any> }): this;
+  assertGuest(): this;
+  assertGuest(options?: { readonly guard?: unknown }): this {
+    const id = this.session()[this.#idKey('assertGuest', options, arguments.length > 0)];
     if (id !== undefined) this.#fail(`Expected a guest, but the session is signed in as user ${JSON.stringify(id)}`);
     return this;
+  }
+
+  /** The key of the id the assertion reads: the app's without options, the named guard's with them (a missing or undefined guard is refused). */
+  #idKey(name: string, options: { readonly guard?: unknown } | undefined, given: boolean): string {
+    if (!given) return AUTH_ID;
+    if (typeof options !== 'object' || options === null || options.guard === undefined) {
+      throw new TypeError(`${name}(): \`guard\` is a guard made by defineGuard() or a guard slot made by defineGuardSlot(); leave the options out for the app's own users.`);
+    }
+    if (!this.#guardKey) throw new TypeError(`${name}({ guard }) needs @marmeon/auth in the app.`);
+    return this.#guardKey(options.guard);
   }
 
   // --- Validation ---------------------------------------------------------------

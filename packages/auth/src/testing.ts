@@ -4,37 +4,141 @@
  */
 import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { cbor } from './cbor.ts';
-import { Clock, type Container } from '@marmeon/core';
+import { Clock, type Container, type Key } from '@marmeon/core';
 import { SessionConfig, sessionCookieName } from '@marmeon/session';
-import { AUTH_SESSION_KEYS } from './auth.ts';
+import { Guard, GuardRegistry, type GuardDefinition } from './define-guard.ts';
+import { isGuardSlot, slotBindings, slotTarget, type GuardSlot, type TwoFactorGuardSlot } from './guard-slot.ts';
+import { APP_GUARD_NAMES, type GuardNames } from './guard-names.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 import { hotp, base32Decode, totpStep } from './two-factor/totp.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
+/** The guard a test signs in to: the one `defineGuard()` made, or a slot (`defineGuardSlot()`) the package bound. */
+export type ActingAsGuard<U extends { readonly id: string | number }> = GuardDefinition<U> | GuardSlot<U> | TwoFactorGuardSlot<U>;
+
+/** What a test sets about the sign-in it starts with: when the session proved its second factor and when it last typed the password. */
+export interface ActingAsProofs {
+  /** When the session proved a second factor. Without it, the proof is dated now for an account that has a factor and missing otherwise. */
+  readonly twoFactorAt?: Date;
+  /** When the session last typed the password, which `confirmedPassword()` reads; the sign-in is dated with it. Without it, the session has not confirmed. */
+  readonly confirmedAt?: Date;
+}
+
+/** What the session of a sign-in is made of, for the app's guard or one of a package. */
+interface SignInTarget {
+  readonly names: GuardNames;
+  readonly users: UserProvider;
+  readonly factors: TwoFactorState;
+  readonly fingerprints: SessionFingerprints;
+  readonly clock: Clock;
+  readonly label: string;
+}
+
+/**
+ * The guard `guard` stands for in `container`: the guard itself, or what a slot is bound to (`'web'` for the app's users).
+ * Anything else, `undefined` included, a guard no provider registered and a slot nobody bound, throws: a test never signs in as another guard's user.
+ */
+function targetOf(container: Container, guard: unknown): 'web' | Guard {
+  if (isGuardSlot(guard)) {
+    slotBindings(container);
+    return slotTarget(guard, (key) => container.make(key as Key) as never);
+  }
+  if (!(guard instanceof Guard)) throw new TypeError("actingAs(): `guard` is a guard made by defineGuard() or a guard slot made by defineGuardSlot(); leave `guard` out for the app's own users.");
+  if (!container.has(GuardRegistry) || !container.make(GuardRegistry).all().includes(guard)) {
+    throw new TypeError(`actingAs(): the guard '${guard.name}' is not registered in this app: its package's provider calls register() on it.`);
+  }
+  return guard;
+}
+
+function unixSeconds(name: string, at: unknown): number {
+  if (!(at instanceof Date) || !Number.isFinite(at.getTime())) throw new TypeError(`actingAs(): \`${name}\` takes a valid Date.`);
+  return Math.floor(at.getTime() / 1000);
+}
+
 /**
  * Session data that signs `user` in, exactly as a login would leave it — what `actingAs(user)` of
  * @marmeon/testing starts a request with. It skips two-factor authentication on purpose: a test that acts as a user
  * gets a signed-in session whether or not the account has a second factor (test the challenge by signing in for real). An account
  * that has a factor counts as having proven it, so the `twoFactor()` middleware lets it through; one without a factor is still sent to set one up.
+ *
+ * With `guard`, the session is the guard's: its keys, its fingerprint, and a proof only for a factor of the guard's own. Nothing of it
+ * signs in the app's user of the same id, and the app's session signs in nobody of the guard. `proofs` dates the second factor and
+ * the password confirmation, to test the middleware that asks for them. A `guard` that is passed must be a guard: `undefined` is refused, never read as the app's.
+ *
+ * Throws when the user does not exist in the guard's own table (the app's without a guard), when the guard is not one or no provider registered it,
+ * when a slot is unbound (error A8) and when `twoFactorAt` or `confirmedAt` is not a valid `Date`.
+ * See `docs/authentication.md#testing-as-a-guard-of-a-package`.
  */
-export async function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>> {
+export async function authenticatedSession<U extends { readonly id: string | number }>(
+  container: Container,
+  user: NoInfer<U>,
+  guard: ActingAsGuard<U>,
+  proofs?: ActingAsProofs,
+): Promise<Record<string, unknown>>;
+export async function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>>;
+export async function authenticatedSession(container: Container, user: AuthUser | { readonly id: string | number }, ...rest: unknown[]): Promise<Record<string, unknown>> {
+  // An absent guard is the app's; one passed as `undefined` (a variable that came up empty) is refused.
+  const guard = rest[0];
+  const proofs = (rest[1] ?? {}) as ActingAsProofs;
   const id = idOf(user);
   const scope = container.createScope();
-  const credentials = await scope.make(UserProvider).findById(id as never);
-  if (!credentials) throw new Error(`actingAs(): there is no user ${id} — create it first (e.g. with a factory).`);
-  const proven = (await scope.make(TwoFactorState).factors(id)).length > 0 ? { [AUTH_SESSION_KEYS.twoFactorAt]: Math.floor(scope.make(Clock).now() / 1000) } : {};
-  return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: scope.make(SessionFingerprints).of(credentials), ...proven };
+  const guarded = rest.length === 0 ? 'web' : targetOf(container, guard);
+  const target: SignInTarget =
+    guarded === 'web'
+      ? {
+          names: APP_GUARD_NAMES,
+          users: scope.make(UserProvider),
+          factors: scope.make(TwoFactorState),
+          fingerprints: scope.make(SessionFingerprints),
+          clock: scope.make(Clock),
+          label: '',
+        }
+      : (() => {
+          const context = scope.make(guarded.tokens.context);
+          return { names: context.names, users: context.users(), factors: context.factors(), fingerprints: context.fingerprints, clock: context.clock(), label: ` of the guard '${guarded.name}'` };
+        })();
+  const credentials = await target.users.findById(id as never);
+  if (!credentials) throw new Error(`actingAs(): there is no user ${id}${target.label} — create it first (e.g. with a factory).`);
+  const keys = target.names.session;
+  const session: Record<string, unknown> = { [keys.id]: id, [keys.password]: target.fingerprints.of(credentials) };
+  if (proofs.twoFactorAt !== undefined) session[keys.twoFactorAt] = unixSeconds('twoFactorAt', proofs.twoFactorAt);
+  else if ((await target.factors.factors(id)).length > 0) session[keys.twoFactorAt] = Math.floor(target.clock.now() / 1000);
+  if (proofs.confirmedAt !== undefined) {
+    // A confirmation counts only inside the sign-in it was typed for, so the sign-in is dated with it (never after the clock's now).
+    const typed = unixSeconds('confirmedAt', proofs.confirmedAt);
+    session[keys.confirmedAt] = typed;
+    session[keys.signedInAt] = Math.min(typed, Math.floor(target.clock.now() / 1000));
+  }
+  return session;
 }
 
 /**
  * The names of the session and remember-me cookies of `app` (a `TestApp`, or any `{ container }`): with the `__Host-` prefix when its
- * cookies are `Secure`. Tests send and read cookies under these names, never under literals.
+ * cookies are `Secure`. Tests send and read cookies under these names, never under literals. With `guard` the remember-me cookie is the
+ * guard's own; the session cookie is the one every guard shares. Throws for a guard no provider registered and for a slot nobody bound (error A8).
+ * See `docs/authentication.md#testing-as-a-guard-of-a-package`.
  */
-export function cookieNames(app: { container: Container }): { session: string; remember: string } {
+export function cookieNames(app: { container: Container }, guard: ActingAsGuard<any>): { session: string; remember: string };
+export function cookieNames(app: { container: Container }): { session: string; remember: string };
+export function cookieNames(app: { container: Container }, ...rest: unknown[]): { session: string; remember: string } {
   const session = app.container.make(SessionConfig);
-  return { session: sessionCookieName(session), remember: rememberCookieName(app.container.make(AuthConfig), session) };
+  // An absent guard is the app's; one passed as `undefined` (a variable that came up empty) is refused.
+  const target = rest.length === 0 ? 'web' : targetOf(app.container, rest[0]);
+  if (target === 'web') return { session: sessionCookieName(session), remember: rememberCookieName(app.container.make(AuthConfig), session) };
+  return { session: sessionCookieName(session), remember: target.names.rememberCookie(app.container.make(target.tokens.settings), session) };
+}
+
+/**
+ * The session key that holds the id of whoever is signed in to `guard` (a guard, or a slot, as `actingAs()` takes them): what
+ * `assertAuthenticated({ guard })` and `assertGuest({ guard })` of @marmeon/testing read. Throws like `authenticatedSession()` for anything else.
+ *
+ * @internal
+ */
+export function guardIdKey(container: Container, guard: unknown): string {
+  const target = targetOf(container, guard);
+  return (target === 'web' ? APP_GUARD_NAMES : target.names).session.id;
 }
 
 /** The code an authenticator app shows for `secret` (the key `TwoFactor.begin()` hands out) at `at` — for tests that sign in with a second factor. */

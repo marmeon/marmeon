@@ -38,6 +38,7 @@ import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/inter
 import { AssertionError } from 'node:assert';
 import { isIP } from 'node:net';
 import { stripVTControlCharacters } from 'node:util';
+import type { ActingAsGuard, ActingAsProofs } from '@marmeon/auth/testing';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail/testing';
 import type { NotificationFake } from '@marmeon/notifications/testing';
@@ -430,7 +431,9 @@ interface Defaults {
   /** Data for a session created before the request (`withSession`). */
   readonly session: Readonly<Record<string, unknown>> | undefined;
   /** Signed in as this user (`actingAs`). */
-  readonly user?: AuthUser;
+  readonly user?: AuthUser | { readonly id: string | number };
+  /** The guard of a package (or a slot) the user signs in to, and what its session proved; none for the app's guard. */
+  readonly guard?: { readonly guard: unknown; readonly proofs: { readonly twoFactorAt?: Date; readonly confirmedAt?: Date } };
   /** Signed in through an API token with these abilities instead of the session (`actingAs(user, { guard: 'api' })`). */
   readonly token?: { readonly user: AuthUser; readonly abilities: readonly string[] };
   /**
@@ -974,11 +977,24 @@ export class TestApp {
 
   /**
    * Signed in as `user` — the session holds exactly what a login leaves: `app.actingAs(ada).get('/users/me')`. With
-   * `{ guard: 'api' }`, through a real API token instead (`Authorization: Bearer …`). Needs @marmeon/auth; the user must exist.
+   * `{ guard: 'api' }`, through a real API token instead (`Authorization: Bearer …`). With `{ guard: OfficeGuard }`, as a user of
+   * a guard of a package: the session holds that guard's sign-in and nothing of the app's, so the app's routes see nobody.
+   * `twoFactorAt` and `confirmedAt` date what the guard's session proved. A later session `actingAs()` replaces the earlier session sign-in; a token set with `{ guard: 'api' }` stays beside it. An untyped `{ guard: undefined }` without dates is the app's, and with dates it throws. Needs
+   * @marmeon/auth; the user must exist (in the guard's own table, for a guard).
+   * See `docs/authentication.md#testing-as-a-guard-of-a-package`.
    */
-  actingAs(user: AuthUser, options: { guard?: 'web' } | { guard: 'api'; abilities?: readonly string[] } = {}): TestApp {
-    if (options.guard === 'api') return this.#with({ token: { user, abilities: options.abilities ?? ['*'] } });
-    return this.#with({ user, sessionId: {} });
+  actingAs<U extends { readonly id: string | number }>(user: NoInfer<U>, options: { guard: ActingAsGuard<U> } & ActingAsProofs): TestApp;
+  actingAs(user: AuthUser, options?: { guard?: 'web' } | { guard: 'api'; abilities?: readonly string[] }): TestApp;
+  actingAs(user: AuthUser | { readonly id: string | number }, options: { guard?: unknown; abilities?: readonly string[]; twoFactorAt?: Date; confirmedAt?: Date } = {}): TestApp {
+    if (options.guard === 'api') return this.#with({ token: { user: user as AuthUser, abilities: options.abilities ?? ['*'] } });
+    if (options.guard === undefined || options.guard === 'web') {
+      // Only the guard overload has the dates: an untyped caller whose guard came up empty must not get the app's user with them.
+      if (options.twoFactorAt !== undefined || options.confirmedAt !== undefined) throw new TypeError("actingAs(): `twoFactorAt` and `confirmedAt` need a `guard`, a guard made by defineGuard() or a guard slot; got none.");
+      return this.#with({ user, guard: undefined, sessionId: {} });
+    }
+    if (typeof options.guard === 'string') throw new TypeError("actingAs(): `guard` is 'web', 'api', a guard made by defineGuard() or a guard slot made by defineGuardSlot().");
+    const { twoFactorAt, confirmedAt } = options;
+    return this.#with({ user, guard: { guard: options.guard, proofs: { twoFactorAt, confirmedAt } }, sessionId: {} });
   }
 
   /**
@@ -1157,9 +1173,11 @@ export class TestApp {
         return answer;
       })
       .then(async ({ res, sent }) => {
+        const auth = await importAuth();
         const response = await TestResponse.from(res, label, this.#crypto, await this.#session, async (page) =>
           render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
           sent,
+          auth && ((guard) => auth.guardIdKey(this.application.container, guard)),
         );
         await this.#shared.kernel.settle(); // terminate hooks ran
         await this.#shared.devtools?.settled(); // the request's entries are written (an exception's solutions looked up)
@@ -1232,7 +1250,11 @@ export class TestApp {
     if (this.#defaults.user !== undefined && !started) {
       const auth = await importAuth();
       if (!auth) throw new Error('actingAs() needs @marmeon/auth in the app.');
-      data = { ...data, ...(await auth.authenticatedSession(this.application.container, this.#defaults.user)) };
+      const { guard } = this.#defaults;
+      const signedIn = guard === undefined
+        ? await auth.authenticatedSession(this.application.container, this.#defaults.user as AuthUser)
+        : await auth.authenticatedSession(this.application.container, this.#defaults.user as never, guard.guard as never, guard.proofs);
+      data = { ...data, ...signedIn };
     }
     if (data) {
       const session = await this.#session;
