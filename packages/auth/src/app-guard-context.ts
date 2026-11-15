@@ -131,7 +131,7 @@ export class AppGuardContext extends GuardContext {
     return this.#container.has(SessionEndings) ? this.#resolver.make(SessionEndings) : undefined;
   }
 
-  event<E extends object>(event: E): E {
-    return event;
+  dispatched(event: object): readonly object[] {
+    return [event];
   }
 }

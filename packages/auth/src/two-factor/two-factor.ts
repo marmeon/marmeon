@@ -10,7 +10,7 @@ import { writeAuth } from '../session-keys.ts';
 import { claimRefused } from '../account-sessions.ts';
 import type { AuthConfig } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
-import { GUARD_FEATURE, GuardContext } from '../guard-context.ts';
+import { dispatchForGuard, GUARD_FEATURE, GuardContext } from '../guard-context.ts';
 import type { GuardNames } from '../guard-names.ts';
 import { idOf, type AuthUser, type AuthUserId, type UserProvider } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
@@ -118,8 +118,7 @@ export class TwoFactor {
 
   /** Dispatches what the guard makes of `event`: the app's own event for the app, the guard's own class for a package guard. */
   async #emit(event: object): Promise<void> {
-    const mapped = this.#guard.event(event);
-    if (mapped !== undefined) await this.#events.dispatch(mapped);
+    await dispatchForGuard(this.#guard, this.#events, event);
   }
 
   /**

@@ -9,7 +9,8 @@ import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore, se
 import { ensuresOf } from '@marmeon/router/internal';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { defineGuard, guardRegistry, type GuardAuth, type GuardTwoFactor } from './define-guard.ts';
-import { bootGuardSlots, defineGuardSlot, GuardSlotError, isGuardSlot, SlotBindings, slotBindings } from './guard-slot.ts';
+import { bootGuardSlots, defineGuardSlot, isGuardSlot, slotBindings } from './guard-slot.ts';
+import { GuardSlotError, SlotBindings } from './slot-bindings.ts';
 import { policyGuard } from './policy-guard.ts';
 import { AccessTokenStore, Auth, AuthServiceProvider, authenticate, can, Gate, Hasher, TwoFactorState, TwoFactorStore, UserProvider, type AuthUser } from './index.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';

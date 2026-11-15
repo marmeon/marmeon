@@ -646,8 +646,9 @@ class PackageGuardContext extends GuardContext {
   }
 
   // The guard's own classes, never the app's: the app's listeners mail the user of the same id in the app's table.
-  event(event: object): object | undefined {
-    return this.#guard.mapEvent(event);
+  dispatched(event: object): readonly object[] {
+    const mapped = this.#guard.mapEvent(event);
+    return mapped === undefined ? [] : [mapped];
   }
 }
 

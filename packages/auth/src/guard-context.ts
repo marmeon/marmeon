@@ -86,8 +86,20 @@ export abstract class GuardContext {
   /** The live streams' endings, or `undefined` where the app has none. */
   abstract endings(): SessionEndings | undefined;
 
-  /** What to dispatch for `event`, which a service of this guard raised: the event itself, another one, or `undefined` for none. */
-  abstract event<E extends object>(event: E): object | undefined;
+  /**
+   * What to dispatch for `event`, which a service of this guard raised, in order (empty for none). A service dispatches it through {@link dispatchForGuard}, never by itself.
+   */
+  abstract dispatched(event: object): readonly object[];
+}
+
+/**
+ * Dispatches what `guard` has for `event` on `events`, in order. The one place a guard service dispatches: a service that dispatched
+ * `event` itself would reach the app's listeners with a package guard's account.
+ *
+ * @internal
+ */
+export async function dispatchForGuard(guard: GuardContext, events: EventDispatcher, event: object): Promise<void> {
+  for (const dispatched of guard.dispatched(event)) await events.dispatch(dispatched);
 }
 
 /** A class with a generated injection list, as the container reads it. */

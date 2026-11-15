@@ -151,8 +151,9 @@ class TestGuardContext extends GuardContext {
     return this.#parts.endings;
   }
 
-  event<E extends object>(event: E): object | undefined {
-    return this.#parts.event ? this.#parts.event(event) : event;
+  dispatched(event: object): readonly object[] {
+    const mapped = this.#parts.event ? this.#parts.event(event) : event;
+    return mapped === undefined ? [] : [mapped];
   }
 }
 
