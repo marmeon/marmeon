@@ -10,6 +10,7 @@ import { APP_GUARD_NAMES } from './guard-names.ts';
 import { GuardContext } from './guard-context.ts';
 import { NewPassword } from './new-password.ts';
 import { PasswordResetTokenStore } from './password-reset.ts';
+import { slotEventsFor } from './slot-events.ts';
 import { SignInStore } from './sign-ins.ts';
 import { SignInThrottle } from './sign-in-throttle.ts';
 import { AccessTokenStore } from './tokens.ts';
@@ -35,12 +36,12 @@ export const APP_PASSKEY_STORE = token<object>('AppPasskeyStore');
 export class AppGuardContext extends GuardContext {
   readonly names = APP_GUARD_NAMES;
   readonly #resolver: Resolver;
-  readonly #container: Pick<Container, 'has'>;
+  readonly #container: Pick<Container, 'has' | 'make'>;
   #users: UserProvider | undefined;
   #accountSessions: AccountSessions | undefined;
   #factors: TwoFactorState | undefined;
 
-  constructor(resolver: Resolver, container: Pick<Container, 'has'>) {
+  constructor(resolver: Resolver, container: Pick<Container, 'has' | 'make'>) {
     super();
     this.#resolver = resolver;
     this.#container = container;
@@ -132,6 +133,7 @@ export class AppGuardContext extends GuardContext {
   }
 
   dispatched(event: object): readonly object[] {
-    return [event];
+    // The app's event, then one for each slot bound to `'web'`.
+    return [event, ...slotEventsFor(this.#container, 'web', event)];
   }
 }

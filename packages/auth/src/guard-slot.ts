@@ -19,6 +19,8 @@ import { isGuardName } from './guard-names.ts';
 import { authenticate, confirmedPassword, guest } from './middleware.ts';
 import { markNamingMiddleware } from './request-guard.ts';
 import { GuardSlotError, SlotBindings } from './slot-bindings.ts';
+import type { SlotEvents } from './guard-events.ts';
+import { registerSlotEvents, slotEventSet } from './slot-events.ts';
 import { confirmedSecondFactor } from './two-factor/confirmed.ts';
 import { twoFactor } from './two-factor/middleware.ts';
 
@@ -27,7 +29,7 @@ import { twoFactor } from './two-factor/middleware.ts';
  * policies, `Auth` and route middleware follow the binding the package makes at boot. Made by {@link defineGuardSlot}.
  */
 export interface GuardSlotBase<U extends { readonly id: string | number }> {
-  /** The slot's name, for messages only: it names no session key, cookie or table. */
+  /** The slot's name: it names no session key, cookie or table, but it is the `slot` of a queued payload and a part of the queued events' names (`slot.editor.auth.signed-in`), so two slots of one name collide when both have a queued listener of the same event. */
   readonly name: string;
   /** Who is signed in as one of the bound guard's users, per request. Resolving it before `bind()` is error A8. */
   readonly Auth: Token<GuardAuth<U>>;
@@ -35,6 +37,11 @@ export interface GuardSlotBase<U extends { readonly id: string | number }> {
   authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, { readonly user: U }>;
   /** `guest()` of the bound guard: the app's `guest()` when bound to `'web'`. */
   guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+  /**
+   * The slot's event classes, one for each event of a guard: `listen(EditorSlot.events.SignedIn, …)` hears the sign-ins of the mode the slot is
+   * bound to, after the target's own event. An unbound slot hears nothing. See `docs/authentication.md#events-of-a-guard-slot`.
+   */
+  readonly events: SlotEvents<U>;
   /** `confirmedPassword()` of the bound guard: the app's when bound to `'web'`. */
   confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{ readonly user: U }, {}>;
 }
@@ -268,8 +275,10 @@ export function defineGuardSlot<U extends { readonly id: string | number }>(name
     }
   };
   Object.defineProperty(Unbound, 'name', { value: `GuardSlot:${name}.Auth` });
+  const eventSet = slotEventSet(name);
   const slot = {
     name,
+    events: eventSet.events,
     Auth: Unbound as unknown as Token<GuardAuth<U>>,
     bind(container: Container, target: unknown) {
       // The binding is the container's, app-wide, while `Auth` would be bound on the scope only: a request could not bind it.
@@ -299,5 +308,6 @@ export function defineGuardSlot<U extends { readonly id: string | number }>(name
       : {}),
   };
   SLOTS.set(slot, name);
+  registerSlotEvents(slot, name, eventSet);
   return slot as never;
 }

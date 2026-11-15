@@ -468,24 +468,9 @@ export interface GuardDefinition<U> {
     register(container: Container): void;
 }
 // GuardEvents
-export interface GuardEvents<U = AuthUser> {
-    readonly SignedIn: GuardEventClass<typeof SignedIn, U>;
-    readonly SignedOut: GuardEventClass<typeof SignedOut, U>;
-    readonly SignInFailed: GuardEventClass<typeof SignInFailed, U>;
-    readonly SignInLockedOut: GuardEventClass<typeof SignInLockedOut, U>;
-    readonly PasswordChanged: GuardEventClass<typeof PasswordChanged, U>;
-    readonly PasswordReset: GuardEventClass<typeof PasswordReset, U>;
-    readonly RememberTokenReused: GuardEventClass<typeof RememberTokenReused, U>;
-    readonly TwoFactorEnabled: GuardEventClass<typeof TwoFactorEnabled, U>;
-    readonly TwoFactorDisabled: GuardEventClass<typeof TwoFactorDisabled, U>;
-    readonly RecoveryCodesGenerated: GuardEventClass<typeof RecoveryCodesGenerated, U>;
-    readonly RecoveryCodeUsed: GuardEventClass<typeof RecoveryCodeUsed, U>;
-    readonly TwoFactorChallengeFailed: GuardEventClass<typeof TwoFactorChallengeFailed, U>;
-    readonly PasskeyRegistered: GuardEventClass<typeof PasskeyRegistered, U>;
-    readonly PasskeyRemoved: GuardEventClass<typeof PasskeyRemoved, U>;
-    readonly PasskeyCloneSuspected: GuardEventClass<typeof PasskeyCloneSuspected, U>;
-    readonly PasskeySignInFailed: GuardEventClass<typeof PasskeySignInFailed, U>;
-}
+export type GuardEvents<U = AuthUser> = {
+    readonly [K in keyof GuardEventBases]: GuardEventClass<GuardEventBases[K], U>;
+};
 // GuardGuestOptions
 export interface GuardGuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
@@ -1006,6 +991,10 @@ export declare class SignedOut {
     #private;
     readonly user: AuthUser;
 }
+// SlotEvents
+export type SlotEvents<U> = {
+    readonly [K in keyof GuardEventBases]: SlotEventClass<GuardEventBases[K], U>;
+};
 // TwoFactorChallengeFailed
 export declare class TwoFactorChallengeFailed {
     #private;
@@ -1274,6 +1263,25 @@ interface GuardBaseOptions<U> {
     readonly tablePrefix: string;
     readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
 }
+// GuardEventBases
+interface GuardEventBases {
+    readonly SignedIn: typeof SignedIn;
+    readonly SignedOut: typeof SignedOut;
+    readonly SignInFailed: typeof SignInFailed;
+    readonly SignInLockedOut: typeof SignInLockedOut;
+    readonly PasswordChanged: typeof PasswordChanged;
+    readonly PasswordReset: typeof PasswordReset;
+    readonly RememberTokenReused: typeof RememberTokenReused;
+    readonly TwoFactorEnabled: typeof TwoFactorEnabled;
+    readonly TwoFactorDisabled: typeof TwoFactorDisabled;
+    readonly RecoveryCodesGenerated: typeof RecoveryCodesGenerated;
+    readonly RecoveryCodeUsed: typeof RecoveryCodeUsed;
+    readonly TwoFactorChallengeFailed: typeof TwoFactorChallengeFailed;
+    readonly PasskeyRegistered: typeof PasskeyRegistered;
+    readonly PasskeyRemoved: typeof PasskeyRemoved;
+    readonly PasskeyCloneSuspected: typeof PasskeyCloneSuspected;
+    readonly PasskeySignInFailed: typeof PasskeySignInFailed;
+}
 // GuardEventClass
 export type GuardEventClass<C extends EventConstructor, U> = (new (...parameters: GuardParameters<ConstructorParameters<C>, U>) => Swapped<InstanceType<C>, U> & {
     readonly [guardEvent]: true;
@@ -1300,6 +1308,7 @@ export interface GuardSlotBase<U extends {
         readonly user: U;
     }>;
     guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+    readonly events: SlotEvents<U>;
     confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{
         readonly user: U;
     }, {}>;
@@ -1312,6 +1321,8 @@ type GuardStatics<C, U> = C extends {
     readonly event: `${string}.${E}`;
     readonly schema: StandardSchemaV1<Swapped<I, U>, Omit<Swapped<O, U>, 'guard'> & {
         readonly guard: string;
+    } & {
+        readonly slot?: never;
     }>;
 } : unknown;
 // GuardTwoFactorOption
@@ -1341,6 +1352,24 @@ export type SecondFactorInput = {
 } | {
     readonly passkey: PasskeyAssertion;
 };
+// SlotEventClass
+export type SlotEventClass<C extends EventConstructor, U> = (new (guard: string, ...parameters: GuardParameters<ConstructorParameters<C>, U>) => Swapped<InstanceType<C>, U> & {
+    readonly guard: string;
+    readonly [slotEvent]: true;
+}) & SlotStatics<C, U>;
+// SlotStatics
+type SlotStatics<C, U> = C extends {
+    readonly event: infer E extends string;
+    readonly schema: StandardSchemaV1<infer I, infer O>;
+} ? {
+    readonly event: `slot.${string}.${E}`;
+    readonly schema: StandardSchemaV1<Omit<Swapped<I, U>, 'guard'> & {
+        readonly guard: string;
+    }, Omit<Swapped<O, U>, 'guard'> & {
+        readonly guard: string;
+        readonly slot: string;
+    }>;
+} : unknown;
 // Swapped
 type Swapped<T, U> = {
     readonly [K in keyof T]: K extends 'user' ? (undefined extends T[K] ? U | undefined : U) : K extends 'userId' ? IdOf<U> : T[K];
@@ -1380,6 +1409,8 @@ declare const guardEvent: unique symbol;
 declare const missing: unique symbol;
 // passwordHash
 declare const passwordHash: unique symbol;
+// slotEvent
+declare const slotEvent: unique symbol;
 ```
 
 ### Augments
@@ -2025,29 +2056,33 @@ export interface GuardDefinition<U> {
     readonly events: GuardEvents<U>;
     register(container: Container): void;
 }
+// GuardEventBases
+interface GuardEventBases {
+    readonly SignedIn: typeof SignedIn;
+    readonly SignedOut: typeof SignedOut;
+    readonly SignInFailed: typeof SignInFailed;
+    readonly SignInLockedOut: typeof SignInLockedOut;
+    readonly PasswordChanged: typeof PasswordChanged;
+    readonly PasswordReset: typeof PasswordReset;
+    readonly RememberTokenReused: typeof RememberTokenReused;
+    readonly TwoFactorEnabled: typeof TwoFactorEnabled;
+    readonly TwoFactorDisabled: typeof TwoFactorDisabled;
+    readonly RecoveryCodesGenerated: typeof RecoveryCodesGenerated;
+    readonly RecoveryCodeUsed: typeof RecoveryCodeUsed;
+    readonly TwoFactorChallengeFailed: typeof TwoFactorChallengeFailed;
+    readonly PasskeyRegistered: typeof PasskeyRegistered;
+    readonly PasskeyRemoved: typeof PasskeyRemoved;
+    readonly PasskeyCloneSuspected: typeof PasskeyCloneSuspected;
+    readonly PasskeySignInFailed: typeof PasskeySignInFailed;
+}
 // GuardEventClass
 export type GuardEventClass<C extends EventConstructor, U> = (new (...parameters: GuardParameters<ConstructorParameters<C>, U>) => Swapped<InstanceType<C>, U> & {
     readonly [guardEvent]: true;
 }) & GuardStatics<C, U>;
 // GuardEvents
-export interface GuardEvents<U = AuthUser> {
-    readonly SignedIn: GuardEventClass<typeof SignedIn, U>;
-    readonly SignedOut: GuardEventClass<typeof SignedOut, U>;
-    readonly SignInFailed: GuardEventClass<typeof SignInFailed, U>;
-    readonly SignInLockedOut: GuardEventClass<typeof SignInLockedOut, U>;
-    readonly PasswordChanged: GuardEventClass<typeof PasswordChanged, U>;
-    readonly PasswordReset: GuardEventClass<typeof PasswordReset, U>;
-    readonly RememberTokenReused: GuardEventClass<typeof RememberTokenReused, U>;
-    readonly TwoFactorEnabled: GuardEventClass<typeof TwoFactorEnabled, U>;
-    readonly TwoFactorDisabled: GuardEventClass<typeof TwoFactorDisabled, U>;
-    readonly RecoveryCodesGenerated: GuardEventClass<typeof RecoveryCodesGenerated, U>;
-    readonly RecoveryCodeUsed: GuardEventClass<typeof RecoveryCodeUsed, U>;
-    readonly TwoFactorChallengeFailed: GuardEventClass<typeof TwoFactorChallengeFailed, U>;
-    readonly PasskeyRegistered: GuardEventClass<typeof PasskeyRegistered, U>;
-    readonly PasskeyRemoved: GuardEventClass<typeof PasskeyRemoved, U>;
-    readonly PasskeyCloneSuspected: GuardEventClass<typeof PasskeyCloneSuspected, U>;
-    readonly PasskeySignInFailed: GuardEventClass<typeof PasskeySignInFailed, U>;
-}
+export type GuardEvents<U = AuthUser> = {
+    readonly [K in keyof GuardEventBases]: GuardEventClass<GuardEventBases[K], U>;
+};
 // GuardGuestOptions
 export interface GuardGuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
@@ -2087,6 +2122,7 @@ export interface GuardSlotBase<U extends {
         readonly user: U;
     }>;
     guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+    readonly events: SlotEvents<U>;
     confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{
         readonly user: U;
     }, {}>;
@@ -2099,6 +2135,8 @@ type GuardStatics<C, U> = C extends {
     readonly event: `${string}.${E}`;
     readonly schema: StandardSchemaV1<Swapped<I, U>, Omit<Swapped<O, U>, 'guard'> & {
         readonly guard: string;
+    } & {
+        readonly slot?: never;
     }>;
 } : unknown;
 // GuardTwoFactor
@@ -2378,6 +2416,28 @@ export declare class SignedOut {
     #private;
     readonly user: AuthUser;
 }
+// SlotEventClass
+export type SlotEventClass<C extends EventConstructor, U> = (new (guard: string, ...parameters: GuardParameters<ConstructorParameters<C>, U>) => Swapped<InstanceType<C>, U> & {
+    readonly guard: string;
+    readonly [slotEvent]: true;
+}) & SlotStatics<C, U>;
+// SlotEvents
+export type SlotEvents<U> = {
+    readonly [K in keyof GuardEventBases]: SlotEventClass<GuardEventBases[K], U>;
+};
+// SlotStatics
+type SlotStatics<C, U> = C extends {
+    readonly event: infer E extends string;
+    readonly schema: StandardSchemaV1<infer I, infer O>;
+} ? {
+    readonly event: `slot.${string}.${E}`;
+    readonly schema: StandardSchemaV1<Omit<Swapped<I, U>, 'guard'> & {
+        readonly guard: string;
+    }, Omit<Swapped<O, U>, 'guard'> & {
+        readonly guard: string;
+        readonly slot: string;
+    }>;
+} : unknown;
 // Swapped
 type Swapped<T, U> = {
     readonly [K in keyof T]: K extends 'user' ? (undefined extends T[K] ? U | undefined : U) : K extends 'userId' ? IdOf<U> : T[K];
@@ -2489,6 +2549,8 @@ export type UserOf<Types> = Types extends {
 declare const guardEvent: unique symbol;
 // missing
 declare const missing: unique symbol;
+// slotEvent
+declare const slotEvent: unique symbol;
 ```
 
 ## `@marmeon/auth/two-factor`

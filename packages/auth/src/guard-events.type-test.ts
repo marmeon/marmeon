@@ -103,3 +103,8 @@ listen(OfficeGuard.events.PasskeyCloneSuspected, AppQueued);
 listen(PasskeyCloneSuspected, GuardQueued);
 listen(OfficeGuard.events.PasskeyCloneSuspected, GuardQueued);
 listen(PasskeyCloneSuspected, AppQueued);
+
+// The guard's payload has no `slot`, which is what keeps a slot's queued listener off a guard's class; an object literal without it type-checks.
+expectTypeOf<EventPayload<typeof Signed>['slot']>().toEqualTypeOf<undefined>();
+const payload: EventPayload<typeof Signed> = { userId: '1', remember: false, via: 'attempt', at: '', ip: null, userAgent: null, guard: 'office' };
+void payload;
