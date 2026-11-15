@@ -197,7 +197,7 @@ export interface GuardDefinition<U> {
   readonly PasswordBroker: Token<GuardPasswordBroker<U>>;
   /**
    * Only for the guard's signed-in users: `Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))`, then `ctx.user` is
-   * the guard's user. Names the guard as the route's: the app's middleware and the `Gate` refuse such a route (error A9).
+   * the guard's user. Names the guard as the route's: the app's middleware refuses such a route (error A9) and the `Gate` answers no for a policy of another guard.
    */
   authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, { readonly user: U }>;
   /** Only for guests of the guard: its signed-in users are sent to `homeRoute`; the app's users are guests here. */

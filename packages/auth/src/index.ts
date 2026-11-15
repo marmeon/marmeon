@@ -63,6 +63,7 @@ export type { SecondFactor } from './two-factor/state.ts';
 export { TwoFactorStore } from './two-factor/store.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
+export type { PolicyUser } from './policy-guard.ts';
 export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
 export { clearPasswordCheck, takePasswordCheck } from './password-throttle.ts';

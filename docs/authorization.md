@@ -797,7 +797,7 @@ export class ShowUserProfileController extends Controller {
 The e-mail address leaves the server only for its owner. The controller decides what a page gets, so a prop the user may not see
 is never sent.
 
-On a route of a [package guard](authentication.md#protecting-the-routes) the gate answers no for a policy of the app, see [middleware that asks a policy](#middleware-that-asks-a-policy); the package decides such a route on `ctx.user` with `describeAccess()`.
+On a route of a [package guard](authentication.md#protecting-the-routes) the gate answers no for a policy of another guard, see [policies of a guard](#policies-of-a-guard) and [middleware that asks a policy](#middleware-that-asks-a-policy); a package decides such a route with policies of its own guard, `can(PagePolicy, 'edit', …)`.
 
 | Method | Returns |
 | --- | --- |
@@ -806,21 +806,84 @@ On a route of a [package guard](authentication.md#protecting-the-routes) the gat
 | `authorize(Policy, ability, ...resources)` | Nothing, or throws `AuthorizationError`: 403 with the policy's reason, or 404. |
 | `inspect(Policy, ability, ...resources)` | The policy's full answer, a `PolicyResponse` with `allowed`, `status` and `message`. |
 
+### Policies of a guard
+
+A package with its own [guard](authentication.md#guards-of-a-package) writes policies for its own users. A policy names its guard with a
+static, and its abilities take that guard's user:
+
+```ts title="office/src/policies/PagePolicy.ts"
+import { OfficeGuard } from '../guard.ts';
+import type { OfficeUser } from '../OfficeUser.ts';
+import type { Page } from '../Page.ts';
+
+export class PagePolicy {
+  static readonly guard = OfficeGuard;
+
+  edit(user: OfficeUser, page: Page) {
+    return page.editorId === user.id;
+  }
+}
+```
+
+Without the static a policy judges the users of your app. The gate always asks the guard of the policy: the app's `Auth` (or the API
+token's user) for a policy of the app, `OfficeGuard.Auth` for this one. A policy never sees a user of another guard, only its own, so an account of the app and an editor with the same id are never mixed up. A guest is denied before the policy is built. A subclass of a policy of a guard judges that
+guard's users too. The gate reads the static when it is first asked. It has to be the definition returned by `defineGuard()` of a guard
+the app has registered; anything else (a name, a guard nobody registered) is error [A8](errors.md#server-error-codes) before any policy runs. The types follow the static, so an ability of
+`PagePolicy` takes an `OfficeUser`, and `can(PagePolicy, 'edit', …)` needs a route where `ctx.user` is one. They cannot see more than the
+static says: a variable that holds a policy class under `PolicyClass<…>` gets no abilities, a variable typed as another policy class takes
+that class's user type while the runtime follows the static of the class it really holds, and a union of classes of two guards gets none.
+Do not set a `static guard` on a subclass of a policy of the app. The runtime decides on the static, since TypeScript erases types.
+
+Two rules say which policies may decide on a request:
+
+1. A route that belongs to a guard (its middleware names one, such as `OfficeGuard.authenticate()`, `authenticate()` or `authenticate('api')`) is decided only by policies of that guard. The
+   app's `web` and `api` guards count as one. A policy of another guard answers no: `allows()` is `false`, `denies()` is `true`,
+   `authorize()` and `can()` throw a 403 `AuthorizationError`, `inspect()` is a denied `PolicyResponse`, and every ability of a projection
+   is `false`. The policy is not built, its `before()` does not run and no user is loaded. The answer is never yes and never an error. In
+   development the first such question for a policy and a route guard writes a warning with error [A9](errors.md#server-error-codes) that names the policy, the gate method and both
+   guards; production writes nothing. This keeps one sign-in from deciding a request that a controller handles for another.
+2. A route no middleware gives a guard, such as a public page, lets every policy ask its own guard. "Edit this page" works there
+   without further setup, even next to a global middleware that asks a policy of the app:
+
+```ts title="office/src/controllers/ShowPageController.ts"
+import { Gate } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import type { Page } from '../Page.ts';
+import { PagePolicy } from '../policies/PagePolicy.ts';
+
+export class ShowPageController extends Controller {
+  readonly #gate: Gate;
+
+  constructor(gate: Gate) {
+    super();
+    this.#gate = gate;
+  }
+
+  handle(ctx: HttpContext<object, { page: Page }>) {
+    const { page } = ctx.params;
+    // `false` for a visitor, and for anybody who is signed in to the app only: the editor of the same id is a different person.
+    return this.view('pages/Show', { page, can: this.#gate.abilities(page, PagePolicy, ['edit']) });
+  }
+}
+```
+
+The projections behave like every other gate method. On a page of the package they give the editor's booleans, and on a route of another
+guard `false` for each ability. The page offers a button by the prop, and the route that does the edit asks `can(PagePolicy, 'edit', …)` again.
+
 ### Middleware that asks a policy
 
 Middleware that asks a policy as soon as it runs (an admin flag for the shared props, say) belongs on the route tree of your app, in a
 group, and not in the global middleware. The global list runs on every route, the routes of a [package guard](authentication.md#protecting-the-routes)
 included, and a policy of your app judges your app's users, not the guard's.
 
-The router knows the guard of a route before its first middleware runs, so the gate does not guess. On a route that belongs to a package
-guard, a policy of the app gets no answer but no: `allows()` is `false`, `denies()` is `true`, `authorize()` and `can()` throw a 403
-`AuthorizationError`, `inspect()` is a denied `PolicyResponse`, and every ability of a projection is `false`. The policy is not built, its
-`before()` does not run and no user is loaded. The answer is never yes, and a global middleware that takes the no and goes on (`allows()`, a projection) does not take down the login
-page of a package. One that awaits `authorize()` ends the request with the 403 before the login controller runs: put it on the app's routes. In development the first such question for a policy and a guard writes a warning with error [A9](errors.md#server-error-codes)
-that names the policy, the gate method and both guards; production writes nothing.
+The router knows the guard of a route before its first middleware runs, so the gate does not guess. On a route that belongs to a guard, a policy of another guard
+gets no answer but no, as [the first rule](#policies-of-a-guard) says. A global middleware that takes the no and goes on (`allows()`, a projection) does not take down the login
+page of a package. One that awaits `authorize()` ends the request with the 403 before the login controller runs: put it on the app's routes.
 
-A route that no middleware gives a guard (a public page) has no such rule: every policy asks its own users there. The case is rare, since
-it needs a package guard next to a global middleware that asks a policy.
+A route that no middleware gives a guard (a public page) has no such rule: every policy asks its own users there, see [the second rule](#policies-of-a-guard). A guard's
+middleware that runs after a policy of another guard has decided on such a request, and that the router did not see because another middleware calls it, fails with [A9](errors.md#server-error-codes). So does
+the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` or `verified()` after a policy of a package guard decided:
+see [Protecting the routes](authentication.md#protecting-the-routes).
 
 ## Abilities for the page
 
