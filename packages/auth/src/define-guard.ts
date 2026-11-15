@@ -11,7 +11,7 @@ import { Auth, type AttemptError, type SignInOptions } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import type { EmailChangeStore } from './email-changes.ts';
 import { SessionFingerprints } from './fingerprint.ts';
-import { buildForGuard, GUARD_FEATURE, GuardContext } from './guard-context.ts';
+import { buildForGuard, GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from './guard-context.ts';
 import { authenticateFor, confirmedPasswordFor, guestFor, type MiddlewareGuard } from './middleware.ts';
 import { bindRequestGuard } from './request-guard.ts';
 import { guardLimiterName, isGuardRouteLimit, type GuardRouteLimit } from './route-limits.ts';
@@ -21,7 +21,7 @@ import { DatabasePasswordResetTokens, PasswordBroker, type PasswordResetTokenSto
 import { DatabaseSignIns, type SignInStore } from './sign-ins.ts';
 import { SignInThrottle } from './sign-in-throttle.ts';
 import type { AccessTokenStore } from './tokens.ts';
-import { NoSecondFactorPasskeys, NoTwoFactorState, type SecondFactorPasskeys, type TwoFactorState } from './two-factor/state.ts';
+import { combineFactors, NoSecondFactorPasskeys, NoTwoFactorState, type SecondFactorPasskeys, type TwoFactorState } from './two-factor/state.ts';
 import { confirmedSecondFactorFor } from './two-factor/confirmed.ts';
 import { twoFactorFor } from './two-factor/middleware.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
@@ -67,10 +67,24 @@ interface GuardBaseOptions<U> {
 }
 
 /**
- * What `defineGuard()` takes: where the guard's users come from, which tables it owns, and what it sets for itself. With `TF` the `TwoFactor`
- * class, `twoFactor` is required, so the type never promises a guard that has none.
+ * The `Passkeys` class of the package's `passkeys` export, described by what a guard needs of it and not imported: the main entry stays clear of the
+ * passkeys folder, even for a type. What makes a class `Passkeys` is its brand, which `defineGuard()` checks when it runs.
  */
-export type GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined> = GuardBaseOptions<U> & (TF extends typeof TwoFactor ? GuardTwoFactorOption<TF> : { readonly twoFactor?: undefined });
+type GuardPasskeysClass = abstract new (...parameters: never[]) => { signIn(...parameters: never[]): Promise<Result<unknown>> };
+
+/**
+ * What `defineGuard()` takes: where the guard's users come from, which tables it owns, and what it sets for itself. With `TF` the `TwoFactor`
+ * class, `twoFactor` is required, and with `PK` the `Passkeys` class, `passkeys` is, so the type never promises a guard that has none.
+ */
+export type GuardOptions<U, TF extends typeof TwoFactor | undefined = undefined, PK extends GuardPasskeysClass | undefined = undefined> = GuardBaseOptions<U> &
+  (TF extends typeof TwoFactor ? GuardTwoFactorOption<TF> : { readonly twoFactor?: undefined }) &
+  (PK extends GuardPasskeysClass ? (TF extends typeof TwoFactor ? GuardPasskeysOption<PK> : { readonly passkeys?: undefined }) : { readonly passkeys?: undefined });
+
+/** The `passkeys` option of {@link GuardOptions}. */
+interface GuardPasskeysOption<PK> {
+  /** The `Passkeys` class, which needs `twoFactor` as well: a passkey on tables of the guard's own, with the app's relying party. See `docs/passkeys.md#for-a-guard-of-a-package`. */
+  readonly passkeys: PK;
+}
 
 /** The `twoFactor` option of {@link GuardOptions}. */
 interface GuardTwoFactorOption<TF> {
@@ -141,6 +155,19 @@ export interface GuardConfirmedSecondFactorOptions<V extends string = string, L 
 export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
   challenge(input: SecondFactorInput): Promise<Result<U, ChallengeError>>;
 };
+
+/** What the type `Passkeys` has, for the users of a guard: `U` instead of the app's user. `P` is the `Passkeys` class's instance type. */
+export type GuardPasskeys<U, P extends { signIn(...parameters: never[]): Promise<Result<unknown>> }> = Omit<P, 'signIn'> & {
+  signIn(...parameters: Parameters<P['signIn']>): Promise<Result<U, FailureOf<Awaited<ReturnType<P['signIn']>>>>>;
+};
+
+type FailureOf<R> = R extends { readonly ok: false; readonly error: infer E extends { readonly kind: string } } ? E : never;
+
+/** What a guard defined with `passkeys` has besides {@link GuardDefinition}. */
+export interface GuardPasskeysDefinition<U, P extends { signIn(...parameters: never[]): Promise<Result<unknown>> }> {
+  /** The guard's `Passkeys`, per request: its sign-in, registration, step-up, confirmation and management, on the guard's tables, counters and challenge. */
+  readonly Passkeys: Token<GuardPasskeys<U, P>>;
+}
 
 /** What a guard defined with `twoFactor` has besides {@link GuardDefinition}. */
 export interface GuardTwoFactorDefinition<U> {
@@ -248,6 +275,10 @@ interface GuardTokens {
   readonly context: Token<GuardContext>;
   /** The authenticator and recovery code store; bound for a guard with `twoFactor` only. */
   readonly totp: Token<TwoFactorStore>;
+  /** The guard's passkey store; bound for a guard with `passkeys` only. */
+  readonly passkeyStore: Token<TwoFactorState>;
+  /** The authenticator and the passkeys as one source of factors; bound for a guard with `passkeys` only. */
+  readonly factors: Token<TwoFactorState>;
 }
 
 /** The tables of a guard: its prefix and the name of each store's table. */
@@ -256,6 +287,8 @@ export interface GuardTables {
   readonly passwordResets: string;
   /** The authenticator and its recovery codes, for a guard with `twoFactor`. */
   readonly twoFactor?: { readonly factor: string; readonly recoveryCodes: string };
+  /** The passkeys, for a guard with `passkeys`. */
+  readonly passkeys?: string;
 }
 
 /**
@@ -306,13 +339,17 @@ export class Guard {
   readonly AccountSessions: Token<AccountSessions>;
   readonly PasswordBroker: Token<PasswordBroker>;
   readonly TwoFactor: Token<TwoFactor>;
+  readonly Passkeys: Token<SecondFactorPasskeys>;
+  /** What the `Passkeys` class gave the guard to work with, or `undefined` for a guard without passkeys. */
+  readonly passkeys: GuardPasskeyKit | undefined;
   readonly #users: Concrete<UserProvider>;
   readonly #twoFactor: typeof TwoFactor | undefined;
+  readonly #passkeyClass: GuardPasskeysClass | undefined;
   readonly #settings: unknown;
 
-  constructor(name: string, options: GuardOptions<unknown, typeof TwoFactor | undefined>) {
+  constructor(name: string, options: GuardOptions<unknown, typeof TwoFactor | undefined, GuardPasskeysClass | undefined>) {
     if (!isGuardName(name)) refuse(`defineGuard() takes a name of lower case letters, digits and single hyphens, starting with a letter, at most 32 characters and none of web, api, app, auth, marmeon; got ${JSON.stringify(name)}.`);
-    const { users, tablePrefix, settings, twoFactor } = options ?? ({} as GuardOptions<unknown, typeof TwoFactor | undefined>);
+    const { users, tablePrefix, settings, twoFactor, passkeys } = options ?? ({} as GuardOptions<unknown, typeof TwoFactor | undefined, GuardPasskeysClass | undefined>);
     if (typeof tablePrefix !== 'string' || tablePrefix.length > 32 || !PREFIX.test(tablePrefix)) {
       refuse(`defineGuard('${name}'): tablePrefix is lower case letters, digits and underscores, starts with a letter, ends with an underscore (office_) and has at most 32 characters.`);
     }
@@ -322,6 +359,13 @@ export class Guard {
     }
     // The class is built for the guard (`buildForGuard`), so anything else is refused here, not at the first request.
     if (twoFactor !== undefined && (typeof twoFactor !== 'function' || (twoFactor as { [GUARD_FEATURE]?: unknown })[GUARD_FEATURE] !== 'two-factor')) refuse(`defineGuard('${name}'): twoFactor is the TwoFactor class of @marmeon/auth/two-factor.`);
+    // The brand and the kit it carries, both: a class that only claims the brand would fail at the first request, not here.
+    const kit = typeof passkeys === 'function' ? (passkeys as { [GUARD_PASSKEYS]?: Partial<GuardPasskeyKit> })[GUARD_PASSKEYS] : undefined;
+    if (passkeys !== undefined && (typeof passkeys !== 'function' || (passkeys as { [GUARD_FEATURE]?: unknown })[GUARD_FEATURE] !== 'passkeys' || typeof kit?.store !== 'function' || typeof kit.isStore !== 'function' || !Array.isArray(kit.columns) || kit.config === undefined)) {
+      refuse(`defineGuard('${name}'): passkeys is the Passkeys class from the passkeys subpath of @marmeon/auth.`);
+    }
+    // A passkey is a second factor: the codes, the recovery codes and the challenge after the password are `TwoFactor`'s, and a guard with passkeys alone would lock its users out.
+    if (passkeys !== undefined && twoFactor === undefined) refuse(`defineGuard('${name}'): passkeys needs twoFactor: TwoFactor as well, because a passkey is a second factor and the challenge after the password belongs to TwoFactor.`);
     if (settings !== undefined && typeof settings !== 'function') overlay(name, {} as AuthConfig, settings);
     this.name = name;
     this.tablePrefix = tablePrefix;
@@ -330,8 +374,11 @@ export class Guard {
       signIns: `${tablePrefix}sign_ins`,
       passwordResets: `${tablePrefix}password_reset_tokens`,
       ...(twoFactor === undefined ? {} : { twoFactor: { factor: `${tablePrefix}two_factor_authentications`, recoveryCodes: `${tablePrefix}two_factor_recovery_codes` } }),
+      ...(passkeys === undefined ? {} : { passkeys: `${tablePrefix}passkeys` }),
     };
+    this.passkeys = passkeys === undefined ? undefined : (kit as GuardPasskeyKit);
     this.#twoFactor = twoFactor;
+    this.#passkeyClass = passkeys;
     this.#users = users as Concrete<UserProvider>;
     this.#settings = settings;
     const key = <T>(what: string) => token<T>(`${name}.${what}`);
@@ -345,11 +392,14 @@ export class Guard {
       newPassword: key('newPassword'),
       context: key('context'),
       totp: key('totp'),
+      passkeyStore: key('passkeyStore'),
+      factors: key('factors'),
     };
     this.Auth = key('Auth');
     this.AccountSessions = key('AccountSessions');
     this.PasswordBroker = key('PasswordBroker');
     this.TwoFactor = key('TwoFactor');
+    this.Passkeys = key('Passkeys');
   }
 
   register(container: Container): void {
@@ -378,6 +428,19 @@ export class Guard {
       // The guard's own tables: the same id in the app's `two_factor_*` tables is another account. The store is the guard's source of factors.
       container.singleton(tokens.totp, (c) => new TwoFactorStore(c.make(Connections), c.make(Clock), { tables: { twoFactor: this.tables.twoFactor!.factor, recoveryCodes: this.tables.twoFactor!.recoveryCodes } }));
       container.scoped(this.TwoFactor, (c) => buildForGuard(twoFactor, c, context(c)));
+    }
+    const passkeys = this.#passkeyClass;
+    const kit = this.passkeys;
+    if (passkeys !== undefined && kit !== undefined) {
+      // The guard's own tables again, the recovery codes and the authenticator ones included: removing the last factor reaches those, never the app's.
+      container.singleton(tokens.passkeyStore, (c) => {
+        const store = kit.store(c.make(Connections), c.make(Clock), { passkeys: this.tables.passkeys!, twoFactor: this.tables.twoFactor!.factor, recoveryCodes: this.tables.twoFactor!.recoveryCodes });
+        // The store is also the guard's source of the passkey factor: anything else would let a user with passkeys sign in without being asked for one.
+        if (!kit.isStore(store)) refuse(`Guard '${this.name}': the passkey store its Passkeys class made is not a PasskeyStore.`);
+        return store;
+      });
+      container.singleton(tokens.factors, (c) => combineFactors(c.make(tokens.totp), c.make(tokens.passkeyStore)));
+      container.scoped(this.Passkeys, (c) => buildForGuard(passkeys as never, c, context(c)) as SecondFactorPasskeys);
     }
   }
 
@@ -443,12 +506,12 @@ export class Guard {
  * export const OfficeAuth = OfficeGuard.Auth; // a controller takes `auth: OfficeAuth`
  * ```
  */
-export function defineGuard<U extends { readonly id: string | number }, TF extends typeof TwoFactor | undefined = undefined>(
+export function defineGuard<U extends { readonly id: string | number }, TF extends typeof TwoFactor | undefined = undefined, PK extends GuardPasskeysClass | undefined = undefined>(
   name: string,
-  // `TF` is read from the option; the second part only makes `twoFactor` required once it is the class.
-  options: GuardBaseOptions<U> & { readonly twoFactor?: TF } & GuardOptions<U, NoInfer<TF>>,
-): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>) {
-  return new Guard(name, options as GuardOptions<unknown, typeof TwoFactor | undefined>) as never;
+  // `TF` and `PK` are read from the options; the last part only makes `twoFactor` and `passkeys` required once they are the classes.
+  options: GuardBaseOptions<U> & { readonly twoFactor?: TF; readonly passkeys?: PK } & GuardOptions<U, NoInfer<TF>, NoInfer<PK>>,
+): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>) & (PK extends GuardPasskeysClass ? GuardPasskeysDefinition<U, InstanceType<PK>> : unknown) {
+  return new Guard(name, options as GuardOptions<unknown, typeof TwoFactor | undefined, GuardPasskeysClass | undefined>) as never;
 }
 
 /** Everything a package guard owns, as the services of the guard see it: its own stores, names and settings, and what it shares with the app. */
@@ -508,19 +571,22 @@ class PackageGuardContext extends GuardContext {
 
   // The guard's own store where it has two-factor authentication, nobody's factors where not: never the app's.
   factors(): TwoFactorState {
-    return this.#guard.tables.twoFactor === undefined ? this.#factors : this.#resolver.make(this.#guard.tokens.totp);
+    const { tables, tokens } = this.#guard;
+    if (tables.twoFactor === undefined) return this.#factors;
+    return this.#resolver.make(tables.passkeys === undefined ? tokens.totp : tokens.factors);
   }
 
   totp(): TwoFactorStore | undefined {
     return this.#guard.tables.twoFactor === undefined ? undefined : this.#resolver.make(this.#guard.tokens.totp);
   }
 
+  // The guard's own store where it has passkeys, none where not: never the app's.
   passkeyStore(): object | undefined {
-    return undefined;
+    return this.#guard.tables.passkeys === undefined ? undefined : this.#resolver.make(this.#guard.tokens.passkeyStore);
   }
 
   secondFactorPasskeys(): SecondFactorPasskeys {
-    return this.#passkeys;
+    return this.#guard.tables.passkeys === undefined ? this.#passkeys : this.#resolver.make(this.#guard.Passkeys);
   }
 
   newPassword(): NewPassword {
@@ -583,8 +649,17 @@ export async function bootGuards(container: Container): Promise<void> {
     }
     assertSignInFinder(users);
   }
+  // At boot, after every provider registered and `override` ran, so a binding made anywhere counts; a build never boots.
+  for (const guard of guards) {
+    if (guard.passkeys !== undefined && !container.has(guard.passkeys.config)) {
+      refuse(`Guard '${guard.name}' has passkeys, but no provider carries PasskeyConfig: add \`static config = [PasskeyConfig]\` (from the passkeys subpath of @marmeon/auth) to the provider that registers the guard.`);
+    }
+  }
   if (!container.has(Connections)) return;
   const { SchemaRequirements } = await import('@marmeon/database');
   const requirements = container.make(SchemaRequirements);
-  for (const { guard } of settings) requireStoreTables(requirements, { connection: 'default', tables: guard.tables });
+  for (const { guard } of settings) {
+    requireStoreTables(requirements, { connection: 'default', tables: guard.tables });
+    if (guard.tables.passkeys !== undefined && guard.passkeys !== undefined) requirements.require({ connection: 'default', table: guard.tables.passkeys, columns: guard.passkeys.columns, secrets: [] });
+  }
 }

@@ -273,6 +273,74 @@ It does not protect against someone who controls the user's unlocked device or t
 `APP_URL` an attacker changes. A user who lost every passkey and the recovery codes needs the operator's reset (`PasskeyStore.removeAll(userId)`
 plus `TwoFactorStore.removeAll(userId)`, and the events dispatched by the command).
 
+## For a guard of a package
+
+A [guard of a package](authentication.md#guards-of-a-package) gets passkeys by passing the `Passkeys` class as `passkeys`, next to `twoFactor`: a
+passkey is a second factor, and the codes, the recovery codes and the challenge after the password belong to
+[`TwoFactor`](two-factor-authentication.md#for-a-guard-of-a-package). A guard that names `passkeys` without `twoFactor` does not compile and stops the start with error
+[A8](errors.md#server-error-codes). `twoFactor` does not make users set up an authenticator app: a passkey alone is a complete second factor, and the recovery codes come with the first one. Nothing else turns passkeys on: a guard without the option has none, and nobody of it has a passkey as a factor.
+
+```ts title="office/src/guard.ts"
+import { defineGuard, type GuardPasskeys, type GuardTwoFactor } from '@marmeon/auth';
+import { Passkeys } from '@marmeon/auth/passkeys';
+import { TwoFactor } from '@marmeon/auth/two-factor';
+import { OfficeUsers } from './OfficeUsers.ts';
+import type { OfficeUser } from './OfficeUser.ts';
+
+export const OfficeGuard = defineGuard('office', {
+  users: OfficeUsers,
+  tablePrefix: 'office_',
+  twoFactor: TwoFactor,
+  passkeys: Passkeys,
+});
+
+export type OfficeTwoFactor = GuardTwoFactor<OfficeUser>;
+export const OfficeTwoFactor = OfficeGuard.TwoFactor;
+export type OfficePasskeys = GuardPasskeys<OfficeUser, Passkeys>;
+export const OfficePasskeys = OfficeGuard.Passkeys;
+```
+
+A controller of the package takes `passkeys: OfficePasskeys` and calls the methods of [`Passkeys`](#managing-passkeys) on it, with the guard's user in the
+result of `signIn()`: the [passwordless sign-in](#passwordless-sign-in), the [second factor](#as-a-second-factor), the
+[step-up](#as-a-step-up), the [sudo confirmation](#confirming-sudo-mode) and the management of the passkeys. The sudo confirmation opens the window of
+`OfficeGuard.confirmedPassword()`, which needs the guard's own `authenticate()` before it; there is no `loginRoute` to set, because a request without a
+user never gets that far, and a route behind `OfficeGuard.guest()` fails with error [A9](errors.md#server-error-codes).
+
+The package's provider has to carry the configuration of the relying party, because an app that has not registered `PasskeyServiceProvider` has not
+bound it. Without it the app does not start (error A8, naming the line to add):
+
+```ts title="office/src/OfficeProvider.ts"
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { PasskeyConfig } from '@marmeon/auth/passkeys';
+import { OfficeGuard } from './guard.ts';
+
+export class OfficeProvider implements ServiceProvider {
+  static config = [PasskeyConfig];
+
+  register(container: Container): void {
+    OfficeGuard.register(container);
+  }
+}
+```
+
+The relying party is the app's: the [variables above](#requirements) (`APP_URL`, `AUTH_PASSKEY_RP_ID`, `AUTH_PASSKEY_ORIGINS`) apply to the guard as they do to the app, the
+dialog of the browser names the app (`APP_NAME`), and `twoFactorIssuer` changes only what an authenticator app shows. A user who has a passkey of the app and one of
+the guard for the same address sees both in the browser's dialog as two entries with the same address; the browser shows the user's name and display name, not the name
+stored with the passkey, so only the server tells them apart. A package can help by giving its users a display name that says where they sign in.
+
+The package ships the migration of the `office_passkeys` table with the shape of the table [above](#setting-up) (`user_id` is the type of the guard's user id). The
+readiness check waits for it with every column. Everything is apart from the app's passkeys, and from another guard's:
+
+| What | For the guard |
+| --- | --- |
+| Table | `<prefix>passkeys`, and when its last factor goes, the recovery codes of `<prefix>two_factor_recovery_codes`: never the app's tables. |
+| Open challenge | A session key of the guard's own: options fetched for the app do not serve a response posted to the guard, nor the other way round (`no-challenge`). |
+| Passkey of the same user id | A passkey signs in the user of its own table: the same response at the other guard finds no passkey. |
+| Sign count and clone suspicion | A passkey that looks copied is suspended, and only the sessions of the guard's user end: the app's user with the same id stays signed in in another browser. In the browser that is signed in to both, the end of the guard's sign-in ends the shared [browser session](authentication.md#signing-out), so the app's user is signed out there too. |
+| Counters | The limits of a confirmation, of the challenge and of failed sign-ins carry the guard's name: the attempts of the guard's user 1 are not the app's user 1's. |
+| Sudo window and proof of a factor | The guard's own session keys: a passkey confirmation opens the window of the guard only. |
+| Events | None of the app's classes (`PasskeyRegistered`, `PasskeyCloneSuspected`, …): a listener of the app would mail the app's user with the same id. |
+
 ## In the starter kit
 
 The routes that ask for registration options and store a new passkey sit behind `verified()` in every registration mode: an account whose

@@ -436,7 +436,7 @@ An authenticator app lists an account under the name it is given. The issuer is 
 the app that carries it show up as two entries of the same name and the same address unless they have different issuers, so set one.
 The setting takes 1 to 64 characters; another value stops the start with error [A8](errors.md#server-error-codes).
 
-The guard offers no passkeys as a second factor, and `auth:reset-two-factor` does not reach its tables (see [operator reset](#operator-reset)).
+A guard defined with `passkeys` as well takes a [passkey as a second factor](passkeys.md#for-a-guard-of-a-package) next to the authenticator. `auth:reset-two-factor` does not reach the guard's tables (see [operator reset](#operator-reset)).
 
 ## Operator reset
 
