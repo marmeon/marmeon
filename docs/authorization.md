@@ -828,7 +828,7 @@ export class PagePolicy {
 Without the static a policy judges the users of your app. The gate always asks the guard of the policy: the app's `Auth` (or the API
 token's user) for a policy of the app, `OfficeGuard.Auth` for this one. A policy never sees a user of another guard, only its own, so an account of the app and an editor with the same id are never mixed up. A guest is denied before the policy is built. A subclass of a policy of a guard judges that
 guard's users too. The gate reads the static when it is first asked. It has to be the definition returned by `defineGuard()` of a guard
-the app has registered; anything else (a name, a guard nobody registered) is error [A8](errors.md#server-error-codes) before any policy runs. The types follow the static, so an ability of
+the app has registered, or a [guard slot](authentication.md#using-the-apps-users-instead) the package bound; anything else (a name, a guard nobody registered) is error [A8](errors.md#server-error-codes) before any policy runs. The types follow the static, so an ability of
 `PagePolicy` takes an `OfficeUser`, and `can(PagePolicy, 'edit', …)` needs a route where `ctx.user` is one. They cannot see more than the
 static says: a variable that holds a policy class under `PolicyClass<…>` gets no abilities, a variable typed as another policy class takes
 that class's user type while the runtime follows the static of the class it really holds, and a union of classes of two guards gets none.
@@ -869,6 +869,11 @@ export class ShowPageController extends Controller {
 
 The projections behave like every other gate method. On a page of the package they give the editor's booleans, and on a route of another
 guard `false` for each ability. The page offers a button by the prop, and the route that does the edit asks `can(PagePolicy, 'edit', …)` again.
+
+A policy may name a [guard slot](authentication.md#using-the-apps-users-instead) instead of a guard, `static guard = EditorSlot`. The two
+rules then hold for the guard the package bound the slot to: its own guard, or the app's. The gate reads the binding on every question. Bound to the app, the policy is a policy of
+the app's users and sees the API token's user behind `authenticate('api')`, like any policy without a static. A slot nobody bound is error
+[A8](errors.md#server-error-codes) the first time the policy is asked.
 
 ### Middleware that asks a policy
 

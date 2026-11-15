@@ -1369,6 +1369,110 @@ login controller runs. Neither is what you want:
 > The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or
 > `EmailChange` acts for the app's user, and nothing can tell that from a controller that means to. Take the guard's services there.
 
+### Using the app's users instead
+
+A package can run in two modes. In the first it serves users of its own: a page editor that ships its staff table and defines a guard
+for it, made like `OfficeGuard` above (the `EditorGuard` below is that, with an `EditorUser` and an `EditorConfig` of the package's own).
+In the second it serves the app's users, for an app that already has people who may edit pages. The package writes its policies,
+controllers and routes once and lets the app choose the mode at boot, with a guard slot:
+
+```ts title="editor/src/slot.ts"
+import { defineGuardSlot } from '@marmeon/auth';
+import type { EditorUser } from './EditorUser.ts';
+
+export const EditorSlot = defineGuardSlot<EditorUser>('editor');
+```
+
+`EditorUser` is the least the package needs of a user, such as `{ id: number; name: string }`. The slot's name is for messages only: it
+names no session key, cookie or table, and two packages may use the same name. The package binds the slot once, in the `register()`
+or `boot()` of its service provider, to a guard of its own or to `'web'`, the app's users. The container is the app's, never a
+request's scope:
+
+```ts title="editor/src/EditorServiceProvider.ts"
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { EditorConfig } from './config.ts';
+import { EditorGuard } from './guard.ts';
+import { EditorSlot } from './slot.ts';
+
+export class EditorServiceProvider implements ServiceProvider {
+  static config = [EditorConfig];
+
+  register(container: Container): void {
+    EditorGuard.register(container);
+    EditorSlot.bind(container, container.make(EditorConfig).ownUsers ? EditorGuard : 'web');
+  }
+}
+```
+
+Everything else names the slot and follows the binding:
+
+- A policy names the slot with `static guard = EditorSlot` and judges the bound mode's users: the editors' table in the first mode,
+  the signed-in app user (or the API token's user on a route behind `authenticate('api')`) in the second. Its abilities take an `EditorUser`.
+  [Policies of a guard](authorization.md#policies-of-a-guard) has the two rules that say which policy may decide on which route.
+- A controller takes `EditorSlot.Auth`: the guard's `Auth` in the first mode, the app's `Auth` in the second, typed with `EditorUser`.
+- `EditorSlot.authenticate()`, `guest()` and `confirmedPassword()` hand each request to the middleware of the bound guard, with the same
+  options as the guard's own. `authenticate()` and `guest()` name the route's guard before the first middleware runs: the guard's name in
+  the first mode, `web` in the second. A middleware of another guard on such a route is error [A9](errors.md#server-error-codes) at the start.
+- The routes you name stay required options, because the package knows the names of its routes: `loginRoute`, `homeRoute`,
+  `confirmRoute`, and `setup` and `verify` for the two-factor middleware. In the second mode they name the app's pages, or pages of the
+  package in front of the app's sign-in.
+
+```ts title="editor/src/routes.ts"
+import { can } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { UpdatePage } from './controllers/UpdatePage.ts';
+import { PagePolicy } from './policies/PagePolicy.ts';
+import { PageRepository } from './PageRepository.ts';
+import { EditorSlot } from './slot.ts';
+
+export default defineRoutes((Route) => {
+  const editors = Route.middleware(EditorSlot.authenticate({ loginRoute: 'editor.login' }));
+  editors.bind('page', PageRepository).authorize(can(PagePolicy, 'edit', 'page')).put('/pages/:page', UpdatePage);
+});
+```
+
+```ts title="editor/src/policies/PagePolicy.ts"
+import type { EditorUser } from '../EditorUser.ts';
+import type { Page } from '../Page.ts';
+import { EditorSlot } from '../slot.ts';
+
+export class PagePolicy {
+  static readonly guard = EditorSlot;
+
+  edit(user: EditorUser, page: Page) {
+    return page.editorId === user.id;
+  }
+}
+```
+
+A package that wants two-factor authentication defines its slot with `defineGuardSlot<EditorUser>('editor', { twoFactor: true })`. Only that
+slot has `twoFactor()` and `confirmedSecondFactor()`, and it can be bound to `'web'` or to a guard defined with `twoFactor` only: the
+types refuse another guard, and `bind()` throws error A8 for one that slips through.
+
+Keep the slot's user type small. `bind()` checks at compile time that a guard's users have everything `EditorUser` has, but it cannot check
+`'web'`: the app's user may lack a field the package reads. Put rights the app decides, such as roles, behind a service the app binds, and
+let the package ask that service for the id of the `EditorUser`.
+
+The two modes are two sets of accounts with their own ids. An installation that has data does not switch from one mode to the other, and
+package code never hands a row of its own table to `EditorSlot.Auth.signIn()`: in the second mode that signs the id in as an app user.
+Own login pages belong to the first mode only; a package in the second mode sends people to the app's sign-in.
+
+The modes differ in one place. In the first, `EditorSlot.confirmedPassword()` needs the guard's `authenticate()` before it and refuses
+with error A9 otherwise. In the second it is the app's `confirmedPassword()`, whose prerequisites stand without `authenticate()` on purpose.
+Used before `authenticate()`, it finds no sign-in time to count from, so the request fails with 423 or a redirect.
+
+A slot forwards `authenticate()`, `guest()` and `confirmedPassword()`, and with `twoFactor: true` also `twoFactor()` and
+`confirmedSecondFactor()`, and nothing else. `throttle()`, `PasswordBroker` and `AccountSessions` stay with the guard: a package that
+runs in both modes takes them from the guard in the first mode and from the app in the second.
+
+A slot nobody bound has no default. The gate, `EditorSlot.Auth` and the slot's middleware all refuse it with error
+[A8](errors.md#server-error-codes), and so does a slot bound to a guard that no provider registered (at boot). A route that uses a slot
+nobody bound stops the start with A8, and the start runs after every provider has booted.
+[`marmeon check`](check.md#the-app-checks) registers the app without booting it, so it cannot know a slot a provider binds in `boot()`: it leaves
+out a slot that is not bound yet, or bound to a guard nobody has registered yet, and still reports everything else in the route's list. The start also asks the bound
+guard for each slot middleware on a route, so options it refuses are error A8 at the start and never a 500 per request. A slot that no route uses and
+nothing resolves is noticed at its first use only.
+
 ### What a package guard does not have
 
 A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
