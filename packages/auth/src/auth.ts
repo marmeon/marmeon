@@ -11,7 +11,7 @@ import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { SignInFailed, SignInLockedOut, SignedIn, MAX_USER_AGENT, SignedOut, PasswordChanged, RememberTokenReused, type SignInVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { readAuth, writeAuth, type AuthSessionKeys, type PendingSecondFactor } from './session-keys.ts';
-import { GuardContext } from './guard-context.ts';
+import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import type { GuardNames } from './guard-names.ts';
 import type { DeviceCookie } from './sign-in-throttle.ts';
 import { AccountClaimLost } from './new-password.ts';
@@ -191,8 +191,7 @@ export class Auth {
 
   /** Dispatches what the guard makes of `event`: the app's own event for the app, the guard's own class for a package guard. */
   async #emit(event: object): Promise<void> {
-    const mapped = this.#guard.event(event);
-    if (mapped !== undefined) await this.#events.dispatch(mapped);
+    await dispatchForGuard(this.#guard, this.#events, event);
   }
 
   /**

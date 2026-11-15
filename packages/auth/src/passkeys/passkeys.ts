@@ -13,7 +13,7 @@ import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignIn
 import type { PasswordThrottled } from '../password-throttle.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
-import { GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from '../guard-context.ts';
+import { dispatchForGuard, GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from '../guard-context.ts';
 import type { GuardNames } from '../guard-names.ts';
 import { NoTwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type TwoFactorState } from '../two-factor/state.ts';
 import type { TwoFactorStore } from '../two-factor/store.ts';
@@ -160,8 +160,7 @@ export class Passkeys {
 
   /** Dispatches what the guard makes of `event`: the app's own event for the app, the guard's own class for a package guard. */
   async #emit(event: object): Promise<void> {
-    const mapped = this.#guard.event(event);
-    if (mapped !== undefined) await this.#events.dispatch(mapped);
+    await dispatchForGuard(this.#guard, this.#events, event);
   }
 
   // -- Registration ----------------------------------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { CommandArgumentsError, Logger, type Key } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { TwoFactorDisabled } from './events.ts';
+import { dispatchForGuard } from './guard-context.ts';
 import { GUARD_OPTION, OperatorGuards } from './operator-guard.ts';
 import { assertSignInFinder, idOf } from './user.ts';
 
@@ -73,8 +74,7 @@ export class ResetTwoFactorCommand {
     }
     await guard.factors().removeAll(id);
     // removeAll() dispatches nothing: the owner's mail and any audit log hear of the reset from this event. A package guard dispatches its own class: the app's listeners would act on the app's user of the same id.
-    const event = guard.event(new TwoFactorDisabled(user, 'operator'));
-    if (event !== undefined) await guard.events().dispatch(event);
+    await dispatchForGuard(guard, guard.events(), new TwoFactorDisabled(user, 'operator'));
     this.#logger.info('Removed the second factor of an account at the operator\'s request', target.value.name === undefined ? { userId: id } : { userId: id, guard: target.value.name });
     // A sign-in or enrolment that was authorised before the sessions ended can still commit a factor after removeAll().
     if ((await guard.factors().factors(id)).length > 0) {

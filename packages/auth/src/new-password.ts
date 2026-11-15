@@ -4,7 +4,7 @@ import { withCode } from '@marmeon/core/internal';
 import { keyNotStored, missingEmailChangeMethod, missingSignInMethod, passwordHashWritten, writeRefused } from './account-sessions.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
-import { GuardContext } from './guard-context.ts';
+import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import { forgetResetLinks } from './password-reset.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
@@ -154,8 +154,7 @@ export class NewPassword {
   }
 
   async #dispatch(event: object): Promise<void> {
-    const mapped = this.#guard.event(event);
-    if (mapped !== undefined) await this.#guard.events().dispatch(mapped);
+    await dispatchForGuard(this.#guard, this.#guard.events(), event);
   }
 
   /** A user without `email_verified_at` is never treated as unconfirmed — which with factors bound means the rule is off, and the app should know. */

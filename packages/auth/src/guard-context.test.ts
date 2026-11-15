@@ -11,6 +11,7 @@ import { Auth } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import { EmailChangeStore } from './email-changes.ts';
 import { SessionFingerprints } from './fingerprint.ts';
+import { EverySessionEnded, SignedIn } from './events.ts';
 import { buildForGuard, GuardContext } from './guard-context.ts';
 import { APP_GUARD_NAMES, guardNames } from './guard-names.ts';
 import { SignInAudience } from './live-audience.ts';
@@ -159,68 +160,64 @@ describe('the events of the guard services', () => {
     './two-factor/middleware.ts',
     './two-factor/confirmed.ts',
     './passkeys/passkeys.ts',
+    './reset-two-factor.ts',
   ];
 
   const isNode = (value: unknown): value is Node => typeof value === 'object' && value !== null && typeof (value as Node).type === 'string';
 
-  /** Calls `visit` for `node` and everything below it; a nested method is left out when `skipMethods` is set. */
-  function walk(node: unknown, parent: Node | undefined, visit: (node: Node, parent: Node | undefined) => void, skipMethods = false): void {
-    if (Array.isArray(node)) return node.forEach((child) => (skipMethods && isNode(child) && child.type === 'MethodDefinition' ? undefined : walk(child, parent, visit, skipMethods)));
+  /** Calls `visit` for `node` and everything below it. */
+  function walk(node: unknown, parent: Node | undefined, visit: (node: Node, parent: Node | undefined) => void): void {
+    if (Array.isArray(node)) return node.forEach((child) => walk(child, parent, visit));
     if (!isNode(node)) return;
     visit(node, parent);
     for (const [key, value] of Object.entries(node)) {
       if (key === 'parent' || typeof value !== 'object') continue;
-      if (skipMethods && isNode(value) && value.type === 'MethodDefinition') continue;
-      walk(value, node, visit, skipMethods);
+      walk(value, node, visit);
     }
   }
 
-  /** What a use of a `dispatch` property in `file` does against the rule, one line each: it may only be called with a `const x = guard.event(…)` of its own method. */
-  function unmappedDispatches(file: string): string[] {
+  /** Every use of a `dispatch` property in `file` (a call, a reference, a destructured name), one line each: a guard service has none. */
+  function dispatchUses(file: string): string[] {
     const path = new URL(file, import.meta.url);
     const source = readFileSync(path, 'utf8');
     const found: string[] = [];
     const at = (node: Node) => `${file}: ${source.slice(node.start, node.start + 60)}`;
     const named = (property: Node | undefined, computed: boolean) =>
       property !== undefined && ((!computed && property.type === 'Identifier' && property.name === 'dispatch') || (computed && property.type === 'Literal' && property.value === 'dispatch'));
-
-    const checkMethod = (method: Node): void => {
-      // `const x = <anything>.event(…)`: the only names a dispatch may be given.
-      const mapped = new Set<string>();
-      walk(method, undefined, (node) => {
-        if (node.type !== 'VariableDeclarator' || node.id?.type !== 'Identifier') return;
-        const init = node.init as Node | undefined;
-        const callee = init?.type === 'CallExpression' ? (init.callee as Node) : undefined;
-        if (callee?.type === 'MemberExpression' && !callee.computed && callee.property?.type === 'Identifier' && callee.property.name === 'event') mapped.add(node.id.name);
-      }, true);
-      walk(method, undefined, (node, parent) => {
-        const isUse = (node.type === 'MemberExpression' && named(node.property, node.computed === true)) || (node.type === 'Property' && named(node.key, node.computed === true));
-        if (!isUse) return;
-        const [argument, ...rest] = parent?.type === 'CallExpression' && parent.callee === node ? (parent.arguments as Node[]) : [];
-        if (node.type === 'MemberExpression' && argument?.type === 'Identifier' && rest.length === 0 && mapped.has(argument.name)) return;
-        found.push(at(node));
-      }, true);
-    };
-
-    // Every method, and anything that uses a `dispatch` property outside of one.
-    const methods = new Set<Node>();
-    const program = parseSync(path.pathname, source).program;
-    walk(program, undefined, (node) => {
-      if (node.type === 'MethodDefinition') methods.add(node);
-    });
-    for (const method of methods) checkMethod(method);
-    walk(program, undefined, (node) => {
-      if ((node.type === 'MemberExpression' && named(node.property, node.computed === true)) || (node.type === 'Property' && named(node.key, node.computed === true))) {
-        if (![...methods].some((method) => method.start <= node.start && node.end <= method.end)) found.push(at(node));
-      }
+    walk(parseSync(path.pathname, source).program, undefined, (node) => {
+      if ((node.type === 'MemberExpression' && named(node.property, node.computed === true)) || (node.type === 'Property' && named(node.key, node.computed === true))) found.push(at(node));
     });
     return found;
   }
 
   // A package guard maps the app's events to none until it has its own: a service that dispatches straight to the app's listeners would
-  // let one guard's account events (a mail to the account's owner) reach listeners that read the id as the app's user.
-  it.each(files)('%s dispatches only what its guard has mapped', (file) => {
-    expect(unmappedDispatches(file)).toEqual([]);
+  // let one guard's account events (a mail to the account's owner) reach listeners that read the id as the app's user. The one helper is
+  // also where a slot's events join the guard's.
+  it.each(files)('%s dispatches only through dispatchForGuard()', (file) => {
+    expect(dispatchUses(file)).toEqual([]);
+  });
+
+  it('has dispatchForGuard() call nothing but guard.dispatched() and the dispatch of what it returns', () => {
+    const path = new URL('./guard-context.ts', import.meta.url);
+    const source = readFileSync(path, 'utf8');
+    const program = parseSync(path.pathname, source).program;
+    const calls: string[] = [];
+    let helper: Node | undefined;
+    walk(program, undefined, (node) => {
+      if (node.type === 'FunctionDeclaration' && node.id?.name === 'dispatchForGuard') helper = node;
+    });
+    expect(helper).toBeDefined();
+    walk(helper, undefined, (node) => {
+      if (node.type === 'CallExpression') calls.push(source.slice(node.callee.start, node.callee.end));
+    });
+    expect(calls.toSorted()).toEqual(['events.dispatch', 'guard.dispatched']);
+    // No other use of a `dispatch` property in the file: the helper is the only place a guard's event leaves.
+    const uses: Node[] = [];
+    walk(program, undefined, (node) => {
+      if (node.type === 'MemberExpression' && node.computed !== true && node.property?.name === 'dispatch') uses.push(node);
+    });
+    expect(uses.length).toBe(1);
+    expect(helper!.start <= uses[0]!.start && uses[0]!.end <= helper!.end).toBe(true);
   });
 });
 
@@ -262,11 +259,11 @@ describe('buildForGuard()', () => {
 describe('AppGuardContext', () => {
   const contextOf = (container: Container) => new AppGuardContext(container, container);
 
-  it('has the names of the app guard, and every event goes out as it is', () => {
+  it('has the names of the app guard, and dispatches every event as it is', () => {
     const context = contextOf(new Container());
     const event = new Date();
     expect(context.names).toBe(APP_GUARD_NAMES);
-    expect(context.event(event)).toBe(event);
+    expect(context.dispatched(event)).toEqual([event]);
   });
 
   it('reads what the app binds, when the service asks, and keeps one provider', () => {
@@ -289,6 +286,21 @@ describe('AppGuardContext', () => {
     expect(context.emailChanges()).toBeUndefined();
     expect(context.userSessions()).toBeUndefined();
     expect(context.passkeyStore()).toBeUndefined();
+  });
+});
+
+describe('PackageGuardContext', () => {
+  it('dispatches the guard\'s own event for what a service raised, and nothing for what the guard has none of', () => {
+    const Office = defineGuard('office', { users: MemoryUsers as never, tablePrefix: 'office_', twoFactor: TwoFactor });
+    const container = new Container();
+    (Office as unknown as Guard).register(container);
+    const context = container.make((Office as unknown as Guard).tokens.context) as GuardContext;
+    const ada = { id: 1, name: 'Ada', email: 'ada@example.com' } as AuthUser;
+    const dispatched = context.dispatched(new SignedIn(ada));
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]).toBeInstanceOf(Office.events.SignedIn);
+    expect(dispatched[0]).not.toBeInstanceOf(SignedIn);
+    expect(context.dispatched(new EverySessionEnded({ accounts: 0, resetTokens: 0, accessTokens: 0, signIns: 0 }, new Date()))).toEqual([]);
   });
 });
 

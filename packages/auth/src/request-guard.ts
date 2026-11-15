@@ -1,7 +1,8 @@
 import type { Container, Resolver } from '@marmeon/core';
 import type { ClassResolver, Router } from '@marmeon/router';
 import { withCode } from '@marmeon/core/internal';
-import { GuardSlotError, slotProblem, slotsSealed } from './guard-slot.ts';
+import { slotProblem, slotsSealed } from './guard-slot.ts';
+import { GuardSlotError } from './slot-bindings.ts';
 
 /** The names an app guard stamps: the session guard and the token guard of the app. A package guard can have neither name. */
 const APP_STAMPS: readonly string[] = ['web', 'api'];

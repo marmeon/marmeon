@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { EverySessionEnded } from './events.ts';
-import { GuardContext } from './guard-context.ts';
+import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import { APP_GUARD_NAMES } from './guard-names.ts';
 import { forgetResetLinks } from './password-reset.ts';
 import { idOf, UserProvider, type AuthUserId } from './user.ts';
@@ -374,8 +374,7 @@ export class AccountSessions {
       this.#guard.logger().warn('Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
       // The work is done: a listener that fails must not make the caller run it again.
       try {
-        const event = this.#guard.event(new EverySessionEnded(ended, new Date(this.#guard.clock().now())));
-        if (event !== undefined) await this.#guard.events().dispatch(event);
+        await dispatchForGuard(this.#guard, this.#guard.events(), new EverySessionEnded(ended, new Date(this.#guard.clock().now())));
       } catch (error) {
         this.#guard.logger().error('A listener of EverySessionEnded failed', { error });
       }

@@ -3,7 +3,7 @@ import { Clock, commitAnyway, ContainerError, err, EventDispatcher, ok, type Res
 import { Connections, secret, secretEquals, type Secret } from '@marmeon/database';
 import { PasswordReset } from './events.ts';
 import { assertHashable, Hasher } from './hashing.ts';
-import { GuardContext } from './guard-context.ts';
+import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import type { DeviceCookie } from './sign-in-throttle.ts';
 import { assertTableName } from './table-names.ts';
 import { assertSignInFinder, idOf, type AuthUser } from './user.ts';
@@ -207,8 +207,7 @@ export class PasswordBroker {
     // The owner is back in: the account takes passwords again, if guesses had shut it (best effort: the reset already stands).
     await this.#guard.signInThrottle.clearAccount(idOf(found.user));
     if (failure !== undefined) throw failure.error; // a listener of the factors' removal threw: the reset stands, the caller is told
-    const event = this.#guard.event(new PasswordReset(found.user, revoked));
-    if (event !== undefined) await this.#events.dispatch(event);
+    await dispatchForGuard(this.#guard, this.#events, new PasswordReset(found.user, revoked));
     return ok(found.user);
   }
 }
