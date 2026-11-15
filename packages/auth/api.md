@@ -464,7 +464,27 @@ export interface GuardDefinition<U> {
         readonly user: U;
     }, {}>;
     throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
+    readonly events: GuardEvents<U>;
     register(container: Container): void;
+}
+// GuardEvents
+export interface GuardEvents<U = AuthUser> {
+    readonly SignedIn: GuardEventClass<typeof SignedIn, U>;
+    readonly SignedOut: GuardEventClass<typeof SignedOut, U>;
+    readonly SignInFailed: GuardEventClass<typeof SignInFailed, U>;
+    readonly SignInLockedOut: GuardEventClass<typeof SignInLockedOut, U>;
+    readonly PasswordChanged: GuardEventClass<typeof PasswordChanged, U>;
+    readonly PasswordReset: GuardEventClass<typeof PasswordReset, U>;
+    readonly RememberTokenReused: GuardEventClass<typeof RememberTokenReused, U>;
+    readonly TwoFactorEnabled: GuardEventClass<typeof TwoFactorEnabled, U>;
+    readonly TwoFactorDisabled: GuardEventClass<typeof TwoFactorDisabled, U>;
+    readonly RecoveryCodesGenerated: GuardEventClass<typeof RecoveryCodesGenerated, U>;
+    readonly RecoveryCodeUsed: GuardEventClass<typeof RecoveryCodeUsed, U>;
+    readonly TwoFactorChallengeFailed: GuardEventClass<typeof TwoFactorChallengeFailed, U>;
+    readonly PasskeyRegistered: GuardEventClass<typeof PasskeyRegistered, U>;
+    readonly PasskeyRemoved: GuardEventClass<typeof PasskeyRemoved, U>;
+    readonly PasskeyCloneSuspected: GuardEventClass<typeof PasskeyCloneSuspected, U>;
+    readonly PasskeySignInFailed: GuardEventClass<typeof PasskeySignInFailed, U>;
 }
 // GuardGuestOptions
 export interface GuardGuestOptions<N extends string = string> {
@@ -605,6 +625,7 @@ export declare class PasskeyCloneSuspected {
 }
 // PasskeyCloneSuspectedPayload
 export interface PasskeyCloneSuspectedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     passkeyId: number;
 }
@@ -619,6 +640,7 @@ export declare class PasskeyRegistered {
 }
 // PasskeyRegisteredPayload
 export interface PasskeyRegisteredPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     name: string;
 }
@@ -637,6 +659,7 @@ export interface PasskeyRemovedInput extends Omit<PasskeyRemovedPayload, 'via'> 
 }
 // PasskeyRemovedPayload
 export interface PasskeyRemovedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     via: 'user' | 'reset';
 }
@@ -657,6 +680,7 @@ export interface PasskeySignInFailedInput extends Omit<PasskeySignInFailedPayloa
 }
 // PasskeySignInFailedPayload
 export interface PasskeySignInFailedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     at: string;
     ip: string | null;
@@ -779,6 +803,7 @@ export declare class RecoveryCodeUsed {
 }
 // RecoveryCodeUsedPayload
 export interface RecoveryCodeUsedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     remaining: number;
 }
@@ -792,6 +817,7 @@ export declare class RecoveryCodesGenerated {
 }
 // RecoveryCodesGeneratedPayload
 export interface RecoveryCodesGeneratedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
 }
 // Registered
@@ -833,6 +859,7 @@ export interface RememberTokenReusedInput extends Omit<RememberTokenReusedPayloa
 }
 // RememberTokenReusedPayload
 export interface RememberTokenReusedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     at: string;
     ip: string | null;
@@ -966,6 +993,7 @@ export interface SignedInInput extends Omit<SignedInPayload, 'at'> {
 }
 // SignedInPayload
 export interface SignedInPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     remember: boolean;
     via: SignInVia;
@@ -1001,6 +1029,7 @@ export interface TwoFactorChallengeFailedInput extends Omit<TwoFactorChallengeFa
 }
 // TwoFactorChallengeFailedPayload
 export interface TwoFactorChallengeFailedPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     at: string;
     ip: string | null;
@@ -1018,6 +1047,7 @@ export declare class TwoFactorDisabled {
 }
 // TwoFactorDisabledPayload
 export interface TwoFactorDisabledPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     via: 'user' | 'operator' | 'reset';
 }
@@ -1032,6 +1062,7 @@ export declare class TwoFactorEnabled {
 }
 // TwoFactorEnabledPayload
 export interface TwoFactorEnabledPayload {
+    readonly guard?: never;
     userId: AuthUserId;
     factor: 'totp' | 'passkey';
 }
@@ -1228,6 +1259,8 @@ export type ConfirmError = {
 };
 // Contravariant
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
+// EventConstructor
+type EventConstructor = abstract new (...parameters: any[]) => object;
 // FailureOf
 type FailureOf<R> = R extends {
     readonly ok: false;
@@ -1241,6 +1274,14 @@ interface GuardBaseOptions<U> {
     readonly tablePrefix: string;
     readonly settings?: GuardSettings | ((resolver: Resolver) => GuardSettings);
 }
+// GuardEventClass
+export type GuardEventClass<C extends EventConstructor, U> = (new (...parameters: GuardParameters<ConstructorParameters<C>, U>) => Swapped<InstanceType<C>, U> & {
+    readonly [guardEvent]: true;
+}) & GuardStatics<C, U>;
+// GuardParameters
+type GuardParameters<P extends readonly unknown[], U> = {
+    [I in keyof P]: [P[I]] extends [AuthUser] ? U : [P[I]] extends [AuthUser | undefined] ? ([P[I]] extends [undefined] ? P[I] : U | undefined) : P[I];
+};
 // GuardPasskeysClass
 type GuardPasskeysClass = abstract new (...parameters: never[]) => {
     signIn(...parameters: never[]): Promise<Result<unknown>>;
@@ -1263,6 +1304,16 @@ export interface GuardSlotBase<U extends {
         readonly user: U;
     }, {}>;
 }
+// GuardStatics
+type GuardStatics<C, U> = C extends {
+    readonly event: infer E extends string;
+    readonly schema: StandardSchemaV1<infer I, infer O>;
+} ? {
+    readonly event: `${string}.${E}`;
+    readonly schema: StandardSchemaV1<Swapped<I, U>, Omit<Swapped<O, U>, 'guard'> & {
+        readonly guard: string;
+    }>;
+} : unknown;
 // GuardTwoFactorOption
 interface GuardTwoFactorOption<TF> {
     readonly twoFactor: TF;
@@ -1289,6 +1340,10 @@ export type SecondFactorInput = {
     readonly recoveryCode: string;
 } | {
     readonly passkey: PasskeyAssertion;
+};
+// Swapped
+type Swapped<T, U> = {
+    readonly [K in keyof T]: K extends 'user' ? (undefined extends T[K] ? U | undefined : U) : K extends 'userId' ? IdOf<U> : T[K];
 };
 // Takes
 type Takes<M, U> = M extends (user: infer X, ...resources: any[]) => PolicyResult | Promise<PolicyResult> ? ([U] extends [never] ? false : [U] extends [X] ? true : false) : false;
@@ -1319,6 +1374,8 @@ export declare class TwoFactor {
 }
 // UnionToIntersection
 type UnionToIntersection<T> = (T extends unknown ? (value: T) => void : never) extends (value: infer I) => void ? I : never;
+// guardEvent
+declare const guardEvent: unique symbol;
 // missing
 declare const missing: unique symbol;
 // passwordHash

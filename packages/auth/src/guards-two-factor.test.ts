@@ -1,5 +1,5 @@
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
-import { createApplication, defineModule, Logger, type Container, type ServiceProvider } from '@marmeon/core';
+import { createApplication, defineModule, EventRegistry, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -8,6 +8,7 @@ import { CsrfProtection, SessionServiceProvider, SessionStore, sessionKey } from
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineGuard, type GuardAuth, type GuardTwoFactor } from './define-guard.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';
+import * as appEvents from './events.ts';
 import { Auth, AuthServiceProvider, authenticate, Hasher, TwoFactorState, TwoFactorStore, UserProvider, type AuthUser } from './index.ts';
 import { guardNames } from './guard-names.ts';
 import { twoFactorCode } from './testing.ts';
@@ -59,8 +60,20 @@ async function act(auth: GuardAuth<{ readonly id: number }>, factor: GuardTwoFac
       const done = await auth.attempt('ada@example.com', 'secret');
       return done.ok ? { ok: true } : { ok: false, kind: done.error.kind };
     }
+    case 'login-wrong': {
+      const done = await auth.attempt('ada@example.com', 'not the password');
+      return done.ok ? { ok: true } : { ok: false, kind: done.error.kind };
+    }
     case 'who':
       return { id: (await auth.user())?.id ?? null };
+    case 'disable': {
+      const done = await factor.disable('secret');
+      return { ok: done.ok };
+    }
+    case 'regenerate': {
+      const done = await factor.regenerateRecoveryCodes('secret');
+      return { ok: done.ok };
+    }
     case 'begin': {
       const setup = await factor.begin();
       return { secret: setup.secret, uri: setup.uri };
@@ -626,5 +639,96 @@ describe('defining a guard with two-factor authentication', () => {
     const text = report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : [])).join('\n');
     expect(text).toContain('office_two_factor_authentications');
     expect(text).toContain('office_two_factor_recovery_codes');
+  });
+});
+
+describe('the events of a package guard', () => {
+  /** Listens to the app's classes and the guard's, each under its name, and returns what each heard as `[class, userId or identifier]`. */
+  function listen(container: Container) {
+    const registry = container.make(EventRegistry);
+    const heard: string[] = [];
+    const classes: Record<string, { readonly base: new (...parameters: never[]) => object; readonly own: new (...parameters: never[]) => object }> = {
+      SignedIn: { base: appEvents.SignedIn, own: OfficeGuard.events.SignedIn },
+      SignInFailed: { base: appEvents.SignInFailed, own: OfficeGuard.events.SignInFailed },
+      TwoFactorEnabled: { base: appEvents.TwoFactorEnabled, own: OfficeGuard.events.TwoFactorEnabled },
+      RecoveryCodesGenerated: { base: appEvents.RecoveryCodesGenerated, own: OfficeGuard.events.RecoveryCodesGenerated },
+      RecoveryCodeUsed: { base: appEvents.RecoveryCodeUsed, own: OfficeGuard.events.RecoveryCodeUsed },
+      TwoFactorChallengeFailed: { base: appEvents.TwoFactorChallengeFailed, own: OfficeGuard.events.TwoFactorChallengeFailed },
+    };
+    for (const [name, { base, own }] of Object.entries(classes)) {
+      registry.listen(base as never, ((event: { userId?: unknown; identifier?: unknown }) => void heard.push(`app ${name} ${String(event.userId ?? event.identifier)}`)) as never);
+      registry.listen(own as never, ((event: { userId?: unknown; identifier?: unknown }) => void heard.push(`office ${name} ${String(event.userId ?? event.identifier)}`)) as never);
+    }
+    return heard;
+  }
+
+  it('reach the listeners of the guard\'s classes once, and the listeners of the app\'s classes never', async () => {
+    const booted = await boot();
+    const heard = listen(booted.application.container);
+    const b = booted.browser();
+    expect(await b.send('office', 'login')).toEqual({ ok: true });
+    expect(heard).toEqual(['office SignedIn 1']);
+    heard.length = 0;
+
+    const setup = await b.send('office', 'begin');
+    const confirmed = await b.send('office', 'confirm', { code: twoFactorCode(setup.secret) });
+    expect(confirmed.ok).toBe(true);
+    expect(heard).toEqual(['office TwoFactorEnabled 1', 'office RecoveryCodesGenerated 1']);
+    heard.length = 0;
+
+    const waiting = await booted.waiting('office');
+    expect(heard).toEqual([]);
+    expect(await waiting.send('office', 'challenge', { code: '000000' })).toMatchObject({ ok: false });
+    expect(heard).toEqual(['office TwoFactorChallengeFailed 1']);
+    heard.length = 0;
+    expect(await waiting.send('office', 'challenge', { recoveryCode: confirmed.recoveryCodes[0] })).toMatchObject({ ok: true });
+    expect(heard).toEqual(['office RecoveryCodeUsed 1', 'office SignedIn 1']);
+  });
+
+  it('are the guard\'s for a failed sign-in too, and the app\'s own sign-ins reach the app\'s listeners alone', async () => {
+    const booted = await boot();
+    const heard = listen(booted.application.container);
+    expect((await booted.browser().send('office', 'login-wrong')).ok).toBe(false);
+    expect(heard).toEqual(['office SignInFailed ada@example.com']);
+    heard.length = 0;
+    const appBrowser = booted.browser();
+    expect(await appBrowser.send('app', 'login')).toEqual({ ok: true });
+    expect(heard).toEqual(['app SignedIn 1']);
+  });
+
+  /** Everything a guard raises, as `app Name` or `office Name`, for the app's classes and the guard's. */
+  function listenToBoth(container: Container): string[] {
+    const registry = container.make(EventRegistry);
+    const heard: string[] = [];
+    for (const [name, own] of Object.entries(OfficeGuard.events)) {
+      registry.listen((appEvents as unknown as Record<string, never>)[name]!, (() => void heard.push(`app ${name}`)) as never);
+      registry.listen(own as never, (() => void heard.push(`office ${name}`)) as never);
+    }
+    return heard;
+  }
+
+  it('TwoFactorDisabled: the guard\'s user turning the factor off tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const { b } = await booted.enable('office');
+    const heard = listenToBoth(booted.application.container);
+    expect(await b.send('office', 'disable')).toEqual({ ok: true });
+    expect(heard).toEqual(['office TwoFactorDisabled']);
+  });
+
+  it('RecoveryCodesGenerated: new recovery codes tell the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const { b } = await booted.enable('office');
+    const heard = listenToBoth(booted.application.container);
+    expect(await b.send('office', 'regenerate')).toEqual({ ok: true });
+    expect(heard).toEqual(['office RecoveryCodesGenerated']);
+  });
+
+  it('TwoFactorChallengeFailed during a step-up: a wrong code tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const { secret } = await booted.enable('office');
+    const b = await booted.provenIn('office', secret);
+    const heard = listenToBoth(booted.application.container);
+    expect(await b.send('office', 'step-up', { code: '000000' })).toMatchObject({ ok: false });
+    expect(heard).toEqual(['office TwoFactorChallengeFailed']);
   });
 });

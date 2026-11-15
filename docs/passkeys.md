@@ -339,7 +339,7 @@ readiness check waits for it with every column. Everything is apart from the app
 | Sign count and clone suspicion | A passkey that looks copied is suspended, and only the sessions of the guard's user end: the app's user with the same id stays signed in in another browser. In the browser that is signed in to both, the end of the guard's sign-in ends the shared [browser session](authentication.md#signing-out), so the app's user is signed out there too. |
 | Counters | The limits of a confirmation, of the challenge and of failed sign-ins carry the guard's name: the attempts of the guard's user 1 are not the app's user 1's. |
 | Sudo window and proof of a factor | The guard's own session keys: a passkey confirmation opens the window of the guard only. |
-| Events | None of the app's classes (`PasskeyRegistered`, `PasskeyCloneSuspected`, …): a listener of the app would mail the app's user with the same id. |
+| Events | The guard's own classes (`OfficeGuard.events.PasskeyRegistered`, `OfficeGuard.events.PasskeyCloneSuspected`, …), never the app's: a listener of the app would mail the app's user with the same id. See [events of a guard](authentication.md#events-of-a-guard). |
 
 ## In the starter kit
 

@@ -50,7 +50,7 @@ export class NewPassword {
    * `AccountSessions.end()` that landed meanwhile would bring the ended session back, so a refused write — or a later key found
    * when it is read back — throws {@link AccountClaimLost}. Everything runs in one transaction, so that also rolls the tokens back.
    */
-  async store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{ readonly revoked: number; readonly sessionKey: string }> {
+  async store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{ readonly revoked: number; readonly sessionKey: string; readonly failure?: { readonly error: unknown } }> {
     const sessionKey = randomBytes(32).toString('base64url');
     const unconfirmed = via === 'reset' && user !== undefined && neverConfirmed(user);
     if (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === undefined) this.#warnVerificationUnknown();
@@ -109,9 +109,16 @@ export class NewPassword {
     // Always in a transaction: a provider that breaks its contract (error A5) or a lost claim leaves neither the hash nor the revocations.
     const revoked = await this.#guard.connections().transaction(() => write(revokeTokens));
     if (revokeTokens) this.#guard.logger().info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
-    if (unconfirmed && user !== undefined) {
-      if (removed.passkeys) await this.#dispatch(new PasskeyRemoved(user, 'reset'));
-      if (removed.factors) await this.#dispatch(new TwoFactorDisabled(user, 'reset'));
+    // A listener that throws must not keep the reset from ending the streams of the account: the new password already stands. A reset hands the failure
+    // back, so that its caller can finish (free the account) before it throws it.
+    let failure: { readonly error: unknown } | undefined;
+    try {
+      if (unconfirmed && user !== undefined) {
+        if (removed.passkeys) await this.#dispatch(new PasskeyRemoved(user, 'reset'));
+        if (removed.factors) await this.#dispatch(new TwoFactorDisabled(user, 'reset'));
+      }
+    } catch (error) {
+      failure = { error };
     }
     // A reset ends every sign-in: the live streams of the account close once it committed (a change is announced by `Auth`, which
     // keeps its own session). Clean-up after the real effect: a failure is logged, never thrown.
@@ -124,6 +131,7 @@ export class NewPassword {
         }
       });
     }
+    if (failure !== undefined) return { revoked, sessionKey, failure };
     return { revoked, sessionKey };
   }
 

@@ -20,6 +20,8 @@ export const MAX_USER_AGENT = 512;
 
 /** What a queued listener of `SignedIn` gets (`EventPayload<typeof SignedIn>`). */
 export interface SignedInPayload {
+  /** Never set on the app's payload: the payload of a guard's event names the guard here, so a queued listener of one never takes the other's (`docs/authentication.md#events-of-a-guard`). */
+  readonly guard?: never;
   userId: AuthUserId;
   remember: boolean;
   via: SignInVia;
@@ -255,6 +257,7 @@ export class EverySessionEnded {
 
 /** What a queued listener of `TwoFactorEnabled` gets (`EventPayload<typeof TwoFactorEnabled>`). */
 export interface TwoFactorEnabledPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   factor: 'totp' | 'passkey';
 }
@@ -283,6 +286,7 @@ export class TwoFactorEnabled {
 
 /** What a queued listener of `TwoFactorDisabled` gets (`EventPayload<typeof TwoFactorDisabled>`). */
 export interface TwoFactorDisabledPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   via: 'user' | 'operator' | 'reset';
 }
@@ -314,6 +318,7 @@ export class TwoFactorDisabled {
 
 /** What a queued listener of `RecoveryCodesGenerated` gets (`EventPayload<typeof RecoveryCodesGenerated>`). */
 export interface RecoveryCodesGeneratedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
 }
 
@@ -339,6 +344,7 @@ export class RecoveryCodesGenerated {
 
 /** What a queued listener of `RecoveryCodeUsed` gets (`EventPayload<typeof RecoveryCodeUsed>`). */
 export interface RecoveryCodeUsedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   remaining: number;
 }
@@ -367,6 +373,7 @@ export class RecoveryCodeUsed {
 
 /** What a queued listener of `TwoFactorChallengeFailed` gets (`EventPayload<typeof TwoFactorChallengeFailed>`). */
 export interface TwoFactorChallengeFailedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   at: string;
   ip: string | null;
@@ -417,6 +424,7 @@ export class TwoFactorChallengeFailed {
 
 /** What a queued listener of `PasskeyRegistered` gets (`EventPayload<typeof PasskeyRegistered>`). */
 export interface PasskeyRegisteredPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   name: string;
 }
@@ -445,6 +453,7 @@ export class PasskeyRegistered {
 
 /** What a queued listener of `PasskeySignInFailed` gets (`EventPayload<typeof PasskeySignInFailed>`). */
 export interface PasskeySignInFailedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   at: string;
   ip: string | null;
@@ -493,6 +502,7 @@ export class PasskeySignInFailed {
 
 /** What a queued listener of `PasskeyRemoved` gets (`EventPayload<typeof PasskeyRemoved>`). */
 export interface PasskeyRemovedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   via: 'user' | 'reset';
 }
@@ -526,6 +536,7 @@ export class PasskeyRemoved {
 
 /** What a queued listener of `RememberTokenReused` gets (`EventPayload<typeof RememberTokenReused>`). */
 export interface RememberTokenReusedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   at: string;
   ip: string | null;
@@ -587,6 +598,7 @@ export class RememberTokenReused {
 
 /** What a queued listener of `PasskeyCloneSuspected` gets (`EventPayload<typeof PasskeyCloneSuspected>`). */
 export interface PasskeyCloneSuspectedPayload {
+  readonly guard?: never;
   userId: AuthUserId;
   passkeyId: number;
 }
