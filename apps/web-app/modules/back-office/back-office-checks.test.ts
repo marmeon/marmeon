@@ -145,6 +145,25 @@ describe('the page a guest wanted', () => {
   });
 });
 
+describe('the page a guest wanted, written with an encoded address', () => {
+  it('follows an encoded address of the back office after the sign-in and after the confirmation', async () => {
+    const editor = browser();
+    await editor.get('/%6Fffice/sessions').assertRedirect('/office/login');
+    await editorSignsIn(editor, eve).assertRedirect('/%6Fffice/sessions');
+    app.travel({ minutes: 20 });
+    await editor.get('/%6Fffice/secure').assertRedirect('/office/confirm-password');
+    await editor.post('/office/confirm-password', { form: { password: 'password' } }).assertRedirect('/%6Fffice/secure');
+  });
+
+  it.each(['/%6Fffices', '/office%2Fsessions', '/%E0%A4%A', '/officex/sessions'])('goes to the overview when the wanted page is %s: it is no page below the back office', async (wanted) => {
+    // No route answers these, so no visit stores them: the session is given the page, as a guard's middleware would have stored it.
+    const editor = app.withSession({ _intended_url: wanted } as never);
+    await editorSignsIn(editor, eve).assertRedirect('/office');
+    // The same session with a page that is below the back office is followed: the test would be red otherwise.
+    await editorSignsIn(app.withSession({ _intended_url: '/%6Fffice/sessions' } as never), eve).assertRedirect('/%6Fffice/sessions');
+  });
+});
+
 describe('the back office moved to another path', () => {
   it('lives below BACK_OFFICE_PATH and nowhere else', async () => {
     await app.close();
