@@ -4,13 +4,12 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it, vi } from 'vitest';
-import type { AccountSessions } from './account-sessions.ts';
 import { Auth } from './auth.ts';
 import { EndSessionsCommand } from './end-sessions.ts';
 import { AuthServiceProvider } from './index.ts';
 import { PasswordBroker } from './password-reset.ts';
 import { assertSignInFinder, UserProvider } from './user.ts';
-import { guardContext } from './test-helpers/guard-context.ts';
+import { commandGuards, guardContext } from './test-helpers/guard-context.ts';
 
 const rest = {
   findById: async () => undefined,
@@ -44,7 +43,7 @@ describe('a UserProvider with the old name findForLogin()', () => {
   });
 
   it('is refused by the commands that look an account up', async () => {
-    const command = new EndSessionsCommand(new OldProvider() as unknown as UserProvider, {} as AccountSessions, {} as Logger);
+    const command = new EndSessionsCommand(commandGuards(guardContext({ users: new OldProvider() as unknown as UserProvider })), {} as Logger);
     await expect(command.handle({ args: ['ada@example.com'], options: { force: true }, output: {} } as never)).rejects.toThrow(/renamed findForSignIn\(\)/);
   });
 

@@ -2,18 +2,19 @@ import { hostname, userInfo } from 'node:os';
 import { CommandArgumentsError, environment, escapeControls, Logger, Redactor } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
+import { GUARD_OPTION, OperatorGuards } from './operator-guard.ts';
 
 /**
- * `marmeon auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]`: signs every account out of every browser and
+ * `marmeon auth:end-all-sessions --force [--guard=web] [--keep-api-tokens] [--keep-reset-tokens]`: signs every account out of every browser and
  * device at once, remember-me cookies included, for the moment after a leak. It also revokes every API token and deletes every
  * password-reset token, since a thief may hold either; the `--keep-…` options leave them. Passkeys, second factors, passwords and
- * addresses are not touched, and the output says so. `--force` in every environment, since it cannot be undone. Through
+ * addresses are not touched, and the output says so. `--guard=web` is the app's own; a package guard has no such command and is refused. `--force` in every environment, since it cannot be undone. Through
  * `AccountSessions.endEveryone()`, see `docs/authentication.md#ending-every-session-of-every-account`.
  */
 export class EndAllSessionsCommand {
   static command = 'auth:end-all-sessions';
   static description = 'End every session and remember-me cookie of every account (after a leak)';
-  static usage = '--force [--keep-api-tokens] [--keep-reset-tokens]';
+  static usage = '--force [--guard=web] [--keep-api-tokens] [--keep-reset-tokens]';
   static options = {
     force: { type: 'boolean' },
     'keep-api-tokens': { type: 'boolean' },
@@ -21,15 +22,18 @@ export class EndAllSessionsCommand {
     // Declared only to answer with the new default instead of an unknown-option error.
     'api-tokens': { type: 'boolean' },
     'reset-tokens': { type: 'boolean' },
+    ...GUARD_OPTION,
   } as const;
-  static inject = [AccountSessions, Logger, Redactor];
+  static inject = [AccountSessions, Logger, Redactor, OperatorGuards];
 
   readonly #accounts: AccountSessions;
   readonly #logger: Logger | undefined;
 
   readonly #redactor: Redactor;
+  readonly #guards: OperatorGuards;
 
-  constructor(accounts: AccountSessions, logger: Logger, redactor: Redactor) {
+  constructor(accounts: AccountSessions, logger: Logger, redactor: Redactor, guards: OperatorGuards) {
+    this.#guards = guards;
     this.#accounts = accounts;
     this.#logger = logger;
     this.#redactor = redactor;
@@ -39,6 +43,16 @@ export class EndAllSessionsCommand {
     // A stray argument is most likely a mistyped `auth:end-sessions <identifier>`, which must not end every account's sessions.
     if (args.length > 0) {
       throw new CommandArgumentsError(`auth:end-all-sessions takes no arguments (got "${args.join(' ')}"). To sign out one account, use auth:end-sessions <identifier> --force.`);
+    }
+    // Refused before anything runs: this command ends the app's accounts, and a guard named next to it must not be answered with them.
+    const target = this.#guards.resolve(options.guard);
+    if (!target.ok) {
+      output.error(target.error.message);
+      return 1;
+    }
+    if (target.value.name !== undefined) {
+      output.error(`auth:end-all-sessions ends the sessions of the app's accounts and is not available for the guard '${target.value.name}'. To sign out one account of the guard, use auth:end-sessions <identifier> --guard=${target.value.name} --force. Nothing was ended.`);
+      return 1;
     }
     for (const old of ['api-tokens', 'reset-tokens']) {
       if (options[old] === true) {

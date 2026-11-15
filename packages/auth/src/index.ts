@@ -15,6 +15,7 @@ import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './h
 import { Gate } from './gate.ts';
 import { bindRequestGuard, stampRoutes } from './request-guard.ts';
 import { GuardContext } from './guard-context.ts';
+import { OperatorGuards } from './operator-guard.ts';
 import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { EncryptionConfig } from '@marmeon/encryption';
@@ -129,6 +130,8 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(SignInThrottle, (c) => new SignInThrottle(c.make(RateLimiter), c.make(EncryptionConfig), c.make(AuthConfig), c.make(SessionConfig), c.make(Clock), c.make(Logger)));
     // One per service, built for the container that makes the service (a request's scope, or the root for a singleton and a command).
     container.bind(GuardContext, (c) => new AppGuardContext(c, container));
+    // Built for the container that makes an operator command, so the command's guard is resolved in its scope, as everything else it is given.
+    container.bind(OperatorGuards, (c) => new OperatorGuards(c, container));
     container.scoped(Auth);
     // What the route's middleware says about whose users it serves: read by the other guards' middleware and by the gate.
     bindRequestGuard(container);

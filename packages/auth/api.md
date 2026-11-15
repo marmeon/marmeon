@@ -1963,22 +1963,26 @@ declare const missing: unique symbol;
 
 ```ts
 // auth:end-all-sessions
-marmeon auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]
+marmeon auth:end-all-sessions --force [--guard=web] [--keep-api-tokens] [--keep-reset-tokens]
 --api-tokens (boolean)
 --force (boolean)
+--guard (string, multiple)
 --keep-api-tokens (boolean)
 --keep-reset-tokens (boolean)
 --reset-tokens (boolean)
 // auth:end-sessions
-marmeon auth:end-sessions <identifier> --force [--keep-api-tokens]
+marmeon auth:end-sessions <identifier> --force [--guard=<name>] [--keep-api-tokens]
 --force (boolean)
+--guard (string, multiple)
 --keep-api-tokens (boolean)
 // auth:prune-tokens
-marmeon auth:prune-tokens [--hours=0]
+marmeon auth:prune-tokens [--hours=0] [--guard=<name>]
+--guard (string, multiple)
 --hours (string)
 // auth:reset-two-factor
-marmeon auth:reset-two-factor <identifier> --force
+marmeon auth:reset-two-factor <identifier> --force [--guard=<name>]
 --force (boolean)
+--guard (string, multiple)
 // make:auth
 marmeon make:auth [--adapter=react] [--force]
 --adapter (string)
