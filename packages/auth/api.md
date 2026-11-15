@@ -517,6 +517,12 @@ export interface GuardSettings {
     readonly resetThrottleSeconds?: number;
     readonly twoFactorIssuer?: string;
 }
+// GuardSlot
+export interface GuardSlot<U extends {
+    readonly id: string | number;
+}> extends GuardSlotBase<U> {
+    bind<V extends U>(container: Container, target: 'web' | GuardDefinition<V>): void;
+}
 // GuardTwoFactor
 export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
     challenge(input: SecondFactorInput): Promise<Result<U, ChallengeError>>;
@@ -1029,6 +1035,18 @@ export interface TwoFactorEnabledPayload {
     userId: AuthUserId;
     factor: 'totp' | 'passkey';
 }
+// TwoFactorGuardSlot
+export interface TwoFactorGuardSlot<U extends {
+    readonly id: string | number;
+}> extends GuardSlotBase<U> {
+    bind<V extends U>(container: Container, target: 'web' | (GuardDefinition<V> & GuardTwoFactorDefinition<V>)): void;
+    twoFactor<const S extends RouteNameInput, const V extends RouteNameInput>(options: GuardTwoFactorOptions<S, V>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+    confirmedSecondFactor<const V extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+}
 // TwoFactorState
 export declare abstract class TwoFactorState {
     #private;
@@ -1140,6 +1158,15 @@ export declare function defineGuard<U extends {
     readonly twoFactor?: TF;
     readonly passkeys?: PK;
 } & GuardOptions<U, NoInfer<TF>, NoInfer<PK>>): GuardDefinition<U> & (TF extends undefined ? unknown : GuardTwoFactorDefinition<U>) & (PK extends GuardPasskeysClass ? GuardPasskeysDefinition<U, InstanceType<PK>> : unknown);
+// defineGuardSlot
+export declare function defineGuardSlot<U extends {
+    readonly id: string | number;
+}>(name: string): GuardSlot<U>;
+export declare function defineGuardSlot<U extends {
+    readonly id: string | number;
+}>(name: string, options: {
+    readonly twoFactor: true;
+}): TwoFactorGuardSlot<U>;
 // deny
 export declare function deny(message?: string): PolicyResponse;
 // denyAsNotFound
@@ -1222,12 +1249,26 @@ type GuardPasskeysClass = abstract new (...parameters: never[]) => {
 interface GuardPasskeysOption<PK> {
     readonly passkeys: PK;
 }
+// GuardSlotBase
+export interface GuardSlotBase<U extends {
+    readonly id: string | number;
+}> {
+    readonly name: string;
+    readonly Auth: Token<GuardAuth<U>>;
+    authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, {
+        readonly user: U;
+    }>;
+    guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+    confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+}
 // GuardTwoFactorOption
 interface GuardTwoFactorOption<TF> {
     readonly twoFactor: TF;
 }
 // GuardUser
-type GuardUser<G> = [G] extends [undefined] ? AuthUser : [G] extends [UnionToIntersection<G>] ? ([G] extends [GuardDefinition<infer U>] ? U : never) : never;
+type GuardUser<G> = [G] extends [undefined] ? AuthUser : [G] extends [UnionToIntersection<G>] ? [G] extends [GuardSlotBase<infer U>] ? U : [G] extends [GuardDefinition<infer U>] ? U : never : never;
 // GuestOptions
 export interface GuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;

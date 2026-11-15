@@ -14,6 +14,7 @@ import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
 import { bindRequestGuard, stampRoutes } from './request-guard.ts';
+import { bootGuardSlots, slotBindings } from './guard-slot.ts';
 import { GuardContext } from './guard-context.ts';
 import { OperatorGuards } from './operator-guard.ts';
 import { SignInAudience } from './live-audience.ts';
@@ -43,6 +44,8 @@ export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
 export { defineGuard } from './define-guard.ts';
+export { defineGuardSlot } from './guard-slot.ts';
+export type { GuardSlot, TwoFactorGuardSlot } from './guard-slot.ts';
 export type { GuardAccountSessions, GuardAuth, GuardAuthenticateOptions, GuardConfirmedPasswordOptions, GuardConfirmedSecondFactorOptions, GuardDefinition, GuardGuestOptions, GuardOptions, GuardPasskeys, GuardPasskeysDefinition, GuardPasswordBroker, GuardSettings, GuardTwoFactor, GuardTwoFactorDefinition, GuardTwoFactorOptions } from './define-guard.ts';
 export type { GuardRouteLimit } from './route-limits.ts';
 export { credentialWriter } from './credential-writer.ts';
@@ -124,6 +127,8 @@ export class AuthServiceProvider implements ServiceProvider {
   register(container: Container): void {
     // Made by whichever provider comes first: a package may register a guard before this provider has run.
     guardRegistry(container);
+    // The slots a package binds to a guard, and what their middleware is built with: a slot nobody bound still answers with error A8.
+    slotBindings(container);
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.singleton(SessionFingerprints, (c) => new SessionFingerprints(c.make(EncryptionConfig)));
@@ -136,7 +141,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // What the route's middleware says about whose users it serves: read by the other guards' middleware and by the gate.
     bindRequestGuard(container);
     // The router is registered by now (this package depends on `@marmeon/http`): `marmeon check` registers the app and never boots it.
-    if (container.has(Router)) stampRoutes(container.make(Router));
+    if (container.has(Router)) stampRoutes(container.make(Router), (Class) => container.make(Class as never));
     // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.
     container.scoped(EmailChange);
     // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
@@ -169,7 +174,7 @@ export class AuthServiceProvider implements ServiceProvider {
 
   async boot(app: Application): Promise<void> {
     // Again: the router may be bound only after this provider registered.
-    stampRoutes(app.container.make(Router));
+    stampRoutes(app.container.make(Router), (Class) => app.container.make(Class as never));
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     // Private registration turned off where it counts: said once, at boot — like the log mailer.
@@ -185,6 +190,8 @@ export class AuthServiceProvider implements ServiceProvider {
     requireSignInFinder(app.container);
     // The guards of packages: their settings, sign-in finders, tables and remember-me cookies.
     await bootGuards(app.container);
+    // A slot a package bound to a guard that no provider registered.
+    bootGuardSlots(app.container);
     requireRateLimiter(app.container);
     // The limits of the auth routes (`throttle('auth.login')` …); an app's limiter of the same name replaces one. Without @marmeon/cache no route throttles.
     if (app.container.has(RateLimiter)) {
