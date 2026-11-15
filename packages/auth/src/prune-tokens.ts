@@ -45,7 +45,10 @@ export class PruneTokensCommand {
     this.#signIns = signIns;
   }
 
-  async handle({ options, output }: CommandInput): Promise<number> {
+  async handle({ args, options, output }: CommandInput): Promise<number> {
+    if (args.length > 0) {
+      throw new CommandArgumentsError(`auth:prune-tokens takes no arguments (got "${args.join(' ')}"). To prune one guard of a package, pass --guard=<name>.`);
+    }
     const hours = options.hours === undefined ? 0 : Number(options.hours);
     if (!Number.isFinite(hours) || hours < 0) {
       throw new CommandArgumentsError(`--hours must be a number ≥ 0 (API tokens expired longer ago than that are deleted), not ${String(options.hours)}.`);

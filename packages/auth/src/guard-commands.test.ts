@@ -320,6 +320,17 @@ describe('the operator commands act on the guard they are told to', () => {
     expect([app.rows.get(1)!.key, office.rows.get(1)!.key]).toEqual(['app-key', 'office-key']);
   });
 
+  it('auth:prune-tokens refuses an argument: a guard typed without --guard= must not prune the app and every guard', async () => {
+    const { run, tables } = await boot();
+    for (const args of [['office'], ['--guard=office']]) {
+      await expect(run(PruneTokensCommand, args, {})).rejects.toMatchObject({
+        name: 'CommandArgumentsError',
+        message: `auth:prune-tokens takes no arguments (got "${args.join(' ')}"). To prune one guard of a package, pass --guard=<name>.`,
+      });
+    }
+    expect(await tables()).toEqual(KEPT);
+  });
+
   it('takes --guard as the command line gives it, a list of one, and refuses two: the last must not win', async () => {
     const one = await boot();
     expect(await one.run(EndSessionsCommand, ['ada@example.com'], { force: true, guard: ['office'] })).toBe(0);
