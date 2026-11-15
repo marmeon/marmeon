@@ -1758,6 +1758,15 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// ActingAsGuard
+export type ActingAsGuard<U extends {
+    readonly id: string | number;
+}> = GuardDefinition<U> | GuardSlot<U> | TwoFactorGuardSlot<U>;
+// ActingAsProofs
+export interface ActingAsProofs {
+    readonly twoFactorAt?: Date;
+    readonly confirmedAt?: Date;
+}
 // SoftAssertion
 export interface SoftAssertion {
     id: string;
@@ -1821,8 +1830,17 @@ export interface SoftRegistration {
     };
 }
 // authenticatedSession
+export declare function authenticatedSession<U extends {
+    readonly id: string | number;
+}>(container: Container, user: NoInfer<U>, guard: ActingAsGuard<U>, proofs?: ActingAsProofs): Promise<Record<string, unknown>>;
 export declare function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>>;
 // cookieNames
+export declare function cookieNames(app: {
+    container: Container;
+}, guard: ActingAsGuard<any>): {
+    session: string;
+    remember: string;
+};
 export declare function cookieNames(app: {
     container: Container;
 }): {
@@ -1842,6 +1860,56 @@ export declare function twoFactorCode(secret: string, at?: Date): string;
 ### Referenced, not exported
 
 ```ts
+// AccountSessions
+export declare class AccountSessions {
+    #private;
+    end(userId: AuthUserId, options?: {
+        readonly accessTokens?: boolean;
+    }): Promise<Result<EndedSessions, {
+        readonly kind: 'missing';
+    }>>;
+    endEveryone({ accessTokens, resetTokens }?: {
+        readonly accessTokens?: boolean;
+        readonly resetTokens?: boolean;
+    }): Promise<EveryoneEnded>;
+}
+// AttemptError
+export type AttemptError = {
+    readonly kind: 'invalid-credentials';
+} | {
+    readonly kind: 'two-factor-required';
+    readonly factors: readonly SecondFactor[];
+} | {
+    readonly kind: 'throttled';
+    readonly retryAfterSeconds: number;
+    readonly account?: true;
+};
+// Auth
+export declare class Auth {
+    #private;
+    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
+    deviceCookie(): Promise<DeviceCookie | undefined>;
+    signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
+    pendingSecondFactor(): {
+        readonly factors: readonly SecondFactor[];
+    } | undefined;
+    signOut(): Promise<void>;
+    user(): Promise<AuthUser | undefined>;
+    check(): Promise<boolean>;
+    id(): Promise<AuthUserId | undefined>;
+    viaRemember(): boolean;
+    checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
+    passwordCheckScope(): PasswordCheckScope;
+    passwordRecentlyConfirmed(within?: Duration): boolean;
+    signIns(): Promise<readonly SignIn[]>;
+    endSignIn(id: string): Promise<Result<void, {
+        readonly kind: 'missing';
+    } | {
+        readonly kind: 'current';
+    }>>;
+    updatePassword(password: string): Promise<void>;
+    updateSessionKey(): Promise<boolean>;
+}
 // AuthTypes
 export interface AuthTypes {
 }
@@ -1851,6 +1919,272 @@ export interface AuthTypesNotDeclared {
 }
 // AuthUser
 export type AuthUser = UserOf<AuthTypes>;
+// AuthUserId
+export type AuthUserId = AuthUser extends {
+    readonly id: infer Id;
+} ? Id : string | number;
+// ChallengeError
+export type ChallengeError = {
+    readonly kind: 'no-challenge';
+} | {
+    readonly kind: 'expired';
+} | {
+    readonly kind: 'invalid-code';
+    readonly attemptsLeft: number;
+} | {
+    readonly kind: 'throttled';
+    readonly retryAfterSeconds: number;
+};
+// ConfirmError
+export type ConfirmError = {
+    readonly kind: 'not-started';
+} | {
+    readonly kind: 'invalid-password';
+} | {
+    readonly kind: 'invalid-code';
+} | {
+    readonly kind: 'throttled';
+    readonly retryAfterSeconds: number;
+    readonly account?: true;
+}
+ | {
+    readonly kind: 'signed-out';
+};
+// DeviceCookie
+export interface DeviceCookie {
+    readonly name: string;
+    readonly value: string;
+    readonly options: {
+        readonly httpOnly: true;
+        readonly secure: boolean;
+        readonly sameSite: SessionConfig['sameSite'];
+        readonly path: '/';
+        readonly maxAge: number;
+    };
+}
+// DeviceDescription
+export interface DeviceDescription {
+    readonly browser: string | undefined;
+    readonly system: string | undefined;
+}
+// EndedSessions
+export interface EndedSessions {
+    readonly removed: number;
+    readonly accessTokens: number;
+}
+// EveryoneEnded
+export interface EveryoneEnded {
+    readonly accounts: number;
+    readonly resetTokens: number;
+    readonly accessTokens: number;
+    readonly signIns: number;
+}
+// GuardAccountSessions
+export type GuardAccountSessions<U> = Omit<AccountSessions, 'end' | 'endEveryone'> & {
+    end(userId: IdOf<U>, options?: {
+        readonly accessTokens?: boolean;
+    }): ReturnType<AccountSessions['end']>;
+};
+// GuardAuth
+export type GuardAuth<U> = Omit<Auth, 'attempt' | 'signIn' | 'user' | 'id'> & {
+    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<U, AttemptError>>;
+    signIn(user: U, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
+    user(): Promise<U | undefined>;
+    id(): Promise<IdOf<U> | undefined>;
+};
+// GuardAuthenticateOptions
+export interface GuardAuthenticateOptions<N extends string = string> {
+    readonly loginRoute: CheckRouteName<N>;
+}
+// GuardConfirmedPasswordOptions
+export interface GuardConfirmedPasswordOptions<N extends string = string> {
+    readonly confirmRoute: CheckRouteName<N>;
+    readonly maxAge?: Duration;
+}
+// GuardConfirmedSecondFactorOptions
+export interface GuardConfirmedSecondFactorOptions<V extends string = string> {
+    readonly verify: CheckRouteName<V>;
+}
+// GuardDefinition
+export interface GuardDefinition<U> {
+    readonly name: string;
+    readonly tablePrefix: string;
+    readonly Auth: Token<GuardAuth<U>>;
+    readonly AccountSessions: Token<GuardAccountSessions<U>>;
+    readonly PasswordBroker: Token<GuardPasswordBroker<U>>;
+    authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, {
+        readonly user: U;
+    }>;
+    guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+    confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+    throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
+    register(container: Container): void;
+}
+// GuardGuestOptions
+export interface GuardGuestOptions<N extends string = string> {
+    readonly homeRoute: CheckRouteName<N>;
+}
+// GuardPasswordBroker
+export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'deviceCookie' | 'reset'> & {
+    createToken(email: string): Promise<Result<{
+        user: U;
+        token: string;
+    }, {
+        readonly kind: 'unavailable';
+    }>>;
+    deviceCookie(user: U): ReturnType<PasswordBroker['deviceCookie']>;
+    reset(email: string, value: string, password: string): Promise<Result<U, {
+        readonly kind: 'invalid-token';
+    }>>;
+};
+// GuardRouteLimit
+export type GuardRouteLimit = 'login' | 'register' | 'password-reset-link' | 'password-reset' | 'two-factor-challenge' | 'passkey-sign-in-options' | 'passkey-sign-in' | 'passkey-challenge-options' | 'passkey-challenge' | 'passkey-confirm-options' | 'passkey-step-up-options';
+// GuardSlot
+export interface GuardSlot<U extends {
+    readonly id: string | number;
+}> extends GuardSlotBase<U> {
+    bind<V extends U>(container: Container, target: 'web' | GuardDefinition<V>): void;
+}
+// GuardSlotBase
+export interface GuardSlotBase<U extends {
+    readonly id: string | number;
+}> {
+    readonly name: string;
+    readonly Auth: Token<GuardAuth<U>>;
+    authenticate<const N extends RouteNameInput>(options: GuardAuthenticateOptions<N>): MiddlewareClass<{}, {
+        readonly user: U;
+    }>;
+    guest<const N extends RouteNameInput>(options: GuardGuestOptions<N>): MiddlewareClass<{}, {}>;
+    confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+}
+// GuardTwoFactor
+export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
+    challenge(input: SecondFactorInput): Promise<Result<U, ChallengeError>>;
+};
+// GuardTwoFactorDefinition
+export interface GuardTwoFactorDefinition<U> {
+    readonly TwoFactor: Token<GuardTwoFactor<U>>;
+    twoFactor<const S extends RouteNameInput, const V extends RouteNameInput>(options: GuardTwoFactorOptions<S, V>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+    confirmedSecondFactor<const V extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+}
+// GuardTwoFactorOptions
+export interface GuardTwoFactorOptions<S extends string = string, V extends string = string> {
+    readonly setup: CheckRouteName<S>;
+    readonly verify: CheckRouteName<V>;
+    readonly maxAge?: Duration;
+}
+// IdOf
+export type IdOf<U> = U extends {
+    readonly id: infer Id;
+} ? Id : string | number;
+// PasskeyAssertion
+export type PasskeyAssertion = object;
+// PasswordBroker
+export declare class PasswordBroker {
+    #private;
+    createToken(email: string): Promise<Result<{
+        user: AuthUser;
+        token: string;
+    }, {
+        readonly kind: 'unavailable';
+    }>>;
+    deviceCookie(user: AuthUser): Promise<DeviceCookie | undefined>;
+    reset(email: string, value: string, password: string): Promise<Result<AuthUser, {
+        readonly kind: 'invalid-token';
+    }>>;
+}
+// PasswordCheckError
+export type PasswordCheckError = {
+    readonly kind: 'invalid-password';
+} | PasswordThrottled;
+// PasswordCheckScope
+export interface PasswordCheckScope {
+    readonly session: string;
+    readonly typed: boolean;
+}
+// PasswordThrottled
+export interface PasswordThrottled {
+    readonly kind: 'throttled';
+    readonly retryAfterSeconds: number;
+    readonly account?: true;
+}
+// QrPath
+export interface QrPath {
+    readonly size: number;
+    readonly path: string;
+}
+// SecondFactor
+export type SecondFactor = 'totp' | 'passkey';
+// SecondFactorInput
+export type SecondFactorInput = {
+    readonly code: string;
+} | {
+    readonly recoveryCode: string;
+} | {
+    readonly passkey: PasskeyAssertion;
+};
+// SignIn
+export interface SignIn {
+    readonly id: string;
+    readonly current: boolean;
+    readonly remembered: boolean;
+    readonly signedInAt: Date;
+    readonly lastSeenAt: Date;
+    readonly createdAt: Date;
+    readonly userAgent: string | undefined;
+    readonly device: DeviceDescription;
+}
+// SignInOptions
+export interface SignInOptions {
+    readonly remember?: boolean;
+    readonly ip?: string | undefined;
+    readonly userAgent?: string | undefined;
+}
+// TotpSetup
+export interface TotpSetup {
+    readonly secret: string;
+    readonly uri: string;
+    readonly qr: QrPath;
+}
+// TwoFactor
+export declare class TwoFactor {
+    #private;
+    challenge(input: SecondFactorInput): Promise<Result<AuthUser, ChallengeError>>;
+    stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>>;
+    status(): Promise<{
+        factors: readonly SecondFactor[];
+        settingUpTotp: boolean;
+        recoveryCodesLeft: number;
+    }>;
+    begin(): Promise<TotpSetup>;
+    setup(): Promise<TotpSetup | undefined>;
+    confirm(code: string, password: string): Promise<Result<{
+        recoveryCodes: readonly string[] | null;
+    }, ConfirmError>>;
+    regenerateRecoveryCodes(password: string): Promise<Result<readonly string[], PasswordCheckError>>;
+    disable(password: string): Promise<Result<void, PasswordCheckError>>;
+    requireRecentProof(action: string): Promise<void>;
+}
+// TwoFactorGuardSlot
+export interface TwoFactorGuardSlot<U extends {
+    readonly id: string | number;
+}> extends GuardSlotBase<U> {
+    bind<V extends U>(container: Container, target: 'web' | (GuardDefinition<V> & GuardTwoFactorDefinition<V>)): void;
+    twoFactor<const S extends RouteNameInput, const V extends RouteNameInput>(options: GuardTwoFactorOptions<S, V>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+    confirmedSecondFactor<const V extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V>): MiddlewareClass<{
+        readonly user: U;
+    }, {}>;
+}
 // UserOf
 export type UserOf<Types> = Types extends {
     user: infer U extends {

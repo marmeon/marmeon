@@ -1230,6 +1230,9 @@ importers:
       '@marmeon/auth':
         specifier: workspace:*
         version: link:../auth
+      '@marmeon/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@marmeon/database':
         specifier: workspace:*
         version: link:../database

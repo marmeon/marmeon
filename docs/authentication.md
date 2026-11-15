@@ -1531,6 +1531,51 @@ app. An app whose only users belong to package guards, so that it has no `UserPr
 
 `auth:end-all-sessions` is the app's command. `--guard=web` is accepted, and a package guard is refused, since a guard has no `endEveryone()` yet.
 
+### Testing as a guard of a package
+
+`actingAs()` takes the guard in its `guard` option and signs the user in to that guard alone:
+
+```ts
+const app = await createTestApp(application, { database: 'refresh' });
+// `ada` is a user of the guard, found in the guard's own table.
+await app.actingAs(ada, { guard: OfficeGuard }).get('/office').assertOk();
+await app.actingAs(ada, { guard: OfficeGuard }).get('/account').assertRedirect('/login');
+```
+
+The session holds the guard's keys and nothing of the app's, so the routes of the app see nobody, and an app user with the same id does not
+open the guard's routes. Without `guard`, `actingAs()` signs in the app's user, and a user of the guard needs the option. The user must exist in
+the guard's own table, or the request fails. A guard that no provider registered, and a value that is not a guard, fail the request too.
+The user's type has to be the guard's user type, which the compiler checks. A later session `actingAs()` on a view replaces the earlier session sign-in, so one view
+signs in to one guard; a token set with `{ guard: 'api' }` stays beside it.
+
+A guard defined with `twoFactor` counts an account that has a factor in the guard's tables as having proven it, as the app's `actingAs()` does. An account without a factor has no
+proof: `confirmedSecondFactor()` lets it through and `twoFactor()` sends it to set one up. `twoFactorAt` and `confirmedAt` date what the session proved, in the app's time, so that a test can
+reach the middleware that asks for them. `confirmedAt` is when the password was last typed, which `confirmedPassword()` and the methods that
+start a factor read, and the sign-in is dated with it. A `confirmedAt` older than the session's lifetime, or more than a minute later than now, opens no window. Both take a `Date`:
+
+```ts
+const now = new Date(app.clock.now());
+const stale = new Date(now.getTime() - 3_600_000);
+await app.actingAs(ada, { guard: OfficeGuard, confirmedAt: now }).get('/office/security').assertOk();
+await app.actingAs(ada, { guard: OfficeGuard, twoFactorAt: stale }).get('/office/factors').assertRedirect('/office/verify');
+```
+
+A guard slot works the same way: `actingAs(user, { guard: EditorSlot })` signs in as a user of the guard the package bound the slot to, or of the
+app when it bound `'web'`. A slot nobody bound fails the request, and `cookieNames()`, with error [A8](errors.md#server-error-codes).
+
+A guard has its own session keys, so the app's `assertAuthenticated()` and `assertGuest()` read the app's sign-in only: after a guard's sign-out,
+`assertGuest()` without options passes whether or not the guard's user is still signed in. Name the guard in the assertion:
+
+```ts
+await app.actingAs(ada, { guard: OfficeGuard }).post('/office/logout').assertGuest({ guard: OfficeGuard });
+await app.actingAs(ada, { guard: OfficeGuard }).get('/office').assertAuthenticated(ada, { guard: OfficeGuard });
+```
+
+A slot works there too, and a `guard` that is `undefined` throws instead of asking about the app.
+
+`authenticatedSession(container, user, guard)` and `cookieNames(app, guard)` from `@marmeon/auth/testing` take the guard the same way. `cookieNames()`
+names the guard's remember-me cookie; the session cookie is the one every guard shares.
+
 ### What a package guard does not have
 
 A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
