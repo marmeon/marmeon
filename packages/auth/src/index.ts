@@ -37,7 +37,8 @@ import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFact
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 import { authenticationIsSetUp, requireAuthTables, requireSignInFinder, UserProviderNotBound } from './upgrades.ts';
-import type { CommandClass } from 'marmeon';
+import type { AppCheckClass, CommandClass } from 'marmeon';
+import { GuardSlotsCheck, guardSlotProblems } from './guard-slot-check.ts';
 
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
@@ -121,6 +122,8 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
+  /** `guard-slots` for `marmeon check`: a guard slot with listeners that is unbound or bound to a guard no provider registered. See docs/check.md#the-app-checks. */
+  static checks: readonly AppCheckClass[] = [GuardSlotsCheck];
   static commands: readonly CommandClass[] = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand, EndSessionsCommand, ResetTwoFactorCommand];
   /** The migrations for the sign-ins table, which `marmeon publish` and the `make:*-table` command copy into the app. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
@@ -176,6 +179,8 @@ export class AuthServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     // Again: the router may be bound only after this provider registered.
     stampRoutes(app.container.make(Router), (Class) => app.container.make(Class as never));
+    // After every provider has booted, the start asks: a listener of a slot nobody bound would stay silent, and no route says so.
+    app.container.make(Router).checkStart(() => guardSlotProblems(app.container).map((message) => ({ message, code: 'A8' as const, docs: 'docs/errors.md#server-error-codes' })));
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     // Private registration turned off where it counts: said once, at boot — like the log mailer.

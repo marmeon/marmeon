@@ -1507,7 +1507,7 @@ nobody bound stops the start with A8, and the start runs after every provider ha
 [`marmeon check`](check.md#the-app-checks) registers the app without booting it, so it cannot know a slot a provider binds in `boot()`: it leaves
 out a slot that is not bound yet, or bound to a guard nobody has registered yet, and still reports everything else in the route's list. The start also asks the bound
 guard for each slot middleware on a route, so options it refuses are error A8 at the start and never a 500 per request. A slot that no route uses and
-nothing resolves is noticed at its first use only.
+nothing resolves is noticed at its first use only, except a slot that has listeners: the start refuses it with A8, as `marmeon check` reports it ([events of a guard slot](#events-of-a-guard-slot)).
 
 ### Events of a guard slot
 
@@ -1526,6 +1526,8 @@ The classes exist as soon as the package defines the slot, so a module can list 
 after the slot, `slot.editor.auth.signed-in`, and the slot's name is the `slot` of their payload. What the slot hears is read when an event is dispatched, from the binding the package made by then.
 The target's own event comes first (the app's `SignedIn`, or `OfficeGuard.events.SignedIn`), then the slot's, once for each slot bound to that target, in the order the slots were bound. The slot's event
 is extra and never replaces the target's, and a listener of the target that throws stops the dispatch before the slot's event, as for any event.
+
+A slot nobody bound gets no event and never falls back to the app's users, so a listener of its events would stay silent. A slot with listeners must always be bound, to `'web'` or to a guard some provider registered: a listener is not tied to a route, so the start asks for it after every provider has booted and refuses it with [A8](errors.md#server-error-codes), naming the slot and the listeners. [`marmeon check`](check.md#the-app-checks) reports the same finding.
 
 The event carries `guard`, the mode it happened in: `'web'` for the app's users, otherwise the bound guard's name. A queued listener gets `guard` and `slot` in its payload next to the fields
 of the app's. The two modes are two sets of accounts, so record `(guard, userId)` together and never `userId` alone: the same id in the guard's table and the app's is two accounts. A queued listener reads the users of

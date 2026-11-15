@@ -67,13 +67,32 @@ describe('marmeon check (the app)', { timeout: 120_000 }, () => {
   it('runs the checks of a provider and of a module, in the order build, run, readiness', () => {
     const { code, stdout } = check(migrated({ probe: PROBE }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents,packages', '--json']);
     expect(code).toBe(0);
-    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'throttle', 'package-migrations', 'bar', 'hsts', 'db-types', 'foo', 'readiness']);
+    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'throttle', 'package-migrations', 'bar', 'hsts', 'db-types', 'guard-slots', 'foo', 'readiness']);
     expect(reportOf(stdout, 'foo')).toMatchObject({
       status: 'warning',
       problems: [{ severity: 'warning', message: 'foo found something', file: 'src/foo.ts', line: 3, column: null, code: null, fix: 'do-the-thing' }],
     });
     expect(reportOf(stdout, 'bar')).toMatchObject({ status: 'passed', problems: [] });
     expect(reportOf(stdout, 'boot')).toMatchObject({ status: 'passed' });
+  });
+
+  it('reports a guard slot that has a listener and no binding as A8, and exits non-zero', () => {
+    const probe = `
+import { defineGuardSlot } from '@marmeon/auth';
+import { defineModule, listen } from '@marmeon/core';
+export const EditorSlot = defineGuardSlot('editor');
+class RecordEditorSignIn { handle() {} }
+export class ProbeProvider { boot() {} }
+export const probeModule = defineModule({ name: 'probe', listeners: [listen(EditorSlot.events.SignedIn, RecordEditorSignIn as never)] });
+`;
+    const { code, stdout } = check(app({ probe }), ['--only=boot,guard-slots', '--json']);
+    expect(code).toBe(1);
+    const report = reportOf(stdout, 'guard-slots');
+    expect(report.status).toBe('failed');
+    expect(report.problems).toHaveLength(1);
+    expect(report.problems[0]).toMatchObject({ severity: 'error', code: 'A8' });
+    expect(report.problems[0].message).toContain("'editor'");
+    expect(report.problems[0].message).toContain('RecordEditorSignIn');
   });
 
   it('keeps what a check silenced in its report, with the reason, and does not hide a silenced finding that has none', () => {
