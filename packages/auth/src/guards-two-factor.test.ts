@@ -129,7 +129,7 @@ const routes = openRoutes((Route) => {
   officeOnly.middleware(confirmedSecondFactor({ verify: 'app.verify' }) as never).get('/r/office-app-confirmed', () => 'wrong guard');
   appOnly.middleware(OfficeGuard.twoFactor(OFFICE_FACTOR) as never).get('/r/app-office-two-factor', () => 'wrong guard');
   Route.middleware(OfficeGuard.twoFactor(OFFICE_FACTOR) as never).get('/r/office-without-authenticate', () => 'no stamp');
-  // A guest of the guard: the guard is the route's, nobody is signed in.
+  // Behind the guard's guest(): the route is the guard's, but its authenticate() never ran.
   Route.middleware(OfficeGuard.guest(OFFICE)).middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify', loginRoute: 'office.login' }) as never).get('/r/office-nobody', () => 'office nobody');
 });
 
@@ -337,7 +337,7 @@ describe('two-factor authentication of a package guard', () => {
     expect((await again.call('GET', '/r/app-area')).status).toBe(200);
   });
 
-  it('refuses the app\'s second factor on a route of the guard and the guard\'s on a route of the app, and the guard\'s without its authenticate() (A9)', async () => {
+  it('refuses the app\'s second factor on a route of the guard and the guard\'s on a route of the app, and the guard\'s without its authenticate() before it (A9)', async () => {
     const booted = await boot();
     const office1 = await booted.enable('office');
     const app1 = await booted.enable('app');
@@ -349,6 +349,8 @@ describe('two-factor authentication of a package guard', () => {
     for (const path of ['/r/office-app-two-factor', '/r/office-app-confirmed', '/r/app-office-two-factor', '/r/office-without-authenticate']) {
       await expectA9(both, booted.failures, path);
     }
+    // The guard's guest() lets nobody through; the factor middleware after it finds no authenticate() of the guard.
+    await expectA9(booted.browser(), booted.failures, '/r/office-nobody');
   });
 });
 
@@ -483,16 +485,18 @@ describe('the middleware of a package guard\'s factor', () => {
     expect(await (await stale.call('GET', '/r/office-area')).json()).toEqual({ error: 'two_factor_unverified' });
   });
 
-  it('sends nobody to the guard\'s login page, not the app\'s, from confirmedSecondFactor() and twoFactor()', async () => {
+  it('sends nobody to the guard\'s login page, not the app\'s, on a route of confirmedSecondFactor() or twoFactor()', async () => {
     const booted = await boot();
     const nobody = booted.browser();
-    const html = await nobody.call('GET', '/r/office-nobody', { accept: 'text/html' });
-    expect([html.status, new URL(html.headers.get('location')!, 'https://example.com').pathname]).toEqual([302, '/office-login']);
-    expect((await nobody.call('GET', '/r/office-nobody')).status).toBe(401);
-    // The app's sign-in is nobody of the guard.
     const onlyApp = booted.browser();
+    // The app's sign-in is nobody of the guard.
     await onlyApp.send('app', 'login');
-    expect((await onlyApp.call('GET', '/r/office-nobody', { accept: 'text/html' })).headers.get('location')).toContain('/office-login');
+    for (const path of ['/r/office-confirmed', '/r/office-area']) {
+      const html = await nobody.call('GET', path, { accept: 'text/html' });
+      expect([html.status, new URL(html.headers.get('location')!, 'https://example.com').pathname], path).toEqual([302, '/office-login']);
+      expect((await nobody.call('GET', path)).status, path).toBe(401);
+      expect((await onlyApp.call('GET', path, { accept: 'text/html' })).headers.get('location'), path).toContain('/office-login');
+    }
   });
 
   it('opens a route that changes factors to a guard\'s user without one, and refuses a stale session of one with one', async () => {
