@@ -1,3 +1,4 @@
+import { BackOfficeConfig } from '@fixtures/back-office';
 import { Auth } from '@marmeon/auth';
 import { once, SharedData, type HttpContext, type Next } from '@marmeon/http';
 import { Locales } from '@marmeon/i18n';
@@ -41,15 +42,24 @@ export class ShareAppProps {
   readonly #auth: Auth;
   readonly #locales: Locales;
   readonly #inbox: Inbox;
+  readonly #backOffice: BackOfficeConfig;
 
-  constructor(shared: SharedData, auth: Auth, locales: Locales, inbox: Inbox) {
+  constructor(shared: SharedData, auth: Auth, locales: Locales, inbox: Inbox, backOffice: BackOfficeConfig) {
     this.#shared = shared;
     this.#auth = auth;
     this.#locales = locales;
     this.#inbox = inbox;
+    this.#backOffice = backOffice;
   }
 
-  handle(_ctx: HttpContext, next: Next<{}>) {
+  handle(ctx: HttpContext, next: Next<{}>) {
+    // The back office package's pages are for another set of people: they share nothing of the app's user, so a customer signed in in the same
+    // browser shows no name there and the page follows no notification channel of the customer's. The package mounts every route below its
+    // path, which is what is asked here; a way to ask a route's guard would replace this.
+    // The matched route's pattern, not the request's path: the router matches the decoded path, so `/%6Fffice` is the back office's page too.
+    const { path } = this.#backOffice;
+    const pattern = ctx.route?.path;
+    if (pattern !== undefined && (pattern === path || pattern.startsWith(`${path}/`))) return next();
     this.#shared
       .share('auth', async () => {
         // The same lookup authenticate() already made on this request (Auth is per request).

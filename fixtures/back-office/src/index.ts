@@ -1,0 +1,20 @@
+export { BackOfficeConfig } from './BackOfficeConfig.ts';
+export { BackOfficeServiceProvider } from './BackOfficeServiceProvider.ts';
+export { ConfirmController } from './ConfirmController.ts';
+export { EditorSignInLog, type EditorSignIn } from './EditorSignInLog.ts';
+export { EndSessionController } from './EndSessionController.ts';
+export { EditorSlot, OfficeAccountSessions, OfficeAuth, OfficeGuard } from './guard.ts';
+// The type of the texts: it carries their keys into the app's `Translations`, and an app that rewords one of them takes it from here.
+export type { default as OfficeTexts } from './lang/en.ts';
+export { OfficeLoginController } from './OfficeLoginController.ts';
+export { OfficeLogoutController } from './OfficeLogoutController.ts';
+export { OfficeAccess } from './OfficeAccess.ts';
+export { OfficePolicy } from './OfficePolicy.ts';
+export type { EditorUser, OfficeRole, OfficeUser } from './OfficeUser.ts';
+export { OFFICE_USERS_COLUMNS, OfficeUserRepository } from './OfficeUserRepository.ts';
+export { RecordEditorSignIn } from './RecordEditorSignIn.ts';
+export { ShowConfirmController } from './ShowConfirmController.ts';
+export { ShowOfficeLoginController } from './ShowOfficeLoginController.ts';
+export { ShowOverviewController } from './ShowOverviewController.ts';
+export { ShowSecureController } from './ShowSecureController.ts';
+export { ShowSessionsController } from './ShowSessionsController.ts';

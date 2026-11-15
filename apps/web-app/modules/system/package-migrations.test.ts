@@ -77,7 +77,8 @@ it.each(MAKE_COMMANDS.map(([name, , command]) => [name, command] as const))('has
 // database package; this app shows what the framework's providers declare: always `stubs/migrations`, into `system`.
 it('has every provider that declares migrations be one of the framework\'s, from stubs/migrations into system', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
-  const declared = app.application.providers.flatMap((Provider) => (Provider.migrations !== undefined ? [{ provider: Provider.name, ...Provider.migrations }] : []));
+  // The back office package is a fixture the app publishes from into a module of its own (`back-office/back-office-package.test.ts`), not one of the framework's.
+  const declared = app.application.providers.flatMap((Provider) => (Provider.migrations !== undefined && Provider.name !== 'BackOfficeServiceProvider' ? [{ provider: Provider.name, ...Provider.migrations }] : []));
   expect(declared.map((entry) => entry.provider).sort()).toEqual(
     ['AuthServiceProvider', 'CacheServiceProvider', 'LiveServiceProvider', 'NotificationServiceProvider', 'QueueServiceProvider', 'SessionServiceProvider', 'StorageServiceProvider'],
   );

@@ -172,6 +172,15 @@ declare module '@marmeon/router' {
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
     'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
+    'office.confirm': { method: 'get'; path: '/office/confirm-password' };
+    'office.confirm.store': { method: 'post'; path: '/office/confirm-password' };
+    'office.index': { method: 'get'; path: '/office' };
+    'office.login': { method: 'get'; path: '/office/login' };
+    'office.login.store': { method: 'post'; path: '/office/login' };
+    'office.logout': { method: 'post'; path: '/office/logout' };
+    'office.secure': { method: 'get'; path: '/office/secure' };
+    'office.sessions': { method: 'get'; path: '/office/sessions' };
+    'office.sessions.end': { method: 'post'; path: '/office/sessions/:signIn/end' };
     'status.index': { method: 'get'; path: '/status' };
     'support.contact': { method: 'get'; path: '/:locale/help/contact'; controller: typeof ShowContactController; localized: true };
     'talks.ask': { method: 'post'; path: '/talks/:talk/questions'; controller: typeof AskQuestionController };
@@ -236,6 +245,11 @@ declare module '@marmeon/http/page' {
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;
     'notifications/Index': true;
+    'office::Confirm': true;
+    'office::Login': true;
+    'office::Overview': true;
+    'office::Secure': true;
+    'office::Sessions': true;
     'status::Index': true;
     'support/Contact': true;
     'system/errors/404': true;

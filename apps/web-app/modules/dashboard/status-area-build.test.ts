@@ -33,10 +33,10 @@ describe("the status board package's area, in the production build of the app", 
       const manifest = JSON.parse(readFileSync(join(client, '.vite/manifest.json'), 'utf8')) as Record<string, Chunk>;
       const entries = JSON.parse(readFileSync(join(client, '.vite/marmeon-entries.json'), 'utf8')) as { format: number; entries: Record<string, { client: string }>; pages: Record<string, string> };
 
-      // The area has an entry of its own and a server bundle of its own; its page is listed.
+      // The area has an entry of its own and a server bundle of its own; its page is listed (the back office package has its own entry beside it).
       expect(entries.format).toBe(1);
-      expect(Object.keys(entries.entries)).toEqual(['status']);
-      expect(Object.keys(entries.pages)).toEqual(['status::Index']);
+      expect(Object.keys(entries.entries).sort()).toEqual(['office', 'status']);
+      expect(Object.keys(entries.pages).filter((page) => page.startsWith('status::'))).toEqual(['status::Index']);
       for (const key of [entries.entries.status!.client, ...Object.values(entries.pages)]) expect(manifest[key], key).toBeDefined();
       expect(existsSync(join(app, 'dist/server/ssr-status.js'))).toBe(true);
 

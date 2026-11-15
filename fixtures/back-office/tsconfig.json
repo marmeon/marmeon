@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["@marmeon/vite/client"]
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/auth" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/database" },
+    { "path": "../../packages/http" },
+    { "path": "../../packages/i18n" },
+    { "path": "../../packages/react" },
+    { "path": "../../packages/session" },
+    { "path": "../../packages/validation" },
+    { "path": "../../packages/vite" }
+  ]
+}

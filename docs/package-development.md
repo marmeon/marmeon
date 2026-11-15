@@ -748,6 +748,294 @@ The web app proves it. `apps/web-app/modules/dashboard/status-area.test.ts` sign
 guest, reads the area's document, its policy and its texts, and crosses the boundary in both directions;
 `status-area-build.test.ts` builds a copy of the app and checks the built files.
 
+## A package with users of its own
+
+A package whose users are not the app's, such as a back office for editors, brings a guard of its own: its own table, its own sign-ins, its own sudo mode and its own limits. The back office of the web app is such a package. Its source is `fixtures/back-office` in the framework's repository, and the code below is taken from it with the package's name written as `@acme/back-office`. It shows the case of a website with a customer portal in one app: the app's users are the customers of the portal, and the back office is for the editors, who are other people with a table of their own. [When to use a second guard](authentication.md#when-to-use-a-second-guard) says when a package should go this way.
+
+The package runs in one of two modes, which the app chooses at boot with `BACK_OFFICE_USERS`:
+
+| Mode | The back office's users | What the package brings |
+|---|---|---|
+| `own` (the default) | The editors in the table `office_users`. | The guard `office`, its sign-in, sign-out, list of sign-ins and sudo mode, and its limits. |
+| `app` | The app's users, the customers of the portal. | Nothing to sign in to: the routes of the guard answer 404, people sign in to the app, and the app says which of them are editors. |
+
+The package writes its policy, its overview and its routes once. A guard slot makes them follow the mode ([using the app's users instead](authentication.md#using-the-apps-users-instead)). The routes, the guard and its tables are the same in both modes, so the app's route list and its readiness never depend on `BACK_OFFICE_USERS`. An installation that has data does not switch from one mode to the other: the two modes are two sets of accounts, and an id means another person in each.
+
+### The guard, the slot and the tables
+
+The guard is defined once, and the slot beside it names "the editors, whoever they are":
+
+```ts title="src/guard.ts"
+import { defineGuard, defineGuardSlot, type GuardAccountSessions, type GuardAuth } from '@marmeon/auth';
+import { OfficeUserRepository } from './OfficeUserRepository.ts';
+import type { EditorUser, OfficeUser } from './OfficeUser.ts';
+
+/** The guard of the back office's own editors: their table `office_users`, their sign-ins in `office_sign_ins`, a working day of eight hours and no "keep me signed in". */
+export const OfficeGuard = defineGuard('office', {
+  users: OfficeUserRepository,
+  tablePrefix: 'office_',
+  settings: { sessionMaxHours: 8, rememberDays: 0 },
+});
+
+// A type alias and a constant of the same name: a controller takes `auth: OfficeAuth`, and the container finds the guard's service.
+export type OfficeAuth = GuardAuth<OfficeUser>;
+export const OfficeAuth = OfficeGuard.Auth;
+export type OfficeAccountSessions = GuardAccountSessions<OfficeUser>;
+export const OfficeAccountSessions = OfficeGuard.AccountSessions;
+
+/** The editors, whoever they are: the guard's users in the own mode, the app's users in the other. The back office's policy and overview name the slot. */
+export const EditorSlot = defineGuardSlot<EditorUser>('editor');
+```
+
+The class `OfficeUserRepository` implements `UserProvider` on the table `office_users`: it takes `Connections`, reads the password hash and the session key with `secret()` next to the user, and leaves the writes of the hash and the key to `credentialWriter()` with `{ table: 'office_users' }` ([for your own user provider](authentication.md#for-your-own-user-provider)). A package names its user type, `credentialWriter<OfficeUser>(db, { table: 'office_users' })`, because the writer is otherwise typed by the app's user. It never reads the app's `users`.
+
+The package ships three migrations as stubs in `stubs/migrations`: `office_users` (the editors, with the `password` and `session_key` as `secret()` columns, and a `role` that is `viewer` unless set), and the two tables of the guard, `office_sign_ins` and `office_password_reset_tokens`, with the columns [the tables of a guard](authentication.md#the-tables) list. The provider declares them with `static migrations` (the module it proposes is `back-office`), and the app takes them over:
+
+```sh
+marmeon publish @acme/back-office
+marmeon migrate
+```
+
+`marmeon publish --check @acme/back-office` ends with exit code 0 once every migration is in the app. `/up/ready` is red until all three tables have every column the package reads, in both modes: the guard is registered in both, and so is the requirement for `office_users`.
+
+### The provider and its two modes
+
+The provider registers the guard, binds the slot to the guard or to `'web'`, and loads the routes below `BACK_OFFICE_PATH`:
+
+```ts title="src/BackOfficeServiceProvider.ts"
+import { can } from '@marmeon/auth';
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { contentSecurityPolicy, defineRoutes, everyone, NONCE, Router } from '@marmeon/http';
+import { Connections, SchemaRequirements } from '@marmeon/database';
+import { BackOfficeConfig } from './BackOfficeConfig.ts';
+import { ConfirmController } from './ConfirmController.ts';
+import { EditorSignInLog } from './EditorSignInLog.ts';
+import { EndSessionController } from './EndSessionController.ts';
+import { EditorSlot, OfficeGuard } from './guard.ts';
+import { OfficeLoginController } from './OfficeLoginController.ts';
+import { OfficeLogoutController } from './OfficeLogoutController.ts';
+import { OfficeAccess } from './OfficeAccess.ts';
+import { OfficePolicy } from './OfficePolicy.ts';
+import { OfficeRoles } from './OfficeRoles.ts';
+import { officeRole } from './OfficeUser.ts';
+import { OwnUsersOnly } from './OwnUsersOnly.ts';
+import { OFFICE_USERS_COLUMNS, OfficeUserRepository } from './OfficeUserRepository.ts';
+import { ShowConfirmController } from './ShowConfirmController.ts';
+import { ShowOfficeLoginController } from './ShowOfficeLoginController.ts';
+import { ShowOverviewController } from './ShowOverviewController.ts';
+import { ShowSecureController } from './ShowSecureController.ts';
+import { ShowSessionsController } from './ShowSessionsController.ts';
+
+/**
+ * Registers the back office: its routes below `BACK_OFFICE_PATH`, for the users `BACK_OFFICE_USERS` names. With `own` it defines the guard
+ * `office` on its table, with its sign-in, sign-in list and sudo mode; with `app` those routes answer 404, nobody signs in to the guard, and people go to the app's sign-in.
+ */
+export class BackOfficeServiceProvider implements ServiceProvider {
+  static config = [BackOfficeConfig];
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'back-office' };
+
+  register(container: Container): void {
+    const { users, path } = container.make(BackOfficeConfig);
+    const own = users === 'own';
+    // The guard is registered in both modes, and so are its tables and routes: the app's route list and its readiness never depend on the mode.
+    // In the mode `app` the guard has no users and no route reaches it (the slot is bound to `'web'`).
+    OfficeGuard.register(container);
+    EditorSlot.bind(container, own ? OfficeGuard : 'web');
+    container.singleton(EditorSignInLog);
+    // The roles come from the table in the first mode and from the app's `OfficeAccess` in the second, never the app's for an editor's id.
+    // Nothing bound means nobody has a role: the check asks at request time.
+    // Whatever the app answers that is not one of the two roles is no role.
+    container.singleton(OfficeRoles, (resolver) =>
+      own ? resolver.make(OfficeUserRepository) : { roleOf: async (id) => (container.has(OfficeAccess) ? officeRole(await container.make(OfficeAccess).roleOf(id)) : undefined) },
+    );
+
+    // The back office's document gets this policy, not the app's: nothing but its own origin may load or be connected to.
+    const policy = contentSecurityPolicy({ styleSrc: ["'self'", NONCE], imgSrc: ["'self'"], connectSrc: ["'self'"], frameAncestors: ["'none'"] });
+    container.make(Router).load(
+      { group: 'web', prefix: path },
+      defineRoutes((Route) => {
+        const area = Route.middleware(policy);
+        // The overview is the same in both modes: the slot hands the request to the bound guard.
+        area.middleware(EditorSlot.authenticate({ loginRoute: own ? 'office.login' : 'auth.login' })).authorize(can(OfficePolicy, 'open')).get('/', ShowOverviewController).name('office.index');
+
+        // The routes below are the mode `own`'s: the sign-in, the sign-in list and the sudo mode are the guard's. They exist in both modes and answer 404 in the other.
+        const own404 = area.middleware(OwnUsersOnly);
+        const guests = own404.authorize(everyone).middleware(OfficeGuard.guest({ homeRoute: 'office.index' }));
+        guests.get('/login', ShowOfficeLoginController).name('office.login');
+        guests.middleware(OfficeGuard.throttle('login')).post('/login', OfficeLoginController).name('office.login.store');
+        const editors = own404.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' })).authorize(can(OfficePolicy, 'open'));
+        // Signing out needs a signed-in editor and nothing else: an editor whose role is gone must still be able to end the sign-in.
+        own404.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' })).authorize(everyone).post('/logout', OfficeLogoutController).name('office.logout');
+        editors.get('/sessions', ShowSessionsController).name('office.sessions');
+        editors.get('/confirm-password', ShowConfirmController).name('office.confirm');
+        editors.post('/confirm-password', ConfirmController).name('office.confirm.store');
+        const sudo = editors.middleware(OfficeGuard.confirmedPassword({ confirmRoute: 'office.confirm' }));
+        sudo.post('/sessions/:signIn/end', EndSessionController).name('office.sessions.end');
+        sudo.get('/secure', ShowSecureController).name('office.secure');
+      }),
+    );
+  }
+
+  boot(application: { container: Container }): void {
+    const { container } = application;
+    if (!container.has(Connections)) return;
+    // Readiness waits for the editors' table in both modes, as it does for the guard's two tables: the app migrates all three.
+    container.make(SchemaRequirements).require({ connection: 'default', table: 'office_users', columns: OFFICE_USERS_COLUMNS, secrets: ['password', 'session_key'] });
+  }
+}
+```
+
+- **The overview is the same in both modes.** `EditorSlot.authenticate()` hands the request to the bound guard. A guest of the back office goes to `office.login` in the mode `own` and to the app's `auth.login` in the mode `app`. A customer of the app is a guest of the guard `office`, even when a customer and an editor have the same id.
+- **The routes of the mode `own` exist in both modes.** `OwnUsersOnly` stands before the guard's middleware and answers 404 in the mode `app`, for a GET and a POST alike, before anything looks at a session. The sign-in, the sign-out, the list of the editor's sign-ins and the sudo mode are the guard's.
+- **Two limits count sign-ins, and the guard has its own of each.** The route limit `OfficeGuard.throttle('login')` lets one client post 30 sign-ins a minute, whatever the addresses. Inside the sign-in, `attempt()` allows five a minute for one address from one client (`AUTH_LOGIN_ATTEMPTS_PER_MINUTE`) and 100 password sign-ins a day for one account, counted from the last successful one (`AUTH_ACCOUNT_SIGN_INS_PER_DAY`). All of them are counted under the guard's name, apart from the app's.
+- **The device cookie is the way back.** A sign-in with the password hands the browser the guard's device cookie, which keeps the editor signing in after strangers have used up the account's daily count. Without it, anyone who knows an editor's address could lock them out, and this package has no password reset yet. The login controller sets it as the app's does.
+- **The sudo window is the guard's.** `OfficeGuard.confirmedPassword()` asks the editor for the back office password, although the customer's window of the app is open, and the editor's confirmation opens nothing in the app. The page that ends another sign-in and the page `/office/secure` need it.
+- **The page a guest wanted is the back office's.** The session keeps one such page for all guards, not one for each. The sign-in and the confirmation follow it only when it lies below the back office's path, and leave a page of the app in place. The other direction is the app's: its sign-in follows whatever page was stored last, so a visit to a page of the back office after a customer's wish replaces that wish.
+- **The group has a policy of its own.** The back office's document gets its own content security policy, not the app's.
+
+The web app's own middleware shares the signed-in user and the notification bell with every page of its `web` group. It leaves out the pages of the back office, so a customer signed in in the same browser shows no name there and the page follows no channel of the customer's.
+
+### The roles
+
+The policy names the slot and asks for the editor's role through a token the package binds by mode, `OfficeRoles`. In the mode `own` the answer is the column `role` of the editor's row. In the mode `app` it is the app's `OfficeAccess`, which the app binds. The package never asks `OfficeAccess` for an editor of its own table: the ids of the two tables are other people.
+
+```ts title="src/OfficeAccess.ts"
+import { token } from '@marmeon/core';
+import type { OfficeRole } from './OfficeUser.ts';
+
+/**
+ * Which role the app gives one of its users in the back office, for the mode that serves the app's users (`BACK_OFFICE_USERS=app`). The app
+ * binds it; the package never decides for it, so an app that binds nothing admits nobody. The own mode never asks it: its editors are
+ * another set of accounts whose ids mean other people.
+ */
+export interface OfficeAccess {
+  roleOf(userId: number): OfficeRole | undefined | Promise<OfficeRole | undefined>;
+}
+export const OfficeAccess = token<OfficeAccess>('OfficeAccess');
+```
+
+```ts title="src/OfficePolicy.ts"
+import { EditorSlot } from './guard.ts';
+import { OfficeRoles } from './OfficeRoles.ts';
+import type { EditorUser } from './OfficeUser.ts';
+
+/** What an editor may do. It names the slot, so it judges the editors of the mode the back office runs in, never the other mode's accounts. */
+export class OfficePolicy {
+  static readonly guard = EditorSlot;
+  static readonly inject = [OfficeRoles] as const;
+
+  readonly #roles: OfficeRoles;
+
+  constructor(roles: OfficeRoles) {
+    this.#roles = roles;
+  }
+
+  /** Enter the back office: a role of the two the package knows, and nothing else. */
+  async open(user: EditorUser): Promise<boolean> {
+    const role = await this.#roles.roleOf(user.id);
+    return role === 'editor' || role === 'viewer';
+  }
+
+  /** Publish: editors, not viewers. */
+  async publish(user: EditorUser): Promise<boolean> {
+    return (await this.#roles.roleOf(user.id)) === 'editor';
+  }
+}
+```
+
+Only `editor` and `viewer` are roles. Anything else, such as a row whose `role` is `suspended` or empty, or an answer of the app's `OfficeAccess` that is `null` or another text, is no role and opens nothing: the policy, the binding and the listener each allow the two names and refuse the rest. An app that binds nothing admits nobody in the mode `app`: the check asks at request time, and a missing binding is no role. The overview takes its capability prop from the same policy (`gate.allows(OfficePolicy, 'publish')`), so the page offers publishing to editors only.
+
+In the mode `own` the back office is a guard of its own, so a policy of the app on one of its routes answers no, never yes: the prop is `false` and the action is a 403, and in development the first such question writes a warning with error [A9](errors.md#server-error-codes) ([policies of a guard](authorization.md#policies-of-a-guard)). In the mode `app` the back office's routes belong to the app's guard, and a policy of the app is judged as on any page of the app.
+
+### What the app does for the back office
+
+Keep the app's shared props off the package's pages. The web app's `ShareAppProps` returns before it shares the signed-in user, the bell and the live channel when the matched route's path is `BackOfficeConfig.path` or below it (the router matches the decoded path, so an encoded address is no way around it), so a customer signed in in the same browser shows no name on a page of the back office.
+
+The app takes the migrations over, and in the mode `app` it binds `OfficeAccess`. The web app says that its administrators, the ones `DASHBOARD_ADMINS` lists, are editors, as long as their address is confirmed; every other customer has no role in the back office:
+
+```ts title="modules/back-office/OfficeAccessServiceProvider.ts"
+import type { VerifiableUser } from '@marmeon/auth';
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { OfficeAccess } from '@acme/back-office';
+import { UserRepository } from '#modules/auth';
+import { DashboardConfig } from '#modules/dashboard';
+
+/**
+ * With `BACK_OFFICE_USERS=app` the back office serves the app's users, and the app says who is an editor: the administrators the dashboard
+ * knows (`DASHBOARD_ADMINS`), with a confirmed address. Every other customer has no role there. In the default mode (`own`) the back office
+ * never asks this: its editors are accounts of `office_users`, and an id of that table is not an id of `users`.
+ */
+export class OfficeAccessServiceProvider implements ServiceProvider {
+  register(container: Container): void {
+    container.singleton(OfficeAccess, (resolver) => {
+      const { admins } = resolver.make(DashboardConfig);
+      return {
+        roleOf: async (id) => {
+          const user = await container.make(UserRepository).find(id);
+          return user !== undefined && (user as VerifiableUser).email_verified_at != null && admins.includes(user.email.toLowerCase()) ? 'editor' : undefined;
+        },
+      };
+    });
+  }
+}
+```
+
+The package records the editors' sign-ins with a listener the app lists. Packages do not register listeners, so the app lists it in the module that owns the package's tables, for the slot's event, which follows the binding:
+
+```ts title="modules/back-office/index.ts"
+import { RecordEditorSignIn, EditorSlot } from '@acme/back-office';
+import { defineModule, listen } from '@marmeon/core';
+import { OfficeAccessServiceProvider } from './OfficeAccessServiceProvider.ts';
+import { OfficeUsersSeeder } from './OfficeUsersSeeder.ts';
+
+// The tables of @acme/back-office: `marmeon publish @acme/back-office` writes their migrations here.
+// They are the app's now — change them like any other migration.
+export default defineModule({
+  name: 'back-office',
+  // `BACK_OFFICE_USERS=app` only: who is an editor among the app's users.
+  providers: [OfficeAccessServiceProvider],
+  // The package never registers listeners: the app lists the one that records editor sign-ins, whichever users the back office runs on.
+  listeners: [listen(EditorSlot.events.SignedIn, RecordEditorSignIn)],
+  migrations: new URL('./migrations/', import.meta.url),
+  seeders: [OfficeUsersSeeder],
+});
+```
+
+`RecordEditorSignIn` writes `(guard, userId, at)` to the package's `EditorSignInLog`: `('office', 1)` for the editor with the id 1 in the mode `own`, `('web', 1)` for the customer with the id 1 in the mode `app`. It keeps the guard with the id, because the same id in the two modes is two people, and it records only the sign-ins the back office gives a role: the slot of the mode `app` hears every sign-in of the app, customers included ([events of a guard slot](authentication.md#events-of-a-guard-slot)). A sign-in of a customer in the mode `own` never reaches it.
+
+```ts title="src/RecordEditorSignIn.ts"
+import { EditorSignInLog } from './EditorSignInLog.ts';
+import { EditorSlot } from './guard.ts';
+import { OfficeRoles } from './OfficeRoles.ts';
+
+/**
+ * Records the editor sign-ins: one entry of the mode and the id for each. The app lists it for `EditorSlot.events.SignedIn`
+ * (`docs/package-development.md#a-package-with-users-of-its-own`). A slot bound to the app's users hears every sign-in of the app, customers
+ * included, so it records only the ones the back office gives a role.
+ */
+export class RecordEditorSignIn {
+  static readonly inject = [EditorSignInLog, OfficeRoles] as const;
+
+  readonly #log: EditorSignInLog;
+  readonly #roles: OfficeRoles;
+
+  constructor(log: EditorSignInLog, roles: OfficeRoles) {
+    this.#log = log;
+    this.#roles = roles;
+  }
+
+  async handle(event: InstanceType<typeof EditorSlot.events.SignedIn>): Promise<void> {
+    const role = await this.#roles.roleOf(event.user.id);
+    if (role !== 'editor' && role !== 'viewer') return;
+    this.#log.record({ guard: event.guard, userId: event.user.id, at: event.at });
+  }
+}
+```
+
+### What the web app proves
+
+The web app runs the claims above against the real package (`apps/web-app/modules/back-office`). In the mode `own`: a guest and a customer are sent to the back office's sign-in, an editor signs in, the list of sign-ins and the sudo window work and are the guard's, the sixth sign-in of a minute is `throttled` while the app's counter stays at zero, a locked account lets the owner's browser in through its device cookie, the capability prop follows the role and an unknown role opens nothing, and a policy of the app on a route of the back office says no. In the mode `app`: the customers are judged by `OfficeAccess` with the table `office_users` never read, an answer that is no role admits nobody, the routes of the mode `own` answer 404, and the route list is the same as in the mode `own`. `back-office-build.test.ts` builds a copy of the app and checks that no document of the app loads the back office's pages or texts.
+
 ## Components on the app's pages
 
 A package can bring components that an app renders on its own pages. The package declares a `namespace` in its `"marmeon"` field
