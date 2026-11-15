@@ -1,4 +1,5 @@
 import type { DeepPartial, FieldOf, IslandNameOf, IslandPropsOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
+import type { ActingAsGuard } from '@marmeon/auth/testing';
 import type { CheckFlashKey, FlashValue } from '@marmeon/http/page';
 import type { LayerClose } from '@marmeon/http/protocol';
 import type { RegionOutcomeStatus } from '@marmeon/http/protocol';
@@ -110,11 +111,15 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertSessionMissing(...args: Parameters<Assertions['assertSessionMissing']>): this {
     return this.#queue((r) => r.assertSessionMissing(...args));
   }
-  assertAuthenticated(...args: Parameters<Assertions['assertAuthenticated']>): this {
-    return this.#queue((r) => r.assertAuthenticated(...args));
+  assertAuthenticated<U extends { readonly id: string | number }>(user: NoInfer<U> | undefined, options: { readonly guard: ActingAsGuard<U> }): this;
+  assertAuthenticated(...args: Parameters<Assertions['assertAuthenticated']>): this;
+  assertAuthenticated(...args: unknown[]): this {
+    return this.#queue((r) => (r.assertAuthenticated as (...a: unknown[]) => unknown)(...args) as TestResponse);
   }
-  assertGuest(): this {
-    return this.#queue((r) => r.assertGuest());
+  assertGuest(options: { readonly guard: ActingAsGuard<any> }): this;
+  assertGuest(): this;
+  assertGuest(...args: unknown[]): this {
+    return this.#queue((r) => (r.assertGuest as (...a: unknown[]) => unknown)(...args) as TestResponse);
   }
   assertInvalid<C = unknown>(fields: readonly FieldOf<C>[] | Partial<Record<FieldOf<C>, string | RegExp>>): this {
     return this.#queue((r) => r.assertInvalid<C>(fields));

@@ -62,7 +62,15 @@ export declare class PendingTestResponse implements PromiseLike<TestResponse> {
     assertCookieExpired(...args: Parameters<Assertions['assertCookieExpired']>): this;
     assertSessionHas(...args: Parameters<Assertions['assertSessionHas']>): this;
     assertSessionMissing(...args: Parameters<Assertions['assertSessionMissing']>): this;
+    assertAuthenticated<U extends {
+        readonly id: string | number;
+    }>(user: NoInfer<U> | undefined, options: {
+        readonly guard: ActingAsGuard<U>;
+    }): this;
     assertAuthenticated(...args: Parameters<Assertions['assertAuthenticated']>): this;
+    assertGuest(options: {
+        readonly guard: ActingAsGuard<any>;
+    }): this;
     assertGuest(): this;
     assertInvalid<C = unknown>(fields: readonly FieldOf<C>[] | Partial<Record<FieldOf<C>, string | RegExp>>): this;
     assertValid(): this;
@@ -136,6 +144,11 @@ export declare class TestApp {
     withIp(address: string): TestApp;
     withCookie(name: string, value: string): TestApp;
     withSession(data: Record<string, unknown>): TestApp;
+    actingAs<U extends {
+        readonly id: string | number;
+    }>(user: NoInfer<U>, options: {
+        guard: ActingAsGuard<U>;
+    } & ActingAsProofs): TestApp;
     actingAs(user: AuthUser, options?: {
         guard?: 'web';
     } | {
@@ -217,7 +230,15 @@ export declare class TestResponse {
     assertCookieExpired(name: string): this;
     assertSessionHas(key: string, value?: unknown): this;
     assertSessionMissing(key: string): this;
+    assertAuthenticated<U extends {
+        readonly id: string | number;
+    }>(user: NoInfer<U> | undefined, options: {
+        readonly guard: ActingAsGuard<U>;
+    }): this;
     assertAuthenticated(user?: AuthUser): this;
+    assertGuest(options: {
+        readonly guard: ActingAsGuard<any>;
+    }): this;
     assertGuest(): this;
     assertInvalid<C = unknown>(fields: readonly FieldOf<C>[] | Partial<Record<FieldOf<C>, string | RegExp>>): this;
     assertValid(): this;

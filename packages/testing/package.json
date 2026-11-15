@@ -116,6 +116,7 @@
   },
   "devDependencies": {
     "@marmeon/auth": "workspace:*",
+    "@marmeon/cache": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/devtools": "workspace:*",
     "@marmeon/live": "workspace:*",
