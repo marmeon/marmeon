@@ -133,22 +133,18 @@ export interface GuardConfirmedPasswordOptions<N extends string = string> {
   readonly maxAge?: Duration;
 }
 
-export interface GuardTwoFactorOptions<S extends string = string, V extends string = string, L extends string = string> {
+export interface GuardTwoFactorOptions<S extends string = string, V extends string = string> {
   /** Named route of the page where a user without a second factor sets one up. */
   readonly setup: CheckRouteName<S>;
   /** Named route of the page that asks this session for its second factor. */
   readonly verify: CheckRouteName<V>;
-  /** Named route of the guard's login page, for a request without a user. Required: the app's `auth.login` is the app's page. */
-  readonly loginRoute: CheckRouteName<L>;
   /** How long a proven second factor counts, a {@link Duration} above zero (a number is seconds). Default: 24 hours. */
   readonly maxAge?: Duration;
 }
 
-export interface GuardConfirmedSecondFactorOptions<V extends string = string, L extends string = string> {
+export interface GuardConfirmedSecondFactorOptions<V extends string = string> {
   /** Named route of the page that asks this session for its second factor. */
   readonly verify: CheckRouteName<V>;
-  /** Named route of the guard's login page, for a request without a user. Required: the app's `auth.login` is the app's page. */
-  readonly loginRoute: CheckRouteName<L>;
 }
 
 /** What the type `TwoFactor` has, for the users of a guard: `U` instead of the app's user. */
@@ -177,9 +173,9 @@ export interface GuardTwoFactorDefinition<U> {
    * Only for the guard's users with a second factor proven within `maxAge` (24 hours): one without a factor goes to `setup`, one that has not
    * proven it to `verify`. Needs the guard's `authenticate()` before it; the app's `twoFactor()` is refused on the guard's routes (error A9).
    */
-  twoFactor<const S extends RouteNameInput, const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardTwoFactorOptions<S, V, L>): MiddlewareClass<{ readonly user: U }, {}>;
+  twoFactor<const S extends RouteNameInput, const V extends RouteNameInput>(options: GuardTwoFactorOptions<S, V>): MiddlewareClass<{ readonly user: U }, {}>;
   /** For the routes that change the guard's factors: a session that has not proven its second factor lately goes to `verify`; an account without a factor passes. */
-  confirmedSecondFactor<const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V, L>): MiddlewareClass<{ readonly user: U }, {}>;
+  confirmedSecondFactor<const V extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V>): MiddlewareClass<{ readonly user: U }, {}>;
 }
 
 /**
@@ -450,15 +446,15 @@ export class Guard {
   }
 
   authenticate(options: GuardAuthenticateOptions): MiddlewareClass<{}, { readonly user: unknown }> {
-    return authenticateFor(this.#acting, this.#route('authenticate', 'loginRoute', options?.loginRoute)) as never;
+    return authenticateFor(this.#acting, this.#route('authenticate', 'loginRoute', options?.loginRoute, true)) as never;
   }
 
   guest(options: GuardGuestOptions): MiddlewareClass<{}, {}> {
-    return guestFor(this.#acting, this.#route('guest', 'homeRoute', options?.homeRoute), false);
+    return guestFor(this.#acting, this.#route('guest', 'homeRoute', options?.homeRoute, true), false);
   }
 
   confirmedPassword(options: GuardConfirmedPasswordOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
-    return confirmedPasswordFor(this.#acting, this.#route('confirmedPassword', 'confirmRoute', options?.confirmRoute), options) as never;
+    return confirmedPasswordFor(this.#acting, this.#route('confirmedPassword', 'confirmRoute', options?.confirmRoute, true), options) as never;
   }
 
   throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}> {
@@ -468,12 +464,15 @@ export class Guard {
 
   twoFactor(options: GuardTwoFactorOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
     this.#requireTwoFactor('twoFactor');
-    return twoFactorFor(this.#acting, this.#route('twoFactor', 'loginRoute', options?.loginRoute), options) as never;
+    this.#route('twoFactor', 'setup', options?.setup, false);
+    this.#route('twoFactor', 'verify', options?.verify, false);
+    return twoFactorFor(this.#acting, undefined, options) as never;
   }
 
   confirmedSecondFactor(options: GuardConfirmedSecondFactorOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
     this.#requireTwoFactor('confirmedSecondFactor');
-    return confirmedSecondFactorFor(this.#acting, this.#route('confirmedSecondFactor', 'loginRoute', options?.loginRoute), options) as never;
+    this.#route('confirmedSecondFactor', 'verify', options?.verify, false);
+    return confirmedSecondFactorFor(this.#acting, undefined, options) as never;
   }
 
   /** Without `twoFactor` the guard has no factors, and a middleware that asked for one would send everybody to a setup page that cannot work. */
@@ -482,8 +481,9 @@ export class Guard {
   }
 
   /** The route a guard's middleware sends to: the app's defaults are the app's pages, so a guard names its own. */
-  #route(method: string, option: string, route: unknown): string {
-    if (typeof route !== 'string' || route === '') throw new TypeError(`Guard '${this.name}'.${method}() needs \`${option}\`, the named route of the guard's own page: the app's default page belongs to the app.`);
+  #route(method: string, option: string, route: unknown, appHasDefault: boolean): string {
+    const why = appHasDefault ? ": the app's default page belongs to the app" : '';
+    if (typeof route !== 'string' || route === '') throw new TypeError(`Guard '${this.name}'.${method}() needs \`${option}\`, the named route of the guard's own page${why}.`);
     return route;
   }
 

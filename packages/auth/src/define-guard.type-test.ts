@@ -92,18 +92,18 @@ export async function twoFactorTypes(factor: GuardTwoFactor<OfficeUser>) {
   expectTypeOf(TwoFactorGuard.TwoFactor).toEqualTypeOf<Token<GuardTwoFactor<OfficeUser>>>();
   const challenged = await factor.challenge({ code: '123456' });
   expectTypeOf(challenged).toEqualTypeOf<Result<OfficeUser, ChallengeError>>();
-  expectTypeOf(TwoFactorGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' } as never)).toEqualTypeOf<MiddlewareClass<{ readonly user: OfficeUser }, {}>>();
-  // @ts-expect-error the guard's login page is the guard's own
-  TwoFactorGuard.twoFactor({ setup: 'a', verify: 'b' });
-  // @ts-expect-error the guard's login page is the guard's own
-  TwoFactorGuard.confirmedSecondFactor({ verify: 'b' });
+  expectTypeOf(TwoFactorGuard.twoFactor({ setup: 'a', verify: 'b' })).toEqualTypeOf<MiddlewareClass<{ readonly user: OfficeUser }, {}>>();
+  // @ts-expect-error the guard's login page is `authenticate()`'s to send to
+  TwoFactorGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' });
+  // @ts-expect-error the guard's login page is `authenticate()`'s to send to
+  TwoFactorGuard.confirmedSecondFactor({ verify: 'b', loginRoute: 'c' });
 }
 
 export function aGuardWithoutTwoFactorHasNone() {
   // @ts-expect-error the guard was defined without `twoFactor`
   OfficeGuard.TwoFactor;
   // @ts-expect-error the guard was defined without `twoFactor`
-  OfficeGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' });
+  OfficeGuard.twoFactor({ setup: 'a', verify: 'b' });
   // @ts-expect-error only the TwoFactor class is one
   defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: class Other {} });
 }
