@@ -28,8 +28,8 @@ the same time — they share their databases.
   `apps/web-app`. Temporary directories via `tempDir('marmeon-…')`; a test that leaves one behind turns the run red.
 - **`check:source`**: no decision numbers, wave or step ids, personal dates or paths to private notes in any tracked file;
   `NODE_ENV` is checked positively (`=== 'development' || === 'test'`, or `environment.isDevelopment()`), never
-  `!== 'production'` and never `import.meta.env.DEV`; no Valibot import outside `packages/*/src`; no comparisons with other frameworks in docs, stubs or
-  messages. Details: CONTRIBUTING.md › "Rules over the source".
+  `!== 'production'` and never `import.meta.env.DEV`; no Valibot import outside `packages/*/src`; no comparisons with other
+  frameworks in docs, stubs or messages. Details: CONTRIBUTING.md › "Rules over the source".
 - **Bundle sizes are reported, not limited**: the `size` check lists them against the base commit in the job summary; a maintainer weighs each pull request's growth.
 - **Public API, env default or command changed** → its page under `docs/` in the same commit; a change an app can notice
   a breaking change → its entry in `UPGRADING.md`, written when the release is prepared (`pnpm release:prepare`); say in the PR
