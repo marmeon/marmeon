@@ -189,7 +189,7 @@ export class Auth {
     writeAuth(this.#session, key, value, this.#guard.names);
   }
 
-  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  /** Dispatches what the guard makes of `event`: the app's own event for the app, the guard's own class for a package guard. */
   async #emit(event: object): Promise<void> {
     const mapped = this.#guard.event(event);
     if (mapped !== undefined) await this.#events.dispatch(mapped);
@@ -529,8 +529,12 @@ export class Auth {
     this.#anchor({ ...verified, passwordHash: hash, sessionKey });
     this.#write('confirmedAt', this.#now());
     await this.#endOtherSignIns(idOf(user), true); // after the key: the key is what ends the other sessions, the rows only leave the list
-    await this.#emit(new PasswordChanged(user, revoked));
-    await this.#announceEnded(idOf(user)); // last: this tab's new session is saved by the time its stream connects again
+    try {
+      await this.#emit(new PasswordChanged(user, revoked));
+    } finally {
+      // Whatever a listener does: the other tabs' streams close. Last: this tab's new session is saved by the time its stream connects again.
+      await this.#announceEnded(idOf(user));
+    }
   }
 
   /**

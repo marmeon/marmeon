@@ -203,9 +203,10 @@ export class PasswordBroker {
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
     const found = await users.findForSignIn(email);
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
-    const { revoked } = await this.#guard.newPassword().store(users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
+    const { revoked, failure } = await this.#guard.newPassword().store(users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
     // The owner is back in: the account takes passwords again, if guesses had shut it (best effort: the reset already stands).
     await this.#guard.signInThrottle.clearAccount(idOf(found.user));
+    if (failure !== undefined) throw failure.error; // a listener of the factors' removal threw: the reset stands, the caller is told
     const event = this.#guard.event(new PasswordReset(found.user, revoked));
     if (event !== undefined) await this.#events.dispatch(event);
     return ok(found.user);

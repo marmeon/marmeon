@@ -15,7 +15,7 @@ const noAccount = (identifier: string) => `No account has the identifier ${ident
  * a lost device, or an attacker's, cannot enrol a "first" factor once the account has none; the next sign-in needs the password only.
  * The account is found by `UserProvider.findForSignIn()` with the identifier as the sign-in form normalizes it. `--guard=<name>` acts on the
  * users of that package guard, through the guard's own stores (authenticator, passkeys and recovery codes together), and never on the app's;
- * a guard's reset sends no event.
+ * a guard's reset dispatches the guard's own `TwoFactorDisabled`, never the app's.
  */
 export class ResetTwoFactorCommand {
   static command = 'auth:reset-two-factor';
@@ -72,7 +72,7 @@ export class ResetTwoFactorCommand {
       return 1;
     }
     await guard.factors().removeAll(id);
-    // removeAll() dispatches nothing: the owner's mail and any audit log hear of the reset from this event. A package guard dispatches none: the app's listeners would act on the app's user of the same id.
+    // removeAll() dispatches nothing: the owner's mail and any audit log hear of the reset from this event. A package guard dispatches its own class: the app's listeners would act on the app's user of the same id.
     const event = guard.event(new TwoFactorDisabled(user, 'operator'));
     if (event !== undefined) await guard.events().dispatch(event);
     this.#logger.info('Removed the second factor of an account at the operator\'s request', target.value.name === undefined ? { userId: id } : { userId: id, guard: target.value.name });

@@ -1,14 +1,16 @@
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
-import { Clock, Container, createApplication, defineModule, Logger, type ServiceProvider } from '@marmeon/core';
+import { Clock, Container, createApplication, defineModule, EventRegistry, Logger, type ServiceProvider } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { CsrfProtection, SessionServiceProvider, SessionStore, sessionKey } from '@marmeon/session';
+import { CsrfProtection, SessionEndings, SessionServiceProvider, SessionStore, sessionKey } from '@marmeon/session';
 import { Encrypter } from '@marmeon/encryption';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineGuard, type GuardAuth, type GuardPasskeys, type GuardTwoFactor } from './define-guard.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';
+import * as appEvents from './events.ts';
+import type { Guard } from './define-guard.ts';
 import { Auth, AuthServiceProvider, authenticate, combineFactors, confirmedPassword, Hasher, TwoFactorState, TwoFactorStore, UserProvider, type AuthUser } from './index.ts';
 import { GUARD_FEATURE, GUARD_PASSKEYS } from './guard-context.ts';
 import { guardNames } from './guard-names.ts';
@@ -244,7 +246,7 @@ async function boot(options: { appPasskeys?: boolean } = {}) {
   };
 
   const limiter = application.container.make(RateLimiter);
-  return { application, browser, enroll, register, passkeySignIn, db, limiter, failures };
+  return { application, kernel, browser, enroll, register, passkeySignIn, db, limiter, failures };
 }
 
 type Device = ReturnType<typeof softAuthenticator>;
@@ -610,5 +612,100 @@ describe('defining a guard with passkeys', () => {
     const report = await container.make(HealthChecks).run(container);
     const text = report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : [])).join('\n');
     expect(text).toContain('office_passkeys');
+  });
+});
+
+/** Listens to the app's class and the guard's for every event a guard raises, and returns what each heard, as `app Name` or `office Name`. */
+function listenToBoth(container: Container): string[] {
+  const registry = container.make(EventRegistry);
+  const heard: string[] = [];
+  for (const [name, own] of Object.entries(OfficeGuard.events)) {
+    registry.listen((appEvents as unknown as Record<string, never>)[name]!, (() => void heard.push(`app ${name}`)) as never);
+    registry.listen(own as never, (() => void heard.push(`office ${name}`)) as never);
+  }
+  return heard;
+}
+
+describe('the events of a guard with passkeys, from every place the services raise them', () => {
+  it('PasskeyRegistered, TwoFactorEnabled and RecoveryCodesGenerated: the first passkey tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    expect(await b.send('office', 'login')).toEqual({ ok: true });
+    const heard = listenToBoth(booted.application.container);
+    await booted.register(b, 'office', device());
+    expect(heard).toEqual(['office PasskeyRegistered', 'office TwoFactorEnabled', 'office RecoveryCodesGenerated']);
+  });
+
+  it('PasskeyRemoved and TwoFactorDisabled: removing the last passkey tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const { b } = await booted.enroll('office', device());
+    const [mine] = (await b.send('office', 'list')) as unknown as { id: number }[];
+    const heard = listenToBoth(booted.application.container);
+    expect(await b.send('office', 'remove', { id: mine!.id })).toEqual({ ok: true });
+    expect(heard).toEqual(['office PasskeyRemoved', 'office TwoFactorDisabled']);
+  });
+
+  it('PasskeyCloneSuspected: a copied passkey tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const officeDevice = device();
+    await booted.enroll('office', officeDevice);
+    await booted.passkeySignIn('office', officeDevice);
+    const heard = listenToBoth(booted.application.container);
+    expect((await booted.passkeySignIn('office', officeDevice, { signCount: 1 })).result).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(heard).toEqual(['office PasskeyCloneSuspected']);
+  });
+
+  it('PasskeySignInFailed: a wrong answer of a known passkey tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const officeDevice = device();
+    await booted.enroll('office', officeDevice);
+    const heard = listenToBoth(booted.application.container);
+    const failed = await booted.passkeySignIn('office', officeDevice, { userVerified: false });
+    expect(failed.result.ok).toBe(false);
+    expect(heard).toEqual(['office PasskeySignInFailed']);
+  });
+
+  it('TwoFactorChallengeFailed during a confirmation: a wrong answer tells the guard\'s listeners only', async () => {
+    const booted = await boot();
+    const officeDevice = device();
+    const { b } = await booted.enroll('office', officeDevice);
+    const options = await b.send('office', 'confirm-options');
+    const heard = listenToBoth(booted.application.container);
+    const answer = await b.send('office', 'confirm', { response: officeDevice.authenticate(options.value as never, { userVerified: false }) });
+    expect(answer.ok).toBe(false);
+    expect(heard).toEqual(['office TwoFactorChallengeFailed']);
+  });
+
+  /** The guard's user 1 with a passkey and an address nobody confirmed, a reset link in hand. */
+  async function unconfirmedWithPasskey() {
+    const booted = await boot();
+    await booted.enroll('office', device());
+    const row = office.rows.get(1)!;
+    row.user = { ...row.user, email_verified_at: null } as never;
+    const broker = booted.application.container.make(OfficeGuard.PasswordBroker);
+    const created = await broker.createToken('ada@example.com');
+    return { booted, broker, token: created.ok ? created.value.token : '' };
+  }
+
+  it('PasskeyRemoved, TwoFactorDisabled and PasswordReset: a reset of an unconfirmed account tells the guard\'s listeners only', async () => {
+    const { booted, broker, token } = await unconfirmedWithPasskey();
+    const heard = listenToBoth(booted.application.container);
+    expect((await broker.reset('ada@example.com', token, 'new password')).ok).toBe(true);
+    expect(heard).toEqual(['office PasskeyRemoved', 'office TwoFactorDisabled', 'office PasswordReset']);
+  });
+
+  it('a reset whose listener throws still closes the streams of the account and frees it from the count of its sign-ins', async () => {
+    const { booted, broker, token } = await unconfirmedWithPasskey();
+    const container = booted.application.container;
+    const scopes: string[] = [];
+    container.make(SessionEndings).listenAccounts((scope) => void scopes.push(scope));
+    const throttle = (OfficeGuard as unknown as Guard).tokens.signInThrottle;
+    const cleared = vi.spyOn(container.make(throttle), 'clearAccount');
+    container.make(EventRegistry).listen(OfficeGuard.events.PasskeyRemoved, () => {
+      throw new Error('listener failed');
+    });
+    await expect(broker.reset('ada@example.com', token, 'new password')).rejects.toThrow('listener failed');
+    expect(scopes).toEqual([guardNames('office').accountScope(1)]);
+    expect(cleared).toHaveBeenCalledExactlyOnceWith(1);
   });
 });

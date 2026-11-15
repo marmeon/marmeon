@@ -1,4 +1,4 @@
-import { Container, createApplication, defineModule, HealthChecks, listen, Redactor, type ServiceProvider } from '@marmeon/core';
+import { Container, createApplication, defineModule, EventRegistry, HealthChecks, listen, Redactor, type ServiceProvider } from '@marmeon/core';
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
@@ -7,8 +7,9 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionEndings, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
 import { accountScope } from '@marmeon/session/internal';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AUTH_SESSION_KEYS } from './auth.ts';
+import * as appEvents from './events.ts';
 import { defineGuard, type GuardAccountSessions, type GuardAuth } from './define-guard.ts';
 import { AccessTokenStore, AccountSessions, Auth, AuthServiceProvider, Hasher, PasswordBroker, SignedIn, SignInStore, UserProvider, type AuthUser } from './index.ts';
 import { guardNames } from './guard-names.ts';
@@ -36,6 +37,11 @@ class OfficeUsers extends MemoryUsers<OfficeUser> {
   }
 }
 
+// A second guard with a limit of two attempts a minute: the account's ceiling of the first is lower than its limit per client.
+const DeskGuard = defineGuard('desk', { users: OfficeUsers, tablePrefix: 'desk_', settings: { loginAttemptsPerMinute: 2, accountSignInsPerDay: 1000 } });
+type DeskAuth = GuardAuth<OfficeUser>;
+const DeskAuth = DeskGuard.Auth;
+
 const OfficeGuard = defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', settings: { loginAttemptsPerMinute: 60, accountSignInsPerDay: 10 } });
 type OfficeAuth = GuardAuth<OfficeUser>;
 const OfficeAuth = OfficeGuard.Auth;
@@ -46,6 +52,12 @@ const OfficeAccounts = OfficeGuard.AccountSessions;
 class OfficeProvider implements ServiceProvider {
   register(container: Container): void {
     OfficeGuard.register(container);
+  }
+}
+
+class DeskProvider implements ServiceProvider {
+  register(container: Container): void {
+    DeskGuard.register(container);
   }
 }
 
@@ -114,7 +126,21 @@ class OfficeController extends Controller {
   }
 }
 
+class DeskController extends Controller {
+  readonly #auth: DeskAuth;
+  readonly #accounts: OfficeAccounts;
+  constructor(auth: DeskAuth, accounts: OfficeAccounts) {
+    super();
+    this.#auth = auth;
+    this.#accounts = accounts;
+  }
+  handle(ctx: HttpContext) {
+    return act(this.#auth, this.#accounts, ctx);
+  }
+}
+
 const routes = openRoutes((Route) => {
+  Route.post('/desk', DeskController);
   Route.post('/app', AppController);
   Route.post('/office', OfficeController);
 });
@@ -126,6 +152,8 @@ interface BootOptions {
   readonly sessions?: 'memory' | 'database';
   /** `false` leaves the guard's tables out: the test makes them. */
   readonly officeTables?: boolean;
+  /** Registers a second guard, `desk`, with a limit of two attempts a minute. */
+  readonly desk?: boolean;
 }
 
 async function boot(options: BootOptions = {}) {
@@ -145,6 +173,7 @@ async function boot(options: BootOptions = {}) {
         DatabaseServiceProvider,
         CacheServiceProvider,
         ...(officeFirst ? [OfficeProvider, AuthServiceProvider] : [AuthServiceProvider, OfficeProvider]),
+        ...(options.desk ? [DeskProvider] : []),
       ],
       modules: [
         defineModule({
@@ -179,7 +208,7 @@ async function boot(options: BootOptions = {}) {
   const rows = async (table: string) => (await db.selectFrom(table).selectAll().execute()) as { id: string; user_id: number }[];
 
   const browser = (jar: Map<string, string> = new Map()) => {
-    const send = async (guard: 'app' | 'office', action: string, headers: Record<string, string> = {}) => {
+    const send = async (guard: 'app' | 'office' | 'desk', action: string, headers: Record<string, string> = {}) => {
       const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
       const response = await kernel.request(`/${guard}`, { method: 'POST', headers: { cookie, accept: 'application/json', 'user-agent': 'Test Browser', 'x-action': action, ...headers } });
       for (const header of response.headers.getSetCookie()) {
@@ -201,7 +230,7 @@ async function boot(options: BootOptions = {}) {
     };
     return { send, jar, stored, edit };
   };
-  return { application, container: application.container, browser, rows, db, connections };
+  return { application, container: application.container, browser, rows, db, connections, kernel };
 }
 
 const names = guardNames('office');
@@ -488,5 +517,119 @@ describe('registering a guard', () => {
     await a.create({ userId: 1, userAgent: undefined });
     expect(await rows('sign_ins')).toHaveLength(1);
     expect(await rows('office_sign_ins')).toHaveLength(0);
+  });
+});
+
+/** Listens to the app's class and the guard's for every event a guard raises, and returns what each heard, as `app Name` or `office Name`. */
+function listenToBoth(container: Container): string[] {
+  const registry = container.make(EventRegistry);
+  const heard: string[] = [];
+  for (const [name, own] of Object.entries(OfficeGuard.events)) {
+    registry.listen((appEvents as unknown as Record<string, never>)[name]!, (() => void heard.push(`app ${name}`)) as never);
+    registry.listen(own as never, (() => void heard.push(`office ${name}`)) as never);
+  }
+  return heard;
+}
+
+describe('the events of a package guard, from every place its services raise them', () => {
+  it('SignedOut: signing out reaches the guard\'s listener only', async () => {
+    const { browser, container } = await boot();
+    const b = browser();
+    await b.send('office', 'login');
+    const heard = listenToBoth(container);
+    expect(await b.send('office', 'logout')).toEqual({ ok: true });
+    expect(heard).toEqual(['office SignedOut']);
+  });
+
+  it('SignInFailed and SignInLockedOut: a shut account tells the guard\'s listeners only', async () => {
+    const { browser, container } = await boot();
+    const heard = listenToBoth(container);
+    for (let attempt = 0; attempt < 10; attempt++) expect((await browser().send('office', 'login', { 'x-password': 'wrong' })).ok).toBe(false);
+    expect(heard).toEqual(Array.from({ length: 10 }, () => 'office SignInFailed'));
+    heard.length = 0;
+    expect((await browser().send('office', 'login')).ok).toBe(false);
+    expect(heard).toEqual(['office SignInLockedOut']);
+  });
+
+  it('SignInLockedOut for one client: the attempt past a guard\'s limit a minute tells that guard\'s listeners only', async () => {
+    const { browser, container } = await boot({ desk: true });
+    const registry = container.make(EventRegistry);
+    const heard: string[] = [];
+    registry.listen(appEvents.SignInLockedOut, () => void heard.push('app SignInLockedOut'));
+    registry.listen(DeskGuard.events.SignInLockedOut, () => void heard.push('desk SignInLockedOut'));
+    registry.listen(OfficeGuard.events.SignInLockedOut, () => void heard.push('office SignInLockedOut'));
+    const b = browser();
+    for (let attempt = 0; attempt < 2; attempt++) await b.send('desk', 'login', { 'x-password': 'wrong' });
+    expect(heard).toEqual([]);
+    expect((await b.send('desk', 'login', { 'x-password': 'wrong' })).ok).toBe(false);
+    expect(heard).toEqual(['desk SignInLockedOut']);
+  });
+
+  it('SignInFailed for an identifier nobody has, and for an account without a password: the guard\'s listeners only', async () => {
+    const { browser, container } = await boot();
+    const heard = listenToBoth(container);
+    expect((await browser().send('office', 'login', { 'x-email': 'nobody@example.com' })).ok).toBe(false);
+    expect(heard).toEqual(['office SignInFailed']);
+    heard.length = 0;
+    office.rows.get(1)!.hash = null;
+    expect((await browser().send('office', 'login')).ok).toBe(false);
+    expect(heard).toEqual(['office SignInFailed']);
+  });
+
+  it('PasswordChanged: a new password reaches the guard\'s listener only', async () => {
+    const { browser, container } = await boot();
+    const b = browser();
+    await b.send('office', 'login');
+    await b.send('office', 'confirm');
+    const heard = listenToBoth(container);
+    expect(await b.send('office', 'password')).toEqual({ ok: true });
+    expect(heard).toEqual(['office PasswordChanged']);
+  });
+
+  it('PasswordReset: a reset by a link reaches the guard\'s listener only', async () => {
+    const { container } = await boot();
+    const broker = container.make(OfficeGuard.PasswordBroker);
+    const created = await broker.createToken('ada@example.com');
+    const heard = listenToBoth(container);
+    expect((await broker.reset('ada@example.com', created.ok ? created.value.token : '', 'new password')).ok).toBe(true);
+    expect(heard).toEqual(['office PasswordReset']);
+  });
+
+  it('RememberTokenReused: a copied remember-me cookie tells the guard\'s listener only', async () => {
+    const { browser, container, kernel } = await boot();
+    const owner = browser();
+    await owner.send('office', 'login', { 'x-remember': 'yes' });
+    const copied = owner.jar.get('marmeon_remember.office')!;
+    expect(copied).toBeDefined();
+    expect(await browser(new Map([['marmeon_remember.office', copied]])).send('office', 'who')).toMatchObject({ id: 1 });
+    const heard = listenToBoth(container);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      await kernel.request('/office', { method: 'POST', headers: { cookie: `marmeon_remember.office=${copied}`, accept: 'application/json', 'x-action': 'who' } });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(heard).toEqual(['office RememberTokenReused']);
+  });
+
+  it('PasswordChanged with a listener that throws: the other tabs\' streams are told all the same, for the app and for a guard', async () => {
+    for (const who of ['app', 'office'] as const) {
+      const { browser, container } = await boot();
+      const scopes: string[] = [];
+      container.make(SessionEndings).listenAccounts((scope) => void scopes.push(scope));
+      const registry = container.make(EventRegistry);
+      registry.listen(appEvents.PasswordChanged, () => {
+        throw new Error('listener failed');
+      });
+      registry.listen(OfficeGuard.events.PasswordChanged as never, (() => {
+        throw new Error('listener failed');
+      }) as never);
+      const b = browser();
+      await b.send(who, 'login');
+      await b.send(who, 'confirm');
+      const response = await b.send(who, 'password').catch((error: unknown) => ({ failed: String(error) }));
+      expect(JSON.stringify(response), who).not.toContain('"ok":true');
+      expect(scopes, who).toEqual([who === 'app' ? accountScope(1) : accountScope(1, 'office')]);
+    }
   });
 });

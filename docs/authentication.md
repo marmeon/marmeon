@@ -1275,7 +1275,7 @@ the other's session, cookie or counter. The app guard keeps the names it always 
 | Counts of password sign-ins and checks | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` … on the account's id | the same limits, counted under the guard's name |
 | Live streams of an account | the scope of the id | the scope of the guard and the id |
 | Tables | `sign_ins`, `password_reset_tokens` | `office_sign_ins`, `office_password_reset_tokens` |
-| Events | the `auth.*` events | none yet: a listener of the app never hears a sign-in of the guard |
+| Events | the `auth.*` events | the guard's own classes, `OfficeGuard.events.SignedIn` and the rest (the queueable ones named `office.auth.*`): a listener of the app never hears a sign-in of the guard |
 
 What stays shared is the browser's session cookie, the CSRF token, the `Hasher` and `APP_KEY`. A guard also reads the
 `AUTH_*` limits the app set, and `settings` overrides them for the guard alone, each within the limits of the variable it replaces:
@@ -1289,6 +1289,39 @@ and at boot. A setting outside its limits, or one that does not exist, stops the
 `signOut()` of any guard ends the browser's session, so the browser is signed out of every guard. So does every other end of a guard's sign-in that the guard notices: an ended sign-in row, `AccountSessions.end()`, a new password, a passkey that looks copied, `sessionMaxHours` running out. The user of another guard in that browser is signed out with it; the same user in another browser is not. The remember-me cookie is the
 one exception: the guard's own `signOut()` deletes it, and no other guard's does. Someone who chose "Keep me signed in" for the
 back office is signed in there again after signing out of the app, until they sign out of the back office itself.
+
+### Events of a guard
+
+The guard's services dispatch events of classes the guard owns, `OfficeGuard.events.<Name>`, one for each event of the [events table](#events) that a guard raises:
+`SignedIn`, `SignedOut`, `SignInFailed`, `SignInLockedOut`, `PasswordChanged`, `PasswordReset`, `RememberTokenReused`, the five two-factor events
+and the four passkey events. `Registered` and `EmailChanged` are not among them, since your own code raises the first and a guard has no change of address, and neither is
+`EverySessionEnded`, since no guard ends every session of every account. The classes have the fields and getters of the app's, and the type of an instance says which of the two it is: a listener
+written for the app's `SignedIn` does not compile for `OfficeGuard.events.SignedIn`. The queueable ones are named after the guard (`office.auth.signed-in`, `back-office.auth.signed-in`) and
+their payload carries `guard`, the guard's name, next to the fields of the app's.
+
+The app registers a listener of a guard's event in a module, the way it registers any listener, with the guard's class in place of the app's:
+
+```ts title="modules/office-mail/index.ts"
+import { defineModule, listen } from '@marmeon/core';
+import { OfficeGuard } from '@acme/marmeon-office';
+import { MailOfficeSignIn } from './listeners/MailOfficeSignIn.ts';
+
+export default defineModule({ name: 'office-mail', listeners: [listen(OfficeGuard.events.SignedIn, MailOfficeSignIn)] });
+```
+
+A queued listener (`static queue`) is registered the same way, and only this way: a package's provider has no `listeners` static, and a listener it adds to the `EventRegistry` in `boot()` can be missed by the queue, depending on the order of the providers.
+The package exports `OfficeGuard` for the app to import, as above, and says in its own documentation which events an app may listen to.
+
+The classes do not extend the app's, and an event of the guard is never an instance of one of them. A listener of `SignedIn` hears the app's sign-ins and none of the guard's.
+A listener of `OfficeGuard.events.SignedIn` hears the guard's and none of the app's. The same id in the guard's table and the app's is two accounts, so a listener of the app that mailed the
+user of that id would mail the wrong person.
+
+To react to the sign-ins of both, register a listener for each class. The listener gets the event or, when it is queued, the payload, and the class or the payload's `guard` tells which guard it came from.
+A queued listener of a guard's event is a class of its own that reads the guard's stores (`OfficeGuard.PasswordBroker` and the like, never the app's `UserProvider`), because the `userId` it gets belongs to the guard's table.
+The types keep the two apart: a queued listener written for the app's payload does not compile on the guard's class, and the other way round.
+
+Locking an account, ending the sessions of a copied passkey and the sign-in limits work in the guard's services whether anything listens or not, and the other tabs' live streams are closed when a new
+password is set even if a listener of `PasswordChanged` throws.
 
 ### The tables
 
@@ -1489,8 +1522,8 @@ or case, is refused with exit code 1 and the list of names, and nothing is chang
 
 The commands find the guards when they run, so an app whose only users belong to a guard needs no `UserProvider` of its own for them.
 `auth:end-sessions --guard=office` leaves out what a guard does not have, the API tokens.
-`auth:reset-two-factor --guard=office` removes the authenticator, the passkeys and the recovery codes of the guard together, and dispatches no
-`TwoFactorDisabled`: a listener of the app would act on the app's user of the same id.
+`auth:reset-two-factor --guard=office` removes the authenticator, the passkeys and the recovery codes of the guard together, and dispatches the guard's own
+`TwoFactorDisabled` (`OfficeGuard.events.TwoFactorDisabled`, `via: 'operator'`), never the app's: a listener of the app would act on the app's user of the same id.
 
 `auth:prune-tokens` takes the guards along. Without the option it prunes the app and then every guard, each with its own tables, and prints a line for
 each guard. A guard's reset links and sign-ins are judged by the guard's settings, except for the idle time, which is the session's and shared with the
@@ -1738,7 +1771,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 
 ## Events
 
-`@marmeon/auth` dispatches these events through the app's event dispatcher:
+`@marmeon/auth` dispatches these events through the app's event dispatcher. A [guard of a package](#events-of-a-guard) dispatches classes of its own instead, so `listen(SignedIn, …)` does not hear its sign-ins.
 
 | Event | When | Fields |
 | --- | --- | --- |

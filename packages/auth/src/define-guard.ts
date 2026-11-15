@@ -11,6 +11,7 @@ import { Auth, type AttemptError, type SignInOptions } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import type { EmailChangeStore } from './email-changes.ts';
 import { SessionFingerprints } from './fingerprint.ts';
+import { guardEvents, type GuardEventSet, type GuardEvents } from './guard-events.ts';
 import { buildForGuard, GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from './guard-context.ts';
 import { authenticateFor, confirmedPasswordFor, guestFor, type MiddlewareGuard } from './middleware.ts';
 import { bindRequestGuard } from './request-guard.ts';
@@ -202,6 +203,8 @@ export interface GuardDefinition<U> {
   confirmedPassword<const N extends RouteNameInput>(options: GuardConfirmedPasswordOptions<N>): MiddlewareClass<{ readonly user: U }, {}>;
   /** `throttle()` of the guard's own copy of an auth route's limit, counted apart from the app's (`throttle('auth.office.login')` for `'login'`). */
   throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
+  /** The guard's own event classes (`OfficeGuard.events.SignedIn`; the queueable ones are named `office.auth.signed-in` and so on): the app's listeners of `SignedIn` never hear a sign-in of the guard. See `docs/authentication.md#events-of-a-guard`. */
+  readonly events: GuardEvents<U>;
   /** Binds the guard's services in `container`. Call it in the `register()` of the package's provider; a guard registered twice is a no-op. */
   register(container: Container): void;
 }
@@ -338,6 +341,8 @@ export class Guard {
   readonly Passkeys: Token<SecondFactorPasskeys>;
   /** What the `Passkeys` class gave the guard to work with, or `undefined` for a guard without passkeys. */
   readonly passkeys: GuardPasskeyKit | undefined;
+  readonly events: GuardEvents;
+  readonly #eventSet: GuardEventSet;
   readonly #users: Concrete<UserProvider>;
   readonly #twoFactor: typeof TwoFactor | undefined;
   readonly #passkeyClass: GuardPasskeysClass | undefined;
@@ -366,6 +371,8 @@ export class Guard {
     this.name = name;
     this.tablePrefix = tablePrefix;
     this.names = guardNames(name);
+    this.#eventSet = guardEvents(name);
+    this.events = this.#eventSet.events;
     this.tables = {
       signIns: `${tablePrefix}sign_ins`,
       passwordResets: `${tablePrefix}password_reset_tokens`,
@@ -396,6 +403,11 @@ export class Guard {
     this.PasswordBroker = key('PasswordBroker');
     this.TwoFactor = key('TwoFactor');
     this.Passkeys = key('Passkeys');
+  }
+
+  /** The guard's event for one of a service's events; `undefined` for a class the guard has none of. */
+  mapEvent(event: object): object | undefined {
+    return this.#eventSet.map(event);
   }
 
   register(container: Container): void {
@@ -621,9 +633,9 @@ class PackageGuardContext extends GuardContext {
     return this.#container.has(SessionEndings) ? this.#resolver.make(SessionEndings) : undefined;
   }
 
-  // No event of the app's classes: the app's listeners mail the user of the same id in the app's table.
-  event(): undefined {
-    return undefined;
+  // The guard's own classes, never the app's: the app's listeners mail the user of the same id in the app's table.
+  event(event: object): object | undefined {
+    return this.#guard.mapEvent(event);
   }
 }
 

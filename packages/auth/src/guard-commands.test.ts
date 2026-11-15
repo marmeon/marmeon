@@ -215,16 +215,17 @@ describe('the operator commands act on the guard they are told to', () => {
     expect(app.rows.get(1)!.key).toBe('app-key');
   });
 
-  it("auth:reset-two-factor tells the app's listeners of an app reset, and of a guard's reset none: they would mail the app's user of the same id", async () => {
+  it("auth:reset-two-factor tells the app's listeners of an app reset, and the guard's own listeners of a guard's reset: the app's would mail the app's user of the same id", async () => {
     const heard = async (options: Record<string, unknown>) => {
       const { run, container } = await boot();
       const via: string[] = [];
-      container.make(EventRegistry).listen(TwoFactorDisabled, (event: TwoFactorDisabled) => void via.push(event.via));
+      container.make(EventRegistry).listen(TwoFactorDisabled, (event: TwoFactorDisabled) => void via.push(`app ${event.via}`));
+      container.make(EventRegistry).listen(OfficeGuard.events.TwoFactorDisabled, (event) => void via.push(`office ${event.via}`));
       expect(await run(ResetTwoFactorCommand, ['ada@example.com'], { force: true, ...options })).toBe(0);
       return via;
     };
-    expect(await heard({})).toEqual(['operator']);
-    expect(await heard({ guard: 'office' })).toEqual([]);
+    expect(await heard({})).toEqual(['app operator']);
+    expect(await heard({ guard: 'office' })).toEqual(['office operator']);
   });
 
   it('auth:reset-two-factor without the option resets the app only', async () => {

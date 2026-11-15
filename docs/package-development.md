@@ -122,7 +122,7 @@ reads them, and are known once that package is installed.
 | a repository | `table`, `connection`, `routeKey`, `routeKeyPattern` | The table, the default connection, and the column and pattern a route parameter is bound by ([repositories](queries.md#defining-a-repository)). |
 | an event that queued listeners listen to | `event`, `schema` | Its stable name and the schema of what is queued ([queued listeners](events.md#queued-listeners)). |
 
-The statics of jobs, notifications and queued listeners (`job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware`, `notification`, `database`, `queue`, `listener`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them.
+The statics of jobs, notifications and queued listeners (`job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware`, `notification`, `database`, `queue`, `listener`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them. That holds for the listeners of a [guard's events](authentication.md#events-of-a-guard) too: the app lists them in a module.
 
 ## The service provider
 

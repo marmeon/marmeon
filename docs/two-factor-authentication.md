@@ -412,7 +412,7 @@ Everything is apart from the app's factors, and from the factors of another guar
 | Waiting sign-in | The guard's own: the app's `TwoFactor.challenge()` finds nothing to finish. |
 | Attempt counters | One counter per window (minute, hour, day, recovery codes) for each guard: wrong codes of the guard's user 1 do not use the attempts of the app's user 1. |
 | Encrypted secret and recovery code hashes | Bound to the guard as well as to the account: a row copied between the guard's table and the app's table, or another guard's, does not decrypt and matches no code. The app's own secrets and codes are read as before. |
-| Events | None of the app's classes (`TwoFactorEnabled`, `RecoveryCodeUsed`, …): a listener of the app would mail the app's user with the same id. |
+| Events | The guard's own classes (`OfficeGuard.events.TwoFactorEnabled`, `OfficeGuard.events.RecoveryCodeUsed`, …), never the app's: a listener of the app would mail the app's user with the same id. See [events of a guard](authentication.md#events-of-a-guard). |
 
 The middleware `OfficeGuard.twoFactor({ setup, verify, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify })` act like
 [`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them, which
@@ -453,7 +453,7 @@ The argument is the identifier as your sign-in form normalizes it (usually the l
 of the app.
 For a [guard of a package](#for-a-guard-of-a-package), name it with `--guard=<name>`. The guard's own provider finds the account, and the authenticator, the
 passkeys and the recovery codes of the guard are removed together. The app's stay as they were, even when the same address has an account there.
-A name no guard has is refused with exit code 1 and the list of guards. The command dispatches no `TwoFactorDisabled` for a guard, since a listener of the app would act on the app's user of the same id.
+A name no guard has is refused with exit code 1 and the list of guards. For a guard the command dispatches the guard's own `TwoFactorDisabled` (`OfficeGuard.events.TwoFactorDisabled`), never the app's, since a listener of the app would act on the app's user of the same id.
 See [operator commands for a guard](authentication.md#operator-commands-for-a-guard-of-a-package).
 Without `--force` the command exits with 1 and changes nothing. It removes whatever the bound [`TwoFactorState`](authentication.md#your-own-stores) holds
 (the authenticator, every passkey, every recovery code) through `removeAll(userId)`, which dispatches nothing; the command dispatches `TwoFactorDisabled` with

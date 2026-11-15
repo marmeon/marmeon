@@ -158,7 +158,7 @@ export class Passkeys {
     this.#rememberCookie = guard.names.rememberCookie(guard.settings, sessionConfig);
   }
 
-  /** Dispatches what the guard makes of `event`: its own for the app, none or another for a package guard. */
+  /** Dispatches what the guard makes of `event`: the app's own event for the app, the guard's own class for a package guard. */
   async #emit(event: object): Promise<void> {
     const mapped = this.#guard.event(event);
     if (mapped !== undefined) await this.#events.dispatch(mapped);
