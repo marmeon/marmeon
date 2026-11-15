@@ -33,6 +33,7 @@ import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
@@ -175,7 +176,7 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
   events.length = 0;
   const { env, cleanup } = await driver.env();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-every-session-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), CacheServiceProvider, AuthServiceProvider],
     modules: [

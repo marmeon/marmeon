@@ -14,6 +14,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { TwoFactorState } from './two-factor/state.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -174,7 +175,7 @@ async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consu
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-sign-in-race-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'sign-in-race-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(SignInFailed, RecordFailed), listen(RememberTokenReused, RecordReused)] })],

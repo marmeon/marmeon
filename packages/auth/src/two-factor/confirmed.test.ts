@@ -11,6 +11,7 @@ import { openRoutes } from '../test-helpers/open-routes.ts';
 import { twoFactorState } from '../test-helpers/stores.ts';
 import { MemoryUsers as SharedUsers } from '../test-helpers/users.ts';
 import { confirmedSecondFactor } from './confirmed.ts';
+import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 
 interface TestUser {
   id: number;
@@ -74,7 +75,7 @@ const NOW = 1_800_000_000;
 async function boot() {
   const users = new MemoryUsers();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-confirmed-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'confirmed-test', routes, migrations: new URL('../__fixtures__/migrations/', import.meta.url) })],

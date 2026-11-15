@@ -203,7 +203,7 @@ describe('the devtools pages: only where the devtools run', () => {
         for (const path of devtoolsPaths(app)) {
           const response = await kernel.request(path, { headers: { host } });
           expect(response.status, `${host} ${path}`).toBe(403);
-          expect(await response.text()).not.toContain('"entries"');
+          expect(await response.text()).toBe('Development routes answer only on localhost, 127.0.0.1, [::1] and the host of APP_URL (DNS rebinding). Open this page through one of them.\n');
         }
       }
       // The URL's host counts when no Host header comes (in-process requests).

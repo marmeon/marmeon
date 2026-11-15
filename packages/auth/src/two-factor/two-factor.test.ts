@@ -18,6 +18,7 @@ import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import { twoFactorState } from '../test-helpers/stores.ts';
+import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 
 interface TestUser {
   id: number;
@@ -194,7 +195,7 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
   const users = options.users ?? new MemoryUsers();
   const appKey = env.APP_KEY ?? generateKey();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-two-factor-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [

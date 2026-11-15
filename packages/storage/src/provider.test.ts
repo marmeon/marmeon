@@ -130,7 +130,8 @@ describe('serving public disks', () => {
     ]) {
       const response = await kernel!.request(path);
       expect(response.status, path).toBe(404);
-      expect(await response.text()).not.toContain('private');
+      // A normalized dot-dot path gets the JSON 404, every other one the plain-text 404.
+      expect(await response.text(), path).toBe(path.startsWith('/storage/%2e%2e/') ? '{"message":"Not Found"}' : 'Not Found');
     }
     expect(await (await kernel!.request('/storage/ok.txt')).text()).toBe('ok');
   });

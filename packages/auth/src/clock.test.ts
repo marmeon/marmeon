@@ -13,6 +13,7 @@ import { confirmedSecondFactor } from './two-factor/confirmed.ts';
 import { twoFactor } from './two-factor/middleware.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -172,7 +173,7 @@ async function boot(env: Record<string, string> = {}) {
   // Switched on after the sign-in: the sign-in itself must not stop at a second factor.
   const hasFactor = { on: false };
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-clock-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'auth-clock-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

@@ -15,6 +15,7 @@ import { confirmedSecondFactor, twoFactor } from './two-factor/index.ts';
 import { TwoFactor } from './two-factor/two-factor.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 interface OfficeUser {
   readonly id: number;
@@ -142,7 +143,7 @@ async function boot() {
   office.rows.clear();
   const application = await createApplication(
     {
-      root: import.meta.dirname,
+      root: workspaceTempDir('marmeon-guards-two-factor-'),
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, OfficeProvider, AuthServiceProvider],
       modules: [
@@ -563,7 +564,7 @@ describe('defining a guard with two-factor authentication', () => {
     const container = (
       await createApplication(
         {
-          root: import.meta.dirname,
+          root: workspaceTempDir('marmeon-guards-two-factor-'),
           discover: false,
           providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, OfficeProvider, AuthServiceProvider],
           modules: [defineModule({ name: 'no-office-tables', migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

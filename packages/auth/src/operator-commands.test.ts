@@ -10,6 +10,7 @@ import { EndSessionsCommand } from './end-sessions.ts';
 import { ResetTwoFactorCommand } from './reset-two-factor.ts';
 import { AuthServiceProvider, TwoFactorState, UserProvider, type AuthUser } from './index.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -18,7 +19,7 @@ async function boot() {
   const users = new MemoryUsers<AuthUser>();
   users.add(ada);
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-operator-commands-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'auth-operator-commands-test', migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

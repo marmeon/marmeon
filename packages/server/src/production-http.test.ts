@@ -255,7 +255,7 @@ describe('the CSP nonce', async () => {
     expect(html).toContain(`<link rel="modulepreload" href="/assets/Show-1.js" crossorigin nonce="${nonce}">`);
     expect(html).not.toContain(CSP_NONCE_PLACEHOLDER);
     const visit = await preloaded.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html' } });
-    expect(await visit.text()).not.toContain('<link');
+    expect(await visit.json()).toEqual({ component: 'pages/Show', props: {}, url: '/page', version: null, epoch: expect.any(String) });
   });
 
   it('a JSON visit or answer neither makes a nonce nor gets the header — nothing in it depends on one', async () => {
@@ -263,7 +263,7 @@ describe('the CSP nonce', async () => {
     const visit = await app.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html, application/xhtml+xml' } });
     expect(visit.headers.get('content-type')).toBe('application/json');
     expect(visit.headers.get('content-security-policy')).toBeNull();
-    expect(JSON.stringify(await visit.json())).not.toMatch(/nonce/i);
+    expect(await visit.json()).toEqual({ component: 'pages/Show', props: {}, url: '/page', version: null, epoch: expect.any(String) });
     expect(rendered.length).toBe(before); // never rendered — no document, no nonce
     const data = await app.request('/data', { headers: { accept: 'application/json' } });
     expect(data.headers.get('content-security-policy')).toBeNull();
