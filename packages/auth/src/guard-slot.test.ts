@@ -1,14 +1,14 @@
-import { CacheServiceProvider } from '@marmeon/cache';
-import { Container, createApplication, defineModule, Logger, type ServiceProvider } from '@marmeon/core';
+import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
+import { Container, createApplication, defineModule, Logger, Redactor, type ServiceProvider } from '@marmeon/core';
 import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { GLOBAL, Router, RouteAccessError, type RouteDefinitions } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { CsrfProtection, SessionServiceProvider, SessionStore, sessionKey } from '@marmeon/session';
+import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore, sessionKey } from '@marmeon/session';
 import { ensuresOf } from '@marmeon/router/internal';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { defineGuard, type GuardAuth, type GuardTwoFactor } from './define-guard.ts';
+import { defineGuard, guardRegistry, type GuardAuth, type GuardTwoFactor } from './define-guard.ts';
 import { bootGuardSlots, defineGuardSlot, isGuardSlot, slotBindings } from './guard-slot.ts';
 import { GuardSlotError, SlotBindings } from './slot-bindings.ts';
 import { policyGuard } from './policy-guard.ts';
@@ -49,8 +49,10 @@ class OfficeUsers extends MemoryUsers<OfficeUser> {
 const OfficeGuard = defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, settings: { loginAttemptsPerMinute: 60, accountSignInsPerDay: 100 } });
 // Never registered by any provider.
 const GhostGuard = defineGuard('ghost', { users: OfficeUsers, tablePrefix: 'ghost_', twoFactor: TwoFactor });
-/** Registered in a late provider's boot(), never in register(). */
+/** Registered by a provider listed after the auth provider, in its register(). */
 const LateGuard = defineGuard('late', { users: OfficeUsers, tablePrefix: 'late_', twoFactor: TwoFactor });
+/** Registered in the boot() of a provider that boots before the auth provider, or after it (an error). */
+const BootGuard = defineGuard('booted', { users: OfficeUsers, tablePrefix: 'booted_', twoFactor: TwoFactor });
 const EditorSlot = defineGuardSlot<EditorUser>('editor', { twoFactor: true });
 const EDITOR = { loginRoute: 'editor.login', homeRoute: 'editor.home', confirmRoute: 'editor.confirm' } as const;
 const OFFICE = { loginRoute: 'office.login', homeRoute: 'office.home', confirmRoute: 'office.confirm' } as const;
@@ -58,17 +60,26 @@ const FACTOR = { setup: 'editor.setup', verify: 'editor.verify' } as const;
 const PAGE: Page = { editor_id: 1 };
 
 /** What the package binds its slot to in this test; `none` is a package that forgot. */
-let mode: 'office' | 'web' | 'none' | 'ghost' | 'boot' | 'late-ghost' | 'late-registered' = 'office';
+let mode: 'office' | 'web' | 'none' | 'ghost' | 'boot' | 'late-ghost' | 'late-registered' | 'early-boot' | 'late-boot' | 'twice' = 'office';
 
-/** A provider that boots after the auth provider's boot. */
+/** A provider that boots before the auth provider's boot. */
+class EarlyProvider implements ServiceProvider {
+  boot(application: { container: Container }): void {
+    if (mode === 'early-boot') BootGuard.register(application.container);
+  }
+}
+
+/** A provider that registers and boots after the auth provider. */
 class LateProvider implements ServiceProvider {
+  register(container: Container): void {
+    if (mode === 'late-registered') LateGuard.register(container);
+    if (mode === 'twice') BootGuard.register(container);
+  }
+
   boot(application: { container: Container }): void {
     if (mode === 'late-ghost') EditorSlot.bind(application.container, GhostGuard);
-    // Bound first, registered on the next line: the order inside one boot() is the package's.
-    if (mode === 'late-registered') {
-      EditorSlot.bind(application.container, LateGuard);
-      LateGuard.register(application.container);
-    }
+    if (mode === 'late-registered') EditorSlot.bind(application.container, LateGuard);
+    if (mode === 'late-boot' || mode === 'twice') BootGuard.register(application.container);
   }
 }
 
@@ -231,7 +242,7 @@ async function running(options: { routes?: RouteDefinitions } = {}) {
     {
       root: workspaceTempDir('marmeon-guard-slot-'),
       discover: false,
-      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, PackageProvider, AuthServiceProvider, ProbeProvider, LateProvider],
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, PackageProvider, EarlyProvider, AuthServiceProvider, ProbeProvider, LateProvider],
       modules: [
         defineModule({ name: 'guard-slot-test', routes: options.routes ?? routeList(current), apiRoutes: openRoutes((Route) => void Route.middleware(authenticate('api')).get('/ask', Ask)), migrations: new URL('./__fixtures__/migrations/', import.meta.url) }),
         defineModule({ name: 'office-test', migrations: new URL('./__fixtures__/office-migrations/', import.meta.url) }),
@@ -615,7 +626,7 @@ describe('binding a slot', () => {
     await expect(running()).rejects.toThrow(/A8.*'editor'.*'ghost'/s);
   });
 
-  it('serves the guard\'s user when a late provider binds the slot and registers the guard in the same boot(), in that order', async () => {
+  it('serves the guard\'s user when a provider listed after the auth provider registers the guard in register() and binds the slot in boot()', async () => {
     mode = 'late-registered';
     current = policies();
     const { start, application } = await running({ routes: openRoutes((Route) => (pages(Route), void Route.middleware(EditorSlot.authenticate(EDITOR)).get('/s/who', Who))) });
@@ -623,6 +634,29 @@ describe('binding a slot', () => {
     expect(application.container.make(SlotBindings).target(EditorSlot)).toBe(LateGuard);
     // Outside a request the guard's `Auth` cannot be built (it needs the request's cookies), but the chain shows the slot resolved to the guard: no A8.
     expect(() => application.container.createScope().make(EditorSlot.Auth)).toThrow(/GuardSlot:editor\.Auth → late\.Auth/);
+  });
+
+  it('stops the boot with A8 when a provider registers a guard in a boot() that runs after the auth provider\'s', async () => {
+    mode = 'late-boot';
+    current = policies();
+    await expect(running()).rejects.toThrow("[marmeon:A8] The guard 'booted' is registered after the auth provider has booted (for instance in a later provider's boot()), so it would miss the boot checks (its settings, tables, sign-in finder, remember-me cookie and route limits): call register() in the package provider's register().");
+  });
+
+  it('boots a guard registered in a boot() that runs before the auth provider\'s, with its remember-me cookie redacted', async () => {
+    mode = 'early-boot';
+    current = policies();
+    const { application } = await running();
+    const container = application.container;
+    const guard = guardRegistry(container).all().find((one) => one.name === 'booted')!;
+    const cookie = guard.names.rememberCookie(container.make(guard.tokens.settings), container.make(SessionConfig));
+    expect(container.make(Redactor).isAddedKey(cookie)).toBe(true);
+    expect(container.make(RateLimiter).limiter('auth.booted.login')).toBeDefined();
+  });
+
+  it('boots a guard registered in register() and registered again from a late boot()', async () => {
+    mode = 'twice';
+    current = policies();
+    await expect(running()).resolves.toBeDefined();
   });
 
   it('boots when a late provider binds a guard nobody registered and no route uses the slot, and refuses at use with A8', async () => {

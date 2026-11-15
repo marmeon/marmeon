@@ -1249,7 +1249,9 @@ export const OfficePasswordBroker = OfficeGuard.PasswordBroker;
 ```
 
 The package registers the guard in the `register()` of its service provider with `OfficeGuard.register(container)`. The order of
-the providers does not matter. `users` is a class that implements [`UserProvider`](#the-user-type-and-where-users-come-from) on a
+the providers does not matter. Register the guard there and nowhere later: a guard registered after the auth provider has booted (for
+instance in a later provider's `boot()`) would miss the boot checks of its settings, tables, sign-in finder, remember-me cookie and
+route limits, so it is error [A8](errors.md#server-error-codes). `users` is a class that implements [`UserProvider`](#the-user-type-and-where-users-come-from) on a
 table of the package's own; the container builds it, so it may take the connection or the hasher as constructor parameters. A
 controller of the package takes the guard's services and calls these methods on them, as it does on `Auth`, `AccountSessions` and
 `PasswordBroker`: `attempt()`, `signIn()`, `signOut()`, `user()`, `checkPassword()`, `signIns()`, `endSignIn()`, `updatePassword()`,
@@ -1499,7 +1501,7 @@ A slot forwards `authenticate()`, `guest()` and `confirmedPassword()`, and with 
 runs in both modes takes them from the guard in the first mode and from the app in the second.
 
 A slot nobody bound has no default. The gate, `EditorSlot.Auth` and the slot's middleware all refuse it with error
-[A8](errors.md#server-error-codes), and so does a slot bound to a guard that no provider registered: the boot stops on a binding made by the time the auth provider boots. A provider that binds later, in its own `boot()`, may register the guard on the next line, so nothing is refused at that point: `EditorSlot.Auth` and the gate check the guard each time they are used (A8), and the start does for routes that use the slot's middleware. A route that uses a slot
+[A8](errors.md#server-error-codes), and so does a slot bound to a guard that no provider registered: the boot stops on a binding made by the time the auth provider boots. A provider may bind later, in its own `boot()`, but it registers the guard in its `register()`: a guard registered after the auth provider has booted is error A8 too. A late binding to a guard nobody registered is not refused at that point: `EditorSlot.Auth` and the gate check the guard each time they are used (A8), and the start does for routes that use the slot's middleware. A route that uses a slot
 nobody bound stops the start with A8, and the start runs after every provider has booted.
 [`marmeon check`](check.md#the-app-checks) registers the app without booting it, so it cannot know a slot a provider binds in `boot()`: it leaves
 out a slot that is not bound yet, or bound to a guard nobody has registered yet, and still reports everything else in the route's list. The start also asks the bound
