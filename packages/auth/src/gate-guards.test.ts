@@ -9,6 +9,7 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineGuard, type GuardAuth } from './define-guard.ts';
 import { AccessTokenStore, Auth, AuthServiceProvider, authenticate, can, Gate, Hasher, UserProvider, type AuthUser, type PolicyClass } from './index.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { accessTokenStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
@@ -198,7 +199,7 @@ async function running() {
   office.rows.clear();
   const application = await createApplication(
     {
-      root: import.meta.dirname,
+      root: workspaceTempDir('marmeon-gate-guards-'),
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, GuardProvider, AuthServiceProvider, EarlyProvider],
       modules: [
@@ -253,6 +254,16 @@ async function running() {
   return { application, warnings, signedIn };
 }
 
+/** What each way of asking answers when the gate says no: an error other than the 403's (a throwing policy or projection, A8) matches none of these. */
+const denied = (how: string, ability: string): Record<string, unknown> =>
+  ({
+    allows: { allowed: false },
+    inspect: { allowed: false },
+    authorize: { error: 'This action is unauthorized.' },
+    abilities: { can: { [ability]: false } },
+    rows: { rows: [{ user_id: 1, can: { [ability]: false } }] },
+  })[how]!;
+
 const json = async (response: Response) => (await response.json()) as Record<string, unknown>;
 
 afterEach(() => {
@@ -270,7 +281,7 @@ describe('a policy of the app on a route of a package guard', () => {
     expect((await both.call('/o/app-policy')).status).toBe(403);
     for (const how of ['allows', 'inspect', 'authorize', 'abilities', 'rows']) {
       const body = await json(await both.call('/o/ask', { 'x-how': how }));
-      expect(JSON.stringify(body), how).not.toContain('true');
+      expect(body, how).toEqual(denied(how, 'update'));
     }
     expect((await json(await both.call('/o/ask', { 'x-how': 'denies' }))).denied).toBe(true);
     expect(current.seen.app, 'the app\'s policy never saw anybody').toEqual([]);
@@ -322,7 +333,7 @@ describe('a policy of a guard', () => {
     expect((await both.call('/a/admin')).status).toBe(403);
     for (const how of ['allows', 'inspect', 'authorize', 'abilities', 'rows']) {
       const body = await json(await both.call('/a/ask', { 'x-policy': 'page', 'x-how': how }));
-      expect(JSON.stringify(body), how).not.toContain('true');
+      expect(body, how).toEqual(denied(how, 'edit'));
     }
     expect((await json(await both.call('/a/ask', { 'x-policy': 'page', 'x-how': 'denies' }))).denied).toBe(true);
     expect(loaded, 'the editor of the same id was not loaded').not.toHaveBeenCalled();

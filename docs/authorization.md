@@ -881,7 +881,9 @@ gets no answer but no, as [the first rule](#policies-of-a-guard) says. A global 
 page of a package. One that awaits `authorize()` ends the request with the 403 before the login controller runs: put it on the app's routes.
 
 A route that no middleware gives a guard (a public page) has no such rule: every policy asks its own users there, see [the second rule](#policies-of-a-guard). A guard's
-middleware that runs after a policy has decided on such a request, and that the router did not see because another middleware calls it, fails with [A9](errors.md#server-error-codes).
+middleware that runs after a policy of another guard has decided on such a request, and that the router did not see because another middleware calls it, fails with [A9](errors.md#server-error-codes). So does
+the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` or `verified()` after a policy of a package guard decided:
+see [Protecting the routes](authentication.md#protecting-the-routes).
 
 ## Abilities for the page
 
