@@ -13,6 +13,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { TwoFactorState } from './two-factor/state.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const grace: AuthUser = { id: 2, name: 'Grace', email: 'grace@example.com' };
@@ -123,7 +124,7 @@ async function boot(options: Options = {}) {
   const clock = new TestClock();
   clock.freeze(Date.now());
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-email-change-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'auth-email-change-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(EmailChanged, RecordEvent)] })],

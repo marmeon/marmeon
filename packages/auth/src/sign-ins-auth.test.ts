@@ -13,6 +13,7 @@ import { NewPassword } from './new-password.ts';
 import { AccountSessions, Auth, PasswordChanged, AuthServiceProvider, DatabaseSignIns, Hasher, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
 import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: AuthUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
@@ -211,7 +212,7 @@ async function boot(options: { signIns?: new (...args: never[]) => SignInStore; 
   const users = new Users();
   const factors = new Factors();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-sign-ins-auth-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'sign-ins-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(PasswordChanged, RecordPasswordChanged)] })],

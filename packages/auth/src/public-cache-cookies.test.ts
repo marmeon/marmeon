@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { Auth, AuthServiceProvider, UserProvider, type AuthUser } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -60,7 +61,7 @@ async function boot() {
   const users = new MemoryUsers<AuthUser>();
   users.add(ada);
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-public-cache-cookies-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'auth-public-cache-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

@@ -12,6 +12,7 @@ import { Auth, AuthServiceProvider, authenticate, Gate, guest, Hasher, UserProvi
 import { newRequestGuard, RequestGuard, stampRoutes } from './request-guard.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 interface OfficeUser {
   readonly id: number;
@@ -176,7 +177,7 @@ async function boot(routeList = routes, options: { logger?: Partial<Logger> } = 
   for (const key of Object.keys(stamps)) delete stamps[key];
   const application = await createApplication(
     {
-      root: import.meta.dirname,
+      root: workspaceTempDir('marmeon-route-guard-'),
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, GuardProvider, AuthServiceProvider, GlobalProvider],
       modules: [

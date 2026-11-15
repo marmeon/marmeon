@@ -413,7 +413,7 @@ const OTHER_ERROR = '_OTHER';
 function errorType(error: unknown): string {
   if (error instanceof Error) {
     const code = (error as { code?: unknown }).code;
-    return error.constructor?.name && error.constructor.name !== 'Error' ? error.constructor.name : typeof code === 'string' ? code : error.name;
+    return error.constructor?.name && error.constructor !== Error ? error.constructor.name : typeof code === 'string' ? code : error.name;
   }
   return typeof error;
 }

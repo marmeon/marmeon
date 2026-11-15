@@ -151,7 +151,7 @@ describe.each(drivers)('a delimiter and headings per request (%s)', (driver) => 
     open = await tableApp(driver);
     const response = await download(open, 'wrong', ADA);
     expect(response.status).toBe(500);
-    expect(await response.text()).not.toContain('Ada');
+    expect(await response.text()).toBe('{"message":"marmeon.status.500"}');
     expect(response.headers.get('content-disposition')).toBeNull();
     expect(open.recorder.exports, 'the refused export was recorded').toEqual([]);
   });

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { AccountSessions, Auth, authenticate, AuthServiceProvider, UserProvider, type AuthUser, type Credentials } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
 
@@ -70,7 +71,7 @@ const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
 async function boot(users: UserProvider, driver: 'memory' | 'database' = 'memory') {
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-account-sessions-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'account-sessions-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

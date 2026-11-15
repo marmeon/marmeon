@@ -11,6 +11,7 @@ import { AUTH_SESSION_KEYS } from './auth.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const HOUR = 3_600_000;
@@ -97,7 +98,7 @@ const routes = openRoutes((Route) => {
 async function boot(env: Record<string, string> = {}) {
   const users = new Users();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-session-lifetime-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'session-lifetime-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

@@ -61,7 +61,10 @@ describe('the document head names the app, not the request', () => {
     const visit = await (await app.request('/profile', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).text();
     expect(visit).toContain('"component":"users/Show"');
     expect(visit).not.toContain('app.example');
-    expect(await (await (await appWith({})).request('/profile', { headers: { accept: 'text/html' } })).text()).not.toContain('marmeon-app-origin');
+    const unset = await (await appWith({})).request('/profile', { headers: { accept: 'text/html' } });
+    expect(await unset.clone().text()).toContain('<title>Marmeon</title><meta name="app-url" content="none"/>');
+    // oxlint-disable-next-line marmeon/exact-body-assertion -- the line above proves the body is the page, which carries the session's epoch
+    expect(await unset.text()).not.toContain('marmeon-app-origin');
   });
 
   it('escapes the origin it writes', async () => {

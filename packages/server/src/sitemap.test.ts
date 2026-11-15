@@ -631,7 +631,7 @@ describe('/sitemap.xml', () => {
         expect(failed.headers.get('retry-after')).toBe('30');
         expect(failed.headers.get('cache-control')).toBe('no-store');
         expect(failed.headers.has('set-cookie')).toBe(false);
-        expect(await failed.text()).not.toContain('the database is down');
+        expect(await failed.text()).toBe('Service Unavailable');
       }
       expect(reports).toHaveLength(1);
       expect(reports[0]!.error.message).toBe('the database is down');

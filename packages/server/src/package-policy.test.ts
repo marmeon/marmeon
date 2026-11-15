@@ -198,6 +198,8 @@ describe("the document of a package's entry", () => {
     const app = await appWith();
     const response = await app.request('/status/broken', { headers: html });
         expect(response.status).toBe(500);
+    expect(await response.clone().text()).toContain('<p>system/errors/Error</p>');
+    // oxlint-disable-next-line marmeon/exact-body-assertion -- the line above proves the body is the error page, which carries the session's epoch
     expect(await response.text()).not.toContain('pkg-status-a.js');
     expect(response.headers.has('content-security-policy')).toBe(false);
   });
@@ -253,6 +255,8 @@ describe('the app\'s own documents', () => {
       const response = await app.request('/', { headers: html });
       expect(response.headers.has('content-security-policy')).toBe(false);
       expect(response.headers.has('content-security-policy-report-only')).toBe(false);
+      expect(await response.clone().text()).toContain('<p>demo/Home</p>');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the line above proves the body is the page, which carries the session's epoch
       expect(await response.text()).not.toContain('nonce=');
     }
   });

@@ -14,6 +14,7 @@ import { AccessTokenStore, AccountSessions, Auth, AuthServiceProvider, Hasher, P
 import { guardNames } from './guard-names.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
 
@@ -134,7 +135,7 @@ async function boot(options: BootOptions = {}) {
   office.rows.clear();
   const application = await createApplication(
     {
-      root: import.meta.dirname,
+      root: workspaceTempDir('marmeon-guards-isolation-'),
       discover: false,
       providers: [
         EncryptionServiceProvider,
