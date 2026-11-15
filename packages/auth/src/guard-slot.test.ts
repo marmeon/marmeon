@@ -1,5 +1,5 @@
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
-import { Container, createApplication, defineModule, Logger, Redactor, type ServiceProvider } from '@marmeon/core';
+import { Container, createApplication, defineModule, EventRegistry, Logger, Redactor, type ServiceProvider } from '@marmeon/core';
 import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { defineGuard, guardRegistry, type GuardAuth, type GuardTwoFactor } from './define-guard.ts';
 import { bootGuardSlots, defineGuardSlot, isGuardSlot, slotBindings } from './guard-slot.ts';
 import { GuardSlotError, SlotBindings } from './slot-bindings.ts';
+import * as appEvents from './events.ts';
+import { ResetTwoFactorCommand } from './reset-two-factor.ts';
 import { policyGuard } from './policy-guard.ts';
 import { AccessTokenStore, Auth, AuthServiceProvider, authenticate, can, Gate, Hasher, TwoFactorState, TwoFactorStore, UserProvider, type AuthUser } from './index.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';
@@ -54,13 +56,15 @@ const LateGuard = defineGuard('late', { users: OfficeUsers, tablePrefix: 'late_'
 /** Registered in the boot() of a provider that boots before the auth provider, or after it (an error). */
 const BootGuard = defineGuard('booted', { users: OfficeUsers, tablePrefix: 'booted_', twoFactor: TwoFactor });
 const EditorSlot = defineGuardSlot<EditorUser>('editor', { twoFactor: true });
+/** A second slot of the package, for a test that binds two slots to one target. */
+const SecondSlot = defineGuardSlot<EditorUser>('second');
 const EDITOR = { loginRoute: 'editor.login', homeRoute: 'editor.home', confirmRoute: 'editor.confirm' } as const;
 const OFFICE = { loginRoute: 'office.login', homeRoute: 'office.home', confirmRoute: 'office.confirm' } as const;
 const FACTOR = { setup: 'editor.setup', verify: 'editor.verify' } as const;
 const PAGE: Page = { editor_id: 1 };
 
 /** What the package binds its slot to in this test; `none` is a package that forgot. */
-let mode: 'office' | 'web' | 'none' | 'ghost' | 'boot' | 'late-ghost' | 'late-registered' | 'early-boot' | 'late-boot' | 'twice' = 'office';
+let mode: 'office' | 'web' | 'none' | 'ghost' | 'boot' | 'late-ghost' | 'late-registered' | 'early-boot' | 'late-boot' | 'twice' | 'late-office' | 'two-slots' = 'office';
 
 /** A provider that boots before the auth provider's boot. */
 class EarlyProvider implements ServiceProvider {
@@ -78,6 +82,7 @@ class LateProvider implements ServiceProvider {
 
   boot(application: { container: Container }): void {
     if (mode === 'late-ghost') EditorSlot.bind(application.container, GhostGuard);
+    if (mode === 'late-office') EditorSlot.bind(application.container, OfficeGuard);
     if (mode === 'late-registered') EditorSlot.bind(application.container, LateGuard);
     if (mode === 'late-boot' || mode === 'twice') BootGuard.register(application.container);
   }
@@ -89,6 +94,10 @@ class PackageProvider implements ServiceProvider {
     if (mode === 'office') EditorSlot.bind(container, OfficeGuard);
     if (mode === 'web') EditorSlot.bind(container, 'web');
     if (mode === 'ghost') EditorSlot.bind(container, GhostGuard);
+    if (mode === 'two-slots') {
+      EditorSlot.bind(container, OfficeGuard);
+      SecondSlot.bind(container, OfficeGuard);
+    }
   }
 
   boot(application: { container: Container }): void {
@@ -838,5 +847,112 @@ describe('what the slot\'s middleware promises the router', () => {
   it('is a conflict with the app\'s authenticate() on one route, as two middleware that both add `user`', () => {
     const router = new Router().load(openRoutes((Route) => void Route.middleware(EditorSlot.authenticate(EDITOR)).middleware(authenticate() as never).get('/twice', () => 'x')));
     expect(router.middlewareProblems().map((problem) => problem.key)).toEqual(['user']);
+  });
+});
+
+describe('the events of a slot', () => {
+  /** What each listener of the app, of the office guard and of the slot heard, in order; the slot's with the mode its event names. */
+  async function listening(routes = openRoutes((Route) => void pages(Route))) {
+    const booted = await running({ routes });
+    const log: string[] = [];
+    const registry = booted.application.container.make(EventRegistry);
+    const on = (Class: unknown, label: string) => registry.listen(Class as never, ((event: { guard?: string; userId?: unknown; user?: { id: unknown } }) => void log.push(`${label}${event.guard === undefined ? '' : ` ${event.guard}`} ${String(event.userId ?? event.user?.id)}`)) as never);
+    on(appEvents.SignedIn, 'app SignedIn');
+    on(OfficeGuard.events.SignedIn, 'office SignedIn');
+    on(EditorSlot.events.SignedIn, 'slot SignedIn');
+    return { ...booted, log, registry, on };
+  }
+
+  it('relays the office guard\'s sign-in after its own event, with the mode, and never an app sign-in of the same id', async () => {
+    mode = 'office';
+    const { did, log } = await listening();
+    await did('office-login');
+    expect(log).toEqual(['office SignedIn 1', 'slot SignedIn office 1']);
+    log.length = 0;
+    await did('app-login');
+    expect(log).toEqual(['app SignedIn 1']);
+  });
+
+  it('relays the app\'s sign-in of a slot bound to web, and never the office guard\'s of the same id', async () => {
+    mode = 'web';
+    const { did, log } = await listening();
+    await did('app-login');
+    expect(log).toEqual(['app SignedIn 1', 'slot SignedIn web 1']);
+    log.length = 0;
+    await did('office-login');
+    expect(log).toEqual(['office SignedIn 1']);
+  });
+
+  it('dispatches nothing for an unbound slot, and never falls back to the app: both sign-ins succeed', async () => {
+    mode = 'none';
+    const { did, log } = await listening();
+    await did('app-login');
+    await did('office-login');
+    expect(log).toEqual(['app SignedIn 1', 'office SignedIn 1']);
+  });
+
+  it('relays after a binding made in the boot() of a provider that boots after the auth provider', async () => {
+    mode = 'late-office';
+    const { did, log } = await listening();
+    await did('office-login');
+    expect(log).toEqual(['office SignedIn 1', 'slot SignedIn office 1']);
+  });
+
+  it('gives each slot bound to the target its event, in the order the slots were bound', async () => {
+    mode = 'two-slots';
+    const { did, log, on } = await listening();
+    on(SecondSlot.events.SignedIn, 'second SignedIn');
+    await did('office-login');
+    expect(log).toEqual(['office SignedIn 1', 'slot SignedIn office 1', 'second SignedIn office 1']);
+  });
+
+  it('stops at a listener of the target that throws: no slot event, and the error reaches the caller', async () => {
+    mode = 'office';
+    const { application, log, on, registry } = await listening();
+    on(OfficeGuard.events.PasswordReset, 'office PasswordReset');
+    on(EditorSlot.events.PasswordReset, 'slot PasswordReset');
+    registry.listen(OfficeGuard.events.PasswordReset as never, (() => {
+      throw new Error('listener failed');
+    }) as never);
+    const broker = application.container.make(OfficeGuard.PasswordBroker);
+    const created = await broker.createToken('ada@example.com');
+    await expect(broker.reset('ada@example.com', created.ok ? created.value.token : '', 'new password')).rejects.toThrow('listener failed');
+    expect(log).toEqual(['office PasswordReset 1']);
+  });
+
+  it('relays a password reset, a two-factor enable and an operator reset of the guard, each once and after the guard\'s own', async () => {
+    mode = 'office';
+    const { application, log, on, enroll } = await listening();
+    for (const name of ['PasswordReset', 'TwoFactorEnabled', 'TwoFactorDisabled'] as const) {
+      on(OfficeGuard.events[name], `office ${name}`);
+      on(EditorSlot.events[name], `slot ${name}`);
+    }
+    await enroll('office');
+    expect(log.filter((line) => line.includes('TwoFactorEnabled'))).toEqual(['office TwoFactorEnabled 1', 'slot TwoFactorEnabled office 1']);
+
+    log.length = 0;
+    const output = { line() {}, success() {}, error() {} };
+    const command = application.container.createScope().make(ResetTwoFactorCommand as never) as { handle(input: never): Promise<number> };
+    expect(await command.handle({ args: ['ada@example.com'], options: { force: true, guard: 'office' }, output, root: '/', spawn: async () => 0 } as never)).toBe(0);
+    expect(log).toEqual(['office TwoFactorDisabled 1', 'slot TwoFactorDisabled office 1']);
+
+    log.length = 0;
+    const broker = application.container.make(OfficeGuard.PasswordBroker);
+    const created = await broker.createToken('ada@example.com');
+    expect((await broker.reset('ada@example.com', created.ok ? created.value.token : '', 'new password')).ok).toBe(true);
+    expect(log).toEqual(['office PasswordReset 1', 'slot PasswordReset office 1']);
+  });
+
+  it('relays a two-factor enable of the app to a slot bound to web, and nothing of the office guard\'s', async () => {
+    mode = 'web';
+    const { log, on, enroll } = await listening();
+    on(appEvents.TwoFactorEnabled, 'app TwoFactorEnabled');
+    on(OfficeGuard.events.TwoFactorEnabled, 'office TwoFactorEnabled');
+    on(EditorSlot.events.TwoFactorEnabled, 'slot TwoFactorEnabled');
+    await enroll('app');
+    expect(log.filter((line) => line.includes('TwoFactorEnabled'))).toEqual(['app TwoFactorEnabled 1', 'slot TwoFactorEnabled web 1']);
+    log.length = 0;
+    await enroll('office');
+    expect(log.filter((line) => line.includes('TwoFactorEnabled'))).toEqual(['office TwoFactorEnabled 1']);
   });
 });

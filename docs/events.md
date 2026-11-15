@@ -416,7 +416,7 @@ The framework's packages dispatch events of their own, classes like any other:
 | `@marmeon/queue` | `JobQueued`, `JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, all extending `JobEvent` |
 | `@marmeon/scheduler` | `ScheduledTaskStarting`, `ScheduledTaskFinished`, `ScheduledTaskFailed`, `ScheduledTaskSkipped`, all extending `ScheduledTaskEvent` |
 
-The events of `@marmeon/auth`; the ones marked queueable can have a [queued listener](#queued-listeners). These are the classes of the app's own guard: a guard of a package dispatches classes of its own, so `listen(SignedIn, …)` does not hear its sign-ins ([events of a guard](authentication.md#events-of-a-guard), which also shows how an app listens to them):
+The events of `@marmeon/auth`; the ones marked queueable can have a [queued listener](#queued-listeners). These are the classes of the app's own guard: a guard of a package dispatches classes of its own, so `listen(SignedIn, …)` does not hear its sign-ins ([events of a guard](authentication.md#events-of-a-guard), which also shows how an app listens to them). A package's [guard slot](authentication.md#events-of-a-guard-slot) has the events of a guard (all of the table but `Registered`, `EmailChanged` and `EverySessionEnded`), for the mode the package runs in:
 
 | Event | Fires | Queueable |
 | --- | --- | --- |

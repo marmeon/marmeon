@@ -12,6 +12,7 @@ import { AuthConfig } from './config.ts';
 import type { EmailChangeStore } from './email-changes.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { guardEvents, type GuardEventSet, type GuardEvents } from './guard-events.ts';
+import { slotEventsFor } from './slot-events.ts';
 import { buildForGuard, GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from './guard-context.ts';
 import { authenticateFor, confirmedPasswordFor, guestFor, type MiddlewareGuard } from './middleware.ts';
 import { bindRequestGuard } from './request-guard.ts';
@@ -543,12 +544,12 @@ class PackageGuardContext extends GuardContext {
   readonly names: GuardNames;
   readonly #guard: Guard;
   readonly #resolver: Resolver;
-  readonly #container: Pick<Container, 'has'>;
+  readonly #container: Pick<Container, 'has' | 'make'>;
   #users: UserProvider | undefined;
   readonly #factors = new NoTwoFactorState();
   readonly #passkeys = new NoSecondFactorPasskeys();
 
-  constructor(guard: Guard, resolver: Resolver, container: Pick<Container, 'has'>) {
+  constructor(guard: Guard, resolver: Resolver, container: Pick<Container, 'has' | 'make'>) {
     super();
     this.#guard = guard;
     this.names = guard.names;
@@ -645,10 +646,10 @@ class PackageGuardContext extends GuardContext {
     return this.#container.has(SessionEndings) ? this.#resolver.make(SessionEndings) : undefined;
   }
 
-  // The guard's own classes, never the app's: the app's listeners mail the user of the same id in the app's table.
+  // The guard's own classes, never the app's: the app's listeners mail the user of the same id in the app's table. Then the slots bound to this guard.
   dispatched(event: object): readonly object[] {
     const mapped = this.#guard.mapEvent(event);
-    return mapped === undefined ? [] : [mapped];
+    return mapped === undefined ? [] : [mapped, ...slotEventsFor(this.#container, this.#guard, event)];
   }
 }
 
