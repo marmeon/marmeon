@@ -69,8 +69,20 @@ function mentionsImportMeta(node: Node, resolve: (node: Node) => Node): boolean 
   return false;
 }
 
-const propertyNamed = (object: Node, name: string) =>
-  object.properties.find((property: Node) => property.type === 'Property' && !property.computed && (property.key.name === name || property.key.value === name));
+/**
+ * The property that wins in an object literal: the last explicit one. A spread after it (or any spread when there is none) may
+ * override or supply it, so the effective value is unknown and nothing comes back.
+ */
+function propertyNamed(object: Node, name: string) {
+  let found: Node;
+  let foundAt = -1;
+  let spreadAt = -1;
+  object.properties.forEach((property: Node, index: number) => {
+    if (property.type === 'Property' && !property.computed && (property.key.name === name || property.key.value === name)) [found, foundAt] = [property, index];
+    else if (property.type !== 'Property') spreadAt = index;
+  });
+  return spreadAt > foundAt ? undefined : found;
+}
 
 /** Walks `node` and the initializers of the constants it names; `visit` returns true to stop. */
 function search(node: Node, resolve: (node: Node) => Node, visit: (node: Node) => boolean, seen = new Set<Node>()): boolean {
@@ -131,8 +143,9 @@ const exactBodyAssertion = {
       CallExpression(node: Node) {
         const callee = node.callee;
         if (callee.type !== 'MemberExpression' || !['toContain', 'toMatch', 'toEqual'].includes(propertyName(callee) ?? '') || !isMember(callee.object, 'not')) return;
-        const expectation = unwrap(callee.object.object);
-        if (expectation.type !== 'CallExpression' || !isExpect(expectation.callee)) return;
+        const negated = unwrap(callee.object);
+        const expectation = negated?.type === 'MemberExpression' ? unwrap(negated.object) : undefined;
+        if (expectation?.type !== 'CallExpression' || !isExpect(expectation.callee)) return;
         if (!isBodyOfAnswer(expectation.arguments[0])) return;
         context.report({ node, message: 'A negative assertion on a response body also passes for an error body: assert the exact expected answer.' });
       },

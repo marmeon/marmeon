@@ -39,8 +39,8 @@ export interface RuleDefinition {
 /** What a rule's `transform`, `custom` and database rules may be: a function, sync or async. */
 type MaybePromise<T> = T | Promise<T>;
 
-const AsyncFunction = (async () => {}).constructor;
-const isAsyncFunction = (fn: unknown): boolean => typeof fn === 'function' && fn.constructor === AsyncFunction;
+/** By `Symbol.toStringTag`, which an async function of another realm (`node:vm`) carries too; its constructor differs there. */
+const isAsyncFunction = (fn: unknown): boolean => typeof fn === 'function' && Object.prototype.toString.call(fn) === '[object AsyncFunction]';
 
 /**
  * A rule — a Standard Schema object: `defineRequest`, `defineConfig`, jobs and query schemas take it like any other.

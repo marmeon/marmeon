@@ -125,6 +125,9 @@ describe('lint — the repository\'s own rules', () => {
         "createApplication({ root: import.meta.dirname, modules: [defineModule({ name: 'x', migrations: new URL('./migrations/', import.meta.url) })] });",
         'createApplication({ root: other });',
         'const app = (root) => createApplication({ root });',
+        'createApplication({ ...options, root: import.meta.dirname, modules });', // 20: a spread before the root does not matter
+        "createApplication({ root: import.meta.dirname, modules, ...{ root: workspaceTempDir('marmeon-x-') } });", // The limit: a spread after the root may override it
+        'createApplication({ modules, ...options });', // The limit: a root that may arrive through a spread
         // The limit: a module or a root that comes from a helper or an import is not followed.
         'createApplication({ root: import.meta.dirname, modules: [fixtureModule()] });',
         'createApplication({ root: sharedRoot, modules: [defineModule({ name: "x", migrations })] });',
@@ -138,6 +141,8 @@ describe('lint — the repository\'s own rules', () => {
         "expect(await response.text()).not.toContain('secret');", // 4
         "expect(String(await response.text())).not.toContain('secret');", // 5
         "expect.soft(await response.text()).not.toContain('secret');", // 6
+        "expect(await response.text()).not!.toContain('secret');", // 7
+        "(expect(await response.text()).not as any).toMatch(/secret/);", // 8
         "expect(JSON.stringify(value)).not.toContain('secret');",
         "expect(JSON.stringify(await visit.json())).toContain('ok');",
         "expect(await response.text()).toBe('ok');",
@@ -183,12 +188,15 @@ describe('lint — the repository\'s own rules', () => {
         `packages/demo/src/root.test.ts:11:${own('fixture-app-root')}`,
         `packages/demo/src/root.test.ts:12:${own('fixture-app-root')}`,
         `packages/demo/src/root.test.ts:6:${own('fixture-app-root')}`,
+        `packages/demo/src/root.test.ts:20:${own('fixture-app-root')}`,
         `packages/demo/src/body.test.ts:1:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:2:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:3:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:4:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:5:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:6:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:7:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:8:${own('exact-body-assertion')}`,
         `packages/demo/src/identity.ts:1:${own('identity-by-name')}`,
         `packages/demo/src/identity.ts:2:${own('identity-by-name')}`,
         `packages/demo/src/identity.ts:3:${own('identity-by-name')}`,

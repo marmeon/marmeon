@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@marmeon/core';
+import { runInNewContext } from 'node:vm';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { arrayEngine, ITEM_CONCURRENCY, type Engine } from './engine.ts';
@@ -183,4 +184,20 @@ describe('the item engine answers as the engine of Valibot does', () => {
       expect(shape(ours.issues as never)).toEqual(shape(theirs.issues as never));
     });
   }
+});
+
+describe('an async function of another realm', () => {
+  it('is still async in transform() and custom()', async () => {
+    const transform = runInNewContext('async (value) => value.length') as (value: string) => Promise<number>;
+    expect(await inRequest(r.string().transform(transform), 'abc')).toEqual({ value: 3 });
+    const custom = runInNewContext('async () => false') as () => Promise<boolean>;
+    expect((await inRequest(r.string().custom(custom), 'abc')).issues).toHaveLength(1);
+  });
+
+  it('is still async when its constructor says something else', async () => {
+    const transform = Object.defineProperty(async (value: string) => value.length, 'constructor', { value: { name: 'Other' } });
+    expect(await inRequest(r.string().transform(transform), 'abc')).toEqual({ value: 3 });
+    const custom = Object.defineProperty(async () => false, 'constructor', { value: { name: 'Other' } });
+    expect((await inRequest(r.string().custom(custom), 'abc')).issues).toHaveLength(1);
+  });
 });
