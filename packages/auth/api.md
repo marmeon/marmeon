@@ -14,8 +14,8 @@ export type Abilities<K extends string> = {
     [N in K]: boolean;
 };
 // AbilityOf
-export type AbilityOf<P> = Exclude<{
-    [K in keyof P]: P[K] extends (user: AuthUser, ...resources: any[]) => PolicyResult | Promise<PolicyResult> ? K : never;
+export type AbilityOf<P, U = AuthUser> = Exclude<{
+    [K in keyof P]: [Takes<P[K], U>] extends [true] ? K : never;
 }[keyof P], 'before'> & string;
 // AccessToken
 export interface AccessToken {
@@ -415,13 +415,13 @@ export interface EveryoneEnded {
 // Gate
 export declare class Gate {
     #private;
-    allows<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean>;
-    denies<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean>;
-    authorize<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<void>;
-    inspect<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<PolicyResponse>;
-    abilities<P extends object, const K extends string>(policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ResourcelessAbility<P>, `needs its resource — gate.abilities(resource, Policy, ['${K}'])`>[]): Projection<Abilities<K>>;
-    abilities<P extends object, const K extends string>(resource: NoInfer<ResourceOf<P, Projectable<P, K>>>, policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[]): Projection<Abilities<K>>;
-    withAbilities<P extends object, const K extends string, T extends ResourceOf<P, Projectable<P, K>>>(rows: readonly T[], policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[]): Projection<WithAbilities<T, K>[]>;
+    allows<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K, PolicyUser<C>>): Promise<boolean>;
+    denies<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K, PolicyUser<C>>): Promise<boolean>;
+    authorize<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K, PolicyUser<C>>): Promise<void>;
+    inspect<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K, PolicyUser<C>>): Promise<PolicyResponse>;
+    abilities<P extends object, const K extends string, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, names: readonly CheckAbility<P, K, ResourcelessAbility<P, PolicyUser<C>>, `needs its resource — gate.abilities(resource, Policy, ['${K}'])`, PolicyUser<C>>[]): Projection<Abilities<K>>;
+    abilities<P extends object, const K extends string, C extends PolicyClass<P> = PolicyClass<P>>(resource: NoInfer<ResourceOf<P, Projectable<P, K, PolicyUser<C>>, PolicyUser<C>>>, policy: C & PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P, PolicyUser<C>>, never, PolicyUser<C>>[]): Projection<Abilities<K>>;
+    withAbilities<P extends object, const K extends string, T extends ResourceOf<P, Projectable<P, K, PolicyUser<C>>, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(rows: readonly T[], policy: C & PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P, PolicyUser<C>>, never, PolicyUser<C>>[]): Projection<WithAbilities<T, K>[]>;
 }
 // GuardAccountSessions
 export type GuardAccountSessions<U> = Omit<AccountSessions, 'end' | 'endEveryone'> & {
@@ -738,10 +738,12 @@ export declare class PolicyResponse {
 }
 // PolicyResult
 export type PolicyResult = boolean | PolicyResponse;
+// PolicyUser
+export type PolicyUser<C> = C extends unknown ? ('guard' extends keyof C ? GuardUser<C['guard' & keyof C]> : AuthUser) : never;
 // ProjectableAbility
-export type ProjectableAbility<P> = {
-    [K in AbilityOf<P>]: ResourcesOf<P, K> extends [] | [unknown] | [unknown?] ? K : never;
-}[AbilityOf<P>];
+export type ProjectableAbility<P, U = AuthUser> = {
+    [K in AbilityOf<P, U>]: ResourcesOf<P, K, U> extends [] | [unknown] | [unknown?] ? K : never;
+}[AbilityOf<P, U>];
 // Projection
 export interface Projection<T> extends PromiseLike<T> {
     (): Promise<T>;
@@ -831,13 +833,13 @@ export type RequestEmailChangeError = PasswordCheckError | {
     readonly kind: 'duplicate';
 };
 // ResourceOf
-export type ResourceOf<P, K extends keyof P> = (K extends unknown ? Contravariant<ResourcesOf<P, K> extends [] ? unknown : ResourcesOf<P, K> extends [(infer R)?] ? R : never> : never) extends (resource: infer R) => void ? R : never;
+export type ResourceOf<P, K extends keyof P, U = AuthUser> = (K extends unknown ? Contravariant<ResourcesOf<P, K, U> extends [] ? unknown : ResourcesOf<P, K, U> extends [(infer R)?] ? R : never> : never) extends (resource: infer R) => void ? R : never;
 // ResourcelessAbility
-export type ResourcelessAbility<P> = {
-    [K in AbilityOf<P>]: [] extends ResourcesOf<P, K> ? K : never;
-}[AbilityOf<P>];
+export type ResourcelessAbility<P, U = AuthUser> = {
+    [K in AbilityOf<P, U>]: [] extends ResourcesOf<P, K, U> ? K : never;
+}[AbilityOf<P, U>];
 // ResourcesOf
-export type ResourcesOf<P, K extends keyof P> = P[K] extends (user: AuthUser, ...resources: infer R) => unknown ? R : never;
+export type ResourcesOf<P, K extends keyof P, U = AuthUser> = P[K] extends (user: U, ...resources: infer R) => unknown ? R : never;
 // SIGN_INS_TABLE
 export declare const SIGN_INS_TABLE = "sign_ins";
 // ScryptOptions
@@ -1094,11 +1096,19 @@ export declare function allow(): PolicyResponse;
 export declare function authenticate(guard: 'api'): MiddlewareClass<{}, Authenticated & WithToken>;
 export declare function authenticate<const N extends RouteNameInput = never>(options?: AuthenticateOptions<N>): MiddlewareClass<{}, Authenticated>;
 // can
-export declare function can<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resource: ResourcesOf<P, K> extends [] ? [] : [resource: `"${K}" needs its resource: a bound route parameter's name, or (ctx) => resource`]): (ctx: HttpContext<Authenticated>, resolve: ClassResolver) => Promise<boolean>;
-export declare function can<P extends object, K extends AbilityOf<P>, const N extends string>(policy: PolicyClass<P>, ability: K, param: N): (ctx: HttpContext<Authenticated, {
-    [Name in N]: ResourcesOf<P, K>[0];
+export declare function can<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resource: ResourcesOf<P, K, PolicyUser<C>> extends [] ? [] : [resource: `"${K}" needs its resource: a bound route parameter's name, or (ctx) => resource`]): (ctx: HttpContext<{
+    readonly user: PolicyUser<C>;
 }>, resolve: ClassResolver) => Promise<boolean>;
-export declare function can<P extends object, K extends AbilityOf<P>, TParams extends object>(policy: PolicyClass<P>, ability: K, resource: (ctx: HttpContext<Authenticated, TParams>) => ResourcesOf<P, K>[0]): (ctx: HttpContext<Authenticated, TParams>, resolve: ClassResolver) => Promise<boolean>;
+export declare function can<P extends object, K extends AbilityOf<P, PolicyUser<C>>, const N extends string, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, param: N): (ctx: HttpContext<{
+    readonly user: PolicyUser<C>;
+}, {
+    [Name in N]: ResourcesOf<P, K, PolicyUser<C>>[0];
+}>, resolve: ClassResolver) => Promise<boolean>;
+export declare function can<P extends object, K extends AbilityOf<P, PolicyUser<C>>, TParams extends object, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, resource: (ctx: HttpContext<{
+    readonly user: PolicyUser<C>;
+}, TParams>) => ResourcesOf<P, K, PolicyUser<C>>[0]): (ctx: HttpContext<{
+    readonly user: PolicyUser<C>;
+}, TParams>, resolve: ClassResolver) => Promise<boolean>;
 // clearPasswordCheck
 export declare function clearPasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope): Promise<void>;
 // combineFactors
@@ -1158,7 +1168,7 @@ export type ChallengeError = {
     readonly retryAfterSeconds: number;
 };
 // CheckAbility
-export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string> = string extends K ? Allowed : K extends Allowed ? K : K extends AbilityOf<P> ? K extends ProjectableAbility<P> ? `'${K}' ${Missing}` : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
+export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string, U = AuthUser> = string extends K ? Allowed : K extends Allowed ? K : K extends AbilityOf<P, U> ? K extends ProjectableAbility<P, U> ? `'${K}' ${Missing}` : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P, U>>}`;
 // ConfirmError
 export type ConfirmError = {
     readonly kind: 'not-started';
@@ -1186,6 +1196,8 @@ interface GuardBaseOptions<U> {
 interface GuardTwoFactorOption<TF> {
     readonly twoFactor: TF;
 }
+// GuardUser
+type GuardUser<G> = [G] extends [undefined] ? AuthUser : [G] extends [UnionToIntersection<G>] ? ([G] extends [GuardDefinition<infer U>] ? U : never) : never;
 // GuestOptions
 export interface GuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
@@ -1193,7 +1205,7 @@ export interface GuestOptions<N extends string = string> {
 // PasskeyAssertion
 export type PasskeyAssertion = object;
 // Projectable
-type Projectable<P, K> = Extract<K, ProjectableAbility<P>>;
+type Projectable<P, K, U> = Extract<K, ProjectableAbility<P, U>>;
 // QrPath
 export interface QrPath {
     readonly size: number;
@@ -1207,6 +1219,8 @@ export type SecondFactorInput = {
 } | {
     readonly passkey: PasskeyAssertion;
 };
+// Takes
+type Takes<M, U> = M extends (user: infer X, ...resources: any[]) => PolicyResult | Promise<PolicyResult> ? ([U] extends [never] ? false : [U] extends [X] ? true : false) : false;
 // TotpSetup
 export interface TotpSetup {
     readonly secret: string;
@@ -1232,6 +1246,8 @@ export declare class TwoFactor {
     disable(password: string): Promise<Result<void, PasswordCheckError>>;
     requireRecentProof(action: string): Promise<void>;
 }
+// UnionToIntersection
+type UnionToIntersection<T> = (T extends unknown ? (value: T) => void : never) extends (value: infer I) => void ? I : never;
 // missing
 declare const missing: unique symbol;
 // passwordHash

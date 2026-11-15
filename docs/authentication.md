@@ -1349,7 +1349,8 @@ guards fails with error [A9](errors.md#server-error-codes) (a 500 whose log line
 
 - the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` on a route of a package guard (`verified()` also refuses a user of a package guard when an app built it by hand);
 - the guard's `confirmedPassword()` on a route of the app, or on one where its own `authenticate()` has not run before it;
-- a package guard's `authenticate()` or `guest()` that another middleware calls, after a policy of the app decided on the request.
+- a guard's `authenticate()` or `guest()`, the app's included, that another middleware calls after a policy of another guard decided on the request;
+- the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` or `verified()` after a policy of a package guard decided on a public route.
 
 The guard of a route is known before its first middleware runs, global middleware included: the router reads it from the route's whole
 list (global, group, route), where `authenticate()`, `authenticate('api')`, `OfficeGuard.authenticate()` and `OfficeGuard.guest()` name it.
@@ -1361,8 +1362,8 @@ A route has one guard: put the routes of a package guard in a group of their own
 A policy of the app on a route of a package guard answers no, never yes. A global middleware that takes the no and goes on (`allows()`,
 a projection) therefore leaves the login page of a package working; one that awaits `authorize()` ends the request with a 403 before the
 login controller runs. Neither is what you want:
-[put it on the app's routes](authorization.md#middleware-that-asks-a-policy). Decide a route of a package guard on `ctx.user` with
-[`describeAccess()`](authorization.md#open-routes-and-bindings).
+[put it on the app's routes](authorization.md#middleware-that-asks-a-policy). A package decides its own routes with policies of its guard, `can(PagePolicy, 'edit', …)`, see
+[policies of a guard](authorization.md#policies-of-a-guard).
 
 > [!NOTE]
 > The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or
