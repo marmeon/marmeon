@@ -1972,6 +1972,8 @@ export interface EndedSessions {
     readonly removed: number;
     readonly accessTokens: number;
 }
+// EventConstructor
+type EventConstructor = abstract new (...parameters: any[]) => object;
 // EveryoneEnded
 export interface EveryoneEnded {
     readonly accounts: number;
@@ -2020,12 +2022,40 @@ export interface GuardDefinition<U> {
         readonly user: U;
     }, {}>;
     throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
+    readonly events: GuardEvents<U>;
     register(container: Container): void;
+}
+// GuardEventClass
+export type GuardEventClass<C extends EventConstructor, U> = (new (...parameters: GuardParameters<ConstructorParameters<C>, U>) => Swapped<InstanceType<C>, U> & {
+    readonly [guardEvent]: true;
+}) & GuardStatics<C, U>;
+// GuardEvents
+export interface GuardEvents<U = AuthUser> {
+    readonly SignedIn: GuardEventClass<typeof SignedIn, U>;
+    readonly SignedOut: GuardEventClass<typeof SignedOut, U>;
+    readonly SignInFailed: GuardEventClass<typeof SignInFailed, U>;
+    readonly SignInLockedOut: GuardEventClass<typeof SignInLockedOut, U>;
+    readonly PasswordChanged: GuardEventClass<typeof PasswordChanged, U>;
+    readonly PasswordReset: GuardEventClass<typeof PasswordReset, U>;
+    readonly RememberTokenReused: GuardEventClass<typeof RememberTokenReused, U>;
+    readonly TwoFactorEnabled: GuardEventClass<typeof TwoFactorEnabled, U>;
+    readonly TwoFactorDisabled: GuardEventClass<typeof TwoFactorDisabled, U>;
+    readonly RecoveryCodesGenerated: GuardEventClass<typeof RecoveryCodesGenerated, U>;
+    readonly RecoveryCodeUsed: GuardEventClass<typeof RecoveryCodeUsed, U>;
+    readonly TwoFactorChallengeFailed: GuardEventClass<typeof TwoFactorChallengeFailed, U>;
+    readonly PasskeyRegistered: GuardEventClass<typeof PasskeyRegistered, U>;
+    readonly PasskeyRemoved: GuardEventClass<typeof PasskeyRemoved, U>;
+    readonly PasskeyCloneSuspected: GuardEventClass<typeof PasskeyCloneSuspected, U>;
+    readonly PasskeySignInFailed: GuardEventClass<typeof PasskeySignInFailed, U>;
 }
 // GuardGuestOptions
 export interface GuardGuestOptions<N extends string = string> {
     readonly homeRoute: CheckRouteName<N>;
 }
+// GuardParameters
+type GuardParameters<P extends readonly unknown[], U> = {
+    [I in keyof P]: [P[I]] extends [AuthUser] ? U : [P[I]] extends [AuthUser | undefined] ? ([P[I]] extends [undefined] ? P[I] : U | undefined) : P[I];
+};
 // GuardPasswordBroker
 export type GuardPasswordBroker<U> = Omit<PasswordBroker, 'createToken' | 'deviceCookie' | 'reset'> & {
     createToken(email: string): Promise<Result<{
@@ -2061,6 +2091,16 @@ export interface GuardSlotBase<U extends {
         readonly user: U;
     }, {}>;
 }
+// GuardStatics
+type GuardStatics<C, U> = C extends {
+    readonly event: infer E extends string;
+    readonly schema: StandardSchemaV1<infer I, infer O>;
+} ? {
+    readonly event: `${string}.${E}`;
+    readonly schema: StandardSchemaV1<Swapped<I, U>, Omit<Swapped<O, U>, 'guard'> & {
+        readonly guard: string;
+    }>;
+} : unknown;
 // GuardTwoFactor
 export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
     challenge(input: SecondFactorInput): Promise<Result<U, ChallengeError>>;
@@ -2087,6 +2127,78 @@ export type IdOf<U> = U extends {
 } ? Id : string | number;
 // PasskeyAssertion
 export type PasskeyAssertion = object;
+// PasskeyCloneSuspected
+export declare class PasskeyCloneSuspected {
+    #private;
+    static readonly event = "auth.passkey-clone-suspected";
+    static readonly schema: StandardSchemaV1<PasskeyCloneSuspectedPayload>;
+    readonly user: AuthUser;
+    readonly passkeyId: number;
+    get userId(): AuthUserId;
+}
+// PasskeyCloneSuspectedPayload
+export interface PasskeyCloneSuspectedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    passkeyId: number;
+}
+// PasskeyRegistered
+export declare class PasskeyRegistered {
+    #private;
+    static readonly event = "auth.passkey-registered";
+    static readonly schema: StandardSchemaV1<PasskeyRegisteredPayload>;
+    readonly user: AuthUser;
+    readonly name: string;
+    get userId(): AuthUserId;
+}
+// PasskeyRegisteredPayload
+export interface PasskeyRegisteredPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    name: string;
+}
+// PasskeyRemoved
+export declare class PasskeyRemoved {
+    #private;
+    static readonly event = "auth.passkey-removed";
+    static readonly schema: StandardSchemaV1<PasskeyRemovedInput, PasskeyRemovedPayload>;
+    readonly user: AuthUser;
+    readonly via: 'user' | 'reset';
+    get userId(): AuthUserId;
+}
+// PasskeyRemovedInput
+export interface PasskeyRemovedInput extends Omit<PasskeyRemovedPayload, 'via'> {
+    via?: 'user' | 'reset' | undefined;
+}
+// PasskeyRemovedPayload
+export interface PasskeyRemovedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    via: 'user' | 'reset';
+}
+// PasskeySignInFailed
+export declare class PasskeySignInFailed {
+    #private;
+    static readonly event = "auth.passkey-sign-in-failed";
+    static readonly schema: StandardSchemaV1<PasskeySignInFailedInput, PasskeySignInFailedPayload>;
+    readonly user: AuthUser;
+    readonly at: Date;
+    readonly ip: string | null;
+    readonly userAgent: string | null;
+    get userId(): AuthUserId;
+}
+// PasskeySignInFailedInput
+export interface PasskeySignInFailedInput extends Omit<PasskeySignInFailedPayload, 'at'> {
+    at?: Date | string | undefined;
+}
+// PasskeySignInFailedPayload
+export interface PasskeySignInFailedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+}
 // PasswordBroker
 export declare class PasswordBroker {
     #private;
@@ -2101,6 +2213,12 @@ export declare class PasswordBroker {
         readonly kind: 'invalid-token';
     }>>;
 }
+// PasswordChanged
+export declare class PasswordChanged {
+    #private;
+    readonly user: AuthUser;
+    readonly revokedTokens: number;
+}
 // PasswordCheckError
 export type PasswordCheckError = {
     readonly kind: 'invalid-password';
@@ -2109,6 +2227,12 @@ export type PasswordCheckError = {
 export interface PasswordCheckScope {
     readonly session: string;
     readonly typed: boolean;
+}
+// PasswordReset
+export declare class PasswordReset {
+    #private;
+    readonly user: AuthUser;
+    readonly revokedTokens: number;
 }
 // PasswordThrottled
 export interface PasswordThrottled {
@@ -2120,6 +2244,59 @@ export interface PasswordThrottled {
 export interface QrPath {
     readonly size: number;
     readonly path: string;
+}
+// RecoveryCodeUsed
+export declare class RecoveryCodeUsed {
+    #private;
+    static readonly event = "auth.recovery-code-used";
+    static readonly schema: StandardSchemaV1<RecoveryCodeUsedPayload>;
+    readonly user: AuthUser;
+    readonly remaining: number;
+    get userId(): AuthUserId;
+}
+// RecoveryCodeUsedPayload
+export interface RecoveryCodeUsedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    remaining: number;
+}
+// RecoveryCodesGenerated
+export declare class RecoveryCodesGenerated {
+    #private;
+    static readonly event = "auth.recovery-codes-generated";
+    static readonly schema: StandardSchemaV1<RecoveryCodesGeneratedPayload>;
+    readonly user: AuthUser;
+    get userId(): AuthUserId;
+}
+// RecoveryCodesGeneratedPayload
+export interface RecoveryCodesGeneratedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+}
+// RememberTokenReused
+export declare class RememberTokenReused {
+    #private;
+    static readonly event = "auth.remember-token-reused";
+    static readonly schema: StandardSchemaV1<RememberTokenReusedInput, RememberTokenReusedPayload>;
+    readonly user: AuthUser;
+    readonly at: Date;
+    readonly ip: string | null;
+    readonly userAgent: string | null;
+    readonly sessionsEnded: boolean;
+    get userId(): AuthUserId;
+}
+// RememberTokenReusedInput
+export interface RememberTokenReusedInput extends Omit<RememberTokenReusedPayload, 'at'> {
+    at: Date | string;
+}
+// RememberTokenReusedPayload
+export interface RememberTokenReusedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+    sessionsEnded: boolean;
 }
 // SecondFactor
 export type SecondFactor = 'totp' | 'passkey';
@@ -2142,12 +2319,69 @@ export interface SignIn {
     readonly userAgent: string | undefined;
     readonly device: DeviceDescription;
 }
+// SignInFailed
+export declare class SignInFailed {
+    #private;
+    readonly identifier: string;
+    readonly user: AuthUser | undefined;
+}
+// SignInLockedOut
+export declare class SignInLockedOut {
+    #private;
+    readonly identifier: string;
+    readonly ip: string | undefined;
+    readonly scope: 'client' | 'account';
+}
 // SignInOptions
 export interface SignInOptions {
     readonly remember?: boolean;
     readonly ip?: string | undefined;
     readonly userAgent?: string | undefined;
 }
+// SignInVia
+export type SignInVia = 'attempt' | 'app' | 'remember' | 'passkey';
+// SignedIn
+export declare class SignedIn {
+    #private;
+    static readonly event = "auth.signed-in";
+    static readonly schema: StandardSchemaV1<SignedInInput, SignedInPayload>;
+    readonly user: AuthUser;
+    readonly remember: boolean;
+    readonly at: Date;
+    readonly via: SignInVia;
+    readonly ip: string | null;
+    readonly userAgent: string | null;
+    constructor(user: AuthUser, details?: {
+        readonly remember?: boolean;
+        readonly via?: SignInVia;
+        readonly ip?: string | undefined;
+        readonly userAgent?: string | undefined;
+    }, at?: Date);
+    get userId(): AuthUserId;
+}
+// SignedInInput
+export interface SignedInInput extends Omit<SignedInPayload, 'at'> {
+    at: Date | string;
+}
+// SignedInPayload
+export interface SignedInPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    remember: boolean;
+    via: SignInVia;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+}
+// SignedOut
+export declare class SignedOut {
+    #private;
+    readonly user: AuthUser;
+}
+// Swapped
+type Swapped<T, U> = {
+    readonly [K in keyof T]: K extends 'user' ? (undefined extends T[K] ? U | undefined : U) : K extends 'userId' ? IdOf<U> : T[K];
+};
 // TotpSetup
 export interface TotpSetup {
     readonly secret: string;
@@ -2173,6 +2407,66 @@ export declare class TwoFactor {
     disable(password: string): Promise<Result<void, PasswordCheckError>>;
     requireRecentProof(action: string): Promise<void>;
 }
+// TwoFactorChallengeFailed
+export declare class TwoFactorChallengeFailed {
+    #private;
+    static readonly event = "auth.two-factor-challenge-failed";
+    static readonly schema: StandardSchemaV1<TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload>;
+    readonly user: AuthUser;
+    readonly at: Date;
+    readonly during: 'sign-in' | 'step-up' | 'confirm';
+    readonly ip: string | null;
+    readonly userAgent: string | null;
+    constructor(user: AuthUser, details?: {
+        readonly ip?: string | undefined;
+        readonly userAgent?: string | undefined;
+        readonly during?: 'sign-in' | 'step-up' | 'confirm';
+    }, at?: Date);
+    get userId(): AuthUserId;
+}
+// TwoFactorChallengeFailedInput
+export interface TwoFactorChallengeFailedInput extends Omit<TwoFactorChallengeFailedPayload, 'at'> {
+    at: Date | string;
+}
+// TwoFactorChallengeFailedPayload
+export interface TwoFactorChallengeFailedPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+    during: 'sign-in' | 'step-up' | 'confirm';
+}
+// TwoFactorDisabled
+export declare class TwoFactorDisabled {
+    #private;
+    static readonly event = "auth.two-factor-disabled";
+    static readonly schema: StandardSchemaV1<TwoFactorDisabledPayload>;
+    readonly user: AuthUser;
+    readonly via: 'user' | 'operator' | 'reset';
+    get userId(): AuthUserId;
+}
+// TwoFactorDisabledPayload
+export interface TwoFactorDisabledPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    via: 'user' | 'operator' | 'reset';
+}
+// TwoFactorEnabled
+export declare class TwoFactorEnabled {
+    #private;
+    static readonly event = "auth.two-factor-enabled";
+    static readonly schema: StandardSchemaV1<TwoFactorEnabledPayload>;
+    readonly user: AuthUser;
+    readonly factor: 'totp' | 'passkey';
+    get userId(): AuthUserId;
+}
+// TwoFactorEnabledPayload
+export interface TwoFactorEnabledPayload {
+    readonly guard?: never;
+    userId: AuthUserId;
+    factor: 'totp' | 'passkey';
+}
 // TwoFactorGuardSlot
 export interface TwoFactorGuardSlot<U extends {
     readonly id: string | number;
@@ -2191,6 +2485,8 @@ export type UserOf<Types> = Types extends {
         readonly id: string | number;
     };
 } ? U : AuthTypesNotDeclared;
+// guardEvent
+declare const guardEvent: unique symbol;
 // missing
 declare const missing: unique symbol;
 ```
