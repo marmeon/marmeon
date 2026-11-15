@@ -55,7 +55,8 @@ export function confirmedSecondFactorFor(whose: MiddlewareGuard, loginRoute: str
       const user = await this.#guard.auth().user();
       if (!user) {
         if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: VARY });
-        // Past `requireGuard` only a middleware between `authenticate()` and here can end the sign-in; a package guard has no login route of its own, so a browser gets the 401 page instead of a redirect.
+        // Past `requireGuard` only a middleware in between can have ended the sign-in. A package guard's middleware gets no login page
+        // of its own and must never fall back to the app's `auth.login`: a browser gets the 401 page.
         if (loginRoute === undefined) throw new HttpError(401, undefined, VARY);
         return this.#redirect(ctx, loginRoute);
       }

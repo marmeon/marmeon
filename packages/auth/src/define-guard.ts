@@ -383,15 +383,15 @@ export class Guard {
   }
 
   authenticate(options: GuardAuthenticateOptions): MiddlewareClass<{}, { readonly user: unknown }> {
-    return authenticateFor(this.#acting, this.#route('authenticate', 'loginRoute', options?.loginRoute)) as never;
+    return authenticateFor(this.#acting, this.#route('authenticate', 'loginRoute', options?.loginRoute, true)) as never;
   }
 
   guest(options: GuardGuestOptions): MiddlewareClass<{}, {}> {
-    return guestFor(this.#acting, this.#route('guest', 'homeRoute', options?.homeRoute), false);
+    return guestFor(this.#acting, this.#route('guest', 'homeRoute', options?.homeRoute, true), false);
   }
 
   confirmedPassword(options: GuardConfirmedPasswordOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
-    return confirmedPasswordFor(this.#acting, this.#route('confirmedPassword', 'confirmRoute', options?.confirmRoute), options) as never;
+    return confirmedPasswordFor(this.#acting, this.#route('confirmedPassword', 'confirmRoute', options?.confirmRoute, true), options) as never;
   }
 
   throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}> {
@@ -401,11 +401,14 @@ export class Guard {
 
   twoFactor(options: GuardTwoFactorOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
     this.#requireTwoFactor('twoFactor');
+    this.#route('twoFactor', 'setup', options?.setup, false);
+    this.#route('twoFactor', 'verify', options?.verify, false);
     return twoFactorFor(this.#acting, undefined, options) as never;
   }
 
   confirmedSecondFactor(options: GuardConfirmedSecondFactorOptions): MiddlewareClass<{ readonly user: unknown }, {}> {
     this.#requireTwoFactor('confirmedSecondFactor');
+    this.#route('confirmedSecondFactor', 'verify', options?.verify, false);
     return confirmedSecondFactorFor(this.#acting, undefined, options) as never;
   }
 
@@ -415,8 +418,9 @@ export class Guard {
   }
 
   /** The route a guard's middleware sends to: the app's defaults are the app's pages, so a guard names its own. */
-  #route(method: string, option: string, route: unknown): string {
-    if (typeof route !== 'string' || route === '') throw new TypeError(`Guard '${this.name}'.${method}() needs \`${option}\`, the named route of the guard's own page: the app's default page belongs to the app.`);
+  #route(method: string, option: string, route: unknown, appHasDefault: boolean): string {
+    const why = appHasDefault ? ": the app's default page belongs to the app" : '';
+    if (typeof route !== 'string' || route === '') throw new TypeError(`Guard '${this.name}'.${method}() needs \`${option}\`, the named route of the guard's own page${why}.`);
     return route;
   }
 

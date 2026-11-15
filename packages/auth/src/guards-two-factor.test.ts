@@ -150,6 +150,9 @@ const routes = openRoutes((Route) => {
   Route.middleware(OfficeGuard.guest(OFFICE)).middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify' }) as never).get('/r/office-nobody', () => 'office nobody');
 });
 
+// The app's error page for a 401, as the page payload names it.
+const ERROR_PAGE = /"component":"system\/errors\/Error","props":\{"errors":\{\},"status":401,"title":"Unauthorized"/;
+
 type Who = 'app' | 'office';
 
 async function boot() {
@@ -525,10 +528,24 @@ describe('the middleware of a package guard\'s factor', () => {
         await b.send('office', 'login');
         const response = await b.call('GET', path, { accept });
         expect([response.status, response.headers.get('location')], `${path} ${accept}`).toEqual([401, null]);
+        expect(response.headers.get('vary'), `${path} ${accept}`).toContain('X-Requested-With');
         if (accept === 'application/json') expect(await response.json()).toEqual({ message: 'Unauthenticated.' });
-        else expect(response.headers.get('content-type'), `${path} ${accept}`).toContain('text/html');
+        else {
+          expect(response.headers.get('content-type'), `${path} ${accept}`).toContain('text/html');
+          expect(await response.text(), `${path} ${accept}`).toMatch(ERROR_PAGE);
+        }
       }
     }
+  });
+
+  it('needs the guard\'s own pages, also from a caller TypeScript does not check', () => {
+    const asked = OfficeGuard as unknown as { twoFactor(options?: object): unknown; confirmedSecondFactor(options?: object): unknown };
+    expect(() => asked.twoFactor()).toThrow(/twoFactor\(\) needs `setup`, the named route of the guard's own page\.$/);
+    expect(() => asked.twoFactor({})).toThrow(/twoFactor\(\) needs `setup`/);
+    expect(() => asked.twoFactor({ setup: 'office.setup' })).toThrow(/twoFactor\(\) needs `verify`/);
+    expect(() => asked.twoFactor({ verify: 'office.verify' })).toThrow(/twoFactor\(\) needs `setup`/);
+    expect(() => asked.confirmedSecondFactor()).toThrow(/confirmedSecondFactor\(\) needs `verify`/);
+    expect(() => asked.confirmedSecondFactor({})).toThrow(/confirmedSecondFactor\(\) needs `verify`/);
   });
 
   it('opens a route that changes factors to a guard\'s user without one, and refuses a stale session of one with one', async () => {
