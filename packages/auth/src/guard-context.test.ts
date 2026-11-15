@@ -87,8 +87,8 @@ describe('the middleware of a package guard', () => {
     'authenticate()': OfficeGuard.authenticate({ loginRoute: 'a' as never }) as Injectable,
     'guest()': OfficeGuard.guest({ homeRoute: 'a' as never }) as Injectable,
     'confirmedPassword()': OfficeGuard.confirmedPassword({ confirmRoute: 'a' as never }) as Injectable,
-    'twoFactor()': OfficeGuard.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' } as never) as Injectable,
-    'confirmedSecondFactor()': OfficeGuard.confirmedSecondFactor({ verify: 'b', loginRoute: 'c' } as never) as Injectable,
+    'twoFactor()': OfficeGuard.twoFactor({ setup: 'a', verify: 'b' } as never) as Injectable,
+    'confirmedSecondFactor()': OfficeGuard.confirmedSecondFactor({ verify: 'b' } as never) as Injectable,
   };
 
   it.each(Object.entries(middleware))('%s is injected with its own guard\'s context, never the app\'s, and nothing a guard owns besides', (_name, Class) => {

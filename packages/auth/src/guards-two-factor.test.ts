@@ -83,6 +83,19 @@ async function act(auth: GuardAuth<{ readonly id: number }>, factor: GuardTwoFac
   }
 }
 
+/** Ends the guard's sign-in in the middle of a stack, as only a middleware between `authenticate()` and the factor middleware can. */
+class OfficeSignOut {
+  static readonly inject = [OfficeAuth] as const;
+  readonly #auth: OfficeAuth;
+  constructor(auth: OfficeAuth) {
+    this.#auth = auth;
+  }
+  async handle(_ctx: HttpContext, next: () => Promise<Response>): Promise<Response> {
+    await this.#auth.signOut();
+    return next();
+  }
+}
+
 class AppAct extends Controller {
   readonly #auth: Auth;
   readonly #factor: TwoFactor;
@@ -111,7 +124,7 @@ class OfficeAct extends Controller {
 }
 
 const OFFICE = { loginRoute: 'office.login', homeRoute: 'office.home', confirmRoute: 'office.confirm' } as const;
-const OFFICE_FACTOR = { setup: 'office.setup', verify: 'office.verify', loginRoute: 'office.login' } as const;
+const OFFICE_FACTOR = { setup: 'office.setup', verify: 'office.verify' } as const;
 
 const routes = openRoutes((Route) => {
   Route.post('/app', AppAct);
@@ -123,15 +136,22 @@ const routes = openRoutes((Route) => {
   const officeOnly = Route.middleware(OfficeGuard.authenticate(OFFICE));
   appOnly.middleware(twoFactor({ setup: 'app.setup', verify: 'app.verify' })).get('/r/app-area', () => 'app area');
   officeOnly.middleware(OfficeGuard.twoFactor(OFFICE_FACTOR)).get('/r/office-area', () => 'office area');
-  officeOnly.middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify', loginRoute: 'office.login' })).get('/r/office-confirmed', () => 'office confirmed');
+  officeOnly.middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify' })).get('/r/office-confirmed', () => 'office confirmed');
+  officeOnly.middleware(OfficeSignOut as never).middleware(OfficeGuard.twoFactor(OFFICE_FACTOR)).get('/r/office-signed-out-two-factor', () => 'signed out');
+  officeOnly.middleware(OfficeSignOut as never).middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify' })).get('/r/office-signed-out-confirmed', () => 'signed out');
   // The types refuse these mixtures; the casts are an untyped caller's.
   officeOnly.middleware(twoFactor({ setup: 'app.setup', verify: 'app.verify' }) as never).get('/r/office-app-two-factor', () => 'wrong guard');
   officeOnly.middleware(confirmedSecondFactor({ verify: 'app.verify' }) as never).get('/r/office-app-confirmed', () => 'wrong guard');
   appOnly.middleware(OfficeGuard.twoFactor(OFFICE_FACTOR) as never).get('/r/app-office-two-factor', () => 'wrong guard');
   Route.middleware(OfficeGuard.twoFactor(OFFICE_FACTOR) as never).get('/r/office-without-authenticate', () => 'no stamp');
+  // The router stamps `office` ahead of everything here, but the guard's authenticate() has not run when its factor middleware does.
+  Route.middleware(OfficeGuard.twoFactor(OFFICE_FACTOR) as never).middleware(OfficeGuard.authenticate(OFFICE)).get('/r/office-factor-first', () => 'no authenticate yet');
   // Behind the guard's guest(): the route is the guard's, but its authenticate() never ran.
-  Route.middleware(OfficeGuard.guest(OFFICE)).middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify', loginRoute: 'office.login' }) as never).get('/r/office-nobody', () => 'office nobody');
+  Route.middleware(OfficeGuard.guest(OFFICE)).middleware(OfficeGuard.confirmedSecondFactor({ verify: 'office.verify' }) as never).get('/r/office-nobody', () => 'office nobody');
 });
+
+// The app's error page for a 401, as the page payload names it.
+const ERROR_PAGE = /"component":"system\/errors\/Error","props":\{"errors":\{\},"status":401,"title":"Unauthorized"/;
 
 type Who = 'app' | 'office';
 
@@ -346,7 +366,7 @@ describe('two-factor authentication of a package guard', () => {
     await both.send('office', 'challenge', { code: twoFactorCode(office1.secret, inSeconds(30)) });
     await both.send('app', 'login');
     await both.send('app', 'challenge', { code: twoFactorCode(app1.secret, inSeconds(30)) });
-    for (const path of ['/r/office-app-two-factor', '/r/office-app-confirmed', '/r/app-office-two-factor', '/r/office-without-authenticate']) {
+    for (const path of ['/r/office-app-two-factor', '/r/office-app-confirmed', '/r/app-office-two-factor', '/r/office-without-authenticate', '/r/office-factor-first']) {
       await expectA9(both, booted.failures, path);
     }
     // The guard's guest() lets nobody through; the factor middleware after it finds no authenticate() of the guard.
@@ -485,7 +505,7 @@ describe('the middleware of a package guard\'s factor', () => {
     expect(await (await stale.call('GET', '/r/office-area')).json()).toEqual({ error: 'two_factor_unverified' });
   });
 
-  it('sends nobody to the guard\'s login page, not the app\'s, on a route of confirmedSecondFactor() or twoFactor()', async () => {
+  it('sends nobody to the guard\'s login page, not the app\'s, on a route of confirmedSecondFactor() or twoFactor(): the redirect is authenticate()\'s', async () => {
     const booted = await boot();
     const nobody = booted.browser();
     const onlyApp = booted.browser();
@@ -497,6 +517,35 @@ describe('the middleware of a package guard\'s factor', () => {
       expect((await nobody.call('GET', path)).status, path).toBe(401);
       expect((await onlyApp.call('GET', path, { accept: 'text/html' })).headers.get('location'), path).toContain('/office-login');
     }
+  });
+
+  it('refuses a guard\'s user signed out after authenticate() with 401 and no redirect, in front of confirmedSecondFactor() or twoFactor()', async () => {
+    const booted = await boot();
+    for (const path of ['/r/office-signed-out-two-factor', '/r/office-signed-out-confirmed']) {
+      // The request signs the user out, so each one needs its own sign-in.
+      for (const accept of ['text/html', 'application/json']) {
+        const b = booted.browser();
+        await b.send('office', 'login');
+        const response = await b.call('GET', path, { accept });
+        expect([response.status, response.headers.get('location')], `${path} ${accept}`).toEqual([401, null]);
+        expect(response.headers.get('vary'), `${path} ${accept}`).toContain('X-Requested-With');
+        if (accept === 'application/json') expect(await response.json()).toEqual({ message: 'Unauthenticated.' });
+        else {
+          expect(response.headers.get('content-type'), `${path} ${accept}`).toContain('text/html');
+          expect(await response.text(), `${path} ${accept}`).toMatch(ERROR_PAGE);
+        }
+      }
+    }
+  });
+
+  it('needs the guard\'s own pages, also from a caller TypeScript does not check', () => {
+    const asked = OfficeGuard as unknown as { twoFactor(options?: object): unknown; confirmedSecondFactor(options?: object): unknown };
+    expect(() => asked.twoFactor()).toThrow(/twoFactor\(\) needs `setup`, the named route of the guard's own page\.$/);
+    expect(() => asked.twoFactor({})).toThrow(/twoFactor\(\) needs `setup`/);
+    expect(() => asked.twoFactor({ setup: 'office.setup' })).toThrow(/twoFactor\(\) needs `verify`/);
+    expect(() => asked.twoFactor({ verify: 'office.verify' })).toThrow(/twoFactor\(\) needs `setup`/);
+    expect(() => asked.confirmedSecondFactor()).toThrow(/confirmedSecondFactor\(\) needs `verify`/);
+    expect(() => asked.confirmedSecondFactor({})).toThrow(/confirmedSecondFactor\(\) needs `verify`/);
   });
 
   it('opens a route that changes factors to a guard\'s user without one, and refuses a stale session of one with one', async () => {
@@ -524,8 +573,8 @@ describe('a guard without two-factor authentication', () => {
 
   it('refuses the middleware of a factor it does not have (A8)', () => {
     const asked = Plain as unknown as { twoFactor(options: object): unknown; confirmedSecondFactor(options: object): unknown };
-    expect(() => asked.twoFactor({ setup: 'a', verify: 'b', loginRoute: 'c' })).toThrow(/\[marmeon:A8\].*twoFactor: TwoFactor/);
-    expect(() => asked.confirmedSecondFactor({ verify: 'b', loginRoute: 'c' })).toThrow(/\[marmeon:A8\]/);
+    expect(() => asked.twoFactor({ setup: 'a', verify: 'b' })).toThrow(/\[marmeon:A8\].*twoFactor: TwoFactor/);
+    expect(() => asked.confirmedSecondFactor({ verify: 'b' })).toThrow(/\[marmeon:A8\]/);
   });
 });
 

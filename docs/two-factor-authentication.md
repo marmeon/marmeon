@@ -414,9 +414,11 @@ Everything is apart from the app's factors, and from the factors of another guar
 | Encrypted secret and recovery code hashes | Bound to the guard as well as to the account: a row copied between the guard's table and the app's table, or another guard's, does not decrypt and matches no code. The app's own secrets and codes are read as before. |
 | Events | None of the app's classes (`TwoFactorEnabled`, `RecoveryCodeUsed`, …): a listener of the app would mail the app's user with the same id. |
 
-The middleware `OfficeGuard.twoFactor({ setup, verify, loginRoute, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify, loginRoute })` act like
+The middleware `OfficeGuard.twoFactor({ setup, verify, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify })` act like
 [`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them, which
 sends a browser request without a user to the guard's login page, never the app's, and answers a JSON request without one with 401.
+They take no `loginRoute`, because the redirect is `authenticate()`'s.
+If a middleware between `authenticate()` and these middleware signs the user out, the request is not redirected. A JSON request gets 401, and a browser gets the [error page](errors.md#your-own-error-page) for 401.
 On a route of another guard, or one without the guard's `authenticate()`, they fail with error [A9](errors.md#server-error-codes), as the app's middleware does on
 a route of the guard.
 
@@ -427,7 +429,7 @@ import { OfficeGuard } from './guard.ts';
 
 export default defineRoutes((Route) => {
   Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))
-    .middleware(OfficeGuard.twoFactor({ setup: 'office.two-factor.setup', verify: 'office.two-factor.verify', loginRoute: 'office.login' }))
+    .middleware(OfficeGuard.twoFactor({ setup: 'office.two-factor.setup', verify: 'office.two-factor.verify' }))
     .get('/office', Dashboard);
 });
 ```

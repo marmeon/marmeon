@@ -446,9 +446,8 @@ export interface GuardConfirmedPasswordOptions<N extends string = string> {
     readonly maxAge?: Duration;
 }
 // GuardConfirmedSecondFactorOptions
-export interface GuardConfirmedSecondFactorOptions<V extends string = string, L extends string = string> {
+export interface GuardConfirmedSecondFactorOptions<V extends string = string> {
     readonly verify: CheckRouteName<V>;
-    readonly loginRoute: CheckRouteName<L>;
 }
 // GuardDefinition
 export interface GuardDefinition<U> {
@@ -525,18 +524,17 @@ export type GuardTwoFactor<U> = Omit<TwoFactor, 'challenge'> & {
 // GuardTwoFactorDefinition
 export interface GuardTwoFactorDefinition<U> {
     readonly TwoFactor: Token<GuardTwoFactor<U>>;
-    twoFactor<const S extends RouteNameInput, const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardTwoFactorOptions<S, V, L>): MiddlewareClass<{
+    twoFactor<const S extends RouteNameInput, const V extends RouteNameInput>(options: GuardTwoFactorOptions<S, V>): MiddlewareClass<{
         readonly user: U;
     }, {}>;
-    confirmedSecondFactor<const V extends RouteNameInput, const L extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V, L>): MiddlewareClass<{
+    confirmedSecondFactor<const V extends RouteNameInput>(options: GuardConfirmedSecondFactorOptions<V>): MiddlewareClass<{
         readonly user: U;
     }, {}>;
 }
 // GuardTwoFactorOptions
-export interface GuardTwoFactorOptions<S extends string = string, V extends string = string, L extends string = string> {
+export interface GuardTwoFactorOptions<S extends string = string, V extends string = string> {
     readonly setup: CheckRouteName<S>;
     readonly verify: CheckRouteName<V>;
-    readonly loginRoute: CheckRouteName<L>;
     readonly maxAge?: Duration;
 }
 // HashConfig
