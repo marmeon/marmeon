@@ -18,6 +18,7 @@ import { SystemDatabase } from '../config/database.ts';
 import { AppStorage } from '../config/storage.ts';
 import { ShareAppProps } from '../middleware/ShareAppProps.ts';
 import bookmarks from '#modules/bookmarks';
+import backOffice from '#modules/back-office';
 
 /**
  * The composition root. It only describes the app: `marmeon` boots it, and tests
@@ -29,7 +30,7 @@ export default defineApplication({
   config: [AppConfig, SystemDatabase, AppStorage],
   // The names and the value format of the example app's partner: the core's lists do not know them.
   redact: { keys: ['iban', 'national_id'], patterns: [/\bwa_live_[a-z0-9]{24}\b/] },
-  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks, webhooks, help, support],
+  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks, webhooks, help, support, backOffice],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {

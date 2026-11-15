@@ -1221,6 +1221,18 @@ it('signs the other browser out', async () => {
 To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
 does that in the starter kit.
 
+## When to use a second guard
+
+A second guard is a second set of people. It has a table of users, sign-ins, a sudo window, limits and events of its own, and an id that means nobody of the app ([guards of a package](#guards-of-a-package)). Define one when:
+
+- **The people differ, and so do their trust and their lifecycle.** The editors of a website and the customers of its portal, or the staff of a back office and the customers of a shop: nobody is both, they are invited and removed by different people, and one group must never be mistaken for the other.
+- **The security rules differ.** The editors need a second factor, may not sign up on their own, have no public password reset or have shorter sessions, and the customers' rules stay as they are.
+- **The package has to work without the app's users.** A package that ships its own back office cannot ask an app for a table of users it may not have.
+
+Do not define one for the same people in two roles. A person who is a customer and an editor is one account of the app with roles, decided by [policies](authorization.md#policies-of-a-guard) on `ctx.user`; a second guard would make that person two accounts with two passwords and two sets of sign-ins.
+
+A package can offer both ways and let the app choose at boot: its own guard for apps that have no such users, and the app's users for apps that do ([using the app's users instead](#using-the-apps-users-instead)). The back office of the web app shows this case, a website with a customer portal: the customers are the app's users, and the editors are the back office's own ([a package with users of its own](package-development.md#a-package-with-users-of-its-own)).
+
 ## Guards of a package
 
 A package whose users are not the app's users, such as a back office with its own staff table, defines a guard of its own. The

@@ -149,6 +149,54 @@ declare module '@marmeon/database' {
       created_at: Timestamp;
     };
     /**
+     * Owned by `back-office`.
+     * Primary key: email.
+     */
+    office_password_reset_tokens: {
+      email: string;
+      token_hash: Secret<string>;
+      created_at: Timestamp;
+    };
+    /**
+     * Owned by `back-office`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: remember_selector.
+     * Foreign key: user_id -> office_users.id (on delete cascade).
+     */
+    office_sign_ins: {
+      id: string;
+      user_id: number;
+      user_agent: string | null;
+      remember_selector: Secret<string | null>;
+      remember_until: Timestamp | null;
+      signed_in_at: Timestamp;
+      last_seen_at: Timestamp;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+      remember_validator_hash: Secret<string | null>;
+      remember_previous_validator_hash: Secret<string | null>;
+      remember_rotated_at: Timestamp | null;
+      remember_created_at: Timestamp | null;
+      remember_fingerprint: string | null;
+    };
+    /**
+     * Owned by `back-office`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: email.
+     */
+    office_users: {
+      id: Generated<number>;
+      name: string;
+      email: string;
+      role: Generated<string>;
+      password: Secret<string>;
+      session_key: Secret<string | null>;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
      * Owned by `auth`.
      * Timestamps.
      * Primary key: id.
@@ -336,6 +384,12 @@ declare module '@marmeon/database' {
     notification_opt_outs: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    office_sign_ins: {
+      user: { kind: 'belongsTo'; table: 'office_users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    office_users: {
+      office_sign_ins: { kind: 'hasMany'; table: 'office_sign_ins'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+    };
     passkeys: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -380,6 +434,9 @@ declare module '@marmeon/database' {
     login_activity: 'user_id';
     notification_opt_outs: 'user_id';
     notifications: 'id';
+    office_password_reset_tokens: 'email';
+    office_sign_ins: 'id';
+    office_users: 'id';
     passkeys: 'id';
     password_reset_tokens: 'email';
     personal_access_tokens: 'id';
@@ -404,6 +461,9 @@ declare module '@marmeon/database' {
     login_activity: 'user-profile';
     notification_opt_outs: 'notifications';
     notifications: 'system';
+    office_password_reset_tokens: 'back-office';
+    office_sign_ins: 'back-office';
+    office_users: 'back-office';
     passkeys: 'auth';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
@@ -421,6 +481,7 @@ declare module '@marmeon/database' {
   interface Modules {
     about: true;
     auth: true;
+    'back-office': true;
     bookmarks: true;
     dashboard: true;
     help: true;
