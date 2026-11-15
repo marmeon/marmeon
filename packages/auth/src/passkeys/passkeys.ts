@@ -13,14 +13,14 @@ import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignIn
 import type { PasswordThrottled } from '../password-throttle.ts';
 import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
-import { GuardContext } from '../guard-context.ts';
+import { GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from '../guard-context.ts';
 import type { GuardNames } from '../guard-names.ts';
 import { NoTwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type TwoFactorState } from '../two-factor/state.ts';
 import type { TwoFactorStore } from '../two-factor/store.ts';
 import { idOf, type AuthUser, type AuthUserId, type Credentials, type UserProvider } from '../user.ts';
 import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
 import { PasskeyConfig } from './config.ts';
-import { PasskeyStore, type PasskeyRecord } from './store.ts';
+import { PASSKEY_COLUMNS, PasskeyStore, type PasskeyRecord } from './store.ts';
 import {
   authenticationOptions,
   registrationOptions,
@@ -99,6 +99,17 @@ export interface PasskeySummary {
  * devices' sessions, and so does removing one. Every failure refuses.
  */
 export class Passkeys {
+  /** @internal Read by `defineGuard()`, which takes this class as its `passkeys` option. */
+  static readonly [GUARD_FEATURE] = 'passkeys';
+
+  /** @internal What `defineGuard()` builds a guard's passkey store and readiness check from, without importing this folder. */
+  static readonly [GUARD_PASSKEYS]: GuardPasskeyKit = {
+    config: PasskeyConfig,
+    columns: PASSKEY_COLUMNS,
+    isStore: (store) => store instanceof PasskeyStore,
+    store: (connections, clock, tables) => new PasskeyStore(connections, clock, { tables }),
+  };
+
   readonly #guard: GuardContext;
   readonly #names: GuardNames;
   readonly #auth: Auth;

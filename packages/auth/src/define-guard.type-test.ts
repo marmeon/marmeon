@@ -4,8 +4,9 @@ import type { MiddlewareClass } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth, AttemptError } from './auth.ts';
-import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardDefinition, type GuardOptions, type GuardPasswordBroker, type GuardTwoFactor, type GuardTwoFactorDefinition } from './define-guard.ts';
+import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardDefinition, type GuardOptions, type GuardPasskeys, type GuardPasskeysDefinition, type GuardPasswordBroker, type GuardTwoFactor, type GuardTwoFactorDefinition } from './define-guard.ts';
 import type { PasswordBroker } from './password-reset.ts';
+import { Passkeys, type PasskeyError } from './passkeys/passkeys.ts';
 import type { ChallengeError } from './two-factor/two-factor.ts';
 import { TwoFactor } from './two-factor/two-factor.ts';
 import type { AuthUser, Credentials, UserProvider } from './user.ts';
@@ -133,4 +134,52 @@ export function aMaybeOptionPromisesNothing(maybe: typeof TwoFactor | undefined)
   defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: maybe });
   // @ts-expect-error naming the class as the second generic still needs the option
   defineGuard<OfficeUser, typeof TwoFactor>('office', { users: OfficeUsers, tablePrefix: 'office_' });
+}
+
+const PasskeysGuard = defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, passkeys: Passkeys });
+
+export async function passkeysTypes(passkeys: GuardPasskeys<OfficeUser, Passkeys>) {
+  expectTypeOf(PasskeysGuard).toEqualTypeOf<GuardDefinition<OfficeUser> & GuardTwoFactorDefinition<OfficeUser> & GuardPasskeysDefinition<OfficeUser, Passkeys>>();
+  expectTypeOf(PasskeysGuard.Passkeys).toEqualTypeOf<Token<GuardPasskeys<OfficeUser, Passkeys>>>();
+  const signedIn = await passkeys.signIn({} as never);
+  expectTypeOf(signedIn).toEqualTypeOf<Result<OfficeUser, PasskeyError>>();
+  // What does not name a user is the app's service as it is.
+  expectTypeOf(passkeys.list).toEqualTypeOf<Passkeys['list']>();
+}
+
+export function aGuardWithoutPasskeysHasNone() {
+  // @ts-expect-error the guard was defined without `passkeys`
+  TwoFactorGuard.Passkeys;
+  // The type only asks for a class with a `signIn`; the brand of the Passkeys class is checked when `defineGuard()` runs (error A8).
+  // @ts-expect-error a class without `signIn` is not the Passkeys class
+  defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: TwoFactor, passkeys: class Other {} });
+  // @ts-expect-error nor is the TwoFactor class, which has no `signIn`
+  defineGuard('depot', { users: OfficeUsers, tablePrefix: 'depot_', twoFactor: TwoFactor, passkeys: TwoFactor });
+}
+
+export function thePasskeysOptionPromisesWhatItDelivers(maybe: typeof Passkeys | undefined) {
+  // @ts-expect-error passkeys without twoFactor does not compile: a passkey is a second factor
+  defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', passkeys: Passkeys });
+  // @ts-expect-error nor does the option type, with no TwoFactor class to go with it
+  const noFactor: GuardOptions<OfficeUser, undefined, typeof Passkeys> = { users: OfficeUsers, tablePrefix: 'office_', passkeys: Passkeys };
+  void noFactor;
+  // @ts-expect-error a guard typed as having passkeys must be given the class
+  const missing: GuardOptions<OfficeUser, typeof TwoFactor, typeof Passkeys> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor };
+  defineGuard('office', missing).Passkeys;
+
+  const given: GuardOptions<OfficeUser, typeof TwoFactor, typeof Passkeys> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, passkeys: Passkeys };
+  expectTypeOf(defineGuard('office', given).Passkeys).toEqualTypeOf<Token<GuardPasskeys<OfficeUser, Passkeys>>>();
+
+  // The third generic stays optional: `GuardOptions<U, TF>` has no `passkeys`, or an undefined one.
+  const plain: GuardOptions<OfficeUser, typeof TwoFactor> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, passkeys: undefined };
+  // @ts-expect-error without the option the guard has no Passkeys
+  defineGuard('office', plain).Passkeys;
+  // @ts-expect-error GuardOptions<U, TF> takes no Passkeys class
+  const wrong: GuardOptions<OfficeUser, typeof TwoFactor> = { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, passkeys: Passkeys };
+
+  // @ts-expect-error a value that may be undefined cannot promise the Passkeys services
+  defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, passkeys: maybe });
+  // @ts-expect-error naming the class as the third generic still needs the option
+  defineGuard<OfficeUser, typeof TwoFactor, typeof Passkeys>('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor });
+  return wrong;
 }

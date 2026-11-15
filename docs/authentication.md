@@ -1286,7 +1286,7 @@ and at boot. A setting outside its limits, or one that does not exist, stops the
 
 ### Signing out
 
-`signOut()` of any guard ends the browser's session, so the browser is signed out of every guard. The remember-me cookie is the
+`signOut()` of any guard ends the browser's session, so the browser is signed out of every guard. So does every other end of a guard's sign-in that the guard notices: an ended sign-in row, `AccountSessions.end()`, a new password, a passkey that looks copied, `sessionMaxHours` running out. The user of another guard in that browser is signed out with it; the same user in another browser is not. The remember-me cookie is the
 one exception: the guard's own `signOut()` deletes it, and no other guard's does. Someone who chose "Keep me signed in" for the
 back office is signed in there again after signing out of the app, until they sign out of the back office itself.
 
@@ -1371,7 +1371,7 @@ login controller runs. Neither is what you want:
 ### What a package guard does not have
 
 A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
-audience. Two-factor authentication is there when the guard is defined with `twoFactor` ([for a guard of a package](two-factor-authentication.md#for-a-guard-of-a-package)); passkeys are not part of it yet. A service that ends a guard's sessions
+audience. Two-factor authentication is there when the guard is defined with `twoFactor` ([for a guard of a package](two-factor-authentication.md#for-a-guard-of-a-package)); passkeys are there when it is defined with `passkeys` as well ([for a guard of a package](passkeys.md#for-a-guard-of-a-package)). A service that ends a guard's sessions
 (`end()`) never touches the app's `sessions` rows, tokens or links: it ends the guard's own sign-ins, replaces the account's
 session key and tells the live streams of the guard's account. Ending the sessions of every account of a guard
 (`endEveryone()`) is not available yet: the guard's `AccountSessions` has no such method, and calling it anyway throws.

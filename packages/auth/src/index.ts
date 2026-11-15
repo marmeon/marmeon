@@ -42,7 +42,7 @@ export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
 export { defineGuard } from './define-guard.ts';
-export type { GuardAccountSessions, GuardAuth, GuardAuthenticateOptions, GuardConfirmedPasswordOptions, GuardConfirmedSecondFactorOptions, GuardDefinition, GuardGuestOptions, GuardOptions, GuardPasswordBroker, GuardSettings, GuardTwoFactor, GuardTwoFactorDefinition, GuardTwoFactorOptions } from './define-guard.ts';
+export type { GuardAccountSessions, GuardAuth, GuardAuthenticateOptions, GuardConfirmedPasswordOptions, GuardConfirmedSecondFactorOptions, GuardDefinition, GuardGuestOptions, GuardOptions, GuardPasskeys, GuardPasskeysDefinition, GuardPasswordBroker, GuardSettings, GuardTwoFactor, GuardTwoFactorDefinition, GuardTwoFactorOptions } from './define-guard.ts';
 export type { GuardRouteLimit } from './route-limits.ts';
 export { credentialWriter } from './credential-writer.ts';
 export type { CredentialWriter } from './credential-writer.ts';

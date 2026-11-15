@@ -17,12 +17,32 @@ import type { TwoFactorStore } from './two-factor/store.ts';
 import type { UserProvider } from './user.ts';
 
 /**
- * The brand of a service class that a package guard may be given as an option (`TwoFactor` as `twoFactor`). A symbol on the class, not its
+ * The brand of a service class that a package guard may be given as an option (`TwoFactor` as `twoFactor`, `Passkeys` as `passkeys`). A symbol on the class, not its
  * name: a bundler renames a class, and a subclass keeps the brand it inherits.
  *
  * @internal
  */
 export const GUARD_FEATURE: unique symbol = Symbol('marmeon-auth.guard-feature');
+
+/**
+ * What the `Passkeys` class hands a package guard under {@link GUARD_PASSKEYS}: the main entry must not import the passkeys folder, so the
+ * guard builds the passkey store and names its configuration and columns through this, never by import.
+ *
+ * @internal
+ */
+export interface GuardPasskeyKit {
+  /** The configuration of the relying party: the app's providers carry it (`static config = [PasskeyConfig]`), and a guard refuses to start without it. */
+  readonly config: Key<unknown>;
+  /** The columns the guard's passkey table needs before `/up/ready` turns green. */
+  readonly columns: readonly string[];
+  /** Whether `store` is what {@link store} makes, which is the check before it counts as a source of factors. */
+  isStore(store: unknown): boolean;
+  /** The store of the guard's passkeys on its own tables, which is also its source of the `passkey` factor. */
+  store(connections: Connections, clock: Clock, tables: { readonly passkeys: string; readonly twoFactor: string; readonly recoveryCodes: string }): TwoFactorState;
+}
+
+/** The static field of `Passkeys` that holds its {@link GuardPasskeyKit}. @internal */
+export const GUARD_PASSKEYS: unique symbol = Symbol('marmeon-auth.guard-passkeys');
 
 /**
  * Everything one guard owns that the auth services use: its users, stores, settings, names and events. A service takes it as its
