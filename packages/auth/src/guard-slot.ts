@@ -50,7 +50,7 @@ export interface GuardSlotBase<U extends { readonly id: string | number }> {
 export interface GuardSlot<U extends { readonly id: string | number }> extends GuardSlotBase<U> {
   /**
    * Binds the slot, once, in the `register()` or `boot()` of the package's provider: to `'web'`, the app's own users, or to a guard the
-   * package defined and registers in its provider's `register()`. A guard that no provider registered stops the boot with error A8.
+   * package defined and registers in its provider's `register()`. A guard that no provider registered stops the boot with error A8 when the binding is made by the time the auth provider boots; a later binding to one is refused at the start if the slot has listeners, and reported by `marmeon check`.
    */
   bind<V extends U>(container: Container, target: 'web' | GuardDefinition<V>): void;
 }

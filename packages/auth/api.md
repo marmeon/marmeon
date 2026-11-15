@@ -168,6 +168,7 @@ export declare class AuthServiceProvider implements ServiceProvider {
             parallelism: number;
         };
     }>)[];
+    static checks: readonly AppCheckClass[];
     static commands: readonly CommandClass[];
     static migrations: {
         from: URL;

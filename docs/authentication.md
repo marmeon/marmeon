@@ -1507,7 +1507,40 @@ nobody bound stops the start with A8, and the start runs after every provider ha
 [`marmeon check`](check.md#the-app-checks) registers the app without booting it, so it cannot know a slot a provider binds in `boot()`: it leaves
 out a slot that is not bound yet, or bound to a guard nobody has registered yet, and still reports everything else in the route's list. The start also asks the bound
 guard for each slot middleware on a route, so options it refuses are error A8 at the start and never a 500 per request. A slot that no route uses and
-nothing resolves is noticed at its first use only.
+nothing resolves is noticed at its first use only, except a slot that has listeners: the start refuses it with A8, as `marmeon check` reports it ([events of a guard slot](#events-of-a-guard-slot)).
+
+### Events of a guard slot
+
+A slot has the events of a guard too: `EditorSlot.events.<Name>`, one class for each event [a guard raises](#events-of-a-guard). They follow the binding, so you list one listener
+for both modes, in the app's module, as for a guard. The package exports `EditorSlot` for you to import, and says in its own documentation which events you may listen to:
+
+```ts title="modules/editor-audit/index.ts"
+import { defineModule, listen } from '@marmeon/core';
+import { EditorSlot } from '@acme/marmeon-editor';
+import { RecordEditorSignIn } from './listeners/RecordEditorSignIn.ts';
+
+export default defineModule({ name: 'editor-audit', listeners: [listen(EditorSlot.events.SignedIn, RecordEditorSignIn)] });
+```
+
+The classes exist as soon as the package defines the slot, so a module can list them whatever the order of the providers, and a queued listener is registered the usual way. The queued ones are named
+after the slot, `slot.editor.auth.signed-in`, and the slot's name is the `slot` of their payload. What the slot hears is read when an event is dispatched, from the binding the package made by then.
+The target's own event comes first (the app's `SignedIn`, or `OfficeGuard.events.SignedIn`), then the slot's, once for each slot bound to that target, in the order the slots were bound. The slot's event
+is extra and never replaces the target's, and a listener of the target that throws stops the dispatch before the slot's event, as for any event.
+
+A slot nobody bound gets no event and never falls back to the app's users, so a listener of its events would stay silent. A slot with listeners must always be bound, to `'web'` or to a guard some provider registered: a listener is not tied to a route, so the start asks for it after every provider has booted and refuses it with [A8](errors.md#server-error-codes), naming the slot and the listeners. [`marmeon check`](check.md#the-app-checks) reports the same finding.
+
+The event carries `guard`, the mode it happened in: `'web'` for the app's users, otherwise the bound guard's name. A queued listener gets `guard` and `slot` in its payload next to the fields
+of the app's. The two modes are two sets of accounts, so record `(guard, userId)` together and never `userId` alone: the same id in the guard's table and the app's is two accounts. A queued listener reads the users of
+the mode its payload's `guard` names. The payload keeps the `guard` it was queued with, so a job that was queued before the installation switched modes still names its old mode (an installation that has data
+does not switch, see [using the app's users instead](#using-the-apps-users-instead)). The types keep the app's, a guard's and a slot's classes apart: a listener written for one of them does not compile on
+another's, and that holds for queued listeners too. They do not tell two slots apart, nor two guards whose users have the same shape; the classes differ at run time.
+
+When the slot is bound to `'web'`, its events cover every app user, customers included: a sign-in carries the address and the browser. Listing a slot listener is your choice, so when you want editors only, filter what it does through the
+package's access service (the one that tells whether an id is an editor). A slot nobody bound dispatches nothing, and never falls back to the app's users. Two slots of one name that both have a queued listener of
+the same event share its queue name, which stops the start with error [Q4](errors.md#server-error-codes).
+
+A slot has the guard's set: `SignedIn`, `SignedOut`, `SignInFailed`, `SignInLockedOut`, `PasswordChanged`, `PasswordReset`, `RememberTokenReused`, the five two-factor events
+and the four passkey events. The constructor of a slot's class takes the mode first (`new EditorSlot.events.SignedOut('web', user)`), which is for tests, and throws a `TypeError` for a mode that is neither `'web'` nor a guard's name.
 
 ### Events of a guard slot
 

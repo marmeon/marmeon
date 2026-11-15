@@ -61,6 +61,19 @@ describe('Router.beforeMiddleware', () => {
   });
 });
 
+describe('Router.checkStart', () => {
+  it('collects the findings of every check, in the order registered, next to the findings of routes', () => {
+    const { router } = setup();
+    router.load(openRoutes((Route) => void Route.get('/other', () => 'other')));
+    expect(router.startProblems()).toEqual([]);
+    router.checkPipelines(() => ({ message: 'route', code: 'A9' }));
+    router.checkStart(() => [{ message: 'first', code: 'A8' }]);
+    router.checkStart(() => []).checkStart(() => [{ message: 'second', code: 'A8', docs: 'docs/x.md' }]);
+    expect(router.startProblems().map((problem) => [problem.message, problem.code, problem.docs])).toEqual([['first', 'A8', undefined], ['second', 'A8', 'docs/x.md']]);
+    expect(new Set(router.pipelineProblems().map((problem) => problem.message))).toEqual(new Set(['route']));
+  });
+});
+
 describe('Router.checkPipelines', () => {
   it('collects the findings of every route, each with its route', () => {
     const { router } = setup();

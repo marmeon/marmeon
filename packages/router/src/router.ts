@@ -267,6 +267,7 @@ export class Router {
   readonly #routeChecks: RouteCheck[] = [];
   readonly #startHooks: RouteStartHook[] = [];
   readonly #pipelineChecks: PipelineCheck[] = [];
+  readonly #startChecks: (() => readonly PipelineFinding[])[] = [];
 
   /** @internal Built by the container. */
   constructor(options: RouterOptions = {}) {
@@ -514,6 +515,22 @@ export class Router {
   checkPipelines(check: PipelineCheck): this {
     this.#pipelineChecks.push(check);
     return this;
+  }
+
+  /**
+   * Asks `check` for findings that belong to no route when {@link Router.startProblems} is called, after every provider has booted: the
+   * kernel refuses the start for each one. The build-phase checks of `marmeon check` register the app only and do not ask; a check that builds a kernel does. For packages, while booting.
+   *
+   * @internal
+   */
+  checkStart(check: () => readonly PipelineFinding[]): this {
+    this.#startChecks.push(check);
+    return this;
+  }
+
+  /** What the {@link Router.checkStart} checks refuse. @internal */
+  startProblems(): PipelineFinding[] {
+    return this.#startChecks.flatMap((check) => check());
   }
 
   /**

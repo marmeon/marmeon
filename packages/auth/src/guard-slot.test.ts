@@ -852,8 +852,10 @@ describe('what the slot\'s middleware promises the router', () => {
 
 describe('the events of a slot', () => {
   /** What each listener of the app, of the office guard and of the slot heard, in order; the slot's with the mode its event names. */
-  async function listening(routes = openRoutes((Route) => void pages(Route))) {
+  async function listening(routes = openRoutes((Route) => void pages(Route)), { startFirst = false } = {}) {
     const booted = await running({ routes });
+    // The start refuses a slot with listeners that nobody bound, so a test of the relay alone starts before it lists them.
+    if (startFirst) booted.start();
     const log: string[] = [];
     const registry = booted.application.container.make(EventRegistry);
     const on = (Class: unknown, label: string) => registry.listen(Class as never, ((event: { guard?: string; userId?: unknown; user?: { id: unknown } }) => void log.push(`${label}${event.guard === undefined ? '' : ` ${event.guard}`} ${String(event.userId ?? event.user?.id)}`)) as never);
@@ -885,7 +887,7 @@ describe('the events of a slot', () => {
 
   it('dispatches nothing for an unbound slot, and never falls back to the app: both sign-ins succeed', async () => {
     mode = 'none';
-    const { did, log } = await listening();
+    const { did, log } = await listening(undefined, { startFirst: true });
     await did('app-login');
     await did('office-login');
     expect(log).toEqual(['app SignedIn 1', 'office SignedIn 1']);

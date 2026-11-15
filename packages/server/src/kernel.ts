@@ -220,7 +220,8 @@ export function refuseUndecidedRoutes(application: Application): void {
   const problems = router.accessProblems();
   const duplicates = router.middlewareProblems();
   const pipelines = router.pipelineProblems();
-  if (problems.length === 0 && duplicates.length === 0 && pipelines.length === 0) return;
+  const started = router.startProblems();
+  if (problems.length === 0 && duplicates.length === 0 && pipelines.length === 0 && started.length === 0) return;
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   const path = (route: { path: string }) => redactor.path(route.path, route.path);
   const parts = [
@@ -230,6 +231,8 @@ export function refuseUndecidedRoutes(application: Application): void {
       : []),
     // What a package refuses in a route's middleware list (a route that two guards claim): the finding names its own code, in the form `withCode` writes.
     ...pipelines.map((problem) => `[marmeon:${problem.code}] ${problem.route.methods.join('|')} ${path(problem.route)}: ${problem.message}`),
+    // What a package refuses that no route carries (a listener of a guard slot nobody bound).
+    ...started.map((problem) => `[marmeon:${problem.code}] ${problem.message}`),
   ];
   throw new RouteAccessError(parts.join('\n\n'));
 }
