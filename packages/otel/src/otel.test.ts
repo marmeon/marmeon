@@ -84,10 +84,23 @@ class ShowPersonController {
   }
 }
 
+class PaymentDeclined extends Error {}
+/** A subclass whose constructor is named `Error`: only a comparison with the real `Error` tells it from one. */
+const Error2 = { Error: class extends Error {} }.Error;
+
 const routes = openRoutes((Route) => {
   Route.get('/people/:person', ShowPersonController).name('people.show');
   Route.get('/fail', () => {
     throw new Error('The report failed, token=tok-123');
+  });
+  Route.get('/fail-code', () => {
+    throw Object.assign(new Error('The queue is gone'), { code: 'ECONNREFUSED' });
+  });
+  Route.get('/fail-named', () => {
+    throw Object.assign(new PaymentDeclined('The card was declined'), { code: 'E_CARD' });
+  });
+  Route.get('/fail-lookalike', () => {
+    throw Object.assign(new Error2('Not the real one'), { code: 'E_LOOKALIKE' });
   });
   Route.get('/missing', () => abort(404));
   Route.get('/reset/:token', () => ({ ok: true }));
@@ -217,6 +230,18 @@ describe('@marmeon/otel', () => {
     expect(missing.status.code).toBe(SpanStatusCode.UNSET);
     expect(missing.attributes['error.type']).toBeUndefined();
     expect(missing.events).toEqual([]);
+  });
+
+  it('`error.type` is the code of a plain Error that carries a string code, and the class name of a subclass even when it has one', async () => {
+    const { app: booting } = boot();
+    await using app = await booting;
+    await spans();
+    const kernel = createHttpKernel(app);
+    for (const path of ['/fail-code', '/fail-named', '/fail-lookalike']) expect((await kernel.request(path, { headers: { accept: 'application/json' } })).status).toBe(500);
+    const all = await spans();
+    expect(all.find((span) => span.attributes['url.path'] === '/fail-code')!.attributes['error.type']).toBe('ECONNREFUSED');
+    expect(all.find((span) => span.attributes['url.path'] === '/fail-named')!.attributes['error.type']).toBe('PaymentDeclined');
+    expect(all.find((span) => span.attributes['url.path'] === '/fail-lookalike')!.attributes['error.type']).toBe('Error');
   });
 
   it('a job that fails without throwing is an error too: the error status and `error.type` _OTHER, no exception event', async () => {

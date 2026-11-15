@@ -10,7 +10,7 @@ import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-re
 import { DatabaseSignIns, SIGN_INS_TABLE } from './sign-ins.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
-import { guardContext } from './test-helpers/guard-context.ts';
+import { commandGuards, guardContext } from './test-helpers/guard-context.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -39,7 +39,7 @@ describe('auth:end-sessions', () => {
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const info = vi.fn();
     const run = (args: string[], options: Record<string, boolean> = { force: true }, target: Pick<AccountSessions, 'end'> = accounts) =>
-      new EndSessionsCommand(users, target as AccountSessions, { info } as unknown as Logger).handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
+      new EndSessionsCommand(commandGuards(guardContext({ users, accountSessions: target as AccountSessions })), { info } as unknown as Logger).handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
     const key = () => users.rows.get(1)!.key;
     const signInRows = async () => (await db.selectFrom(SIGN_INS_TABLE).selectAll().execute()).length as number;
     const resetRows = async () => (await db.selectFrom(PASSWORD_RESET_TABLE).selectAll().execute()).length as number;
@@ -109,7 +109,7 @@ describe('auth:end-sessions', () => {
   it('exits 1 for an unknown identifier and refuses none as a wrong call (exit 2), and ends nothing', async () => {
     const { run, lines, key, signInRows } = await setup();
     expect(await run(['nobody@example.com'])).toBe(1);
-    await expect(run([])).rejects.toMatchObject({ name: 'CommandArgumentsError', message: 'Usage: marmeon auth:end-sessions <identifier> --force' });
+    await expect(run([])).rejects.toMatchObject({ name: 'CommandArgumentsError', message: 'Usage: marmeon auth:end-sessions <identifier> --force [--guard=<name>] [--keep-api-tokens]' });
     await expect(run(['   '])).rejects.toMatchObject({ name: 'CommandArgumentsError' });
     expect(lines).toEqual(['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.']);
     expect(key()).toBeNull();

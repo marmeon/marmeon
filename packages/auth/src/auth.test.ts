@@ -41,6 +41,7 @@ import { DelegatingSignIns, signInStore, twoFactorState } from './test-helpers/s
 import { MemoryUsers as SharedUsers } from './test-helpers/users.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { guardContext } from './test-helpers/guard-context.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 interface TestUser {
   id: number;
@@ -270,7 +271,7 @@ const CHEAP = { HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' };
 async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: SignInStore) => SignInStore['consume']; end?: () => Promise<boolean> } = {}) {
   const users = options.users ?? new MemoryUsers();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-auth-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [

@@ -13,6 +13,7 @@ import { abilities, Auth, AuthServiceProvider, authenticate, can, confirmedPassw
 import { twoFactor } from './two-factor/middleware.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 interface OfficeUser {
   readonly id: number;
@@ -215,7 +216,7 @@ async function boot() {
   office.rows.clear();
   const application = await createApplication(
     {
-      root: import.meta.dirname,
+      root: workspaceTempDir('marmeon-package-guard-routes-'),
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, OfficeProvider, AuthServiceProvider],
       modules: [

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { Auth, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -59,7 +60,7 @@ async function boot() {
   users.add(ada);
   const verified: string[] = [];
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-check-password-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'auth-check-password-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

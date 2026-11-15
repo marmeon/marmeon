@@ -5,6 +5,7 @@ import { TwoFactorDisabled } from './events.ts';
 import { AuthServiceProvider, type AuthUser } from './index.ts';
 import { ResetTwoFactorCommand } from './reset-two-factor.ts';
 import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
+import { commandGuards, guardContext } from './test-helpers/guard-context.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
@@ -42,7 +43,7 @@ function setup(ended: 'ok' | 'missing' = 'ok') {
   const info = vi.fn();
   const lines: string[] = [];
   const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
-  const command = new ResetTwoFactorCommand(users, { end } as unknown as AccountSessions, state, { dispatch } as unknown as EventDispatcher, { info } as unknown as Logger);
+  const command = new ResetTwoFactorCommand(commandGuards(guardContext({ users, accountSessions: { end } as unknown as AccountSessions, factors: state, events: { dispatch } as unknown as EventDispatcher })), { info } as unknown as Logger);
   const run = (args: string[], options: Record<string, boolean> = { force: true }) => command.handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
   return { run, lines, state, order, end, removeAll, dispatch, info };
 }
@@ -66,7 +67,7 @@ describe('auth:reset-two-factor', () => {
   it('exits 1 for an unknown identifier and refuses none as a wrong call (exit 2), and changes nothing', async () => {
     const { run, lines, end, removeAll, state } = setup();
     expect(await run(['nobody@example.com'])).toBe(1);
-    await expect(run([])).rejects.toMatchObject({ name: 'CommandArgumentsError', message: 'Usage: marmeon auth:reset-two-factor <identifier> --force' });
+    await expect(run([])).rejects.toMatchObject({ name: 'CommandArgumentsError', message: 'Usage: marmeon auth:reset-two-factor <identifier> --force [--guard=<name>]' });
     expect(lines).toEqual(['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.']);
     expect(end).not.toHaveBeenCalled();
     expect(removeAll).not.toHaveBeenCalled();

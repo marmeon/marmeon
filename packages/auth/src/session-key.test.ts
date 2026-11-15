@@ -16,6 +16,7 @@ import { AccountSessions, Auth, authenticate, AuthServiceProvider, Hasher, UserP
 import { SessionFingerprints } from './fingerprint.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
@@ -194,7 +195,7 @@ afterAll(async () => {
 async function boot(driver: Driver, users: UserProvider) {
   const { env, cleanup } = await driver.env();
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-session-key-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'session-key-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

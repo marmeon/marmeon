@@ -438,7 +438,7 @@ An authenticator app lists an account under the name it is given. The issuer is 
 the app that carries it show up as two entries of the same name and the same address unless they have different issuers, so set one.
 The setting takes 1 to 64 characters; another value stops the start with error [A8](errors.md#server-error-codes).
 
-A guard defined with `passkeys` as well takes a [passkey as a second factor](passkeys.md#for-a-guard-of-a-package) next to the authenticator. `auth:reset-two-factor` does not reach the guard's tables (see [operator reset](#operator-reset)).
+A guard defined with `passkeys` as well takes a [passkey as a second factor](passkeys.md#for-a-guard-of-a-package) next to the authenticator. `auth:reset-two-factor --guard=<name>` resets the guard's factors (see [operator reset](#operator-reset)).
 
 ## Operator reset
 
@@ -450,11 +450,14 @@ marmeon auth:reset-two-factor ada@example.com --force
 ```
 
 The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForSignIn()`
-of the app. The command acts on the app's users only: when the same address also has an account of a [guard of a package](#for-a-guard-of-a-package), the app's
-account is reset and the guard's stays as it was.
+of the app.
+For a [guard of a package](#for-a-guard-of-a-package), name it with `--guard=<name>`. The guard's own provider finds the account, and the authenticator, the
+passkeys and the recovery codes of the guard are removed together. The app's stay as they were, even when the same address has an account there.
+A name no guard has is refused with exit code 1 and the list of guards. The command dispatches no `TwoFactorDisabled` for a guard, since a listener of the app would act on the app's user of the same id.
+See [operator commands for a guard](authentication.md#operator-commands-for-a-guard-of-a-package).
 Without `--force` the command exits with 1 and changes nothing. It removes whatever the bound [`TwoFactorState`](authentication.md#your-own-stores) holds
 (the authenticator, every passkey, every recovery code) through `removeAll(userId)`, which dispatches nothing; the command dispatches `TwoFactorDisabled` with
-`via: 'operator'` itself, so that listeners (the mail to the owner, an audit log) hear of it.
+`via: 'operator'` itself for the app's users, so that listeners (the mail to the owner, an audit log) hear of it.
 
 It ends the sessions of the account first, with [`AccountSessions.end()`](authentication.md#ending-every-session-of-a-user): an account without a
 factor lets a signed-in session enrol one, so a session on the lost device, or an attacker's, would own the account. When the sessions

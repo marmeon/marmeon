@@ -11,6 +11,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { Auth, authenticate, AuthServiceProvider, UserProvider, type AuthUser } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const FIXTURES = new URL('../../session/src/__fixtures__/formats/session-payload/', import.meta.url);
 /** The fingerprints in the fixtures are HMACs under the key derived from this one — the public test key of the repository (`.env.test`). */
@@ -64,7 +65,7 @@ afterAll(async () => {
 /** A browser signed in as Ada, and the means to put another payload into the store entry its session lives in. */
 async function signedIn(env: Record<string, string> = {}) {
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-session-format-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'session-format-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

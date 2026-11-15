@@ -11,6 +11,7 @@ import { NewPassword } from './new-password.ts';
 import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 // A rehash at sign-in changes the stored hash and nothing else: every other sign-in of the account stays. Only a new session key ends
 // sign-ins — a new password, a reset, signing out the other devices.
@@ -85,7 +86,7 @@ const oldCosts = () => new PasswordHasher({ driver: 'scrypt', argon2: { memory: 
 async function boot(users = new MemoryUsers<AuthUser>()) {
   let hasher!: Hasher;
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-rehash-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'rehash-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],

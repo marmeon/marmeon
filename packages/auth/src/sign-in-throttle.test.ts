@@ -14,6 +14,7 @@ import type { Clock, Logger } from '@marmeon/core';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const CEILING = 10; // the lowest AUTH_ACCOUNT_SIGN_INS_PER_DAY allows
@@ -73,7 +74,7 @@ async function boot(env: Record<string, string> = {}, options: { factors?: boole
   const users = new SpyUsers();
   const verified: string[] = [];
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-sign-in-throttle-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'sign-in-throttle-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(SignInLockedOut, RecordLockout)] })],

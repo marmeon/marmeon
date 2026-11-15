@@ -40,6 +40,7 @@ import { Passkeys, type RegisterError } from './passkeys.ts';
 import { PasskeyServiceProvider } from './provider.ts';
 import { PASSKEYS_TABLE, PasskeyStore } from './store.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
+import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 
 interface TestUser {
   id: number;
@@ -256,7 +257,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
   const users = options.users ?? new MemoryUsers();
   const passkeys = options.passkeys !== false;
   const application = await createApplication({
-    root: import.meta.dirname,
+    root: workspaceTempDir('marmeon-passkeys-'),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider, ...(passkeys ? [PasskeyServiceProvider] : [])],
     modules: [

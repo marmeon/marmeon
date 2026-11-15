@@ -18,6 +18,7 @@ import { softAuthenticator, twoFactorCode } from './testing.ts';
 import { TwoFactor } from './two-factor/two-factor.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 interface OfficeUser {
   readonly id: number;
@@ -161,7 +162,7 @@ async function boot(options: { appPasskeys?: boolean } = {}) {
   office.rows.clear();
   const application = await createApplication(
     {
-      root: import.meta.dirname,
+      root: workspaceTempDir('marmeon-guards-passkeys-'),
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, OfficeProvider, AuthServiceProvider, ...(appPasskeys ? [PasskeyServiceProvider] : [])],
       modules: [
@@ -545,7 +546,7 @@ describe('defining a guard with passkeys', () => {
     const start = (providers: unknown[], override?: (c: Container) => void, phase: 'run' | 'build' = 'run') =>
       createApplication(
         {
-          root: import.meta.dirname,
+          root: workspaceTempDir('marmeon-guards-passkeys-'),
           discover: false,
           providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, ...providers, AuthServiceProvider] as never,
           modules: [defineModule({ name: 'config-test', migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
@@ -597,7 +598,7 @@ describe('defining a guard with passkeys', () => {
     const container = (
       await createApplication(
         {
-          root: import.meta.dirname,
+          root: workspaceTempDir('marmeon-guards-passkeys-'),
           discover: false,
           providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, OfficeProvider, AuthServiceProvider],
           modules: [defineModule({ name: 'no-office-tables', migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
