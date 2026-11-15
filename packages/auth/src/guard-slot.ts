@@ -327,8 +327,13 @@ export function defineGuardSlot<U extends { readonly id: string | number }>(name
       if (twoFactor && target instanceof Guard && target.tables.twoFactor === undefined) {
         throw new GuardSlotError(`The guard slot '${name}' offers two-factor middleware, but the guard '${target.name}' is defined without \`twoFactor\`: bind it to a guard with \`twoFactor: TwoFactor\` or to 'web'.`);
       }
-      slotBindings(container).bind(slot, name, target);
-      container.scoped(slot.Auth as unknown as Token<unknown>, (scope) => scope.make(target === 'web' ? Auth : (target as Guard).Auth));
+      const bindings = slotBindings(container);
+      bindings.bind(slot, name, target);
+      // Through `slotTarget()` on every resolution, like the gate and the middleware: a guard nobody registered is error A8 here too.
+      container.scoped(slot.Auth as unknown as Token<unknown>, (scope) => {
+        const bound = slotTarget(slot, (key) => scope.make(key as Key) as never);
+        return scope.make(bound === 'web' ? Auth : bound.Auth);
+      });
     },
     authenticate: (given: unknown) => slotMiddleware(slot, name, 'authenticate', given),
     guest: (given: unknown) => slotMiddleware(slot, name, 'guest', given),

@@ -1466,7 +1466,7 @@ A slot forwards `authenticate()`, `guest()` and `confirmedPassword()`, and with 
 runs in both modes takes them from the guard in the first mode and from the app in the second.
 
 A slot nobody bound has no default. The gate, `EditorSlot.Auth` and the slot's middleware all refuse it with error
-[A8](errors.md#server-error-codes), and so does a slot bound to a guard that no provider registered (at boot). A route that uses a slot
+[A8](errors.md#server-error-codes), and so does a slot bound to a guard that no provider registered: the boot stops on a binding made by the time the auth provider boots. A provider that binds later, in its own `boot()`, may register the guard on the next line, so nothing is refused at that point: `EditorSlot.Auth` and the gate check the guard each time they are used (A8), and the start does for routes that use the slot's middleware. A route that uses a slot
 nobody bound stops the start with A8, and the start runs after every provider has booted.
 [`marmeon check`](check.md#the-app-checks) registers the app without booting it, so it cannot know a slot a provider binds in `boot()`: it leaves
 out a slot that is not bound yet, or bound to a guard nobody has registered yet, and still reports everything else in the route's list. The start also asks the bound

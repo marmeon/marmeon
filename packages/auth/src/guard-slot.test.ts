@@ -48,6 +48,8 @@ class OfficeUsers extends MemoryUsers<OfficeUser> {
 const OfficeGuard = defineGuard('office', { users: OfficeUsers, tablePrefix: 'office_', twoFactor: TwoFactor, settings: { loginAttemptsPerMinute: 60, accountSignInsPerDay: 100 } });
 // Never registered by any provider.
 const GhostGuard = defineGuard('ghost', { users: OfficeUsers, tablePrefix: 'ghost_', twoFactor: TwoFactor });
+/** Registered in a late provider's boot(), never in register(). */
+const LateGuard = defineGuard('late', { users: OfficeUsers, tablePrefix: 'late_', twoFactor: TwoFactor });
 const EditorSlot = defineGuardSlot<EditorUser>('editor', { twoFactor: true });
 const EDITOR = { loginRoute: 'editor.login', homeRoute: 'editor.home', confirmRoute: 'editor.confirm' } as const;
 const OFFICE = { loginRoute: 'office.login', homeRoute: 'office.home', confirmRoute: 'office.confirm' } as const;
@@ -55,7 +57,19 @@ const FACTOR = { setup: 'editor.setup', verify: 'editor.verify' } as const;
 const PAGE: Page = { editor_id: 1 };
 
 /** What the package binds its slot to in this test; `none` is a package that forgot. */
-let mode: 'office' | 'web' | 'none' | 'ghost' | 'boot' = 'office';
+let mode: 'office' | 'web' | 'none' | 'ghost' | 'boot' | 'late-ghost' | 'late-registered' = 'office';
+
+/** A provider that boots after the auth provider's boot. */
+class LateProvider implements ServiceProvider {
+  boot(application: { container: Container }): void {
+    if (mode === 'late-ghost') EditorSlot.bind(application.container, GhostGuard);
+    // Bound first, registered on the next line: the order inside one boot() is the package's.
+    if (mode === 'late-registered') {
+      EditorSlot.bind(application.container, LateGuard);
+      LateGuard.register(application.container);
+    }
+  }
+}
 
 class PackageProvider implements ServiceProvider {
   register(container: Container): void {
@@ -216,7 +230,7 @@ async function running(options: { routes?: RouteDefinitions } = {}) {
     {
       root: workspaceTempDir('marmeon-guard-slot-'),
       discover: false,
-      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, PackageProvider, AuthServiceProvider, ProbeProvider],
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, PackageProvider, AuthServiceProvider, ProbeProvider, LateProvider],
       modules: [
         defineModule({ name: 'guard-slot-test', routes: options.routes ?? routeList(current), apiRoutes: openRoutes((Route) => void Route.middleware(authenticate('api')).get('/ask', Ask)), migrations: new URL('./__fixtures__/migrations/', import.meta.url) }),
         defineModule({ name: 'office-test', migrations: new URL('./__fixtures__/office-migrations/', import.meta.url) }),
@@ -598,6 +612,31 @@ describe('binding a slot', () => {
     mode = 'ghost';
     current = policies();
     await expect(running()).rejects.toThrow(/A8.*'editor'.*'ghost'/s);
+  });
+
+  it('serves the guard\'s user when a late provider binds the slot and registers the guard in the same boot(), in that order', async () => {
+    mode = 'late-registered';
+    current = policies();
+    const { start, application } = await running({ routes: openRoutes((Route) => (pages(Route), void Route.middleware(EditorSlot.authenticate(EDITOR)).get('/s/who', Who))) });
+    expect(start).not.toThrow();
+    expect(application.container.make(SlotBindings).target(EditorSlot)).toBe(LateGuard);
+    // Outside a request the guard's `Auth` cannot be built (it needs the request's cookies), but the chain shows the slot resolved to the guard: no A8.
+    expect(() => application.container.createScope().make(EditorSlot.Auth)).toThrow(/GuardSlot:editor\.Auth → late\.Auth/);
+  });
+
+  it('boots when a late provider binds a guard nobody registered and no route uses the slot, and refuses at use with A8', async () => {
+    mode = 'late-ghost';
+    current = policies();
+    const { application, did } = await running({ routes: openRoutes((Route) => (pages(Route), void Route.get('/public', Ask))) });
+    expect(() => application.container.createScope().make(EditorSlot.Auth)).toThrow(/A8.*'editor'.*'ghost'/s);
+    const browser = await did('app-login');
+    expect((await json(await browser.call('/public'))).error).toMatch(/A8.*'editor'.*'ghost'/s);
+  });
+
+  it('resolves the slot\'s Auth through the binding every time: a guard nobody registered is A8, not a missing binding', () => {
+    const container = new Container();
+    EditorSlot.bind(container, GhostGuard);
+    expect(() => container.createScope().make(EditorSlot.Auth)).toThrow(/A8.*'editor'.*'ghost'/s);
   });
 
   it('recognises a slot by what defineGuardSlot() made, not by its shape', () => {
