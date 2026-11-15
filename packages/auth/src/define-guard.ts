@@ -205,7 +205,7 @@ export interface GuardDefinition<U> {
   throttle(name: GuardRouteLimit): MiddlewareClass<{}, {}>;
   /** The guard's own event classes (`OfficeGuard.events.SignedIn`; the queueable ones are named `office.auth.signed-in` and so on): the app's listeners of `SignedIn` never hear a sign-in of the guard. See `docs/authentication.md#events-of-a-guard`. */
   readonly events: GuardEvents<U>;
-  /** Binds the guard's services in `container`. Call it in the `register()` of the package's provider; a guard registered twice is a no-op. */
+  /** Binds the guard's services in `container`. Call it in the `register()` of the package's provider; a guard registered twice is a no-op; a guard registered after the auth provider has booted (for instance in a later provider's `boot()`) is error A8. */
   register(container: Container): void;
 }
 
@@ -297,11 +297,23 @@ export interface GuardTables {
  */
 export class GuardRegistry {
   readonly #guards = new Map<string, Guard>();
+  #booted = false;
 
-  /** Adds `guard`: a no-op for the one registered already, A8 for another guard with its name or its table prefix. */
+  /** Whether the auth provider has booted its guards: a guard added now would miss their boot checks. */
+  get booted(): boolean {
+    return this.#booted;
+  }
+
+  /** Called when the auth provider boots, before it checks the guards. */
+  markBooted(): void {
+    this.#booted = true;
+  }
+
+  /** Adds `guard`: a no-op for the one registered already, A8 for another guard with its name or its table prefix, or for a new guard once the auth provider has booted. */
   add(guard: Guard): void {
     const known = this.#guards.get(guard.name);
     if (known === guard) return;
+    if (known === undefined && this.#booted) refuse(`The guard '${guard.name}' is registered after the auth provider has booted (for instance in a later provider's boot()), so it would miss the boot checks (its settings, tables, sign-in finder, remember-me cookie and route limits): call register() in the package provider's register().`);
     if (known !== undefined) refuse(`Two guards are named '${guard.name}': a guard's name is unique, as it keeps the session keys and counters apart.`);
     for (const other of this.#guards.values()) {
       if (other.tablePrefix === guard.tablePrefix) refuse(`The guards '${other.name}' and '${guard.name}' both keep their tables under the prefix '${guard.tablePrefix}'.`);

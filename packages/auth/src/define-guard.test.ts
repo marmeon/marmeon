@@ -106,6 +106,16 @@ describe('the guard registry', () => {
     expect(hasPackageGuards(container)).toBe(true);
   });
 
+  it('refuses a new guard once the auth provider booted, and still takes one registered before as a no-op', () => {
+    const registry = new GuardRegistry();
+    const before = defineGuard('before', { users: Users, tablePrefix: 'before_' }) as unknown as Guard;
+    registry.add(before);
+    registry.markBooted();
+    registry.add(before);
+    expect(() => registry.add(defineGuard('after', { users: Users, tablePrefix: 'after_' }) as unknown as Guard)).toThrow(/\[marmeon:A8\] The guard 'after' is registered after the auth provider has booted/);
+    expect(registry.all()).toEqual([before]);
+  });
+
   it('binds the guard\'s services under its tokens and leaves the app\'s keys alone', () => {
     const container = new Container();
     const guard = defineGuard('office', { users: Users, tablePrefix: 'office_' });

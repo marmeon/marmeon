@@ -190,6 +190,7 @@ export class AuthServiceProvider implements ServiceProvider {
     await requireAuthTables(app.container);
     requireSignInFinder(app.container);
     // The guards of packages: their settings, sign-in finders, tables and remember-me cookies.
+    guardRegistry(app.container).markBooted();
     await bootGuards(app.container);
     // A slot a package bound to a guard that no provider registered.
     bootGuardSlots(app.container);
