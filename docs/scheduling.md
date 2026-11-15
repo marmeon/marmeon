@@ -279,7 +279,7 @@ The framework's tables grow until something prunes them. Schedule these commands
 | `queue:prune-failed --hours=168` | Failed jobs older than a week. | [Queues](queues.md#failed-jobs) |
 | `notifications:prune` | Notifications read long ago. | [Notifications](notifications.md#the-notifications-table) |
 | `uploads:prune` | Uploads that were never used, or used up. | [File storage](storage.md#the-uploads-table) |
-| `auth:prune-tokens` | Expired reset and API tokens, remember-me tokens that expired or are older than `AUTH_REMEMBER_DAYS` (taken off their sign-ins), the sign-ins that are over, and, where the app binds an `EmailChangeStore`, changes of address nobody confirmed in time. | [Remember me](authentication.md#remember-me), [sign-ins](authentication.md#pruning-sign-ins) |
+| `auth:prune-tokens` | Expired reset and API tokens, remember-me tokens that expired or are older than `AUTH_REMEMBER_DAYS` (taken off their sign-ins), the sign-ins that are over, and, where the app binds an `EmailChangeStore`, changes of address nobody confirmed in time. It also prunes the reset links and sign-ins of every [guard of a package](authentication.md#operator-commands-for-a-guard-of-a-package). | [Remember me](authentication.md#remember-me), [sign-ins](authentication.md#pruning-sign-ins) |
 
 The starter kit's auth module schedules `auth:prune-tokens` at 03:10, which also clears the changes of address nobody confirmed in
 time, since the kit binds an `EmailChangeStore`. Its schedule also holds `auth:prune-unverified`, which deletes accounts whose address

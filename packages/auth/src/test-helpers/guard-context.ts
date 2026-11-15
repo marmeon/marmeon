@@ -1,4 +1,4 @@
-import type { Clock, EventDispatcher, Logger } from '@marmeon/core';
+import type { Clock, EventDispatcher, Logger, Resolver } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
 import type { SessionEndings, UserSessions } from '@marmeon/session';
 import type { AccountSessions } from '../account-sessions.ts';
@@ -8,6 +8,7 @@ import type { EmailChangeStore } from '../email-changes.ts';
 import type { SessionFingerprints } from '../fingerprint.ts';
 import { GuardContext } from '../guard-context.ts';
 import { APP_GUARD_NAMES, type GuardNames } from '../guard-names.ts';
+import { OperatorGuards } from '../operator-guard.ts';
 import type { NewPassword } from '../new-password.ts';
 import type { PasswordResetTokenStore } from '../password-reset.ts';
 import type { SignInThrottle } from '../sign-in-throttle.ts';
@@ -153,4 +154,15 @@ class TestGuardContext extends GuardContext {
   event<E extends object>(event: E): object | undefined {
     return this.#parts.event ? this.#parts.event(event) : event;
   }
+}
+
+/** What an operator command is built with in a test: the lookup of a container that holds the app's guard (`context`) and no package guard. */
+export function commandGuards(context: GuardContext): OperatorGuards {
+  const resolver = {
+    make: ((key: unknown) => {
+      if (key === GuardContext) return context;
+      throw new Error('The test container holds the guard context only.');
+    }) as Resolver['make'],
+  };
+  return new OperatorGuards(resolver, { has: () => false });
 }

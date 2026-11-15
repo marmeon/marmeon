@@ -1369,6 +1369,31 @@ login controller runs. Neither is what you want:
 > The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or
 > `EmailChange` acts for the app's user, and nothing can tell that from a controller that means to. Take the guard's services there.
 
+### Operator commands for a guard of a package
+
+`auth:end-sessions` and `auth:reset-two-factor` act on the app's users, unless `--guard` names a guard:
+
+```sh
+marmeon auth:end-sessions ada@example.com --guard=office --force
+marmeon auth:reset-two-factor ada@example.com --guard=office --force
+```
+
+With `--guard=office` the guard's `UserProvider` finds the account, and everything happens in the guard's tables. The account of the app with the
+same address stays as it was. `--guard=web` is the app's own guard, the same as no option. The commands take one identifier and one `--guard`: a
+second argument (a guard's name typed without `--guard=`) or a second `--guard` is refused. A name that no registered guard has, in any other spelling
+or case, is refused with exit code 1 and the list of names, and nothing is changed. No command falls back to the app.
+
+The commands find the guards when they run, so an app whose only users belong to a guard needs no `UserProvider` of its own for them.
+`auth:end-sessions --guard=office` leaves out what a guard does not have, the API tokens.
+`auth:reset-two-factor --guard=office` removes the authenticator, the passkeys and the recovery codes of the guard together, and dispatches no
+`TwoFactorDisabled`: a listener of the app would act on the app's user of the same id.
+
+`auth:prune-tokens` takes the guards along. Without the option it prunes the app and then every guard, each with its own tables, and prints a line for
+each guard. A guard's reset links and sign-ins are judged by the guard's settings, except for the idle time, which is the session's and shared with the
+app. An app whose only users belong to package guards, so that it has no `UserProvider` of its own, is skipped, and the output says so. `--guard=web` prunes the app alone and `--guard=office` the guard alone.
+
+`auth:end-all-sessions` is the app's command. `--guard=web` is accepted, and a package guard is refused, since a guard has no `endEveryone()` yet.
+
 ### What a package guard does not have
 
 A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
