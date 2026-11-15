@@ -3,10 +3,10 @@ import { sql } from '@marmeon/database';
 import { nowOf } from '@marmeon/database/internal';
 import type { PasswordHash } from './hashing.ts';
 import { assertTableName } from './table-names.ts';
-import type { UserProvider } from './user.ts';
+import type { AuthUser, UserProvider } from './user.ts';
 
-/** The writes of a `UserProvider` that decide whether a session survives. */
-export type CredentialWriter = Pick<UserProvider, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
+/** The writes of a `UserProvider<U>` that decide whether a session survives; `U` is the app's user unless a guard of a package has its own. */
+export type CredentialWriter<U = AuthUser> = Pick<UserProvider<U>, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
 
 const SHORT_KEY = 'A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.';
 
@@ -14,9 +14,13 @@ const SHORT_KEY = 'A session key is at least 32 characters: use a random value, 
  * The statements behind `UserProvider.updatePasswordHash()`, `updateSessionKey()` and `updateEverySessionKey()`, for a table with the
  * columns `id`, `password`, `session_key` and `updated_at` (what the starter kit's migration creates). Delegate to it from your
  * repository instead of writing the compare-and-set SQL yourself: a fix reaches you with an update. Pass the repository's `this.db`,
- * so the writes follow an enclosing transaction. See docs/authentication.md#for-your-own-user-provider.
+ * so the writes follow an enclosing transaction. `table` defaults to `'users'`, the app's table, and throws a `TypeError` unless it is a
+ * plain lower-case name. A guard of a package names its user type and must pass its own table, so that it never writes the app's.
+ * See docs/authentication.md#for-your-own-user-provider.
  */
-export function credentialWriter(db: Connection<any>, options: { table?: string } = {}): CredentialWriter {
+export function credentialWriter(db: Connection<any>, options?: { table?: string }): CredentialWriter;
+export function credentialWriter<U extends { readonly id: string | number }>(db: Connection<any>, options: { table: string }): CredentialWriter<U>;
+export function credentialWriter(db: Connection<any>, options: { table?: string } = {}): CredentialWriter<any> {
   const table = options.table ?? 'users';
   assertTableName('credentialWriter()', table);
   // `Connection<any>` types no table; the name is checked above and reaches the statement as an identifier only.

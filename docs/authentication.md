@@ -1675,6 +1675,8 @@ updateEverySessionKey(key: string) {
 }
 ```
 
+A `UserProvider` of a [guard of a package](#guards-of-a-package) has its own user type. Name it and pass the package's table: `credentialWriter<OfficeUser>(this.db, { table: this.table })`. The ids it takes and the `sampleId` it returns are then that user's ids. Naming the user type without a table does not compile.
+
 Pass the repository's own connection (`this.db`): it follows an enclosing transaction, which keeps a new password, its session key and
 the revoked tokens in one unit. A fix to the statements reaches you with an update of `@marmeon/auth`; the copy in your repository does
 not. Write them yourself only when the columns differ; `updateEverySessionKey()` for comparison:

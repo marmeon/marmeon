@@ -224,7 +224,7 @@ export interface ConfirmedPasswordOptions<N extends string = string> {
     readonly maxAge?: Duration;
 }
 // CredentialWriter
-export type CredentialWriter = Pick<UserProvider, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
+export type CredentialWriter<U = AuthUser> = Pick<UserProvider<U>, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
 // Credentials
 export interface Credentials<U = AuthUser> {
     readonly user: U;
@@ -1172,6 +1172,11 @@ export declare function confirmedPassword<const N extends RouteNameInput = never
 export declare function credentialWriter(db: Connection<any>, options?: {
     table?: string;
 }): CredentialWriter;
+export declare function credentialWriter<U extends {
+    readonly id: string | number;
+}>(db: Connection<any>, options: {
+    table: string;
+}): CredentialWriter<U>;
 // defineGuard
 export declare function defineGuard<U extends {
     readonly id: string | number;
