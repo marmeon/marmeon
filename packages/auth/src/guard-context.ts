@@ -87,8 +87,7 @@ export abstract class GuardContext {
   abstract endings(): SessionEndings | undefined;
 
   /**
-   * What to dispatch for `event`, which a service of this guard raised, in order: the guard's own event (the app's event itself for
-   * the app), then those derived from it; empty for none. A service dispatches it through {@link dispatchForGuard}, never by itself.
+   * What to dispatch for `event`, which a service of this guard raised, in order (empty for none). A service dispatches it through {@link dispatchForGuard}, never by itself.
    */
   abstract dispatched(event: object): readonly object[];
 }
