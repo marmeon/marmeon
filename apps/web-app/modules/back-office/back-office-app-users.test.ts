@@ -33,6 +33,14 @@ describe('the back office with the app’s users', () => {
     expect(await propsOf(customer, '/office')).toMatchObject({ name: 'Ada Lovelace', users: 'app', canPublish: true });
   });
 
+  it('carries the customer’s own shared props on the overview: the editor is that app user, so the route is the app’s', async () => {
+    const customer = browser();
+    await signIn(customer, ada).assertRedirect();
+    const props = await propsOf(customer, '/office');
+    expect(props.auth).toEqual({ user: { name: 'Ada Lovelace', verified: true } });
+    expect(props).toHaveProperty('bell');
+  });
+
   it('refuses a customer without a role, with 403, though the id has a row in `office_users`', async () => {
     // Victor, the viewer of the back office's own table, has Alan's id: that row must not make Alan an editor.
     const rows = await app.make(Connections).get().selectFrom('office_users').select(['id', 'role']).where('id', '=', alan.id).execute();

@@ -10,6 +10,7 @@ import { ANNOUNCE_ENDED, missingSessionKeyMethod, notABoolean, passwordHashWritt
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { SignInFailed, SignInLockedOut, SignedIn, MAX_USER_AGENT, SignedOut, PasswordChanged, RememberTokenReused, type SignInVia } from './events.ts';
 import { Hasher } from './hashing.ts';
+import { RequestGuard } from './guard-stamp.ts';
 import { readAuth, writeAuth, type AuthSessionKeys, type PendingSecondFactor } from './session-keys.ts';
 import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import type { GuardNames } from './guard-names.ts';
@@ -139,6 +140,7 @@ export class Auth {
   readonly #logger: Logger;
   readonly #history: ClientHistory;
   readonly #request: ClientInfo;
+  readonly #route: RequestGuard;
   readonly #clock: Clock;
   readonly #limiter: RateLimiter;
   #user: Promise<AuthUser | undefined> | undefined;
@@ -163,6 +165,7 @@ export class Auth {
     request: ClientInfo,
     clock: Clock,
     limiter: RateLimiter,
+    route: RequestGuard,
   ) {
     this.#guard = guard;
     // Looked up now: an app without a `UserProvider` hears it at the first request that asks who is signed in, a guest's included.
@@ -178,7 +181,17 @@ export class Auth {
     this.#logger = logger;
     this.#history = history;
     this.#request = request;
+    this.#route = route;
     this.#clock = clock;
+  }
+
+  /**
+   * Whether the route of this request belongs to this guard's users: the app's Auth also says yes on a route no middleware gave a guard;
+   * a package guard's only on its own routes. The answer is the route list's until a guard's middleware has run: one that another
+   * middleware calls names its guard only then, so ask again where it matters. See `docs/authentication.md#whose-route-a-request-is-on`.
+   */
+  ownsRoute(): boolean {
+    return this.#route.servesGuard(this.#guard.names.name);
   }
 
   #read(key: keyof AuthSessionKeys): unknown {

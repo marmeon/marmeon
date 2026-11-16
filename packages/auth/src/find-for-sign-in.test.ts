@@ -10,6 +10,7 @@ import { AuthServiceProvider } from './index.ts';
 import { PasswordBroker } from './password-reset.ts';
 import { assertSignInFinder, UserProvider } from './user.ts';
 import { commandGuards, guardContext } from './test-helpers/guard-context.ts';
+import { newRequestGuard } from './request-guard.ts';
 
 const rest = {
   findById: async () => undefined,
@@ -60,7 +61,7 @@ describe('a UserProvider with the old name findForLogin()', () => {
   });
 
   it('is refused by attempt() with the same message, not as invalid-credentials', async () => {
-    const auth = new Auth(guardContext({ users: new OldProvider() as unknown as UserProvider, signInThrottle: { takeClient: async () => undefined } as never }), {} as never, { failureFloorMs: () => 0 } as never, {} as never, {} as never, {} as never, {} as never, {} as never, { ip: '127.0.0.1' } as never, {} as never, {} as never);
+    const auth = new Auth(guardContext({ users: new OldProvider() as unknown as UserProvider, signInThrottle: { takeClient: async () => undefined } as never }), {} as never, { failureFloorMs: () => 0 } as never, {} as never, {} as never, {} as never, {} as never, {} as never, { ip: '127.0.0.1' } as never, {} as never, {} as never, newRequestGuard());
     await expect(auth.attempt('ada@example.com', 'secret')).rejects.toThrow(/renamed findForSignIn\(\)/);
   });
 

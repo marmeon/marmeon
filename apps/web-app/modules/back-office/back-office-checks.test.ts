@@ -1,9 +1,10 @@
 import { UserRepository, type User } from '#modules/auth';
 import { EditorSignInLog, OfficeGuard, type OfficeUser } from '@fixtures/back-office';
 import { authenticate } from '@marmeon/auth';
+import { notificationsChannel } from '@marmeon/live';
 import { defineModule } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import { Controller, defineRoutes, everyone } from '@marmeon/http';
+import { Controller, defineRoutes, everyone, type HttpContext, type Next } from '@marmeon/http';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -177,37 +178,79 @@ describe('the back office moved to another path', () => {
   });
 });
 
-describe('the app’s shared props on pages of the back office’s path', () => {
+describe('the app’s shared props on routes of another guard, whatever their path', () => {
   class Page extends Controller {
     handle() {
       return this.view('office::Secure', {});
     }
   }
 
-  it('are left out below the path, named or not, and kept on any other path, whatever its name or its likeness to the path', async () => {
+  it('are left out when the office guard’s middleware is called by another middleware, which names its guard only when it runs', async () => {
+    const authenticateOffice = OfficeGuard.authenticate({ loginRoute: 'office.login' });
+    class Wrapper {
+      static readonly inject = [authenticateOffice] as const;
+      readonly #inner: { handle(ctx: HttpContext, next: Next<{}>): unknown };
+      constructor(inner: { handle(ctx: HttpContext, next: Next<{}>): unknown }) {
+        this.#inner = inner;
+      }
+      handle(ctx: HttpContext, next: Next<{}>) {
+        return this.#inner.handle(ctx, next);
+      }
+    }
     const probe = defineModule({
-      name: 'office-props-probe',
+      name: 'office-wrapped-probe',
       routes: defineRoutes((Route) => {
-        const customers = Route.middleware(authenticate()).authorize(everyone);
-        customers.get('/office/probe/unnamed', Page);
-        customers.get('/hours', Page).name('office.hours');
-        customers.get('/officex', Page);
-        customers.get('/officers/list', Page);
+        Route.middleware(Wrapper as never).authorize(everyone).get('/probe/wrapped', Page);
+        Route.middleware(authenticate()).authorize(everyone).get('/probe/app-live', Page);
       }),
     });
     await app.close();
     app = await createTestApp({ ...application, modules: [...application.modules!, probe] }, { database: 'refresh', seed: true });
     const refreshed: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
     [ada] = refreshed as [User, ...User[]];
-    const customer = app.actingAs(ada).navigating();
-    const propsOf = async (path: string) => (await customer.get(path)).page()!.props as Record<string, unknown>;
-    const below = await propsOf('/office/probe/unnamed');
-    for (const key of ['auth', 'bell', 'locales']) expect(below, key).not.toHaveProperty(key);
-    for (const path of ['/hours', '/officex', '/officers/list']) {
-      const props = await propsOf(path);
-      expect(props.auth, path).toEqual({ user: { name: 'Ada Lovelace', verified: true } });
+    [eve] = (await offices(app)) as [OfficeUser, ...OfficeUser[]];
+    const both = browser();
+    await customerSignsIn(both, ada).assertRedirect();
+    await editorSignsIn(both, eve).assertRedirect('/office');
+    const page = (await both.navigating().get('/probe/wrapped')).assertOk().assertPage('office::Secure');
+    expect(page.page()!.props).toMatchObject({ auth: { user: null }, bell: null });
+    // The same browser follows the customer's notification channel on a page of the app, so the absence below means something.
+    const channel = notificationsChannel({ type: 'user', id: ada.id });
+    const followed = async (path: string) => ((await both.navigating().get(path)).assertOk().page()!.live ?? []).map((each) => each.channel);
+    expect(await followed('/probe/app-live')).toContain(channel);
+    expect(await followed('/probe/wrapped')).not.toContain(channel);
+    expect(page.body).not.toContain('Ada Lovelace');
+  });
+
+  it('are left out on a route of the office guard and kept on every route of the app, below the back office path or not', async () => {
+    const probe = defineModule({
+      name: 'office-props-probe',
+      routes: defineRoutes((Route) => {
+        // The path says nothing: the guard of the route does.
+        Route.middleware(authenticate()).authorize(everyone).get('/office/probe/app', Page);
+        Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' })).authorize(everyone).get('/probe/office', Page);
+        Route.authorize(everyone).get('/probe/public', Page);
+      }),
+    });
+    await app.close();
+    app = await createTestApp({ ...application, modules: [...application.modules!, probe] }, { database: 'refresh', seed: true });
+    const refreshed: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
+    [ada] = refreshed as [User, ...User[]];
+    [eve] = (await offices(app)) as [OfficeUser, ...OfficeUser[]];
+    const both = browser();
+    await customerSignsIn(both, ada).assertRedirect();
+    await editorSignsIn(both, eve).assertRedirect('/office');
+    const customer = { auth: { user: { name: 'Ada Lovelace', verified: true } } };
+
+    for (const path of ['/office/probe/app', '/probe/public']) {
+      const props = (await both.navigating().get(path)).assertOk().assertPage('office::Secure').page()!.props;
+      expect(props.auth, path).toEqual(customer.auth);
       expect(props, path).toHaveProperty('bell');
+      expect(props, path).toHaveProperty('locales');
     }
+    const other = (await both.navigating().get('/probe/office')).assertOk().assertPage('office::Secure');
+    for (const key of ['auth', 'bell', 'locales']) expect(other.page()!.props, key).not.toHaveProperty(key);
+    expect(other.body).not.toContain('Ada Lovelace');
   });
 });
 
