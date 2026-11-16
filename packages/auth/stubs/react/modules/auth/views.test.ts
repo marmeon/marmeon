@@ -43,3 +43,14 @@ describe('the forms of the views', () => {
     expect(source.lastIndexOf('if (!layer.isLayer) return;', prevented), 'a page (not a layer) keeps the link').toBeGreaterThan(-1);
   });
 });
+
+describe('the middleware that shares the app’s props', () => {
+  it('leaves a route that is not the app’s before any share(), and asks again in the lazy auth prop', () => {
+    const source = readFileSync(new URL('./middleware/ShareAuthProps.ts', import.meta.url), 'utf8');
+    const handle = source.slice(source.indexOf('handle('));
+    const early = handle.indexOf('if (!this.#auth.ownsRoute()) return next();');
+    expect(early, 'an early return on a route that is not the app’s').toBeGreaterThan(-1);
+    expect(early).toBeLessThan(handle.indexOf('.share('));
+    expect(handle.slice(handle.indexOf("share('auth'")), 'the lazy auth prop asks ownsRoute() again').toContain('this.#auth.ownsRoute() ?');
+  });
+});

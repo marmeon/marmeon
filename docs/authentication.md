@@ -1416,6 +1416,40 @@ login controller runs. Neither is what you want:
 > The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or
 > `EmailChange` acts for the app's user, and nothing can tell that from a controller that means to. Take the guard's services there.
 
+### Whose route a request is on
+
+`auth.ownsRoute()` tells whether the route of the request belongs to the users of that `Auth`. Ask it where something is only for one
+guard's users, such as the shared props of the app:
+
+| Route | The app's `Auth` | A package guard's `Auth` |
+|---|---|---|
+| `authenticate()`, `guest()` or `authenticate('api')` of the app | `true` | `false` |
+| `OfficeGuard.authenticate()` or `OfficeGuard.guest()` | `false` | `true` for `OfficeGuard.Auth`, `false` for any other |
+| No middleware names a guard (a public page) | `true` | `false` |
+
+A guard slot's `Auth` answers like the `Auth` of the guard the slot is bound to.
+
+The answer rests on [the guard the router finds in the route's list](#protecting-the-routes), known before the first middleware runs. A
+guard's middleware that another middleware calls inside its own `handle()` names its guard only when it runs, so until then the answer is the
+route list's: name the guard's middleware in the route's list, and ask again in a lazy shared prop, which runs at render, after every
+middleware, as the starter's `ShareAuthProps` does. A `once()` prop is not one of them: the browser keeps it as delivered, so share nothing there that must not reach the users of another guard:
+
+```ts
+handle(_ctx: HttpContext, next: Next<{}>) {
+  // Users of a package's guard see nothing of the app's.
+  if (!this.#auth.ownsRoute()) return next();
+  this.#shared.share('auth', async () => {
+    const user = this.#auth.ownsRoute() ? await this.#auth.user() : undefined;
+    return { user: user ? { name: user.name } : null };
+  });
+  return next();
+}
+```
+
+A page of a package that carries none of its guard's middleware has no guard, so the app's `Auth` calls it the app's. Put the guard's
+`guest()` or `authenticate()` on every page of the package. A page that serves guests and signed-in users alike can carry neither, and a
+route judged only by a policy of the package has no guard either: the app counts both as its own. `ownsRoute()` cannot tell such a page from the app's, so the app keeps its own check for its path where it must not share its props, and the page's controller takes the guard's `Auth`.
+
 ### Using the app's users instead
 
 A package can run in two modes. In the first it serves users of its own: a page editor that ships its staff table and defines a guard

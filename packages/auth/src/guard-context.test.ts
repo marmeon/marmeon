@@ -19,7 +19,7 @@ import { SignInAudience } from './live-audience.ts';
 import { defineGuard, type Guard } from './define-guard.ts';
 import { authenticate, confirmedPassword, guest } from './middleware.ts';
 import { NewPassword } from './new-password.ts';
-import { RequestGuard } from './request-guard.ts';
+import { newRequestGuard, RequestGuard } from './request-guard.ts';
 import { Passkeys } from './passkeys/passkeys.ts';
 import { PasskeyStore } from './passkeys/store.ts';
 import { PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
@@ -372,6 +372,7 @@ describe('Auth for a guard', () => {
       NO_CLIENT,
       { now: () => Date.now() } as never,
       {} as never,
+      newRequestGuard(),
     );
 
   it('keeps its sign-in under its own keys and the app guard, on the same session and the same id, sees nobody', async () => {

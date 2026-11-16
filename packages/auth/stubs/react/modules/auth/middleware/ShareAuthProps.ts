@@ -16,8 +16,9 @@ declare module '@marmeon/http/page' {
     home?: string;
 
     /**
-     * The signed-in user, on every page of the `web` group — or null. Optional on purpose: a path without a route (a 404)
-     * passes no group's middleware, so its error page has no shared props — a layout around it renders without them.
+     * The signed-in user, on every page of the app's users — or null. Optional on purpose: a path without a route (a 404)
+     * passes no group's middleware, and a route that is not the app's (`auth.ownsRoute()` is false) gets none of these
+     * props, so such a page and the layout around it render without them.
      * Shared props reach every page, in its HTML and its JSON: share only what pages show, so no id.
      */
     auth?: { user: { name: string; verified: boolean } | null };
@@ -32,7 +33,7 @@ declare module '@marmeon/http/page' {
   }
 }
 
-/** Shares the signed-in user, the app's name and the URL of HOME with every page. Lazy: only pages ask. */
+/** Shares the signed-in user, the app's name and the URL of HOME with every page of the app's users. Lazy: only pages ask. */
 export class ShareAuthProps {
   readonly #shared: SharedData;
   readonly #auth: Auth;
@@ -47,10 +48,15 @@ export class ShareAuthProps {
   }
 
   handle(_ctx: HttpContext, next: Next<{}>) {
+    // A route that is not the app's (one of a package's own guard) is for other users: they see nothing of the app's,
+    // neither its user nor its name and home. That holds for a route whose list names its guard. On a route where another middleware calls the guard's, only the user
+    // is asked again at render (below), where the answer is final: the name and home are once props, which the browser keeps as delivered, so they cannot be taken back.
+    if (!this.#auth.ownsRoute()) return next();
     this.#shared.share('appName', once(() => this.#app.name));
     this.#shared.share('home', once(() => this.#router.url(HOME)));
     this.#shared.share('auth', async () => {
-      const user = await this.#auth.user();
+      // Asked again: a guard's middleware that another middleware calls names its guard only when it runs, after this one.
+      const user = this.#auth.ownsRoute() ? await this.#auth.user() : undefined;
       return { user: user ? { name: user.name, verified: user.email_verified_at !== null } : null };
     });
     return next();

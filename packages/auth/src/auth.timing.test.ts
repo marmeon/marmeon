@@ -10,6 +10,7 @@ import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { guardContext } from './test-helpers/guard-context.ts';
+import { newRequestGuard } from './request-guard.ts';
 
 const ada = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
@@ -21,7 +22,7 @@ describe('the time of a failed sign-in', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(guardContext({ users: users as unknown as UserProvider, factors: new NoTwoFactorState(), signIns: signInStore(), fingerprints: new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), signInThrottle: NO_LOGIN_LIMITS }), session, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, { now: () => Date.now() } as never, {} as never);
+    const auth = new Auth(guardContext({ users: users as unknown as UserProvider, factors: new NoTwoFactorState(), signIns: signInStore(), fingerprints: new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), signInThrottle: NO_LOGIN_LIMITS }), session, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, { now: () => Date.now() } as never, {} as never, newRequestGuard());
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();

@@ -89,6 +89,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
+    ownsRoute(): boolean;
     attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
     signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
@@ -1924,6 +1925,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
+    ownsRoute(): boolean;
     attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
     signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
