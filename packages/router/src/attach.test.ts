@@ -152,7 +152,7 @@ describe('RouteDefinition.attach()', () => {
     const response = await router.dispatch(variant, { request: new Request('http://app.test/about/_part/export'), params: {} }, { urlLocales: { preferred: () => 'de', supported: ['de', 'en'] } as never });
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/de/about/_part/export');
-    expect(await response.text()).not.toBe('exported');
+    expect(await response.text()).toBe('');
   });
 
   it('keeps the middleware group of the page, so an attached POST gets what the group holds', () => {

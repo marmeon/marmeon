@@ -130,9 +130,7 @@ describe('createHttpKernel — live validation', async () => {
     const response = await post('/sign-up', { name: 'A', email: 'not-an-email', password: '' }, live('email'));
     expect(response.status).toBe(422);
     expect(response.headers.get(VALIDATED_HEADER)).toBe('email');
-    const body = (await response.json()) as { errors: Record<string, string[]>; input?: unknown; old?: unknown };
-    expect(body.errors).toEqual({ email: ['Not an e-mail address.'] });
-    expect(JSON.stringify(body)).not.toContain('not-an-email');
+    expect(await response.json()).toEqual({ message: 'Not an e-mail address.', errors: { email: ['Not an e-mail address.'] } });
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 

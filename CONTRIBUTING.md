@@ -985,11 +985,11 @@ by hand. It applies to the repository only: the `apps/*` preset does not carry i
   URL built from them, as the `root` of a `createApplication` whose modules take `migrations` from a `__fixtures__` folder. Those
   migrations must lie in the workspace, so the root comes from `workspaceTempDir`. The rule follows a `const` in the same file
   for the definition, the root, the modules and the migrations; it does not follow a helper call or an import.
-- `exact-body-assertion` applies to tests. It refuses `.not.toContain`, `.not.toMatch` and `.not.toEqual` on `await x.json()` or
-  `await x.text()`, also inside `String(…)` or `JSON.stringify(…)`, and with `expect.soft`. An error body passes such an assertion
-  too, so assert the exact expected answer. A body held in a variable and other negative matchers are not checked. Where the body
-  carries a value that differs per session or per request and cannot be compared whole, prove first that it is the right page,
-  then allow the negative check with a reason.
+- `exact-body-assertion` applies to tests. It refuses any `.not` matcher (`.not.toContain`, `.not.toBe`, `.not.toHaveProperty`, …) on
+  `await x.json()` or `await x.text()`, also inside `String(…)` or `JSON.stringify(…)`, with `expect.soft`, and when the body is held
+  in a `const`. A `let`, a destructured `const { a } = await r.json()` and a `.body` member are not followed or counted as a response body. An error body passes a negative
+  assertion too, so assert the exact expected answer. Where the body carries a value that differs per session or per request and
+  cannot be compared whole, prove first that it is the right page, then allow the negative check with a reason.
 
 `scripts/lint.test.ts` copies the config and the plugin into a temporary directory and compares the exact hits of sample files,
 so a rule that loads but stops reporting turns that test red.

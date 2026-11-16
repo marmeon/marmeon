@@ -133,7 +133,7 @@ describe('lint — the repository\'s own rules', () => {
         'createApplication({ root: sharedRoot, modules: [defineModule({ name: "x", migrations })] });',
         '',
       ].join('\n'),
-      // exact-body-assertion: a negative assertion on an awaited `.json()` or `.text()`, alone or inside `String` or `JSON.stringify`.
+      // exact-body-assertion: a negative assertion of any matcher on an awaited `.json()` or `.text()`, alone, inside `String` or `JSON.stringify`, or held in a `const`.
       'packages/demo/src/body.test.ts': [
         "expect(await response.text()).not.toMatch(/secret/);", // 1
         "expect(await (await fetch('/x')).json()).not.toEqual({ error: true });", // 2
@@ -143,15 +143,24 @@ describe('lint — the repository\'s own rules', () => {
         "expect.soft(await response.text()).not.toContain('secret');", // 6
         "expect(await response.text()).not!.toContain('secret');", // 7
         "(expect(await response.text()).not as any).toMatch(/secret/);", // 8
+        "const held = await response.text();", // a body held in a `const` is followed
+        "expect(held).not.toContain('secret');", // 10
+        "expect(await response.json()).not.toHaveProperty('secret');", // 11
+        "expect(await response.json()).not.toBe('');", // 12
+        "expect(String(held)).not.toContain('secret');", // 13: a wrapper around a body held in a `const`
+        "expect(JSON.stringify(held)).not.toContain('secret');", // 14
         "expect(JSON.stringify(value)).not.toContain('secret');",
         "expect(JSON.stringify(await visit.json())).toContain('ok');",
         "expect(await response.text()).toBe('ok');",
         "expect(list).not.toContain('secret');",
         "expect(response.text).not.toContain('secret');",
-        // The limit: a body held in a variable and the other negative matchers are not followed.
-        "const body = await response.text();",
-        "expect(body).not.toContain('secret');",
-        "expect(await response.text()).not.toBe('');",
+        "expect(held).toContain('ok');", // a positive matcher on a constant body
+        // The limits: a `let` can be reassigned, and a `.body` member is not a response body (it may be a config block).
+        "let reassigned = await response.text();",
+        "expect(reassigned).not.toContain('secret');",
+        "expect(block.body).not.toContain('secret');",
+        "const { inner } = await response.json();",
+        "expect(inner).not.toContain('secret');", // destructuring is not followed
         '',
       ].join('\n'),
       // identity-by-name: `constructor.name` compared — plain, optional, asserted, computed, in a `switch` — in source only.
@@ -197,6 +206,11 @@ describe('lint — the repository\'s own rules', () => {
         `packages/demo/src/body.test.ts:6:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:7:${own('exact-body-assertion')}`,
         `packages/demo/src/body.test.ts:8:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:10:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:11:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:12:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:13:${own('exact-body-assertion')}`,
+        `packages/demo/src/body.test.ts:14:${own('exact-body-assertion')}`,
         `packages/demo/src/identity.ts:1:${own('identity-by-name')}`,
         `packages/demo/src/identity.ts:2:${own('identity-by-name')}`,
         `packages/demo/src/identity.ts:3:${own('identity-by-name')}`,

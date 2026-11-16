@@ -225,6 +225,7 @@ describe('what the pages show', () => {
         const body = await (await kernel.request(path)).text();
         // The path as a person reads it — decoded, so `<script>` is there as text, escaped.
         expect(body, path).toContain('/people/&lt;script&gt;alert(1)&lt;');
+        // oxlint-disable-next-line marmeon/exact-body-assertion -- the page lists entries with their ids and times, which differ per run; the contains above pin it as the right page
         expect(body, path).not.toMatch(/<script>alert\(/);
       }
       // The query's values (decoded when recorded) on the request's page.
@@ -232,6 +233,7 @@ describe('what the pages show', () => {
       expect(detail).toContain('&quot;q&quot;: &quot;&lt;script&gt;alert(2)&lt;/script&gt;&quot;');
       const search = await (await kernel.request(`${BASE}/requests?search=${encodeURIComponent('"><script>alert(3)</script>')}`)).text();
       expect(search).toContain('value="&quot;&gt;&lt;script&gt;alert(3)&lt;/script&gt;"');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the page lists entries with their ids and times, which differ per run; the contains above pin it as the right page
       expect(search).not.toContain('<script>alert(3)');
     } finally {
       await app.shutdown();
@@ -257,8 +259,10 @@ describe('what the pages show', () => {
         const response = await kernel.request(path);
         expect(response.status, path).toBe(200);
         const body = await response.text();
+        // oxlint-disable-next-line marmeon/exact-body-assertion -- the pages carry entry ids and times, which differ per run; the status and the contains below pin each page
         expect(body, path).not.toMatch(/<script>alert|<img src=x|<b>app|<i>x/);
-        if (path !== `${BASE}/requests`) expect(body, path).toContain('Uncaught &lt;script&gt;alert(1)&lt;/script&gt;');
+        if (path === `${BASE}/requests`) expect(body, path).toContain('<h1>Requests</h1>');
+        else expect(body, path).toContain('Uncaught &lt;script&gt;alert(1)&lt;/script&gt;');
       }
       const detail = await (await kernel.request(`${BASE}/browser/${entry.id}`)).text();
       expect(detail).toContain('Raised at');
@@ -273,18 +277,16 @@ describe('what the pages show', () => {
   it('escape the id of an entry that is not there — its 404 page shows the decoded path parameter as text', async () => {
     const { app, kernel } = await boot();
     try {
-      for (const path of [`${BASE}/logs/%3Cb%3Ex`, `${BASE}/requests/%3Cb%3Ex`]) {
+      const notFoundPage = (type: string, id: string) => `<!doctype html><title>Not found</title><p>No ${type} entry ${id} — the ring keeps entries for 24 hours.</p><p><a href="${BASE}">Devtools</a></p>`;
+      for (const [path, type] of [[`${BASE}/logs/%3Cb%3Ex`, 'log'], [`${BASE}/requests/%3Cb%3Ex`, 'request']] as const) {
         const response = await kernel.request(path);
         expect(response.status, path).toBe(404);
-        const body = await response.text();
-        expect(body, path).toContain('&lt;b&gt;x');
-        expect(body, path).not.toContain('<b>');
+        expect(await response.text(), path).toBe(notFoundPage(type, '&lt;b&gt;x'));
       }
       const img = await (await kernel.request(`${BASE}/logs/${encodeURIComponent('<img src=x onerror=alert(1)>')}`)).text();
-      expect(img).toContain('&lt;img src=x onerror=alert(1)&gt;');
-      expect(img).not.toContain('<img');
+      expect(img).toBe(notFoundPage('log', '&lt;img src=x onerror=alert(1)&gt;'));
       const page = await (await kernel.request(`${BASE}/logs/${encodeURIComponent('"><form action="/account/email" method="post"><button>Reload</button></form>')}`)).text();
-      expect(page).not.toMatch(/<form|<button/);
+      expect(page).toBe(notFoundPage('log', '&quot;&gt;&lt;form action=&quot;/account/email&quot; method=&quot;post&quot;&gt;&lt;button&gt;Reload&lt;/button&gt;&lt;/form&gt;'));
       expect(await (await kernel.request(`${BASE}/logs/nothing-here`)).text()).toBe(`<!doctype html><title>Not found</title><p>No log entry nothing-here — the ring keeps entries for 24 hours.</p><p><a href="${BASE}">Devtools</a></p>`);
     } finally {
       await app.shutdown();
@@ -303,6 +305,7 @@ describe('what the pages show', () => {
       expect(frame).not.toMatch(/allow-scripts|allow-same-origin/);
       expect(frame).toContain(`src="${BASE}/mails/${mail.id}/html"`);
       // The page itself carries none of the mail's markup.
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the mail's page carries its id and time, which differ per run; the contains around it pin it
       expect(page).not.toContain("parent.document.title = 'pwned'");
       expect(page).toContain('Hello &lt;b&gt;Ada&lt;/b&gt;');
 
@@ -438,15 +441,19 @@ describe('what the pages show', () => {
         failedAt: Date.now() - 2000,
       });
       const page = await (await kernel.request(`${BASE}/queue`)).text();
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the queue page carries the failed jobs' times, which differ per run; the contains around it pin it as the queue page
       expect(page).not.toContain('queue:retry f00d-0002');
       expect(page).toContain('marmeon queue:forget f00d-0002');
       expect(page).toContain('marmeon queue:retry f00d-0003');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the queue page carries the failed jobs' times, which differ per run; the contains around it pin it as the queue page
       expect(page).not.toContain('old-release-data');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the queue page carries the failed jobs' times, which differ per run; the contains around it pin it as the queue page
       expect(page).not.toContain('newer-release-data');
       expect(page).toMatch(/<td class="mono">default<\/td><td class="num">2<\/td><td class="num">1<\/td><td class="num">1<\/td><td class="num">0<\/td>/);
       expect(page).toContain('Failed jobs (3)');
       expect(page).toContain('marmeon queue:retry f00d-0001');
       expect(page).toContain('marmeon queue:forget f00d-0001');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the queue page carries the failed jobs' times, which differ per run; the contains around it pin it as the queue page
       expect(page).not.toContain('hunter2'); // the stored error and payload, redacted
       expect(page).toContain(`href="${BASE}/requests?requestId=req-1"`);
 

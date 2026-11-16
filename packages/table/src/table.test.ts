@@ -66,10 +66,11 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       const response = await application.request('/teams/1/leaky', { user: ALAN });
       const text = await response.text();
       expect(response.status).toBe(200);
-      expect(text, 'a hidden column reached the props').not.toContain('@example.com');
+      expect(text, 'a hidden column reached the props').toBe(
+        '{"leaky":{"name":"leaky","key":"id","columns":[{"name":"name","label":null,"sortable":true,"searchable":false,"sort":"asc"}],"rows":[{"name":"Ada","id":1,"can":{}},{"name":"Alan","id":2,"can":{}},{"name":"Edsger","id":4,"can":{}},{"name":"Grace","id":3,"can":{}}],"sort":{"column":"name","direction":"asc"},"search":null,"filters":[],"page":{"type":"offset","perPageOptions":[25,50,100],"page":1,"perPage":25,"total":4,"lastPage":1,"from":1,"to":4},"query":{"sort":"sort","page":"page","perPage":"per_page","cursor":"cursor","search":"search"},"state":{},"actions":[],"bulk":[],"exports":[]}}',
+      );
       const { leaky } = JSON.parse(text) as { leaky: Members };
       expect(leaky.rows.map((row) => Object.keys(row).sort())).toEqual(leaky.rows.map(() => ['can', 'id', 'name']));
-      expect(text).not.toContain('@example.com');
     });
 
     it('takes a base query that loads a relation — the page and its count are one query each', async () => {
@@ -500,6 +501,8 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
   });
 
   describe('CSV export (GET …/export/:export)', () => {
+    // A date cell is written as TIME: its format is not what these tests are about.
+    const withoutTimes = (text: string) => text.replace(/\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(\.\d+)?Z?/g, 'TIME');
     const csv = (application: TableTestApp, user: number | undefined, query = '') => application.request(`${endpoint(MembersTable, 'export', 'csv')}${query ? `?${query}` : ''}`, { user });
 
     it('streams the visible columns as the table is filtered and sorted — no-store, a safe file name', async () => {
@@ -526,7 +529,9 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       const application = await app(driver);
       const text = await (await csv(application, EDSGER)).text();
       expect(text.split('\r\n')[0], 'a hidden column reached the export').toBe('"name","role","joined","seen"');
-      expect(text, 'a hidden column reached the export').not.toContain('@example.com');
+      expect(withoutTimes(text), 'a hidden column reached the export').toBe(
+        ['"name","role","joined","seen"', '"Ada","admin","TIME","TIME"', '"Alan","member","TIME",""', '"Edsger","member","TIME",""', '"Grace","member","TIME","TIME"', ''].join('\r\n'),
+      );
     });
 
     it('escapes formulas (OWASP): a cell that starts with = + - @ tab CR LF gets a quote — quotes doubled, every field quoted', async () => {
@@ -539,7 +544,18 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(text, 'a formula reached the CSV').toContain('"\'@SUM(1+1)"');
       const all = await (await csv(application, ADA)).text();
       expect(all, 'a formula reached the CSV').toContain('"\'=HYPERLINK(""http://evil.example"",""x"")"');
-      expect(all).not.toMatch(/(^|,)"=/m);
+      expect(withoutTimes(all), 'a formula reached the CSV').toBe(
+        [
+          '"name","email","role","joined","seen"',
+          '"\'=HYPERLINK(""http://evil.example"",""x"")","e1@example.com","member","TIME",""',
+          '"\'@SUM(1+1)","e2@example.com","member","TIME",""',
+          '"Ada","ada@example.com","admin","TIME","TIME"',
+          '"Alan","alan@example.com","member","TIME",""',
+          '"Edsger","edsger@example.com","member","TIME",""',
+          '"Grace","grace@example.com","member","TIME","TIME"',
+          '',
+        ].join('\r\n'),
+      );
     });
 
     it('streams large exports in batches — every row once', async () => {

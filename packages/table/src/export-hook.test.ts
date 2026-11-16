@@ -66,8 +66,7 @@ describe.each(drivers)('exportCsv().onExport() (%s)', (driver) => {
     const response = await download(open, ADA);
     expect(response.status, 'the file was sent although it could not be recorded').toBe(500);
     const text = await response.text();
-    expect(text).not.toContain('Ada');
-    expect(text).not.toContain('@example.com');
+    expect(text).toBe('{"message":"marmeon.status.500"}');
     expect(response.headers.get('content-disposition')).toBeNull();
     expect(open.recorder.exports).toEqual([]);
   });

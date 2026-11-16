@@ -121,13 +121,13 @@ const fixtureAppRoot = {
   },
 };
 
-/** `await x.json()` / `await x.text()`, also inside `String(…)` or `JSON.stringify(…)` — a response body. */
-function isBodyOfAnswer(node: Node): boolean {
-  const value = unwrap(node);
+/** `await x.json()` / `await x.text()`, also inside `String(…)` or `JSON.stringify(…)` — a response body. A `.body` member is not one, and neither is a destructured `const { a } = await r.json()`. */
+function isBodyOfAnswer(node: Node, resolve: (node: Node) => Node): boolean {
+  const value = resolve(node);
   if (value?.type === 'CallExpression') {
     const callee = unwrap(value.callee);
     const wrapper = callee.type === 'Identifier' ? callee.name : callee.type === 'MemberExpression' && callee.object.type === 'Identifier' ? `${callee.object.name}.${propertyName(callee)}` : undefined;
-    if (wrapper === 'String' || wrapper === 'JSON.stringify') return isBodyOfAnswer(value.arguments[0]);
+    if (wrapper === 'String' || wrapper === 'JSON.stringify') return isBodyOfAnswer(value.arguments[0], resolve);
   }
   if (value?.type === 'AwaitExpression') {
     const awaited = unwrap(value.argument);
@@ -138,15 +138,16 @@ function isBodyOfAnswer(node: Node): boolean {
 
 const exactBodyAssertion = {
   create(context: Context) {
+    const resolve = resolver(context);
     const isExpect = (callee: Node) => (callee.type === 'Identifier' && callee.name === 'expect') || (callee.type === 'MemberExpression' && callee.object.type === 'Identifier' && callee.object.name === 'expect' && propertyName(callee) === 'soft');
     return {
       CallExpression(node: Node) {
         const callee = node.callee;
-        if (callee.type !== 'MemberExpression' || !['toContain', 'toMatch', 'toEqual'].includes(propertyName(callee) ?? '') || !isMember(callee.object, 'not')) return;
+        if (callee.type !== 'MemberExpression' || !isMember(callee.object, 'not')) return;
         const negated = unwrap(callee.object);
         const expectation = negated?.type === 'MemberExpression' ? unwrap(negated.object) : undefined;
         if (expectation?.type !== 'CallExpression' || !isExpect(expectation.callee)) return;
-        if (!isBodyOfAnswer(expectation.arguments[0])) return;
+        if (!isBodyOfAnswer(expectation.arguments[0], resolve)) return;
         context.report({ node, message: 'A negative assertion on a response body also passes for an error body: assert the exact expected answer.' });
       },
     };

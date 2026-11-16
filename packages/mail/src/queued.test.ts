@@ -284,11 +284,14 @@ describe('mail previews', () => {
     // Its own policy: no script at all — an app's contentSecurityPolicy() leaves it alone; the srcdoc frame inherits it.
     expect(page.headers.get('content-security-policy')).toMatch(/^default-src 'none'; style-src 'unsafe-inline'; .*frame-ancestors 'self'$/);
     expect(page.headers.get('content-security-policy')).not.toContain('script-src');
-    const body = await page.text();
-    expect(body).toContain('<th>Subject</th><td>Deine Bestellung ist unterwegs</td>');
-    expect(body).toContain('<iframe sandbox ');
-    expect(body).not.toContain('<script>alert(1)</script>'); // the template's markup only inside srcdoc, escaped
-    expect(body).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    // The template's markup sits in `srcdoc`, escaped; none of it is markup of the page.
+    expect(await page.text()).toBe(
+      [
+        '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>shop/OrderShippedMail — mail preview</title>',
+        '<style>:root{color-scheme:light}body{font:14px/1.5 system-ui,sans-serif;margin:0 auto;max-width:960px;padding:16px;background:#fff;color:#111}a{color:#1d4ed8}th{text-align:left;padding-right:12px;color:#555}iframe{width:100%;height:75vh;border:1px solid #ccc;border-radius:6px;margin-top:12px;background:#fff}</style>',
+        '</head><body><p><a href="/_marmeon/mail">All previews</a> · <a href="?text&locale=de">Text</a> · <a href="?raw&locale=de">HTML only</a></p><h1>shop/OrderShippedMail</h1><table><tr><th>Subject</th><td>Deine Bestellung ist unterwegs</td></tr><tr><th>From</th><td>hello@example.com</td></tr><tr><th>To</th><td>Ada &lt;ada@example.com&gt;</td></tr></table><iframe sandbox title="Deine Bestellung ist unterwegs" srcdoc="&lt;p&gt;Hello Ada &amp;lt;script&amp;gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;https://shop.test/orders/1&quot;&gt;Track it&lt;/a&gt;&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;"></iframe></body></html>',
+      ].join('\n'),
+    );
     expect(await (await previews.show('shop/OrderShippedMail', new URL('http://localhost/x?text'))).text()).toContain('Hello Ada <script>');
     const raw = await previews.show('shop/OrderShippedMail', new URL('http://localhost/x?raw'));
     expect(raw.headers.get('content-type')).toBe('text/html; charset=utf-8');

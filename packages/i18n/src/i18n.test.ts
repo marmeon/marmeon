@@ -119,6 +119,13 @@ async function boot({ env = {}, override }: { env?: Record<string, string>; over
   return { application, send };
 }
 
+/** The `/hello` document for a locale, as `normalized` leaves it: the per-request epoch is a placeholder and the CSRF token is removed. */
+const helloDocument = (locale: 'en' | 'de', props: string) =>
+  `<!doctype html>\n<html lang="${locale}">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">{"component":"shop/Hello","props":{${props}},"url":"/hello","version":null,"locale":"${locale}","fallbackLocale":"en","epoch":"EPOCH"}</script>\n</head>\n  <body><div id="app"></div></body>\n</html>`;
+const normalized = (html: string) => html.replace(/"epoch":"[^"]*"/, '"epoch":"EPOCH"').replace(/,"csrf":"[^"]*"/, '');
+const EN_PROPS = '"errors":{},"greeting":"Hello Ada","cart":"2 items in your cart","html":"Use \\u003cb>bold\\u003c/b> & \\u003cimg src=x onerror=alert(1)>"';
+const DE_PROPS = '"errors":{},"greeting":"Hallo Ada","cart":"2 Artikel im Warenkorb","html":"Nutze \\u003cb>fett\\u003c/b> & \\u003cimg src=x onerror=alert(1)>"';
+
 const page = async (response: Response) => (await response.json()) as { component: string; props: Record<string, any>; locale?: string; fallbackLocale?: string; timeZone?: string };
 
 describe('the request locale (SetLocale)', () => {
@@ -193,18 +200,14 @@ describe('the request locale (SetLocale)', () => {
     for (const value of evil) {
       const response = await send('/hello', { headers: { accept: 'text/html', 'accept-language': value } });
       const html = await response.text();
-      expect(html).toContain('<html lang="en">');
-      expect(html).toContain('"locale":"en"'); // what the browser loads its language files by
-      expect(html).not.toContain('<script>alert');
+      expect(normalized(html)).toBe(helloDocument('en', EN_PROPS)); // the locale is also what the browser loads its language files by
       expect(response.headers.get('content-language')).toBe('en');
     }
     // A session value is no better (the switcher of an app forgot to check it): with a header line break, too.
     await send(`/choose/${encodeURIComponent('de"><script>alert(1)</script>\r\nSet-Cookie: a=b')}`);
     const response = await send('/hello', { headers: { accept: 'text/html', 'accept-language': 'en' } });
     const html = await response.text();
-    expect(html).toContain('<html lang="en">');
-    expect(html).toContain('"locale":"en"');
-    expect(html).not.toContain('<script>alert');
+    expect(normalized(html)).toBe(helloDocument('en', EN_PROPS));
     expect(response.headers.get('content-language')).toBe('en');
     // Only the supported locales' files were ever loaded (fr.ts exists, but is not in APP_LOCALES).
     expect(application.container.make(Catalog).locales().sort()).toEqual(['de', 'en']);
@@ -293,8 +296,7 @@ describe('framework texts and validation in the request language', () => {
     const json = await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de' } }));
     expect(json.props.html).toBe('Nutze <b>fett</b> & <img src=x onerror=alert(1)>');
     const html = await (await send('/hello', { headers: { accept: 'text/html', 'accept-language': 'de' } })).text();
-    expect(html).not.toContain('<img src=x');
-    expect(html).toContain('\\u003cimg src=x');
+    expect(normalized(html)).toBe(helloDocument('de', DE_PROPS));
   });
 });
 
