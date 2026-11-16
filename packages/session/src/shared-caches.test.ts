@@ -127,8 +127,9 @@ describe('answers that carry a session and shared caches', () => {
       ran.length = 0;
       const response = await kernel.request('/api/public-page', { headers: { cookie } });
       const html = await response.text();
-      expect(html).not.toContain('Alice');
-      expect(html).not.toContain('islands/Name');
+      expect(html.replace(/"epoch":"[^"]*"/, '"epoch":"EPOCH"')).toBe(
+        '<main>shell</main><script type="application/json">{"component":"pages/Show","props":{"islands":["/name-island","/api/cookie-island"]},"url":"/api/public-page","version":null,"epoch":"EPOCH"}</script><island url="/name-island">{"status":"browser"}</island><island url="/api/cookie-island">{"status":"ready","region":{"component":"islands/Cookie","props":{"cookie":null},"url":"/api/cookie-island","version":null}}</island>',
+      );
       expect(islandsOf(html)['/name-island']).toEqual({ status: 'browser' });
       expect(response.headers.get('cache-control')).toBe('public, s-maxage=600');
       // The session island never ran in-process; the page ran once.

@@ -1210,13 +1210,17 @@ describe('password changes and confirmation', () => {
         return options.expected === undefined ? false : super.updatePasswordHash(id, hash, options);
       }
     }
-    const { add, browser } = await boot({ users: new Refusing() });
+    const errors: { message: string; context?: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => void errors.push({ message, context }), child: () => logger };
+    const { add, browser } = await boot({ users: new Refusing(), logger });
     await add(ada);
     const laptop = browser();
     await login(laptop.send);
     events.length = 0;
-    const body = (await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()) as Record<string, unknown>;
-    expect(body).not.toEqual({ changed: true });
+    const response = await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ message: 'Server Error' });
+    expect(errors.map((entry) => entry.message)).toEqual(['auth.updatePassword() needs a signed-in user — this session was ended while the password was changed.']);
     expect(events.some((event) => event instanceof PasswordChanged)).toBe(false);
     expect((await login(browser().send, 'secret')).status).toBe(303);
   });

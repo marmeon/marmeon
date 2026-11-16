@@ -424,6 +424,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
         expect(html).toContain('<h1>Late error</h1>');
         // The boundary goes to the browser with the framework's digest — React's production build sends nothing else (its
         // development build, which any NODE_ENV but production loads, adds the message and the stack).
+        // oxlint-disable-next-line marmeon/exact-body-assertion -- the stream carries React's inline runtime script, which changes with the React build; the h1 above and the digest below pin it as the late-error page
         for (const leak of ['SECRET-MESSAGE', 'at LatePart', 'ssr.js:']) expect(html, `the stream leaks ${leak}`).not.toContain(leak);
         expect(html).toContain('$RX("B:0","marmeon:ssr")');
         // The error itself goes to the log, not to the visitor.

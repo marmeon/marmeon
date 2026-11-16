@@ -44,7 +44,7 @@ describe.each(drivers)('a base query that resolves its scope from the container 
     open = await tableApp(driver);
     const text = await (await open.request(endpoint(ScopedTable, 'export', 'csv'), { user: ADA })).text();
     expect(text).toContain('"Ada"');
-    expect(text, 'a row outside the scope was exported').not.toContain('Mallory');
+    expect(text, 'a row outside the scope was exported').toBe('"name"\r\n"Ada"\r\n"Alan"\r\n"Edsger"\r\n"Grace"\r\n');
     expect(open.recorder.exports[0]![0].rows).toBe(4);
   });
 
