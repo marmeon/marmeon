@@ -30,6 +30,7 @@ async function kernel(translated: boolean) {
     Route.put('/notes/1', SaveController).name('notes.update');
     Route.put('/notes/2', NamedController).name('notes.named');
     Route.put('/notes/3', LiteralController).name('notes.literal');
+    Route.get('/notes/get', SaveController).name('notes.get');
   });
   const application = await createApplication({
     root: import.meta.dirname,
@@ -84,22 +85,35 @@ describe('a controller answering conflict(current)', () => {
     }
   });
 
-  it('refuses a page with 406: a visit of the client — also one that accepts JSON — and a form that accepts HTML first', async () => {
+  it('refuses a page request with 406 where there is no session to keep the conflict — a visit, a form, a client that accepts HTML: never a 500, a location or a 409', async () => {
     const app = await kernel(false);
-    const message = 'A conflict answers an action (useAction) or an API client; this request asks for a page (a visit or a form) — return conflict(…) only from a route that those call.';
+    const message = 'A conflict goes back to the form that sent it, which needs a POST, PUT, PATCH or DELETE in a route with a session (the web group); this request is a GET, or its route has no session — return conflict(…) only from a route that those call, or one an action or API client calls.';
     const visit = await app.request('/notes/1', { method: 'PUT', headers: protocolHeaders() });
     expect(visit.status).toBe(406);
     expect(visit.headers.get(CONFLICT_HEADER)).toBeNull();
+    expect(visit.headers.get(LOCATION_HEADER)).toBeNull();
     expect(((await visit.json()) as { props: { message: string } }).props.message).toBe(message);
     const withJson = await app.request('/notes/1', { method: 'PUT', headers: { ...protocolHeaders(), accept: 'application/json' } });
     expect(withJson.status).toBe(406);
-    expect(withJson.headers.get(CONFLICT_HEADER)).toBeNull();
-    const form = await app.request('/notes/1', { method: 'PUT', headers: { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' } });
-    expect(form.status).toBe(406);
-    expect(form.headers.get(CONFLICT_HEADER)).toBeNull();
-    expect(await form.text()).toContain(message);
-    const xhtml = await app.request('/notes/1', { method: 'PUT', headers: { accept: 'application/xhtml+xml' } });
-    expect(xhtml.status).toBe(406);
-    expect(xhtml.headers.get(CONFLICT_HEADER)).toBeNull();
+    for (const accept of ['text/html,application/xhtml+xml,*/*;q=0.8', 'application/xhtml+xml']) {
+      const form = await app.request('/notes/1', { method: 'PUT', headers: { accept } });
+      expect(form.status).toBe(406);
+      expect(form.headers.get(CONFLICT_HEADER)).toBeNull();
+      expect(form.headers.get(LOCATION_HEADER)).toBeNull();
+      expect(await form.text()).toContain(message);
+    }
+  });
+
+  it('answers a GET with 406 whatever it accepts — a prefetch or a link never goes back and never writes', async () => {
+    const app = await kernel(false);
+    for (const headers of [protocolHeaders(), { accept: 'text/html' }, { ...protocolHeaders(), purpose: 'prefetch' }]) {
+      for (const method of ['GET', 'HEAD']) {
+        const response = await app.request('/notes/get', { method, headers });
+        expect(response.status, `${method} ${JSON.stringify(headers)}`).toBe(406);
+        expect(response.headers.get(LOCATION_HEADER)).toBeNull();
+      }
+    }
+    // An API client's GET still gets the 409.
+    expect((await app.request('/notes/get', { headers: { accept: 'application/json' } })).status).toBe(409);
   });
 });

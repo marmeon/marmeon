@@ -1,7 +1,7 @@
 import { RedirectResult } from './redirect.ts';
 import type { CheckViewName } from './page.ts';
 import { island, type IslandResult } from './island.ts';
-import { view, type PageResult, type ResultOptions, type ViewProps } from './view.ts';
+import { view, type PageResult, type ReservedProps, type ResultOptions, type ViewProps } from './view.ts';
 import { CloseLayerResult, type CloseLayerOptions } from './layer.ts';
 import { json, type JsonResult } from './json.ts';
 
@@ -16,7 +16,7 @@ export abstract class Controller {
    * A page: `this.view('user-profile/Show', { profile })` — the name is checked against `modules/*\/views/**`. Or a layer
    * over the page on screen: `this.view('user-profile/Edit', { profile }).layer({ base: 'user-profile.show', params: { user } })`.
    */
-  protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V> {
+  protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps & ReservedProps, options?: ResultOptions): PageResult<TProps, V> {
     return view<V, TProps>(component, props, options);
   }
 

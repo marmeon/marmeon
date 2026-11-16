@@ -117,6 +117,143 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.takeFlash().map((taken) => taken.id)).toEqual(['b']));
   });
 
+  it('keeps the conflict of a form that went back apart from the messages: only takeConflict() takes it, validated, hidden from all()', async () => {
+    const store = new MemorySessionStore();
+    const entry = (id: string, data: unknown, document?: string) => ({ id, key: '_conflict', data, ...(document ? { document } : {}) });
+    const { id } = await request(store, undefined, (session) => session.queueFlash(entry('c', { message: 'Stale.', current: { v: 2 } }, 'tab-a')));
+    await request(store, id, (session) => {
+      // Not a message (a prefetch is told something waits), and not session data.
+      expect(session.hasFlash('tab-a')).toBe(true);
+      expect(session.takeFlash('tab-a')).toEqual([]);
+      expect(session.all()).toEqual({});
+      // Another document's request leaves it.
+      expect(session.takeConflict('tab-b')).toBeUndefined();
+    });
+    await request(store, id, (session) => {
+      expect(session.takeConflict('tab-a')).toEqual({ message: 'Stale.', current: { v: 2 } });
+      // A 409 puts it back, like a message.
+      session.reflash();
+    });
+    await request(store, id, (session) => {
+      expect(session.takeConflict()).toEqual({ message: 'Stale.', current: { v: 2 } });
+      expect(session.takeConflict()).toBeUndefined();
+    });
+    // A value of another shape is dropped, never handed on.
+    for (const data of [null, 'Stale.', ['Stale.'], { message: 5 }, {}]) {
+      const { id: other } = await request(store, undefined, (session) => session.queueFlash(entry('x', data)));
+      await request(store, other, (session) => {
+        expect(session.takeConflict()).toBeUndefined();
+        expect(session.takeConflict()).toBeUndefined();
+      });
+    }
+    // A submit binds it: only the request carrying that id takes it, not a poll or a partial reload of the same document.
+    const { id: bound } = await request(store, undefined, (session) => session.queueFlash({ ...entry('b', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    await request(store, bound, (session) => {
+      expect(session.takeConflict('tab-a')).toBeUndefined();
+      expect(session.takeConflict('tab-a', 'submit-2')).toBeUndefined();
+      // One bound to a submit never makes a prefetch wait: its follow-up may never come.
+      expect(session.hasFlash('tab-a')).toBe(false);
+    });
+    await request(store, bound, (session) => expect(session.takeConflict('tab-a', 'submit-1')).toEqual({ message: 'Stale.' }));
+    // Released (its follow-up became a full load): the rule of the document applies, and a prefetch waits for it.
+    const { id: released } = await request(store, undefined, (session) => session.queueFlash({ ...entry('r', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    await request(store, released, (session) => {
+      session.releaseConflict('tab-b', 'submit-1');
+      session.releaseConflict('tab-a', 'submit-2');
+      expect(session.takeConflict('tab-a')).toBeUndefined();
+      session.releaseConflict('tab-a', 'submit-1');
+      expect(session.hasFlash('tab-a')).toBe(true);
+      expect(session.takeConflict('tab-a')).toEqual({ message: 'Stale.' });
+    });
+    // A later submit of the same document ends a conflict it did not answer; another document's submit does not.
+    const { id: dropped } = await request(store, undefined, (session) => session.queueFlash({ ...entry('d', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    await request(store, dropped, (session) => {
+      // Its own submit ends nothing; a later one of the same document does.
+      session.dropConflict('tab-a', 'submit-1');
+      session.dropConflict('tab-a', 'submit-2');
+    });
+    await request(store, dropped, (session) => expect(session.takeConflict('tab-a', 'submit-1')).toBeUndefined());
+    const { id: kept } = await request(store, undefined, (session) => session.queueFlash({ ...entry('k', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    await request(store, kept, (session) => {
+      session.dropConflict('tab-b', 'submit-9');
+      session.dropConflict(undefined, 'submit-9');
+      session.dropConflict('tab-a', 'submit-1');
+    });
+    await request(store, kept, (session) => expect(session.takeConflict('tab-a', 'submit-1')).toEqual({ message: 'Stale.' }));
+    // A read-only request takes none.
+    const { id: third } = await request(store, undefined, (session) => session.queueFlash(entry('r', { message: 'Stale.' })));
+    const island = new Session(store, config, plainSessionCodec);
+    await island.start(third);
+    island.lock(() => false);
+    expect(island.takeConflict()).toBeUndefined();
+  });
+
+  it('keeps the newest conflict of each document and submit — ten at most — beside the twenty messages: a run of stale posts evicts no toast', async () => {
+    const store = new MemorySessionStore();
+    const toast = (id: number) => ({ id: `t${id}`, key: 'toast', data: { message: `Saved ${id}.` } });
+    const stale = (id: string, document?: string, form?: string) => ({ id, key: '_conflict', data: { message: `Stale ${id}.` }, ...(document ? { document } : {}), ...(form ? { form } : {}) });
+    const { id } = await request(store, undefined, (session) => {
+      for (let n = 0; n < 20; n++) session.queueFlash(toast(n));
+      // The same document and submit: the newest replaces; no document and no id: one slot too.
+      for (let n = 0; n < 25; n++) session.queueFlash(stale(`same${n}`, 'tab-a', 's1'));
+      for (let n = 0; n < 25; n++) session.queueFlash(stale(`anon${n}`));
+    });
+    await request(store, id, (session) => {
+      expect(session.takeFlash().map((message) => message.id)).toEqual(Array.from({ length: 20 }, (_, n) => `t${n}`));
+      expect(session.takeConflict('tab-a', 's1')).toEqual({ message: 'Stale same24.' });
+      expect(session.takeConflict()).toEqual({ message: 'Stale anon24.' });
+      expect(session.takeConflict()).toBeUndefined();
+    });
+    // Another tab’s conflict does not erase this one’s.
+    const { id: tabs } = await request(store, undefined, (session) => {
+      session.queueFlash(stale('a', 'tab-a', 'a1'));
+      session.queueFlash(stale('b', 'tab-b', 'b1'));
+    });
+    await request(store, tabs, (session) => {
+      expect(session.takeConflict('tab-a', 'a1')).toEqual({ message: 'Stale a.' });
+      expect(session.takeConflict('tab-b', 'b1')).toEqual({ message: 'Stale b.' });
+    });
+    // Beyond ten the oldest is dropped.
+    const { id: many } = await request(store, undefined, (session) => {
+      for (let n = 0; n < 15; n++) session.queueFlash(stale(`m${n}`, `tab-${n}`, `s${n}`));
+    });
+    await request(store, many, (session) => {
+      expect(session.takeConflict('tab-0', 's0')).toBeUndefined();
+      expect(session.takeConflict('tab-4', 's4')).toBeUndefined();
+      expect(session.takeConflict('tab-5', 's5')).toEqual({ message: 'Stale m5.' });
+      expect(session.takeConflict('tab-14', 's14')).toEqual({ message: 'Stale m14.' });
+    });
+    // Twenty-one toasts: the oldest goes, as before — and a conflict never counts among them.
+    const { id: second } = await request(store, undefined, (session) => {
+      session.queueFlash(stale('c'));
+      for (let n = 0; n < 21; n++) session.queueFlash(toast(n));
+    });
+    await request(store, second, (session) => {
+      expect(session.takeFlash()).toHaveLength(20);
+      expect(session.takeConflict()).toEqual({ message: 'Stale c.' });
+    });
+  });
+
+  it('a conflict released to the document stays released when another request of the session saves in between', async () => {
+    const store = new MemorySessionStore();
+    const bound = { id: 'c', key: '_conflict', data: { message: 'Stale.' }, document: 'tab-a', form: 'submit-1' };
+    const { id } = await request(store, undefined, (session) => session.queueFlash(bound));
+    // The release (the asset-version 409 of the follow-up) and an unrelated write of another request start from the same session.
+    const release = new Session(store, config, plainSessionCodec);
+    await release.start(id);
+    const other = new Session(store, config, plainSessionCodec);
+    await other.start(id);
+    other.put('visits', 1);
+    await other.save();
+    release.releaseConflict('tab-a', 'submit-1');
+    await release.save();
+    await request(store, id, (session) => {
+      expect(session.get('visits')).toBe(1);
+      // No submit id, as on a full document load: it is taken — the merge kept the release, not the old binding.
+      expect(session.takeConflict('tab-a')).toEqual({ message: 'Stale.' });
+    });
+  });
+
   it('can keep flash data longer (reflash, keep) and flash input for old()', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => {

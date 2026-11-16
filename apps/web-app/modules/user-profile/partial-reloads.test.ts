@@ -33,10 +33,10 @@ describe('profile page: deferred and optional props', () => {
     expect(page.props).toHaveProperty('profile');
   });
 
-  it('loads the activity with a partial reload — only it (and the always-sent errors)', async () => {
+  it('loads the activity with a partial reload — only it (and the always-sent errors and conflict)', async () => {
     await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' });
     const page = (await reload(ada, ['activity']).get(profile(ada)).assertOk()).page()!;
-    expect(Object.keys(page.props).sort()).toEqual(['activity', 'errors']);
+    expect(Object.keys(page.props).sort()).toEqual(['_conflict', 'activity', 'errors']);
     expect(page.deferredProps).toBeUndefined();
     const activity = page.props.activity as { kind: string; label?: string }[];
     expect(activity.map((entry) => entry.kind)).toContain('joined');
@@ -47,7 +47,7 @@ describe('profile page: deferred and optional props', () => {
     const queries: string[] = [];
     app.make(Connections).onQuery((query) => queries.push(query.sql));
     const page = (await reload(ada, ['stats']).get(profile(ada)).assertOk()).page()!;
-    expect(page.props).toEqual({ errors: {}, stats: { links: 2, memberNumber: 1, members: 3 } });
+    expect(page.props).toEqual({ errors: {}, _conflict: null, stats: { links: 2, memberNumber: 1, members: 3 } });
     // `activity` is deferred: a partial reload for other props never runs its query.
     expect(queries.some((sql) => /order by "created_at" desc/i.test(sql))).toBe(false);
   });

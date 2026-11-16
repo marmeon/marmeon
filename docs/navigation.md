@@ -532,6 +532,7 @@ them. Their names and meanings are public API. `@marmeon/http/protocol` exports 
 | `LOCATION_HEADER` | `x-marmeon-location` | a `409` | The address the client loads as a whole document. |
 | `DOCUMENT_HEADER` (internal) | `x-marmeon-document` | every request of a tab with tab sync (the default) | A random id of the tab's document: flash messages its request causes go only to it, and tab sync names it. |
 | `CONNECTION_HEADER` (internal) | `x-marmeon-connection` | every request of a tab that follows live hints | The id of the tab's document, so the server leaves that connection out of the hints its own request causes. |
+| `SUBMIT_HEADER` (internal) | `x-marmeon-submit` | a form's submit (`useForm`, `<Form>`) and the redirect it follows | A fresh id per submit: a conflict the server answers with waits for the page request that carries the same id, not for a poll, a partial reload or another tab. |
 | `CONFLICT_HEADER` | `x-marmeon-conflict` | the `409` of `conflict(…)` | `1`: the JSON body is `{ message, current }` and the `409` is no document change. Never sent with a location. |
 | `RELOAD_HEADER` | `x-marmeon-reload` | a `409` with a location | `version`: a new build, which the client may postpone; `entry`: the page belongs to another package entry's document; anything else is a document change nothing can stop. |
 

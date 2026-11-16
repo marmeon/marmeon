@@ -1,6 +1,7 @@
-import type { Authenticated } from '@marmeon/auth';
+import { Gate, type Authenticated } from '@marmeon/auth';
 import { Controller, defineRequest, type HttpContext, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
+import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import type { Profile } from '../ProfileDirectory.ts';
 
 /** The query of a profile's link search: `?q=` filters the labels. An invalid value falls back to the empty search. */
@@ -13,6 +14,13 @@ export const SearchProfileLinksRequest = defineRequest({ query: r.query({ q: r.s
 export class SearchProfileLinksController extends Controller {
   static request = SearchProfileLinksRequest;
 
+  readonly #gate: Gate;
+
+  constructor(gate: Gate) {
+    super();
+    this.#gate = gate;
+  }
+
   /**
    * `user` is bound by the route (ProfileDirectory), as on the profile page; the query is parsed by the request. (`ContextOf` has
    * no room for a bound parameter, so the context is spelled out with the parsed query in place of the raw one.)
@@ -22,9 +30,11 @@ export class SearchProfileLinksController extends Controller {
     const needle = ctx.query.q.toLowerCase();
     return this.view('user-profile/Links', {
       owner: { public_id, name },
-      // A function: computed only when sent (a partial reload of something else leaves it out). Only the label and the URL leave
-      // the server, never the row (`user_id`).
-      links: () => links.filter((link) => link.label.toLowerCase().includes(needle)).map(({ id, label, url }) => ({ id, label, url })),
+      // What the page may offer (the rename form): the owner only. The UI's hint — the update route checks again.
+      abilities: this.#gate.abilities(ctx.params.user, ProfilePolicy, ['update']),
+      // A function: computed only when sent (a partial reload of something else leaves it out). Only the label, the URL and the version (`updated_at`, for a
+      // save to say what it saw) leave the server, never the row (`user_id`).
+      links: () => links.filter((link) => link.label.toLowerCase().includes(needle)).map(({ id, label, url, updated_at }) => ({ id, label, url, version: new Date(updated_at).toISOString() })),
     });
   }
 }

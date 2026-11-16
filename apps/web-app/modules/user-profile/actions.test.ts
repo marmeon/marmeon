@@ -31,7 +31,7 @@ describe('profile links as actions — what useAction sends and gets back', () =
     await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog' });
     // The action's `reload: router.reloading({ only: ['profile'] })` — the new link, nothing else computed.
     const page = (await session.reloading<ShowUserProfileController>('user-profile/Show', { only: ['profile'] }).get(`/users/${ada.public_id}`).assertOk()).page()!;
-    expect(Object.keys(page.props).sort()).toEqual(['errors', 'profile']);
+    expect(Object.keys(page.props).sort()).toEqual(['_conflict', 'errors', 'profile']);
     // …and the reload does not deliver it again: the action took it.
     expect(page.flash).toBeUndefined();
     expect((page.props.profile as { links: { label: string }[] }).links.map((link) => link.label)).toEqual(['Blog']);

@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { Redactor } from '@marmeon/core';
 import type { ValidationErrors } from '@marmeon/http';
-import { flashableInput, OLD_INPUT_KEY, type FlashEntry } from '@marmeon/http/internal';
+import { CONFLICT_KEY, flashableInput, OLD_INPUT_KEY, type FlashEntry } from '@marmeon/http/internal';
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
 import { EMPTY_PAYLOAD, openPayload, sealPayload } from './format.ts';
@@ -34,6 +34,8 @@ const FLASH = '_flash';
 const MESSAGES = '_flash_messages';
 /** At most this many wait: an app that never shows them does not grow the session without end (the oldest go). */
 const MAX_MESSAGES = 20;
+/** The conflicts of forms sent back that may wait at once in one session: one per document and submit. */
+const MAX_CONFLICTS = 10;
 const TOKEN = '_token';
 const OLD_INPUT = OLD_INPUT_KEY; // what `redirect().withInput()` flashes
 /**
@@ -269,7 +271,7 @@ export class Session {
     flash.old = [];
     if (this.#taken.length > 0) {
       const waiting = (this.#ensureStarted()[MESSAGES] as FlashEntry[] | undefined) ?? [];
-      this.#ensureStarted()[MESSAGES] = [...this.#taken, ...waiting].slice(-MAX_MESSAGES);
+      this.#ensureStarted()[MESSAGES] = capMessages([...this.#taken, ...waiting]);
       this.#taken = [];
     }
   }
@@ -282,7 +284,7 @@ export class Session {
   queueFlash(message: FlashEntry): void {
     const data = this.#ensureStarted();
     if (!this.#may(`session.queueFlash('${message.key}')`)) return;
-    data[MESSAGES] = [...((data[MESSAGES] as FlashEntry[] | undefined) ?? []), message].slice(-MAX_MESSAGES);
+    data[MESSAGES] = capMessages([...((data[MESSAGES] as FlashEntry[] | undefined) ?? []), message]);
   }
 
   /**
@@ -291,7 +293,9 @@ export class Session {
    * @internal
    */
   hasFlash(document?: string): boolean {
-    return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).some((message) => mayTake(message, document));
+    // A waiting conflict counts when any page of the document takes it: a prefetch must not stand in for that page. One bound to a submit is
+    // taken by that submit's follow-up alone — it never makes a prefetch wait (the follow-up may never come).
+    return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).some((message) => mayTake(message, document) && (message.key !== CONFLICT_KEY || message.form === undefined));
   }
 
   /**
@@ -302,8 +306,59 @@ export class Session {
   takeFlash(document?: string): FlashEntry[] {
     if (!this.#started || this.#permit) return [];
     const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
-    const taken = waiting.filter((message) => mayTake(message, document));
+    // The conflict of a form that went back is no message: `takeConflict()` hands it to the page's `conflict` prop.
+    return this.#takeMessages(waiting.filter((message) => message.key !== CONFLICT_KEY && mayTake(message, document)));
+  }
+
+  /**
+   * The conflict a form was sent back with (`conflict(…)` answering a page request), taken by the page of the document that
+   * sent it — a prefetch, an island or another tab's request leaves it waiting. Only a value of the shape `{ message, current? }`
+   * counts; anything else is dropped. Nothing for a read-only request or an unstarted session. `document`: as for {@link takeFlash}.
+   * `submit`: the id the request carries (`x-marmeon-submit`). A conflict bound to the submit that was answered with it is taken by the
+   * request that carries that id only — not by a poll or a partial reload of the same document; one without an id (a form
+   * without JavaScript) follows the rule of `document`.
+   * @internal
+   */
+  takeConflict(document?: string, submit?: string): { readonly message: string; readonly current?: unknown } | undefined {
+    if (!this.#started || this.#permit) return undefined;
+    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
+    const matches = waiting.filter((message) => message.key === CONFLICT_KEY && mayTake(message, document) && (message.form === undefined || message.form === submit));
+    // The one made for this submit, else the newest that follows the rule of the document: another form's waiting conflict stays.
+    const own = matches.findLast((message) => message.form !== undefined) ?? matches.at(-1);
+    return conflictOf(this.#takeMessages(own ? [own] : []).at(0)?.data);
+  }
+
+  /**
+   * The conflict of `submit` loses its binding to it: its follow-up became a full document load (an asset-version 409), which carries no
+   * submit id — from then on the rule of `document` (or a full load) applies. Replaced by a new entry (a new id), not changed in place:
+   * a concurrent write merges messages by id, and would bring the binding back to an entry that kept its own.
+   * @internal
+   */
+  releaseConflict(document: string | undefined, submit: string): void {
+    if (!this.#started || this.#permit) return;
+    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
+    if (!waiting.some((message) => message.key === CONFLICT_KEY && message.form === submit && message.document === document)) return;
+    this.#data[MESSAGES] = capMessages(waiting.map((message) => (message.key === CONFLICT_KEY && message.form === submit && message.document === document ? { id: crypto.randomUUID(), key: message.key, data: message.data, ...(document !== undefined ? { document } : {}) } : message)));
+  }
+
+  /**
+   * A submit of `document` that is not the one a conflict waits for ends it: the conflict never lands on the page of another form.
+   * Nothing for a read-only request, an unstarted session or a submit that names no document.
+   * @internal
+   */
+  dropConflict(document: string | undefined, submit: string): void {
+    if (!this.#started || this.#permit || document === undefined) return;
+    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
+    const stale = waiting.filter((message) => message.key === CONFLICT_KEY && message.document === document && message.form !== submit);
+    if (stale.length === 0) return;
+    const left = waiting.filter((message) => !stale.includes(message));
+    if (left.length > 0) this.#data[MESSAGES] = left;
+    else delete this.#data[MESSAGES];
+  }
+
+  #takeMessages(taken: FlashEntry[]): FlashEntry[] {
     if (taken.length === 0) return [];
+    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
     const left = waiting.filter((message) => !taken.includes(message));
     if (left.length > 0) this.#data[MESSAGES] = left;
     else delete this.#data[MESSAGES];
@@ -538,6 +593,31 @@ function newToken(): string {
   return crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
 }
 
+/**
+ * The messages as the session keeps them: the newest {@link MAX_MESSAGES} flash messages, and beside them the waiting conflicts —
+ * the newest of each document and submit, at most {@link MAX_CONFLICTS} of them, the oldest dropped first. A conflict never takes a
+ * toast's slot, one tab's cannot erase another's, and a run of stale posts cannot grow the session.
+ */
+function capMessages(list: readonly FlashEntry[]): FlashEntry[] {
+  const newest = new Map<string, FlashEntry>();
+  for (const message of list) {
+    if (message.key !== CONFLICT_KEY) continue;
+    const slot = JSON.stringify([message.document ?? null, message.form ?? null]);
+    // Re-inserted: the map keeps the order of the newest write.
+    newest.delete(slot);
+    newest.set(slot, message);
+  }
+  return [...list.filter((message) => message.key !== CONFLICT_KEY).slice(-MAX_MESSAGES), ...[...newest.values()].slice(-MAX_CONFLICTS)];
+}
+
+/** `{ message, current? }` as the session may hold it — validated, never cast: anything else is no conflict. */
+function conflictOf(value: unknown): { readonly message: string; readonly current?: unknown } | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const { message } = value as { message?: unknown };
+  if (typeof message !== 'string') return undefined;
+  return { message, ...(Object.hasOwn(value, 'current') ? { current: (value as { current: unknown }).current } : {}) };
+}
+
 /** Whether a request naming `document` takes `message`: one bound to no document, or to this one — or no document named. */
 function mayTake(message: FlashEntry, document: string | undefined): boolean {
   return document === undefined || message.document === undefined || message.document === document;
@@ -574,7 +654,7 @@ export function mergeSession(base: SessionPayload, ours: SessionPayload, theirs:
   const list = messages(theirs).filter((message) => !taken.has(message.id));
   const present = new Set(list.map((message) => message.id));
   for (const message of messages(ours)) if (!before.has(message.id) && !present.has(message.id)) list.push(message);
-  if (list.length > 0) merged[MESSAGES] = list.slice(-MAX_MESSAGES);
+  if (list.length > 0) merged[MESSAGES] = capMessages(list);
   else delete merged[MESSAGES];
 
   const flash = (data: SessionPayload): FlashState => (data[FLASH] as FlashState | undefined) ?? { new: [], old: [] };

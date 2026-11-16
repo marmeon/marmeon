@@ -4,6 +4,7 @@ import { messageBase, trace } from '@marmeon/core/internal';
 import {
   HttpError,
   isActionRequest,
+  RedirectResult,
   isPrefetch,
   regionOf,
   SharedData,
@@ -55,6 +56,7 @@ import {
   REGION_STATUS_HEADER,
   RELOAD_HEADER,
   propOrigins,
+  pageOwnProps,
   resolvePageProps,
   ResponseLifecycle,
   serializedFlash,
@@ -591,13 +593,22 @@ export function createResponseFactory(
       return islandResponse(result, ctx, versionOf(result.component), debug(ctx.request), scope, onPage, varied(PAGE_VARY), crossesEntry(ctx.request, result.component));
     }
     if (isConflictResult(result)) {
-      if (!isActionRequest(ctx.request) && asksForPage(ctx.request)) {
-        // A page — a visit of the client, or a form posted without JavaScript — has no place to show a conflict: a mistake of the controller, like a page sent to an action.
-        throw new HttpError(406, debug(ctx.request) ? CONFLICT_FOR_PAGE : undefined);
-      }
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
       const raw = result.message;
       const message = translator ? (raw === undefined ? translator.text('marmeon.errors.conflict', {}, 'Someone else changed this in the meantime.') : translator.has(raw) ? translator.text(raw) : raw) : (raw ?? 'Someone else changed this in the meantime.');
+      if (!isActionRequest(ctx.request) && asksForPage(ctx.request)) {
+        const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
+        // Back to the form needs a request that writes and a session that keeps the conflict for its page. A GET (a prefetch, a link) never does
+        // — no redirect loop, no write — and a route without a session is an API's: a header the client sent does not turn its answer into a failure.
+        if (ctx.request.method === 'GET' || ctx.request.method === 'HEAD' || !flasher || flasher.started === false) {
+          throw new HttpError(406, debug(ctx.request) ? CONFLICT_FOR_PAGE : undefined);
+        }
+        // Like a failed validation: the page's props are the current record, the flash is the conflict, `old()` the input. The input is a
+        // convenience for the refilled form: a body that cannot be read (too large, malformed) leaves it out, the conflict still goes back.
+        const input = await (ctx.input?.() ?? Promise.resolve({})).catch(() => ({}));
+        const back = new RedirectResult().back().withConflict({ message, current: result.current }).withInput(input).header('vary', addVary(undefined, [...EXPECTS_JSON_VARY, PAGE_HEADER]).vary);
+        return back.toResponse(ctx.request, { routes: routes ?? noRouter, flasher, locale: translator?.locale });
+      }
       // No flash messages: a failure leaves them for the page. Never a location: the 409 must not read as a document change.
       return ownResponse(Response.json({ message, current: result.current }, { status: 409, headers: { ...addVary(undefined, [...EXPECTS_JSON_VARY, PAGE_HEADER]), [CONFLICT_HEADER]: '1', 'cache-control': 'no-store' } }));
     }
@@ -638,7 +649,7 @@ export function createResponseFactory(
     // Once props the browser holds — under this scope only (another tab may have signed someone else in, or switched the language).
     const once = { component: result.component, held: heldOnceProps(ctx.request, onceScope) };
     // Shared props and the controller's (which win), resolved as far as this response sends them.
-    const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component), once);
+    const resolved = await resolvePageProps(pageOwnProps(result.props), shared, partialReloadOf(ctx.request, result.component), once);
     const csrf = session?.csrfToken();
     // The session's epoch: the tabs of the browser compare it — on every page, a partial reload's too.
     const epoch = epochOf(scope);
@@ -665,7 +676,8 @@ export function createResponseFactory(
     const headers = {
       ...withoutVary(result.headers),
       vary: varied(pageVary(result.headers)),
-      ...(flash.length > 0 ? { 'cache-control': 'no-store' } : {}),
+      // A conflict in the props is shown once, like a message: never from a cache.
+      ...(flash.length > 0 || resolved.props._conflict != null ? { 'cache-control': 'no-store' } : {}),
       ...(waiting ? { [FLASH_WAITING_HEADER]: 'true' } : {}),
     };
 
@@ -892,7 +904,7 @@ function documentOfRequest(request: Request): string | undefined {
   return request.headers.get(DOCUMENT_HEADER) ?? undefined;
 }
 
-const CONFLICT_FOR_PAGE = 'A conflict answers an action (useAction) or an API client; this request asks for a page (a visit or a form) — return conflict(…) only from a route that those call.';
+const CONFLICT_FOR_PAGE = 'A conflict goes back to the form that sent it, which needs a POST, PUT, PATCH or DELETE in a route with a session (the web group); this request is a GET, or its route has no session — return conflict(…) only from a route that those call, or one an action or API client calls.';
 
 // A page-protocol request, or one whose first accepted type is HTML (a form posted without JavaScript): it wants a page, not JSON.
 // No `Accept`, or a wildcard, is an API client's.

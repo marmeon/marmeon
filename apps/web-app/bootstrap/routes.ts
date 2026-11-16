@@ -91,6 +91,7 @@ import type { UpdateBookmarkController } from '../modules/bookmarks/controllers/
 import type { UpdateEmailController } from '../modules/auth/controllers/UpdateEmailController.ts';
 import type { UpdateLocaleController } from '../modules/locale/controllers/UpdateLocaleController.ts';
 import type { UpdatePasswordController } from '../modules/auth/controllers/UpdatePasswordController.ts';
+import type { UpdateProfileLinkController } from '../modules/user-profile/controllers/UpdateProfileLinkController.ts';
 import type { UpdateUserProfileController } from '../modules/user-profile/controllers/UpdateUserProfileController.ts';
 import type { VerifyEmailController } from '../modules/auth/controllers/VerifyEmailController.ts';
 
@@ -214,6 +215,7 @@ declare module '@marmeon/router' {
     'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
     'user-profile.links.rename': { method: 'patch'; path: '/users/:user/links/:link'; controller: typeof RenameProfileLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
+    'user-profile.links.update': { method: 'put'; path: '/users/:user/links/:link'; controller: typeof UpdateProfileLinkController };
     'user-profile.me': { method: 'get'; path: '/users/me'; controller: typeof RedirectToOwnProfileController };
     'user-profile.people': { method: 'get'; path: '/people'; controller: typeof ListPeopleController };
     'user-profile.show': { method: 'get'; path: '/users/:user'; controller: typeof ShowUserProfileController };

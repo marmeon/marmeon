@@ -133,7 +133,8 @@ wins, and `usePage().props` reads the shared ones in any component.
 
 Declare shared props as optional. A path that matches no route passes no group's middleware, so its 404 page renders without
 them, inside the same layout. The starter kit shares the signed-in user as `auth`, and the session shares the validation errors of
-the last form as `errors`.
+the last form as `errors` and the conflict of a stale save as `_conflict`. A page's own prop called `_conflict` is dropped, because it
+would fake or hide the conflict a form shows; the shared one always wins.
 
 To pass the app's name or a public key from configuration to the browser, share it here. See [values for the
 browser](configuration.md#values-for-the-browser).
@@ -318,9 +319,16 @@ gets status `409` with `{ message, current }` and the header `x-marmeon-conflict
 request's language; `conflict(current, { message: 'notes.stale' })` sends a text of yours or a key of your language files. The
 second argument takes `message` and nothing else; any other option is a `TypeError`.
 
-The answer is never cached, takes no flash messages and never carries a location. A request that asks for a page gets `406`
-instead: a page-protocol request, such as a visit or a form of `useForm`, and a request whose first accepted type is HTML, such as a
-form posted without JavaScript. Every other request is answered, an API client with no `Accept` header or with `*/*` included.
+The answer to an action or an API client is never cached, takes no flash messages and never carries a location. A request that asks
+for a page, such as a visit or a form of `useForm`, or a request whose first accepted type is HTML, such as a form posted without
+JavaScript, is answered like a failed validation: it goes back to the page it came from (the `Referer`, else `/`), and the
+session keeps the conflict and the input of the form for that page. The page of the document that sent the form takes it, once; a
+prefetch or another tab's request in between leaves it waiting. The form shows it as `form.conflict`; see
+[forms](forms.md#conflicts).
+
+Going back needs a write (`POST`, `PUT`, `PATCH` or `DELETE`) in a route with a session, such as the `web` group. A request that
+asks for a page and is a `GET`, or reaches a route without a session, answers `406`, whatever headers the client sent: an API route
+never turns into a redirect or a failure. An action or a JSON client still gets the `409`. Every other request is answered, an API client with no `Accept` header or with `*/*` included.
 A table's action cannot return it; see [tables](tables.md#the-answer).
 
 ## Other results

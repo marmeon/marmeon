@@ -80,7 +80,7 @@ describe('abilities in the frontend — an explicit, typed projection', () => {
     expect(asked).toEqual(['profile.viewEmail']);
     asked = [];
     const page = (await app.actingAs(alan).reloading<ShowUserProfileController>('user-profile/Show', { only: ['abilities'] }).get(profile(ada)).assertOk()).page()!;
-    expect(page.props).toEqual({ abilities: { update: false }, errors: {} });
+    expect(page.props).toEqual({ abilities: { update: false }, errors: {}, _conflict: null });
     expect(asked.sort()).toEqual(['profile.update', 'profile.viewEmail']);
   });
 

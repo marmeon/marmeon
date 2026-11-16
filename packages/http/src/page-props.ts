@@ -67,6 +67,19 @@ function onceKey(prop: OnceProp<unknown>, name: string, shared: boolean, compone
   return prop.key ?? (shared ? name : `${component}:${name}`);
 }
 
+/** The shared prop the session fills with the conflict a form was sent back with. */
+const CONFLICT_PROP = '_conflict';
+
+/**
+ * A page's own props without the framework's `_conflict`: the shared one alone is the conflict a form shows, so a page's own prop of
+ * that name — typed away with `as`, a wide record or `undefined` — is dropped before the props are resolved, and can neither shadow
+ * it nor fake one. For a page (and a layer) only: an island has no forms to show it to.
+ */
+export function pageOwnProps(props: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  const { [CONFLICT_PROP]: _dropped, ...own } = props;
+  return own;
+}
+
 /**
  * Resolves what a response sends of a page's props — the controller's and the shared ones (the controller's win).
  * Only what is sent is computed (lazy shared props, functions, `optional`, `defer`):

@@ -12,6 +12,7 @@ import { RenameProfileLinkController } from './controllers/RenameProfileLinkCont
 import { SearchProfileLinksController } from './controllers/SearchProfileLinksController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { UpdateAvatarController } from './controllers/UpdateAvatarController.ts';
+import { UpdateProfileLinkController } from './controllers/UpdateProfileLinkController.ts';
 import { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 import { ProfileDirectory } from './ProfileDirectory.ts';
 import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
@@ -63,5 +64,7 @@ export default defineRoutes((Route) => {
   link.get('/:user/links/:link/remove', ConfirmRemoveLinkController).name('links.remove'); // the confirmation, a layer
   // An action: the label from the page, answered with the new `updated_at` — or a conflict when the link changed meanwhile.
   link.patch('/:user/links/:link', RenameProfileLinkController).name('links.rename');
+  // The same rename as a form on the links page: a stale save goes back to the form with `form.conflict`.
+  link.put('/:user/links/:link', UpdateProfileLinkController).name('links.update');
   link.delete('/:user/links/:link', DeleteProfileLinkController).name('links.destroy');
 });

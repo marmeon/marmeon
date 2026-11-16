@@ -1,6 +1,6 @@
-import { dirtyPaths, errorRecord, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
+import { conflictOf, dirtyPaths, errorRecord, firstErrors, isDirtyPath, liveValidationOnFirstUse, submitHeaders, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { resolveRoute, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, FormOutputOf, Routes, SensitiveNeverLive, Upload } from '@marmeon/http/page';
+import type { ActionConflictOf, BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ConflictOf, ControllerOf, FormOf, FormOutputOf, Routes, SensitiveNeverLive, Upload } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
@@ -238,16 +238,32 @@ void optionKeysComplete;
  * (here the first message per field), `onException` a request that failed (offline, 5xx, an answer that is no page — the app also shows it over
  * the page), and `onFinish` runs after every submit.
  */
-export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data' | 'onSuccess' | 'onError' | 'onFinish'> {
+export interface FormSubmitOptions<C = unknown> extends Omit<VisitOptions, 'method' | 'data' | 'onSuccess' | 'onError' | 'onFinish'> {
+  /** The save went through — not after a conflict, which is not one. */
   onSuccess?: () => void;
+  /** The controller answered `conflict(current)`: someone else changed the record first. The form keeps its edits. See `docs/forms.md#conflicts`. */
+  onConflict?: (conflict: FormConflict<C>) => void;
   /** The server rejected the input: the first message per field. */
   onError?: (errors: Record<string, string>) => void;
   /** After every submit — succeeded, invalid, failed or cancelled. */
   onFinish?: () => void;
 }
 
+/**
+ * The answer of a controller to a stale save, as a form shows it: the text for the user and the record as it is now. `current` is
+ * undefined when the controller sent none, and when it was too big to keep (over 64 KiB) — return the version and the fields that
+ * differ, the page's props carry the rest. See `docs/forms.md#conflicts`.
+ */
+export interface FormConflict<C = unknown> {
+  readonly message: string;
+  readonly current: C | undefined;
+}
+
+/** The `current` of a conflict of controller `T` (its `conflict(current)`), `unknown` where `T` is no controller. */
+type ControllerConflictOf<T> = T extends { handle: (...args: never[]) => infer R } ? ConflictOf<Awaited<R>> : unknown;
+
 /** What every form has: its data, the server's errors and the state of the last submit. */
-export interface FormState<F> {
+export interface FormState<F, C = unknown> {
   readonly data: F;
   set<K extends keyof F & string>(field: K, value: F[K]): void;
   setData(data: F): void;
@@ -262,10 +278,15 @@ export interface FormState<F> {
   readonly processing: boolean;
   /** How far the upload is, while a form with a file (`FormData`) is sent — else null. */
   readonly progress: VisitProgress | null;
-  /** The last submit succeeded. */
+  /** The last submit succeeded — never after a conflict. */
   readonly wasSuccessful: boolean;
   /** The last submit succeeded less than two seconds ago — for a short "Saved." */
   readonly recentlySuccessful: boolean;
+  /**
+   * The conflict the last submit ended with — someone else saved first — else undefined. The form is not saved: it stays dirty and
+   * keeps what was typed. Cleared by the next submit and by `reset()`. See `docs/forms.md#conflicts`.
+   */
+  readonly conflict: FormConflict<C> | undefined;
   /**
    * Whether something differs from where the form started — anything, or the field at `path` (`isDirty('bio')`,
    * `isDirty('links.0.url')`, typed). Where it started: the initial data, or what the last successful submit sent.
@@ -278,13 +299,13 @@ export interface FormState<F> {
 }
 
 /** A form for a controller, sent to any URL: `useForm<UpdateUserProfileController>(initial)` then `form.put(url)`. */
-export interface Form<T> extends FormState<FormFields<T>> {
-  submit(method: VisitMethod, url: string, options?: FormSubmitOptions): Promise<void>;
-  get(url: string, options?: FormSubmitOptions): Promise<void>;
-  post(url: string, options?: FormSubmitOptions): Promise<void>;
-  put(url: string, options?: FormSubmitOptions): Promise<void>;
-  patch(url: string, options?: FormSubmitOptions): Promise<void>;
-  delete(url: string, options?: FormSubmitOptions): Promise<void>;
+export interface Form<T> extends FormState<FormFields<T>, ControllerConflictOf<T>> {
+  submit(method: VisitMethod, url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+  get(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+  post(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+  put(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+  patch(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+  delete(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
 }
 
 /**
@@ -304,9 +325,9 @@ export interface FormField {
 }
 
 /** A form for a named route: it knows method, URL and fields — `form.submit()`. */
-export interface RouteForm<F> extends FormState<F> {
+export interface RouteForm<F, C = unknown> extends FormState<F, C> {
   /** Sends the data with the route's method to its URL. */
-  submit(options?: FormSubmitOptions): Promise<void>;
+  submit(options?: FormSubmitOptions<C>): Promise<void>;
   readonly method: VisitMethod;
   readonly url: string;
   /**
@@ -364,14 +385,14 @@ export function useForm<T extends object>(initial: FormFields<T> & object, optio
  * Form state for a named route, with method, URL and fields taken from `bootstrap/routes.ts`; the route's parameters go in
  * `options.params`. `form.submit()` sends it. See docs/forms.md#forms-by-route-name.
  */
-export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>>;
+export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>, ActionConflictOf<N>>;
 // Last: TS reports a mistake against the last overload whose arity fits — for a call without options this one, where a route
 // with required parameters says how to pass them (else the error would be an argument count).
 /** A route form without options: the route takes no required parameters. */
 export function useForm<const N extends BrowserRouteNameInput>(
   name: CheckFormRoute<N>,
   initial: {} extends BrowserParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>,
-): RouteForm<RouteFormFields<N>>;
+): RouteForm<RouteFormFields<N>, ActionConflictOf<N>>;
 export function useForm(...args: unknown[]): unknown {
   const named = typeof args[0] === 'string';
   const name = named ? (args[0] as string) : undefined;
@@ -423,16 +444,18 @@ export function useForm(...args: unknown[]): unknown {
   const [progress, setProgress] = useState<VisitProgress | null>(null);
   const [wasSuccessful, setWasSuccessful] = useState(false);
   const [recentlySuccessful, setRecentlySuccessful] = useState(false);
+  const [conflict, setConflict] = useState<FormConflict | undefined>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const live = useLiveValidation(target, options.validate, dataRef, errors, setErrors);
 
   const send = useCallback(
-    async (method: VisitMethod, url: string, { onSuccess, onError, onFinish, onProgress, ...options }: FormSubmitOptions = {}) => {
+    async (method: VisitMethod, url: string, { onSuccess, onConflict, onError, onFinish, onProgress, ...options }: FormSubmitOptions = {}) => {
       // Sent: its answer decides the errors — a live check under way would only land on top of it.
       live?.cancel();
       setProcessing(true);
       setWasSuccessful(false);
+      setConflict(undefined);
       // One snapshot for the body and for the baseline: a `set()` after this point is not part of the request.
       const sentData = dataRef.current;
       let atSuccess: Record<string, unknown> | undefined;
@@ -443,6 +466,7 @@ export function useForm(...args: unknown[]): unknown {
           // Its own guard does not stop it — the others (another form's unsaved changes) still ask.
           ignoreGuards: options.ignoreGuards === true ? true : [...(options.ignoreGuards ?? []), guard],
           method,
+          headers: submitHeaders(options.headers),
           data: sentData,
           onProgress: (next, current) => {
             setProgress(next);
@@ -452,8 +476,16 @@ export function useForm(...args: unknown[]): unknown {
         if (!page) return;
         const failed = firstErrors(page);
         setErrors(failed);
+        const conflicted = conflictOf(page);
         if (Object.keys(failed).length > 0) {
           onError?.(failed);
+        } else if (conflicted) {
+          // Not saved: no new baseline (the edits stay dirty, the guard holds), no success state.
+          const seen = { message: conflicted.message, current: conflicted.current };
+          setRecentlySuccessful(false);
+          clearTimeout(timer.current);
+          setConflict(seen);
+          onConflict?.(seen);
         } else {
           atSuccess = dataRef.current;
           live?.reset();
@@ -504,9 +536,11 @@ export function useForm(...args: unknown[]): unknown {
     progress,
     wasSuccessful,
     recentlySuccessful,
+    conflict,
     isDirty: (path?: string) => isDirtyPath(dirty, path),
     dirty,
     reset: (...fields) => {
+      setConflict(undefined);
       if (fields.length === 0) return setData(defaults);
       const restored = Object.fromEntries(fields.map((field) => [field, defaults[field]]));
       setData({ ...dataRef.current, ...restored }, (current) => ({ ...current, ...restored }));

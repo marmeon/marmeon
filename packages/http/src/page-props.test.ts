@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PROTOCOL_VERSION } from './protocol.ts';
-import { onceScopeOf, partialReloadOf, resolvePageProps } from './page-props.ts';
+import { onceScopeOf, pageOwnProps, partialReloadOf, resolvePageProps } from './page-props.ts';
 import { always, deepMerge, defer, merge, once, optional } from './props.ts';
 import { SharedData } from './shared-data.ts';
 import { view, type PageProps } from './view.ts';
@@ -74,6 +74,21 @@ describe('resolvePageProps', () => {
       ),
     ).rejects.toThrow('own failed');
     expect(settled).toBe(true);
+  });
+
+  it('the shared `_conflict` is the only one on a page: its own prop of that name — a value, `undefined`, a function — is dropped, with or without a shared one', async () => {
+    const shared = new SharedData().share('_conflict' as never, always(() => ({ message: 'Stale.' })) as never);
+    for (const own of [{ message: 'Faked.' }, undefined, () => ({ message: 'Faked.' }), null]) {
+      const { props } = await resolvePageProps(pageOwnProps({ note: 'a', _conflict: own }), shared, undefined);
+      expect(props).toEqual({ note: 'a', _conflict: { message: 'Stale.' } });
+    }
+    // Without the session's share nothing fakes it either.
+    expect((await resolvePageProps(pageOwnProps({ note: 'a', _conflict: { message: 'Faked.' } }), new SharedData(), undefined)).props).toEqual({ note: 'a' });
+    expect((await resolvePageProps(pageOwnProps({ note: 'a', _conflict: { message: 'Faked.' } }), undefined, undefined)).props).toEqual({ note: 'a' });
+  });
+
+  it('an island keeps its own props, `_conflict` included: it has no form to show a conflict to', async () => {
+    expect((await resolvePageProps({ note: 'a', _conflict: 'mine' }, undefined, undefined)).props).toEqual({ note: 'a', _conflict: 'mine' });
   });
 
   it('a full response: everything but optional and defer props, which are never computed — deferred ones are listed by group', async () => {

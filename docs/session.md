@@ -82,6 +82,22 @@ A failed form keeps at most 64 KiB of input (as JSON) in the session, and the sa
 keep documents. Input over the cap is not flashed at all, and a single string that alone cannot fit is left out, so a form shows its
 default, never a cut-off value. Errors over the cap shrink to the first message of every field, then to the first fields in order.
 
+A form whose controller answers `conflict(current)` is sent back the same way, with its input and a conflict: `{ message, current }`.
+The session keeps it as a flash message under the reserved key `_conflict`, which no page shows as a message. It waits beside the
+twenty messages the session keeps and never takes a toast's slot: the newest conflict of each document and submit, ten at most in
+one session, so one tab's conflict does not erase another's, and beyond ten the oldest is dropped. It is bound to the document of
+the request that flashed it, and, when the client sent a submit id (`x-marmeon-submit`, which `useForm` and `<Form>` send with every
+submit), to that submit: only the page request that carries the same id takes it, so a poll, a partial reload, a prefetch or another
+tab does not. If that request is answered with the [new-version 409](navigation.md#a-new-version-of-the-app), the browser loads the
+document anew without the id, and the binding is released: the full load takes it. A form without JavaScript sends no id, and the next
+page the document is shown takes it. A later submit of the same document that does not answer a conflict ends the waiting one. A
+prefetch is told that something waits, as for messages, only for a conflict without an id; one bound to a submit never makes a
+prefetch wait, because its follow-up may never come.
+`ShareErrorsFromSession` shares it as the `_conflict` prop of that page, once, and `null` on every other page, so a partial reload
+overwrites an old conflict instead of keeping it. A value that is not `{ message: string, current? }` is dropped, and a page's own prop
+of that name is dropped too. Over 64 KiB as JSON, `current` is left out and `{ message }` stays (a message over the cap is cut), so
+return the version and the fields that differ, not the whole document. See [forms](forms.md#conflicts).
+
 ### Signing in and out
 
 Signing in calls `regenerate()`: the session gets a new id and a new CSRF token, and keeps its data. Signing out calls

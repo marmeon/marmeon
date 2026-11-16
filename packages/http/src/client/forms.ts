@@ -1,4 +1,9 @@
-import type { PageObject } from '../protocol.ts';
+import { SUBMIT_HEADER, type PageObject } from '../protocol.ts';
+
+/** The header of one submit of a form: a fresh id, which the conflict the server answers with waits for (`useForm`, `<Form>`). */
+export function submitHeaders(headers?: Record<string, string>): Record<string, string> {
+  return { ...headers, [SUBMIT_HEADER]: crypto.randomUUID() };
+}
 
 /**
  * A form's errors by field, without a prototype: a field named `toString` or `constructor` reads as no error, and `__proto__` is
@@ -22,6 +27,19 @@ export function firstErrors(page: PageObject): Record<string, string> {
       return typeof first === 'string' ? [[field, first] as const] : [];
     }),
   );
+}
+
+/**
+ * The conflict a form was sent back with (the shared `_conflict` prop, after `conflict(current)` of its controller answered a
+ * page request): `{ message, current }`, `current` undefined when the server left it out (over 64 KiB). Undefined when the page has
+ * none — `null` (what the server shares when there is none), or anything that is not an object with a text `message` counts as none.
+ */
+export function conflictOf(page: PageObject): { readonly message: string; readonly current: unknown } | undefined {
+  const conflict = (page.props as { _conflict?: unknown })._conflict;
+  if (typeof conflict !== 'object' || conflict === null || Array.isArray(conflict)) return undefined;
+  const { message } = conflict as { message?: unknown };
+  if (typeof message !== 'string') return undefined;
+  return { message, current: Object.hasOwn(conflict, 'current') ? (conflict as { current: unknown }).current : undefined };
 }
 
 /**
