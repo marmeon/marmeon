@@ -6,6 +6,7 @@ import { isIP } from 'node:net';
 import { getCACertificates } from 'node:tls';
 import { FetchError } from './errors.ts';
 import { isPublic, parseAddress, type AddressRange } from './addresses.ts';
+import type { FetchTransport, TransportContext, TransportRequest, TransportResponse } from './transport.ts';
 
 /** What the `direct` transport sends. */
 export type DirectRequest = {
@@ -27,6 +28,8 @@ export type DirectResponse = {
 export type DirectOptions = {
   /** Ranges that may be reached although they are not public. */
   readonly allow: readonly AddressRange[];
+  /** Decides over `allow` for each resolved address, as text; the {@link DirectTransport} hands the client's own decision in here. */
+  readonly isPublic?: (address: string) => boolean;
   /** In milliseconds: `connect` covers name resolution and connect (default 5000), `response` the wait for the headers (default 10000). */
   readonly timeouts?: { readonly connect?: number; readonly response?: number };
   /** Certificates an https server may be trusted by in addition to the built-in authorities (a private authority). */
@@ -126,7 +129,7 @@ export async function send(request: DirectRequest, options: DirectOptions): Prom
     if (addresses.length === 0) throw new FetchError('network', `The host "${host}" could not be resolved.`);
     for (const text of addresses) {
       const address = parseAddress(text);
-      if (!address || !isPublic(address, options.allow)) throw refused(host, addresses);
+      if (!address || !(options.isPublic ? options.isPublic(text) : isPublic(address, options.allow))) throw refused(host, addresses);
     }
     stop.signal.throwIfAborted();
 
@@ -223,5 +226,19 @@ export async function send(request: DirectRequest, options: DirectOptions): Prom
   } catch (error) {
     release();
     throw asFetchError(error, 'The request failed.');
+  }
+}
+
+/** The built-in transport (`FETCH_DRIVER=direct`): {@link send} with the client's address decision (`context.isPublic`). */
+export class DirectTransport implements FetchTransport {
+  readonly #options: Pick<DirectOptions, 'ca' | 'resolve'>;
+
+  constructor(options: Pick<DirectOptions, 'ca' | 'resolve'> = {}) {
+    this.#options = options;
+  }
+
+  send(request: TransportRequest, context: TransportContext): Promise<TransportResponse> {
+    const { url, method, headers, body } = request;
+    return send({ url, method, headers, body, signal: context.signal }, { ...this.#options, allow: [], isPublic: context.isPublic, timeouts: context.timeouts });
   }
 }

@@ -53,5 +53,13 @@
   ],
   "scripts": {
     "build": "tsc -b"
+  },
+  "marmeon": {
+    "providers": [
+      "FetchServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@marmeon/core": "workspace:*"
   }
 }

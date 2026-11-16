@@ -109,6 +109,7 @@ reads them, and are known once that package is installed.
 | `diskDrivers` | `Record<string, DiskDriverFactory>` | `@marmeon/storage` | [Drivers](drivers.md#bringing-a-driver) |
 | `cacheDrivers` | `Record<string, CacheDriverFactory>` | `@marmeon/cache` | [Drivers](drivers.md#bringing-a-driver) |
 | `mailDrivers` | `Record<string, MailDriverFactory>` | `@marmeon/mail` | [Drivers](drivers.md#bringing-a-driver) |
+| `fetchDrivers` | `Record<string, FetchDriverFactory>` | `@marmeon/fetch` | [Fetch transports](drivers.md#fetch-transports) |
 
 ### Statics of other classes
 
