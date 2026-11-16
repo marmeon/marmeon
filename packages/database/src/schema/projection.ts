@@ -457,9 +457,9 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     }
     // Every insert of the new release would write the same value, and a unique index would refuse the second.
     // A partial unique index counts only when every row the release inserts is proven to match its condition: the projection knows no default value, so
-    // that is a condition `{ not: null }` on columns that default to the time of the insert. Any other condition may keep the second insert from meeting the first.
-    const everyRowMatches = (i: ProjectedIndex) =>
-      Object.entries(i.where ?? {}).every(([c, value]) => typeof value === 'object' && value !== null && columns.find((other) => other.name === c)?.default === 'now');
+    // that is a condition `{ not: null }` on non-nullable columns that default to the time of the insert (a nullable one can be inserted as null). Any other condition may keep the second insert from meeting the first.
+    const alwaysSet = (c: string) => columns.some((other) => other.name === c && other.default === 'now' && !other.nullable);
+    const everyRowMatches = (i: ProjectedIndex) => Object.entries(i.where ?? {}).every(([c, value]) => typeof value === 'object' && value !== null && alwaysSet(c));
     const unique = indexes.find((i) => i.unique && i.columns.includes(column) && everyRowMatches(i));
     if (unique &&(found.default === 'value' || found.default === 'now')) {
       throw conflict(

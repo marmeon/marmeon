@@ -493,7 +493,7 @@ made, but the check after each migration still expects it in the database until 
   index (its own `unique()` or a composite one) would get the same value from every insert of the new release, and the second insert
   would fail, or a composite index would silently make the other column unique. Error D19 asks for `table.dropUnique(name)` first, in
   the same `alter()` or an earlier one. For a [partial unique index](#partial-indexes) the check refuses only when the migrations prove that
-  every new row falls under its condition: every column of the `where` is a `useCurrent()` column with `{ not: null }`. With a value
+  every new row falls under its condition: every column of the `where` is a non-nullable `useCurrent()` column with `{ not: null }`. With a value
   default it cannot tell, so check yourself that the rows the index covers will not all get the same value.
 - **A foreign key cannot point at a retired column**: `constrained(table, column)` on one stops with error D19.
 - **The column has to be nullable or have a default**, because the new release inserts without it and the database must accept

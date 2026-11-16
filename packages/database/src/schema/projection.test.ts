@@ -418,6 +418,9 @@ describe('the projection of a plan', () => {
       // `seen` is set by the database on every insert, so every row is in the index and the second insert collides.
       expect(() => project(base({ seen: { not: null } }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live"/);
       expect(() => project(base({ seen: { not: null }, slug: { not: null } }), retire)).not.toThrow();
+      // A nullable column can be inserted as null on purpose, so its rows may stay out of the index.
+      const nullable = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.timestamp('seen').useCurrent().nullable(); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: { seen: { not: null } } }); });
+      expect(() => project(nullable, retire)).not.toThrow();
       expect(() => project(base({ slug: 'x' }), retire)).not.toThrow();
     });
 
