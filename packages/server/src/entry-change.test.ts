@@ -77,6 +77,9 @@ const html = { accept: 'text/html' };
 /** A client-side request of the page protocol, from the document of `entry` (none: the app's). */
 const client = (entry?: string, extra: Record<string, string> = {}) => ({ [PAGE_HEADER]: PROTOCOL_VERSION, ...(entry ? { 'x-marmeon-entry': entry } : {}), ...extra });
 
+/** The page of `/`: with no entry of a package, no `entry` key at all. */
+const homePage = { component: 'demo/Home', props: { greeting: 'hi' }, url: '/', version: null, epoch: expect.any(String), route: 'home' };
+
 /** The page object a document carries (`#marmeon-page`). */
 function documentPage(markup: string): PageObject {
   const match = /<script type="application\/json" id="marmeon-page">([\s\S]*?)<\/script>/.exec(markup);
@@ -106,8 +109,7 @@ describe('a visit across package entries', () => {
     const own = (await (await app.request('/status', { headers: client('status') })).json()) as PageObject;
     expect([own.component, own.entry]).toEqual(['status::Index', 'status']);
     const home = (await (await app.request('/', { headers: client() })).json()) as PageObject;
-    expect(home.component).toBe('demo/Home');
-    expect(home).not.toHaveProperty('entry');
+    expect(home).toEqual(homePage);
   });
 
   it('loads fully for every method: a write to a page of another document is not answered with its page', async () => {
@@ -154,9 +156,16 @@ describe('a visit across package entries', () => {
     computed.length = 0;
     const packageLayer = await (await app.request('/status/edit', { headers: html })).text();
     const page = documentPage(packageLayer);
-    expect([page.component, page.entry, page.layers?.map((layer) => layer.component)]).toEqual(['system/layers/Backdrop', 'status', ['status::Edit']]);
+    expect(page).toEqual({
+      component: 'system/layers/Backdrop',
+      entry: 'status',
+      props: {},
+      url: '/',
+      version: null,
+      epoch: expect.any(String),
+      layers: [{ component: 'status::Edit', entry: 'status', props: {}, url: '/status/edit', route: 'status.edit', layer: { base: '/', key: 'status::Edit' }, version: null, epoch: expect.any(String) }],
+    });
     expect(packageLayer).toContain('pkg-status-a.js');
-    expect(packageLayer).not.toContain('greeting');
     const appLayer = documentPage(await (await app.request('/edit-home', { headers: html })).text());
     expect([appLayer.component, appLayer.layers?.map((layer) => layer.component)]).toEqual(['system/layers/Backdrop', ['demo/Edit']]);
     expect(appLayer).not.toHaveProperty('entry');
@@ -184,7 +193,7 @@ describe('an app without package entries', () => {
     const plain = await app.request('/', { headers: client() });
     expect(plain.status).toBe(200);
     expect(plain.headers.get('vary')).not.toContain('x-marmeon-entry');
-    expect(await plain.json()).not.toHaveProperty('entry');
+    expect(await plain.json()).toEqual(homePage);
     const claimed = await app.request('/', { headers: client('status') });
     expect(claimed.status).toBe(200);
     expect((await app.request('/status', { headers: client() })).status).toBe(200);

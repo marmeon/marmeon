@@ -53,6 +53,9 @@ function later() {
   return { promise, settle };
 }
 
+/** The message of the 404 for an href that is a route but no island. */
+const noIsland = (path: string) => `GET ${path} is no island: no controller class of it calls this.island(…) — a closure is never an island's route; keep the call in the controller class (docs/deferred-props.md#the-islands-route).`;
+
 const islandsOf = (html: string) =>
   Object.fromEntries([...html.matchAll(/<island url="([^"]+)">(.*?)<\/island>/g)].map(([, url, json]) => [url!, JSON.parse(json!) as RegionResult]));
 
@@ -213,13 +216,14 @@ describe('islands resolved in-process while the page streams', async () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
     const html = await response.text();
-    const results = islandsOf(html);
-    expect(results['/islands/guarded']).toEqual({ status: 'unauthorized' });
-    expect(results['/islands/forbidden']).toEqual({ status: 'forbidden' });
-    expect(results['/islands/boom']).toMatchObject({ status: 'exception', failure: { status: 500 } });
-    expect(results['/not-an-island']).toMatchObject({ status: 'exception', failure: { status: 404 } });
-    expect(results['/islands/missing']).toMatchObject({ status: 'exception', failure: { status: 404 } });
-    expect(html).not.toContain('/login');
+    // Exactly these five, each as its outcome: an answer carrying the redirect's address would not equal them.
+    expect(islandsOf(html)).toEqual({
+      '/islands/guarded': { status: 'unauthorized' },
+      '/islands/forbidden': { status: 'forbidden' },
+      '/islands/boom': { status: 'exception', failure: { status: 500, message: 'database password is hunter2' } },
+      '/not-an-island': { status: 'exception', failure: { status: 404, message: noIsland('/not-an-island') } },
+      '/islands/missing': { status: 'exception', failure: { status: 404, message: "GET /islands/missing is no route: an island's request is refused before any middleware runs (docs/deferred-props.md#the-islands-route)." } },
+    });
   });
 
   it.each([
@@ -244,18 +248,18 @@ describe('islands resolved in-process while the page streams', async () => {
 
   it('an href naming a page or a JSON endpoint is no island: its error, with nothing of what the route answered', async () => {
     const html = await (await page(['/not-an-island', '/api/status'])).text();
-    expect(islandsOf(html)['/not-an-island']).toEqual({ status: 'exception', failure: { status: 404, message: expect.stringContaining('GET /not-an-island is no island') } });
-    expect(islandsOf(html)['/api/status']).toEqual({ status: 'exception', failure: { status: 404, message: expect.stringContaining('GET /api/status is no island') } });
-    expect(html).not.toContain('internal status text');
-    expect(html).not.toContain('"users"');
+    expect(islandsOf(html)).toEqual({
+      '/not-an-island': { status: 'exception', failure: { status: 404, message: noIsland('/not-an-island') } },
+      '/api/status': { status: 'exception', failure: { status: 404, message: noIsland('/api/status') } },
+    });
   });
 
   it('a marked controller that answers JSON or a page is no island: a 404, with nothing of its body relayed', async () => {
     const html = await (await page(['/marked/status', '/marked/page'])).text();
-    expect(islandsOf(html)['/marked/status']).toEqual({ status: 'exception', failure: { status: 404 } });
-    expect(islandsOf(html)['/marked/page']).toMatchObject({ status: 'exception', failure: { status: 404 } });
-    expect(html).not.toContain('internal status text');
-    expect(html).not.toContain('"users"');
+    expect(islandsOf(html)).toEqual({
+      '/marked/status': { status: 'exception', failure: { status: 404 } },
+      '/marked/page': { status: 'exception', failure: { status: 404, message: '[pages/Show] is a page, not an island — its controller returns this.view(…); an island\'s returns this.island(…).' } },
+    });
   });
 
   it('leaves an island that answers 409 (the document is out of date) to the browser — its request reloads the page', async () => {
@@ -342,8 +346,11 @@ describe('islands resolved in-process while the page streams', async () => {
   it('leaves an island whose route starts the session to the browser when the page has none — before its middleware or route run', async () => {
     passed.length = 0;
     const html = await (await page(['/session-islands/echo'], { headers: { cookie: 'session=alice' } })).text();
-    expect(islandsOf(html)['/session-islands/echo']).toEqual({ status: 'browser' });
-    expect(html).not.toContain('islands/Echo');
+    expect(islandsOf(html)).toEqual({ '/session-islands/echo': { status: 'browser' } });
+    // Outside the island elements, the page names nothing of the island's view either.
+    const outside = html.replace(/<island url="[^"]+">.*?<\/island>/g, '');
+    expect(outside).toContain('<main>shell</main>');
+    expect(outside).not.toContain('islands/Echo');
     // Neither the route nor any middleware of its chain ran: the decision comes before the in-process request.
     expect(passed).toEqual([]);
   });

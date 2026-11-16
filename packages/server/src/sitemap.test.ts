@@ -113,6 +113,18 @@ const marked = openRoutes((Route) => {
 
 const locs = (xml: string): string[] => [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]!);
 
+/** The whole document of a sitemap: the prolog, the `<urlset>` (with the `xhtml` namespace when its entries carry links) and one `<url>` per line. */
+const expectedSitemap = (entries: string[], xhtml = false): string =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtml ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : ''}>\n${entries.map((entry) => `  ${entry}\n`).join('')}</urlset>\n`;
+
+const aboutEntry = `<url><loc>${url}/about</loc><lastmod>2026-05-06</lastmod></url>`;
+const plainEntry = `<url><loc>${url}/plain</loc></url>`;
+/** The two localized versions of `/about`, each naming both and x-default. */
+const localizedAbout = ['en', 'de'].map(
+  (locale) =>
+    `<url><loc>${url}/${locale}/about</loc><lastmod>2026-05-06</lastmod><xhtml:link rel="alternate" hreflang="en" href="${url}/en/about"/><xhtml:link rel="alternate" hreflang="de" href="${url}/de/about"/><xhtml:link rel="alternate" hreflang="x-default" href="${url}/about"/></url>`,
+);
+
 describe('/sitemap.xml', () => {
   it('lists a route without parameters once, with the latest date its hook gives, and a route with its entries', async () => {
     state.slugs = [{ params: { slug: 'hello' }, lastModified: new Date('2026-03-04T10:00:00Z') }, { params: { slug: 'plain' } }];
@@ -129,7 +141,7 @@ describe('/sitemap.xml', () => {
       expect(xml).toContain(`<loc>${url}/about</loc><lastmod>2026-05-06</lastmod>`);
       expect(xml).toContain(`<loc>${url}/posts/hello</loc><lastmod>2026-03-04</lastmod>`);
       expect(xml).toContain(`<loc>${url}/posts/plain</loc></url>`);
-      expect(xml).not.toContain('/hidden');
+      expect(xml).toBe(expectedSitemap([aboutEntry, `<url><loc>${url}/posts/hello</loc><lastmod>2026-03-04</lastmod></url>`, `<url><loc>${url}/posts/plain</loc></url>`]));
       expect((await create().request('/sitemap.xml', { method: 'HEAD' })).status).toBe(200);
     } finally {
       await application.shutdown();
@@ -166,7 +178,7 @@ describe('/sitemap.xml', () => {
     try {
       const xml = await (await create().request('/sitemap.xml')).text();
       expect(locs(xml)).toEqual([`${url}/about`, `${url}/posts/ok`]);
-      expect(xml).not.toContain('admin');
+      expect(xml).toBe(expectedSitemap([aboutEntry, `<url><loc>${url}/posts/ok</loc></url>`]));
       expect(logger.warnings).toHaveLength(1);
       expect(logger.warnings[0]).toContain('/posts/:slug');
     } finally {
@@ -203,10 +215,10 @@ describe('/sitemap.xml', () => {
       const response = await create().request('/sitemap.xml', { headers: { host: 'evil.example', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http' } });
       const xml = await response.text();
       expect(response.status).toBe(200);
-      expect(xml).not.toContain('evil.example');
+      expect(xml).toBe(expectedSitemap([aboutEntry, `<url><loc>${url}/posts/x</loc></url>`]));
       expect(locs(xml).every((loc) => loc.startsWith(`${url}/`))).toBe(true);
       const robots = await (await create().request('/robots.txt', { headers: { host: 'evil.example', 'x-forwarded-host': 'evil.example' } })).text();
-      expect(robots).not.toContain('evil.example');
+      expect(robots).toBe(`User-agent: *\nDisallow: /_marmeon/\n\nSitemap: ${url}/sitemap.xml\n`);
     } finally {
       await application.shutdown();
     }
@@ -303,8 +315,8 @@ describe('/sitemap.xml', () => {
       try {
         const xml = await (await create().request('/sitemap.xml')).text();
         expect(xml).toContain(`<xhtml:link rel="alternate" hreflang="x-default" href="${url}/features/a%26b&apos;c"/>`);
-        expect(xml).not.toMatch(/href="[^"]*[<>']/);
-        expect(xml).not.toContain('/features/..');
+        const escaped = (locale: string) => `<url><loc>${url}/${locale}/features/a%26b&apos;c</loc><xhtml:link rel="alternate" hreflang="en" href="${url}/en/features/a%26b&apos;c"/><xhtml:link rel="alternate" hreflang="de" href="${url}/de/features/a%26b&apos;c"/><xhtml:link rel="alternate" hreflang="x-default" href="${url}/features/a%26b&apos;c"/></url>`;
+        expect(xml).toBe(expectedSitemap([...localizedAbout, escaped('en'), escaped('de'), plainEntry], true));
         expect(logger.warnings).toHaveLength(1);
       } finally {
         await application.shutdown();
@@ -316,7 +328,7 @@ describe('/sitemap.xml', () => {
       const { application, create } = await boot({ routes: features, urlLocales, env: { APP_URL: url, SERVER_TRUSTED_PROXIES: '*' } });
       try {
         const xml = await (await create().request('/sitemap.xml', { headers: { host: 'evil.example', 'x-forwarded-host': 'evil.example' } })).text();
-        expect(xml).not.toContain('evil.example');
+        expect(xml).toBe(expectedSitemap([...localizedAbout, plainEntry], true));
         expect(links(xml).every((link) => link.split(' ')[1]!.startsWith(`${url}/`))).toBe(true);
       } finally {
         await application.shutdown();
@@ -356,7 +368,7 @@ describe('/sitemap.xml', () => {
       try {
         const xml = await (await create().request('/sitemap.xml')).text();
         expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([]);
-        expect(xml).not.toContain('evil');
+        expect(xml).toBe(expectedSitemap([...localizedAbout, plainEntry], true));
         expect(logger.warnings.filter((warning) => warning.includes('names a locale the app does not support'))).toHaveLength(1);
       } finally {
         await application.shutdown();
@@ -374,8 +386,7 @@ describe('/sitemap.xml', () => {
       try {
         const xml = await (await create().request('/sitemap.xml')).text();
         expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([`${url}/de/features/a`, `${url}/de/features/b`, `${url}/de/features/c`, `${url}/de/features/d`]);
-        expect(links(xml.split('<url>').filter((entry) => entry.includes('/features/')).join(''))).toEqual([]);
-        expect(xml).not.toContain('evil');
+        expect(xml).toBe(expectedSitemap([...localizedAbout, ...['a', 'b', 'c', 'd'].map((slug) => `<url><loc>${url}/de/features/${slug}</loc></url>`), plainEntry], true));
       } finally {
         await application.shutdown();
       }
@@ -459,7 +470,12 @@ describe('/sitemap.xml', () => {
       const { application, create } = await boot({ routes: features, urlLocales });
       try {
         const xml = await (await create().request('/sitemap.xml')).text();
-        expect(xml).not.toContain('evil');
+        expect(xml).toBe(expectedSitemap([
+          ...localizedAbout,
+          ...['en', 'de'].map((locale) => `<url><loc>${url}/${locale}/features/a</loc><xhtml:link rel="alternate" hreflang="en" href="${url}/en/features/a"/><xhtml:link rel="alternate" hreflang="de" href="${url}/de/features/a"/><xhtml:link rel="alternate" hreflang="x-default" href="${url}/features/a"/></url>`),
+          `<url><loc>${url}/en/features/a</loc></url>`,
+          plainEntry,
+        ], true));
         expect(locs(xml).filter((loc) => loc.includes('/features/'))).toEqual([`${url}/en/features/a`, `${url}/de/features/a`, `${url}/en/features/a`]);
       } finally {
         await application.shutdown();
@@ -521,8 +537,7 @@ describe('/sitemap.xml', () => {
         state.slugs[0] = { params: { slug: 'bad' }, alternates: { [key]: { slug: 'bad' } } };
         const { xml, logger } = await sitemapOf(help);
         expect(locs(xml)).toEqual([`${url}/help/bad`, `${url}/help/good`]);
-        expect(links(xml)).toEqual([`en-GB ${url}/help/good`]);
-        expect(xml).not.toContain('evil');
+        expect(xml).toBe(expectedSitemap([`<url><loc>${url}/help/bad</loc></url>`, `<url><loc>${url}/help/good</loc><xhtml:link rel="alternate" hreflang="en-GB" href="${url}/help/good"/></url>`], true));
         expect(logger.warnings).toHaveLength(1);
       }
     });
@@ -545,17 +560,14 @@ describe('/sitemap.xml', () => {
       ];
       const { xml, logger } = await sitemapOf(help);
       expect(locs(xml)).toEqual(['a', 'b', 'c', 'd', 'e'].map((slug) => `${url}/help/${slug}`));
-      expect(links(xml)).toEqual([]);
-      expect(xml).not.toContain('evil');
-      expect(xml).not.toContain('xmlns:xhtml');
+      expect(xml).toBe(expectedSitemap(['a', 'b', 'c', 'd', 'e'].map((slug) => `<url><loc>${url}/help/${slug}</loc></url>`)));
       expect(logger.warnings).toHaveLength(1);
     });
 
     it('builds every address from APP_URL, whatever an alternate says', async () => {
       state.slugs = [{ params: { slug: 'a' }, alternates: { de: { slug: 'a', host: 'evil.example', locale: '//evil.example' } as unknown as { slug: string } } }];
       const { xml } = await sitemapOf(help);
-      expect(links(xml)).toEqual([`de ${url}/help/a`]);
-      expect(xml).not.toContain('evil');
+      expect(xml).toBe(expectedSitemap([`<url><loc>${url}/help/a</loc><xhtml:link rel="alternate" hreflang="de" href="${url}/help/a"/></url>`], true));
     });
 
     it('ignores the alternates of a localized route, and warns once', async () => {
@@ -564,7 +576,14 @@ describe('/sitemap.xml', () => {
       const { xml, logger } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/features/:slug', PostController).sitemap()), urlLocales);
       expect(links(xml.split('<url>').slice(1, 2).join(''))).toEqual([`en ${url}/en/features/a`, `de ${url}/de/features/a`, `x-default ${url}/features/a`]);
       expect(links(xml)).toHaveLength(12);
-      expect(xml).not.toContain('fr');
+      expect(xml).toBe(
+        expectedSitemap(
+          ['a', 'b'].flatMap((slug) =>
+            ['en', 'de'].map((locale) => `<url><loc>${url}/${locale}/features/${slug}</loc><xhtml:link rel="alternate" hreflang="en" href="${url}/en/features/${slug}"/><xhtml:link rel="alternate" hreflang="de" href="${url}/de/features/${slug}"/><xhtml:link rel="alternate" hreflang="x-default" href="${url}/features/${slug}"/></url>`),
+          ),
+          true,
+        ),
+      );
       expect(logger.warnings).toHaveLength(1);
     });
 
@@ -845,7 +864,10 @@ describe('/sitemap.xml of a fallback', () => {
     try {
       const xml = await (await create().request('/sitemap.xml')).text();
       expect(locs(xml)).toEqual([`${url}/free`, `${url}/other`]);
-      expect(xml).not.toContain('/about');
+      expect(xml).toBe(expectedSitemap([
+        `<url><loc>${url}/free</loc></url>`,
+        `<url><loc>${url}/other</loc><xhtml:link rel="alternate" hreflang="en" href="${url}/other"/><xhtml:link rel="alternate" hreflang="de" href="${url}/anderes"/></url>`,
+      ], true));
       expect(xml).toContain('hreflang="de" href="https://marmeon.example/anderes"');
       expect(logger.warnings.filter((warning) => warning.includes('The alternates of a sitemap entry'))).toHaveLength(1);
     } finally {

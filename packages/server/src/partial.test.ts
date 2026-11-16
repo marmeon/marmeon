@@ -7,6 +7,13 @@ import { createHttpKernel } from './kernel.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 
+/** The document with its per-session epoch fixed, so it compares whole. */
+const withoutEpoch = (html: string) => html.replace(/"epoch":"[^"]+"/, '"epoch":"E"');
+
+/** The document of the test renderer around the page object `page` and the markup `app`. */
+const documentOf = (page: string, app: string) =>
+  `<!doctype html>\n<html lang="en">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">${page}</script>\n</head>\n  <body><div id="app">${app}</div></body>\n</html>`;
+
 describe('createHttpKernel — partial reloads and deferred props', async () => {
   const computed: Record<string, number> = {};
   const count = (name: string) => (computed[name] = (computed[name] ?? 0) + 1);
@@ -60,7 +67,7 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
   it('computes every prop for a document, and refuses partial headers without the protocol version (409)', async () => {
     const html = await (await app.request('/users/1')).text();
     expect(html).toContain('"expensive":42');
-    expect(html).not.toContain('"stats"');
+    expect(withoutEpoch(html)).toBe(documentOf('{"component":"users/Show","props":{"name":"Ada","expensive":42},"deferredProps":{"default":["activity"]},"url":"/users/1","version":null,"epoch":"E"}', ''));
     const refused = await app.request('/users/1', { headers: { 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'stats' } });
     expect(refused.status).toBe(409);
   });

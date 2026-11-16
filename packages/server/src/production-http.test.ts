@@ -229,7 +229,9 @@ describe('the CSP nonce', async () => {
     const nonce = nonceOf(first);
     expect(first.headers.get('content-security-policy')).toBe(`script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'self'; img-src 'self' data:`);
     expect(nonce).toMatch(/^[A-Za-z0-9+/]{22}==$/);
-    expect(html).not.toContain(CSP_NONCE_PLACEHOLDER);
+    expect(html.replaceAll(nonce!, 'N').replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+      '<!doctype html><html><head><meta property="csp-nonce" nonce="N"><script type="module" crossorigin src="/assets/index-AbC123.js" nonce="N"></script><script type="application/json" id="marmeon-page">{"component":"pages/Show","props":{},"url":"/page","version":null,"epoch":"E"}</script>\n</head><body><div id="app"><main>pages/Show</main><script nonce="N">$RC("B:0","S:0")</script></div></body></html>',
+    );
     expect(html).toContain(`<meta property="csp-nonce" nonce="${nonce}">`);
     expect(html).toContain(`src="/assets/index-AbC123.js" nonce="${nonce}"`);
     expect(html).toContain(`<script nonce="${nonce}">$RC`);
@@ -253,7 +255,9 @@ describe('the CSP nonce', async () => {
     const nonce = nonceOf(response);
     const html = await response.text();
     expect(html).toContain(`<link rel="modulepreload" href="/assets/Show-1.js" crossorigin nonce="${nonce}">`);
-    expect(html).not.toContain(CSP_NONCE_PLACEHOLDER);
+    expect(html.replaceAll(nonce!, 'N').replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+      '<!doctype html><html><head><meta property="csp-nonce" nonce="N"><link rel="modulepreload" href="/assets/Show-1.js" crossorigin nonce="N">\n<script type="module" crossorigin src="/assets/index-AbC123.js" nonce="N"></script><script type="application/json" id="marmeon-page">{"component":"pages/Show","props":{},"url":"/page","version":null,"epoch":"E"}</script>\n</head><body><div id="app"><main>pages/Show</main><script nonce="N">$RC("B:0","S:0")</script></div></body></html>',
+    );
     const visit = await preloaded.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html' } });
     expect(await visit.json()).toEqual({ component: 'pages/Show', props: {}, url: '/page', version: null, epoch: expect.any(String) });
   });
@@ -294,7 +298,9 @@ describe('the CSP nonce', async () => {
     const response = await kernel.request('/page', { headers: { accept: 'text/html' } });
     const html = await response.text();
     expect(response.headers.get('content-security-policy')).toBeNull();
-    expect(html).not.toContain('nonce=');
+    expect(html.replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+      '<!doctype html><html><head><meta property="csp-nonce"><script type="module" crossorigin src="/assets/index-AbC123.js"></script><script type="application/json" id="marmeon-page">{"component":"pages/Show","props":{},"url":"/page","version":null,"epoch":"E"}</script>\n</head><body><div id="app"><main>pages/Show</main><script>$RC("B:0","S:0")</script></div></body></html>',
+    );
     expect(html).toContain('<meta property="csp-nonce">');
     expect(rendered.at(-1)).toBeUndefined();
     const bare = createHttpKernel(plain, {
@@ -302,7 +308,9 @@ describe('the CSP nonce', async () => {
     });
     const preloaded = await (await bare.request('/page', { headers: { accept: 'text/html' } })).text();
     expect(preloaded).toContain('<link rel="modulepreload" href="/assets/Show-1.js" crossorigin>');
-    expect(preloaded).not.toContain('nonce=');
+    expect(preloaded.replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+      '<!doctype html><html><head><meta property="csp-nonce"><link rel="modulepreload" href="/assets/Show-1.js" crossorigin>\n<script type="module" crossorigin src="/assets/index-AbC123.js"></script><script type="application/json" id="marmeon-page">{"component":"pages/Show","props":{},"url":"/page","version":null,"epoch":"E"}</script>\n</head><body><div id="app"><main>pages/Show</main><script>$RC("B:0","S:0")</script></div></body></html>',
+    );
     expect(withNonce('<p>no placeholder</p>', 'abc')).toBe('<p>no placeholder</p>');
   });
 });

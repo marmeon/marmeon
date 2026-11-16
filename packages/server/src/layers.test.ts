@@ -146,8 +146,14 @@ describe('createHttpKernel — layers', async () => {
     // Turned away by its middleware (a redirect): the base's controller never ran.
     const redirected = await (await app.request('/admin/report/note')).text();
     const surface = documentPage(redirected);
-    expect(surface).toMatchObject({ component: 'system/layers/Backdrop', url: '/admin/report', props: {} });
-    expect(redirected).not.toContain('numbers');
+    expect(surface).toEqual({
+      component: 'system/layers/Backdrop',
+      props: {},
+      url: '/admin/report',
+      version: null,
+      epoch: expect.any(String),
+      layers: [{ component: 'admin/Note', props: { text: 'hello' }, url: '/admin/report/note', route: 'admin.report.note', layer: { base: '/admin/report', key: 'admin/Note' }, version: null, epoch: expect.any(String) }],
+    });
     expect(ran).toEqual(['admin']); // the 403 came from its handler — the guarded report's handler never ran
     // Allowed (the cookie), the same layer gets its base.
     const allowed = documentPage(await (await app.request('/admin/report/note', { headers: { cookie: 'role=admin' } })).text());

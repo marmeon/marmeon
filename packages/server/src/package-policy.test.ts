@@ -101,6 +101,13 @@ async function appWith({ kernel = {}, renderer = {}, global = [], group, warning
 
 const nonceOf = (document: string) => /<script[^>]* nonce="([^"]+)"/.exec(document)![1]!;
 
+/** The document with its per-session epoch fixed, so it compares whole. */
+const withoutEpoch = (html: string) => html.replace(/"epoch":"[^"]+"/, '"epoch":"E"');
+
+/** The document of the test renderer around the page object `page` and the markup `app`. */
+const documentOf = (page: string, app: string) =>
+  `<!doctype html>\n<html lang="en">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">${page}</script>\n</head>\n  <body><div id="app">${app}</div></body>\n</html>`;
+
 describe("the document of a package's entry", () => {
   it("gets the strict default policy with the response's nonce when no route or app sets one", async () => {
     const app = await appWith();
@@ -112,7 +119,9 @@ describe("the document of a package's entry", () => {
     const nonce = STRICT.exec(policy)![1]!;
     expect(nonceOf(body)).toBe(nonce);
     expect(body.match(new RegExp(`nonce="${nonce.replace(/[+/=]/g, '\\$&')}"`, 'g'))!.length).toBeGreaterThanOrEqual(3);
-    expect(body).not.toContain('marmeon:csp-nonce');
+    expect(body.replaceAll(nonce, 'N').replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+      '<!doctype html>\n<html lang="en">\n  <head><meta charset="utf-8" /><title>Marmeon</title><!--marmeon:package-entry-->\n<script type="module" async crossorigin src="/assets/pkg-status-a.js" nonce="N"></script>\n<link rel="stylesheet" crossorigin href="/assets/pkg-status-a.css" nonce="N">\n<link rel="modulepreload" crossorigin href="/assets/shared-a.js" nonce="N">\n<script type="application/json" id="marmeon-page">{"component":"status::Index","props":{},"url":"/status","version":"status-v","entry":"status","epoch":"E"}</script>\n</head>\n  <body><div id="app"><p>status::Index</p></div></body>\n</html>',
+    );
     // A new response, a new nonce.
     expect(STRICT.exec((await app.request('/status', { headers: html })).headers.get('content-security-policy')!)![1]).not.toBe(nonce);
   });
@@ -190,7 +199,8 @@ describe("the document of a package's entry", () => {
     const response = await app.request('/status/late', { headers: html });
     expect(response.status).toBe(500);
     const body = await response.text();
-    expect(body).not.toContain('pkg-status-a.js');
+    expect(body).toContain('<p>system/errors/Error</p>');
+    expect(withoutEpoch(body)).toBe(documentOf('{"component":"system/errors/Error","props":{"status":500,"title":"Server Error","message":"Server Error","exception":null},"url":"/status/late","version":"app-v","epoch":"E"}', '<p>system/errors/Error</p>'));
     expect(response.headers.has('content-security-policy')).toBe(false);
   });
 
@@ -199,8 +209,7 @@ describe("the document of a package's entry", () => {
     const response = await app.request('/status/broken', { headers: html });
         expect(response.status).toBe(500);
     expect(await response.clone().text()).toContain('<p>system/errors/Error</p>');
-    // oxlint-disable-next-line marmeon/exact-body-assertion -- the line above proves the body is the error page, which carries the session's epoch
-    expect(await response.text()).not.toContain('pkg-status-a.js');
+    expect(withoutEpoch(await response.text())).toBe(documentOf('{"component":"system/errors/Error","props":{"status":500,"title":"Server Error","message":"Server Error","exception":null},"url":"/status/broken","version":"app-v"}', '<p>system/errors/Error</p>'));
     expect(response.headers.has('content-security-policy')).toBe(false);
   });
 
@@ -256,8 +265,7 @@ describe('the app\'s own documents', () => {
       expect(response.headers.has('content-security-policy')).toBe(false);
       expect(response.headers.has('content-security-policy-report-only')).toBe(false);
       expect(await response.clone().text()).toContain('<p>demo/Home</p>');
-      // oxlint-disable-next-line marmeon/exact-body-assertion -- the line above proves the body is the page, which carries the session's epoch
-      expect(await response.text()).not.toContain('nonce=');
+      expect(withoutEpoch(await response.text())).toBe(documentOf('{"component":"demo/Home","props":{},"url":"/","version":"app-v","epoch":"E"}', '<p>demo/Home</p>'));
     }
   });
 
