@@ -41,9 +41,10 @@ function trigger(id: string, visible = true) {
   return link;
 }
 
-function field(id = 'q') {
+/** An input; the search's own field when `search` (it carries `data-search-field`). */
+function field(search = true) {
   const input = document.createElement('input');
-  input.id = id;
+  if (search) input.setAttribute('data-search-field', '');
   document.body.append(input);
   return input;
 }
@@ -77,7 +78,7 @@ describe('the search shortcut', () => {
 
   it('clicks the trigger on Ctrl+K even inside an input', () => {
     trigger('a');
-    const input = field();
+    const input = field(false); // any other field of the page: the chord still opens the search
     const event = press('k', { ctrlKey: true }, input);
     expect(clicks).toEqual(['a']);
     expect(event.defaultPrevented).toBe(true);
@@ -120,7 +121,7 @@ describe('the search shortcut', () => {
 
   it('focuses and selects the search field of an open dialog on Ctrl+K and clicks nothing', () => {
     trigger('a');
-    const input = field('search-q');
+    const input = field();
     input.value = 'routing';
     dialog(input);
     const event = press('k', { ctrlKey: true });
@@ -140,7 +141,7 @@ describe('the search shortcut', () => {
   });
 
   it('focuses the search field on the search page, which has no trigger', () => {
-    const input = field('search-q');
+    const input = field();
     const event = press('k', { metaKey: true });
     expect(document.activeElement).toBe(input);
     expect(event.defaultPrevented).toBe(true);

@@ -33,7 +33,7 @@ const PAGES = ['/', '/docs', '/imprint', '/privacy', ...DOCS];
 /** Routes that answer text, not a page: the test fetches each one and requires 200, instead of reporting "no such page". */
 const TEXT_ROUTES = ['/llms.txt', '/llms-full.txt'];
 /** Pages besides the docs' own: the search, with and without a query, and the 404 — scanned for inline scripts and styles only. */
-const EXTRA = ['/docs/search', '/docs/search?q=route', '/no/such/page'];
+const EXTRA = ['/docs/search', '/docs/search?q=route', '/docs/search?q=route&scope=pages', '/no/such/page'];
 const html = { headers: { accept: 'text/html' } };
 
 /** The links of the page's content and navigation, and the ids on it — read from the server-rendered markup. */

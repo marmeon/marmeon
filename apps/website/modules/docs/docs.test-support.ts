@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
-import type { SearchResult } from './search.ts';
+import type { SearchResults } from './search.ts';
 
 export const repo = resolve(import.meta.dirname, '../../../..');
 
@@ -21,4 +21,8 @@ export const SECTIONS = [
   'Tools',
 ];
 
-export const results = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResult[] }).results;
+const searched = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResults }).results;
+/** The section hits of a search answer. */
+export const results = (response: { page(): { props: unknown } | undefined }) => [...searched(response).sections];
+/** The page hits of a search answer. */
+export const pageResults = (response: { page(): { props: unknown } | undefined }) => [...searched(response).pages];

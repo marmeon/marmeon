@@ -40,8 +40,14 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **The search** (`modules/docs/search.ts`, a route on the server) finds the sections that have every word of the query. The
   page's name weighs most, then the heading — also a heading of the words of a name the section uses, `onOneServer` under "One
   server only" — then how often the prose has the word, and last whether a code block uses it: a section that explains a word
-  comes before an example that only calls it. The page lists the hits grouped by page, each with its navigation section, and
-  works as a plain GET form without JavaScript.
+  comes before an example that only calls it. `scope` (`all`, `pages` or `sections`; any other value is `all`) narrows the answer:
+  `pages` lists the pages whose title holds every word (at most 6, in the order of the docs, the record of changes last), `sections` the
+  ranked hits (20), `all` both as "Pages" and "On a page" (each hit with its page and navigation section, and its excerpt). An empty
+  query lists "Where to start" (`components/start-pages.tsx`, the cards of the docs' start page). The search is a dark panel — centred
+  on the page, and as a layer a palette near the top (the whole screen on a phone) — and works as a plain GET form without JavaScript: the scopes are radio buttons and the
+  results plain links. Hydrated, the field is a combobox over the results (`aria-activedescendant`; ↑ ↓ Home End move, ↵ opens the active
+  one like a click, Esc is the dialog's own). While the list is the previous query's (the field changes at once, the answer a pause later) ↵ opens nothing and the count says
+  "Searching…". The route stays throttled (`DOCS_SEARCH_PER_MINUTE`); each scope has its own URL and cache entry.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; `pnpm check:source` refuses it in `docs/`.
 - **The text speaks to app developers.** `pnpm check:source` rule 5 refuses comparisons with another framework in the pages,

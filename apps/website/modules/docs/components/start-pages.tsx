@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 
 /**
- * Where a newcomer begins: install, find the way around an app, answer a first request. The docs' start page shows them as cards.
+ * Where a newcomer begins: install, find the way around an app, answer a first request. The docs' start page shows them as cards, and
+ * the search lists them under "Where to start" while its field is empty.
  * `section` is the page's section in the navigation, `label` its title there (a test keeps both equal to `docs.config.ts`).
  */
 export const START: readonly { path: string; section: string; label: string; description: ReactNode }[] = [

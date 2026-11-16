@@ -3,7 +3,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 /** For `aria-keyshortcuts` on the triggers. */
 export const SEARCH_KEYSHORTCUTS = 'Control+K Meta+K';
 
-const SEARCH_FIELD = '#search-q';
+/** The search field carries this attribute; its id is the view's own (`useId`), so no id is looked up. */
+const SEARCH_FIELD = 'input[data-search-field]';
 
 /** The trigger that is showing: one is hidden on a phone, the other on a desktop. */
 function visibleTrigger(): HTMLElement | undefined {
