@@ -35,7 +35,7 @@ describe('a new API token, answered to a browser without JavaScript', { timeout:
       .assertOk()
       .assertServerRendered();
     const markup = markupOf(response.body);
-    expect(markup).toContain('<a href="/settings/tokens" aria-current="page" data-current="" autofocus="">Done — I copied it</a>');
+    expect(markup).toContain('<a href="/settings/tokens" aria-current="page" data-current="" data-layer-done="" autofocus="">Done — I copied it</a>');
     expect(layerOf(markup)).not.toContain('<button type="button"');
     expect(firstControlOf(layerOf(markup))).toBe('<a ');
   });

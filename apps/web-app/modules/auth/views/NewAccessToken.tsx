@@ -1,5 +1,6 @@
 import type { PageProps } from '@marmeon/http';
 import { Head, Link, useLayer, useTranslation } from '@marmeon/react';
+import { useEffect, useRef } from 'react';
 import type { StoreAccessTokenController } from '../controllers/StoreAccessTokenController.ts';
 
 type Props = PageProps<StoreAccessTokenController>;
@@ -11,8 +12,14 @@ type Props = PageProps<StoreAccessTokenController>;
 export default function NewAccessToken({ name, plainText }: Props) {
   const t = useTranslation('auth');
   const layer = useLayer<StoreAccessTokenController>();
+  const section = useRef<HTMLElement>(null);
+  // This view replaces the create form in the open dialog (the same layer key), which is not opened again: nothing moves the focus
+  // out of the form that is gone. React never focuses an anchor for `autoFocus`, so Done is focused here; the server-rendered document uses `autoFocus`.
+  useEffect(() => {
+    if (layer.isLayer) section.current?.querySelector<HTMLElement>('[data-layer-done]')?.focus();
+  }, [layer.isLayer]);
   return (
-    <section>
+    <section ref={section}>
       <Head title={t('tokens.new')} />
       <h2>{t('tokens.new')}: {name}</h2>
       {/* The dialog's description: read with its name when it opens (focus goes to "Done": the first control of the dialog, which `showModal()` focuses). */}
@@ -28,6 +35,7 @@ export default function NewAccessToken({ name, plainText }: Props) {
       {/* A link to the layer's base page, so a document without JavaScript can leave the layer too. `autoFocus` only counts in the server-rendered document: React never focuses an anchor in the browser, `showModal()` does, and Done is the first control. */}
       <Link
         route="auth.tokens"
+        data-layer-done=""
         autoFocus
         onClick={(event) => {
           // Not a layer (an answer without `.layer()`, or one beyond the tenth): the link navigates. In a layer it closes the layer instead of visiting the page.
