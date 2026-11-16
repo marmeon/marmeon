@@ -39,7 +39,7 @@
   letter-spacing: 0;
 }
 
-/* Without JavaScript the files stand one under the other, each with its name; the split layout does the same until it has room. */
+/* Without JavaScript the files stand one under the other, each with its name. */
 .editor .tabs--stack {
   gap: 0;
 }
@@ -110,24 +110,4 @@
 .editor .editor-code .code-source,
 .editor .editor-code pre.code {
   flex: 1;
-}
-
-.editor-footer {
-  padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--editor-line);
-  background: var(--editor-chrome);
-  color: var(--editor-dim);
-  font-size: var(--text-sm);
-}
-
-@media (min-width: 960px) {
-  .editor--split .editor-files {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .editor--split .editor-file + .editor-file {
-    border-top: 0;
-    border-left: 1px solid var(--editor-line);
-  }
 }

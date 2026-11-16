@@ -1,36 +1,41 @@
-/* Batteries: the text and its checks side by side, the package tabs under them. */
-.landing .batteries {
-  border-top: 1px solid var(--line);
-}
-
-.landing .batteries-inner {
-  display: grid;
-  gap: clamp(32px, 5vw, 56px);
-}
-
-.landing .batteries-inner > * {
-  min-width: 0;
+/* Batteries: the heading and its checks, then a bento grid of nine cards, each with a piece of real code. On Stone in both colour schemes. */
+.landing .batteries-frame {
+  padding: clamp(64px, 8vw, 112px) clamp(20px, 3vw, 40px);
+  border-inline: 1px solid var(--rail-light);
 }
 
 .landing .batteries-head {
-  display: grid;
-  gap: var(--space-6);
-  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px 64px;
 }
 
-@media (min-width: 56rem) {
-  .landing .batteries-head {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: clamp(32px, 5vw, 72px);
-  }
+.landing .batteries-head > div {
+  max-width: 640px;
+}
+
+.landing .batteries-head .section-label {
+  color: var(--teal);
+}
+
+.landing .batteries-head h2 {
+  margin-top: 16px;
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
 }
 
 .landing .check-list {
-  display: grid;
-  gap: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin: 0;
   padding: 0;
-  color: var(--fg-2);
+  color: #3a4146;
+  font-size: 0.90625rem;
   list-style: none;
 }
 
@@ -38,106 +43,130 @@
 .landing .check-list li {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: var(--space-3);
+  gap: 10px;
 }
 
 .landing .check-list li::before {
-  color: var(--accent);
+  color: var(--teal);
   content: '\2713';
   content: '\2713' / '';
   font-weight: 700;
 }
 
-.landing .batteries-tabs .tabs-list {
-  margin-bottom: var(--space-4);
-}
-
-/* A narrow screen scrolls the tab bar: wrapped rows would leave the active tab's line floating. */
-@media (min-width: 40rem) {
-  .landing .batteries-tabs .tabs-list {
-    flex-wrap: wrap;
-  }
+.landing .batteries-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  gap: 16px;
+  margin-top: 56px;
 }
 
 .landing .battery {
-  display: grid;
-  gap: var(--space-4);
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--rail-light);
+  border-radius: var(--radius-xl);
+  background: var(--paper);
+}
+
+.landing .battery:hover {
+  border-color: #b9b3a5;
+}
+
+@media (min-width: 640px) {
+  .landing .battery--wide {
+    grid-column: span 2;
+  }
+}
+
+.landing .battery-head {
+  padding: 26px 26px 0;
+}
+
+.landing .battery-head h3 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  letter-spacing: -0.015em;
+}
+
+.landing .battery-head p {
+  max-width: 480px;
+  margin: 8px 0 0;
+  color: var(--muted-ink);
+  font-size: 0.90625rem;
+  line-height: 1.55;
+}
+
+.landing .battery-editor {
+  flex: 1;
+  margin: 22px 10px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: none;
 }
 
 .landing .battery .editor-name {
   overflow-wrap: anywhere;
 }
 
+.landing .battery .editor-code pre.code {
+  font-size: 0.78125rem;
+}
+
 .landing .battery-extra {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  margin: 0 10px 10px;
 }
 
-.landing .battery-docs {
-  margin: 0;
-}
-
-.landing .package-list {
-  display: grid;
-  gap: var(--space-5);
-}
-
-.landing .package-list .group-label {
-  margin-bottom: 0;
-}
-
-.landing .package-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-  list-style: none;
-}
-
-.landing .package-grid li {
+.landing .battery-foot {
   display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 18px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0 26px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 
-.landing .package-grid a {
-  align-self: flex-start;
+.landing .battery-foot code {
+  color: var(--muted-ink);
+  font-size: inherit;
 }
 
-.landing .package-grid code {
-  overflow-wrap: anywhere;
+.landing .battery-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
-.landing .package-grid li > span {
-  color: var(--fg-2);
-  font-size: 0.9375rem;
-  line-height: 1.5;
+.landing .battery-foot a::after {
+  content: ' \2192' / '';
+  white-space: pre;
 }
 
-.landing .package-scope {
-  color: var(--muted);
+.landing .batteries-all {
+  margin: 28px 0 0;
 }
 
-/* The "Modules" tab: the module folder */
+/* The "Modules" card: the module folder */
 .landing .file-tree {
   margin: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-3);
-  background: var(--bg-raised);
+  border: 1px solid #2a343a;
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--code-fg);
 }
 
 .landing .file-tree figcaption {
   padding: 12px 18px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
+  border-bottom: 1px solid var(--panel-line);
+  color: var(--stage-muted);
   font-family: var(--font-mono);
   font-size: 0.78125rem;
 }
@@ -146,7 +175,7 @@
   margin: 0;
   padding: 10px 0 14px;
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.5;
   list-style: none;
 }
@@ -156,12 +185,12 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 4px 16px;
-  padding: 8px 18px;
+  padding: 6px 18px;
 }
 
 /* The branch glyphs are decoration: the second value of `content` is their empty text alternative. */
 .landing .file-tree li > span:first-child::before {
-  color: var(--line-strong);
+  color: var(--stage-dim);
   content: '├─ ';
   content: '├─ ' / '';
   white-space: pre;
@@ -173,11 +202,11 @@
 }
 
 .landing .file-tree-folder {
-  color: var(--accent);
+  color: var(--thread);
 }
 
 .landing .file-tree-role {
-  color: var(--muted);
+  color: var(--stage-muted);
   font-family: var(--font-text);
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
 }

@@ -7,6 +7,7 @@ import { ChainSection } from '../components/landing/ChainSection.tsx';
 import { DevtoolsSection } from '../components/landing/DevtoolsSection.tsx';
 import { HeroSection } from '../components/landing/HeroSection.tsx';
 import { IslandSection } from '../components/landing/IslandSection.tsx';
+import { PackagesSection } from '../components/landing/PackagesSection.tsx';
 import { PrinciplesSection } from '../components/landing/PrinciplesSection.tsx';
 import { SecureSection } from '../components/landing/SecureSection.tsx';
 import { StartSection } from '../components/landing/StartSection.tsx';
@@ -25,7 +26,7 @@ export default function Landing({ snippets, chain, packages, moduleFiles }: Page
       <PrinciplesSection />
       <AudienceSection />
       <ChainSection snippets={snippets} chain={chain} />
-      <BatteriesSection snippets={snippets} packages={packages} moduleFiles={moduleFiles} />
+      <BatteriesSection snippets={snippets} moduleFiles={moduleFiles} />
       <div className="landing-band stage stage--veins-band">
         <DevtoolsSection />
         <AgentsSection />
@@ -35,6 +36,7 @@ export default function Landing({ snippets, chain, packages, moduleFiles }: Page
         <TestingSection snippet={snippets.test} />
         <IslandSection snippets={snippets} />
       </div>
+      <PackagesSection packages={packages} />
       <StartSection />
     </div>
   );

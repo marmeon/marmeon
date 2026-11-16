@@ -1,5 +1,5 @@
 /**
- * The folder of `modules/notes/` the landing's "Modules" tab draws — server only, listed by `BatteriesSection`. `scripts/landing.ts`
+ * The folder of `modules/notes/` the landing's "Modules" card draws — server only, listed by `BatteriesSection`. `scripts/landing.ts`
  * checks every entry against the smoke app: a folder (`folder: true`, name ending in `/`) is a directory there, a file is a file.
  */
 export interface ModuleFile {

@@ -37,6 +37,17 @@ describe('ChainSection', () => {
     expect(markup.match(/<li class="chain-step"/g)).toHaveLength(7);
     expect(markup).not.toContain('role="tab"');
     for (const step of CHAIN) expect(markup).toContain(step.id + ' typo');
+    // Each step carries its own error, its sentence, its docs link and the box that says it does not compile.
+    const steps = markup.split('<li class="chain-step"').slice(1);
+    const docs = ['/docs/migrations', '/docs/queries#table-types', '/docs/queries', '/docs/routing#route-model-binding', '/docs/routing', '/docs/pages', '/docs/forms'];
+    expect(steps).toHaveLength(CHAIN.length);
+    CHAIN.forEach((step, index) => {
+      const part = steps[index]!;
+      expect(part.replaceAll('&#x27;', "'").replaceAll('&quot;', '"').replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&amp;', '&'), step.id).toContain(`error ${step.error.code}: ${step.error.message}`);
+      expect(part, step.id).toMatch(/<p class="chain-text">[^<]{20,}/);
+      expect(part, step.id).toContain(`<a href="${docs[index]}">`);
+      expect(part, step.id).toContain('This does not compile');
+    });
   });
 
   it('shows the code and the compile error of the clicked step and hides the others', async () => {

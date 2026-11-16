@@ -3,40 +3,50 @@ import { Link } from '@marmeon/react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { PACKAGES_URL } from '../../links.ts';
 import type { ModuleFile } from '../../module-files.ts';
-import type { PackageEntry, PackageGroup } from '../../packages.ts';
 import type { SnippetName } from '../../snippets.ts';
 import { Editor } from '../Editor.tsx';
-import { Tabs } from '../Tabs.tsx';
 import { Terminal } from '../Terminal.tsx';
 
 interface Battery {
   readonly id: string;
-  readonly label: string;
+  readonly title: string;
+  readonly text: string;
   readonly snippet: SnippetName;
+  /** The package the code comes from: a name in `PACKAGES`. */
+  readonly package: string;
   readonly docs: { readonly href: string; readonly text: string };
+  readonly wide?: boolean;
 }
 
 const BATTERIES: readonly Battery[] = [
-  { id: 'auth', label: 'Auth', snippet: 'batteryAuth', docs: { href: '/docs/authorization', text: 'Authorization' } },
-  { id: 'database', label: 'Database', snippet: 'batteryDatabase', docs: { href: '/docs/queries', text: 'Queries' } },
-  { id: 'migrations', label: 'Migrations', snippet: 'batteryMigrations', docs: { href: '/docs/migrations', text: 'Migrations' } },
-  { id: 'validation', label: 'Validation', snippet: 'batteryValidation', docs: { href: '/docs/validation', text: 'Validation' } },
-  { id: 'queue', label: 'Queue', snippet: 'batteryQueue', docs: { href: '/docs/queues', text: 'Queues' } },
-  { id: 'mail', label: 'Mail', snippet: 'batteryMail', docs: { href: '/docs/mail', text: 'Mail' } },
-  { id: 'scheduler', label: 'Scheduler', snippet: 'batteryScheduler', docs: { href: '/docs/scheduling', text: 'Task scheduling' } },
-  { id: 'storage', label: 'Storage', snippet: 'batteryStorage', docs: { href: '/docs/storage', text: 'File storage' } },
-  { id: 'modules', label: 'Modules', snippet: 'batteryModules', docs: { href: '/docs/modules#discovery', text: 'Modules and discovery' } },
+  {
+    id: 'auth',
+    title: 'Auth and policies',
+    text: 'Sign-in, password reset, email verification and API tokens. Policies stand next to the route, and a misspelt ability does not compile.',
+    snippet: 'batteryAuth',
+    package: '@marmeon/auth',
+    docs: { href: '/docs/authorization', text: 'Authorization' },
+    wide: true,
+  },
+  { id: 'database', title: 'Database', text: 'Queries and transactions: the code makes the registration and dispatches its event in one transaction, which rolls back when it returns an err.', snippet: 'batteryDatabase', package: '@marmeon/database', docs: { href: '/docs/transactions', text: 'Transactions' } },
+  { id: 'migrations', title: 'Migrations', text: 'Tables are declared in migrations, and the table types are generated from them.', snippet: 'batteryMigrations', package: '@marmeon/database', docs: { href: '/docs/migrations', text: 'Migrations' } },
+  { id: 'validation', title: 'Validation', text: 'Request schemas, with errors typed down to the form field.', snippet: 'batteryValidation', package: '@marmeon/validation', docs: { href: '/docs/validation', text: 'Validation' } },
+  { id: 'queue', title: 'Queue', text: 'Jobs as classes, workers and retries.', snippet: 'batteryQueue', package: '@marmeon/queue', docs: { href: '/docs/queues', text: 'Queues' } },
+  { id: 'mail', title: 'Mail', text: 'A mail is a class with a React view, written in MJML components with translated text, and a fake for tests.', snippet: 'batteryMail', package: '@marmeon/mail', docs: { href: '/docs/mail', text: 'Mail' } },
+  { id: 'scheduler', title: 'Scheduler', text: 'Scheduled tasks in code, next to the module they belong to.', snippet: 'batteryScheduler', package: '@marmeon/scheduler', docs: { href: '/docs/scheduling', text: 'Task scheduling' } },
+  { id: 'storage', title: 'Storage', text: 'Disks on the server, in S3 or in memory, signed links that expire, and uploads.', snippet: 'batteryStorage', package: '@marmeon/storage', docs: { href: '/docs/storage', text: 'File storage' } },
+  { id: 'modules', title: 'Modules', text: 'A module brings its routes, providers, migrations, views and tests.', snippet: 'batteryModules', package: '@marmeon/core', docs: { href: '/docs/modules#discovery', text: 'Modules and discovery' } },
 ];
 
 const CHECKS = [
   'Installed packages register themselves',
   'Mail, the queue, storage and the schedule each have a fake for tests',
   <>
-    <code>pnpm dev</code> starts the server, the worker and the scheduler together
+    <code>pnpm dev</code> starts the server, and next to it the queue worker and the scheduler your app uses
   </>,
 ];
 
-/** The module's folder, for the "Modules" tab. */
+/** The module's folder, for the "Modules" card. */
 function ModuleFiles({ files }: { files: readonly ModuleFile[] }) {
   return (
     <figure className="file-tree">
@@ -53,94 +63,56 @@ function ModuleFiles({ files }: { files: readonly ModuleFile[] }) {
   );
 }
 
-const PACKAGE_GROUPS: readonly { readonly group: PackageGroup; readonly title: string }[] = [
-  { group: 'app', title: 'In every new app' },
-  { group: 'add', title: 'Add when you need it' },
-  { group: 'tooling', title: 'Tooling' },
-];
-
-/** Every package of the framework with a link to its page, in groups, from the list the server hands over. */
-function PackageList({ packages }: { packages: readonly PackageEntry[] }) {
+/** "The backend comes with it": nine cards, each a sentence and a piece of real code, in the design's bento grid. Plain HTML that reads without JavaScript; the terminal's copy button appears once hydrated. */
+export function BatteriesSection({ snippets, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'moduleFiles'>) {
   return (
-    <div className="package-list">
-      <h3 className="group-label">{`${packages.length} packages, one version`}</h3>
-      {PACKAGE_GROUPS.map(({ group, title }) => (
-        <div key={group} className="package-group">
-          <h4 className="group-label group-label--small">{title}</h4>
-          <ul className="package-grid" aria-label={title}>
-            {packages.filter((entry) => entry.group === group).map(({ name, docs, text }) => {
-              const scope = name.startsWith('@marmeon/') ? '@marmeon/' : '';
-              return (
-                <li key={name}>
-                  <Link href={`/docs/${docs}`}>
-                    <code>
-                      {scope && <span className="package-scope">{scope}</span>}
-                      {name.slice(scope.length)}
-                    </code>
-                  </Link>
-                  <span>{text}</span>
+    <section className="batteries landing-light" aria-labelledby="batteries-title">
+      <div className="landing-inner">
+        <div className="batteries-frame">
+          <div className="batteries-head">
+            <div>
+              <p className="section-label">Batteries included</p>
+              <h2 id="batteries-title">
+                The backend <span className="serif-accent">comes with it.</span>
+              </h2>
+            </div>
+            <ul className="check-list">
+              {CHECKS.map((check, index) => (
+                <li key={index}>
+                  <span>{check}</span>
                 </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** "The backend comes with it": one tab per package, each with a piece of real code, and the checks that hold the packages together. */
-export function BatteriesSection({ snippets, packages, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'packages' | 'moduleFiles'>) {
-  return (
-    <section className="batteries" aria-labelledby="batteries-title">
-      <div className="landing-inner batteries-inner">
-        <div className="batteries-head">
-          <div className="section-intro">
-            <p className="section-label">Batteries included</p>
-            <h2 id="batteries-title">The backend comes with it.</h2>
-            <p>
-              Authorization, a database layer, validation, a queue, mail, a scheduler and file storage are packages of the framework, released together and wired to each
-              other. <Link href={PACKAGES_URL}>All packages</Link>
-            </p>
+              ))}
+            </ul>
           </div>
-          <ul className="check-list">
-            {CHECKS.map((check, index) => (
-              <li key={index}>
-                <span>{check}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <Tabs
-          label="Packages of the framework"
-          idPrefix="batteries"
-          headingLevel={3}
-          className="batteries-tabs"
-          itemClassName="battery"
-          items={BATTERIES.map(({ id, label, snippet, docs }) => {
-            const { file, html } = snippets[snippet];
-            if (file === undefined) throw new Error(`The landing's battery snippet "${snippet}" has no file name.`);
-            return {
-              id,
-              label,
-              content: (
-                <>
-                  <Editor label={`${label}: ${file.split('/').at(-1)}`} files={[{ name: file, html }]} headingLevel={4} />
+          <div className="batteries-grid">
+            {BATTERIES.map(({ id, title, text, snippet, package: packageName, docs, wide }) => {
+              const { file, html } = snippets[snippet];
+              if (file === undefined) throw new Error(`The landing's battery snippet "${snippet}" has no file name.`);
+              return (
+                <article key={id} className={`card battery${wide ? ' battery--wide' : ''}`}>
+                  <div className="battery-head">
+                    <h3>{title}</h3>
+                    <p>{text}</p>
+                  </div>
+                  <Editor label={`${title}: ${file.split('/').at(-1)}`} files={[{ name: file, html }]} headingLevel={4} className="battery-editor" />
                   {id === 'modules' && (
                     <div className="battery-extra">
                       <ModuleFiles files={moduleFiles} />
-                      <Terminal commands={['pnpm add @marmeon/redis']} />
+                      <Terminal commands={['pnpm add -E @marmeon/redis@<version of your app>']} label="An installed package registers itself" />
                     </div>
                   )}
-                  <p className="battery-docs">
-                    <Link href={docs.href}>{docs.text} →</Link>
+                  <p className="battery-foot">
+                    <code>{packageName}</code>
+                    <Link href={docs.href}>{docs.text}</Link>
                   </p>
-                </>
-              ),
-            };
-          })}
-        />
-        <PackageList packages={packages} />
+                </article>
+              );
+            })}
+          </div>
+          <p className="batteries-all">
+            <Link href={PACKAGES_URL}>All packages</Link>
+          </p>
+        </div>
       </div>
     </section>
   );

@@ -115,6 +115,24 @@ describe('the landing page', () => {
       expect(text, step.id).toContain(mistakeLine(step));
       expect(text, step.id).toContain(`error ${step.error.code}: ${step.error.message}`);
     }
+    const headings = [...section.matchAll(/<h3 class="tabs-heading">(.*?)<\/h3>/g)].map((match) => textOf(match[1]!));
+    expect(headings).toEqual(CHAIN.map((step, index) => `${index + 1} / ${CHAIN.length} ${step.title}`));
+    for (const href of ['/docs/migrations', '/docs/queries#table-types', '/docs/queries', '/docs/routing#route-model-binding', '/docs/routing', '/docs/pages', '/docs/forms']) expect(section, href).toContain(`href="${href}"`);
+    expect(section.match(/This does not compile/g)).toHaveLength(CHAIN.length);
+    // Each step reads on its own without JavaScript: its file name, a line of its code, its mistake and its docs link.
+    const steps = section.split('<li class="chain-step"').slice(1);
+    expect(steps).toHaveLength(CHAIN.length);
+    const docs = ['/docs/migrations', '/docs/queries#table-types', '/docs/queries', '/docs/routing#route-model-binding', '/docs/routing', '/docs/pages', '/docs/forms'];
+    CHAIN.forEach((step, index) => {
+      const snippet = SNIPPETS[step.snippet] as { file?: string; source: { app?: string; repo?: string }; code: string };
+      const file = snippet.file ?? snippet.source.app ?? snippet.source.repo;
+      const markup = steps[index]!;
+      expect(markup, step.id).toContain(`<h4 class="editor-name">${file}</h4>`);
+      const line = snippet.code.split('\n').find((candidate) => candidate.trim() !== '')!.trim();
+      expect(textOf(markup), step.id).toContain(line);
+      expect(markup, step.id).toContain(`href="${docs[index]}"`);
+      expect(markup, step.id).toContain('This does not compile');
+    });
   });
 
   it('hands the page every chain step with its highlighted mistake line and the compiler error from chain.ts', async () => {
@@ -162,7 +180,7 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<section class="islands" aria-labelledby="islands-title"');
     expect(body.indexOf('id="islands-title"')).toBeLessThan(body.indexOf('id="start-title"'));
-    const section = body.slice(body.indexOf('<section class="islands"'), body.indexOf('<section class="start"'));
+    const section = body.slice(body.indexOf('<section class="islands"'), body.indexOf('<section class="packages'));
     expect(section).toContain('<div class="island-frame" data-island="site.render-clock"');
     expect(section).toContain('With JavaScript, the browser loads an island here: a part of the page the server renders on its own.');
     expect(section).toContain('<h3 class="tabs-heading">ShowRenderClockController.ts</h3>');
@@ -178,20 +196,20 @@ describe('the landing page', () => {
 
   it('orders the sections from the hero to the start', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    const ids = ['hero-title', 'principles-title', 'audience-title', 'chain-title', 'batteries-title', 'devtools-title', 'agents-title', 'secure-title', 'testing-title', 'islands-title', 'start-title'];
+    const ids = ['hero-title', 'principles-title', 'audience-title', 'chain-title', 'batteries-title', 'devtools-title', 'agents-title', 'secure-title', 'testing-title', 'islands-title', 'packages-title', 'start-title'];
     const positions = ids.map((id) => body.indexOf(`id="${id}"`));
     expect(positions.every((position) => position > -1), ids.join()).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(new Set(positions).size).toBe(ids.length);
   });
 
-  it('has the six sections after the chain, each named by its heading', async () => {
+  it('has the seven sections after the chain, each named by its heading', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    for (const name of ['batteries', 'secure', 'testing', 'islands', 'devtools', 'start']) {
-      expect(body, name).toMatch(new RegExp(`<section class="${name}" aria-labelledby="${name}-title"`));
+    for (const name of ['batteries', 'secure', 'testing', 'islands', 'devtools', 'packages', 'start']) {
+      expect(body, name).toMatch(new RegExp(`<section class="${name}[ "][^>]*aria-labelledby="${name}-title"`));
       expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
     }
-    expect(body.match(/<h2[ >]/g)).toHaveLength(10);
+    expect(body.match(/<h2[ >]/g)).toHaveLength(11);
     expect(body).toContain('<nav aria-label="Start reading">');
     expect(body).not.toContain('<section class="modules"');
   });
@@ -209,29 +227,52 @@ describe('the landing page', () => {
     expect(section).not.toContain('<span class="prompt" aria-hidden="true">$ </span>✓');
   });
 
-  it('shows the nine packages as tabs, each with its code, under h3 headings of the batteries section', async () => {
+  it('shows the nine batteries as cards, each with its checked code, its package and its docs link', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    const start = body.indexOf('<section class="batteries"');
+    const start = body.indexOf('<section class="batteries');
     const section = body.slice(start, body.indexOf('<div class="landing-band'));
     expect(section).toContain('aria-labelledby="batteries-title"');
-    const labels = [...section.matchAll(/<h3 class="tabs-heading">([^<]*)<\/h3>/g)].map((match) => match[1]);
-    expect(labels).toEqual(['Auth', 'Database', 'Migrations', 'Validation', 'Queue', 'Mail', 'Scheduler', 'Storage', 'Modules']);
-    // h2 > h3 (the tab) > h4 (the file): no level is skipped, and nothing above the tabs is a heading.
-    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`2${'34'.repeat(9)}3444`);
-    for (const name of Object.keys(SNIPPETS).filter((key) => key.startsWith('battery'))) {
-      const { file } = SNIPPETS[name as keyof typeof SNIPPETS] as { file: string };
-      expect(section, name).toContain(`<h4 class="editor-name">${file}</h4>`);
-    }
+    expect(section).not.toContain('tabs-heading');
+    const titles = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((match) => match[1]);
+    expect(titles).toEqual(['Auth and policies', 'Database', 'Migrations', 'Validation', 'Queue', 'Mail', 'Scheduler', 'Storage', 'Modules']);
+    expect(section.match(/<article class="card battery/g)).toHaveLength(9);
+    // h2 > h3 (the card) > h4 (the file): no level is skipped.
+    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`2${'34'.repeat(9)}`);
+    const files = Object.keys(SNIPPETS).filter((key) => key.startsWith('battery')).map((name) => (SNIPPETS[name as keyof typeof SNIPPETS] as { file: string }).file);
+    expect(files).toHaveLength(9);
+    // The cards stand in the order of the snippets, each with its file name as an h4.
+    expect([...section.matchAll(/<h4 class="editor-name">([^<]*)<\/h4>/g)].map((match) => match[1])).toEqual(files);
+    const packages = [...section.matchAll(/<p class="battery-foot"><code>([^<]*)<\/code>/g)].map((match) => match[1]!);
+    // The package each card names is the one its code comes from.
+    expect(packages).toEqual(['@marmeon/auth', '@marmeon/database', '@marmeon/database', '@marmeon/validation', '@marmeon/queue', '@marmeon/mail', '@marmeon/scheduler', '@marmeon/storage', '@marmeon/core']);
+    for (const name of packages) expect(PACKAGES.map((entry) => entry.name), name).toContain(name);
+    const heads = [...section.matchAll(/<div class="battery-head"><h3>([^<]*)<\/h3><p>([^<]+)<\/p><\/div>/g)];
+    expect(heads.map((match) => match[1])).toEqual(titles);
+    for (const match of heads) expect(match[2]!.trim().length, match[1]).toBeGreaterThan(20);
+    // The link at the foot of each card, in the order of the cards.
+    expect([...section.matchAll(/<p class="battery-foot">.*?<a [^>]*href="([^"]*)"[^>]*>([^<]*)</g)].map((match) => [match[2], match[1]])).toEqual([
+      ['Authorization', '/docs/authorization'],
+      ['Transactions', '/docs/transactions'],
+      ['Migrations', '/docs/migrations'],
+      ['Validation', '/docs/validation'],
+      ['Queues', '/docs/queues'],
+      ['Mail', '/docs/mail'],
+      ['Task scheduling', '/docs/scheduling'],
+      ['File storage', '/docs/storage'],
+      ['Modules and discovery', '/docs/modules#discovery'],
+    ]);
     expect(section).toContain('aria-label="Files of the notes module"');
-    expect(section).toContain('pnpm add @marmeon/redis');
+    expect(textOf(section)).toContain('pnpm add -E @marmeon/redis@<version of your app>');
+    expect(textOf(section)).toContain('An installed package registers itself');
+    expect(textOf(section)).not.toContain('pnpm add @marmeon/redis');
     expect(section).toContain('Installed packages register themselves');
-    for (const href of ['/docs/authorization', '/docs/queries', '/docs/migrations', '/docs/validation', '/docs/queues', '/docs/mail', '/docs/scheduling', '/docs/storage', '/docs/modules#discovery']) {
+    for (const href of ['/docs/authorization', '/docs/transactions', '/docs/migrations', '/docs/validation', '/docs/queues', '/docs/mail', '/docs/scheduling', '/docs/storage', '/docs/modules#discovery']) {
       expect(section, href).toContain(`href="${href}"`);
     }
     expect(section).not.toMatch(/\sstyle=/);
   });
 
-  it('lists every package of the repository once, with one link each, and counts them from the list', async () => {
+  it('lists every package of the repository once, in three groups with their counts, after the testing and islands and before the start', async () => {
     const dirs = readdirSync(join(repo, 'packages'), { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(repo, 'packages', entry.name, 'package.json')));
     // The landing page lists what an app can install: a private package is not published yet.
     const manifests = dirs.map((entry) => JSON.parse(readFileSync(join(repo, 'packages', entry.name, 'package.json'), 'utf8')) as { name: string; private?: boolean });
@@ -239,18 +280,34 @@ describe('the landing page', () => {
     expect(PACKAGES.map((entry) => entry.name).sort()).toEqual(names.sort());
     expect(new Set(PACKAGES.map((entry) => entry.docs)).size).toBe(PACKAGES.length);
     const body = (await app.get('/', document).assertOk()).body;
-    const start = body.indexOf('<div class="package-list"');
+    const start = body.indexOf('<section class="packages');
     const end = body.indexOf('</section>', start);
     expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
+    expect(start).toBeGreaterThan(body.indexOf('id="islands-title"'));
+    expect(end).toBeLessThan(body.indexOf('<section class="start"'));
     const list = body.slice(start, end);
-    expect(list).toContain(`>${PACKAGES.length} packages, one version</h3>`);
+    expect(textOf(list.slice(list.indexOf('<h2'), list.indexOf('</h2>')))).toBe(`${PACKAGES.length} packages, one version.`);
     for (const { name, docs } of PACKAGES) {
       expect(list.match(new RegExp(`<a [^>]*href="/docs/${docs}"`, 'g')), name).toHaveLength(1);
       expect(list, name).toContain(name.startsWith('@marmeon/') ? `<span class="package-scope">@marmeon/</span>${name.slice(9)}</code>` : `${name}</code>`);
     }
     expect(list.match(/<li><a /g)).toHaveLength(PACKAGES.length);
-    for (const title of ['In every new app', 'Add when you need it', 'Tooling']) expect(list).toContain(title);
+    const text = list.replaceAll('<!-- -->', '');
+    const groups = text.split('<h3 class="package-group-title">').slice(1);
+    expect(groups).toHaveLength(3);
+    const expected = [
+      ['In every new app', 'app'],
+      ['Add when you need it', 'add'],
+      ['Dev tools', 'tooling'],
+    ] as const;
+    expected.forEach(([title, group], index) => {
+      const markup = groups[index]!;
+      const members = PACKAGES.filter((entry) => entry.group === group).map((entry) => entry.name);
+      expect(markup, title).toMatch(new RegExp(`^${title} <span>${members.length}</span></h3>`));
+      const named = [...markup.matchAll(/<li><a [^>]*><code>(?:<span class="package-scope">@marmeon\/<\/span>)?([^<]*)<\/code>/g)].map((match) => match[1]);
+      expect(named, title).toEqual(members.map((name) => name.replace('@marmeon/', '')));
+    });
+    expect(groups[2]).toContain("@marmeon/vite, @marmeon/testing and @marmeon/devtools are in every new app&#x27;s dev dependencies; create-marmeon starts a new app.");
   });
 
   it('shows the test snippet', async () => {
