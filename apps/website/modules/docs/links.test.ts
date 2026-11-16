@@ -30,6 +30,8 @@ const repo = resolve(import.meta.dirname, '../../../..');
 
 const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
 const PAGES = ['/', '/docs', '/imprint', '/privacy', ...DOCS];
+/** Routes that answer text, not a page: the test fetches each one and requires 200, instead of reporting "no such page". */
+const TEXT_ROUTES = ['/llms.txt', '/llms-full.txt'];
 /** Pages besides the docs' own: the search, with and without a query, and the 404 — scanned for inline scripts and styles only. */
 const EXTRA = ['/docs/search', '/docs/search?q=route', '/no/such/page'];
 const html = { headers: { accept: 'text/html' } };
@@ -59,7 +61,11 @@ function inlineStyles(body: string): string[] {
 }
 
 /** The links of the scanned pages that stay on the site and lead nowhere: no such page, or no such anchor on it. */
-function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>, lines: readonly string[] = []): { broken: string[]; internal: number } {
+function checkLinks(
+  pages: Map<string, { hrefs: string[]; ids: Set<string> }>,
+  lines: readonly string[] = [],
+  texts: ReadonlySet<string> = new Set(),
+): { broken: string[]; internal: number } {
   const broken: string[] = [];
   let internal = 0;
   for (const [path, { hrefs }] of pages) {
@@ -70,6 +76,12 @@ function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>, l
       const page = target === '' ? path : target.split('?')[0]!;
       // A release line's own pages are no scanned pages: the pinned lines are served and checked by docs-lines-pinned.test.ts.
       if (lines.some((line) => page === `/docs/${line}` || page.startsWith(`/docs/${line}/`))) continue;
+      // A text route has no anchors and takes no query: the link is the bare path, answered 200 by its own test.
+      if (texts.has(page)) {
+        if (anchor !== undefined) broken.push(`${path}: ${href} — no anchors on a text route`);
+        else if (target.includes('?')) broken.push(`${path}: ${href} — no query on a text route`);
+        continue;
+      }
       // The Markdown of a page — its own route, not a scanned page.
       const found = pages.get(page.replace(/^(\/docs\/[a-z0-9-]+)\.md$/, (md, html: string) => (pages.has(html) ? html : md)));
       if (!found) {
@@ -130,13 +142,19 @@ describe('every page', () => {
 
   it('links only to pages and anchors that exist (links as on GitHub)', () => {
     expect(rendered.size).toBe(PAGES.length);
-    const { broken, internal } = checkLinks(rendered, app.make(DocsLines).all().map((line) => line.name));
+    const { broken, internal } = checkLinks(rendered, app.make(DocsLines).all().map((line) => line.name), new Set(TEXT_ROUTES));
     // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
     expect(broken, broken.join('\n')).toEqual([]);
-    // Measured 8 161 (the start page and the 73 pages of the docs; the header's and the navigation's 70-odd links on each page count
-    // too). The threshold is that − 10 %: it shows a renderer or a layout that drops the navigation or the content's links on every
-    // page — not one page that lost its links (a few dozen of eight thousand), which only the per-link check above can see.
-    expect(internal).toBeGreaterThan(7_340);
+    // Measured 24 286 (the landing, the start page, the legal pages and the pages of the docs; the header's, the footer's and the navigation's
+    // links on each page count too). The threshold is that − 10 %: it shows a renderer or a layout that drops the navigation or the content's links on every
+    // page — not one page that lost its links (a few dozen of twenty-four thousand), which only the per-link check above can see.
+    expect(internal).toBeGreaterThan(21_850);
+  });
+
+  it.each(TEXT_ROUTES)('%s, which pages link as a plain <a>, answers 200 as plain text that starts with its title', async (path) => {
+    const response = await app.get(path).assertOk();
+    expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+    expect(response.body.split('\n')[0]).toBe('# Marmeon');
   });
 
   it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link) — no directory', () => {
@@ -148,6 +166,15 @@ describe('every page', () => {
 });
 
 describe('the link check', () => {
+  it('passes a text route only when it is on the list', () => {
+    const pages = new Map([['/', { hrefs: ['/llms.txt', '/llms-nope.txt', '/llms.txt#x', '/llms.txt?q=a'], ids: new Set<string>() }]]);
+    expect(checkLinks(pages, [], new Set(['/llms.txt'])).broken).toEqual([
+      '/: /llms-nope.txt — no such page',
+      '/: /llms.txt#x — no anchors on a text route',
+      '/: /llms.txt?q=a — no query on a text route',
+    ]);
+  });
+
   it('finds a link to an anchor or a page that does not exist, and passes one that does', () => {
     const pages = new Map([
       ['/', { hrefs: ['/docs/queries#table-types', '/docs/queries#table-typo', '/docs/nowhere', '/docs/queries.md', '/docs/no-such-page.md', 'https://example.org/x'], ids: new Set<string>() }],

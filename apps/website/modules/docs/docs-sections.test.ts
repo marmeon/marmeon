@@ -4,6 +4,7 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
+import { START } from './components/start-pages.tsx';
 import { DocsRepository } from './DocsRepository.ts';
 import { ENTRIES, fileOf, repo, results, SECTIONS } from './docs.test-support.ts';
 
@@ -82,17 +83,46 @@ describe('the docs: sections of pages under /docs', () => {
     expect(JSON.stringify(sections)).not.toContain('/packages/');
   });
 
-  it('the start page links the three first steps to existing pages and shows the terminal without a copy button', async () => {
+  /** The markup of one block of the start page, from its marker to the closing tag — so a link elsewhere on the page (the list of every section, the head) proves nothing. */
+  const slice = (html: string, marker: string, end: string) => {
+    const from = html.indexOf(marker);
+    expect(from, `${marker} on the start page`).toBeGreaterThan(-1);
+    return html.slice(from, html.indexOf(end, from));
+  };
+  const hrefsIn = (markup: string) => [...markup.matchAll(/<a [^>]*?href="([^"]*)"/g)].map((match) => match[1]);
+
+  it('the start page links the three first steps, in order, in its cards — to existing pages — and shows the terminal without a copy button', async () => {
     const docs = app.make(DocsRepository);
     const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const html = (await ssr.get('/docs', { headers: { accept: 'text/html' } }).assertOk()).body;
-    for (const slug of ['installation', 'structure', 'routing']) {
-      expect(docs.doc(slug), slug).toBeDefined();
-      expect(html).toContain(`href="/docs/${slug}"`);
-    }
+    expect(hrefsIn(slice(html, 'class="docs-home-start"', '</ol>'))).toEqual(START.map((page) => page.path));
+    for (const page of START) expect(docs.doc(page.path.replace('/docs/', '')), page.path).toBeDefined();
     expect(html).toContain('pnpm create marmeon my-app');
     expect(html).toContain('class="terminal"');
     expect(html).not.toContain('copy-button');
+  });
+
+  it('the start cards name the section and the title the docs configuration gives their page', () => {
+    for (const page of START) {
+      const section = docsConfig.sections.find((candidate) => candidate.pages.some((entry) => `/docs/${entry.slug}` === page.path));
+      expect(section?.title, page.path).toBe(page.section);
+      expect(section?.pages.find((entry) => `/docs/${entry.slug}` === page.path)?.label, page.path).toBe(page.label);
+    }
+  });
+
+  it('the start page has the search trigger, every recipe in its row, and the agents block with real targets', async () => {
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
+    const html = (await ssr.get('/docs', { headers: { accept: 'text/html' } }).assertOk()).body;
+    const triggers = [...html.matchAll(/<a [^>]*class="docs-home-search"[^>]*>/g)].map((match) => match[0]);
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]).toContain('href="/docs/search"');
+    expect(triggers[0]).toContain('data-search-trigger');
+    expect(triggers[0]).toContain('aria-keyshortcuts="Control+K Meta+K"');
+    const recipes = docsConfig.sections.find((section) => section.title === 'Recipes')!.pages.map((entry) => `/docs/${entry.slug}`);
+    expect(recipes).toHaveLength(5);
+    expect(hrefsIn(slice(html, 'class="docs-home-recipes"', '</ul>'))).toEqual(recipes);
+    expect(hrefsIn(slice(html, 'id="for-agents"', '</section>'))).toEqual(['/llms.txt', '/llms-full.txt', '/docs/installation.md', '/docs/mcp']);
+    expect(html).toContain('<h1 id="home-title">Marmeon <span class="serif-accent">documentation</span></h1>');
   });
 
   it('finds the release policy’s sections — and the record of changes comes after every other hit', async () => {

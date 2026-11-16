@@ -74,7 +74,9 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **The landing's devtools section** is a copy of the devtools with invented data (`modules/site/devtools-sample.ts`, drawn by
   `components/landing/DevtoolsReplica.tsx`): its page, tab and column names are read from `packages/devtools` by
   `devtools-sample.test.ts`, so a rename there turns the website red. The figure holds no link.
-- **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
+- **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): a stage hero with a search trigger and the terminal, the three first
+  pages (`components/start-pages.tsx`), the recipes, every section with its pages, and a block for coding agents
+  (`/llms.txt` and `/llms-full.txt` as plain links, a page as Markdown, the MCP tools).
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
   anchors via github-slugger; code highlighted by Shiki on the server — one Shiki per process — with the `marmeon` theme in `shiki-theme.ts`: one placeholder colour per role, turned into a class by `highlight.ts`; the colours live in `styles/code.css`) and indexes the pages when the app
