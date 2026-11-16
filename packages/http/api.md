@@ -17,6 +17,10 @@ export type ActionAnswerOf<N extends string> = [ControllerOf<N>] extends [never]
 } ? Awaited<R> : unknown;
 // ActionBodyOf
 export type ActionBodyOf<N extends string> = N extends keyof Routes ? (MethodOf<N> extends 'get' ? never : FormOf<Instance<ControllerOf<N>>>) : Record<string, unknown>;
+// ActionConflictOf
+export type ActionConflictOf<N extends string> = unknown extends ActionAnswerOf<N> ? unknown : ConflictOf<ActionAnswerOf<N>>;
+// ActionConflicts
+export type ActionConflicts<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, ConflictResult>] extends [never] ? false : true;
 // ActionDataOf
 export type ActionDataOf<N extends string> = DataOf<ActionAnswerOf<N>>;
 // ActionRedirects
@@ -30,7 +34,7 @@ export declare class AfterResponse {
 export interface AlwaysProp<T> extends PageProp<'always', T> {
 }
 // CheckActionRouteName
-export type CheckActionRouteName<N extends string> = string extends N ? BrowserRouteName : Registered extends false ? N : CheckBrowserRouteName<N> extends N ? N extends IslandRouteName ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…) or a redirect` : [ActionDataOf<N>] extends [never] ? ActionRedirects<N> extends true ? N : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect` : N : CheckBrowserRouteName<N>;
+export type CheckActionRouteName<N extends string> = string extends N ? BrowserRouteName : Registered extends false ? N : CheckBrowserRouteName<N> extends N ? N extends IslandRouteName ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…), a redirect or conflict(…)` : [ActionDataOf<N>] extends [never] ? ActionRedirects<N> extends true ? N : ActionConflicts<N> extends true ? N : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…), a redirect or conflict(…)` : N : CheckBrowserRouteName<N>;
 // CheckAssetVersion
 export declare class CheckAssetVersion {
     #private;
@@ -72,6 +76,13 @@ export interface CloseLayerOptions {
 // CloseLayerResult
 export declare class CloseLayerResult extends RedirectResult {
     readonly close: LayerClose;
+}
+// ConflictResult
+export interface ConflictResult<T = unknown> {
+    readonly [CONFLICT_RESULT]: true;
+    readonly kind: 'conflict';
+    readonly current: T;
+    readonly message?: string;
 }
 // ContentSecurityPolicyOptions
 export interface ContentSecurityPolicyOptions extends CspDirectives {
@@ -650,6 +661,10 @@ export { addVary } from '@marmeon/router';
 export declare function always<V>(value: V): AlwaysProp<Unlazy<V>>;
 // cacheControl
 export declare function cacheControl(value: string): MiddlewareClass<{}, {}>;
+// conflict
+export declare function conflict<T>(current: T, options?: {
+    message?: string;
+}): ConflictResult<T>;
 // contentDisposition
 export { contentDisposition } from '@marmeon/router';
 // contentSecurityPolicy
@@ -721,8 +736,12 @@ type BaseParams<N extends string> = {} extends ParamsOf<N> ? {
 } : {
     params: ParamsOf<N>;
 };
+// CONFLICT_RESULT
+declare const CONFLICT_RESULT: unique symbol;
+// ConflictOf
+type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 // DataOf
-type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ViewResult ? never : R extends {
+type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ConflictResult ? never : R extends ViewResult ? never : R extends {
     readonly region: 'island';
 } ? never : R extends Response ? unknown : R extends undefined | null | void ? undefined : Serialize<R>;
 // DeepItemKey
@@ -883,6 +902,11 @@ export type ActionOutcome = {
     readonly kind: 'invalid';
     readonly errors: ValidationErrors;
     readonly message: string | undefined;
+} | {
+    readonly ok: false;
+    readonly kind: 'conflict';
+    readonly current: unknown;
+    readonly message: string;
 } | {
     readonly ok: false;
     readonly kind: 'exception';
@@ -1326,6 +1350,11 @@ export type ActionOutcome = {
     readonly kind: 'invalid';
     readonly errors: ValidationErrors;
     readonly message: string | undefined;
+} | {
+    readonly ok: false;
+    readonly kind: 'conflict';
+    readonly current: unknown;
+    readonly message: string;
 } | {
     readonly ok: false;
     readonly kind: 'exception';
@@ -2476,6 +2505,10 @@ export type ActionAnswerOf<N extends string> = [ControllerOf<N>] extends [never]
 } ? Awaited<R> : unknown;
 // ActionBodyOf
 export type ActionBodyOf<N extends string> = N extends keyof Routes ? (MethodOf<N> extends 'get' ? never : FormOf<Instance<ControllerOf<N>>>) : Record<string, unknown>;
+// ActionConflictOf
+export type ActionConflictOf<N extends string> = unknown extends ActionAnswerOf<N> ? unknown : ConflictOf<ActionAnswerOf<N>>;
+// ActionConflicts
+export type ActionConflicts<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, ConflictResult>] extends [never] ? false : true;
 // ActionDataOf
 export type ActionDataOf<N extends string> = DataOf<ActionAnswerOf<N>>;
 // ActionRedirects
@@ -2490,7 +2523,7 @@ export type { BrowserRouteName } from '@marmeon/router';
 // BrowserRouteNameInput
 export type { BrowserRouteNameInput } from '@marmeon/router';
 // CheckActionRouteName
-export type CheckActionRouteName<N extends string> = string extends N ? BrowserRouteName : Registered extends false ? N : CheckBrowserRouteName<N> extends N ? N extends IslandRouteName ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…) or a redirect` : [ActionDataOf<N>] extends [never] ? ActionRedirects<N> extends true ? N : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect` : N : CheckBrowserRouteName<N>;
+export type CheckActionRouteName<N extends string> = string extends N ? BrowserRouteName : Registered extends false ? N : CheckBrowserRouteName<N> extends N ? N extends IslandRouteName ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…), a redirect or conflict(…)` : [ActionDataOf<N>] extends [never] ? ActionRedirects<N> extends true ? N : ActionConflicts<N> extends true ? N : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…), a redirect or conflict(…)` : N : CheckBrowserRouteName<N>;
 // CheckBrowserRouteName
 export type { CheckBrowserRouteName } from '@marmeon/router';
 // CheckFlashKey
@@ -2511,6 +2544,13 @@ export type { CheckRouteName } from '@marmeon/router';
 export type CheckUploadField<F, K extends string> = string extends K ? UploadField<F> : string extends keyof F ? K : K extends UploadField<F> ? K : [UploadField<F>] extends [never] ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)` : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
 // CheckViewName
 export type CheckViewName<V extends string> = string extends V ? ViewName : V extends ViewName ? V : V extends `${infer Module}/${infer Rest}` ? `'${V}' is not a view: create modules/${Module}/views/${Rest}.tsx, or run \`marmeon route:types\` if it exists (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}` : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
+// ConflictResult
+export interface ConflictResult<T = unknown> {
+    readonly [CONFLICT_RESULT]: true;
+    readonly kind: 'conflict';
+    readonly current: T;
+    readonly message?: string;
+}
 // ControllerOf
 export type { ControllerOf } from '@marmeon/router';
 // DeferredProp
@@ -2773,8 +2813,12 @@ type ActionResult<TAction extends PageAction> = TAction extends {
 type Boundary = `${string}${'_' | '-' | '.'}`;
 // CODE_PREFIXES
 declare const CODE_PREFIXES = "verification|sms|mfa|2fa|two_factor|auth|backup|security";
+// CONFLICT_RESULT
+declare const CONFLICT_RESULT: unique symbol;
+// ConflictOf
+type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 // DataOf
-type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ViewResult ? never : R extends {
+type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ConflictResult ? never : R extends ViewResult ? never : R extends {
     readonly region: 'island';
 } ? never : R extends Response ? unknown : R extends undefined | null | void ? undefined : Serialize<R>;
 // DeepItemKey
@@ -2962,6 +3006,8 @@ export declare const ACTION_HEADER = "x-marmeon-action";
 export declare const ACTION_REDIRECT_HEADER = "x-marmeon-redirect";
 // BROWSER_LOG_EVENT
 export declare const BROWSER_LOG_EVENT = "marmeon:browser-log";
+// CONFLICT_HEADER
+export declare const CONFLICT_HEADER = "x-marmeon-conflict";
 // ENTRY_HEADER
 export declare const ENTRY_HEADER = "x-marmeon-entry";
 // FLASH_HEADER

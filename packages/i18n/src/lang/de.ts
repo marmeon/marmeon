@@ -24,6 +24,7 @@ export default {
     cross_site: 'Anfrage einer fremden Seite abgelehnt.',
     throttled: 'Zu viele Versuche.',
     signature: 'Ungültige Signatur.',
+    conflict: 'Jemand anderes hat das inzwischen geändert.',
   },
   validation: {
     password: {

@@ -3,7 +3,7 @@ import type { ColumnReference, Database, ReferencedType, RelationName, Relations
 import type { ClassResolver, HttpContext, InferInput, InferOutput, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { Rule } from '@marmeon/validation';
 import type { Translator } from '@marmeon/core';
-import type { JsonResult, RedirectResult, Serialize } from '@marmeon/http';
+import type { ConflictResult, JsonResult, RedirectResult, Serialize } from '@marmeon/http';
 import type { TableAnswer, TableData } from './client/index.ts';
 import { isCsvDelimiter } from './csv.ts';
 import type { CsvDelimiter } from './csv-read.ts';
@@ -857,6 +857,16 @@ type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H exten
     : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}`
   : never;
 
+/** A table's endpoint answers counts — the stale save of `conflict()` has no place in it. */
+type ConflictProblem<H, Name extends string> = H extends new (...args: any[]) => { handle(...args: any[]): infer R }
+  ? // An untyped handler (`any`) says nothing: the run-time refusal in the endpoint covers it.
+    0 extends 1 & Awaited<R>
+    ? never
+    : [Extract<Awaited<R>, ConflictResult>] extends [never]
+      ? never
+      : `'${Name}': its handler returns conflict(…) — a table's endpoint answers its counts; refuse a stale save in the handler by throwing, or answer with data`
+  : never;
+
 /** `handle(row, ctx, input)`: the third parameter is what `.input()` validates — without a schema there is none to take. */
 type InputProblem<H, S, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => { handle: (...args: infer Args) => unknown }
   ? [S] extends [never]
@@ -875,18 +885,18 @@ type InputProblem<H, S, Name extends string, Bulk extends boolean> = H extends n
 /** Row actions: their handler takes the table's row; their ability is one of the policy's and takes that row. */
 export type CheckActions<Row, Actions> = {
   [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K, infer S>
-    ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>] extends [never]
+    ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false> | ConflictProblem<H, N & string>] extends [never]
       ? unknown
-      : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>>
+      : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false> | ConflictProblem<H, N & string>>
     : unknown;
 };
 
 /** Bulk actions: like row actions, with `handle(rows, ctx)`. */
 export type CheckBulk<Row, Bulk> = {
   [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K, infer S>
-    ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>] extends [never]
+    ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true> | ConflictProblem<H, N & string>] extends [never]
       ? unknown
-      : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>>
+      : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true> | ConflictProblem<H, N & string>>
     : unknown;
 };
 
@@ -960,7 +970,7 @@ type OwnOf<R> = R extends JsonResult<infer J> ? Serialize<Exclude<J, undefined>>
  * JSON result left out: those the handler answers for itself); a handler that only answers for itself gets no counts at all.
  */
 type AnswerOf<H> = H extends abstract new (...args: any[]) => { handle(...args: any[]): infer R }
-  ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult> extends infer Rest
+  ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult | ConflictResult> extends infer Rest
     ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true>
     : never
   : unknown;

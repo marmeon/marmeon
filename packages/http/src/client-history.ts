@@ -1,6 +1,6 @@
 import { localLocation } from '@marmeon/router/internal';
 import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
-import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './protocol.ts';
+import { CONFLICT_HEADER, isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './protocol.ts';
 import { isVisit } from './protocol-request.ts';
 
 /**
@@ -38,8 +38,8 @@ export class ClientHistory {
 /** What `Clear-Site-Data` may name here: the HTTP cache and the site's storage. */
 export type SiteData = 'cache' | 'storage';
 
-/** Headers of a page or redirect that make no sense on the bodiless 409 that replaces it. */
-const DROPPED = ['location', 'content-type', 'content-length', PAGE_HEADER];
+/** Headers of a page, redirect or conflict that make no sense on the bodiless 409 that replaces it. */
+const DROPPED = ['location', 'content-type', 'content-length', PAGE_HEADER, CONFLICT_HEADER];
 
 /**
  * Applies {@link ClientHistory} to the response — in the `web` group, outside the session, so the session sees the response

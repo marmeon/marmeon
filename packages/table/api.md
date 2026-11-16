@@ -37,11 +37,11 @@ export type BulkActionClass<R = any, C = any> = new (...args: any[]) => {
 };
 // CheckActions
 export type CheckActions<Row, Actions> = {
-    [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false>> : unknown;
+    [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false> | ConflictProblem<H, N & string>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, false> | ConflictProblem<H, N & string>> : unknown;
 };
 // CheckBulk
 export type CheckBulk<Row, Bulk> = {
-    [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true>> : unknown;
+    [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K, infer S> ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true> | ConflictProblem<H, N & string>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string> | InputProblem<H, S, N & string, true> | ConflictProblem<H, N & string>> : unknown;
 };
 // CheckColumnKey
 export type CheckColumnKey<DB, TB extends keyof DB, K extends string, O = {}> = string extends K ? ColumnReference<DB, TB> : [KeyProblem<DB, TB, K, O>] extends [never] ? ReferencedType<DB, TB, K> extends number ? K : ReferencedType<DB, TB, K> extends ScalarKey ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')` : `the key '${K}' is no string or number column — rows are acted on by their key` : KeyProblem<DB, TB, K, O>;
@@ -429,7 +429,7 @@ export type ActionInputSource<S extends StandardSchemaV1 = StandardSchemaV1> = S
 // AnswerOf
 type AnswerOf<H> = H extends abstract new (...args: any[]) => {
     handle(...args: any[]): infer R;
-} ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult> extends infer Rest ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true> : never : unknown;
+} ? Exclude<Awaited<R>, Response | RedirectResult | JsonResult | ConflictResult> extends infer Rest ? TableAnswer<Serialize<Exclude<Rest, void | undefined>>, OwnOf<Awaited<R>>, [Rest] extends [never] ? false : true> : never : unknown;
 // AnswersOf
 type AnswersOf<Actions> = {
     [N in keyof Actions & string]: Actions[N] extends {
@@ -446,6 +446,10 @@ export type CheckExports<Cols, Exports> = {
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string, O = {}> = string extends K ? ColumnReference<DB, TB> : [KeyProblem<DB, TB, K, O>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : KeyProblem<DB, TB, K, O>;
 // ColumnProblem
 type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends ColumnReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
+// ConflictProblem
+type ConflictProblem<H, Name extends string> = H extends new (...args: any[]) => {
+    handle(...args: any[]): infer R;
+} ? 0 extends 1 & Awaited<R> ? never : [Extract<Awaited<R>, ConflictResult>] extends [never] ? never : `'${Name}': its handler returns conflict(…) — a table's endpoint answers its counts; refuse a stale save in the handler by throwing, or answer with data` : never;
 // CtxOf
 type CtxOf<Q> = Q extends (db: any, ctx: infer C, resolve: ClassResolver) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 // DateRangeFilter
@@ -862,6 +866,8 @@ export type TableRunOutcome<D = unknown, O = never, W extends boolean = true> = 
 }) | Exclude<ActionOutcome, {
     readonly ok: true;
     readonly kind: 'data';
+} | {
+    readonly kind: 'conflict';
 }>;
 // TableStatusInfo
 export interface TableStatusInfo {

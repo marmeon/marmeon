@@ -24,6 +24,7 @@ const en = {
     cross_site: 'Cross-site request refused.',
     throttled: 'Too Many Attempts.',
     signature: 'Invalid signature.',
+    conflict: 'Someone else changed this in the meantime.',
   },
   validation: {
     password: {

@@ -8,7 +8,7 @@
  * when it redirects. An action after signing out (401, 419) ends as an `exception`: shown, never retried by itself.
  */
 import type { FlashMessage, ValidationErrors } from '../page.ts';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, protocolHeaders } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, CONFLICT_HEADER, LOCATION_HEADER, protocolHeaders } from '../protocol.ts';
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
 import { notify } from './notify.ts';
@@ -26,12 +26,14 @@ export type ActionError =
 /**
  * How an action ended. `data`: the controller's JSON (`this.json(…)`); `redirect`: its controller redirected — reported, not
  * followed (`onRedirect: 'visit'` follows it); `invalid`: 422, the validation errors by field; `exception`: offline or a failure
- * status; `cancelled`: aborted (`cancel()`, a newer call with the same `key`, the document left).
+ * status; `conflict`: its controller answered `conflict(current)` — a stale save, `current` as the server holds it;
+ * `cancelled`: aborted (`cancel()`, a newer call with the same `key`, the document left).
  */
 export type ActionOutcome =
   | { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: unknown; readonly flash: readonly FlashMessage[] }
   | { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string; readonly flash: readonly FlashMessage[] }
   | { readonly ok: false; readonly kind: 'invalid'; readonly errors: ValidationErrors; readonly message: string | undefined }
+  | { readonly ok: false; readonly kind: 'conflict'; readonly current: unknown; readonly message: string }
   | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionError }
   | { readonly ok: false; readonly kind: 'cancelled' };
 
@@ -259,6 +261,14 @@ export class Actions {
       return { ok: false, kind: 'exception', exception: { type: 'server', status: response.status || 302, message: undefined } };
     }
     const body = await readJson(response);
+    // After the location check: a document change always wins. Without the header (an app's own `abort(409)`) it stays an exception.
+    if (response.status === 409 && response.headers.get(CONFLICT_HEADER) === '1') {
+      if (typeof body === 'object' && body !== null && typeof (body as { message?: unknown }).message === 'string') {
+        return { ok: false, kind: 'conflict', current: (body as { current?: unknown }).current, message: (body as { message: string }).message };
+      }
+      // Fail closed: a conflict that does not say what it is must not look like one.
+      return { ok: false, kind: 'exception', exception: { type: 'server', status: 409, message: undefined } };
+    }
     if (response.status === 422 && isErrors(body)) {
       return { ok: false, kind: 'invalid', errors: body.errors, message: typeof body.message === 'string' ? body.message : undefined };
     }

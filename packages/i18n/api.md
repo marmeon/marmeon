@@ -349,6 +349,7 @@ declare const en: {
         readonly cross_site: 'Cross-site request refused.';
         readonly throttled: 'Too Many Attempts.';
         readonly signature: 'Invalid signature.';
+        readonly conflict: 'Someone else changed this in the meantime.';
     };
     readonly validation: {
         readonly password: {

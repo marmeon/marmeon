@@ -221,7 +221,8 @@ no server code reaches the browser.
 | A `Response` | Goes out as it is. |
 | A string, an `html` template, an object, `null` | Text, HTML, JSON, or an empty 204. |
 
-The [responses](responses.md) page covers each of them, with headers, cookies, flash messages and downloads.
+The [responses](responses.md) page covers each of them, with headers, cookies, flash messages and downloads. A save that went stale is a
+function, not a method: `return conflict(current)`, imported from `@marmeon/http` ([conflict](responses.md#conflict)).
 
 ### The helpers
 
