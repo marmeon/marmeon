@@ -1,11 +1,8 @@
 import type { AuthenticationResponseJSON } from '@marmeon/auth/passkeys';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
-import { Session } from '@marmeon/session';
 import { rules as r } from '@marmeon/validation';
-import { BackOfficeConfig } from './BackOfficeConfig.ts';
 import { OfficePasskeys } from './guard.ts';
-import { intendedBelow } from './intended.ts';
 
 export const PasskeySignInRequest = defineRequest({
   schema: r.object({
@@ -20,24 +17,20 @@ export const PasskeySignInRequest = defineRequest({
  */
 export class OfficePasskeySignInController extends Controller {
   static request = PasskeySignInRequest;
-  static readonly inject = [OfficePasskeys, Translator, Session, BackOfficeConfig] as const;
+  static readonly inject = [OfficePasskeys, Translator] as const;
 
   readonly #passkeys: OfficePasskeys;
   readonly #translator: Translator;
-  readonly #session: Session;
-  readonly #config: BackOfficeConfig;
 
-  constructor(passkeys: OfficePasskeys, translator: Translator, session: Session, config: BackOfficeConfig) {
+  constructor(passkeys: OfficePasskeys, translator: Translator) {
     super();
     this.#passkeys = passkeys;
     this.#translator = translator;
-    this.#session = session;
-    this.#config = config;
   }
 
   async handle(ctx: ContextOf<typeof PasskeySignInRequest>) {
     const done = await this.#passkeys.signIn(ctx.body.response);
-    if (done.ok) return intendedBelow(this.#session, this.#config.path) ? this.redirect().intended().route('office.index') : this.redirect().route('office.index');
+    if (done.ok) return this.redirect().intended().route('office.index');
     if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('office.challenge.throttled', { seconds: done.error.retryAfterSeconds }) }, { status: 429 });
     return this.json({ error: this.#translator.get('office.challenge.failed') }, { status: 422 });
   }

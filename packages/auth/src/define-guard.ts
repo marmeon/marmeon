@@ -15,6 +15,7 @@ import { guardEvents, type GuardEventSet, type GuardEvents } from './guard-event
 import { slotEventsFor } from './slot-events.ts';
 import { buildForGuard, GUARD_FEATURE, GUARD_PASSKEYS, GuardContext, type GuardPasskeyKit } from './guard-context.ts';
 import { authenticateFor, confirmedPasswordFor, guestFor, type MiddlewareGuard } from './middleware.ts';
+import { bindIntendedKey } from './intended.ts';
 import { bindRequestGuard } from './request-guard.ts';
 import { guardLimiterName, isGuardRouteLimit, type GuardRouteLimit } from './route-limits.ts';
 import { guardNames, isGuardName, type GuardNames } from './guard-names.ts';
@@ -428,6 +429,7 @@ export class Guard {
     if (registry.all().includes(this)) return;
     registry.add(this);
     bindRequestGuard(container);
+    bindIntendedKey(container);
     const { tokens } = this;
     const context = (resolver: Resolver) => new PackageGuardContext(this, resolver, container);
     // For the middleware of the guard, which the router makes in the request's scope.

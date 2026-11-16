@@ -198,8 +198,8 @@ export class Auth {
     return readAuth(this.#session, key, this.#guard.names);
   }
 
-  #write<K extends keyof AuthSessionKeys>(key: K, value: AuthSessionKeys[K]): void {
-    writeAuth(this.#session, key, value, this.#guard.names);
+  #write<K extends keyof AuthSessionKeys>(key: K, value: AuthSessionKeys[K], completes = true): void {
+    writeAuth(this.#session, key, value, this.#guard.names, completes);
   }
 
   /** Dispatches what the guard makes of `event`: the app's own event for the app, the guard's own class for a package guard. */
@@ -839,7 +839,7 @@ export class Auth {
     // A new sign-in counts its password checks anew, and has typed no password until `attempt()` says so.
     this.#session.forget(this.#keys.typedPassword);
     this.#write('throttleKey', randomBytes(16).toString('base64url'));
-    this.#write('id', idOf(user));
+    this.#write('id', idOf(user), !viaRemember);
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
     this.#write('signedInAt', this.#now());
     if (viaRemember) this.#write('viaRemember', true);
@@ -1065,7 +1065,7 @@ export class Auth {
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
-    if ((await this.#guard.factors().factors(idOf(found.user))).length > 0) this.#write('twoFactorAt', Math.floor(madeAt! / 1000));
+    if ((await this.#guard.factors().factors(idOf(found.user))).length > 0) this.#write('twoFactorAt', Math.floor(madeAt! / 1000), false);
     return found.user;
   }
 

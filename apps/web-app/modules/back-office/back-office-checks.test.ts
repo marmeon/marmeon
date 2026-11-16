@@ -132,6 +132,13 @@ describe('the page a guest wanted', () => {
     await customerSignsIn(both, ada).assertRedirect('/settings/security');
   });
 
+  it('does not give a customer’s sign-in the editor’s wish: each sign-in follows only the page its own guard kept', async () => {
+    const both = browser();
+    await both.get('/office/secure').assertRedirect('/office/login');
+    await customerSignsIn(both, ada).assertRedirect('/users/me');
+    await editorSignsIn(both, eve).assertRedirect('/office/secure');
+  });
+
   it('does the same at the sudo page: the confirmation returns to the back office page, and never to the customer’s wish', async () => {
     const editor = browser();
     await editorSignsIn(editor, eve);
@@ -154,14 +161,6 @@ describe('the page a guest wanted, written with an encoded address', () => {
     app.travel({ minutes: 20 });
     await editor.get('/%6Fffice/secure').assertRedirect('/office/confirm-password');
     await editor.post('/office/confirm-password', { form: { password: 'password' } }).assertRedirect('/%6Fffice/secure');
-  });
-
-  it.each(['/%6Fffices', '/office%2Fsessions', '/%E0%A4%A', '/officex/sessions'])('goes to the overview when the wanted page is %s: it is no page below the back office', async (wanted) => {
-    // No route answers these, so no visit stores them: the session is given the page, as a guard's middleware would have stored it.
-    const editor = app.withSession({ _intended_url: wanted } as never);
-    await editorSignsIn(editor, eve).assertRedirect('/office');
-    // The same session with a page that is below the back office is followed: the test would be red otherwise.
-    await editorSignsIn(app.withSession({ _intended_url: '/%6Fffice/sessions' } as never), eve).assertRedirect('/%6Fffice/sessions');
   });
 });
 

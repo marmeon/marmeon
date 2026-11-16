@@ -16,6 +16,8 @@ export interface RedirectContext {
   readonly flasher?: Flasher;
   /** The request's, for a route of the redirect that is localized and names none. */
   readonly locale?: string;
+  /** The session key `intended()` reads: {@link INTENDED_KEY} (the app's) when no package guard owns the request; `null` reads none, so `intended()` takes its fallback. A function is asked only when `intended()` pulls a page. */
+  readonly intendedKey?: string | null | (() => string | null);
 }
 
 /**
@@ -94,8 +96,8 @@ export class RedirectResult {
   }
 
   /**
-   * To the page a guest asked for before being sent to log in (`authenticate()` stores it in the
-   * session as {@link INTENDED_KEY}) — or, without one, to the target set otherwise:
+   * To the page a guest asked for before the route's guard sent them to its login (the app's
+   * `authenticate()` stores it in the session as {@link INTENDED_KEY}, a package guard's under a key of its own) — or, without one, to the target set otherwise:
    * `redirect().intended().route('dashboard')`. Only local paths are followed: never another site.
    */
   intended(): this {
@@ -154,7 +156,7 @@ export class RedirectResult {
   }
 
   /** @internal — the kernel turns the result into the redirect. */
-  toResponse(request: Request, { routes, flasher, locale }: RedirectContext): Response {
+  toResponse(request: Request, { routes, flasher, locale, intendedKey }: RedirectContext): Response {
     if (this.#flash.size > 0) {
       sessionFor('redirect().with()', request, flasher);
       for (const [key, value] of this.#flash) flasher.flashData(key, value);
@@ -167,7 +169,8 @@ export class RedirectResult {
       for (const message of this.#messages) flasher.queueFlash(document ? { ...message, document } : message);
     }
     // Without a session nothing was stored: the fallback.
-    const intended = this.#intended && flasher?.started !== false ? flasher?.pull(INTENDED_KEY) : undefined;
+    const key = this.#intended && flasher !== undefined && flasher.started !== false ? (typeof intendedKey === 'function' ? intendedKey() : intendedKey) : null;
+    const intended = key === null ? undefined : flasher!.pull(key ?? INTENDED_KEY);
     const headers = new Headers(this.#headers);
     headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes, locale));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
@@ -190,8 +193,11 @@ export class RedirectResult {
 /** Session keys shared with @marmeon/session (`old()`) and the shared `errors` prop. */
 export const ERRORS_KEY = 'errors';
 export const OLD_INPUT_KEY = '_old_input';
-/** Where `authenticate()` keeps the page a guest wanted, for `redirect().intended()`. */
+/** Where the app's `authenticate()` keeps the page a guest wanted, for `redirect().intended()`; a package guard keeps its own, under another key. */
 export const INTENDED_KEY = '_intended_url';
+
+/** The session key `redirect().intended()` reads on this request (`null`: none): the one of the guard that acts or owns the route. Bound by `@marmeon/auth`. */
+export const IntendedKey = token<{ readonly key: string | null }>('IntendedKey');
 
 /** A path on this site (`/users/1?tab=links`) — not `//evil.example`, `/\\evil.example` or a full URL. */
 export function isLocalPath(value: unknown): value is string {

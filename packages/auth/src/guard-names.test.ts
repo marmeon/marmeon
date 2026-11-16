@@ -38,6 +38,7 @@ describe('APP_GUARD_NAMES', () => {
       throttleKey: '_auth_throttle_key',
       typedPassword: '_auth_typed_password',
       webauthn: '_auth_webauthn',
+      intended: '_intended_url',
     });
     expect(APP_GUARD_NAMES.session).toMatchObject(AUTH_SESSION_KEYS);
     expect(APP_GUARD_NAMES.fingerprintContext).toBe('marmeon:auth-session');
@@ -116,6 +117,7 @@ describe('guardNames()', () => {
       throttleKey: '_auth:office:throttle_key',
       typedPassword: '_auth:office:typed_password',
       webauthn: '_auth:office:webauthn',
+      intended: '_auth:office:intended',
     });
   });
 

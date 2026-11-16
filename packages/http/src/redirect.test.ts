@@ -102,6 +102,17 @@ describe('RedirectResult', () => {
     expect(new RedirectResult('/home').intended().toResponse(request(), { routes: router }).headers.get('location')).toBe('/home'); // no session
   });
 
+  it('reads the key of the context, and the default key without one', () => {
+    const stored: Record<string, unknown> = { [INTENDED_KEY]: '/app-page', '_auth:office:intended': '/office-page' };
+    const flasher = { flashData: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const intended = (intendedKey?: string | null) => new RedirectResult('/home').intended().toResponse(request(), { routes: router, flasher: flasher, intendedKey }).headers.get('location');
+    expect(intended('_auth:office:intended')).toBe('/office-page');
+    expect(intended('_auth:office:intended')).toBe('/home'); // pulled: used once, and the app's page was never read
+    expect(intended(null)).toBe('/home'); // null: no key is read
+    expect(intended()).toBe('/app-page'); // still there: null read nothing
+    expect(INTENDED_KEY).toBe('_intended_url');
+  });
+
   it('an intended URL pointing elsewhere is never followed (open redirect)', () => {
     for (const evil of ['//evil.test/phish', '/\\evil.test', 'https://evil.test/', '/\tevil', 'javascript:alert(1)', '', 42]) {
       expect(isLocalPath(evil), String(evil)).toBe(false);

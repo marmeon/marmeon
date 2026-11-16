@@ -13,6 +13,7 @@ import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
+import { bindIntendedKey } from './intended.ts';
 import { bindRequestGuard, stampRoutes } from './request-guard.ts';
 import { bootGuardSlots, slotBindings } from './guard-slot.ts';
 import { GuardContext } from './guard-context.ts';
@@ -144,6 +145,7 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(Auth);
     // What the route's middleware says about whose users it serves: read by the other guards' middleware and by the gate.
     bindRequestGuard(container);
+    bindIntendedKey(container);
     // The router is registered by now (this package depends on `@marmeon/http`): `marmeon check` registers the app and never boots it.
     if (container.has(Router)) stampRoutes(container.make(Router), (Class) => container.make(Class as never));
     // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.

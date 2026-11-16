@@ -17,7 +17,7 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@marmeon/http';
-import { ReadOnly } from '@marmeon/http/internal';
+import { IntendedKey, ReadOnly } from '@marmeon/http/internal';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
@@ -581,7 +581,7 @@ export function createResponseFactory(
     if (isRedirectResult(result)) {
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
-      const response = result.toResponse(ctx.request, { routes: routes ?? noRouter, flasher, locale: translator?.locale });
+      const response = result.toResponse(ctx.request, { routes: routes ?? noRouter, flasher, locale: translator?.locale, intendedKey: scope?.has(IntendedKey) ? () => scope.make(IntendedKey).key : undefined });
       // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }

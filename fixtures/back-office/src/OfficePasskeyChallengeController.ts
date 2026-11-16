@@ -1,11 +1,8 @@
 import type { AuthenticationResponseJSON } from '@marmeon/auth/passkeys';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
-import { Session } from '@marmeon/session';
 import { rules as r } from '@marmeon/validation';
-import { BackOfficeConfig } from './BackOfficeConfig.ts';
 import { OfficeAuth, OfficeTwoFactor } from './guard.ts';
-import { intendedBelow } from './intended.ts';
 
 export const PasskeyChallengeRequest = defineRequest({
   schema: r.object({
@@ -19,21 +16,17 @@ export const PasskeyChallengeRequest = defineRequest({
  */
 export class OfficePasskeyChallengeController extends Controller {
   static request = PasskeyChallengeRequest;
-  static readonly inject = [OfficeTwoFactor, OfficeAuth, Translator, Session, BackOfficeConfig] as const;
+  static readonly inject = [OfficeTwoFactor, OfficeAuth, Translator] as const;
 
   readonly #twoFactor: OfficeTwoFactor;
   readonly #auth: OfficeAuth;
   readonly #translator: Translator;
-  readonly #session: Session;
-  readonly #config: BackOfficeConfig;
 
-  constructor(twoFactor: OfficeTwoFactor, auth: OfficeAuth, translator: Translator, session: Session, config: BackOfficeConfig) {
+  constructor(twoFactor: OfficeTwoFactor, auth: OfficeAuth, translator: Translator) {
     super();
     this.#twoFactor = twoFactor;
     this.#auth = auth;
     this.#translator = translator;
-    this.#session = session;
-    this.#config = config;
   }
 
   async handle(ctx: ContextOf<typeof PasskeyChallengeRequest>) {
@@ -43,7 +36,7 @@ export class OfficePasskeyChallengeController extends Controller {
         const device = await this.#auth.deviceCookie();
         if (device) ctx.cookies.set(device.name, device.value, device.options);
       }
-      return intendedBelow(this.#session, this.#config.path) ? this.redirect().intended().route('office.index') : this.redirect().route('office.index');
+      return this.redirect().intended().route('office.index');
     }
     switch (done.error.kind) {
       case 'no-challenge':

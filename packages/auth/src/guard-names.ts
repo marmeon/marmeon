@@ -1,3 +1,4 @@
+import { INTENDED_KEY } from '@marmeon/http/internal';
 import type { SessionConfig } from '@marmeon/session';
 import { accountScope, guardUserKey } from '@marmeon/session/internal';
 import { rememberCookieName, type AuthConfig } from './config.ts';
@@ -10,7 +11,7 @@ import { AUTH_SESSION_KEYS, type AuthSessionKeys } from './session-keys.ts';
  */
 export interface GuardNames {
   readonly name: string;
-  readonly session: Readonly<Record<keyof AuthSessionKeys | 'webauthn', string>>;
+  readonly session: Readonly<Record<keyof AuthSessionKeys | 'webauthn' | 'intended', string>>;
   readonly fingerprintContext: string;
   readonly loginThrottleContext: string;
   readonly deviceContext: string;
@@ -44,12 +45,13 @@ const SESSION_FIELDS = {
   throttleKey: 'throttle_key',
   typedPassword: 'typed_password',
   webauthn: 'webauthn',
-} as const satisfies Record<Exclude<keyof AuthSessionKeys, 'id'> | 'webauthn', string>;
+  intended: 'intended',
+} as const satisfies Record<Exclude<keyof AuthSessionKeys, 'id'> | 'webauthn' | 'intended', string>;
 
 /** The names of the app guard: every literal the framework used before guards had names. */
 export const APP_GUARD_NAMES: GuardNames = {
   name: APP_NAME,
-  session: { ...AUTH_SESSION_KEYS, webauthn: '_auth_webauthn' },
+  session: { ...AUTH_SESSION_KEYS, webauthn: '_auth_webauthn', intended: INTENDED_KEY },
   fingerprintContext: 'marmeon:auth-session',
   loginThrottleContext: 'marmeon:auth-login-throttle',
   deviceContext: 'marmeon:auth-device',

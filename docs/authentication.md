@@ -186,7 +186,10 @@ The package brings four middleware for the routes of the `web` group:
 
 A guest whom `authenticate()` turns away goes to the route named `auth.login`, or the one `authenticate({ loginRoute })` names.
 For a `GET` visit, the page they wanted is kept in the session, and `this.redirect().intended()` after the sign-in brings them
-back there. A prefetch and a request that only reads are not remembered. A client that expects JSON gets
+back there. Each guard keeps its own page. `intended()` follows the page of the guard that completed a sign-in, a password confirmation or a second factor in this request (a restore from the remember-me cookie does not count); if none did,
+the page of the guard whose `authenticate()` or `guest()` stands on the route, and on a route with neither, the app's. A request
+in which two guards completed one follows none. Give the sign-in routes of a [package's guard](#guards-of-a-package) the guard's `guest()`, as the
+back office does. A prefetch and a request that only reads are not remembered. A client that expects JSON gets
 `401 {"message":"Unauthenticated."}` instead of the redirect.
 
 #### Sending a guest from an open page to sign in and back
@@ -1288,6 +1291,7 @@ the other's session, cookie or counter. The app guard keeps the names it always 
 | Remember-me and device cookie | `marmeon_remember`, `marmeon_device` | `marmeon_remember.office`, `marmeon_device.office.device` (with `__Host-` over HTTPS) |
 | Counts of password sign-ins and checks | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` … on the account's id | the same limits, counted under the guard's name |
 | Live streams of an account | the scope of the id | the scope of the guard and the id |
+| The page a guest wanted (`redirect().intended()`) | `_intended_url` | `_auth:office:intended` |
 | Tables | `sign_ins`, `password_reset_tokens` | `office_sign_ins`, `office_password_reset_tokens` |
 | Events | the `auth.*` events | the guard's own classes, `OfficeGuard.events.SignedIn` and the rest (the queueable ones named `office.auth.*`): a listener of the app never hears a sign-in of the guard |
 

@@ -335,6 +335,39 @@ describe('the passkeys of an editor', () => {
     await lost.post('/office/two-factor-challenge', { form: { recovery_code: recoveryCodes![0]! } }).assertRedirect('/office').assertAuthenticated(eve, { guard: OfficeGuard });
   });
 
+  it('takes the page the guest wanted at the passkey sign-in, at the passkey as second step, at the sudo page and at the step-up', async () => {
+    const editor = browser();
+    await editorSignsIn(editor, eve);
+    const { authenticator } = await enrol(editor);
+    await editor.post('/office/logout');
+
+    // The passkey sign-in alone.
+    const alone = browser();
+    await alone.get('/office/sessions').assertRedirect('/office/login');
+    const signInOptions = await alone.post('/office/passkeys/sign-in/options', { json: {} }).assertOk();
+    await alone.post('/office/passkeys/sign-in', { json: { response: authenticator.authenticate(signInOptions.json() as never) } }).assertRedirect('/office/sessions').assertAuthenticated(eve, { guard: OfficeGuard });
+
+    // The passkey as the second step after the password.
+    const waiting = browser();
+    await waiting.get('/office/sessions').assertRedirect('/office/login');
+    await editorSignsIn(waiting, eve).assertRedirect('/office/two-factor-challenge');
+    const challengeOptions = await waiting.post('/office/two-factor-challenge/passkey/options', { json: {} }).assertOk();
+    await waiting.post('/office/two-factor-challenge/passkey', { json: { response: authenticator.authenticate(challengeOptions.json() as never) } }).assertRedirect('/office/sessions');
+
+    // The passkey at the sudo page: the wished page differs from the page the controller falls back to.
+    app.travel({ minutes: 20 });
+    await alone.get('/office/secure?from=wish').assertRedirect('/office/confirm-password');
+    const confirmOptions = await alone.post('/office/confirm-password/passkey/options', { json: {} }).assertOk();
+    await alone.post('/office/confirm-password/passkey', { json: { response: authenticator.authenticate(confirmOptions.json() as never) } }).assertRedirect('/office/secure?from=wish');
+
+    // The passkey as the step-up: the password was typed, the factor is older than the window.
+    app.travel({ minutes: 20 });
+    await alone.post('/office/confirm-password', { form: { password: 'password' } }).assertRedirect('/office/secure');
+    await alone.get('/office/security?from=wish').assertRedirect('/office/two-factor-verify');
+    const stepOptions = await alone.post('/office/two-factor-verify/passkey/options', { json: {} }).assertOk();
+    await alone.post('/office/two-factor-verify/passkey', { json: { response: authenticator.authenticate(stepOptions.json() as never) } }).assertRedirect('/office/security?from=wish');
+  });
+
   it('removes a passkey with the password, and the last factor takes the recovery codes along', async () => {
     const editor = browser();
     await editorSignsIn(editor, eve);
