@@ -320,7 +320,7 @@ languages:
 | --- | --- |
 | `auth/TwoFactorChallenge` | The code step of the sign-in. The recovery code is a second form on the same page, so it also works without JavaScript. |
 | `auth/TwoFactor` | In the settings: the status, the QR code and the key, the form that confirms with a code and the password, new recovery codes, turning it off. |
-| `auth/RecoveryCodes` | A layer over the settings page, the answer of confirming and of making new codes. The codes are in no page after that. |
+| `auth/RecoveryCodes` | A layer over the settings page, the answer of confirming and of making new codes. The codes are in no page after that. Done is a link to the settings page, so the layer can be left without JavaScript; with JavaScript it closes the layer. |
 | `auth/TwoFactorVerify` | Asks a signed-in session for a code again, for `twoFactor()`. A wrong code ends nothing. |
 
 The QR code is drawn on white, also in the dark mode, because some apps do not scan it otherwise.

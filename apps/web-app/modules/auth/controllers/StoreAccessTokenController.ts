@@ -31,7 +31,7 @@ export const LAYER = { base: 'auth.tokens', key: 'tokens.create' } as const;
 /**
  * A new token. Its plain text is in this one response — rendered, not redirected, so it never sits in the session (a
  * flash would store it); the database keeps only its hash. It is a layer answered by a POST, so it is shown once:
- * it replaces the form, and when it closes — the button, Escape, Back — it is gone from the tab's memory too (Forward asks
+ * it replaces the form, and when it closes — Done, Escape, Back — it is gone from the tab's memory too (Forward asks
  * the server, whose GET is the list), and the list beneath reloads with the new token in it.
  */
 export class StoreAccessTokenController extends Controller {

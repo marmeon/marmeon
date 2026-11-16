@@ -29,4 +29,17 @@ describe('the forms of the views', () => {
     expect(guard, 'the checkbox sits in {rememberOffered && (…)}').toBeGreaterThan(-1);
     expect(source.slice(guard, checkbox)).not.toContain(')}');
   });
+
+  it('end the recovery codes with a "Done" link that works without JavaScript and closes the layer with it', () => {
+    const source = readFileSync(new URL('RecoveryCodes.tsx', views), 'utf8');
+    expect(source).toContain('<Link');
+    expect(source).toContain('route="auth.two-factor"');
+    expect(source).not.toContain('<button');
+    // The link navigates to the settings page unless a layer takes the click: only then the default is prevented and the layer closes.
+    const close = source.indexOf('layer.close()');
+    expect(close).toBeGreaterThan(-1);
+    const prevented = source.lastIndexOf('event.preventDefault()', close);
+    expect(prevented, 'event.preventDefault() before layer.close()').toBeGreaterThan(-1);
+    expect(source.lastIndexOf('if (!layer.isLayer) return;', prevented), 'a page (not a layer) keeps the link').toBeGreaterThan(-1);
+  });
 });
