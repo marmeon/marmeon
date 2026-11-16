@@ -45,10 +45,14 @@ export function CopyPageButton({ markdown }: { markdown: string }) {
     const viaWriteText = () => text.then((value) => navigator.clipboard.writeText(value));
     let written: Promise<void>;
     try {
-      written =
-        typeof ClipboardItem === 'function' && typeof navigator.clipboard.write === 'function'
-          ? navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then((value) => new Blob([value], { type: 'text/plain' })) })])
-          : viaWriteText();
+      if (typeof ClipboardItem === 'function' && typeof navigator.clipboard.write === 'function') {
+        // Kept apart: when the constructor throws and the fallback takes over, a failed fetch must not leave this promise unhandled.
+        const blob = text.then((value) => new Blob([value], { type: 'text/plain' }));
+        blob.catch(() => {});
+        written = navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      } else {
+        written = viaWriteText();
+      }
     } catch {
       written = viaWriteText(); // a browser that does not take pending text in a ClipboardItem
     }

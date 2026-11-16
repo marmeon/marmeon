@@ -208,3 +208,30 @@ describe('the write inside the click', () => {
     expect(container.querySelector('button')?.getAttribute('aria-busy')).toBeNull();
   });
 });
+
+it('leaves no unhandled rejection when the ClipboardItem constructor throws and the fetch fails', async () => {
+  clipboard({ items: true });
+  vi.stubGlobal(
+    'ClipboardItem',
+    class {
+      constructor() {
+        throw new Error('no pending text');
+      }
+    },
+  );
+  vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('offline'))));
+  const unhandled: unknown[] = [];
+  const record = (reason: unknown) => void unhandled.push(reason);
+  process.on('unhandledRejection', record);
+  try {
+    await mount();
+    await click();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  } finally {
+    process.off('unhandledRejection', record);
+  }
+  expect(unhandled).toEqual([]);
+  expect(label()).toBe('Copy page');
+});

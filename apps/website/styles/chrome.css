@@ -159,6 +159,22 @@
   text-decoration: none;
 }
 
+.site-search-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  color: var(--stage-fg-2);
+  text-decoration: none;
+}
+
+.site-search-icon:hover {
+  background: var(--panel-raised);
+  color: var(--stage-fg-strong);
+}
+
 .site-search kbd {
   margin-left: var(--space-1);
 }
@@ -403,6 +419,10 @@
   .site-search,
   .site-github {
     display: none;
+  }
+
+  .site-search-icon {
+    display: inline-flex;
   }
 
   .site-menu {

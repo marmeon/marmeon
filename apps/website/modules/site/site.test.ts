@@ -464,6 +464,13 @@ describe('the shared chrome', () => {
     expect(header).toMatch(/<a [^>]*href="https:\/\/github\.com\/marmeon\/marmeon"[^>]*>GitHub<\/a>/);
     expect(header).toMatch(/<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"[^>]*>Get started<\/a>|<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"[^>]*>Get started<\/a>/);
     expect(header).toContain('<details class="site-menu"');
+    // Below 900px the labelled link is hidden: a magnifier link outside the closed menu keeps a trigger the shortcut can click.
+    const icon = header.match(/<a [^>]*class="site-search-icon"[^>]*>/)?.[0] ?? '';
+    expect(icon).toContain('data-search-trigger="true"');
+    expect(icon).toContain('aria-label="Search the docs"');
+    expect(icon).toContain('aria-keyshortcuts="Control+K Meta+K"');
+    expect(icon).toContain('href="/docs/search"');
+    expect(header.indexOf('class="site-search-icon"')).toBeLessThan(header.indexOf('<details class="site-menu"'));
     expect(header).not.toContain('<kbd');
     expect(header).not.toContain('version-badge');
     expect(header).not.toContain('style=');
@@ -494,7 +501,7 @@ describe('the shared chrome', () => {
     const group = menu.slice(menu.indexOf('Packages</p>'), menu.indexOf('Resources</p>'));
     for (const name of packages) expect(group, name).toContain(`>${name}</a>`);
     expect(menu.match(/href="\/docs"/g)).toHaveLength(1);
-    expect(menu).toContain('data-search-trigger');
+    expect(menu).not.toContain('data-search-trigger'); // the header's magnifier is the trigger below 900px
   });
 
   it('renders the footer with its three columns and the legal line', async () => {

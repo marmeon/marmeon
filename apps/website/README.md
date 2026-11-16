@@ -25,7 +25,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   page, a package's page or a feature link that `docs.config.ts` does not list, or a package `packages.ts` does not list, stops the
   start; the GitHub links are constants and not checked); a 404 has no shared props and gets flat links. The docs' top bar is sticky and
   64 px on a desktop: brand, version badge, the search box, Framework and GitHub; at 760 px and below it scrolls away and shows the
-  magnifier instead of the box and the links. The landing's "Search docs" shows icon and shortcut only below 1150 px. The footer is full (about, three link columns, the legal
+  magnifier instead of the box and the links. The landing's "Search docs" shows icon and shortcut only below 1150 px, and below 900 px (the menu is closed) a magnifier link beside the menu button, so ⌘K still has a visible trigger to click. The footer is full (about, three link columns, the legal
   line) on the landing and compact (one row) in the docs. The shared pieces — mark, wordmark, version badge, copy button,
   terminal, code block — live in `modules/site/components`. The copy button renders only in the browser, so a page without
   JavaScript carries none.

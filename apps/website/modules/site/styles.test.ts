@@ -52,11 +52,14 @@ describe('the header on a phone', () => {
 });
 
 describe('the landing header', () => {
-  it('folds the mega menu and the search into the menu below 900px, and only there', () => {
+  it('folds the mega menu into the menu below 900px and swaps the labelled search for a magnifier, and only there', () => {
     const narrow = media(chrome, '(max-width: 899px)');
     expect(rule(narrow, '.site-menu').get('display')).toBe('block');
     expect(narrow).toMatch(/\.site-nav,\s*\.site-search,\s*\.site-github\s*\{[^}]*display:\s*none/);
     expect(rule(chrome, '.site-menu').get('display')).toBe('none');
+    // The labelled link is gone and the menu is closed: the magnifier is the visible trigger the shortcut clicks.
+    expect(rule(narrow, '.site-search-icon').get('display')).toBe('inline-flex');
+    expect(rule(chrome, '.site-search-icon').get('display')).toBe('none');
   });
 
   it('lays the open mega menu over the page: the header is its positioned ancestor and the panel leaves the flow', () => {

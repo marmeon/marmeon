@@ -44,6 +44,10 @@ export function SiteLayout({ children }: LayoutProps) {
           </nav>
           <div className="site-header-end">
             <SearchTrigger hint={hint} className="site-search" />
+            {/* Below 900 px the labelled link is hidden and the menu is closed: the magnifier keeps a visible trigger for the shortcut. */}
+            <Link route="docs.search" layer className="site-search-icon" data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS} aria-label="Search the docs">
+              <SearchGlyph />
+            </Link>
             <a href={GITHUB_URL} rel="noopener" className="button button--ghost site-github">
               GitHub
             </a>
@@ -77,7 +81,6 @@ export function SiteLayout({ children }: LayoutProps) {
                       </a>
                     </>
                   )}
-                  <SearchTrigger hint={null} className="site-menu-link" />
                 </div>
               </nav>
             </details>
@@ -90,14 +93,20 @@ export function SiteLayout({ children }: LayoutProps) {
   );
 }
 
+function SearchGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="M10.5 10.5L14 14" />
+    </svg>
+  );
+}
+
 /** "Search docs": the link that opens the search layer, and without JavaScript the search page. */
 function SearchTrigger({ hint, className }: { hint: string | null; className: string }) {
   return (
     <Link route="docs.search" layer className={className} data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS}>
-      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <circle cx="7" cy="7" r="4.5" />
-        <path d="M10.5 10.5L14 14" />
-      </svg>
+      <SearchGlyph />
       <span className="site-search-label">Search docs</span>
       {hint && <kbd aria-hidden="true">{hint}</kbd>}
     </Link>

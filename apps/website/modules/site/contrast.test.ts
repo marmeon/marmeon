@@ -100,6 +100,8 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   // Button hovers: `.button--sand:hover` and `.button--ghost:hover` on their grounds, `.button:hover` on Teal strong.
   ['--stage', '--sand-hover', 4.5],
   ['--paper', '--stage', 4.5],
+  // The header's search icon at narrow widths.
+  ['--stage-fg-2', '--stage', 3],
   ['--paper', '--teal', 4.5],
   ['--paper', '--teal-strong', 4.5],
   // Fixed, code panels and the dark callout panel (the docs' callouts and the agent's call beside the table of contents).
