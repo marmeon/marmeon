@@ -553,6 +553,9 @@ importers:
       '@marmeon/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@marmeon/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@marmeon/react':
         specifier: workspace:*
         version: link:../../packages/react

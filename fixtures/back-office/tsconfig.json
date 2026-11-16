@@ -15,6 +15,7 @@
     { "path": "../../packages/database" },
     { "path": "../../packages/http" },
     { "path": "../../packages/i18n" },
+    { "path": "../../packages/mail" },
     { "path": "../../packages/react" },
     { "path": "../../packages/session" },
     { "path": "../../packages/validation" },

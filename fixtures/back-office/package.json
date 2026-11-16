@@ -2,7 +2,7 @@
   "name": "@fixtures/back-office",
   "version": "0.0.0",
   "private": true,
-  "description": "A package with users of its own, built like a package an app installs: a back office for editors with a table, sign-in, sign-out, sign-in list, sudo mode and rate limits of its own, a policy over a guard slot, and the choice at boot between its own users and the app's. The tests show it in the web app.",
+  "description": "A package with users of its own, built like a package an app installs: a back office for editors with a table, sign-in, sign-out, sign-in list, sudo mode, authenticator app, recovery codes, passkeys and rate limits of its own, a policy over a guard slot, and the choice at boot between its own users and the app's. The tests show it in the web app.",
   "type": "module",
   "exports": {
     ".": {
@@ -60,6 +60,7 @@
     "@marmeon/database": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/i18n": "workspace:*",
+    "@marmeon/mail": "workspace:*",
     "@marmeon/react": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/validation": "workspace:*",
@@ -73,6 +74,7 @@
     "@marmeon/database": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/i18n": "workspace:*",
+    "@marmeon/mail": "workspace:*",
     "@marmeon/react": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/validation": "workspace:*",

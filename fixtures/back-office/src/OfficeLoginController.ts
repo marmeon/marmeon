@@ -15,7 +15,7 @@ export const LoginRequest = defineRequest({
   }),
 });
 
-/** Signs an editor in: the guard's limits (a minute per client and address, a day per account) count before the password is checked. */
+/** Signs an editor in: the guard's limits (a minute per client and address, a day per account) count before the password is checked. An editor with a second factor goes on to the code. */
 export class OfficeLoginController extends Controller {
   static request = LoginRequest;
   static readonly inject = [OfficeAuth, Translator, Session, BackOfficeConfig] as const;
@@ -44,7 +44,9 @@ export class OfficeLoginController extends Controller {
       // Only a page of the back office: the session keeps one wished-for page for all guards, and the last one stored may be the app's.
       return intendedBelow(this.#session, this.#config.path) ? this.redirect().intended().route('office.index') : this.redirect().route('office.index');
     }
-    // An unknown address and a wrong password answer alike. The guard has no second factor yet, so nothing else is expected: whatever else comes back signs nobody in.
+    // The password was right, but the editor has a second factor and nobody is signed in yet: on to the code (or passkey). The guard's sign-in waits for it.
+    if (signedIn.error.kind === 'two-factor-required') return this.redirect().route('office.two-factor.challenge');
+    // An unknown address and a wrong password answer alike; whatever else comes back signs nobody in.
     if (signedIn.error.kind === 'throttled') {
       const message = signedIn.error.account ? this.#translator.get('office.login.locked') : this.#translator.get('office.login.throttled', { seconds: signedIn.error.retryAfterSeconds });
       throw new ValidationError({ email: [message] }, { email });

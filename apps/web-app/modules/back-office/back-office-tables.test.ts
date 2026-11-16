@@ -29,7 +29,7 @@ describe('the tables of the back office, as the app migrated them', () => {
   const requirement = (table: string) => app.make(SchemaRequirements).all().find((entry) => entry.table === table)!;
 
   it.each([
-    ['office_users', { name: 'Zed', email: 'zed@office.example.com', role: 'viewer', password: 'hash', session_key: 'k'.repeat(32), created_at: NOW, updated_at: NOW }],
+    ['office_users', { name: 'Zed', email: 'zed@office.example.com', role: 'viewer', password: 'hash', session_key: 'k'.repeat(32), created_at: NOW, updated_at: NOW }, ['password', 'session_key']],
     [
       'office_sign_ins',
       {
@@ -48,15 +48,40 @@ describe('the tables of the back office, as the app migrated them', () => {
         remember_created_at: NOW,
         remember_fingerprint: 'f'.repeat(64),
       },
+      ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash'],
     ],
-    ['office_password_reset_tokens', { email: 'zed@office.example.com', token_hash: 't'.repeat(64), created_at: NOW }],
-  ])('%s has exactly the columns the code requires, and a select-all shows none of the secrets', async (table, row) => {
+    ['office_password_reset_tokens', { email: 'zed@office.example.com', token_hash: 't'.repeat(64), created_at: NOW }, ['token_hash']],
+    ['office_two_factor_authentications', { user_id: 0, secret: 'encrypted', confirmed_at: NOW, last_used_step: 7, created_at: NOW, updated_at: NOW }, ['secret']],
+    ['office_two_factor_recovery_codes', { user_id: 0, code_hash: 'h'.repeat(64), used_at: NOW, created_at: NOW, updated_at: NOW }, ['code_hash']],
+    [
+      'office_passkeys',
+      {
+        user_id: 0,
+        user_handle: 'handle',
+        credential_id: 'credential',
+        public_key: 'key',
+        algorithm: -7,
+        sign_count: 0,
+        transports: '[]',
+        aaguid: 'a'.repeat(36),
+        backup_eligible: false,
+        backed_up: false,
+        name: 'Laptop',
+        last_used_at: NOW,
+        suspended_at: NOW,
+        created_at: NOW,
+        updated_at: NOW,
+      },
+      [],
+    ],
+  ])('%s has exactly the columns the code requires, and a select-all shows none of the secrets', async (table, row, expectedSecrets) => {
     const { columns, secrets = [] } = requirement(table);
     const introspected = (await app.make(Connections).get<any>().introspection.getTables()).find((entry: { name: string }) => entry.name === table);
     expect(introspected!.columns.map((column: { name: string }) => column.name).sort()).toEqual([...columns].sort());
-    expect(secrets.length).toBeGreaterThan(0);
+    // The secrets the code marks are the ones the stub marks: a column the code reads as a secret is never in a select-all.
+    expect([...secrets].sort()).toEqual([...expectedSecrets].sort());
     const [{ id: editor }] = (await app.make(Connections).get().selectFrom('office_users').select('id').orderBy('id').execute()) as [{ id: number }];
-    expect(await shown(table, table === 'office_sign_ins' ? { ...row, user_id: editor } : row)).toEqual(columns.filter((column) => !secrets.includes(column)).sort());
+    expect(await shown(table, 'user_id' in row ? { ...row, user_id: editor } : row)).toEqual(columns.filter((column) => !secrets.includes(column)).sort());
   });
 
   it('asks readiness for exactly the columns of `OFFICE_USERS_COLUMNS` on the editors’ table', () => {

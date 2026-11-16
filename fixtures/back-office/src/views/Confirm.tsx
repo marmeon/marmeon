@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 import type { PageProps } from '@marmeon/http';
 import { Head, useForm, useRoute, useTranslation } from '@marmeon/react';
 import type { ConfirmController } from '../ConfirmController.ts';
@@ -8,6 +10,26 @@ export default function Confirm(_: PageProps<ShowConfirmController>) {
   const route = useRoute();
   const t = useTranslation('office');
   const form = useForm<ConfirmController>({ password: '' });
+  const [browserHasPasskeys, setBrowserHasPasskeys] = useState(false);
+  useEffect(() => setBrowserHasPasskeys(passkeysAvailable()), []);
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // A passkey in place of the password: it opens the same sudo window.
+  async function confirmWithPasskey() {
+    setWorking(true);
+    setProblem(null);
+    try {
+      const options = await postJson(route('office.confirm.passkey.options'));
+      if (!options.ok) return setProblem(t('confirm.passkeyFailed'));
+      const done = await postJson(route('office.confirm.passkey'), { response: await getPasskey(options.data) });
+      if (!done.ok) setProblem(typeof done.data.error === 'string' ? done.data.error : t('confirm.passkeyFailed'));
+    } catch {
+      setProblem(t('confirm.passkeyFailed'));
+    } finally {
+      setWorking(false);
+    }
+  }
   return (
     <main data-area="office">
       <Head title={t('confirm.title')} />
@@ -32,6 +54,14 @@ export default function Confirm(_: PageProps<ShowConfirmController>) {
           {t('confirm.submit')}
         </button>
       </form>
+      {browserHasPasskeys && (
+        <p>
+          <button type="button" onClick={() => void confirmWithPasskey()} disabled={working}>
+            {working ? t('confirm.passkeyWorking') : t('confirm.passkey')}
+          </button>
+          {problem && <small role="alert"> {problem}</small>}
+        </p>
+      )}
     </main>
   );
 }
