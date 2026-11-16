@@ -72,8 +72,37 @@ describe('the back office with the app’s users', () => {
     await app.post('/login', { form: { email: 'eve@office.example.com', password: 'password' } }).assertInvalid(['email']).assertGuest();
   });
 
-  it('waits for the three tables in this mode as in the other: the app migrates them all, and the guard is registered', () => {
-    expect(app.make(SchemaRequirements).all().map((requirement) => requirement.table).filter((table) => table.startsWith('office_')).sort()).toEqual(['office_password_reset_tokens', 'office_sign_ins', 'office_users']);
+  it('has none of the package’s second-factor and passkey routes either: GET and POST answer 404, for a guest, for a customer and before any session is read', async () => {
+    const get = ['/office/two-factor-challenge', '/office/two-factor-verify', '/office/security', '/office/security/two-factor/confirm', '/office/security/two-factor/recovery-codes'];
+    const post = [
+      '/office/two-factor-challenge',
+      '/office/two-factor-challenge/passkey/options',
+      '/office/two-factor-challenge/passkey',
+      '/office/two-factor-verify',
+      '/office/two-factor-verify/passkey/options',
+      '/office/two-factor-verify/passkey',
+      '/office/passkeys/sign-in/options',
+      '/office/passkeys/sign-in',
+      '/office/confirm-password/passkey/options',
+      '/office/confirm-password/passkey',
+      '/office/security/two-factor/setup',
+      '/office/security/two-factor/confirm',
+      '/office/security/two-factor/recovery-codes',
+      '/office/security/two-factor/disable',
+      '/office/security/passkeys/options',
+      '/office/security/passkeys',
+      '/office/security/passkeys/1/remove',
+    ];
+    for (const who of [app, app.actingAs(ada)]) {
+      for (const path of get) await who.get(path).assertNotFound();
+      for (const path of post) await who.post(path, { json: {} }).assertNotFound();
+    }
+    // The customer's own passkeys and factors are the app's, at the app's addresses.
+    await app.actingAs(ada).get('/settings/passkeys').assertRedirect('/confirm-password');
+  });
+
+  it('waits for the six tables in this mode as in the other: the app migrates them all, and the guard is registered', () => {
+    expect(app.make(SchemaRequirements).all().map((requirement) => requirement.table).filter((table) => table.startsWith('office_')).sort()).toEqual(['office_passkeys', 'office_password_reset_tokens', 'office_sign_ins', 'office_two_factor_authentications', 'office_two_factor_recovery_codes', 'office_users']);
   });
 
   it('has the routes of the other mode, the same names, methods and paths, so the app’s route list never depends on BACK_OFFICE_USERS', async () => {

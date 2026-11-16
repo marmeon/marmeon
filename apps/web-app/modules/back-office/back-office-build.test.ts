@@ -35,7 +35,7 @@ describe('the back office package, in the production build of the app', () => {
 
       // The back office has an entry and a server bundle of its own, and every page of it is listed.
       expect(Object.keys(entries.entries).sort()).toEqual(['office', 'status']);
-      expect(Object.keys(entries.pages).filter((page) => page.startsWith('office::')).sort()).toEqual(['office::Confirm', 'office::Login', 'office::Overview', 'office::Secure', 'office::Sessions']);
+      expect(Object.keys(entries.pages).filter((page) => page.startsWith('office::')).sort()).toEqual(['office::Challenge', 'office::Confirm', 'office::Login', 'office::Overview', 'office::RecoveryCodes', 'office::Secure', 'office::Security', 'office::Sessions']);
       for (const key of [entries.entries.office!.client, ...Object.entries(entries.pages).filter(([page]) => page.startsWith('office::')).map(([, file]) => file)]) expect(manifest[key], key).toBeDefined();
       expect(existsSync(join(app, 'dist/server/ssr-office.js'))).toBe(true);
 

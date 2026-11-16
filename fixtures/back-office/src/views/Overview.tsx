@@ -15,7 +15,7 @@ export default function Overview({ name, users, canPublish }: PageProps<ShowOver
       {users === 'own' && (
         <>
           <p>
-            <Link route="office.sessions">{t('overview.sessions')}</Link> · <Link route="office.secure">{t('overview.secure')}</Link>
+            <Link route="office.sessions">{t('overview.sessions')}</Link> · <Link route="office.security">{t('overview.security')}</Link> · <Link route="office.secure">{t('overview.secure')}</Link>
           </p>
           <div>
             <Link route="office.logout">{t('overview.logout')}</Link>

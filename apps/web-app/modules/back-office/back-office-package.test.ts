@@ -10,7 +10,7 @@ beforeAll(async () => {
 });
 afterAll(() => app.close());
 
-// The app has taken over what the package ships: three migrations, the tables of the guard `office` and its editors, in the module `back-office`.
+// The app has taken over what the package ships: five migrations, the tables of the guard `office` (sign-ins, reset tokens, second factors, passkeys) and its editors, in the module `back-office`.
 it('has every migration of @fixtures/back-office', async () => {
   const run = await app.command('publish', { args: ['@fixtures/back-office'], options: { check: true } });
   expect(run.lines).toEqual(['✓ Every migration of @fixtures/back-office is in your app']);
@@ -24,8 +24,8 @@ it('proposes the module `back-office` and declares its stubs on the package’s 
   expect(declared[0]!.from.pathname).toMatch(/\/fixtures\/back-office\/stubs\/migrations$/);
 });
 
-it('makes readiness wait for the editors’ table and the guard’s two tables, with the secrets marked', () => {
+it('makes readiness wait for the editors’ table and the guard’s tables, with the secrets marked', () => {
   const required = app.make(SchemaRequirements).all();
   expect(required.find((requirement) => requirement.table === 'office_users')).toEqual({ connection: 'default', table: 'office_users', columns: OFFICE_USERS_COLUMNS, secrets: ['password', 'session_key'] });
-  expect(required.map((requirement) => requirement.table).filter((table) => table.startsWith('office_')).sort()).toEqual(['office_password_reset_tokens', 'office_sign_ins', 'office_users']);
+  expect(required.map((requirement) => requirement.table).filter((table) => table.startsWith('office_')).sort()).toEqual(['office_passkeys', 'office_password_reset_tokens', 'office_sign_ins', 'office_two_factor_authentications', 'office_two_factor_recovery_codes', 'office_users']);
 });

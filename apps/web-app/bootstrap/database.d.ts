@@ -150,6 +150,31 @@ declare module '@marmeon/database' {
     };
     /**
      * Owned by `back-office`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: credential_id.
+     * Foreign key: user_id -> office_users.id (on delete cascade).
+     */
+    office_passkeys: {
+      id: Generated<number>;
+      user_id: number;
+      user_handle: string;
+      credential_id: string;
+      public_key: string;
+      algorithm: number;
+      sign_count: number;
+      transports: JsonColumn<'office_passkeys.transports'>;
+      aaguid: string;
+      backup_eligible: boolean;
+      backed_up: boolean;
+      name: string;
+      last_used_at: Timestamp | null;
+      suspended_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
+     * Owned by `back-office`.
      * Primary key: email.
      */
     office_password_reset_tokens: {
@@ -179,6 +204,37 @@ declare module '@marmeon/database' {
       remember_rotated_at: Timestamp | null;
       remember_created_at: Timestamp | null;
       remember_fingerprint: string | null;
+    };
+    /**
+     * Owned by `back-office`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: user_id.
+     * Foreign key: user_id -> office_users.id (on delete cascade).
+     */
+    office_two_factor_authentications: {
+      id: Generated<number>;
+      user_id: number;
+      secret: Secret<string>;
+      confirmed_at: Timestamp | null;
+      last_used_step: number | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
+     * Owned by `back-office`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: (user_id, code_hash).
+     * Foreign key: user_id -> office_users.id (on delete cascade).
+     */
+    office_two_factor_recovery_codes: {
+      id: Generated<number>;
+      user_id: number;
+      code_hash: Secret<string>;
+      used_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
     };
     /**
      * Owned by `back-office`.
@@ -384,11 +440,23 @@ declare module '@marmeon/database' {
     notification_opt_outs: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    office_passkeys: {
+      user: { kind: 'belongsTo'; table: 'office_users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     office_sign_ins: {
       user: { kind: 'belongsTo'; table: 'office_users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    office_two_factor_authentications: {
+      user: { kind: 'belongsTo'; table: 'office_users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    office_two_factor_recovery_codes: {
+      user: { kind: 'belongsTo'; table: 'office_users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     office_users: {
+      office_passkeys: { kind: 'hasMany'; table: 'office_passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       office_sign_ins: { kind: 'hasMany'; table: 'office_sign_ins'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      office_two_factor_authentications: { kind: 'hasOne'; table: 'office_two_factor_authentications'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
+      office_two_factor_recovery_codes: { kind: 'hasMany'; table: 'office_two_factor_recovery_codes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
     };
     passkeys: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
@@ -434,8 +502,11 @@ declare module '@marmeon/database' {
     login_activity: 'user_id';
     notification_opt_outs: 'user_id';
     notifications: 'id';
+    office_passkeys: 'id';
     office_password_reset_tokens: 'email';
     office_sign_ins: 'id';
+    office_two_factor_authentications: 'id';
+    office_two_factor_recovery_codes: 'id';
     office_users: 'id';
     passkeys: 'id';
     password_reset_tokens: 'email';
@@ -461,8 +532,11 @@ declare module '@marmeon/database' {
     login_activity: 'user-profile';
     notification_opt_outs: 'notifications';
     notifications: 'system';
+    office_passkeys: 'back-office';
     office_password_reset_tokens: 'back-office';
     office_sign_ins: 'back-office';
+    office_two_factor_authentications: 'back-office';
+    office_two_factor_recovery_codes: 'back-office';
     office_users: 'back-office';
     passkeys: 'auth';
     password_reset_tokens: 'auth';
