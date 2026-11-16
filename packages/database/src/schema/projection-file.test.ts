@@ -227,6 +227,24 @@ describe('the schema projection file', () => {
     expect(parseProjectionFile(JSON.stringify(file))?.tables.users?.pivot).toBe(false);
   });
 
+  it('reads the condition of a partial index and refuses a malformed one', () => {
+    const text = readFileSync(new URL('../__fixtures__/formats/schema-projection/v2-partial-index.json', import.meta.url), 'utf8');
+    const file = JSON.parse(text) as Record<string, any>;
+    const read = parseProjectionFile(text);
+    expect(read?.tables.users?.indexes.map((index) => index.where)).toEqual([undefined, { deleted_at: null }, { legacy: { not: null }, created_at: 'live', id: 3, secret: true }]);
+    // The set of the partial unique index is not in `uniques`, so a reader that ignores `where` takes it for no unique set.
+    expect(read?.tables.users?.uniques).toEqual([['id'], ['email']]);
+    const bad = (where: unknown) => {
+      const copy = structuredClone(file);
+      copy.tables.users.indexes[1].where = where;
+      return parseProjectionFile(JSON.stringify(copy));
+    };
+    expect(bad({ deleted_at: null })).toBeDefined();
+    for (const where of [{}, [], 'stage', 1, null, { deleted_at: 1.5 }, { deleted_at: 2 ** 53 }, { deleted_at: { not: 'x' } }, { deleted_at: { not: null, other: null } }, { deleted_at: [] }, { '': true }]) {
+      expect(bad(where), JSON.stringify(where)).toBeUndefined();
+    }
+  });
+
   it('reads a list and a check, refuses a malformed one, and reads the file of an app without any as before', () => {
     const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
     expect(parseProjectionFile(JSON.stringify(file))).toBeDefined();

@@ -1,7 +1,7 @@
 import { withCode } from '@marmeon/core/internal';
 import { byCodePoint, type ForeignKey, type Introspected, type SchemaMarker } from '../introspection.ts';
 import { loadMigration, type MigrationSource } from '../migrations/load.ts';
-import { blueprintParts, isStringType, oneOfName, type Blueprint, type ColumnSpec, type Driver, type TableMarker } from './blueprint.ts';
+import { blueprintParts, isStringType, oneOfName, type Blueprint, type ColumnSpec, type IndexCondition, type Driver, type TableMarker } from './blueprint.ts';
 import { planOf, type ListCheck, type PlanStep } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -41,6 +41,8 @@ export interface ProjectedIndex {
   readonly name: string;
   readonly columns: readonly string[];
   readonly unique: boolean;
+  /** The condition of a partial index (see `IndexCondition`); present only when set. Such an index identifies no row of the table, so it is no unique set. */
+  readonly where?: IndexCondition;
 }
 
 /** A single-column foreign key. */
@@ -261,6 +263,13 @@ function family(type: string): string {
   return type;
 }
 
+/** The kind of a column for the value of a partial index's condition; `other` for a type the projection leaves alone. */
+function conditionKind(column: ProjectedColumn): 'boolean' | 'integer' | 'string' | 'other' {
+  const kinds = [family(column.type.sqlite), family(column.type.pgsql)];
+  if (kinds[0] !== kinds[1]) return 'other';
+  return kinds[0] === 'boolean' ? 'boolean' : kinds[0] === 'integer' ? 'integer' : kinds[0] === 'string' ? 'string' : 'other';
+}
+
 /** A column that `foreign()` ties to a table must find its target there, of a type that fits; this is known before the first statement runs. */
 function tiedColumns(tables: ReadonlyMap<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
   const source = tables.get(blueprint.table)!;
@@ -348,7 +357,11 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     live(from, '');
     if (has(to)) throw conflict(`${where} renames "${name}.${from}" to "${to}", but the table has a column of that name.`);
     columns = columns.map((c) => (c.name === from ? { ...c, name: to } : c));
-    indexes = indexes.map((i) => ({ ...i, columns: i.columns.map((c) => (c === from ? to : c)) }));
+    indexes = indexes.map((i) => ({
+      ...i,
+      columns: i.columns.map((c) => (c === from ? to : c)),
+      ...(i.where ? { where: Object.fromEntries(Object.entries(i.where).map(([c, value]) => [c === from ? to : c, value])) } : {}),
+    }));
     foreignKeys = foreignKeys.map((k) => (k.column === from ? { ...k, column: to } : k));
     // `inverse` stays with its key; `deleted_at` under another name is no soft delete any more.
     if (MARKER_COLUMNS[from]) markers = markers.filter((m) => m !== MARKER_COLUMNS[from]);
@@ -404,7 +417,22 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
 
   for (const index of blueprint.allIndexes()) {
     for (const column of index.columns) live(column, ` (in index "${index.name}")`);
-    indexes = [...indexes.filter((other) => other.name !== index.name), { name: index.name, columns: index.columns, unique: index.unique }];
+    for (const [column, value] of Object.entries(index.where ?? {})) {
+      live(column, ` (in the where of index "${index.name}")`);
+      const found = columns.find((c) => c.name === column)!;
+      const kind = conditionKind(found);
+      // A whole number as a string is the way to write a bigint above 2^53, and both drivers read it as the number.
+      const refused =
+        (typeof value === 'string' && (kind === 'boolean' || (kind === 'integer' && !/^-?(0|[1-9]\d*)$/.test(value)))) ||
+        (typeof value === 'number' && (kind === 'boolean' || kind === 'string')) ||
+        (typeof value === 'boolean' && (kind === 'string' || kind === 'integer'));
+      if (refused) {
+        throw conflict(
+          `${where} gives the where of index "${index.name}" ${JSON.stringify(value)} for "${name}.${column}", a ${kind} column. The where of an index takes a value of the column's kind: true or false for a boolean, a number (or a whole number as a string) for an integer, a string for a string.`,
+        );
+      }
+    }
+    indexes = [...indexes.filter((other) => other.name !== index.name), { name: index.name, columns: index.columns, unique: index.unique, ...(index.where ? { where: index.where } : {}) }];
   }
 
   for (const marker of parts.markers) if (!markers.includes(marker)) markers = [...markers, marker];
@@ -413,6 +441,10 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     const found = columns.find((c) => c.name === column);
     if (!found) throw unknown(where, `column "${name}.${column}"`);
     if (found.retired) throw conflict(`${where} retires "${name}.${column}", which an earlier migration retired. Drop it with dropColumn().`);
+    const conditioned = indexes.find((i) => i.where && Object.hasOwn(i.where, column));
+    if (conditioned) {
+      throw conflict(`${where} retires "${name}.${column}", which the where of the index "${conditioned.name}" names: the index would keep reading a column Marmeon no longer knows. Drop the index first with dropIndex('${conditioned.name}') or dropUnique('${conditioned.name}'), in this or an earlier alter.`);
+    }
     if (found.primary || (MARKER_COLUMNS[column] !== undefined && markers.includes(MARKER_COLUMNS[column]))) {
       throw conflict(`${where} retires "${name}.${column}", which is ${found.primary ? 'part of the primary key' : 'the column of a timestamps() or softDeletes() mark'}; Marmeon needs it.`);
     }
@@ -424,7 +456,11 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
       );
     }
     // Every insert of the new release would write the same value, and a unique index would refuse the second.
-    const unique = indexes.find((i) => i.unique && i.columns.includes(column));
+    // A partial unique index counts only when every row the release inserts is proven to match its condition: the projection knows no default value, so
+    // that is a condition `{ not: null }` on columns that default to the time of the insert. Any other condition may keep the second insert from meeting the first.
+    const everyRowMatches = (i: ProjectedIndex) =>
+      Object.entries(i.where ?? {}).every(([c, value]) => typeof value === 'object' && value !== null && columns.find((other) => other.name === c)?.default === 'now');
+    const unique = indexes.find((i) => i.unique && i.columns.includes(column) && everyRowMatches(i));
     if (unique &&(found.default === 'value' || found.default === 'now')) {
       throw conflict(
         `${where} retires "${name}.${column}", which has a fixed default and is in the unique index "${unique.name}": the second insert of the release that no longer knows it would write the same value again. ` +
@@ -439,8 +475,8 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
   for (const column of parts.drops) {
     columns = columns.filter((c) => c.name !== column);
     foreignKeys = foreignKeys.filter((k) => k.column !== column);
-    // The database drops an index with a column it covers.
-    indexes = indexes.filter((i) => !i.columns.includes(column));
+    // Postgres drops an index with a column it covers or its condition uses; SQLite refuses to drop either.
+    indexes = indexes.filter((i) => !i.columns.includes(column) && !(i.where && Object.hasOwn(i.where, column)));
     if (MARKER_COLUMNS[column]) markers = markers.filter((m) => m !== MARKER_COLUMNS[column]);
   }
 
@@ -457,7 +493,8 @@ function uniqueSets(columns: readonly ProjectedColumn[], indexes: readonly Proje
     if (set.length && !set.some((column) => retired.has(column)) && !sets.some((other) => other.join('\0') === set.join('\0'))) sets.push(set);
   };
   add(columns.filter((c) => c.primary).map((c) => c.name));
-  for (const index of indexes) if (index.unique) add([...index.columns]);
+  // A partial unique index is unique among the rows that match only: it identifies no row, so it makes no hasOne, no pivot, no unique set.
+  for (const index of indexes) if (index.unique && !index.where) add([...index.columns]);
   return sets;
 }
 

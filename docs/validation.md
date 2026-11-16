@@ -366,6 +366,17 @@ The error speaks with the rule's message, in the request's language, with the re
 another index stays a 500: a bug, not the user's input. In a transaction, the 422 rolls it back. `unique` gives the friendly
 message before the insert, and the index is what holds.
 
+A [partial unique index](migrations.md#partial-indexes) holds for some rows only. The rule always checks the value that is submitted, so
+apply it only when the submitted row falls under the index's condition, with `when()`. For `table.unique('slug', { where: { stage: 'live' } })`:
+
+```ts
+r.object({ stage: r.in(['draft', 'live']) })
+  .when((data) => data.stage === 'draft', { slug: r.string().required() })
+  .when((data) => data.stage === 'live', { slug: r.string().required().unique(PageRepository, 'slug', { where: (query) => query.where('stage', '=', 'live') }) }),
+```
+
+A draft with a taken slug passes, as the index lets it; a live page with a taken live slug fails with the rule's message.
+
 > [!WARNING]
 > An account's address is no slug: "taken" tells who has an account. Use a `unique` on an address only with
 > `AUTH_PRIVATE_REGISTRATION=false`. Otherwise do what the starter kit does: the same answer for a free and a taken address, and a
