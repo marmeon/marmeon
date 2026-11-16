@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { imageDimensions } from './dimensions.ts';
+import { DIMENSION_BYTES, imageDimensions } from './dimensions.ts';
 
 const text = (value: string) => [...value].map((c) => c.charCodeAt(0));
 const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
@@ -10,7 +10,9 @@ const le24 = (n: number) => [n & 255, (n >> 8) & 255, (n >> 16) & 255];
 const bytes = (...parts: (number[] | Uint8Array)[]) => Uint8Array.from(parts.flatMap((part) => [...part]));
 
 const png = (width: number, height: number) => bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], be32(13), text('IHDR'), be32(width), be32(height), [8, 6, 0, 0, 0]);
-const gif = (width: number, height: number) => bytes(text('GIF89a'), le16(width), le16(height), [0, 0, 0]);
+/** A GIF whose logical screen is `width` × `height`; its first frame is `frame` (the screen's size when not given), behind `before` blocks. */
+const gif = (width: number, height: number, { frame = [width, height], at = [0, 0], version = '89a', before = [] as number[][] } = {}) =>
+  bytes(text(`GIF${version}`), le16(width), le16(height), [0, 0, 0], ...before, [0x2c, ...le16(at[0]!), ...le16(at[1]!), ...le16(frame[0]!), ...le16(frame[1]!), 0], [0x3b]);
 
 function webp(kind: 'VP8 ' | 'VP8L' | 'VP8X', width: number, height: number): Uint8Array {
   let body: number[];
@@ -20,8 +22,12 @@ function webp(kind: 'VP8 ' | 'VP8L' | 'VP8X', width: number, height: number): Ui
     const h = height - 1;
     body = [0x2f, w & 255, ((w >> 8) & 0x3f) | ((h & 3) << 6), (h >> 2) & 255, (h >> 10) & 15];
   } else body = [0, 0, 0, 0, ...le24(width - 1), ...le24(height - 1)];
-  return bytes(text('RIFF'), [0, 0, 0, 0], text('WEBP'), text(kind), [body.length, 0, 0, 0], body);
+  const chunk = [...text(kind), body.length, 0, 0, 0, ...body];
+  // An extended file carries the coded image after its VP8X chunk, as a writer makes it.
+  return bytes(text('RIFF'), [0, 0, 0, 0], text('WEBP'), chunk, ...(kind === 'VP8X' ? [[...webp('VP8L', width, height).subarray(12)]] : []));
 }
+/** The `VP8L` chunk of a coded image of `width` × `height`. */
+const coded = (width: number, height: number) => [...webp('VP8L', width, height).subarray(12), 0]; // padded to an even length, as chunks are
 
 /** An EXIF segment whose first directory holds one orientation entry. */
 function exif(orientation: number, order: 'II' | 'MM'): number[] {
@@ -65,8 +71,215 @@ describe('imageDimensions()', () => {
     expect(imageDimensions(gif(320, 200), 'image/gif')).toEqual({ width: 320, height: 200 });
   });
 
+  it.each(['87a', '89a'])('GIF%s: a first frame larger than the logical screen is the size, as a decoder shows it', (version) => {
+    expect(imageDimensions(gif(1, 1, { frame: [20_000, 20_000], version }), 'image/gif')).toEqual({ width: 20_000, height: 20_000 });
+    expect(imageDimensions(gif(300, 5, { frame: [5, 400], version }), 'image/gif')).toEqual({ width: 300, height: 400 });
+  });
+
+  it('GIF: a first frame offset beyond the screen makes the canvas — its right and bottom edge count', () => {
+    expect(imageDimensions(gif(1, 1, { frame: [1, 1], at: [20_000, 30_000] }), 'image/gif')).toEqual({ width: 20_001, height: 30_001 });
+    expect(imageDimensions(gif(100, 100, { frame: [10, 10], at: [20, 30] }), 'image/gif')).toEqual({ width: 100, height: 100 });
+  });
+
+  it('GIF: a graphic control block that is not four bytes is damaged', () => {
+    expect(imageDimensions(gif(10, 10, { before: [[0x21, 0xf9, 3, 0, 0, 0, 0]] }), 'image/gif')).toBeUndefined();
+    expect(imageDimensions(gif(10, 10, { before: [[0x21, 0xf9, 4, 0, 0, 0, 0, 0]] }), 'image/gif')).toEqual({ width: 10, height: 10 });
+  });
+
+  it('GIF: blocks before the first frame are walked past — a colour table, an extension with sub-blocks', () => {
+    const table = bytes(text('GIF89a'), le16(10), le16(10), [0x81, 0, 0], Array.from({ length: 12 }, () => 0), [0x21, 0xf9, 4, 0, 0, 0, 0, 0], [0x21, 0xff, 3, 1, 2, 3, 2, 9, 9, 0], [0x2c, 0, 0, 0, 0, ...le16(5000), ...le16(6000), 0], [0x3b]);
+    expect(imageDimensions(table, 'image/gif')).toEqual({ width: 5000, height: 6000 });
+  });
+
+  it('GIF: no image descriptor in the bytes read — a header alone, a trailer first, a block cut off — is undefined', () => {
+    expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0]), 'image/gif')).toBeUndefined();
+    expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x3b]), 'image/gif')).toBeUndefined();
+    expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x21, 0xf9, 200, 1, 2]), 'image/gif')).toBeUndefined();
+    expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x2c, 0, 0, 0, 0, 5]), 'image/gif')).toBeUndefined();
+  });
+
+  it('AVIF sequence: a file with the brand avis, or a moov, has tracks nothing here measures — undefined, whatever its item says', () => {
+    const base = avif(1, 1);
+    const plain = box('ftyp', text('avif'), [0, 0, 0, 0], text('avif'), text('mif1'));
+    const rest = base.subarray(plain.length);
+    expect(imageDimensions(bytes(plain, rest), 'image/avif')).toEqual({ width: 1, height: 1 });
+    expect(imageDimensions(bytes(box('ftyp', text('avif'), [0, 0, 0, 0], text('avif'), text('avis')), rest), 'image/avif')).toBeUndefined(); // compatible brand
+    expect(imageDimensions(bytes(box('ftyp', text('avis'), [0, 0, 0, 0], text('mif1')), rest), 'image/avif')).toBeUndefined(); // major brand
+    expect(imageDimensions(bytes(base, box('moov', box('trak', box('tkhd', [0, 0, 0, 0])))), 'image/avif')).toBeUndefined();
+    expect(imageDimensions(bytes(base, box('moov')), 'image/avif')).toBeUndefined();
+  });
+
+  it('AVIF: whatever is not seen is not trusted — boxes past the cap, a cut meta, a meta that lies past the bytes read, a property index beyond the list', () => {
+    const base = avif(1, 1);
+    const plain = box('ftyp', text('avif'), [0, 0, 0, 0], text('avif'), text('mif1'));
+    const free = (count: number) => Array.from({ length: count }, () => box('free')).flat();
+    // 1100 boxes before the moov that would show a large track: the walk stops at its cap and says so.
+    expect(imageDimensions(bytes(base, free(1100), box('moov')), 'image/avif')).toBeUndefined();
+    expect(imageDimensions(bytes(plain, free(1100), base.subarray(plain.length)), 'image/avif')).toBeUndefined();
+    expect(imageDimensions(bytes(plain, free(10), base.subarray(plain.length)), 'image/avif')).toEqual({ width: 1, height: 1 });
+    // The item is past the bytes read: a media box that states more than the bytes given comes first, or the meta box is cut.
+    expect(imageDimensions(bytes(plain, be32(300_000), text('mdat'), Array.from({ length: 100 }, () => 0)), 'image/avif')).toBeUndefined();
+    expect(imageDimensions(base.subarray(0, base.length - 5), 'image/avif')).toBeUndefined();
+    // A property the primary item names that the list does not hold may be the size; a later ispe does not stand in for it.
+    const ispe = box('ispe', [0, 0, 0, 0], be32(10), be32(10));
+    const ipma = box('ipma', [0, 0, 0, 0], be32(1), be16(7), [2], [5, 1]);
+    const named = bytes(plain, box('meta', [0, 0, 0, 0], box('pitm', [0, 0, 0, 0], be16(7)), box('iprp', box('ipco', ispe), ipma)));
+    expect(imageDimensions(named, 'image/avif')).toBeUndefined();
+    const inList = bytes(plain, box('meta', [0, 0, 0, 0], box('pitm', [0, 0, 0, 0], be16(7)), box('iprp', box('ipco', ispe), box('ipma', [0, 0, 0, 0], be32(1), be16(7), [2], [0, 1]))));
+    expect(imageDimensions(inList, 'image/avif')).toEqual({ width: 10, height: 10 });
+  });
+
+  it('AVIF: a list that stops early, a box that is cut, or a 64-bit size beyond 4 GiB says so — the item found before it is not trusted', () => {
+    const plain = box('ftyp', text('avif'), [0, 0, 0, 0], text('avif'), text('mif1'));
+    const free = (count: number) => Array.from({ length: count }, () => box('free')).flat();
+    const ispe = box('ispe', [0, 0, 0, 0], be32(10), be32(10));
+    const pitm = box('pitm', [0, 0, 0, 0], be16(7));
+    const ipma = box('ipma', [0, 0, 0, 0], be32(1), be16(7), [1], [1]);
+    const made = ({ ipco = box('ipco', ispe), props = [] as number[][], inMeta = [] as number[][], assoc = ipma } = {}) => bytes(plain, box('meta', [0, 0, 0, 0], ...inMeta, pitm, box('iprp', ...props, ipco, assoc)));
+    expect(imageDimensions(made(), 'image/avif')).toEqual({ width: 10, height: 10 });
+    expect(imageDimensions(made({ ipco: box('ipco', ispe, free(10)) }), 'image/avif')).toEqual({ width: 10, height: 10 });
+    expect(imageDimensions(made({ ipco: box('ipco', ispe, free(1100)) }), 'image/avif')).toBeUndefined(); // ipco: more boxes than the cap
+    expect(imageDimensions(made({ inMeta: [free(1100)] }), 'image/avif')).toBeUndefined(); // meta: pitm lies past the cap
+    expect(imageDimensions(made({ props: [free(1100)] }), 'image/avif')).toBeUndefined(); // iprp: ipco lies past the cap
+    const longer = (made: number[], extra: number) => [...be32(((made[0]! << 24) | (made[1]! << 16) | (made[2]! << 8) | made[3]!) + extra), ...made.slice(4)];
+    expect(imageDimensions(made({ assoc: longer(ipma, 100) }), 'image/avif')).toBeUndefined(); // ipma states more than iprp holds
+    // Both boxes are found, but the list behind them is cut short by the cap: what lies past it is not known.
+    expect(imageDimensions(bytes(plain, box('meta', [0, 0, 0, 0], pitm, box('iprp', box('ipco', ispe), ipma), free(1100))), 'image/avif')).toBeUndefined();
+    expect(imageDimensions(bytes(plain, box('meta', [0, 0, 0, 0], pitm, box('iprp', box('ipco', ispe), ipma, free(1100)))), 'image/avif')).toBeUndefined();
+    const base = made();
+    const cutIprp = bytes(plain, box('meta', [0, 0, 0, 0], pitm, longer(box('iprp', box('ipco', ispe), ipma), 100)));
+    expect(imageDimensions(cutIprp, 'image/avif')).toBeUndefined(); // iprp states more than meta holds
+    // The item sits before a box the walk cannot step over: nothing after it may be taken as the whole file.
+    expect(imageDimensions(bytes(base, [0, 0, 0, 1], text('free'), be32(1), be32(0)), 'image/avif')).toBeUndefined(); // 64-bit size above 4 GiB
+    expect(imageDimensions(bytes(base, [0, 0, 0, 4], text('free')), 'image/avif')).toBeUndefined(); // shorter than its header
+    expect(imageDimensions(bytes(base, free(1100)), 'image/avif')).toBeUndefined();
+  });
+
+  it('JPEG and GIF: a walk that reaches its cap of blocks is undefined, not a guess', () => {
+    const segment = [0xff, 0xe2, ...be16(2)];
+    expect(imageDimensions(jpeg(800, 600, Array.from({ length: 10 }, () => segment)), 'image/jpeg')).toEqual({ width: 800, height: 600 });
+    expect(imageDimensions(jpeg(800, 600, Array.from({ length: 1100 }, () => segment)), 'image/jpeg')).toBeUndefined();
+    const extension = [0x21, 0xfe, 0];
+    expect(imageDimensions(gif(10, 10, { before: Array.from({ length: 10 }, () => extension) }), 'image/gif')).toEqual({ width: 10, height: 10 });
+    expect(imageDimensions(gif(10, 10, { before: Array.from({ length: 1100 }, () => extension) }), 'image/gif')).toBeUndefined();
+  });
+
   it.each(['VP8 ', 'VP8L', 'VP8X'] as const)('reads WebP of kind %s', (kind) => {
     expect(imageDimensions(webp(kind, 1234, 567), 'image/webp')).toEqual({ width: 1234, height: 567 });
+  });
+
+  describe('orientation of a file whose EXIF turns it a quarter', () => {
+    const exifAfter = (width: number, height: number, segment: number[]) => {
+      const file = jpeg(width, height); // SOI, frame, SOS marker with its length
+      const sos = file.length - 4;
+      return bytes(file.subarray(0, sos), segment, file.subarray(sos));
+    };
+
+    it('JPEG: an Exif segment before or after the frame turns a 10 × 200 file into 200 × 10', () => {
+      expect(imageDimensions(jpeg(10, 200, [exif(6, 'II')]), 'image/jpeg')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(exifAfter(10, 200, exif(6, 'MM')), 'image/jpeg')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(exifAfter(10, 200, exif(3, 'MM')), 'image/jpeg')).toEqual({ width: 10, height: 200 });
+    });
+
+    it('JPEG: a second Exif segment, an unreadable one, and a scan that is not in the bytes are undefined', () => {
+      expect(imageDimensions(exifAfter(10, 200, [...exif(1, 'II'), ...exif(6, 'II')]), 'image/jpeg')).toBeUndefined();
+      expect(imageDimensions(exifAfter(10, 200, exif(9, 'II')), 'image/jpeg')).toBeUndefined();
+      const file = jpeg(10, 200);
+      expect(imageDimensions(file.subarray(0, file.length - 4), 'image/jpeg')).toBeUndefined(); // no start of scan
+    });
+
+    const chunk = (type: string, data: number[]) => [...be32(data.length), ...text(type), ...data, 0, 0, 0, 0];
+    const tiff = (orientation: number) => exif(orientation, 'MM').slice(10); // the TIFF structure of an Exif segment
+
+    it('PNG: an eXIf chunk before IDAT turns it; one that cannot be read, or two, are undefined; one after IDAT is not a decoder’s', () => {
+      const head = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...be32(13), ...text('IHDR'), ...be32(10), ...be32(200), 8, 6, 0, 0, 0, 0, 0, 0, 0];
+      const idat = chunk('IDAT', [0]);
+      expect(imageDimensions(bytes(head, chunk('eXIf', tiff(6)), idat), 'image/png')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(bytes(head, chunk('eXIf', tiff(1)), idat), 'image/png')).toEqual({ width: 10, height: 200 });
+      expect(imageDimensions(bytes(head, chunk('eXIf', [1, 2, 3]), idat), 'image/png')).toBeUndefined();
+      expect(imageDimensions(bytes(head, chunk('eXIf', tiff(1)), chunk('eXIf', tiff(6)), idat), 'image/png')).toBeUndefined();
+      expect(imageDimensions(bytes(head, idat, chunk('eXIf', tiff(6))), 'image/png')).toEqual({ width: 10, height: 200 });
+      // The bytes ran out in a file that goes on: more chunks may follow.
+      expect(imageDimensions(bytes(head, chunk('eXIf', tiff(6)), new Uint8Array(DIMENSION_BYTES)), 'image/png')).toBeUndefined();
+    });
+
+    it.each([
+      ['RATIONAL', 5, 1],
+      ['UNDEFINED', 7, 1],
+      ['SHORT with count 2', 3, 2],
+    ])('an orientation entry that is a %s, not a SHORT with count 1, is undefined in a JPEG, a PNG and a WebP', (_name, type, count) => {
+      const odd = (tiffBytes: number[]) => tiffBytes.map((value, index) => (index === 12 ? 0 : index === 13 ? type : index >= 14 && index <= 17 ? (index === 17 ? count : 0) : value)); // type at 12, count at 14..17 (big-endian)
+      expect(odd(tiff(6)).slice(12, 18)).toEqual([0, type, 0, 0, 0, count]);
+      const segment = (data: number[]) => [0xff, 0xe1, ...be16(data.length + 8), ...text('Exif'), 0, 0, ...data];
+      expect(imageDimensions(jpeg(10, 200, [segment(odd(tiff(6)))]), 'image/jpeg')).toBeUndefined();
+      expect(imageDimensions(jpeg(10, 200, [segment(tiff(6))]), 'image/jpeg')).toEqual({ width: 200, height: 10 });
+      const head = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...be32(13), ...text('IHDR'), ...be32(10), ...be32(200), 8, 6, 0, 0, 0, 0, 0, 0, 0];
+      expect(imageDimensions(bytes(head, chunk('eXIf', odd(tiff(6))), chunk('IDAT', [0])), 'image/png')).toBeUndefined();
+      const vp8x = [...text('VP8X'), 10, 0, 0, 0, 0x08, 0, 0, 0, ...le24(9), ...le24(199)];
+      const data = odd(tiff(6));
+      const webp = bytes(text('RIFF'), [0, 0, 0, 0], text('WEBP'), vp8x, coded(10, 200), text('EXIF'), [data.length, 0, 0, 0], data);
+      expect(imageDimensions(webp, 'image/webp')).toBeUndefined();
+    });
+
+    it('WebP: the coded image or the first animation frame counts beside the VP8X canvas, on each side', () => {
+      const vp8x = (flags: number, width: number, height: number) => [...text('VP8X'), 10, 0, 0, 0, flags, 0, 0, 0, ...le24(width - 1), ...le24(height - 1)];
+      const riff = (...chunks: number[][]) => bytes(text('RIFF'), [0, 0, 0, 0], text('WEBP'), ...chunks);
+      // A canvas of 1 × 1 over a coded image of 200 × 200: other decoders than a browser's decode the coded size.
+      expect(imageDimensions(riff(vp8x(0, 1, 1), coded(200, 200)), 'image/webp')).toEqual({ width: 200, height: 200 });
+      expect(imageDimensions(riff(vp8x(0, 300, 5), coded(200, 200)), 'image/webp')).toEqual({ width: 300, height: 200 });
+      expect(imageDimensions(riff(vp8x(0, 1, 1), [...text('VP8 '), 10, 0, 0, 0, 0x10, 0, 0, 0x9d, 0x01, 0x2a, ...le16(200), ...le16(200)]), 'image/webp')).toEqual({ width: 200, height: 200 });
+      expect(imageDimensions(riff(vp8x(0, 1, 1)), 'image/webp')).toBeUndefined(); // no coded image in the bytes read
+      // An animation: the first frame's offset (twice its stored value) and size, behind a 1 × 1 canvas.
+      const anmf = (x: number, y: number, width: number, height: number) => [...text('ANMF'), 16, 0, 0, 0, ...le24(x / 2), ...le24(y / 2), ...le24(width - 1), ...le24(height - 1), 0, 0, 0, 0, 0, 0, 0];
+      expect(imageDimensions(riff(vp8x(0x02, 1, 1), anmf(0, 0, 200, 200)), 'image/webp')).toEqual({ width: 200, height: 200 });
+      expect(imageDimensions(riff(vp8x(0x02, 1, 1), anmf(1000, 2000, 1, 1)), 'image/webp')).toEqual({ width: 1001, height: 2001 });
+      expect(imageDimensions(riff(vp8x(0x02, 1, 1)), 'image/webp')).toBeUndefined(); // the first frame is not in the bytes read
+    });
+
+    it('PNG: a chunk before IDAT that does not fit in the bytes read is undefined — an eXIf could hide behind it', () => {
+      const head = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...be32(13), ...text('IHDR'), ...be32(1), ...be32(1), 8, 6, 0, 0, 0, 0, 0, 0, 0];
+      expect(imageDimensions(bytes(head, [...be32(262_144), ...text('tEXt'), 0, 0, 0, 0]), 'image/png')).toBeUndefined();
+      expect(imageDimensions(bytes(head, [...be32(4), ...text('tEXt'), 1, 2, 3, 4, 0, 0, 0, 0], [...be32(0), ...text('IDAT')]), 'image/png')).toEqual({ width: 1, height: 1 });
+    });
+
+    it('PNG: with no IDAT in a short file, the eXIf chunk still turns it; fewer than 8 bytes after the last chunk is undefined', () => {
+      const head = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...be32(13), ...text('IHDR'), ...be32(10), ...be32(200), 8, 6, 0, 0, 0, 0, 0, 0, 0];
+      expect(imageDimensions(bytes(head, chunk('eXIf', tiff(6))), 'image/png')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(bytes(head, chunk('eXIf', tiff(6)), [0, 0, 0, 0, 0]), 'image/png')).toBeUndefined();
+    });
+
+    /** An Exif segment around `tiffBytes`, in a JPEG of 10 × 200. */
+    const withTiff = (tiffBytes: number[]) => jpeg(10, 200, [[0xff, 0xe1, ...be16(tiffBytes.length + 8), ...text('Exif'), 0, 0, ...tiffBytes]]);
+    const entry = (tag: number, value = 0) => [...be16(tag), ...be16(3), ...be32(1), ...be16(value), 0, 0];
+    const directory = (entries: number[][], { order = 'MM', magic = 42 } = {}) => [...text(order), ...be16(magic), ...be32(8), ...be16(entries.length), ...entries.flat(), ...be32(0)];
+
+    it('EXIF: a directory of more than 256 entries without the orientation, or with it past the 256th, an unknown byte order or a wrong magic number is undefined', () => {
+      const other = (count: number) => Array.from({ length: count }, () => entry(0x0100));
+      expect(imageDimensions(withTiff(directory([...other(3), entry(0x0112, 6)])), 'image/jpeg')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(withTiff(directory(other(300))), 'image/jpeg')).toBeUndefined();
+      expect(imageDimensions(withTiff(directory([...other(256), entry(0x0112, 6)])), 'image/jpeg')).toBeUndefined();
+      expect(imageDimensions(withTiff(directory([...other(255), entry(0x0112, 6)])), 'image/jpeg')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(withTiff(directory([entry(0x0112, 6)], { magic: 43 })), 'image/jpeg')).toBeUndefined();
+      expect(imageDimensions(withTiff(directory([entry(0x0112, 6)], { order: 'XX' })), 'image/jpeg')).toBeUndefined();
+    });
+
+    it('JPEG: a second frame header, and a start of scan with no frame, are undefined', () => {
+      const frame = [0xff, 0xc0, ...be16(17), 8, ...be16(200), ...be16(10), 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1];
+      expect(imageDimensions(bytes([0xff, 0xd8], frame, frame, [0xff, 0xda, 0, 2]), 'image/jpeg')).toBeUndefined();
+      expect(imageDimensions(bytes([0xff, 0xd8], frame, [0xff, 0xda, 0, 2]), 'image/jpeg')).toEqual({ width: 10, height: 200 });
+      expect(imageDimensions(bytes([0xff, 0xd8], [0xff, 0xda, 0, 2]), 'image/jpeg')).toBeUndefined();
+    });
+
+    it('WebP: an EXIF chunk named by the VP8X flag turns it; a flag whose chunk is not found, or cannot be read, is undefined', () => {
+      const vp8x = (flags: number) => [...text('VP8X'), 10, 0, 0, 0, flags, 0, 0, 0, ...le24(9), ...le24(199)];
+      const riff = (...chunks: number[][]) => bytes(text('RIFF'), [0, 0, 0, 0], text('WEBP'), ...chunks);
+      const exifChunk = (data: number[]) => [...text('EXIF'), ...[data.length & 255, 0, 0, 0], ...data, ...(data.length & 1 ? [0] : [])];
+      expect(imageDimensions(riff(vp8x(0x08), coded(10, 200), exifChunk(tiff(6))), 'image/webp')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(riff(vp8x(0x08), coded(10, 200), exifChunk([...text('Exif'), 0, 0, ...tiff(8)])), 'image/webp')).toEqual({ width: 200, height: 10 });
+      expect(imageDimensions(riff(vp8x(0), coded(10, 200), exifChunk(tiff(6))), 'image/webp')).toEqual({ width: 10, height: 200 }); // no flag: no EXIF
+      expect(imageDimensions(riff(vp8x(0x08), coded(10, 200)), 'image/webp')).toBeUndefined();
+      expect(imageDimensions(riff(vp8x(0x08), coded(10, 200), exifChunk([1, 2, 3])), 'image/webp')).toBeUndefined();
+    });
   });
 
   it('reads JPEG, skipping segments before the frame', () => {
@@ -180,16 +393,16 @@ describe('imageDimensions()', () => {
       expect(imageDimensions(bytes([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0]), 'image/jpeg')).toBeUndefined();
     });
 
-    it('an EXIF directory that points outside the segment keeps the plain size', () => {
+    it('an EXIF directory that points outside the segment is undefined — the turn it may hold is unknown', () => {
       const wild = exif(6, 'II');
       wild.splice(10 + 4, 4, 0xff, 0xff, 0xff, 0x7f); // the offset of the first directory
-      expect(imageDimensions(jpeg(800, 600, [wild]), 'image/jpeg')).toEqual({ width: 800, height: 600 });
+      expect(imageDimensions(jpeg(800, 600, [wild]), 'image/jpeg')).toBeUndefined();
     });
 
-    it('an EXIF directory of 65 535 entries stops at the segment', () => {
+    it('an EXIF directory of 65 535 entries stops at the segment, and is undefined', () => {
       const many = exif(6, 'MM');
       many.splice(18, 4, 0xff, 0xff, 0x01, 0x10); // the count, then a tag that is not the orientation
-      expect(imageDimensions(jpeg(800, 600, [many]), 'image/jpeg')).toEqual({ width: 800, height: 600 });
+      expect(imageDimensions(jpeg(800, 600, [many]), 'image/jpeg')).toBeUndefined();
     });
 
     it('AVIF boxes that point at themselves, or are huge, end without a size', () => {

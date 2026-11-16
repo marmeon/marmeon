@@ -49,7 +49,7 @@ export { normalizeDirectory, normalizeKey } from './keys.ts';
 
 // Uploads: a target per route field, the bytes to a private disk, a token in the form, verified on submit.
 export { upload } from './uploads/rule.ts';
-export type { CheckUploadMime, UploadInput, UploadSchema } from './uploads/rule.ts';
+export type { CheckDimensionMime, CheckUploadMime, DimensionMime, UploadDimensions, UploadInput, UploadSchema } from './uploads/rule.ts';
 export { TemporaryUpload } from './uploads/temporary-upload.ts';
 export { StagedUploads } from './uploads/service.ts';
 export type { ImageDimensions } from './uploads/dimensions.ts';

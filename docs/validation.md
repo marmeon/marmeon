@@ -459,6 +459,35 @@ first bytes, never from its name: HTML sent as `.png` is refused. `upload({ maxB
 format, no markup at the start, no NUL byte (see [storage](storage.md#uploads) for what that does not promise). Nothing chosen is "Choose a file.". A file needs a field of its own: an `upload()` in a list, a
 union or an optional object stops the start. The [requests](requests.md#files) page shows a whole controller.
 
+A browser decodes an image into every one of its pixels, however few bytes the file has: 33 bytes can state 100 000 × 100 000
+pixels. To refuse such a file before any code decodes it, add `dimensions` to an image rule:
+
+```ts
+schema: r.object({
+  avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'], dimensions: { maxPixels: 40_000_000 } }),
+}),
+```
+
+`dimensions` takes `maxWidth`, `maxHeight` and `maxPixels` (width times height). Give at least one, each a positive integer.
+It needs `mime`, and every type in it must be one the rule can measure: PNG, JPEG, GIF or WebP. A rule without `mime` could let a PDF
+through unmeasured, so that is a type error, and the rule throws when you build it. It throws for an option or a limit it does not
+know, too, so a typo never drops a limit.
+
+AVIF is not among the types. The size in an AVIF header is the container's, which a decoder does not have to follow: a grid image
+states one size and decodes its tiles. Until the rule can read the coded image, leave `image/avif` out of `mime` when you set
+`dimensions`.
+
+The size comes from the file's header, and nothing decodes the file. It is the size a browser shows. A turn that the file's EXIF
+(JPEG, PNG, WebP) names is applied, so a JPEG stored 10 × 200 with the orientation 6 counts as 200 × 10. For a GIF it is the canvas:
+the logical screen, or the right and bottom edge of the first frame when that lies beyond it. For an extended WebP it is the larger of the canvas and the
+coded image or first animation frame on each side. An animated GIF or WebP counts by that size, not by the pixels of all its frames. A job that decodes the file later sets the pixel limit of its own decoder as well.
+
+A file is refused when its size cannot be read, with the message `marmeon.validation.upload.unreadable`. That covers a JPEG whose
+frame header or start of scan lies past the first 256 KB, a PNG whose metadata cannot be followed in the first 256 KB, and a WebP
+whose EXIF chunk lies behind the image data past the first 256 KB (typical for a large WebP with EXIF). It covers a GIF with no frame
+in the first 256 KB, an EXIF block that cannot be read, and a file that was not read on this request. The messages for a size over a
+limit are `marmeon.validation.upload.width`, `.height` and `.pixels`.
+
 ## Queries
 
 `r.query({ … })` reads a URL. A query never answers 422: a field the schema rejects falls back to its default. So every field needs

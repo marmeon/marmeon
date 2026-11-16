@@ -86,7 +86,7 @@ export class TemporaryUpload {
 
   /**
    * The image's width and height in pixels, as a browser shows it (an EXIF turn applied), read from the file's first bytes without
-   * decoding it — `undefined` for a file that is not a PNG, JPEG, GIF, WebP or AVIF, or whose header is cut off or damaged. Call it
+   * decoding it — `undefined` for a file that is not a PNG, JPEG, GIF, WebP or AVIF, or whose header is cut off or damaged. An AVIF's size is the one its container states, good for reserving space but not for a limit (`upload()` takes no AVIF in `dimensions`). Call it
    * before `store()`, which moves the file — afterwards it throws: keep the size with the record (`docs/images.md#images-from-the-server`).
    */
   async dimensions(): Promise<ImageDimensions | undefined> {

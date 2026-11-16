@@ -12,11 +12,12 @@ import { profileChannel } from '../live.ts';
 /**
  * The avatar: the file was uploaded ahead (`<FileInput>` in the edit layer, to the private `uploads` disk) — the form
  * sends its token. The rule checks it on submit: this session, this route and field, not expired, not used; at most 2 MB;
- * PNG, JPEG or WebP **by its bytes** (an HTML file named `.png` is refused, SVG never). The same policy as the profile: the
+ * PNG, JPEG or WebP **by its bytes** (an HTML file named `.png` is refused, SVG never); at most 40 million pixels by the size
+ * in its header, which is read before anything decodes it. The same policy as the profile: the
  * upload target was handed out by this route's `authorize` too.
  */
 export const UpdateAvatarRequest = defineRequest({
-  schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
+  schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'], dimensions: { maxPixels: 40_000_000 } }) }),
   authorize: can(ProfilePolicy, 'update', 'user'),
 });
 
@@ -40,7 +41,7 @@ export class UpdateAvatarController extends Controller {
     const { user } = ctx.params;
     const disk = this.#storage.disk('public');
     const previous = (await this.#users.find(user.id))?.avatar_path;
-    // The size is read from the file's first bytes before store() moves it; a file whose header says nothing keeps none.
+    // The size is read from the file's first bytes before store() moves it; the rule has refused a file whose header cannot be read.
     const size = await ctx.body.avatar.dimensions();
     // Uses the upload up (once — a second submit of the same token is a 422) and moves it: avatars/<random>.<its type>.
     const path = await ctx.body.avatar.store(disk, 'avatars');
