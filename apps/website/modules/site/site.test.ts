@@ -101,7 +101,7 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body.match(/<li class="principle"/g)).toHaveLength(7);
     expect(body).toContain('<h2 id="principles-title"');
-    expect(textOf(body.slice(body.indexOf('<h2 id="principles-title"'), body.indexOf('</h2>', body.indexOf('<h2 id="principles-title"'))))).toBe('Seven rules, set in stone.');
+    expect(textOf(body.slice(body.indexOf('<h2 id="principles-title"'), body.indexOf('</h2>', body.indexOf('<h2 id="principles-title"'))))).toBe('What Marmeon stands for.');
     const principles = body.slice(body.indexOf('<ol class="principle-list"'), body.indexOf('</ol>', body.indexOf('<ol class="principle-list"')));
     expect([...principles.matchAll(/<span class="principle-numeral" aria-hidden="true">([^<]*)<\/span><h3>([^<]*)<\/h3>/g)].map((match) => [match[1], match[2]])).toEqual([
       ['I', 'Typed end to end'],

@@ -18,7 +18,7 @@ const PRINCIPLES: { name: string; text: ReactNode }[] = [
   { name: 'Secure by default', text: 'In production, and wherever nobody set the environment, protections stay on.' },
 ];
 
-/** "Seven rules, set in stone": the principles the framework keeps, as a numbered list. */
+/** "What Marmeon stands for": the seven principles of the framework, as a numbered list. */
 export function PrinciplesSection() {
   return (
     <section className="principles landing-light" aria-labelledby="principles-title">
@@ -28,7 +28,7 @@ export function PrinciplesSection() {
             <div>
               <p className="section-label">Seven principles</p>
               <h2 id="principles-title">
-                Seven rules, <span className="serif-accent">set in stone.</span>
+                What Marmeon <span className="serif-accent">stands for.</span>
               </h2>
             </div>
             <p>The principles every part of the framework follows.</p>
