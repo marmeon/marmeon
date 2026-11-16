@@ -1,0 +1,57 @@
+{
+  "name": "@marmeon/fetch",
+  "version": "1.1.0",
+  "private": true,
+  "description": "The address policy and the pinning transport for outgoing HTTP requests of Marmeon apps: refuse addresses that are not public, connect only to the checked ones.",
+  "keywords": [
+    "marmeon",
+    "http",
+    "ssrf"
+  ],
+  "bugs": {
+    "url": "https://github.com/marmeon/marmeon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
+    "directory": "packages/fetch"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@marmeon/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  }
+}
