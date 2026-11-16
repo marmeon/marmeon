@@ -24,10 +24,13 @@ describe('the layout of a docs page (server-rendered)', () => {
     expect(body).toContain('Next · The Basics');
     // Both triggers are links: the layer with JavaScript, the search page without.
     for (const name of ['docs-search-box', 'docs-search-link']) {
-      expect(body, name).toMatch(new RegExp(`<a [^>]*href="/docs/search"[^>]*class="${name}"[^>]*aria-keyshortcuts="/ Control\\+K Meta\\+K"|<a [^>]*class="${name}"[^>]*href="/docs/search"[^>]*aria-keyshortcuts="/ Control\\+K Meta\\+K"`));
+      expect(body, name).toMatch(new RegExp(`<a [^>]*href="/docs/search"[^>]*class="${name}"[^>]*aria-keyshortcuts="Control\\+K Meta\\+K"|<a [^>]*class="${name}"[^>]*href="/docs/search"[^>]*aria-keyshortcuts="Control\\+K Meta\\+K"`));
     }
     expect(body.match(/<a [^>]*data-search-trigger/g)).toHaveLength(2);
-    expect(body.slice(body.indexOf('class="docs-top stage"'), body.indexOf('</header>'))).not.toContain('<input');
+    const top = body.slice(body.indexOf('class="docs-top stage"'), body.indexOf('</header>'));
+    expect(top).not.toContain('<input');
+    // The shortcut hint renders only once hydrated: the server's top bar names no key.
+    expect(top).not.toContain('<kbd');
     expect(body).not.toMatch(/<form [^>]*action="\/docs\/search"/);
     expect(body).not.toContain('style=');
     expect(body).toContain('<details class="toc-mobile">');

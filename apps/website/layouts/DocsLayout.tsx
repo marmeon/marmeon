@@ -1,6 +1,6 @@
 import { Link, usePage, useRoute, type LayoutProps } from '@marmeon/react';
 import { DocsMenu, DocsSidebar } from '../modules/docs/components/DocsNav.tsx';
-import { SEARCH_KEYSHORTCUTS, useSearchShortcut } from '../modules/docs/components/search-shortcut.ts';
+import { SEARCH_KEYSHORTCUTS, useSearchShortcut, useShortcutHint } from '../modules/docs/components/search-shortcut.ts';
 import { SiteFooter } from '../modules/site/components/SiteFooter.tsx';
 import { VersionBadge } from '../modules/site/components/VersionBadge.tsx';
 import { Wordmark } from '../modules/site/components/Wordmark.tsx';
@@ -19,6 +19,7 @@ export function DocsLayout({ children }: LayoutProps) {
   const searchUrl = route('docs.search');
   const onSearchPage = url.split(/[?#]/)[0] === searchUrl;
 
+  const hint = useShortcutHint();
   useSearchShortcut();
 
   return (
@@ -37,7 +38,7 @@ export function DocsLayout({ children }: LayoutProps) {
             <Link route="docs.search" layer className="docs-search-box" data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS}>
               <SearchIcon size={16} />
               <span className="docs-search-placeholder">Search the docs</span>
-              <kbd aria-hidden="true">/</kbd>
+              {hint && <kbd aria-hidden="true">{hint}</kbd>}
             </Link>
           )}
           <nav aria-label="Site" className="docs-top-nav">

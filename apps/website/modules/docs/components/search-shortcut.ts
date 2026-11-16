@@ -1,10 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
-/** A key press that belongs to a field or an editor: `/` leaves it alone (a chord types nothing, so ⌘K does not). */
-const TYPING = 'input, textarea, select, [contenteditable]';
-
 /** For `aria-keyshortcuts` on the triggers. */
-export const SEARCH_KEYSHORTCUTS = '/ Control+K Meta+K';
+export const SEARCH_KEYSHORTCUTS = 'Control+K Meta+K';
 
 const SEARCH_FIELD = '#search-q';
 
@@ -19,22 +16,18 @@ function focusField(field: HTMLInputElement): void {
 }
 
 /**
- * `/` and ⌘K or Ctrl+K open the search through the trigger that is showing — the link that opens the layer, and without
- * JavaScript the search page. `/` leaves a field alone and ignores a modifier; the chord also works from inside a field. In the open
- * search layer, or on the search page, the chord focuses and selects the field instead; another open dialog keeps it. A held key opens
- * the layer once. A key that is not handled is not prevented.
+ * ⌘K or Ctrl+K opens the search by clicking the visible `[data-search-trigger]` link, also from inside a field. In the open
+ * search layer, or on the search page, the chord focuses and selects the field instead; another open dialog keeps ⌘K and
+ * Ctrl+K. A held key opens the layer once. A key that is not handled is not prevented.
  */
 export function useSearchShortcut(): void {
   useEffect(() => {
     const listen = (event: KeyboardEvent) => {
       const chord = (event.metaKey || event.ctrlKey) && !event.altKey && (event.key ?? '').toLowerCase() === 'k';
-      const slash = event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey; // no Shift check: `/` needs it on some layouts
-      if (!chord && !slash) return;
-      if (event.isComposing) return;
-      if (slash && event.target instanceof Element && event.target.closest(TYPING)) return;
+      if (!chord || event.isComposing) return;
 
       const open = document.querySelector('dialog[open]');
-      const field = chord ? (open ?? document).querySelector<HTMLInputElement>(SEARCH_FIELD) : null;
+      const field = (open ?? document).querySelector<HTMLInputElement>(SEARCH_FIELD);
       // No second layer behind an open one: without a field to focus, an open dialog keeps the key.
       const trigger = field || open ? undefined : visibleTrigger();
       if (!field && !trigger) return; // nothing would handle it: the browser keeps the key

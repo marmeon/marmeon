@@ -65,28 +65,14 @@ function press(key: string, init: KeyboardEventInit = {}, target: EventTarget = 
 
 describe('the search shortcut', () => {
   it('names its keys for aria-keyshortcuts', () => {
-    expect(SEARCH_KEYSHORTCUTS).toBe('/ Control+K Meta+K');
+    expect(SEARCH_KEYSHORTCUTS).toBe('Control+K Meta+K');
   });
 
-  it('clicks the visible trigger on "/" and prevents the default', () => {
+  it('does not open the search on "/": no click, not prevented', () => {
     trigger('a');
     const event = press('/');
-    expect(clicks).toEqual(['a']);
-    expect(event.defaultPrevented).toBe(true);
-  });
-
-  it('leaves "/" alone inside an input', () => {
-    trigger('a');
-    const input = field();
-    const event = press('/', {}, input);
     expect(clicks).toEqual([]);
     expect(event.defaultPrevented).toBe(false);
-  });
-
-  it('leaves "/" alone with Ctrl held', () => {
-    trigger('a');
-    press('/', { ctrlKey: true });
-    expect(clicks).toEqual([]);
   });
 
   it('clicks the trigger on Ctrl+K even inside an input', () => {
@@ -108,24 +94,6 @@ describe('the search shortcut', () => {
     const event = press('k', { ctrlKey: true, altKey: true });
     expect(clicks).toEqual([]);
     expect(event.defaultPrevented).toBe(false);
-  });
-
-  it('does nothing on Alt+/', () => {
-    trigger('a');
-    const event = press('/', { altKey: true });
-    expect(clicks).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
-  });
-
-  it('leaves "/" alone while a dialog is open, and inside a contenteditable', () => {
-    trigger('a');
-    const editor = document.createElement('div');
-    editor.setAttribute('contenteditable', 'true');
-    document.body.append(editor);
-    expect(press('/', {}, editor).defaultPrevented).toBe(false);
-    dialog();
-    expect(press('/').defaultPrevented).toBe(false);
-    expect(clicks).toEqual([]);
   });
 
   it('opens once for a held key: the repeats are swallowed without another click', () => {
@@ -181,7 +149,7 @@ describe('the search shortcut', () => {
   it('skips a hidden trigger for the visible one', () => {
     trigger('hidden', false);
     trigger('shown');
-    press('/');
+    press('k', { ctrlKey: true });
     expect(clicks).toEqual(['shown']);
   });
 
@@ -195,7 +163,7 @@ describe('the search shortcut', () => {
   it('stops listening when the component unmounts', async () => {
     trigger('a');
     await act(async () => root.render(null));
-    press('/');
+    press('k', { ctrlKey: true });
     expect(clicks).toEqual([]);
   });
 });

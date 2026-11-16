@@ -63,6 +63,8 @@ describe('the search (a server route)', () => {
     expect(body).not.toContain('<dialog');
     expect(body).toContain('<h1');
     expect(body).toContain('<button type="submit"');
+    // The note names the shortcut the layouts listen for: the chord, not a single key.
+    expect(body).toContain('Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> on any docs page to search.');
   });
 
   it('keeps the layer and the page answer of one URL apart in a shared cache: different ETags, Vary names the region', async () => {

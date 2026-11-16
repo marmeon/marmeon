@@ -85,7 +85,7 @@ export default function Search({ results }: PageProps<SearchController>) {
           </section>
         ))}
         <p className="search-note">
-          Results come from the server and work without JavaScript. Press <kbd>/</kbd> on any page to search.
+          Results come from the server and work without JavaScript. Press <kbd>⌘K</kbd> or <kbd>Ctrl K</kbd> on any docs page to search.
         </p>
       </div>
     </div>

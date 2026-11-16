@@ -281,7 +281,7 @@ describe('the shared chrome', () => {
     expect(body).toContain('<a class="skip-link" href="#content">');
     const header = body.slice(body.indexOf('<header class="site-header stage"'), body.indexOf('</header>'));
     expect(header).toMatch(/<nav aria-label="Main"[^>]*>.*href="\/docs".*<\/nav>/);
-    expect(header).toMatch(/<a [^>]*href="\/docs\/search"[^>]*data-search-trigger="true"[^>]*aria-keyshortcuts="\/ Control\+K Meta\+K"|<a [^>]*aria-keyshortcuts="\/ Control\+K Meta\+K"[^>]*data-search-trigger="true"[^>]*href="\/docs\/search"/);
+    expect(header).toMatch(/<a [^>]*href="\/docs\/search"[^>]*data-search-trigger="true"[^>]*aria-keyshortcuts="Control\+K Meta\+K"|<a [^>]*aria-keyshortcuts="Control\+K Meta\+K"[^>]*data-search-trigger="true"[^>]*href="\/docs\/search"/);
     expect(header).toMatch(/<a [^>]*href="https:\/\/github\.com\/marmeon\/marmeon"[^>]*>GitHub<\/a>/);
     expect(header).toMatch(/<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"[^>]*>Get started<\/a>|<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"[^>]*>Get started<\/a>/);
     expect(header).toContain('<details class="site-menu"');
