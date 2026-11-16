@@ -2,16 +2,9 @@ import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { PACKAGES_URL } from '../../links.ts';
-import type { PackageGroup } from '../../packages.ts';
-
-const PACKAGE_GROUPS: readonly { readonly group: PackageGroup; readonly title: string; readonly note?: string }[] = [
-  { group: 'app', title: 'In every new app' },
-  { group: 'add', title: 'Add when you need it' },
-  { group: 'tooling', title: 'Dev tools', note: "@marmeon/vite, @marmeon/testing and @marmeon/devtools are in every new app's dev dependencies; create-marmeon starts a new app." },
-];
 
 /** "N packages, one version": every package of the framework with a link to its page, in three groups, from the list the server hands over. */
-export function PackagesSection({ packages }: Pick<PageProps<ShowLandingController>, 'packages'>) {
+export function PackagesSection({ packages, packageGroups }: Pick<PageProps<ShowLandingController>, 'packages' | 'packageGroups'>) {
   return (
     <section className="packages landing-light" aria-labelledby="packages-title" id="packages">
       <div className="landing-inner">
@@ -23,7 +16,7 @@ export function PackagesSection({ packages }: Pick<PageProps<ShowLandingControll
           <p className="packages-intro">
             Released together and wired to each other. <Link href={PACKAGES_URL}>All packages</Link>
           </p>
-          {PACKAGE_GROUPS.map(({ group, title, note }) => {
+          {packageGroups.map(({ group, title, note }) => {
             const members = packages.filter((entry) => entry.group === group);
             return (
               <div key={group} className="package-group">

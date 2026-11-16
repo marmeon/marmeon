@@ -260,12 +260,12 @@
 /* The misspelt line, whole, and the compiler's answer: what the step catches. */
 .landing .chain-fail {
   flex: 1;
-  border: 1px solid #4a2326;
-  background: #150e10;
+  border: 1px solid var(--error-edge);
+  background: var(--error-bg);
 }
 
 .landing .chain-fail-title {
-  border-bottom: 1px solid #3a1d20;
+  border-bottom: 1px solid var(--error-rule);
   color: var(--error);
 }
 
@@ -291,7 +291,7 @@
 .landing .chain-error {
   margin: 0;
   padding: 4px 18px 18px;
-  color: #ffc7c0;
+  color: var(--error-fg);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1.6;

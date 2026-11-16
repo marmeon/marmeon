@@ -18,7 +18,7 @@ import { DESCRIPTIONS } from '../descriptions.ts';
 import { landingNodes } from '../structured-data.ts';
 
 /** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, the devtools and agents band, and the rest of the framework. */
-export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
+export default function Landing({ snippets, chain, packages, packageGroups, moduleFiles }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
       <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" nodes={(site) => landingNodes(site, DESCRIPTIONS.landing)} />
@@ -38,7 +38,7 @@ export default function Landing({ snippets, chain, packages, moduleFiles }: Page
           <IslandSection snippets={snippets} />
         </div>
       </div>
-      <PackagesSection packages={packages} />
+      <PackagesSection packages={packages} packageGroups={packageGroups} />
       <StartSection />
     </div>
   );

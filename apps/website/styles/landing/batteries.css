@@ -34,7 +34,7 @@
   gap: 10px;
   margin: 0;
   padding: 0;
-  color: #3a4146;
+  color: var(--ink-soft);
   font-size: 0.90625rem;
   list-style: none;
 }
@@ -71,7 +71,7 @@
 }
 
 .landing .battery:hover {
-  border-color: #b9b3a5;
+  border-color: var(--rail-strong);
 }
 
 @media (min-width: 640px) {
@@ -157,7 +157,7 @@
 .landing .file-tree {
   margin: 0;
   overflow: hidden;
-  border: 1px solid #2a343a;
+  border: 1px solid var(--control-dark);
   border-radius: var(--radius-md);
   background: var(--panel);
   color: var(--code-fg);

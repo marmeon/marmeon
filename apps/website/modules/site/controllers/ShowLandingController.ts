@@ -1,9 +1,9 @@
 import { Controller } from '@marmeon/http';
 import { MODULE_FILES } from '../module-files.ts';
-import { PACKAGES } from '../packages.ts';
+import { PACKAGE_GROUPS, PACKAGES } from '../packages.ts';
 import { SiteSnippets } from '../SiteSnippets.ts';
 
-/** `/`: the landing page, with its code already highlighted and the list of packages and the notes module's files (the page stays publicly cacheable). All stay on the server: the client bundle only gets them as props. */
+/** `/`: the landing page, with its code already highlighted and the list of packages (`packages`, grouped by `packageGroups`) and the notes module's files (the page stays publicly cacheable). All stay on the server: the client bundle only gets them as props. */
 export class ShowLandingController extends Controller {
   readonly #snippets: SiteSnippets;
 
@@ -13,6 +13,6 @@ export class ShowLandingController extends Controller {
   }
 
   handle() {
-    return this.view('site/Landing', { snippets: this.#snippets.all(), chain: this.#snippets.chain(), packages: PACKAGES, moduleFiles: MODULE_FILES });
+    return this.view('site/Landing', { snippets: this.#snippets.all(), chain: this.#snippets.chain(), packages: PACKAGES, packageGroups: PACKAGE_GROUPS, moduleFiles: MODULE_FILES });
   }
 }

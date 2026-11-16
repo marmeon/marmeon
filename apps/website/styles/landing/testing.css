@@ -81,7 +81,7 @@
 
 .landing .fake-list li {
   padding: 6px 10px;
-  border: 1px solid #d9d5cb;
+  border: 1px solid var(--rail-mid);
   border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink);

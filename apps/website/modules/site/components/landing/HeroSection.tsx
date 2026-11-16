@@ -6,6 +6,7 @@ import type { ShowLandingController } from '../../controllers/ShowLandingControl
 import { FAKES } from '../../fakes.ts';
 import { releaseNotesUrl } from '../../links.ts';
 import type { HighlightedSnippet } from '../../SiteSnippets.ts';
+import { CodeBlock } from '../CodeBlock.tsx';
 import { CopyButton } from '../CopyButton.tsx';
 import { StatsStrip } from './StatsStrip.tsx';
 
@@ -38,8 +39,9 @@ function HeroCard({ snippet, step, chain }: { snippet: HighlightedSnippet; step:
         <span className="hero-card-file">{snippet.file}</span>
         <span className="hero-card-tag">{chain.find((candidate) => candidate.id === step)?.title}</span>
       </figcaption>
-      {/* marmeon-check-ignore inner-html: `html` is the Shiki output of the server (modules/docs/highlight.ts), which escapes the code it highlights */}
-      <div className="hero-card-code" dangerouslySetInnerHTML={{ __html: snippet.html }} />
+      <div className="hero-card-code">
+        <CodeBlock html={snippet.html} copy={false} />
+      </div>
     </figure>
   );
 }
@@ -106,8 +108,9 @@ export function HeroSection({ snippets, chain, packages }: HeroProps) {
                   <path d="M12 7v6M12 16.5v.5" />
                 </svg>
                 <div>
-                  {/* marmeon-check-ignore inner-html: `mistake` is the Shiki output of the server (SiteSnippets), which escapes the code it highlights */}
-                  <div className="hero-error-line" dangerouslySetInnerHTML={{ __html: failing.mistake }} />
+                  <div className="hero-error-line">
+                    <CodeBlock html={failing.mistake} copy={false} />
+                  </div>
                   <p>{`error ${failing.error.code}: ${failing.error.message}`}</p>
                 </div>
               </div>

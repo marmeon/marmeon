@@ -36,7 +36,7 @@
   align-items: baseline;
   gap: 10px;
   margin: 0 0 14px;
-  color: #3a4146;
+  color: var(--ink-soft);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 500;
@@ -75,7 +75,7 @@
 }
 
 .landing .package-grid li:hover {
-  border-color: #b9b3a5;
+  border-color: var(--rail-strong);
 }
 
 .landing .package-grid a {

@@ -43,7 +43,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   comes before an example that only calls it. `scope` (`all`, `pages` or `sections`; any other value is `all`) narrows the answer:
   `pages` lists the pages whose title holds every word (at most 6, in the order of the docs, the record of changes last), `sections` the
   ranked hits (20), `all` both as "Pages" and "On a page" (each hit with its page and navigation section, and its excerpt). An empty
-  query lists "Where to start" (`components/start-pages.tsx`, the cards of the docs' start page). The search is a dark panel — centred
+  query lists "Where to start" (`modules/docs/components/start-pages.tsx`, the cards of the docs' start page). The search is a dark panel — centred
   on the page, and as a layer a palette near the top (the whole screen on a phone) — and works as a plain GET form without JavaScript: the scopes are radio buttons and the
   results plain links. Hydrated, the field is a combobox over the results (`aria-activedescendant`; ↑ ↓ Home End move, ↵ opens the active
   one like a click, Esc is the dialog's own). While the list is the previous query's (the field changes at once, the answer a pause later) ↵ opens nothing and the count says
@@ -77,14 +77,14 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   highlighted markup from the server.
   The batteries section (`components/landing/BatteriesSection.tsx`) is a bento grid of nine cards in plain HTML (it reads without JavaScript; the Modules card's copy button appears once hydrated), each with a sentence, an `Editor` and a `battery…` snippet (4 to 10 lines of a real file, a complete unit with balanced brackets,
   checked like the others), the package the code comes from (a name in `PACKAGES`, which `site.test.ts` checks) and its docs link; the "Modules" card also holds the folder of a module.
-  `components/landing/PackagesSection.tsx` lists every package in three groups ("Dev tools" notes that `@marmeon/vite`, `@marmeon/testing` and `@marmeon/devtools` are in every new app's dev dependencies, as `docs/packages.md` says) with a link to its docs page, from `modules/site/packages.ts` (`PACKAGES`); the count on the page is its length,
+  `components/landing/PackagesSection.tsx` lists every package in three groups ("Dev tools" notes that `@marmeon/vite`, `@marmeon/testing` and `@marmeon/devtools` are in every new app's dev dependencies, as `docs/packages.md` says) with a link to its docs page, from `modules/site/packages.ts` (`PACKAGES`, and `PACKAGE_GROUPS` with the group titles and the note, passed as the `packageGroups` prop so the note's package names stay out of the client bundle); the count on the page is its length,
   and `site.test.ts` compares its names with the `name` of every `packages/*/package.json`, so a new package without an entry turns the test red.
   `/islands/render-clock` is a real island the landing page loads (`ShowRenderClockController`, `views/islands/RenderClock.tsx`): public, no session or cookie, outside the sitemap, a 404 when visited directly. `CachePublicly` keeps its answer (recognised by the response header `x-marmeon-region: island`, which only the kernel sets) for `ISLAND_CACHE_MAX_AGE` (5 s, in `config/site.ts`, capped by `SITE_CACHE_MAX_AGE`) instead of the pages' 300 s. `components/landing/IslandSection.tsx` shows it under its own code, in a card next to the testing card on a white band (`<Island load="visible" pollMs={10_000}>`): without JavaScript, and before it scrolls into view, the page holds a fallback sentence and the code, and the snippets are checked against the two files.
 - **The landing's devtools section** is a copy of the devtools with invented data (`modules/site/devtools-sample.ts`, drawn by
   `components/landing/DevtoolsReplica.tsx`): its page, tab and column names are read from `packages/devtools` by
   `devtools-sample.test.ts`, so a rename there turns the website red. The figure holds no link. It sits on the dark band with the agents section, which counts its skills and MCP tools from `modules/site/agents.ts`; the colours of its windows are the stage tokens, which `contrast.test.ts` pairs. The landing ends with the final call (`StartSection`: the three commands, the installation guide, GitHub and three places to read next); the community links live in the footer.
 - **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): a stage hero with a search trigger and the terminal, the three first
-  pages (`components/start-pages.tsx`), the recipes, every section with its pages, and a block for coding agents
+  pages (`modules/docs/components/start-pages.tsx`), the recipes, every section with its pages, and a block for coding agents
   (`/llms.txt` and `/llms-full.txt` as plain links, a page as Markdown, the MCP tools).
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
@@ -155,7 +155,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `base.css` has the reset, headings, links, buttons, chips, the focus ring, the `.stage` ground and the helpers; `code.css`
   makes every code block a dark panel, with line numbers (a CSS counter) on captioned ones. The marble veins on the stage are
   static SVG files (`styles/stage/`) used as CSS backgrounds, because the policy allows no `style` attribute. `favicon.svg`
-  carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the pairs the pages use, in both themes.
+  carries its own dark variant. The legal pages (`styles/legal.css`) and the error page (the framework's `marmeon-error` markup, restyled in `chrome.css`) are reading surfaces in the site layout. No `.css` file but `tokens.css` declares a hex colour (shadows and faint edges in black or white alpha are not colours of the palette and stay as `rgb()`/`rgba()`), and no token is declared that nothing reads; `modules/site/contrast.test.ts` computes the WCAG contrast of the pairs the pages use, in both themes, and fails on a hex colour anywhere else.
 - **Headers:** `securityHeaders()` in `SiteServiceProvider`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`

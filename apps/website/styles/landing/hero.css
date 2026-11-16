@@ -307,11 +307,11 @@
   gap: 12px;
   margin: 14px 0 0 64px;
   padding: 12px 14px;
-  border: 1px solid #4a2326;
+  border: 1px solid var(--error-edge);
   border-radius: 12px;
-  background: #1d1214;
+  background: var(--error-bg-raised);
   box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.9);
-  color: #ffc7c0;
+  color: var(--error-fg);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1.6;

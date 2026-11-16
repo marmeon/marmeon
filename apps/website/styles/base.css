@@ -187,21 +187,7 @@ kbd {
 .button--ghost:hover {
   border-color: var(--control-dark-hover);
   background: transparent;
-  color: #ffffff;
-}
-
-.button--light {
-  padding: 0 20px;
-  border-color: var(--rail-light);
-  background: var(--paper);
-  color: var(--ink);
-  font-weight: 500;
-}
-
-.button--light:hover {
-  border-color: #b9b3a5;
-  background: var(--paper);
-  color: var(--ink);
+  color: var(--paper);
 }
 
 .button--secondary {
@@ -215,23 +201,6 @@ kbd {
 .button--secondary:hover {
   background: var(--bg-sunken);
   color: var(--fg);
-}
-
-.button--text {
-  padding: 0 6px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--accent);
-  font-weight: 400;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-}
-
-.button--text:hover {
-  background: transparent;
-  color: var(--accent-strong);
-  text-decoration-thickness: 2px;
 }
 
 .chip {

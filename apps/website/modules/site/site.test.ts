@@ -65,6 +65,10 @@ describe('the landing page', () => {
     for (const [step, name] of cards) {
       const title = CHAIN.find((candidate) => candidate.id === step)!.title;
       expect(hero, step).toContain(`<span class="hero-card-file">${SNIPPETS[name].file}</span><span class="hero-card-tag">${title}</span>`);
+      const figure = hero.slice(hero.indexOf(`<figure class="hero-card hero-card--${step}"`), hero.indexOf('</figure>', hero.indexOf(`hero-card--${step}"`)));
+      const line = SNIPPETS[name].code.split('\n').map((candidate) => candidate.trim()).sort((a, b) => b.length - a.length)[0]!;
+      expect(figure, step).toContain('<div class="hero-card-code"><div class="code-block">');
+      expect(textOf(figure), step).toContain(line);
     }
     const rail = hero.slice(hero.indexOf('<ol class="hero-rail"'), hero.indexOf('</ol>'));
     expect([...rail.matchAll(/<li class="([^"]*)"><span class="hero-rail-dot"><\/span>([^<]*)<\/li>/g)].map((match) => match[2])).toEqual(CHAIN.map((step) => step.title));
@@ -73,6 +77,7 @@ describe('the landing page', () => {
     expect(hero).not.toContain('copy-button');
     const props = CHAIN.find((step) => step.id === 'props')!;
     expect(hero).toMatch(/<div class="hero-error" role="note"/);
+    expect(hero.slice(hero.indexOf('class="hero-error"'))).toContain('<div class="hero-error-line"><div class="code-block">');
     expect(textOf(hero.slice(hero.indexOf('class="hero-error"')))).toContain(`${mistakeLine(props)}error ${props.error.code}: ${props.error.message}`);
     expect(hero).not.toMatch(/<h[2-6]/);
     expect(hero).not.toContain('role="tablist"');

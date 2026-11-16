@@ -734,7 +734,7 @@
   color: var(--accent);
 }
 
-/* Code block: a framed figure with the file name and the copy button in a bar above it; without a name the button sits in the corner. */
+/* Code block: a framed figure (a dark panel in both schemes) with the file name and the copy button in a bar above it; without a name the button sits in the corner. */
 .code-block {
   position: relative;
   min-width: 0;
@@ -761,9 +761,9 @@ figure.code {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-3);
-  background: var(--bg-raised);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-lg);
+  background: var(--code-bg);
 }
 
 .code > figcaption {
@@ -773,17 +773,35 @@ figure.code {
   gap: var(--space-3);
   min-height: 45px; /* the copy button's 44px plus the border */
   padding: 0 6px 0 var(--space-4);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--panel-line);
+  background: var(--panel-raised);
 }
 
 .code-caption {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--stage-muted);
   font-family: var(--font-mono);
   font-size: 0.78125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Code panels are dark in both schemes, so their copy button takes the fixed palette, not the page's. */
+figure.code .copy-button,
+.code-block .copy-button {
+  color: var(--stage-muted);
+}
+
+figure.code .copy-button:hover,
+.code-block .copy-button:hover {
+  background: var(--panel-edge);
+  color: var(--stage-fg);
+}
+
+figure.code .copy-button[data-copied],
+.code-block .copy-button[data-copied] {
+  color: var(--thread);
 }
 
 /* The frame is the figure's; the block inside it has no edge of its own. */
@@ -850,4 +868,47 @@ figure.code pre.code {
   color: var(--term-dim-text);
   font: inherit;
   white-space: pre-wrap;
+}
+
+/* The error page (a 404 has no route of its own; the framework's `marmeon-error` markup renders in the site layout): the reading
+   surface, a mono status label above an Inter Tight title. Its classes are zero-specificity in the framework's stylesheet. */
+.site .marmeon-error {
+  box-sizing: border-box;
+  max-width: 1280px;
+  min-height: 50vh;
+  margin: 0 auto;
+  padding: var(--space-9) clamp(20px, 4vw, 48px) var(--space-8);
+  color: var(--fg-body);
+  font-family: var(--font-text);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+
+.site .marmeon-error__status {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  opacity: 1;
+}
+
+.site .marmeon-error__title {
+  margin: var(--space-3) 0 var(--space-4);
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  line-height: 1;
+}
+
+.site .marmeon-error__exception {
+  max-width: var(--measure);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+  color: var(--fg-body);
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
 }

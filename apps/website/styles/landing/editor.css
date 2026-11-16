@@ -1,6 +1,5 @@
 /* The dark code window: its own syntax palette, file names in a title bar, a soft petrol shadow. */
 .editor {
-  --syn-text: var(--editor-syn-text);
   --syn-keyword: var(--editor-syn-keyword);
   --syn-type: var(--editor-syn-type);
   --syn-string: var(--editor-syn-string);

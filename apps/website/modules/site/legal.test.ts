@@ -29,6 +29,7 @@ describe.each([
     const response = await app.get(path, document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
     expect(response.body).toContain(`<h1>${title}</h1>`);
+    expect(response.body).toContain('<p class="legal-eyebrow">Legal</p>');
     expect(response.body).toContain(`>${title} — Marmeon</title>`);
     expect(response.body).toContain(text);
     expect(response.body).toContain('<article class="doc">');

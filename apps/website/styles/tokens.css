@@ -23,6 +23,10 @@
   --thread: #3cc4d4;
   --teal: #0a7a8a;
   --error: #ff8a7e;
+  --ink-soft: #3a4146;
+  --rail-faint: #ece9e2;
+  --rail-mid: #d9d5cb;
+  --rail-strong: #b9b3a5;
 
   --stage-deep: #080b0d;
   --stage-line: #1c2429;
@@ -43,12 +47,15 @@
   --sand-hover: #fff1cf;
   --teal-strong: #075f6b;
   --error-strong: #ff6b5e;
+  --error-fg: #ffc7c0;
+  --error-bg: #150e10;
+  --error-bg-raised: #1d1214;
+  --error-edge: #4a2326;
+  --error-rule: #3a1d20;
 
   --code-bg: #0f1417;
-  --code-line: #1f282d;
   --code-fg: #d5dadd;
   --code-gutter: #4f5a61;
-  --syn-text: #d5dadd;
   --syn-keyword: #3cc4d4;
   --syn-type: #9cc0f5;
   --syn-string: #e9cf96;
@@ -67,14 +74,10 @@
 
   --mark-plate-stage: #e8ecee;
   --mark-groove-stage: #0e1113;
-  --mark-plate: #0d1012;
-  --mark-groove: #ffffff;
 
   --editor-chrome: #181c1f;
   --editor-accent: #3cc4d4;
-  --editor-error: #f2a7a0;
   --editor-shadow: 0 24px 60px -24px rgba(11, 131, 148, 0.45);
-  --editor-syn-text: #e6e9eb;
   --editor-syn-keyword: #3cc4d4;
   --editor-syn-type: #8fb5f0;
   --editor-syn-string: #e8c37e;
@@ -93,7 +96,6 @@
   --bg: #f7f6f2;
   --bg-raised: #ffffff;
   --bg-sunken: #ebe8e0;
-  --bg-hover: #efece5;
   --fg: #14181b;
   --fg-body: #2a3035;
   --fg-2: #3a4146;
@@ -110,30 +112,15 @@
   --focus: #0a7a8a;
   --button-bg: #0a7a8a;
   --button-fg: #ffffff;
-  --button-hover-bg: #075f6b;
-  --button-hover-fg: #ffffff;
   --term-bg: #111416;
   --term-fg: #e6e9eb;
   --term-dim: #9aa3a9;
   --term-line: #262b2f;
-  --term-accent: #3cc4d4;
   --term-dim-text: #c3c9cd;
 
-  --note-fg: #2b4f8a;
-  --note-bg: #eef1f7;
-  --note-line: #bcc8dd;
-  --tip-fg: #1b5a4c;
-  --tip-bg: #edf4f0;
-  --tip-line: #b7d1c6;
-  --important-fg: #6e2a5a;
-  --important-bg: #f5edf2;
-  --important-line: #d9bccd;
   --warning-fg: #7a4a00;
   --warning-bg: #f8f1e3;
   --warning-line: #dcc28f;
-  --caution-fg: #9b2c1a;
-  --caution-bg: #f8ecea;
-  --caution-line: #e0b5ad;
 }
 
 /* Themed, dark: the same names from the dark palette (Stage, Panel, Rail dark, Thread). */
@@ -142,7 +129,6 @@
     --bg: #0b0f12;
     --bg-raised: #0f1417;
     --bg-sunken: #172026;
-    --bg-hover: #141b20;
     --fg: #e6e9eb;
     --fg-body: #c3c9cd;
     --fg-2: #b4bcc1;
@@ -159,46 +145,29 @@
     --focus: #3cc4d4;
     --button-bg: #3cc4d4;
     --button-fg: #0b0f12;
-    --button-hover-bg: #8adbe6;
-    --button-hover-fg: #0b0f12;
     --term-bg: #090b0c;
     --term-fg: #e6e9eb;
     --term-dim: #9aa3a9;
     --term-line: #1d2327;
-    --term-accent: #3cc4d4;
     --term-dim-text: #c3c9cd;
 
-    --note-fg: #9cb8e8;
-    --note-bg: #161d29;
-    --note-line: #2c3d5c;
-    --tip-fg: #7cc4ad;
-    --tip-bg: #15211d;
-    --tip-line: #2a4a40;
-    --important-fg: #d9a5c8;
-    --important-bg: #24171f;
-    --important-line: #4d3044;
     --warning-fg: #e3bf74;
     --warning-bg: #241e12;
     --warning-line: #54452a;
-    --caution-fg: #f0a093;
-    --caution-bg: #281715;
-    --caution-line: #5a302a;
   }
 }
 
-/* Type, space and radii: the design's scale, narrower below 640 px (display, section) and 900 px (page title). */
+/* Type, space and radii: the design's scale, narrower below 640 px (section) and 900 px (page title). */
 :root {
   --font-text: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-display: 'Inter Tight Variable', 'Inter Tight', 'Inter Variable', Inter, system-ui, sans-serif;
   --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --text-display: 5.25rem;
   --text-h1: 3.75rem;
   --text-section: 3.25rem;
   --text-h2: 1.875rem;
   --text-h3: 1.3125rem;
-  --text-lead: 1.3125rem;
   --text-body: 1.0625rem;
   --text-sm: 0.9375rem;
   --text-label: 0.6875rem;
@@ -216,7 +185,6 @@
   --space-7: 48px;
   --space-8: 64px;
   --space-9: 96px;
-  --space-10: 128px;
 
   --radius-1: 2px;
   --radius-2: 3px;
@@ -239,7 +207,6 @@
 
 @media (max-width: 640px) {
   :root {
-    --text-display: 2.875rem;
     --text-section: 2.125rem;
   }
 }

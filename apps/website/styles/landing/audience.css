@@ -6,7 +6,7 @@
 
 .landing .audience-frame {
   padding: clamp(64px, 8vw, 104px) clamp(20px, 3vw, 40px);
-  border-inline: 1px solid #ece9e2;
+  border-inline: 1px solid var(--rail-faint);
 }
 
 .landing .audience-frame .section-label {

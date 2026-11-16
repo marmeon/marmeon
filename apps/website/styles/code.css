@@ -60,22 +60,6 @@ pre.code[data-lang='text'] {
 }
 
 /* A captioned block (figure.code) shows line numbers: a CSS counter in a pseudo-element, so a copy never includes them. */
-/* chrome.css (imported later) frames the figure with the page's colours; `:is(figure)` outranks it without a second class. */
-figure.code:is(figure) {
-  border-color: var(--panel-line);
-  border-radius: var(--radius-lg);
-  background: var(--code-bg);
-}
-
-figure.code > figcaption {
-  background: var(--panel-raised);
-  border-bottom-color: var(--panel-line);
-}
-
-figure.code .code-caption {
-  color: var(--stage-muted);
-}
-
 figure.code pre.code {
   counter-reset: line;
   padding-left: 0;
