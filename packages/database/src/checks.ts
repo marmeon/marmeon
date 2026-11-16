@@ -2,7 +2,7 @@ import { relative } from 'node:path';
 import { Application, ConfigError, Redactor } from '@marmeon/core';
 import { printable } from '@marmeon/core/internal';
 import type { AppCheck, AppCheckContext, AppCheckResult, CheckProblem } from 'marmeon';
-import { packageStatus } from './commands/publish.ts';
+import { changedMessage, packageStatus } from './commands/publish.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
 /**
@@ -46,8 +46,9 @@ export class DbTypesCheck implements AppCheck {
 
 /**
  * Every package the app publishes from has all its migrations in the app: the answer of `marmeon publish --check`. A missing
- * one is `D6` with the command that writes it; a refusal of `publish` is an error with its reason. A declaration no package claims is a
- * warning. Reads files and imports the main entry of each direct dependency a declaration points into.
+ * one is `D6` with the command that writes it; a refusal of `publish` is an error with its reason. A migration that changed in
+ * the package since the app published it is `D27`, a warning. A declaration no package
+ * claims is a warning. Reads files and imports the main entry of each direct dependency a declaration points into.
  * See docs/check.md#the-app-checks.
  */
 export class PackageMigrationsCheck implements AppCheck {
@@ -62,10 +63,15 @@ export class PackageMigrationsCheck implements AppCheck {
 
   async handle(): Promise<AppCheckResult> {
     const problems: CheckProblem[] = [];
-    const { statuses, warnings } = await packageStatus(this.#app.root, this.#app.providers);
-    for (const warning of warnings) problems.push({ severity: 'warning', message: printable(warning), docs: 'docs/migrations.md#publishing-the-migrations-of-a-package' });
+    const { statuses, warnings, manifestError } = await packageStatus(this.#app.root, this.#app.providers);
+    const docs = 'docs/migrations.md#publishing-the-migrations-of-a-package';
+    for (const warning of warnings) problems.push({ severity: 'warning', message: printable(warning), docs });
+    // Without a readable record no migration can be compared: the check cannot say, so it does not pass.
+    if (manifestError !== undefined) problems.push({ severity: 'error', message: printable(manifestError), file: 'marmeon-stubs.json', docs });
     for (const status of statuses) {
       if (!status.used) continue;
+      // A warning: a migration the app ran never changes, but `pnpm up` has to be able to leave this state without stopping the app.
+      for (const drift of status.changed ?? []) problems.push({ severity: 'warning', code: 'D27', message: printable(changedMessage(status.package, drift)), file: drift.path, docs });
       if (status.state === 'lacks') {
         problems.push({
           severity: 'error',
