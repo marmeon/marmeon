@@ -65,12 +65,9 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--control-line', '--bg', 3],
   ['--accent-bright', '--bg', 3],
   ['--button-fg', '--button-bg', 4.5],
-  // The prose callouts and banners: their label and their text on their own light or dark panel; the devtools copy and the
-  // draft mark colour a status on the page ground.
-  ...CALLOUT_KINDS.flatMap((kind) => [
-    [`--${kind}-fg`, `--${kind}-bg`, 4.5] as const,
-    ['--fg-body', `--${kind}-bg`, 4.5] as const,
-  ]),
+  // The release-line banner is the one themed callout left: its text on its own tint. The devtools copy and the draft mark
+  // colour a status on the page ground.
+  ['--warning-fg', '--warning-bg', 4.5],
   ...['--tip-fg', '--accent-strong', '--warning-fg', '--caution-fg'].map((text) => [text, '--bg', 4.5] as const),
   // Fixed, on the stage.
   ...['--stage-fg', '--stage-soft', '--stage-muted', '--sand', '--thread'].map((text) => [text, '--stage', 4.5] as const),
@@ -83,13 +80,14 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['#ffffff', '--stage', 4.5],
   ['--paper', '--teal', 4.5],
   ['--paper', '--teal-strong', 4.5],
-  // Fixed, code panels and the dark callout panel (no stylesheet reads the panel yet; its pairs hold the values the docs
-  // article's callouts are rebuilt on).
+  // Fixed, code panels and the dark callout panel (the docs' callouts and the agent's call beside the table of contents).
   ...[...SYNTAX_ROLES.map((role) => `--syn-${role}`), '--code-fg'].map((text) => [text, '--code-bg', 4.5] as const),
-  ...[...CALLOUT_KINDS.map((kind) => `--panel-${kind}-fg`), '--panel-callout-fg'].map((text) => [text, '--panel-callout-bg', 4.5] as const),
+  ...[...CALLOUT_KINDS.map((kind) => `--panel-${kind}-fg`), '--panel-callout-fg', '--stage-fg-2', '--thread'].map((text) => [text, '--panel-callout-bg', 4.5] as const),
+  // The callout's inline code and the agent's call sit on the raised panel.
+  ...['--stage-fg-strong', '--thread'].map((text) => [text, '--panel-raised', 4.5] as const),
   // Fixed, the landing's light sections.
   ...['--ink', '--teal'].flatMap((text) => ['--stone', '--paper'].map((ground) => [text, ground, 4.5] as const)),
-  // The terminal and the editor, not yet rebuilt.
+  // The terminal and the editor.
   ['--term-fg', '--term-bg', 4.5],
   ['--term-dim', '--term-bg', 4.5],
   ['--term-accent', '--term-bg', 4.5],

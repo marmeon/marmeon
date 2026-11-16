@@ -3,17 +3,24 @@
   min-width: 0;
   max-width: var(--measure);
   color: var(--fg-body);
-  font-size: var(--text-body);
-  line-height: 1.7;
+  font-size: 1.03125rem;
+  line-height: 1.75;
 }
 
 .doc h1 {
-  margin: 0 0 18px;
+  margin: 12px 0 0;
   color: var(--fg);
+  font-family: var(--font-display);
   font-size: var(--text-h1);
-  font-weight: 580;
-  letter-spacing: -0.015em;
-  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  line-height: 1;
+}
+
+@media (max-width: 900px) {
+  .doc h1 {
+    font-size: 2.625rem;
+  }
 }
 
 .doc h2,
@@ -22,19 +29,22 @@
 .doc h5 {
   position: relative;
   color: var(--fg);
+  font-family: var(--font-display);
   font-weight: 600;
 }
 
 .doc h2 {
-  margin: 48px 0 12px;
+  margin: 56px 0 16px;
   font-size: var(--text-h2);
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
 .doc h3 {
-  margin: 36px 0 10px;
+  margin: 36px 0 12px;
   font-size: var(--text-h3);
-  line-height: 1.25;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .doc h4,
@@ -47,7 +57,14 @@
 .doc p,
 .doc ul,
 .doc ol {
-  margin: 0 0 18px;
+  margin: 0 0 20px;
+}
+
+/* The first paragraph of the text is the lead. */
+.doc .doc-body > p:first-child {
+  color: var(--fg-2);
+  font-size: 1.1875rem;
+  line-height: 1.65;
 }
 
 .doc ul,
@@ -64,12 +81,13 @@
 }
 
 .doc a {
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 
 .doc a:hover {
-  text-decoration-thickness: 2px;
+  text-decoration-color: currentColor;
 }
 
 /* The "#" before a heading: shown on hover and when focus is inside the heading. */
@@ -87,47 +105,127 @@
   opacity: 1;
 }
 
-.eyebrow {
-  margin: 0 0 10px;
+.doc-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 40px;
+}
+
+.doc-kicker ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.doc-kicker li + li::before {
+  margin-right: 8px;
+  content: '/';
+  color: var(--control-line);
+}
+
+.doc-kicker li a {
+  display: inline-block;
+  padding: 6px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.doc-kicker li a:hover {
+  color: var(--fg);
+}
+
+.doc-kicker li[aria-current='page'] {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.doc-action,
+.doc-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.doc-action:hover,
+.doc-source:hover {
+  border-color: var(--control-line);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.doc-eyebrow {
+  margin: 0;
+  color: var(--accent-strong);
   font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-size: 0.75rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.doc-kicker {
+.doc-packages {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 16px;
-  margin: 0 0 10px;
+  gap: var(--space-2);
+  margin: 24px 0 8px;
+  padding: 0;
+  list-style: none;
 }
 
-.doc-kicker .eyebrow {
+.doc-packages li {
   margin: 0;
-}
-
-.doc-source {
-  color: var(--muted);
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised);
+  color: var(--fg-2);
   font-family: var(--font-mono);
-  font-size: var(--text-label);
-  text-decoration: underline;
+  font-size: 0.75rem;
 }
 
-.doc-source:hover {
-  color: var(--fg);
+/* The text after the head is set off by a rule. */
+.doc .doc-body {
+  margin-top: 36px;
+  padding-top: 40px;
+  border-top: 1px solid var(--line);
+}
+
+.doc .doc-body > :is(h2, h3):first-child {
+  margin-top: 0;
 }
 
 .doc :not(pre) > code,
 .doc .file {
-  padding: 0.08em 0.34em;
-  border-radius: var(--radius-2);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-sunken);
   color: var(--fg);
   font-family: var(--font-mono);
-  font-size: 0.84em;
+  font-size: 0.86em;
   overflow-wrap: anywhere;
 }
 
@@ -160,47 +258,46 @@
   margin-bottom: 24px;
 }
 
-/* Callouts: a label with a glyph of its own shape per kind, so colour is never the only signal. */
+/* Callouts: dark panels in both schemes, the label in the kind's colour with a glyph of its own shape, so colour is never the only signal. */
 .doc .callout {
-  --callout-fg: var(--note-fg);
-  --callout-bg: var(--note-bg);
-  --callout-line: var(--note-line);
+  --callout-fg: var(--panel-note-fg);
   --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M0 0h12v12H0z'/%3E%3C/svg%3E");
-  margin: 0 0 28px;
-  padding: 14px 18px 16px;
-  border: 1px solid var(--callout-line);
-  border-radius: var(--radius-3);
-  background: var(--callout-bg);
-  color: var(--fg-body);
-  font-size: 0.94em;
-  line-height: 1.6;
+  margin: 24px 0 28px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--panel-callout-bg);
+  color: var(--panel-callout-fg);
+  color-scheme: dark;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.doc .callout a {
+  color: var(--thread);
+}
+
+.doc .callout :not(pre) > code {
+  background: var(--panel-raised);
+  color: var(--stage-fg-strong);
 }
 
 .doc .callout.tip {
-  --callout-fg: var(--tip-fg);
-  --callout-bg: var(--tip-bg);
-  --callout-line: var(--tip-line);
+  --callout-fg: var(--panel-tip-fg);
   --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 0l6 6-6 6-6-6z'/%3E%3C/svg%3E");
 }
 
 .doc .callout.important {
-  --callout-fg: var(--important-fg);
-  --callout-bg: var(--important-bg);
-  --callout-line: var(--important-line);
+  --callout-fg: var(--panel-important-fg);
   --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 0a6 6 0 1 0 0 12A6 6 0 1 0 6 0z'/%3E%3C/svg%3E");
 }
 
 .doc .callout.warning {
-  --callout-fg: var(--warning-fg);
-  --callout-bg: var(--warning-bg);
-  --callout-line: var(--warning-line);
+  --callout-fg: var(--panel-warning-fg);
   --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/svg%3E");
 }
 
 .doc .callout.caution {
-  --callout-fg: var(--caution-fg);
-  --callout-bg: var(--caution-bg);
-  --callout-line: var(--caution-line);
+  --callout-fg: var(--panel-caution-fg);
   --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3.5 0h5L12 3.5v5L8.5 12h-5L0 8.5v-5z'/%3E%3C/svg%3E");
 }
 
@@ -218,6 +315,7 @@
   gap: var(--space-2);
   color: var(--callout-fg);
   font-family: var(--font-mono);
+  margin-bottom: 6px;
   font-size: var(--text-label);
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -245,8 +343,8 @@
   width: 100%;
   min-width: 480px;
   border-collapse: collapse;
-  font-size: 1rem;
-  line-height: 1.5;
+  font-size: 0.90625rem;
+  line-height: 1.55;
 }
 
 .doc th {
@@ -254,9 +352,9 @@
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.71875rem;
+  font-size: var(--text-label);
   font-weight: 500;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-align: left;
   text-transform: uppercase;
 }
@@ -303,12 +401,12 @@
   }
 }
 
-/* Above a page of a release line: which version it documents, and where the newest one is. */
+/* Above a page of a release line: which version it documents, and where the newest one is. On the themed tokens, so it follows the scheme. */
 .line-banner {
   margin: 0 0 24px;
   padding: 10px 14px;
   border: 1px solid var(--warning-line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--warning-bg);
   color: var(--warning-fg);
   font-size: var(--text-label);

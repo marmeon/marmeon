@@ -12,15 +12,30 @@ function Entries({ entries }: { entries: readonly TocEntry[] }) {
   );
 }
 
-/** "On this page": the H2 and H3 of the page as anchors — the browser scrolls, no visit. The column beside the page. */
-export function Toc({ entries }: { entries: readonly TocEntry[] }) {
-  if (entries.length === 0) return null;
+/**
+ * "On this page": the H2 and H3 of the page as anchors — the browser scrolls, no visit. The column beside the page. A newest page
+ * (`slug`) adds how an agent reads it in the version it runs: the `docs_read` tool of the MCP server (`marmeon mcp`), which takes
+ * the slug. A page without headings still carries that block.
+ */
+export function Toc({ entries, slug }: { entries: readonly TocEntry[]; slug?: string }) {
+  if (entries.length === 0 && !slug) return null;
   return (
-    <aside className="toc" aria-labelledby="toc-title">
-      <p id="toc-title" className="toc-title">
-        On this page
-      </p>
-      <Entries entries={entries} />
+    <aside className="toc" aria-labelledby={entries.length > 0 ? 'toc-title' : undefined} aria-label={entries.length > 0 ? undefined : 'For your agent'}>
+      {entries.length > 0 && (
+        <>
+          <p id="toc-title" className="toc-title">
+            On this page
+          </p>
+          <Entries entries={entries} />
+        </>
+      )}
+      {slug && (
+        <div className="toc-agent">
+          <p className="toc-agent-title">For your agent</p>
+          <p>Your agent reads this page with the docs_read tool of marmeon mcp:</p>
+          <code>{`docs_read { "page": "${slug}" }`}</code>
+        </div>
+      )}
     </aside>
   );
 }

@@ -87,6 +87,19 @@ describe('a page of a release line', () => {
     expect(page.props.nav).toBeUndefined();
   });
 
+  it('numbers the section by the line’s own navigation, leads "Docs" to the line’s start, and shows no newest-only parts', async () => {
+    for (const [path, eyebrow] of [
+      ['/docs/0.9.x/routing', 'I · The Basics'],
+      ['/docs/0.9.x/retired-feature', 'II · Legacy'],
+    ] as const) {
+      const text = (await app.get(path, html).assertOk().assertServerRendered()).body.replace(/<!-- -->/g, '');
+      expect(text, path).toMatch(/<nav aria-label="Breadcrumb"><ol><li><a [^>]*href="\/docs\/0\.9\.x"[^>]*>Docs<\/a><\/li><li>[^<]+<\/li><li [^>]*aria-current="page"[^>]*>[^<]+<\/li><\/ol><\/nav>/);
+      expect(text, path).toContain(`<p class="doc-eyebrow">${eyebrow}</p>`);
+      expect(text, path).not.toContain('docs_read');
+      expect(text, path).not.toContain('doc-packages');
+    }
+  });
+
   it('serves a root file of the line as a page', async () => {
     expect((await withLines.get('/docs/0.9.x/upgrade.md').assertOk()).body).toBe('> Marmeon 0.9.0, the 0.9.x line. The newest documentation: http://localhost/docs\n\n# Upgrading\n\nChanges of the line.\n');
   });

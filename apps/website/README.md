@@ -90,7 +90,11 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `/docs/:page` (`DocBinding`).
 - **Pages** are a tree of elements, not HTML: links to other pages become `<Link prefetch>`, links to source files code text. A
   code block names its file with `title="…"` in its info string (```` ```ts title="modules/notes/routes.ts" ````): a caption
-  above the block.
+  above the block. A page starts with a breadcrumb, its section's numeral (`roman()`, the section's place in `docs.config.ts`) and the
+  packages it documents (`PACKAGES`, by `docs` slug, chosen in `ShowDocController` so the browser never imports the list). A newest
+  page also carries "For your agent" beside its table of contents: the `docs_read` call of the MCP server (`marmeon mcp`) for the page's
+  slug. A release-line page numbers its section by the line's own navigation, its breadcrumb leads to the line's start, and it has
+  neither packages nor the agent block.
 - **Markdown for tools:** every page is also served at `/docs/<slug>.md` (`text/markdown; charset=utf-8`, `Link: <…/docs/<slug>>; rel="canonical"`),
   and its HTML page names it with `<link rel="alternate" type="text/markdown">`. The route comes before `/docs/:page` and takes
   only `[a-z0-9-]+.md`; it answers from what the boot read, never from the file system. Links are rewritten where they would
@@ -103,7 +107,8 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   (`modules/docs/negotiate.ts`; naming only `text/*` or `*/*` is not enough, so a browser always gets HTML; a Visit with `x-marmeon` always gets
   the page object): the page's `.md` body, and for `/docs` the index of `/llms.txt`. Both variants carry `Vary: Accept` and have
   their own ETag, so a shared cache never serves one for the other.
-  Every docs page shows a "View as Markdown" link to its `.md` above the heading — a plain `<a>` (no `<Link>`, no JavaScript).
+  Every docs page shows a "View as Markdown" link to its `.md` above the heading — a plain `<a>` (no `<Link>`, no JavaScript) — and,
+  once hydrated, a "Copy page" button that fetches that `.md` and writes it to the clipboard (the server renders none).
 - **Head tags** (`modules/site/components/SiteHead.tsx`): every HTML page has `<meta name="description">`, `<link rel="canonical">` and
   Open Graph (`og:title`, `og:description`, `og:url`, `og:type`, `og:site_name`; no image). A docs page describes itself with whole
   sentences of its first paragraph, up to 160 characters (`modules/docs/description.ts`; when that gives under 110 characters and more

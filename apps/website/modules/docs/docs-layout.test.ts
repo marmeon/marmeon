@@ -1,6 +1,8 @@
 import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import docsConfig from '../../docs.config.ts';
+import { roman } from './roman.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
@@ -14,9 +16,11 @@ describe('the layout of a docs page (server-rendered)', () => {
     const response = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
     // React separates adjacent text nodes with comments.
     const body = response.body.replace(/<!-- -->/g, '');
-    const section = (title: string) => new RegExp(`<details class="nav-section"( open="")?><summary>${title}<`);
-    expect(section('The Basics').exec(body)?.[1]).toBe(' open=""');
-    expect(section('Frontend').exec(body)?.[1]).toBeUndefined();
+    const section = (title: string, numeral: string) => new RegExp(`<details class="nav-section"( open="")?><summary><span class="nav-number" aria-hidden="true">${numeral}</span>${title}<`);
+    expect(section('The Basics', 'V').exec(body)?.[1]).toBe(' open=""');
+    expect(section('Frontend', 'VI').exec(body)?.[1]).toBeUndefined();
+    // Every section's numeral is its place in docs.config.ts.
+    docsConfig.sections.forEach((group, index) => expect(body, group.title).toMatch(section(group.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), roman(index + 1))));
     expect(body).toContain('aria-current="page"');
     expect(body).toMatch(/<a [^>]*aria-current="page"[^>]*>Routing</);
     expect(body).toContain('Previous · Architecture Concepts');
@@ -35,6 +39,26 @@ describe('the layout of a docs page (server-rendered)', () => {
     expect(body).not.toContain('style=');
     expect(body).toContain('<details class="toc-mobile">');
     expect(body).toContain('<details class="docs-menu">');
+  });
+
+  it('names the page above its heading: a breadcrumb ending in the current page, the section as a numeral, and the package it documents as a chip', async () => {
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
+    const response = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
+    const body = response.body.replace(/<!-- -->/g, '');
+    expect(body).toMatch(/<nav aria-label="Breadcrumb"><ol><li><a [^>]*href="\/docs"[^>]*>Docs<\/a><\/li><li>The Basics<\/li><li [^>]*aria-current="page"[^>]*>Routing<\/li><\/ol><\/nav>/);
+    expect(body).toContain('<p class="doc-eyebrow">V · The Basics</p>');
+    expect(body).toMatch(/<ul class="doc-packages" aria-label="Packages"><li>@marmeon\/router<\/li><\/ul>/);
+    // The newest page tells an agent how to read it; the copy button needs JavaScript, so the server renders none.
+    expect(body).toContain('<code>docs_read { &quot;page&quot;: &quot;routing&quot; }</code>');
+    expect(body).toContain('the docs_read tool of marmeon mcp');
+    expect(body).not.toContain('Copy page');
+    expect(body).toContain('View as Markdown');
+  });
+
+  it('shows no package chip on a page that documents none', async () => {
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
+    const { body } = await ssr.get('/docs/context', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
+    expect(body).not.toContain('doc-packages');
   });
 
   it('renders the start page and the search without the section navigation — the search also without the top field', async () => {

@@ -8,7 +8,9 @@
 /* Frame: side navigation, page */
 .docs-frame {
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-columns: 290px minmax(0, 1fr);
+  max-width: 1440px;
+  margin-inline: auto;
 }
 
 .docs-frame--bare {
@@ -26,7 +28,7 @@
   box-sizing: border-box;
   height: calc(100vh - var(--docs-top));
   overflow-y: auto;
-  padding: var(--space-5) var(--space-4) var(--space-7) var(--space-6);
+  padding: 28px 18px 48px 24px;
   border-right: 1px solid var(--line);
   font-size: 0.96875rem;
 }
@@ -45,14 +47,38 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   min-height: 44px;
+  padding: 0 8px;
   list-style: none;
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.71875rem;
-  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--fg-2);
+}
+
+.nav-section > summary:hover {
+  color: var(--fg);
+}
+
+/* The section's numeral, in the serif italic. */
+.nav-number {
+  flex: none;
+  width: 26px;
+  color: var(--accent);
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.nav-sign {
+  margin-left: auto;
 }
 
 .nav-section > summary::-webkit-details-marker,
@@ -76,8 +102,8 @@ details[open] > summary .nav-sign::before {
 .nav-section ul {
   display: flex;
   flex-direction: column;
-  margin: 2px 0 var(--space-2);
-  padding: 0;
+  margin: 2px 0 12px;
+  padding: 0 0 0 36px;
   list-style: none;
 }
 
@@ -89,8 +115,9 @@ details[open] > summary .nav-sign::before {
   min-height: 44px;
   box-sizing: border-box;
   padding: 0 10px;
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   color: var(--fg-2);
+  font-size: 0.875rem;
 }
 
 .nav-item:hover {
@@ -108,12 +135,14 @@ details[open] > summary .nav-sign::before {
   text-decoration: none;
 }
 
+/* The current page's marker: a dot; the tint and the weight mark it besides colour. */
 .nav-item[aria-current='page']::before {
   content: '';
-  width: 8px;
-  height: 8px;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--accent);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
 .draft {
@@ -182,15 +211,15 @@ details[open] > summary .nav-sign::before {
 /* The page and its table of contents */
 .page.doc-page {
   display: grid;
-  grid-template-columns: minmax(0, var(--measure)) 13.75rem;
+  grid-template-columns: minmax(0, 780px) 270px;
   justify-content: center; /* a wide window splits the room left over on both sides */
   gap: 3.5rem;
   align-items: start;
-  padding: var(--space-7) 3.5rem 5rem;
+  padding: 40px 24px 96px 56px;
 }
 
 .doc-page .doc {
-  max-width: var(--measure);
+  max-width: 780px;
 }
 
 .toc {
@@ -202,10 +231,47 @@ details[open] > summary .nav-sign::before {
   padding-top: 6px;
 }
 
+/* The agent's call: a dark panel, the same on both schemes. */
+.toc-agent {
+  margin-top: var(--space-5);
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--panel-callout-bg);
+  color: var(--panel-callout-fg);
+}
+
+.toc-agent p {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--stage-fg-2);
+}
+
+.toc-agent .toc-agent-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--panel-note-fg);
+}
+
+.toc-agent code {
+  display: block;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--panel-raised);
+  color: var(--thread);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
 .toc-title {
   margin: 0 0 var(--space-3);
   font-family: var(--font-mono);
-  font-size: 0.71875rem;
+  font-size: var(--text-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
@@ -230,7 +296,9 @@ details[open] > summary .nav-sign::before {
 .toc a,
 .toc-mobile a {
   display: block;
+  margin-left: -1px;
   padding: 5px 0 5px 14px;
+  border-left: 2px solid transparent;
   color: var(--fg-2);
 }
 
@@ -269,23 +337,22 @@ details[open] > summary .nav-sign::before {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
   gap: var(--space-3);
-  margin-top: 3.5rem;
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--line-strong);
+  margin-top: 72px;
 }
 
 .pager a {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 14px 18px;
+  gap: 6px;
+  padding: 20px 22px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-3);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
   color: var(--fg);
 }
 
 .pager a:hover {
-  border-color: var(--fg);
+  border-color: var(--line-strong);
   text-decoration: none;
 }
 
@@ -295,21 +362,22 @@ details[open] > summary .nav-sign::before {
 
 .pager-label {
   font-family: var(--font-mono);
-  font-size: 0.71875rem;
+  font-size: var(--text-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .pager-title {
+  font-family: var(--font-display);
   font-size: 1.1875rem;
   font-weight: 600;
 }
 
-/* Narrower: the table of contents folds above the text */
-@media (max-width: 1100px) {
+/* Below 1280 px the table of contents folds above the text */
+@media (max-width: 1279px) {
   .page.doc-page {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 780px);
     padding-inline: var(--space-6);
   }
   .toc {
@@ -320,8 +388,8 @@ details[open] > summary .nav-sign::before {
   }
 }
 
-/* A phone: one column, the navigation behind the menu above the page */
-@media (max-width: 760px) {
+/* Below 1100 px the section navigation sits behind the menu above the page */
+@media (max-width: 1099px) {
   .docs-frame {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -331,6 +399,10 @@ details[open] > summary .nav-sign::before {
   .docs-menu {
     display: block;
   }
+}
+
+/* A phone: less room around the page */
+@media (max-width: 760px) {
   .page.doc-page {
     padding: var(--space-5) var(--space-4) 3.75rem;
   }
