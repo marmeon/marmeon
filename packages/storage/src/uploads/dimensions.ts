@@ -68,28 +68,37 @@ function png(b: Uint8Array): ImageDimensions | undefined {
 }
 
 /**
- * A GIF as a decoder shows it: the larger of the logical screen and the first frame on each side (a decoder takes the frame's size
- * when it is larger, always for GIF87a). The frame is found by walking the blocks after the header, within the bytes given;
- * a file with no image descriptor in them is `undefined`.
+ * A GIF's size for a limit: the larger of the logical screen and the right and bottom edge of every frame, on each side — a browser
+ * keeps the screen, but a decoder that reads all frames allocates each. The blocks are walked up to the trailer, and each step
+ * moves on at least one byte, so the walk is bounded by the bytes given. A file whose trailer is not within them is `undefined`:
+ * a later frame cannot be checked.
  */
 function gif(b: Uint8Array): ImageDimensions | undefined {
   if (b.length < 13 || !(ascii(b, 0, 'GIF87a') || ascii(b, 0, 'GIF89a'))) return undefined;
+  let width = u16le(b, 6);
+  let height = u16le(b, 8);
   let at = 13 + ((b[10]! & 0x80) !== 0 ? 3 * 2 ** ((b[10]! & 7) + 1) : 0);
-  for (let step = 0; step < MAX_STEPS && at < b.length; step++) {
+  const skipSubBlocks = () => {
+    while (at < b.length && b[at] !== 0) at += b[at]! + 1;
+    at++; // the zero-length block that ends them
+  };
+  while (at < b.length) {
     const kind = b[at]!;
+    if (kind === 0x3b) return size(width, height);
     if (kind === 0x2c) {
-      if (at + 9 > b.length) return undefined;
-      // The canvas a decoder allocates: the screen, or the first frame's right and bottom edge when that lies beyond it.
-      return size(Math.max(u16le(b, 6), u16le(b, at + 1) + u16le(b, at + 5)), Math.max(u16le(b, 8), u16le(b, at + 3) + u16le(b, at + 7)));
+      if (at + 10 > b.length) return undefined;
+      width = Math.max(width, u16le(b, at + 1) + u16le(b, at + 5));
+      height = Math.max(height, u16le(b, at + 3) + u16le(b, at + 7));
+      const packed = b[at + 9]!;
+      at += 10 + ((packed & 0x80) !== 0 ? 3 * 2 ** ((packed & 7) + 1) : 0) + 1; // the descriptor, its colour table, the code size byte
+      skipSubBlocks();
+    } else if (kind === 0x21) {
+      if (b[at + 1] === 0xf9 && b[at + 2] !== 4) return undefined; // a graphic control block is four bytes: anything else is damaged
+      at += 2; // the introducer and the label, then data sub-blocks
+      skipSubBlocks();
+    } else {
+      return undefined; // a byte no block starts with
     }
-    if (kind !== 0x21) return undefined; // the trailer, or a byte no block starts with
-    if (b[at + 1] === 0xf9 && b[at + 2] !== 4) return undefined; // a graphic control block is four bytes: anything else is damaged
-    at += 2; // the introducer and the label, then data sub-blocks up to a zero-length one
-    while (at < b.length && b[at] !== 0) {
-      if (++step >= MAX_STEPS) return undefined;
-      at += b[at]! + 1;
-    }
-    at++;
   }
   return undefined;
 }

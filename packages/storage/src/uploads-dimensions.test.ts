@@ -31,7 +31,7 @@ function jpeg(width: number, height: number, segments: number): Uint8Array {
 }
 const le16 = (n: number) => [n & 255, (n >> 8) & 255];
 /** A GIF whose logical screen is 1 × 1 and whose first frame states `width` × `height`: decoders show the frame. */
-const gif = (version: '87a' | '89a', width: number, height: number, at = [0, 0]) => bytes(text(`GIF${version}`), le16(1), le16(1), [0, 0, 0], [0x2c, ...le16(at[0]!), ...le16(at[1]!), ...le16(width), ...le16(height), 0], [0x3b]);
+const gif = (version: '87a' | '89a', width: number, height: number, at = [0, 0]) => bytes(text(`GIF${version}`), le16(1), le16(1), [0, 0, 0], [0x2c, ...le16(at[0]!), ...le16(at[1]!), ...le16(width), ...le16(height), 0, 2, 0], [0x3b]);
 /** A JPEG whose frame says `width` × `height` and whose Exif segment, after the frame, names `orientation`. */
 function turnedJpeg(width: number, height: number, orientation: number): Uint8Array {
   const tiff = [...text('MM'), ...be16(42), ...be32(8), ...be16(1), ...be16(0x0112), ...be16(3), ...be32(1), ...be16(orientation), 0, 0, ...be32(0)];
@@ -147,6 +147,15 @@ describe('upload() with dimensions: the header decides before any code decodes t
     expect(await refused(await submit('/animated', await send('/animated', gif(version, 20_000, 20_000))))).toEqual(['The image may have at most 1000000 pixels.']);
     expect(ran).toEqual([]);
     expect((await submit('/animated', await send('/animated', gif(version, 10, 10)))).status).toBe(200);
+  });
+
+  it('a GIF whose first frame is 1 × 1 and whose second is 2000 × 2000 is refused: a decoder that reads every frame allocates it', async () => {
+    const { send, submit } = await boot();
+    ran.length = 0;
+    const frame = (width: number) => [0x2c, 0, 0, 0, 0, ...le16(width), ...le16(width), 0, 2, 3, 1, 2, 3, 0];
+    const file = bytes(text('GIF89a'), le16(1), le16(1), [0, 0, 0], frame(1), frame(2000), [0x3b]);
+    expect(await refused(await submit('/animated', await send('/animated', file)))).toEqual(['The image may have at most 1000000 pixels.']);
+    expect(ran).toEqual([]);
   });
 
   it('a GIF with a 1 × 1 first frame placed at 20000, 20000 is refused: the canvas reaches its far edge', async () => {

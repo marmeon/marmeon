@@ -478,14 +478,14 @@ states one size and decodes its tiles. Until the rule can read the coded image, 
 `dimensions`.
 
 The size comes from the file's header, and nothing decodes the file. It is the size a browser shows. A turn that the file's EXIF
-(JPEG, PNG, WebP) names is applied, so a JPEG stored 10 × 200 with the orientation 6 counts as 200 × 10. For a GIF it is the canvas:
-the logical screen, or the right and bottom edge of the first frame when that lies beyond it. For an extended WebP it is the larger of the canvas and the
-coded image or first animation frame on each side. An animated GIF or WebP counts by that size, not by the pixels of all its frames. A job that decodes the file later sets the pixel limit of its own decoder as well.
+(JPEG, PNG, WebP) names is applied, so a JPEG stored 10 × 200 with the orientation 6 counts as 200 × 10. For a GIF it is the
+larger of the logical screen and the right and bottom edge of any frame, on each side. For an extended WebP it is the larger of the canvas and the
+coded image or first animation frame on each side. An animated WebP counts by that size, not by the pixels of all its frames. A job that decodes the file later sets the pixel limit of its own decoder as well.
 
 A file is refused when its size cannot be read, with the message `marmeon.validation.upload.unreadable`. That covers a JPEG whose
 frame header or start of scan lies past the first 256 KB, a PNG whose metadata cannot be followed in the first 256 KB, and a WebP
-whose EXIF chunk lies behind the image data past the first 256 KB (typical for a large WebP with EXIF). It covers a GIF with no frame
-in the first 256 KB, an EXIF block that cannot be read, and a file that was not read on this request. The messages for a size over a
+whose EXIF chunk lies behind the image data past the first 256 KB (typical for a large WebP with EXIF). It covers a GIF whose end (its trailer) lies past the
+first 256 KB, an EXIF block that cannot be read, and a file that was not read on this request. The messages for a size over a
 limit are `marmeon.validation.upload.width`, `.height` and `.pixels`.
 
 ## Queries

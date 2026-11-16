@@ -145,8 +145,8 @@ await this.#users.update(user.id, { avatar_path: path, avatar_width: size?.width
 
 `dimensions()` of a [`TemporaryUpload`](storage.md#uploads) reads the header of a PNG, JPEG, GIF, WebP or AVIF, without a decoder, and
 turns the size the way a browser shows it (an EXIF orientation of a JPEG, PNG or WebP, a rotation of an AVIF). It returns `undefined`
-for a file that is no image or whose header is cut off or damaged. For a GIF it is the canvas: the logical screen, or the right and
-bottom edge of the first frame when that lies beyond it. An EXIF block that cannot be read, a JPEG whose scan starts past the first
+for a file that is no image or whose header is cut off or damaged. For a GIF it is the larger of the logical screen and the right and
+bottom edge of any frame, and `undefined` when the end of the file lies past the first 256 KB. An EXIF block that cannot be read, a JPEG whose scan starts past the first
 256 KB, and a WebP whose EXIF chunk lies behind its image data past the first 256 KB give `undefined` too. The size of an AVIF is the one its container states: it is good for reserving space, not for a limit,
 because a decoder need not follow it, and an animated AVIF gives `undefined`. Call it before `store()`, which moves the file; after it, `dimensions()` throws. A page with a stored size
 passes it on as an `ImageSource`; without one, give `<Image>` a frame of fixed size and `object-fit` so the picture does not move

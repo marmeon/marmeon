@@ -12,7 +12,7 @@ const bytes = (...parts: (number[] | Uint8Array)[]) => Uint8Array.from(parts.fla
 const png = (width: number, height: number) => bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], be32(13), text('IHDR'), be32(width), be32(height), [8, 6, 0, 0, 0]);
 /** A GIF whose logical screen is `width` × `height`; its first frame is `frame` (the screen's size when not given), behind `before` blocks. */
 const gif = (width: number, height: number, { frame = [width, height], at = [0, 0], version = '89a', before = [] as number[][] } = {}) =>
-  bytes(text(`GIF${version}`), le16(width), le16(height), [0, 0, 0], ...before, [0x2c, ...le16(at[0]!), ...le16(at[1]!), ...le16(frame[0]!), ...le16(frame[1]!), 0], [0x3b]);
+  bytes(text(`GIF${version}`), le16(width), le16(height), [0, 0, 0], ...before, [0x2c, ...le16(at[0]!), ...le16(at[1]!), ...le16(frame[0]!), ...le16(frame[1]!), 0, 2, 0], [0x3b]);
 
 function webp(kind: 'VP8 ' | 'VP8L' | 'VP8X', width: number, height: number): Uint8Array {
   let body: number[];
@@ -86,14 +86,26 @@ describe('imageDimensions()', () => {
     expect(imageDimensions(gif(10, 10, { before: [[0x21, 0xf9, 4, 0, 0, 0, 0, 0]] }), 'image/gif')).toEqual({ width: 10, height: 10 });
   });
 
+  it('GIF: every frame counts, not only the first — a later frame larger than the screen is the size', () => {
+    const frame = (x: number, y: number, width: number, height: number, packed = 0, table: number[] = []) => [0x2c, ...le16(x), ...le16(y), ...le16(width), ...le16(height), packed, ...table, 2, 3, 1, 2, 3, 0];
+    const file = (...parts: number[][]) => bytes(text('GIF89a'), le16(1), le16(1), [0, 0, 0], ...parts, [0x3b]);
+    expect(imageDimensions(file(frame(0, 0, 1, 1), frame(0, 0, 2000, 2000)), 'image/gif')).toEqual({ width: 2000, height: 2000 });
+    expect(imageDimensions(file(frame(0, 0, 1, 1), [0x21, 0xf9, 4, 0, 0, 0, 0, 0], frame(5, 7, 100, 3, 0x80, Array.from({ length: 6 }, () => 0))), 'image/gif')).toEqual({ width: 105, height: 10 });
+    expect(imageDimensions(file(frame(0, 0, 1, 1)), 'image/gif')).toEqual({ width: 1, height: 1 });
+    // The trailer lies past the bytes read: a later frame cannot be checked.
+    const whole = file(frame(0, 0, 1, 1), frame(0, 0, 2000, 2000));
+    expect(imageDimensions(whole.subarray(0, whole.length - 1), 'image/gif')).toBeUndefined();
+    expect(imageDimensions(whole.subarray(0, whole.length - 5), 'image/gif')).toBeUndefined();
+  });
+
   it('GIF: blocks before the first frame are walked past — a colour table, an extension with sub-blocks', () => {
-    const table = bytes(text('GIF89a'), le16(10), le16(10), [0x81, 0, 0], Array.from({ length: 12 }, () => 0), [0x21, 0xf9, 4, 0, 0, 0, 0, 0], [0x21, 0xff, 3, 1, 2, 3, 2, 9, 9, 0], [0x2c, 0, 0, 0, 0, ...le16(5000), ...le16(6000), 0], [0x3b]);
+    const table = bytes(text('GIF89a'), le16(10), le16(10), [0x81, 0, 0], Array.from({ length: 12 }, () => 0), [0x21, 0xf9, 4, 0, 0, 0, 0, 0], [0x21, 0xff, 3, 1, 2, 3, 2, 9, 9, 0], [0x2c, 0, 0, 0, 0, ...le16(5000), ...le16(6000), 0, 2, 0], [0x3b]);
     expect(imageDimensions(table, 'image/gif')).toEqual({ width: 5000, height: 6000 });
   });
 
-  it('GIF: no image descriptor in the bytes read — a header alone, a trailer first, a block cut off — is undefined', () => {
+  it('GIF: a header alone, a block cut off, or no trailer in the bytes read is undefined; a trailer with no frame is the screen', () => {
     expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0]), 'image/gif')).toBeUndefined();
-    expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x3b]), 'image/gif')).toBeUndefined();
+    expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x3b]), 'image/gif')).toEqual({ width: 10, height: 10 });
     expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x21, 0xf9, 200, 1, 2]), 'image/gif')).toBeUndefined();
     expect(imageDimensions(bytes(text('GIF89a'), le16(10), le16(10), [0, 0, 0, 0x2c, 0, 0, 0, 0, 5]), 'image/gif')).toBeUndefined();
   });
@@ -155,13 +167,10 @@ describe('imageDimensions()', () => {
     expect(imageDimensions(bytes(base, free(1100)), 'image/avif')).toBeUndefined();
   });
 
-  it('JPEG and GIF: a walk that reaches its cap of blocks is undefined, not a guess', () => {
+  it('JPEG: a walk that reaches its cap of segments is undefined, not a guess', () => {
     const segment = [0xff, 0xe2, ...be16(2)];
     expect(imageDimensions(jpeg(800, 600, Array.from({ length: 10 }, () => segment)), 'image/jpeg')).toEqual({ width: 800, height: 600 });
     expect(imageDimensions(jpeg(800, 600, Array.from({ length: 1100 }, () => segment)), 'image/jpeg')).toBeUndefined();
-    const extension = [0x21, 0xfe, 0];
-    expect(imageDimensions(gif(10, 10, { before: Array.from({ length: 10 }, () => extension) }), 'image/gif')).toEqual({ width: 10, height: 10 });
-    expect(imageDimensions(gif(10, 10, { before: Array.from({ length: 1100 }, () => extension) }), 'image/gif')).toBeUndefined();
   });
 
   it.each(['VP8 ', 'VP8L', 'VP8X'] as const)('reads WebP of kind %s', (kind) => {
