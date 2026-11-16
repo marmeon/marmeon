@@ -117,6 +117,7 @@ export declare class TestApp {
     readonly application: Application;
     get container(): Container;
     get mail(): MailFake;
+    get http(): HttpClientFake;
     get queue(): QueueFake;
     get notifications(): NotificationFake;
     get storage(): StorageFake;
@@ -188,6 +189,7 @@ export interface TestAppOptions {
     database?: 'refresh' | 'isolated';
     seed?: boolean;
     mail?: 'fake' | 'real';
+    http?: 'fake' | 'real';
     queue?: 'fake' | 'real';
     notifications?: 'fake' | 'real';
     storage?: 'fake' | 'real';

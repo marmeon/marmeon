@@ -11,6 +11,7 @@ default, as soon as the app has the package:
 | `app.mail` | The `Mailer`. Records mails instead of sending them. | `mail: 'real'` |
 | `app.queue` | The `Queue`. Records jobs, and `work()` runs them. | `queue: 'real'` |
 | `app.notifications` | `Notifications`. Records notifications, and `deliver()` delivers them. | `notifications: 'real'` |
+| `app.http` | The `HttpClient`. Answers outgoing requests from replies you register, and refuses private addresses as the real client does. | `http: 'real'` |
 | `app.storage` | `Storage`. Every disk lives in memory. | `storage: 'real'` |
 | `app.events` | Nothing. Records every event; listeners still run unless you hold them back. | `events: 'real'`, the default |
 | `app.broadcast` | Nothing. Records every live hint, which still reaches the streams. Needs `@marmeon/live`. | always in place |
@@ -22,8 +23,8 @@ A getter whose package the app lacks, or whose fake the test turned off, says so
 app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: 'real' })).
 ```
 
-A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, storage and schedule fakes (`MailFake`,
-`QueueFake`, `NotificationFake`, `StorageFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
+A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, storage, HTTP client and schedule fakes (`MailFake`,
+`QueueFake`, `NotificationFake`, `StorageFake`, `HttpClientFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
 variable with them: `import type { QueueFake } from '@marmeon/queue/testing'`. The same holds for `BroadcastTester` and `LiveStreamReader` (`@marmeon/live/testing`) and for `DevtoolsTester` (`import type { DevtoolsTester } from '@marmeon/devtools/testing'`). A `*Tester` drives or reads the real
 service: `ScheduleTester`, `BroadcastTester` and `DevtoolsTester`. `createTestApp()` makes every fake: a test does not construct
 `MailFake` itself, its constructor is not part of the API.
@@ -81,6 +82,45 @@ fails with `The fake mailer failed this send.`; `times` fails that many sends in
 the retries and the failed jobs, is tested with `mail: 'real'` and `queue: 'real'` and a `MailTransport` of the test's own that
 throws, bound with `override: (c) => c.instance(MailTransport, transport)`. The tests of the web app's
 `modules/auth/queued-mails.test.ts` show the pattern.
+
+## Outgoing requests
+
+The fake of `@marmeon/fetch` opens no connection. You tell it what a server answers, and it records what the app sent:
+
+```ts title="modules/hooks/ping.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+
+it('pings the address of the hook, and refuses the metadata address with no reply called', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const editor = await app.factory(UserFactory).create();
+  app.http.respond(/.*/, () => new Response('ok'));
+  await app.actingAs(editor).post('/hooks/ping', { json: { url: 'https://hooks.example.com/in' } }).assertOk();
+  const [request] = app.http.requests;
+  expect(await request!.clone().json()).toEqual({ ping: true });
+
+  await app.actingAs(editor).post('/hooks/ping', { json: { url: 'http://169.254.169.254/latest/meta-data' }, headers: { accept: 'application/json' } }).assertUnprocessable();
+  app.http.assertSentCount(1);
+});
+```
+
+A request nobody answered throws `FetchError('network')` that names the request (`no fake response for GET https://… — add
+app.http.respond(…)`), so a test never reaches the network. The fake judges the address before it looks for a reply, with the rules and
+the `FETCH_ALLOWED_ADDRESSES` of the real client: an IP address, `localhost` and a host mapped with `dns()` are refused when they are not
+public, and a host nobody mapped counts as public. A redirect is followed as in production, and each hop is judged and answered on its own.
+
+| Method | Effect |
+| --- | --- |
+| `respond(match, reply)` | Answers the requests `match` matches: an address as text (written as `fetch` writes it), a pattern for it or a function of the `Request`. `reply` is a `Response`, read once and copied for every request (its body must end, and your own `Response` stays unread), or a function that returns a new one or a promise of one: a body that streams belongs in the function, `(request) => new Response(stream, …)`. The latest reply that matches wins. |
+| `dns(host, addresses)` | Makes `host` stand for `addresses`, as the resolver would; an empty list means the host does not resolve (`network`). |
+| `failNext(reason, times)` | Fails the next requests that pass the address policy with a `FetchError` of `reason` (default `network`, `times` default 1). |
+| `requests` | The requests that passed the address policy, in order, each with its body: `await request.clone().text()`. A refused request is not among them. |
+| `assertSent(match)`, `assertSentCount(n)`, `assertNothingSent()` | Pass when a request matches, exactly `n` were sent, or none was. |
+
+A text that is no address in `respond()` or `assertSent()`, a `dns()` key that is not a bare host name or IP address (a port, user, path, query or fragment is refused), and a `failNext()` with another reason or
+a `times` that is not a whole number of 1 or more throw a `TypeError`. The [HTTP client](http-client.md#testing) page shows the client.
 
 ## Queue
 

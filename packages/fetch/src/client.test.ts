@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpClient } from './client.ts';
+import { HttpClient, type FetchOptions } from './client.ts';
 import { DirectTransport } from './direct.ts';
 import { FetchError } from './errors.ts';
 import type { FetchTransport, TransportRequest, TransportResponse } from './transport.ts';
@@ -244,7 +244,7 @@ describe('HttpClient — limits', () => {
       response.writeHead(200);
       response.write('partial');
     });
-    const response = await direct().fetch(`http://127.0.0.1:${target.port}/`, { timeout: 300 });
+    const response = await direct().fetch(`http://127.0.0.1:${target.port}/`, { timeout: { milliseconds: 300 } });
     expect(response.status).toBe(200);
     const error = await failure(response.text());
     expect(error.reason).toBe('timeout');
@@ -252,7 +252,7 @@ describe('HttpClient — limits', () => {
 
   it('times out before the headers', async () => {
     const target = await listen(() => {});
-    const error = await failure(direct().fetch(`http://127.0.0.1:${target.port}/`, { timeout: 200 }));
+    const error = await failure(direct().fetch(`http://127.0.0.1:${target.port}/`, { timeout: { milliseconds: 200 } }));
     expect(error.reason).toBe('timeout');
   });
 
@@ -281,9 +281,10 @@ describe('HttpClient — limits', () => {
 });
 
 describe('HttpClient — requests it refuses before sending', () => {
-  it('throws a TypeError for credentials in the address', async () => {
+  it('refuses credentials in the address as data, with a FetchError and nothing sent', async () => {
     const { transport, seen } = scripted();
-    await expect(new HttpClient({ transport }).fetch('http://user:pass@example.test/')).rejects.toThrow(TypeError);
+    const error = await failure(new HttpClient({ transport }).fetch('http://user:pass@example.test/'));
+    expect(error.reason).toBe('refused');
     expect(seen).toHaveLength(0);
   });
 
@@ -411,19 +412,37 @@ describe('HttpClient — a response without a body', () => {
 describe('HttpClient — a transport that ignores its signal', () => {
   const stalled = (): FetchTransport => ({ send: () => new Promise<TransportResponse>(() => {}) });
 
+  it('arms the deadline in milliseconds: a number is seconds, an object has its parts', async () => {
+    const answering: FetchTransport = { send: async () => ({ status: 200, headers: new Headers(), body: new ReadableStream<Uint8Array>({ start: (controller) => controller.close() }) }) };
+    const armed = async (timeout: FetchOptions['timeout']) => {
+      const timers = vi.spyOn(globalThis, 'setTimeout');
+      try {
+        await (await new HttpClient({ transport: answering }).fetch('http://example.test/', { timeout })).text();
+        return timers.mock.calls.map((call) => call[1]);
+      } finally {
+        timers.mockRestore();
+      }
+    };
+    expect(await armed(0.1)).toEqual([100]);
+    expect(await armed(5)).toEqual([5000]);
+    expect(await armed({ minutes: 1 })).toEqual([60_000]);
+    expect(await armed({ seconds: 1, milliseconds: 500 })).toEqual([1500]);
+    expect(await armed(undefined)).toEqual([15_000]);
+  });
+
   it('times out while the transport sends', async () => {
-    expect((await failure(new HttpClient({ transport: stalled() }).fetch('http://example.test/', { timeout: 100 }))).reason).toBe('timeout');
+    expect((await failure(new HttpClient({ transport: stalled() }).fetch('http://example.test/', { timeout: { milliseconds: 100 } }))).reason).toBe('timeout');
   });
 
   it('times out while the body is read, and the redirect body is cancelled', async () => {
     const never = new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) });
     const transport: FetchTransport = { send: async () => ({ status: 200, headers: new Headers(), body: never }) };
-    const response = await new HttpClient({ transport }).fetch('http://example.test/', { timeout: 100 });
+    const response = await new HttpClient({ transport }).fetch('http://example.test/', { timeout: { milliseconds: 100 } });
     expect((await failure(response.text())).reason).toBe('timeout');
 
     const hung = new ReadableStream<Uint8Array>({ cancel: () => new Promise(() => {}) });
     const redirecting: FetchTransport = { send: async () => ({ status: 302, headers: new Headers({ location: '/x' }), body: hung }) };
-    expect((await failure(new HttpClient({ transport: redirecting }).fetch('http://example.test/', { timeout: 100 }))).reason).toBe('timeout');
+    expect((await failure(new HttpClient({ transport: redirecting }).fetch('http://example.test/', { timeout: { milliseconds: 100 } }))).reason).toBe('timeout');
   });
 
   it("the caller's abort ends the wait too", async () => {
@@ -447,7 +466,7 @@ describe('HttpClient — requests it cannot send', () => {
 
   it('throws a TypeError for a timeout a timer cannot hold', async () => {
     const client = new HttpClient({ transport: scripted().transport });
-    await expect(client.fetch('http://example.test/', { timeout: 2_147_483_648 })).rejects.toThrow(TypeError);
+    await expect(client.fetch('http://example.test/', { timeout: { milliseconds: 2_147_483_648 } })).rejects.toThrow(TypeError);
   });
 
   it('starts no timer for a signal that is none', async () => {
@@ -515,7 +534,7 @@ describe('HttpClient — the signal wins', () => {
           setTimeout(() => resolve({ status: 200, headers: new Headers(), body: new ReadableStream({ cancel: () => cancelled() }) }), 200);
         }),
     };
-    expect((await failure(new HttpClient({ transport }).fetch('http://example.test/', { timeout: 50 }))).reason).toBe('timeout');
+    expect((await failure(new HttpClient({ transport }).fetch('http://example.test/', { timeout: { milliseconds: 50 } }))).reason).toBe('timeout');
     await closed;
   });
 

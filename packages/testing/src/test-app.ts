@@ -40,6 +40,7 @@ import { isIP } from 'node:net';
 import { stripVTControlCharacters } from 'node:util';
 import type { ActingAsGuard, ActingAsProofs } from '@marmeon/auth/testing';
 import type { AuthUser } from '@marmeon/auth';
+import type { HttpClientFake } from '@marmeon/fetch/testing';
 import type { MailFake } from '@marmeon/mail/testing';
 import type { NotificationFake } from '@marmeon/notifications/testing';
 import type { BroadcastTester, LiveStreamReader } from '@marmeon/live/testing';
@@ -82,6 +83,12 @@ export interface TestAppOptions {
    * the configured transport.
    */
   mail?: 'fake' | 'real';
+  /**
+   * Outgoing requests are answered by a fake, never sent (default `'fake'`): the `HttpClient` is an `HttpClientFake`, available as
+   * `app.http` — `app.http.respond('https://hooks.example.com/pay', new Response('ok'))`. It judges addresses as the real client does.
+   * `'real'` keeps the configured transport. Needs @marmeon/fetch.
+   */
+  http?: 'fake' | 'real';
   /**
    * Jobs are recorded, not queued (default `'fake'`): the `Queue` is a `QueueFake`, available as `app.queue` —
    * `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`, and `await app.queue.work()` runs them for real in the
@@ -175,6 +182,8 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   const database = await importDatabase();
   const mail = options.mail === 'real' ? undefined : await importMail();
   let mailFake: MailFake | undefined;
+  const fetch = options.http === 'real' ? undefined : await importFetch();
+  let httpFake: HttpClientFake | undefined;
   const queue = options.queue === 'real' ? undefined : await importQueue();
   let queueFake: QueueFake | undefined;
   const notifications = options.notifications === 'real' ? undefined : await importNotifications();
@@ -223,6 +232,10 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       if (mail && container.has(mail.Mailer)) {
         mailFake = new mail.MailFake(container.make(mail.MailConfig).from, container.make(Application));
         container.instance(mail.Mailer, mailFake);
+      }
+      if (fetch && container.has(fetch.HttpClient)) {
+        httpFake = new fetch.HttpClientFake(container.make(fetch.FetchConfig).allowedAddresses);
+        container.instance(fetch.HttpClient, httpFake);
       }
       if (queue && container.has(queue.Queue)) {
         queueFake = new queue.QueueFake(container);
@@ -281,6 +294,7 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
     schedule: scheduler && application.container.has(scheduler.Scheduler) ? new scheduler.ScheduleTester(application.container.make(scheduler.Scheduler), clock) : undefined,
     database,
     mail: mailFake,
+    http: httpFake,
     queue: queueFake,
     notifications: notificationFake,
     storage: storageFake,
@@ -392,6 +406,8 @@ interface Shared {
   readonly database: DatabaseModule | undefined;
   /** The recording mailer, unless the app has no mail or the test chose `mail: 'real'`. */
   readonly mail: MailFake | undefined;
+  /** The fake client for outgoing requests, unless the app has no @marmeon/fetch or the test chose `http: 'real'`. */
+  readonly http: HttpClientFake | undefined;
   /** The recording queue, unless the app has no queue or the test chose `queue: 'real'`. */
   readonly queue: QueueFake | undefined;
   /** The recording notifications, unless the app has none or the test chose `notifications: 'real'`. */
@@ -468,6 +484,15 @@ async function importDatabase(): Promise<DatabaseModule | undefined> {
 async function importMail(): Promise<(typeof import('@marmeon/mail') & typeof import('@marmeon/mail/testing')) | undefined> {
   try {
     return { ...(await import('@marmeon/mail')), ...(await import('@marmeon/mail/testing')) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** @marmeon/fetch is an optional peer, like the session. */
+async function importFetch(): Promise<(typeof import('@marmeon/fetch') & typeof import('@marmeon/fetch/testing')) | undefined> {
+  try {
+    return { ...(await import('@marmeon/fetch')), ...(await import('@marmeon/fetch/testing')) };
   } catch {
     return undefined;
   }
@@ -691,6 +716,15 @@ export class TestApp {
   get mail(): MailFake {
     if (!this.#shared.mail) throw new Error("app.mail needs @marmeon/mail in the app (and not createTestApp(…, { mail: 'real' })).");
     return this.#shared.mail;
+  }
+
+  /**
+   * The outgoing requests the app made — answered by replies you register, never sent:
+   * `app.http.respond('https://hooks.example.com/pay', new Response('ok'))`, then `app.http.assertSent(…)`. Needs @marmeon/fetch in the app.
+   */
+  get http(): HttpClientFake {
+    if (!this.#shared.http) throw new Error("app.http needs @marmeon/fetch in the app (and not createTestApp(…, { http: 'real' })).");
+    return this.#shared.http;
   }
 
   /**

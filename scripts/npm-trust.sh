@@ -16,6 +16,7 @@ packages=(
   @marmeon/database
   @marmeon/devtools
   @marmeon/encryption
+  @marmeon/fetch
   @marmeon/http
   @marmeon/i18n
   @marmeon/live

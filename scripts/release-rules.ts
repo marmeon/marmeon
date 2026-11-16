@@ -231,6 +231,24 @@ export function parseReleaseBase(text: string): { version: string; commit: strin
 }
 
 /**
+ * The packages the last release preparation published, one name per line. A package that is not listed is new: its changelog may be
+ * a heading only until the preparation writes its first section. Tracked data, so a shallow clone or one without tags reads the same.
+ */
+export const RELEASED_PACKAGES = '.github/released-packages';
+
+export function formatReleasedPackages(names: readonly string[]): string {
+  return `${[...new Set(names)].sort().join('\n')}\n`;
+}
+
+/** `undefined` when the text is not what `formatReleasedPackages` makes. */
+export function parseReleasedPackages(text: string): ReadonlySet<string> | undefined {
+  const names = text.split('\n');
+  if (names.pop() !== '' || names.length === 0 || !names.every((name) => /^(?:@marmeon\/)?[a-z][a-z0-9-]*$/.test(name))) return undefined;
+  const set = new Set(names);
+  return set.size === names.length && formatReleasedPackages(names) === text ? set : undefined;
+}
+
+/**
  * What only the release preparation writes: the changelogs (`:(glob)`: in a plain pathspec `*` also matches `/`, so a nested
  * `CHANGELOG.md`, a template's, would count as a release) and the release base.
  */
@@ -246,6 +264,7 @@ export function isReleaseFile(path: string): boolean {
     /^packages\/[^/]+\/(?:package\.json|CHANGELOG\.md)$/.test(path) ||
     path === 'UPGRADING.md' ||
     path === RELEASE_BASE ||
+    path === RELEASED_PACKAGES ||
     path === 'scripts/check-release.ts'
   );
 }
@@ -295,9 +314,12 @@ export function formatChangelog(changelog: Changelog): string {
   return changelog.title + changelog.sections.map((section) => `## ${section.version}${section.ending}${section.body}`).join('');
 }
 
-/** The trimmed body of `## <version>` — the same in every published package's changelog; throws naming the packages that differ. */
-export function releaseSection(repository: string, version: string): string {
-  const bodies = frameworkPackages(repository).map((pkg) => {
+/**
+ * The trimmed body of `## <version>` — the same in every published package's changelog; throws naming the packages that differ.
+ * `unreleased`: names of packages new since the last release, whose changelog is a heading only until the preparation writes it.
+ */
+export function releaseSection(repository: string, version: string, unreleased: ReadonlySet<string> = new Set()): string {
+  const bodies = frameworkPackages(repository).filter((pkg) => !unreleased.has(pkg.name)).map((pkg) => {
     const file = join(pkg.dir, 'CHANGELOG.md');
     const section = existsSync(file) ? parseChangelog(readFileSync(file, 'utf8')).sections.find((candidate) => candidate.version === version) : undefined;
     return { name: pkg.name, body: section?.body.trim() };

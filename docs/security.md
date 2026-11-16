@@ -534,6 +534,14 @@ process, so limit connections at the proxy as well. The [real-time updates](real
 sign-in whenever it opens, and ending an account's sign-ins (a new password, `AccountSessions`, an ended sign-in) closes its open
 streams at once; a stream also closes after `LIVE_MAX_STREAM_SECONDS` (15 minutes) and is checked again.
 
+## Requests your server sends
+
+An address that a user or an editor enters, a webhook URL or an avatar, decides where your server connects. Send it with
+`HttpClient` of `@marmeon/fetch` and not with a bare `fetch()`: the client refuses loopback, private and link-local addresses (the
+cloud metadata address included), for a name too, checks every redirect and limits time and size. No environment allows a private
+range by itself; `FETCH_ALLOWED_ADDRESSES` lists the ranges you reach on purpose. The check that counts runs when the request is
+sent, not when the form is validated. The [HTTP client](http-client.md) page explains it.
+
 ## Logs and recordings
 
 The log masks the values of keys that look like secrets, such as `password`, `token`, `cookie` or `authorization`, in nested
@@ -578,6 +586,8 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   with them. The `auth.*` limiters sit on the starter kit's routes; put the matching `throttle('auth.…')` on your own route
   ([what the package decides](authentication.md#what-the-package-decides)). The registration is the app's: its answer for a taken address,
   its mail limits and its pruning of unconfirmed accounts are the starter kit's code, or yours.
+- A request to an address from a user or an editor goes through `HttpClient`, not a bare `fetch()`
+  ([requests your server sends](#requests-your-server-sends)).
 - No `sql.raw()` or `sql.lit()` with a value from a request: `marmeon check` reports each one that is not a literal
   ([raw SQL](check.md#raw-sql)).
 - No `dangerouslySetInnerHTML` or `innerHTML` with a value from a request: show it as text. `marmeon check` reports each one

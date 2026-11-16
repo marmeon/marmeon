@@ -1,6 +1,6 @@
 import { Application, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers, withCode } from '@marmeon/core/internal';
-import { parseRange } from './addresses.ts';
+import { allowedRanges } from './allowed.ts';
 import { HttpClient } from './client.ts';
 import { BUILT_IN_FETCH_DRIVERS, FetchConfig } from './config.ts';
 import { DirectTransport } from './direct.ts';
@@ -15,18 +15,6 @@ declare module '@marmeon/core' {
      */
     readonly fetchDrivers?: Readonly<Record<string, FetchDriverFactory>>;
   }
-}
-
-/** The ranges `FETCH_ALLOWED_ADDRESSES` names; an entry that is not a range stops the start. */
-function allowedRanges(config: FetchConfig): readonly string[] {
-  for (const entry of config.allowedAddresses) {
-    try {
-      parseRange(entry);
-    } catch (error) {
-      throw new FetchSetupError(withCode('S9', `FETCH_ALLOWED_ADDRESSES has an entry that is not an address range. ${(error as Error).message}`));
-    }
-  }
-  return config.allowedAddresses;
 }
 
 /**
@@ -45,7 +33,7 @@ export class FetchServiceProvider implements ServiceProvider {
       this.#transport = config.driver === 'direct' ? new DirectTransport() : this.#custom(config, c);
       return this.#transport;
     });
-    container.singleton(HttpClient, (c) => new HttpClient({ transport: c.make(FetchTransport), allow: allowedRanges(config) }));
+    container.singleton(HttpClient, (c) => new HttpClient({ transport: c.make(FetchTransport), allow: allowedRanges(config.allowedAddresses) }));
   }
 
   #factories(container: Resolver): ReadonlyMap<string, FetchDriverFactory> {
@@ -69,7 +57,10 @@ export class FetchServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     // A bad range, a name nobody brought, a built-in name or a name twice, or a factory that fails stops the start here, not at the first request.
+    // Checked whatever the `HttpClient` is bound to: a test app that swaps it for a fake starts under the same rules.
+    allowedRanges(app.container.make(FetchConfig).allowedAddresses);
     this.#factories(app.container);
+    app.container.make(FetchTransport);
     app.container.make(HttpClient);
   }
 

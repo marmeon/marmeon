@@ -1,13 +1,13 @@
 {
   "name": "@marmeon/fetch",
   "version": "1.1.0",
-  "private": true,
-  "description": "The address policy and the pinning transport for outgoing HTTP requests of Marmeon apps: refuse addresses that are not public, connect only to the checked ones.",
+  "description": "Outgoing HTTP requests for Marmeon apps that refuse addresses that are not public, with redirects, limits and a fake for tests.",
   "keywords": [
     "marmeon",
     "http",
     "ssrf"
   ],
+  "homepage": "https://marmeon.com/docs/http-client",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -27,6 +27,11 @@
       "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@marmeon/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "publishConfig": {
@@ -36,6 +41,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
       }
     }
   },

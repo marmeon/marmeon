@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { durationToMilliseconds, type Duration } from '@marmeon/core';
 import { isPublic, parseAddress, parseRange, type AddressRange } from './addresses.ts';
 import { FetchError } from './errors.ts';
 import type { FetchTransport } from './transport.ts';
@@ -18,15 +19,15 @@ type BodyOptions =
 /**
  * What `HttpClient.fetch` accepts besides the address. A header that frames or routes the request (`content-length`,
  * `transfer-encoding`, `connection`, `upgrade`, `te`, `trailer`, `keep-alive`, `expect`, `host`, `proxy-*`) is the transport's to
- * set, so passing one is a `TypeError`. On a redirect to another origin only `accept`, `accept-language` and `user-agent` are
+ * set, so passing one is a `TypeError`. An address with a user name or a password is refused (`FetchError`, `refused`), as is a redirect to one. On a redirect to another origin only `accept`, `accept-language` and `user-agent` are
  * sent on (an API key or a token never follows), and a redirect to another origin that would send the body again (any redirect that keeps the method, such as 307, 308, or a 301/302 of a PUT or DELETE) is refused.
  */
 export type FetchOptions = BodyOptions & {
   /** Default `GET`. */
   readonly method?: string;
   readonly headers?: Headers | Readonly<Record<string, string>>;
-  /** In milliseconds, for the whole request: every redirect and the reading of the body. Default 15000, at most 2147483647. */
-  readonly timeout?: number;
+  /** For the whole request: every redirect and the reading of the body. A number is seconds. Default 15 seconds, at most 2147483647 milliseconds. */
+  readonly timeout?: Duration;
   /** The largest response body, in bytes. Default 5 MiB. `fetch()` itself throws `too-large` when the declared `content-length` is above it; a body that grows past it fails when it is read. */
   readonly maxResponseBytes?: number;
   /** `follow` (default) follows redirects up to `maxRedirects`, `manual` returns the redirect, `error` throws when the response redirects. */
@@ -67,11 +68,10 @@ function positive(name: string, value: number | undefined, fallback: number, int
   return value;
 }
 
-/** Checks the scheme and the credentials of an address; the one the caller passes gets a `TypeError` for credentials, as `fetch` does. */
-function checkUrl(url: URL, requested: boolean): void {
+/** Checks the scheme and the credentials of an address, the one passed in and every redirect target: an address is data, so a refusal is a `FetchError`. */
+function checkUrl(url: URL): void {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new FetchError('refused', 'Only http and https addresses can be fetched.');
   if (url.username !== '' || url.password !== '') {
-    if (requested) throw new TypeError('The address carries a user name or a password. Send credentials in a header instead.');
     throw new FetchError('refused', 'The address carries a user name or a password. Send credentials in a header instead.');
   }
 }
@@ -109,6 +109,7 @@ export class HttpClient {
   readonly #text: readonly string[];
   readonly #allow: readonly AddressRange[];
 
+  /** @internal The `FetchServiceProvider` makes the client the container hands out; `HttpClientFake` extends it. */
   constructor(options: HttpClientOptions) {
     this.#transport = options.transport;
     this.#text = Object.freeze([...(options.allow ?? [])]);
@@ -142,8 +143,8 @@ export class HttpClient {
    */
   async fetch(input: string | URL, options: FetchOptions = {}): Promise<Response> {
     let url = new URL(input);
-    checkUrl(url, true);
-    const timeout = positive('timeout', options.timeout, DEFAULT_TIMEOUT, false, MAX_TIMER);
+    checkUrl(url);
+    const timeout = positive('timeout', options.timeout === undefined ? undefined : durationToMilliseconds(options.timeout), DEFAULT_TIMEOUT, false, MAX_TIMER);
     const maxBytes = positive('maxResponseBytes', options.maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, true);
     const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
     if (!Number.isInteger(maxRedirects) || maxRedirects < 0) throw new TypeError('maxRedirects must be a whole number of 0 or more.');
@@ -239,7 +240,7 @@ export class HttpClient {
         } catch (error) {
           throw new FetchError('network', 'The server redirected to an address that is not valid.', { cause: error });
         }
-        checkUrl(next, false);
+        checkUrl(next);
         if (url.protocol === 'https:' && next.protocol === 'http:') throw new FetchError('refused', 'A redirect from https to http is refused.');
         const { status } = response;
         if (status === 303 ? method !== 'GET' && method !== 'HEAD' : (status === 301 || status === 302) && method === 'POST') {

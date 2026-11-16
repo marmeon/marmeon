@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages, type FrameworkPackage } from './packages.ts';
 import { trustScript, TRUST_SCRIPT, ENVIRONMENT } from './npm-trust.ts';
-import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseVersion, RELEASE_CONFIG, releaseConfigCurrent, releaseOf, releaseSection, upgradesFrom } from './release-rules.ts';
+import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseReleasedPackages, parseVersion, RELEASE_CONFIG, RELEASED_PACKAGES, releaseConfigCurrent, releaseOf, releaseSection, upgradesFrom } from './release-rules.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -218,10 +218,25 @@ export function checkVersion(_repository: string, packages: readonly FrameworkPa
   return problems;
 }
 
-/** 2 · the changelogs: every published package has one, its top section is the version, and from the release after {@link CHANGESETS_UNTIL} on the section is the same everywhere. */
-export function checkChangelogs(repository: string, packages: readonly FrameworkPackage[]): string[] {
+/**
+ * The packages the last preparation did not publish (`.github/released-packages`): their changelog may be a heading only until
+ * `pnpm release:prepare` writes the first section. A missing or malformed record names nobody, so the exception never opens by a guess.
+ */
+export function packagesNewSinceLastRelease(repository: string, packages: readonly FrameworkPackage[]): ReadonlySet<string> {
+  const file = join(repository, RELEASED_PACKAGES);
+  const released = existsSync(file) ? parseReleasedPackages(readFileSync(file, 'utf8')) : undefined;
+  return released === undefined ? new Set() : new Set(packages.map((pkg) => pkg.name).filter((name) => !released.has(name)));
+}
+
+/**
+ * 2 · the changelogs: every published package has one, its top section is the version, and from the release after {@link CHANGESETS_UNTIL} on the section is the same everywhere.
+ * A package the last preparation did not publish may have the heading only; the preparation writes its first section. `newPackages` is what the record says by default.
+ */
+export function checkChangelogs(repository: string, packages: readonly FrameworkPackage[], newPackages?: ReadonlySet<string>): string[] {
   const problems: string[] = [];
   const version = packages[0]?.manifest.version;
+  let fresh = newPackages;
+  const waiting = new Set<string>();
   for (const pkg of packages) {
     const file = join(pkg.dir, 'CHANGELOG.md');
     const where = `${pkg.name}: packages/${pkg.short}/CHANGELOG.md`;
@@ -231,14 +246,18 @@ export function checkChangelogs(repository: string, packages: readonly Framework
     }
     try {
       const top = parseChangelog(readFileSync(file, 'utf8')).sections[0]?.version;
-      if (top !== pkg.manifest.version) problems.push(`${where}: its first section is ${top === undefined ? 'missing' : `"## ${top}"`}, but the package is at ${pkg.manifest.version} — pnpm release:prepare writes it`);
+      if (top === undefined && (fresh ??= packagesNewSinceLastRelease(repository, packages)).has(pkg.name)) {
+        waiting.add(pkg.name);
+      } else if (top !== pkg.manifest.version) {
+        problems.push(`${where}: its first section is ${top === undefined ? 'missing' : `"## ${top}"`}, but the package is at ${pkg.manifest.version} — pnpm release:prepare writes it`);
+      }
     } catch (error) {
       problems.push(`${where}: ${(error as Error).message}`);
     }
   }
   if (problems.length === 0 && version !== undefined && parseVersion(version) && compareVersions(version, CHANGESETS_UNTIL) > 0) {
     try {
-      releaseSection(repository, version);
+      releaseSection(repository, version, waiting);
     } catch (error) {
       problems.push((error as Error).message);
     }

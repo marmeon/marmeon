@@ -37,6 +37,9 @@
       "path": "../mail"
     },
     {
+      "path": "../fetch"
+    },
+    {
       "path": "../queue"
     },
     {
