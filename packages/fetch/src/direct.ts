@@ -138,6 +138,10 @@ export async function send(request: DirectRequest, options: DirectOptions): Prom
       if (lower !== 'host' && lower !== 'accept-encoding') headers[lower] = value;
     }
     headers['accept-encoding'] = 'identity';
+    // Node frames a body itself only for methods that usually carry one; a DELETE, GET or OPTIONS body would go out unframed.
+    if (request.body !== undefined && headers['content-length'] === undefined && headers['transfer-encoding'] === undefined) {
+      headers['content-length'] = String(Buffer.byteLength(request.body));
+    }
     const requestOptions: HttpsRequestOptions = {
       host,
       port: url.port === '' ? undefined : Number(url.port),

@@ -290,6 +290,23 @@ describe('direct — a request that cannot be sent', () => {
     expect(raw.map((entry) => entry.toLowerCase())).toContain('__proto__');
   });
 
+  it.each(['DELETE', 'GET', 'OPTIONS', 'POST'])('sends the body of a %s request framed, so the server reads it whole', async (method) => {
+    const received: string[] = [];
+    const target = await listen((request, response) => {
+      let body = '';
+      request.setEncoding('utf8').on('data', (chunk: string) => (body += chunk));
+      request.on('end', () => {
+        received.push(`${request.method} ${body}`);
+        response.end('ok');
+      });
+    });
+    const response = await send({ url: new URL(`http://127.0.0.1:${target.port}/`), method, body: 'päyload' }, { allow: LOOPBACK });
+    expect(response.status).toBe(200);
+    await response.body.cancel();
+    expect(received).toEqual([`${method} päyload`]);
+    expect(target.requests()).toBe(1);
+  });
+
   it('refuses a scheme other than http and https', async () => {
     expect((await refusal(send({ url: new URL('ftp://127.0.0.1/') }, { allow: LOOPBACK }))).reason).toBe('refused');
     expect((await refusal(send({ url: new URL('file:///etc/hosts') }, { allow: LOOPBACK }))).reason).toBe('refused');
