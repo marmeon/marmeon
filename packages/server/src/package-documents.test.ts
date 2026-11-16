@@ -42,6 +42,13 @@ async function appWith(options: KernelOptions = {}, renderer: Partial<DocumentRe
 const html = { accept: 'text/html' };
 const visit = (version?: string, entry?: string) => ({ [PAGE_HEADER]: PROTOCOL_VERSION, ...(version ? { 'x-marmeon-version': version } : {}), ...(entry ? { 'x-marmeon-entry': entry } : {}) });
 
+/** The document with its per-session epoch fixed, so it compares whole. */
+const withoutEpoch = (html: string) => html.replace(/"epoch":"[^"]+"/, '"epoch":"E"');
+
+/** The document of the test renderer around the page object `page` and the markup `app`. */
+const documentOf = (page: string, app: string) =>
+  `<!doctype html>\n<html lang="en">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">${page}</script>\n</head>\n  <body><div id="app">${app}</div></body>\n</html>`;
+
 describe('a package entry in the kernel', () => {
   it("renders each view in its own document: the package's page in the package's, the app's in the app's", async () => {
     const app = await appWith();
@@ -50,7 +57,7 @@ describe('a package entry in the kernel', () => {
     expect(status).toContain('src="/assets/pkg-status-a.js"');
     const home = await (await app.request('/', { headers: html })).text();
     expect(home).toContain('<p>app</p>');
-    expect(home).not.toContain('pkg-status-a.js');
+    expect(withoutEpoch(home)).toBe(documentOf('{"component":"demo/Home","props":{},"url":"/","version":"app-v","epoch":"E"}', '<p>app</p>'));
     // A namespace without an entry has no document.
     expect((await app.request('/help', { headers: html })).status).toBe(500);
   });
@@ -67,6 +74,7 @@ describe('a package entry in the kernel', () => {
     expect(response.status).toBe(500);
     const body = await response.text();
     expect(body).toContain('H16');
+    // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the H16 above pins it as the right answer
     expect(body).not.toContain('<p>app</p>');
     expect((await app.request('/nope', { headers: visit('app-v') })).status).toBe(500);
   });

@@ -185,6 +185,7 @@ describe('the development error page', () => {
       expect(html).toContain('Bind Mailer in a service provider');
       expect(html).toContain('marmeon discover');
       expect(html).toContain('<span class="code" title="docs/errors.md#server-error-codes">K1</span>');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('href="docs/errors.md');
       expect(html).toContain('K1');
 
@@ -205,6 +206,8 @@ describe('the development error page', () => {
       expect(markdownOf(coded)).toContain('- **Bind Mailer in a service provider** (K1) — ');
       const plain = await (await kernel.request('/explode/7', page)).text();
       expect(markdownOf(plain)).not.toContain('**Code:**');
+      expect(plain).toContain('The controller failed on purpose');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(plain).not.toContain('class="code"');
     } finally {
       await application.shutdown();
@@ -240,7 +243,9 @@ describe('the development error page', () => {
     try {
       const html = await (await kernel.request('/invite/483920?token=abc123', { headers: { accept: 'text/html' } })).text();
       expect(html).toContain('/invite/[redacted]');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('483920');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('abc123');
       expect(markdownOf(html)).not.toContain('483920');
       const explode = await (await kernel.request('/explode/7', { headers: { accept: 'text/html' } })).text();
@@ -273,6 +278,7 @@ describe('the development error page', () => {
       const html = await (await kernel.request('/unrouted/483920?token=abc123', { headers: { accept: 'text/html' } })).text();
       expect(html).toContain('The middleware failed');
       expect(html).toContain('/unrouted/483920');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('abc123');
     } finally {
       await application.shutdown();
@@ -283,6 +289,8 @@ describe('the development error page', () => {
     const { application, kernel } = await boot();
     try {
       const html = await (await kernel.request('/explode/7', { headers: { accept: 'text/html', cookie: 'marmeon_session=s3ss10n-c00kie; theme=dark' } })).text();
+      expect(html).toContain('The controller failed on purpose');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('s3ss10n-c00kie');
       expect(markdownOf(html)).not.toContain('s3ss10n-c00kie');
       expect(markdownOf(html)).toContain('"cookie": "[redacted]"');
@@ -295,6 +303,8 @@ describe('the development error page', () => {
     const { application, kernel } = await boot();
     try {
       const html = await (await kernel.request('/explode/7', { headers: { accept: 'text/html', authorization: 'Bearer s3cr3t-b34r3r' } })).text();
+      expect(html).toContain('The controller failed on purpose');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('s3cr3t-b34r3r');
       expect(markdownOf(html)).not.toContain('s3cr3t-b34r3r');
       expect(markdownOf(html)).toContain('"authorization": "[redacted]"');
@@ -311,6 +321,7 @@ describe('the development error page', () => {
       ).text();
       expect(html).toContain('Signing in failed');
       expect(html).toContain('ada@example.com');
+      // oxlint-disable-next-line marmeon/exact-body-assertion -- the development error page carries the request's id and absolute stack paths, so it cannot be compared whole; the lines above pin it as the error page
       expect(html).not.toContain('hunter2-p4ss');
       expect(markdownOf(html)).not.toContain('hunter2-p4ss');
       expect(markdownOf(html)).toContain('"password": "[redacted]"');
@@ -361,9 +372,7 @@ describe('the development error page — only in development', () => {
         expect(response.status).toBe(500);
         const body = await response.text();
         const page = JSON.parse(body) as PageObject;
-        expect(page.component).toBe('system/errors/Error');
-        expect(page.props).toEqual({ status: 500, title: 'Server Error', message: 'Server Error', exception: null });
-        for (const leak of ['The controller failed', 'select * from users', 'Bearer', 'error-page.test.ts', 'throw new Error']) expect(body).not.toContain(leak);
+        expect(page).toEqual({ component: 'system/errors/Error', props: { status: 500, title: 'Server Error', message: 'Server Error', exception: null }, url: '/explode/7', version: null, epoch: expect.any(String) });
       } finally {
         await application.shutdown();
       }
@@ -379,12 +388,14 @@ describe('the development error page — only for the hosts the development rout
         const html = await kernel.request('/explode/7?secret=q1', { headers: { ...page.headers, host } });
         expect(html.status).toBe(500);
         const body = await html.text();
-        expect(body).not.toContain('marmeon-markdown');
-        for (const leak of ['The controller failed', 'select * from users', 'error-page.test.ts', 'throw new Error', 'class="snippet"', 'frame app']) expect(body).not.toContain(leak);
+        expect(body).toContain('Server Error');
+        expect(body.replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+          '<!doctype html>\n<html lang="en">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">{"component":"system/errors/Error","props":{"status":500,"title":"Server Error","message":"Server Error","exception":null},"url":"/explode/7?secret=q1","version":null,"epoch":"E"}</script>\n</head>\n  <body><div id="app"></div></body>\n</html>',
+        );
         const json = await kernel.request('/explode/7', { headers: { accept: 'application/json', host } });
         expect(json.status).toBe(500);
         const text = await json.text();
-        for (const leak of ['The controller failed', 'error-page.test.ts', 'solution', 'trace']) expect(text).not.toContain(leak);
+        expect(JSON.parse(text)).toEqual({ message: 'Server Error' });
       }
       for (const host of ['localhost:3000', '127.0.0.1', 'app.example']) {
         const shown = await kernel.request('/explode/7', { headers: { ...page.headers, host } });
@@ -406,7 +417,7 @@ describe('the development details of an island and of server rendering — only 
       const foreign = await kernel.request('/islands/explodes', { headers: { ...island.headers, host: 'evil.example' } });
       expect(foreign.status).toBe(500);
       const text = await foreign.text();
-      for (const leak of ['The island failed', 'error-page.test.ts', 'trace']) expect(text).not.toContain(leak);
+      expect(JSON.parse(text)).toEqual({ status: 500, title: 'Server Error', message: 'Server Error', exception: null });
     } finally {
       await application.shutdown();
     }
@@ -426,7 +437,6 @@ describe('the development details of an island and of server rendering — only 
       expect(foreign.status).toBe(200);
       const body = await foreign.text();
       expect(body).toBe('<html><body><div id="app"></div></body></html>');
-      expect(body).not.toContain('The view failed');
     } finally {
       await application.shutdown();
     }

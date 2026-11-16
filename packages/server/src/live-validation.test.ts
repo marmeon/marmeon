@@ -159,7 +159,7 @@ describe('createHttpKernel — live validation', async () => {
     handled.length = 0;
     const response = await strict.request('/profile', { method: 'PUT', headers: live('name'), body: JSON.stringify({ name: 'A' }) });
     expect(response.status).toBe(403);
-    expect(await response.json()).not.toHaveProperty('errors');
+    expect(await response.json()).toEqual({ message: 'This action is unauthorized.' });
     expect(handled).toEqual([]);
   });
 

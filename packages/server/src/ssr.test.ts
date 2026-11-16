@@ -117,7 +117,9 @@ describe('client fallback: server rendering never breaks a page', () => {
     expect(response.status).toBe(200);
     expect(markup(html)).toBe('');
     expect(page(html)).toMatchObject({ component: 'users/Show', props: { name: 'Ada' } });
-    expect(html).not.toContain('Server Error');
+    expect(html.replace(/"epoch":"[^"]+"/, '"epoch":"E"')).toBe(
+      '<!doctype html>\n<html lang="en">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">{"component":"users/Show","props":{"name":"Ada","lastLoginAt":"2026-10-01T12:00:00.600Z"},"url":"/profile","version":null,"epoch":"E"}</script>\n</head>\n  <body><div id="app"></div></body>\n</html>',
+    );
     expect(entries).toContainEqual({
       level: 'error',
       message: 'Server rendering of [users/Show] failed — the browser renders the page',
