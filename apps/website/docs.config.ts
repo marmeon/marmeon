@@ -126,6 +126,7 @@ export default defineDocs({
         { slug: 'tables', label: 'Data Tables' },
         { slug: 'drivers', label: 'Drivers' },
         { slug: 'package-development', label: 'Package Development' },
+        { slug: 'package-users', label: 'Packages with Users' },
       ],
     },
     {

@@ -1231,7 +1231,7 @@ A second guard is a second set of people. It has a table of users, sign-ins, a s
 
 Do not define one for the same people in two roles. A person who is a customer and an editor is one account of the app with roles, decided by [policies](authorization.md#policies-of-a-guard) on `ctx.user`; a second guard would make that person two accounts with two passwords and two sets of sign-ins.
 
-A package can offer both ways and let the app choose at boot: its own guard for apps that have no such users, and the app's users for apps that do ([using the app's users instead](#using-the-apps-users-instead)). The back office of the web app shows this case, a website with a customer portal: the customers are the app's users, and the editors are the back office's own ([a package with users of its own](package-development.md#a-package-with-users-of-its-own)).
+A package can offer both ways and let the app choose at boot: its own guard for apps that have no such users, and the app's users for apps that do ([using the app's users instead](#using-the-apps-users-instead)). The back office of the web app shows this case, a website with a customer portal: the customers are the app's users, and the editors are the back office's own ([a package with users of its own](package-users.md#introduction)).
 
 ## Guards of a package
 

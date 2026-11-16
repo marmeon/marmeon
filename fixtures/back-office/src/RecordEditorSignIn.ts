@@ -4,7 +4,7 @@ import { OfficeRoles } from './OfficeRoles.ts';
 
 /**
  * Records the editor sign-ins: one entry of the mode and the id for each. The app lists it for `EditorSlot.events.SignedIn`
- * (`docs/package-development.md#a-package-with-users-of-its-own`). A slot bound to the app's users hears every sign-in of the app, customers
+ * (`docs/package-users.md#what-the-app-does-for-the-back-office`). A slot bound to the app's users hears every sign-in of the app, customers
  * included, so it records only the ones the back office gives a role.
  */
 export class RecordEditorSignIn {
