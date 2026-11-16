@@ -271,12 +271,15 @@ function RenameForm({ userId, link, onClose }: { userId: string; link: { id: str
   const router = useRouter<ShowUserProfileController>();
   const rename = useAction('user-profile.links.rename', { user: userId, link: link.id });
   const [draft, setDraft] = useState(link.label);
+  // The version the draft was started from: a reload of the profile while the editor is open must not move it, or the save
+  // would overwrite an edit made elsewhere in the meantime instead of reporting the conflict.
+  const [seen] = useState(link.version);
   return (
     <form
       noValidate
       onSubmit={async (event) => {
         event.preventDefault();
-        const result = await rename.submit({ data: { label: draft, seen: link.version }, reload: router.reloading({ only: ['profile'] }) });
+        const result = await rename.submit({ data: { label: draft, seen }, reload: router.reloading({ only: ['profile'] }) });
         if (result.ok) onClose();
       }}
     >
