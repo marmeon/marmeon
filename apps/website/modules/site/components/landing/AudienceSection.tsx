@@ -48,33 +48,44 @@ const SITUATIONS: { title: string; before: ReactNode; after: ReactNode; href: st
 /** "Your business logic gets a home": four situations a reader knows, what Marmeon does there, and who it does not fit. */
 export function AudienceSection() {
   return (
-    <section className="audience" aria-labelledby="audience-title">
+    <section className="audience landing-light" aria-labelledby="audience-title">
       <div className="landing-inner">
-        <div className="section-intro section-intro--wide">
+        <div className="audience-frame">
           <p className="section-label">Who it is for</p>
-          <h2 id="audience-title">Your business logic gets a home.</h2>
-          <p>
+          <h2 id="audience-title">
+            Your business logic <span className="serif-accent">gets a home.</span>
+          </h2>
+          <p className="audience-intro">
             Marmeon is a backend framework for TypeScript that brings the frontend with it. Who may open a record, what happens after a sign-up, which failure a caller must handle: each has its place in a module on
             the server, as code you can read, test and review.
           </p>
+          <ul className="audience-list">
+            {SITUATIONS.map(({ title, before, after, href, page }) => (
+              <li key={title} className="audience-card">
+                <h3>{title}</h3>
+                <dl>
+                  <div className="audience-know">
+                    <dt className="visually-hidden">You know this</dt>
+                    <dd>{before}</dd>
+                  </div>
+                  <div className="audience-with">
+                    <dt className="visually-hidden">With Marmeon</dt>
+                    <dd>
+                      <svg className="audience-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                        <path d="m5 12 5 5 9-10" />
+                      </svg>
+                      <span>{after}</span>
+                      <Link href={href}>{page}</Link>
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <p className="audience-fit">
+            <strong>Not the right fit</strong> for a static site: pages built once and served as files, with nothing to run on a server.
+          </p>
         </div>
-        <ul className="audience-list">
-          {SITUATIONS.map(({ title, before, after, href, page }) => (
-            <li key={title} className="audience-card">
-              <h3>{title}</h3>
-              <dl>
-                <dt>You know this</dt>
-                <dd>{before}</dd>
-                <dt className="audience-with">With Marmeon</dt>
-                <dd>{after}</dd>
-              </dl>
-              <Link href={href}>{page}</Link>
-            </li>
-          ))}
-        </ul>
-        <p className="audience-fit">
-          <strong>Not the right fit</strong> for a static site: pages built once and served as files, with nothing to run on a server.
-        </p>
       </div>
     </section>
   );

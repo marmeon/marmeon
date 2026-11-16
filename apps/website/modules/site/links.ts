@@ -1,5 +1,7 @@
 /** Where the website points outside itself and into the docs. Client-safe: no server imports. */
 export const GITHUB_URL = 'https://github.com/marmeon/marmeon';
+/** The release notes of a version: its GitHub Release page, found by the version's tag. */
+export const releaseNotesUrl = (version: string) => `${GITHUB_URL}/releases/tag/v${version}`;
 export const DISCORD_URL = 'https://discord.gg/Kv9hvscd9';
 export const DISCUSSIONS_URL = `${GITHUB_URL}/discussions`;
 

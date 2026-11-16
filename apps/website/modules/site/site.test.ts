@@ -3,8 +3,10 @@ import { join, resolve } from 'node:path';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { AGENT_TOOLS } from './agents.ts';
 import { CHAIN, mistakeLine } from './chain.ts';
 import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
+import { FAKES } from './fakes.ts';
 import { PACKAGES } from './packages.ts';
 import { SNIPPETS } from './snippets.ts';
 
@@ -35,35 +37,73 @@ beforeAll(async () => {
 afterAll(() => app?.close());
 
 describe('the landing page', () => {
-  it('answers / rendered on the server, with one h1 and the three ways in', async () => {
+  it('answers / rendered on the server, with one h1, two buttons and the install line', async () => {
     const response = await app.get('/', document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
-    expect(response.body).toContain('<span class="hero-line">Typed end to end.</span> <span class="hero-line">Batteries included.</span>');
-    expect(response.body).toMatch(/<a [^>]*class="button"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button"/);
-    expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--secondary"|<a [^>]*class="button button--secondary"[^>]*href="\/docs"/);
-    expect(response.body).toMatch(/<a [^>]*class="button button--text"[^>]*href="https:\/\/github\.com\/marmeon\/marmeon"/);
-    expect(response.body).toContain('pnpm create marmeon my-app');
+    expect(response.body).toContain('<span class="hero-line">Typed end to end.</span> <span class="hero-line serif-accent">Batteries included.</span>');
+    expect(response.body).toMatch(/<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"/);
+    expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--ghost"|<a [^>]*class="button button--ghost"[^>]*href="\/docs"/);
   });
 
-  it('shows the facts and the controller beside the page in the hero, with nothing that needs JavaScript', async () => {
+  it('shows the release link, two buttons, the install line, the three files, the rail and the props error in the hero, with nothing that needs JavaScript', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    const start = body.indexOf('<section class="hero"');
+    const start = body.indexOf('<section class="hero stage');
     const end = body.indexOf('</section>', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const hero = body.slice(start, end);
+    const escaped = coreVersion.replaceAll(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+    expect(hero).toMatch(new RegExp(`<a class="hero-release" href="https://github\\.com/marmeon/marmeon/releases/tag/v${escaped}" rel="noopener"><span class="hero-release-version">${escaped}</span>`));
+    expect(hero).toContain('<code>pnpm create marmeon my-app</code>');
     expect(hero).toMatch(/<p class="hero-facts">[^<]*MIT licence[^<]*<\/p>/);
     expect(hero).not.toContain('release in preparation');
-    expect(hero).toContain('class="editor editor--split"');
-    expect(hero).toContain('<p class="editor-name">modules/notes/controllers/ShowNoteController.ts</p>');
-    expect(hero).toContain('<p class="editor-name">modules/notes/views/Show.tsx</p>');
-    expect(hero).not.toMatch(/<h[3-6]/);
+    const cards = [['migration', 'migrationColumns'], ['controller', 'controller'], ['props', 'page']] as const;
+    expect([...hero.matchAll(/<figure class="hero-card hero-card--(\w+)"/g)].map((match) => match[1])).toEqual(cards.map(([step]) => step));
+    for (const [step, name] of cards) {
+      const title = CHAIN.find((candidate) => candidate.id === step)!.title;
+      expect(hero, step).toContain(`<span class="hero-card-file">${SNIPPETS[name].file}</span><span class="hero-card-tag">${title}</span>`);
+    }
+    const rail = hero.slice(hero.indexOf('<ol class="hero-rail"'), hero.indexOf('</ol>'));
+    expect([...rail.matchAll(/<li class="([^"]*)"><span class="hero-rail-dot"><\/span>([^<]*)<\/li>/g)].map((match) => match[2])).toEqual(CHAIN.map((step) => step.title));
+    expect([...rail.matchAll(/<li class="([^"]*is-error[^"]*)"><span class="hero-rail-dot"><\/span>([^<]*)<\/li>/g)].map((match) => match[2])).toEqual(['Props']);
+    expect(hero).not.toContain('<button');
+    expect(hero).not.toContain('copy-button');
+    const props = CHAIN.find((step) => step.id === 'props')!;
+    expect(hero).toMatch(/<div class="hero-error" role="note"/);
+    expect(textOf(hero.slice(hero.indexOf('class="hero-error"')))).toContain(`${mistakeLine(props)}error ${props.error.code}: ${props.error.message}`);
+    expect(hero).not.toMatch(/<h[2-6]/);
     expect(hero).not.toContain('role="tablist"');
   });
 
-  it('lists the seven principles and the seven steps of the chain', async () => {
+  it('counts the stats under the hero from the code: packages, fakes and MCP tools', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<dl class="stats"');
+    const stats = body.slice(start, body.indexOf('</dl>', start));
+    expect(start).toBeGreaterThan(-1);
+    const pairs = [...stats.matchAll(/<dt>([^<]*)<\/dt><dd>(\d+)<\/dd>/g)].map(([, label, value]) => [label, Number(value)]);
+    expect(pairs).toEqual([
+      ['packages, released as one version', PACKAGES.length],
+      ['typos the compiler catches, from the migration to the form error', CHAIN.length],
+      ['fakes that come with createTestApp()', FAKES.length],
+      ['MCP tools your coding agent can call', AGENT_TOOLS.length],
+    ]);
+  });
+
+  it('lists the seven principles with their numerals and the seven steps of the chain', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body.match(/<li class="principle"/g)).toHaveLength(7);
+    expect(body).toContain('<h2 id="principles-title"');
+    expect(textOf(body.slice(body.indexOf('<h2 id="principles-title"'), body.indexOf('</h2>', body.indexOf('<h2 id="principles-title"'))))).toBe('Seven rules, set in stone.');
+    const principles = body.slice(body.indexOf('<ol class="principle-list"'), body.indexOf('</ol>', body.indexOf('<ol class="principle-list"')));
+    expect([...principles.matchAll(/<span class="principle-numeral" aria-hidden="true">([^<]*)<\/span><h3>([^<]*)<\/h3>/g)].map((match) => [match[1], match[2]])).toEqual([
+      ['I', 'Typed end to end'],
+      ['II', 'No global state'],
+      ['III', 'TypeScript runs natively on Node'],
+      ['IV', 'Modules first'],
+      ['V', 'One endpoint, one class'],
+      ['VI', 'Batteries included, behind contracts'],
+      ['VII', 'Secure by default'],
+    ]);
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
     const section = body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="batteries-title"'));
     expect(section.match(/<h3[\s>]/g)).toHaveLength(7);
@@ -96,7 +136,7 @@ describe('the landing page', () => {
 
   it('says who Marmeon is for: four situations, each with a link to its proof, and who it does not fit', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    expect(body).toContain('<section class="audience" aria-labelledby="audience-title"');
+    expect(body).toContain('<section class="audience landing-light" aria-labelledby="audience-title"');
     expect(body).toContain('<h2 id="audience-title"');
     const [principles, audience, chain] = ['principles-title', 'audience-title', 'chain-title'].map((id) => body.indexOf(`id="${id}"`)) as [number, number, number];
     expect(principles).toBeGreaterThan(-1);
@@ -104,7 +144,7 @@ describe('the landing page', () => {
     expect(audience).toBeLessThan(chain);
     const section = body.slice(audience, chain);
     expect(body.match(/<li class="audience-card"/g)).toHaveLength(4);
-    expect(section.match(/<dt>You know this<\/dt>/g)).toHaveLength(4);
+    expect(section.match(/<dt class="visually-hidden">You know this<\/dt>/g)).toHaveLength(4);
     expect(section.match(/With Marmeon<\/dt>/g)).toHaveLength(4);
     expect(section.match(/<h3>/g)).toHaveLength(4);
     for (const href of ['/docs/installation#running-the-app', '/docs/structure', '/docs/authorization', '/docs/authorization#every-route-decides']) expect(section, href).toContain(`href="${href}"`);
@@ -121,8 +161,8 @@ describe('the landing page', () => {
   it('shows the island section with its code and, without JavaScript, only the fallback', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<section class="islands" aria-labelledby="islands-title"');
-    expect(body.indexOf('id="islands-title"')).toBeLessThan(body.indexOf('id="devtools-title"'));
-    const section = body.slice(body.indexOf('<section class="islands"'), body.indexOf('<section class="devtools"'));
+    expect(body.indexOf('id="islands-title"')).toBeLessThan(body.indexOf('id="start-title"'));
+    const section = body.slice(body.indexOf('<section class="islands"'), body.indexOf('<section class="start"'));
     expect(section).toContain('<div class="island-frame" data-island="site.render-clock"');
     expect(section).toContain('With JavaScript, the browser loads an island here: a part of the page the server renders on its own.');
     expect(section).toContain('<h3 class="tabs-heading">ShowRenderClockController.ts</h3>');
@@ -136,6 +176,15 @@ describe('the landing page', () => {
     expect(frame).not.toContain('Rendered on the server');
   });
 
+  it('orders the sections from the hero to the start', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const ids = ['hero-title', 'principles-title', 'audience-title', 'chain-title', 'batteries-title', 'devtools-title', 'agents-title', 'secure-title', 'testing-title', 'islands-title', 'start-title'];
+    const positions = ids.map((id) => body.indexOf(`id="${id}"`));
+    expect(positions.every((position) => position > -1), ids.join()).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(new Set(positions).size).toBe(ids.length);
+  });
+
   it('has the six sections after the chain, each named by its heading', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     for (const name of ['batteries', 'secure', 'testing', 'islands', 'devtools', 'start']) {
@@ -147,12 +196,12 @@ describe('the landing page', () => {
     expect(body).not.toContain('<section class="modules"');
   });
 
-  it('puts the agents section after the devtools and before the start section', async () => {
+  it('puts the agents section after the devtools and before the secure section', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toMatch(/<section class="agents" aria-labelledby="agents-title"/);
     expect(body.indexOf('id="devtools-title"')).toBeLessThan(body.indexOf('id="agents-title"'));
-    expect(body.indexOf('id="agents-title"')).toBeLessThan(body.indexOf('id="start-title"'));
-    const section = body.slice(body.indexOf('<section class="agents"'), body.indexOf('<section class="start"'));
+    expect(body.indexOf('id="agents-title"')).toBeLessThan(body.indexOf('id="secure-title"'));
+    const section = body.slice(body.indexOf('<section class="agents"'), body.indexOf('<section class="secure"'));
     expect(textOf(section)).toContain('Your coding agent sees what you see.');
     expect(section).toContain('href="/docs/agents"');
     expect(section).toContain('href="/docs/mcp"');
@@ -163,7 +212,7 @@ describe('the landing page', () => {
   it('shows the nine packages as tabs, each with its code, under h3 headings of the batteries section', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.indexOf('<section class="batteries"');
-    const section = body.slice(start, body.indexOf('<section class="secure"'));
+    const section = body.slice(start, body.indexOf('<div class="landing-band'));
     expect(section).toContain('aria-labelledby="batteries-title"');
     const labels = [...section.matchAll(/<h3 class="tabs-heading">([^<]*)<\/h3>/g)].map((match) => match[1]);
     expect(labels).toEqual(['Auth', 'Database', 'Migrations', 'Validation', 'Queue', 'Mail', 'Scheduler', 'Storage', 'Modules']);

@@ -1,8 +1,7 @@
 import { Link } from '@marmeon/react';
 import type { HighlightedSnippet } from '../../SiteSnippets.ts';
+import { FAKES } from '../../fakes.ts';
 import { CodeBlock } from '../CodeBlock.tsx';
-
-const FAKES = ['Mail', 'Queue', 'Notifications', 'Storage', 'Events', 'Live updates', 'Schedule'];
 
 /** "A test goes through the whole kernel": one HTTP test and the fakes that come with `createTestApp()`. */
 export function TestingSection({ snippet }: { snippet: HighlightedSnippet }) {

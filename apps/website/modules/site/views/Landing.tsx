@@ -16,21 +16,25 @@ import type { ShowLandingController } from '../controllers/ShowLandingController
 import { DESCRIPTIONS } from '../descriptions.ts';
 import { landingNodes } from '../structured-data.ts';
 
-/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in six sections. */
+/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, the devtools and agents band, and the rest of the framework. */
 export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
       <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" nodes={(site) => landingNodes(site, DESCRIPTIONS.landing)} />
-      <HeroSection snippets={snippets} />
+      <HeroSection snippets={snippets} chain={chain} packages={packages} />
       <PrinciplesSection />
       <AudienceSection />
       <ChainSection snippets={snippets} chain={chain} />
       <BatteriesSection snippets={snippets} packages={packages} moduleFiles={moduleFiles} />
+      <div className="landing-band stage stage--veins-band">
+        <DevtoolsSection />
+        <AgentsSection />
+      </div>
       <SecureSection />
-      <TestingSection snippet={snippets.test} />
-      <IslandSection snippets={snippets} />
-      <DevtoolsSection />
-      <AgentsSection />
+      <div className="landing-tail">
+        <TestingSection snippet={snippets.test} />
+        <IslandSection snippets={snippets} />
+      </div>
       <StartSection />
     </div>
   );

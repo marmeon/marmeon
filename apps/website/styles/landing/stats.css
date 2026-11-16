@@ -1,0 +1,30 @@
+/* Stats strip: four counted numbers in the serif, under the hero. */
+.landing .stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  margin: 0;
+  border-top: 1px solid var(--stage-line);
+}
+
+.landing .stat {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 28px 24px 32px;
+  border-right: 1px solid var(--stage-line);
+}
+
+.landing .stat dt {
+  color: var(--stage-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.landing .stat dd {
+  margin: 0;
+  color: var(--sand);
+  font-family: var(--font-serif);
+  font-size: 3.25rem;
+  line-height: 1;
+}

@@ -83,10 +83,10 @@ function frameworkManifest(): { version: string; license: string } {
   return parseManifest(JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown; license?: unknown });
 }
 
-/** The `version` and `license` of a manifest; throws unless the version is a string and the license a single SPDX identifier, because the license becomes a URL on spdx.org (an expression or a `LicenseRef-` has none). */
+/** The `version` and `license` of a manifest; throws unless the version has the form 1.2.3 or 1.2.3-rc.1 (it becomes a URL path on GitHub) and the license a single SPDX identifier, because the license becomes a URL on spdx.org (an expression or a `LicenseRef-` has none). */
 export function parseManifest({ version, license }: { version?: unknown; license?: unknown }): { version: string; license: string } {
-  if (typeof version !== 'string' || typeof license !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9.+-]*$/.test(license) || license.startsWith('LicenseRef-')) {
-    throw new Error('The manifest of @marmeon/core needs a string "version" and a "license" that is a single SPDX identifier (no expression).');
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version) || typeof license !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9.+-]*$/.test(license) || license.startsWith('LicenseRef-')) {
+    throw new Error('The manifest of @marmeon/core needs a "version" in the form 1.2.3 (or 1.2.3-rc.1) and a "license" that is a single SPDX identifier (no expression).');
   }
   return { version, license };
 }

@@ -110,3 +110,23 @@
   font-size: 0.75rem;
   letter-spacing: 0.12em;
 }
+
+/* The landing's light sections stay light in both colour schemes: the stage and stone rhythm is the composition. */
+.landing .landing-light {
+  background: var(--stone);
+  color: var(--ink);
+  color-scheme: light;
+}
+
+.landing .landing-light h2,
+.landing .landing-light h3 {
+  color: var(--ink);
+}
+
+.landing .landing-light a {
+  color: var(--teal);
+}
+
+.landing .landing-light .audience-with a {
+  color: var(--thread);
+}
