@@ -120,11 +120,17 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   In development (`no-cache`, nothing shared) Vite's client, React Refresh and the devtools' bar are inline: the strict nonce
   policy there.
 - **Styles** (`styles/`): `app.css` is the only entry (`index.html`) and only `@import`s the parts. `tokens.css` holds every
-  colour, size, space and radius as a custom property — light by default, dark under `prefers-color-scheme` — and the fonts:
-  IBM Plex Sans (text, variable weight) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which
-  Vite bundles into `/assets/` (dev dependencies; the image needs none). `base.css` has the reset, links, buttons, focus ring and
-  helpers. `favicon.svg` carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the tokens
-  in both themes.
+  colour, size, space and radius as a custom property, in blocks that each open with a comment: the fixed palette (the stage,
+  the code panels, the dark callout panel, the landing's light sections: the same in both colour schemes), the themed names (`--bg`,
+  `--fg`, `--muted`, `--accent`, `--line` …: Stone, Ink and Teal in the light theme) and their dark values under
+  `prefers-color-scheme` (Stage, Panel, Rail dark and Thread). So the stage parts look the same everywhere, while the reading
+  surfaces (docs pages, search, legal and error pages) have a dark variant. Fonts are Inter (text), Inter Tight (headlines),
+  Instrument Serif italic (accent words) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which Vite bundles
+  into `/assets/` (dev dependencies; the image needs none); `vite.config.ts` preloads the ones the first screen sets.
+  `base.css` has the reset, headings, links, buttons, chips, the focus ring, the `.stage` ground and the helpers; `code.css`
+  makes every code block a dark panel, with line numbers (a CSS counter) on captioned ones. The marble veins on the stage are
+  static SVG files (`styles/stage/`) used as CSS backgrounds, because the policy allows no `style` attribute. `favicon.svg`
+  carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the pairs the pages use, in both themes.
 - **Headers:** `securityHeaders()` in `SiteServiceProvider`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="980" viewBox="0 0 1440 980" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <filter id="vein" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="1.2"/></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.035 0"/></filter>
+    <linearGradient id="fadeY" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <mask id="fade"><rect width="1440" height="980" fill="url(#fadeY)"/></mask>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#ffffff" stroke-opacity="0.045"/></pattern>
+  </defs>
+  <rect width="1440" height="980" fill="url(#grid)" mask="url(#fade)"/>
+  <g fill="none" stroke="#f3e2b8" filter="url(#vein)">
+    <path d="M-40 210 C 220 160, 340 330, 560 300 S 900 140, 1120 260 S 1380 420, 1500 360" stroke-opacity="0.10" stroke-width="1.6"/>
+    <path d="M-40 640 C 180 560, 420 720, 640 610 S 980 520, 1180 660 S 1420 760, 1500 700" stroke-opacity="0.07" stroke-width="2.4"/>
+    <path d="M300 -20 C 360 140, 260 280, 420 420 S 520 720, 470 1000" stroke-opacity="0.06" stroke-width="1.2"/>
+    <path d="M1060 -20 C 1000 160, 1160 300, 1080 520 S 1180 820, 1240 1000" stroke-opacity="0.08" stroke-width="1.4"/>
+    <path d="M560 300 C 610 380, 700 400, 760 470" stroke-opacity="0.08" stroke-width="1"/>
+  </g>
+  <g fill="none" stroke="#3cc4d4" filter="url(#vein)">
+    <path d="M820 -20 C 760 200, 980 330, 900 560 S 960 880, 1000 1000" stroke-opacity="0.08" stroke-width="1.2"/>
+  </g>
+  <rect width="1440" height="980" filter="url(#grain)"/>
+</svg>

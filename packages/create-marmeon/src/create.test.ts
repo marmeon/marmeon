@@ -526,9 +526,9 @@ describe('the starter kit’s own files', () => {
     expect(existsSync(join(cwd, 'blank/styles'))).toBe(false);
   });
 
-  it('pins the font to the version the website uses, and the stylesheet imports exactly that package', () => {
-    const website = JSON.parse(readFileSync(join(repo, 'apps/website/package.json'), 'utf8')) as { devDependencies: Record<string, string> };
-    expect(KIT_DEV_DEPENDENCIES['@fontsource-variable/ibm-plex-sans']).toBe(website.devDependencies['@fontsource-variable/ibm-plex-sans']);
+  it("pins the font to the version @marmeon/vite's devDependencies use, and the stylesheet imports exactly that package", () => {
+    const vite = JSON.parse(readFileSync(join(repo, 'packages/vite/package.json'), 'utf8')) as { devDependencies: Record<string, string> };
+    expect(KIT_DEV_DEPENDENCIES['@fontsource-variable/ibm-plex-sans']).toBe(vite.devDependencies['@fontsource-variable/ibm-plex-sans']);
     expect(readFileSync(join(TEMPLATE, 'kit/styles/app.css'), 'utf8')).toContain("@import '@fontsource-variable/ibm-plex-sans/wght.css';");
   });
 

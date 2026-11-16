@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
  * The header's layout rules, read as text: the site tests render on the server and see no layout, and a browser test would need a
  * browser in CI. A header that drops its version badge on a phone and keeps the menu at the right is visible in the rules.
+ * Also: every relative `url()` in the stylesheets names a file that exists.
  */
 const chrome = readFileSync(resolve(import.meta.dirname, '../../styles/chrome.css'), 'utf8');
 const docs = readFileSync(resolve(import.meta.dirname, '../../styles/docs-layout.css'), 'utf8');
@@ -48,5 +49,18 @@ describe('the header on a phone', () => {
     expect(rule(chrome, '.site-header-end').get('margin-left')).toBe('auto');
     expect(rule(media(docs, '(max-width: 760px)'), '.docs-top').get('flex-wrap')).toBe('wrap');
     expect(rule(media(docs, '(max-width: 760px)'), '.docs-top-end').get('margin-left')).toBe('auto');
+  });
+});
+
+describe('the stylesheets', () => {
+  it('only point at files that exist: every relative url() in styles/ resolves on disk', () => {
+    const root = resolve(import.meta.dirname, '../../styles');
+    const sheets = readdirSync(root, { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.css'));
+    expect(sheets).toContain('base.css');
+    const urls = sheets.flatMap((sheet) =>
+      [...readFileSync(resolve(root, sheet), 'utf8').matchAll(/url\(\s*(['"]?)(\.{1,2}\/[^'")]+)\1\s*\)/g)].map(([, , path]) => resolve(root, dirname(sheet), path!)),
+    );
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.filter((path) => !existsSync(path))).toEqual([]);
   });
 });

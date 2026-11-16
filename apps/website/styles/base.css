@@ -10,13 +10,22 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg-body);
   font-family: var(--font-text);
   font-size: var(--text-body);
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
 a {
@@ -32,10 +41,13 @@ a:hover {
 }
 
 :focus-visible {
-  outline: 2px solid transparent; /* forced-colours mode drops the shadow and shows this */
-  outline-offset: 2px;
-  border-radius: var(--radius-1);
-  box-shadow: var(--focus-ring);
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.stage :focus-visible {
+  outline-color: var(--thread);
 }
 
 ::selection {
@@ -51,11 +63,54 @@ mark {
 kbd {
   padding: 0.1em 0.45em;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-1);
+  border-radius: var(--radius-sm);
   background: var(--bg-raised);
   color: var(--fg);
   font-family: var(--font-mono);
   font-size: 0.82em;
+}
+
+.stage kbd {
+  border-color: var(--control-dark);
+  background: var(--panel-raised);
+  color: var(--stage-soft);
+}
+
+.serif-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow,
+.section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* The stage: the design's dark ground, the same in both colour schemes; the veins are static SVG backgrounds. */
+.stage {
+  background-color: var(--stage);
+  color: var(--stage-fg);
+  color-scheme: dark;
+}
+
+.stage--veins-hero {
+  background-image: url('./stage/veins-hero.svg');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.stage--veins-band {
+  background-image: url('./stage/veins-band.svg');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 .visually-hidden {
@@ -89,23 +144,64 @@ kbd {
 .button {
   display: inline-flex;
   align-items: center;
-  min-height: 48px;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
   padding: 0 22px;
   border: 1px solid transparent;
-  border-radius: var(--radius-2);
-  background: var(--button-bg);
-  color: var(--button-fg);
+  border-radius: 11px;
+  background: var(--teal);
+  color: var(--paper);
   font: inherit;
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color var(--duration-fast), color var(--duration-fast);
+  transition: background-color var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
 }
 
 .button:hover {
-  background: var(--button-hover-bg);
-  color: var(--button-hover-fg);
+  background: var(--teal-strong);
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.button--sand {
+  background: var(--sand);
+  color: var(--ink);
+}
+
+.button--sand:hover {
+  background: var(--sand-hover);
+  color: var(--stage);
+}
+
+.button--ghost {
+  padding: 0 20px;
+  border-color: var(--control-dark);
+  background: transparent;
+  color: var(--stage-fg);
+  font-weight: 500;
+}
+
+.button--ghost:hover {
+  border-color: var(--control-dark-hover);
+  background: transparent;
+  color: #ffffff;
+}
+
+.button--light {
+  padding: 0 20px;
+  border-color: var(--rail-light);
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.button--light:hover {
+  border-color: #b9b3a5;
+  background: var(--paper);
+  color: var(--ink);
 }
 
 .button--secondary {
@@ -136,6 +232,24 @@ kbd {
   background: transparent;
   color: var(--accent-strong);
   text-decoration-thickness: 2px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.stage .chip {
+  border-color: var(--control-dark);
+  color: var(--stage-soft);
 }
 
 .badge {

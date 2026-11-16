@@ -3,8 +3,9 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The tokens' contrast, computed from `styles/tokens.css`: every pair of text and ground the pages use meets WCAG's ratio
- * in the light theme and in the dark one. A colour changed to something paler turns this red.
+ * The tokens' contrast, computed from `styles/tokens.css`: every pair of text and ground the pages use meets WCAG's ratio. The
+ * fixed palette (the stage, the code panels, the dark callout panel) holds in both colour schemes; the themed names hold in the light
+ * theme and in the dark one. A colour changed to something paler turns this red.
  */
 const css = readFileSync(resolve(import.meta.dirname, '../../styles/tokens.css'), 'utf8');
 
@@ -15,10 +16,18 @@ function properties(block: string): Theme {
   return new Map([...block.matchAll(/(--[a-z0-9-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map(([, name, hex]) => [name!, hex!.toLowerCase()]));
 }
 
-const dark = css.indexOf('@media (prefers-color-scheme: dark)');
-const light = properties(css.slice(0, dark));
-const darkOnly = properties(css.slice(dark));
-const night: Theme = new Map([...light, ...darkOnly]);
+/** The three blocks, found by the comment that opens each. */
+const at = (marker: string): number => {
+  const index = css.indexOf(marker);
+  if (index < 0) throw new Error(`tokens.css has no block opened by ${marker}`);
+  return index;
+};
+const [fixedAt, lightAt, darkAt, restAt] = [at('/* Fixed palette'), at('/* Themed, light'), at('/* Themed, dark'), at('/* Type, space')];
+const fixed = properties(css.slice(fixedAt, lightAt));
+const lightOnly = properties(css.slice(lightAt, darkAt));
+const darkOnly = properties(css.slice(darkAt, restAt));
+const light: Theme = new Map([...fixed, ...lightOnly]);
+const night: Theme = new Map([...fixed, ...lightOnly, ...darkOnly]);
 
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((at) => {
@@ -34,31 +43,58 @@ export function contrast(a: string, b: string): number {
   return (high + 0.05) / (low + 0.05);
 }
 
-const SYNTAX_ROLES = ['text', 'keyword', 'type', 'string', 'function', 'comment', 'tag', 'punctuation'];
+const SYNTAX_ROLES = ['keyword', 'type', 'string', 'function', 'comment', 'tag', 'punctuation'];
+const EDITOR_ROLES = ['text', ...SYNTAX_ROLES];
+const CALLOUT_KINDS = ['note', 'tip', 'important', 'warning', 'caution'];
 
-/** [text, ground, minimum ratio] */
+/**
+ * [text, ground, minimum ratio]: what the stylesheets pair today. A name no stylesheet reads yet (the stage's deeper tones, the
+ * dialog's) gets its pair when the part that uses it lands.
+ */
 const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
-  ...['--fg', '--fg-body', '--fg-2', '--muted'].flatMap((text) => ['--bg', '--bg-raised'].map((ground) => [text, ground, 4.5] as const)),
-  ['--accent', '--bg', 4.5],
-  ['--accent', '--bg-raised', 4.5],
+  // Themed: the reading surfaces.
+  ...['--fg', '--fg-body', '--fg-2', '--muted', '--accent'].flatMap((text) => ['--bg', '--bg-raised'].map((ground) => [text, ground, 4.5] as const)),
+  ['--fg', '--bg-sunken', 4.5],
   ['--accent-strong', '--accent-tint', 4.5],
+  ['--mark-fg', '--mark-bg', 4.5],
+  ['--focus', '--bg', 3],
+  ['--focus', '--bg-raised', 3],
+  // The global focus ring (base.css) is Teal in both schemes, on the themed ground.
+  ['--teal', '--bg', 3],
+  ['--teal', '--bg-raised', 3],
+  ['--control-line', '--bg', 3],
+  ['--accent-bright', '--bg', 3],
+  ['--button-fg', '--button-bg', 4.5],
+  // The prose callouts and banners: their label and their text on their own light or dark panel; the devtools copy and the
+  // draft mark colour a status on the page ground.
+  ...CALLOUT_KINDS.flatMap((kind) => [
+    [`--${kind}-fg`, `--${kind}-bg`, 4.5] as const,
+    ['--fg-body', `--${kind}-bg`, 4.5] as const,
+  ]),
+  ...['--tip-fg', '--accent-strong', '--warning-fg', '--caution-fg'].map((text) => [text, '--bg', 4.5] as const),
+  // Fixed, on the stage.
+  ...['--stage-fg', '--stage-soft', '--stage-muted', '--sand', '--thread'].map((text) => [text, '--stage', 4.5] as const),
+  ...['--stage-fg', '--stage-soft', '--stage-muted'].map((text) => [text, '--panel-raised', 4.5] as const),
+  ['--stage-soft', '--code-bg', 4.5],
+  ['--thread', '--stage', 3],
+  ['--ink', '--sand', 4.5],
+  // Button hovers: `.button--sand:hover` and `.button--ghost:hover` on their grounds, `.button:hover` on Teal strong.
+  ['--stage', '--sand-hover', 4.5],
+  ['#ffffff', '--stage', 4.5],
+  ['--paper', '--teal', 4.5],
+  ['--paper', '--teal-strong', 4.5],
+  // Fixed, code panels and the dark callout panel (no stylesheet reads the panel yet; its pairs hold the values the docs
+  // article's callouts are rebuilt on).
+  ...[...SYNTAX_ROLES.map((role) => `--syn-${role}`), '--code-fg'].map((text) => [text, '--code-bg', 4.5] as const),
+  ...[...CALLOUT_KINDS.map((kind) => `--panel-${kind}-fg`), '--panel-callout-fg'].map((text) => [text, '--panel-callout-bg', 4.5] as const),
+  // Fixed, the landing's light sections.
+  ...['--ink', '--teal'].flatMap((text) => ['--stone', '--paper'].map((ground) => [text, ground, 4.5] as const)),
+  // The terminal and the editor, not yet rebuilt.
   ['--term-fg', '--term-bg', 4.5],
   ['--term-dim', '--term-bg', 4.5],
   ['--term-accent', '--term-bg', 4.5],
   ['--term-dim-text', '--term-bg', 4.5],
-  ['--fg-2', '--output-bg', 4.5],
-  ['--mark-fg', '--mark-bg', 4.5],
-  ['--focus', '--bg', 3],
-  ['--focus', '--bg-raised', 3],
-  ['--button-fg', '--button-bg', 4.5],
-  ['--button-hover-fg', '--button-hover-bg', 4.5],
-  ...['note', 'tip', 'important', 'warning', 'caution'].map((kind) => [`--${kind}-fg`, `--${kind}-bg`, 4.5] as const),
-  ...SYNTAX_ROLES.map((role) => [`--syn-${role}`, '--bg-raised', 4.5] as const),
-  ['--control-line', '--bg', 3],
-  ['--accent-bright', '--bg', 3],
-  // The devtools copy colours a status, a level or a state on its window.
-  ...['--tip-fg', '--accent-strong', '--warning-fg', '--caution-fg'].map((text) => [text, '--bg', 4.5] as const),
-  ...['--editor-fg', '--editor-dim', '--editor-error', ...SYNTAX_ROLES.map((role) => `--editor-syn-${role}`)].map((text) => [text, '--editor-bg', 4.5] as const),
+  ...['--editor-fg', '--editor-dim', '--editor-error', ...EDITOR_ROLES.map((role) => `--editor-syn-${role}`)].map((text) => [text, '--editor-bg', 4.5] as const),
   ['--editor-accent', '--editor-chrome', 3],
   ['--editor-accent', '--editor-bg', 3],
 ];
@@ -76,7 +112,7 @@ describe('contrast', () => {
     ['dark', night],
   ] as const)('meets the ratio for every text and ground in the %s theme', (_name, theme) => {
     const failures = PAIRS.flatMap(([text, ground, minimum]) => {
-      const [front, back] = [theme.get(text), theme.get(ground)];
+      const [front, back] = [text.startsWith('#') ? text : theme.get(text), theme.get(ground)];
       if (front === undefined || back === undefined) return [`${text} on ${ground}: not declared`];
       const ratio = contrast(front, back);
       return ratio < minimum ? [`${text} ${front} on ${ground} ${back}: ${ratio.toFixed(2)} < ${minimum}`] : [];
@@ -85,7 +121,14 @@ describe('contrast', () => {
   });
 
   it('declares the same names in both themes', () => {
-    // Names without a dark value (the fonts, the scale) are not colours and are not in `light` either.
-    expect([...darkOnly.keys()].sort()).toEqual([...light.keys()].sort());
+    // The fixed palette has one value; only the themed names change with the scheme. Fonts and the scale are not colours.
+    expect([...darkOnly.keys()].sort()).toEqual([...lightOnly.keys()].sort());
+  });
+
+  it('keeps the blocks apart: in order, and no name in both the fixed palette and a themed block', () => {
+    expect(fixedAt).toBeLessThan(lightAt);
+    expect(lightAt).toBeLessThan(darkAt);
+    expect(darkAt).toBeLessThan(restAt);
+    expect([...fixed.keys()].filter((name) => lightOnly.has(name) || darkOnly.has(name))).toEqual([]);
   });
 });
