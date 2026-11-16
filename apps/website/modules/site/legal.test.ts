@@ -50,7 +50,7 @@ describe('the legal texts', () => {
     const privacy = (await app.get('/privacy', document).assertOk()).body;
     expect(privacy).toContain('<a href="https://www.hetzner.com/de/legal/privacy-policy/" rel="noopener">');
     expect(privacy).toContain('IN THE EVENT THAT DATA ARE PROCESSED ON THE BASIS OF ART. 6(1)(E) OR (F) GDPR');
-    expect(privacy.match(/<ul>/g)).toHaveLength(2);
+    expect(privacy.slice(privacy.indexOf('<main'), privacy.indexOf('</main>')).match(/<ul>/g)).toHaveLength(2); // the text's own lists, not the footer's
   });
 
   it('are no pages of the docs: not found by its search', async () => {
@@ -64,7 +64,7 @@ describe('the footer', () => {
     const body = (await app.get(path, document).assertOk()).body;
     const footer = body.slice(body.indexOf('<footer'));
     expect(footer).toMatch(/<a [^>]*href="\/imprint"[^>]*>Imprint<\/a>/);
-    expect(footer).toMatch(/<a [^>]*href="\/privacy"[^>]*>Privacy Policy<\/a>/);
+    expect(footer).toMatch(/<a [^>]*href="\/privacy"[^>]*>Privacy policy<\/a>/);
   });
 });
 

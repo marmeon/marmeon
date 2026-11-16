@@ -3,12 +3,11 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The header's layout rules, read as text: the site tests render on the server and see no layout, and a browser test would need a
+ * The headers' layout rules, read as text: the site tests render on the server and see no layout, and a browser test would need a
  * browser in CI. A header that drops its version badge on a phone and keeps the menu at the right is visible in the rules.
  * Also: every relative `url()` in the stylesheets names a file that exists.
  */
 const chrome = readFileSync(resolve(import.meta.dirname, '../../styles/chrome.css'), 'utf8');
-const docs = readFileSync(resolve(import.meta.dirname, '../../styles/docs-layout.css'), 'utf8');
 
 /** The text of the `@media` block of `query` (the first one). */
 function media(text: string, query: string): string {
@@ -47,8 +46,34 @@ describe('the header on a phone', () => {
   it('keeps the menu and the search at the right when enlarged text wraps the header', () => {
     expect(rule(chrome, '.site-header-inner').get('flex-wrap')).toBe('wrap');
     expect(rule(chrome, '.site-header-end').get('margin-left')).toBe('auto');
-    expect(rule(media(docs, '(max-width: 760px)'), '.docs-top').get('flex-wrap')).toBe('wrap');
-    expect(rule(media(docs, '(max-width: 760px)'), '.docs-top-end').get('margin-left')).toBe('auto');
+    expect(rule(media(chrome, '(max-width: 760px)'), '.docs-top-inner').get('flex-wrap')).toBe('wrap');
+    expect(rule(media(chrome, '(max-width: 760px)'), '.docs-search-link').get('margin-left')).toBe('auto');
+  });
+});
+
+describe('the landing header', () => {
+  it('folds the mega menu and the search into the menu below 900px, and only there', () => {
+    const narrow = media(chrome, '(max-width: 899px)');
+    expect(rule(narrow, '.site-menu').get('display')).toBe('block');
+    expect(narrow).toMatch(/\.site-nav,\s*\.site-search,\s*\.site-github\s*\{[^}]*display:\s*none/);
+    expect(rule(chrome, '.site-menu').get('display')).toBe('none');
+  });
+
+  it('lays the open mega menu over the page: the header is its positioned ancestor and the panel leaves the flow', () => {
+    expect(rule(chrome, '.site-header').get('position')).toBe('relative');
+    expect(Number(rule(chrome, '.site-header').get('z-index'))).toBeGreaterThan(0);
+    expect(rule(chrome, '.site-panel-body').get('position')).toBe('absolute');
+  });
+});
+
+describe('the headers at their breakpoints', () => {
+  it('keeps the landing header on one row from 900px up, and drops the search label below 1150px', () => {
+    expect(rule(media(chrome, '(min-width: 900px)'), '.site-header-inner').get('flex-wrap')).toBe('nowrap');
+    expect(rule(media(chrome, '(min-width: 900px) and (max-width: 1149px)'), '.site-search-label').get('display')).toBe('none');
+  });
+
+  it('hides the docs top bar\'s search box and links on a phone on purpose: the magnifier and the footer take over', () => {
+    expect(media(chrome, '(max-width: 760px)')).toMatch(/\.docs-search-box,\s*\.docs-top-nav\s*\{[^}]*display:\s*none/);
   });
 });
 

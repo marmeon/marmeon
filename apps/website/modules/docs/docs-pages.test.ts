@@ -27,7 +27,7 @@ describe('pages', () => {
     const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const response = await ssr.get('/no/such/page', { headers: { accept: 'text/html' } }).assertNotFound().assertServerRendered();
     expect(response.body).toContain('Not Found');
-    expect(response.body).toContain('class="site-header"');
+    expect(response.body).toContain('class="site-header stage"');
     expect(response.body).not.toContain('id="sidebar"');
   });
 

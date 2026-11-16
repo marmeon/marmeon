@@ -4,9 +4,12 @@ import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions, securityHeaders } from '@marmeon/http';
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
 import { AppConfig } from '../../config/app.ts';
+import docsConfig from '../../docs.config.ts';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
 import { FATHOM_SCRIPT } from './fathom.ts';
+import { buildMenu } from './menu.ts';
+import { PACKAGES } from './packages.ts';
 import { ShareAnalytics } from './middleware/ShareAnalytics.ts';
 import { ShareSite } from './middleware/ShareSite.ts';
 import { SiteInfo } from './SiteInfo.ts';
@@ -49,13 +52,13 @@ export class SiteServiceProvider implements ServiceProvider {
     container.make(Router).load({ group: PUBLIC_GROUP }, routes);
     container.singleton(SiteInfo, () => {
       const { version, license } = frameworkManifest();
-      return new SiteInfo(version, license, new URL(container.make(AppConfig).url).origin);
+      return new SiteInfo(version, license, new URL(container.make(AppConfig).url).origin, buildMenu(docsConfig, PACKAGES));
     });
     container.singleton(SiteSnippets, () => new SiteSnippets());
   }
 
   async boot(app: Application): Promise<void> {
-    // Read the version now: a manifest that cannot be found stops the start, not the first request.
+    // Read the version and build the menu now: a manifest that cannot be found, or a menu target that is no docs page, stops the start, not the first request.
     app.container.make(SiteInfo);
     await app.container.make(SiteSnippets).load();
     const config = app.container.make(SiteConfig);

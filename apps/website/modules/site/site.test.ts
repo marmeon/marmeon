@@ -111,11 +111,11 @@ describe('the landing page', () => {
     expect(section).toContain('Not the right fit');
   });
 
-  it('points to the community from the start section', async () => {
+  it('points to the community from the footer', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    const start = body.slice(body.indexOf('id="start-title"')).replaceAll('<!-- -->', '');
-    expect(start).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
-    expect(start).toContain('<a href="https://github.com/marmeon/marmeon/discussions" rel="noopener">discussion on GitHub</a>');
+    const footer = body.slice(body.indexOf('<footer')).replaceAll('<!-- -->', '');
+    expect(footer).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
+    expect(footer).toContain('<a href="https://github.com/marmeon/marmeon/discussions" rel="noopener">discussion on GitHub</a>');
   });
 
   it('shows the island section with its code and, without JavaScript, only the fallback', async () => {
@@ -260,11 +260,12 @@ describe('the landing page', () => {
 
   it('shares the framework version but not the docs navigation (the navigation belongs to the docs routes)', async () => {
     const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props;
-    expect(props.site).toEqual({ version: coreVersion, license: 'MIT', origin: 'http://localhost' });
+    expect(props.site).toEqual({ version: coreVersion, license: 'MIT', origin: 'http://localhost', menu: expect.any(Array) });
+    expect((props.site as { menu: { label: string }[] }).menu.map((panel) => panel.label)).toEqual(['Framework', 'Packages', 'Resources']);
     expect(props).not.toHaveProperty('nav');
     const docs = (await app.navigating().get('/docs/routing').assertOk()).page()!.props;
     expect(docs).toHaveProperty('nav');
-    expect(docs.site).toEqual({ version: coreVersion, license: 'MIT', origin: 'http://localhost' });
+    expect(docs.site).toMatchObject({ version: coreVersion, license: 'MIT', origin: 'http://localhost' });
   });
 
   it('answers a revalidation with 304', async () => {
@@ -275,21 +276,60 @@ describe('the landing page', () => {
 });
 
 describe('the shared chrome', () => {
-  it('renders the header with the docs and GitHub links, the version badge and the footer', async () => {
+  it('renders the stage header: the search trigger, the buttons, the menus; no shortcut hint on the server', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<a class="skip-link" href="#content">');
-    expect(body).toMatch(/<nav aria-label="Main"[^>]*>.*href="\/docs".*<\/nav>/);
-    expect(body).toMatch(/<a href="https:\/\/github\.com\/marmeon\/marmeon" rel="noopener">GitHub<\/a>/);
-    expect(body).toContain(`<span class="badge version-badge">${coreVersion}</span>`);
-    expect(body).toContain('<details class="site-menu"');
-    const footer = body.slice(body.indexOf('<footer'));
-    for (const href of ['/docs', '/docs/security-policy', '/docs/releases', 'https://github.com/marmeon/marmeon/blob/main/LICENSE']) expect(footer).toContain(`href="${href}"`);
+    const header = body.slice(body.indexOf('<header class="site-header stage"'), body.indexOf('</header>'));
+    expect(header).toMatch(/<nav aria-label="Main"[^>]*>.*href="\/docs".*<\/nav>/);
+    expect(header).toMatch(/<a [^>]*href="\/docs\/search"[^>]*data-search-trigger="true"[^>]*aria-keyshortcuts="\/ Control\+K Meta\+K"|<a [^>]*aria-keyshortcuts="\/ Control\+K Meta\+K"[^>]*data-search-trigger="true"[^>]*href="\/docs\/search"/);
+    expect(header).toMatch(/<a [^>]*href="https:\/\/github\.com\/marmeon\/marmeon"[^>]*>GitHub<\/a>/);
+    expect(header).toMatch(/<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"[^>]*>Get started<\/a>|<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"[^>]*>Get started<\/a>/);
+    expect(header).toContain('<details class="site-menu"');
+    expect(header).not.toContain('<kbd');
+    expect(header).not.toContain('version-badge');
+    expect(header).not.toContain('style=');
+  });
+
+  it('opens the mega menu panels without JavaScript: closed <details> with real targets, one group so that opening one closes the others', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const nav = body.slice(body.indexOf('<nav aria-label="Main"'), body.indexOf('</nav>'));
+    expect(nav.match(/<details class="site-panel" name="site-panel">/g)).toHaveLength(3);
+    for (const label of ['Framework', 'Packages', 'Resources']) expect(nav).toMatch(new RegExp(`<summary>${label}<svg`));
+    for (const href of ['/docs/why-marmeon', '/docs/modules', '/docs/upgrading', '/docs/installation', '/docs/packages']) expect(nav).toContain(`href="${href}"`);
+    expect(nav).not.toContain('<details class="site-panel" name="site-panel" open');
+    // Only what the site has: the Resources panel's targets, and none of the design's Blog, Guides or Discord.
+    const titles = [...nav.matchAll(/<span class="site-panel-item-title">([^<]*)<\/span>/g)].map((match) => match[1]);
+    expect(titles).toContain('Upgrade Guide');
+    expect(titles).toContain('GitHub Discussions');
+    expect(nav).not.toMatch(/Blog|Guides|Discord/);
+  });
+
+  it('folds the same targets into the phone menu: groups, every desktop package once, /docs once', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<nav aria-label="Menu"');
+    const menu = body.slice(start, body.indexOf('</nav>', start));
+    expect([...menu.matchAll(/<p class="site-menu-title">([^<]*)<\/p>/g)].map((match) => match[1])).toEqual(['Framework', 'Packages', 'Resources', 'More']);
+    const desktop = body.slice(body.indexOf('<nav aria-label="Main"'), body.indexOf('</nav>'));
+    const packages = [...desktop.matchAll(/<span class="site-panel-item-title">(@marmeon\/[a-z]+)<\/span>/g)].map((match) => match[1]!);
+    expect(packages).toHaveLength(11);
+    const group = menu.slice(menu.indexOf('Packages</p>'), menu.indexOf('Resources</p>'));
+    for (const name of packages) expect(group, name).toContain(`>${name}</a>`);
+    expect(menu.match(/href="\/docs"/g)).toHaveLength(1);
+    expect(menu).toContain('data-search-trigger');
+  });
+
+  it('renders the footer with its three columns and the legal line', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const footer = body.slice(body.indexOf('<footer')).replaceAll('<!-- -->', '');
+    expect(footer).toContain('<nav aria-label="Footer"');
+    for (const title of ['Framework', 'Community', 'Legal']) expect(footer).toContain(`<p class="site-footer-title">${title}</p>`);
+    for (const href of ['/docs', '/docs/packages', '/docs/releases', '/docs/security-policy', '/imprint', '/privacy', 'https://github.com/marmeon/marmeon/blob/main/LICENSE', 'https://github.com/marmeon/marmeon/discussions'])
+      expect(footer).toContain(`href="${href}"`);
     expect(footer).toContain('MIT licence');
-    const legal = footer.replaceAll('<!-- -->', '');
-    expect(legal).toContain('<a href="https://bespokecode.de" rel="noopener">BespokeCode</a>');
-    expect(legal).not.toContain('nofollow');
-    expect(legal).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
-    expect(legal).toContain('Made with <span role="img" aria-label="love">❤️</span> in Munich');
+    expect(footer).toContain('<a href="https://bespokecode.de" rel="noopener">BespokeCode</a>');
+    expect(footer).not.toContain('nofollow');
+    expect(footer).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
+    expect(footer).toContain('Made with <span role="img" aria-label="love">❤️</span> in Munich');
   });
 
   it('renders no copy button on the server: it appears with JavaScript only', async () => {
@@ -298,17 +338,21 @@ describe('the shared chrome', () => {
     expect(body).not.toContain('aria-live');
   });
 
-  it('gives an unknown path the header and footer but no version badge', async () => {
+  it('gives an unknown path the header and footer: flat links, no mega menu (it has no shared props)', async () => {
     const response = await app.get('/nothing-here', document);
     expect(response.status).toBe(404);
-    expect(response.body).toContain('class="site-header"');
-    expect(response.body).toContain('class="site-footer"');
-    expect(response.body).not.toContain('version-badge');
+    expect(response.body).toContain('class="site-header stage"');
+    expect(response.body).toContain('class="site-footer stage"');
+    const nav = response.body.slice(response.body.indexOf('<nav aria-label="Main"'), response.body.indexOf('</nav>'));
+    expect(nav).toContain('href="/docs/packages"');
+    expect(nav).toContain('href="/docs"');
+    expect(response.body).toContain('data-search-trigger');
+    expect(response.body).not.toContain('site-panel');
   });
 
   it('keeps the docs layout for the docs pages', async () => {
     const body = (await app.get('/docs/routing', document).assertOk()).body;
     expect(body).toContain('class="shell"');
-    expect(body).not.toContain('class="site-header"');
+    expect(body).not.toContain('class="site-header stage"');
   });
 });

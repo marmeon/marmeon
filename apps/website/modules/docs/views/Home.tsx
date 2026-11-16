@@ -5,6 +5,7 @@ import { SiteHead } from '../../site/components/SiteHead.tsx';
 import { DESCRIPTIONS } from '../../site/descriptions.ts';
 import { Terminal } from '../../site/components/Terminal.tsx';
 import type { ShowHomeController } from '../controllers/ShowHomeController.ts';
+import { roman } from '../roman.ts';
 
 /** Where a newcomer begins: install, find the way around an app, answer a first request. */
 const START: { path: string; section: string; label: string; description: ReactNode }[] = [
@@ -33,35 +34,6 @@ const START: { path: string; section: string; label: string; description: ReactN
 ];
 
 const COMMANDS = ['pnpm create marmeon my-app', 'cd my-app', 'pnpm dev'];
-
-const NUMERALS = [
-  [1000, 'M'],
-  [900, 'CM'],
-  [500, 'D'],
-  [400, 'CD'],
-  [100, 'C'],
-  [90, 'XC'],
-  [50, 'L'],
-  [40, 'XL'],
-  [10, 'X'],
-  [9, 'IX'],
-  [5, 'V'],
-  [4, 'IV'],
-  [1, 'I'],
-] as const;
-
-/** `4` → `IV`: the number of a section. */
-function roman(value: number): string {
-  let rest = value;
-  let out = '';
-  for (const [size, glyph] of NUMERALS) {
-    while (rest >= size) {
-      out += glyph;
-      rest -= size;
-    }
-  }
-  return out;
-}
 
 /** `/docs`: what Marmeon is, where to start, then every section of the docs with its pages. */
 export default function Home({ sections, lines }: PageProps<ShowHomeController>) {

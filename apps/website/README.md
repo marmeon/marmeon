@@ -16,10 +16,19 @@ pnpm website:check    # marmeon build, the production server on a free port, a s
 pnpm website:image    # the image: built from this checkout, checked, run read-only and behind Caddy — part of the `image` part
 ```
 
-- **Layouts**: `layouts/DocsLayout.tsx` for the `docs/*` pages, `layouts/SiteLayout.tsx` (skip link, header with the version
-  badge, footer) for the landing page and the error pages; `bootstrap/layouts.ts` picks by page name. The shared pieces — mark,
-  wordmark, version badge, copy button, terminal, code block — live in `modules/site/components`. The copy button renders only
-  in the browser, so a page without JavaScript carries none.
+- **Layouts**: `layouts/DocsLayout.tsx` for the `docs/*` pages, `layouts/SiteLayout.tsx` for the landing page and the error pages;
+  `bootstrap/layouts.ts` picks by page name. Both headers and the footer sit on the fixed dark stage in either colour scheme.
+  The landing's header holds the wordmark, a mega menu (Framework, Packages, Resources: `<details>` panels that share a `name`,
+  so a click opens one and closes the others without JavaScript; with it Escape and a press outside close them), Docs, "Search
+  docs", GitHub and Get started, and folds into one `<details>` menu below 900 px. The panels list only targets that exist and
+  are made at boot from `docs.config.ts`, `packages.ts` and `links.ts` (`modules/site/menu.ts`, shared once as `site.menu`; a docs
+  page, a package's page or a feature link that `docs.config.ts` does not list, or a package `packages.ts` does not list, stops the
+  start; the GitHub links are constants and not checked); a 404 has no shared props and gets flat links. The docs' top bar is sticky and
+  64 px on a desktop: brand, version badge, the search box, Framework and GitHub; at 760 px and below it scrolls away and shows the
+  magnifier instead of the box and the links. The landing's "Search docs" shows icon and shortcut only below 1150 px. The footer is full (about, three link columns, the legal
+  line) on the landing and compact (one row) in the docs. The shared pieces — mark, wordmark, version badge, copy button,
+  terminal, code block — live in `modules/site/components`. The copy button renders only in the browser, so a page without
+  JavaScript carries none.
 - **`docs.config.ts`** lists the sections and their pages, in reading order: a slug (`/docs/<slug>`), the label in the
   navigation, and the file — `docs/<slug>.md`, or a policy at the root via `file`. Previous and next lead through every page of
   every section in this order. There are no package pages: the package READMEs are short cards for npm that link here, and
@@ -105,7 +114,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   out; the summary is a constant that keeps pace with the root README's first paragraph.
 - **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
-  the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. `/` focuses the search field.
+  the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. `/` and ⌘K or Ctrl+K open the search (`useSearchShortcut`, on the docs pages and the landing; the release-line pages have no search trigger, so no shortcut): they click the visible `[data-search-trigger]` link. Only the chord, inside the open search layer or on the search page, focuses and selects the field; another open dialog keeps both keys, and a held key opens the layer once.
 - **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'` on every document —
   **no nonce**, because the pages are cached publicly and a nonce (one per response) must never reach a shared cache. The pages
   need none: the server renders no inline script (the page object is inert JSON, nothing streams, code blocks are spans), and the
