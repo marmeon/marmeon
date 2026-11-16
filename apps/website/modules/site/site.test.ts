@@ -3,10 +3,11 @@ import { join, resolve } from 'node:path';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { AGENT_TOOLS } from './agents.ts';
+import { AGENT_SKILLS, AGENT_TOOLS } from './agents.ts';
 import { CHAIN, mistakeLine } from './chain.ts';
 import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
 import { FAKES } from './fakes.ts';
+import { GITHUB_URL } from './links.ts';
 import { PACKAGES } from './packages.ts';
 import { SNIPPETS } from './snippets.ts';
 
@@ -28,6 +29,8 @@ const textOf = (markup: string) =>
 
 const repo = resolve(import.meta.dirname, '../../../..');
 const document = { headers: { accept: 'text/html' } };
+/** The landing's sections in their order, the hero first: the order test and the h2 count read this one list. */
+const SECTIONS = ['hero', 'principles', 'audience', 'chain', 'batteries', 'devtools', 'agents', 'secure', 'testing', 'islands', 'packages', 'start'];
 const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.json'), 'utf8')) as { version: string }).version;
 
 let app: TestApp;
@@ -178,13 +181,14 @@ describe('the landing page', () => {
 
   it('shows the island section with its code and, without JavaScript, only the fallback', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    expect(body).toContain('<section class="islands" aria-labelledby="islands-title"');
+    expect(body).toContain('<section class="islands duo-card" aria-labelledby="islands-title"');
     expect(body.indexOf('id="islands-title"')).toBeLessThan(body.indexOf('id="start-title"'));
-    const section = body.slice(body.indexOf('<section class="islands"'), body.indexOf('<section class="packages'));
+    const section = body.slice(body.indexOf('<section class="islands '), body.indexOf('<section class="packages'));
     expect(section).toContain('<div class="island-frame" data-island="site.render-clock"');
     expect(section).toContain('With JavaScript, the browser loads an island here: a part of the page the server renders on its own.');
     expect(section).toContain('<h3 class="tabs-heading">ShowRenderClockController.ts</h3>');
     expect(section).toContain('<h3 class="tabs-heading">IslandSection.tsx</h3>');
+    expect(section.indexOf('island-stage')).toBeGreaterThan(section.indexOf('<h3 class="tabs-heading">IslandSection.tsx</h3>'));
     expect(section).not.toContain('<h4');
     expect(section).toContain('IslandSection.tsx');
     // `load="visible"`: the server renders the fallback only, never the island's answer.
@@ -196,21 +200,21 @@ describe('the landing page', () => {
 
   it('orders the sections from the hero to the start', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    const ids = ['hero-title', 'principles-title', 'audience-title', 'chain-title', 'batteries-title', 'devtools-title', 'agents-title', 'secure-title', 'testing-title', 'islands-title', 'packages-title', 'start-title'];
+    const ids = SECTIONS.map((name) => `${name}-title`);
     const positions = ids.map((id) => body.indexOf(`id="${id}"`));
     expect(positions.every((position) => position > -1), ids.join()).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(new Set(positions).size).toBe(ids.length);
   });
 
-  it('has the seven sections after the chain, each named by its heading', async () => {
+  it('names every section after the hero by its h2, and counts the h2s from that list', async () => {
     const body = (await app.get('/', document).assertOk()).body;
-    for (const name of ['batteries', 'secure', 'testing', 'islands', 'devtools', 'packages', 'start']) {
+    const sections = SECTIONS.slice(1);
+    for (const name of sections) {
       expect(body, name).toMatch(new RegExp(`<section class="${name}[ "][^>]*aria-labelledby="${name}-title"`));
       expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
     }
-    expect(body.match(/<h2[ >]/g)).toHaveLength(11);
-    expect(body).toContain('<nav aria-label="Start reading">');
+    expect(body.match(/<h2[ >]/g)).toHaveLength(sections.length);
     expect(body).not.toContain('<section class="modules"');
   });
 
@@ -219,12 +223,76 @@ describe('the landing page', () => {
     expect(body).toMatch(/<section class="agents" aria-labelledby="agents-title"/);
     expect(body.indexOf('id="devtools-title"')).toBeLessThan(body.indexOf('id="agents-title"'));
     expect(body.indexOf('id="agents-title"')).toBeLessThan(body.indexOf('id="secure-title"'));
-    const section = body.slice(body.indexOf('<section class="agents"'), body.indexOf('<section class="secure"'));
+    const section = body.slice(body.indexOf('<section class="agents"'), body.indexOf('<section class="secure '));
     expect(textOf(section)).toContain('Your coding agent sees what you see.');
     expect(section).toContain('href="/docs/agents"');
     expect(section).toContain('href="/docs/mcp"');
     expect(section).toContain('<samp class="terminal-output">✓ Wrote .mcp.json.');
     expect(section).not.toContain('<span class="prompt" aria-hidden="true">$ </span>✓');
+    // The two lists name their counts, taken from agents.ts, and show every entry.
+    const text = section.replaceAll('<!-- -->', '');
+    expect(text).toContain(`Skills <span>${AGENT_SKILLS.length}</span>`);
+    expect(text).toContain(`MCP tools <span>${AGENT_TOOLS.length}</span>`);
+    for (const { name } of [...AGENT_SKILLS, ...AGENT_TOOLS]) expect(text, name).toContain(`<code>${name}</code>`);
+    expect(text.match(/<li><code>/g)).toHaveLength(AGENT_SKILLS.length + AGENT_TOOLS.length);
+  });
+
+  it('shows the six protections of the secure section, each with the page that backs it, and a link to the overview', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<section class="secure ');
+    const section = body.slice(start, body.indexOf('<div class="landing-tail"'));
+    expect(start).toBeGreaterThan(body.indexOf('id="agents-title"'));
+    expect(section).toContain('<a href="/docs/security" class="secure-overview">Security overview</a>');
+    const items = section.split('<li>').slice(1);
+    expect(items).toHaveLength(6);
+    expect(items.map((item) => /<h3>([^<]*)<\/h3>/.exec(item)?.[1])).toEqual([
+      'Fails closed',
+      'CSRF protection',
+      'Strict Content-Security-Policy',
+      'Signed-in pages are never cached',
+      'Page data stays out of browser storage',
+      'Devtools only in development',
+    ]);
+    const hrefs = items.map((item) => /<a href="([^"]*)"/.exec(item)?.[1]);
+    expect(hrefs).toEqual(['/docs/security#the-environment-decides-and-fails-closed', '/docs/csrf', '/docs/csp', '/docs/authentication#signed-in-pages-are-never-cached', '/docs/navigation#what-the-history-holds', '/docs/security#development-routes']);
+    for (const item of items) expect(item).toMatch(/<span class="protection-icon" aria-hidden="true"><svg[^>]*><path d="[^"]+"><\/path><\/svg><\/span>/);
+    expect(section).not.toMatch(/\sstyle=/);
+  });
+
+  it('shows the testing card with its snippet and the fakes from the list, beside the islands card', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<section class="testing duo-card"');
+    const section = body.slice(start, body.indexOf('<section class="islands '));
+    expect(start).toBeGreaterThan(body.indexOf('id="secure-title"'));
+    expect(section).toContain(`<span class="code-caption">${SNIPPETS.test.file}</span>`);
+    const squash = (text: string) => text.replaceAll(/\s+/g, ' ').trim();
+    expect(squash(textOf(section))).toContain(squash(SNIPPETS.test.code));
+    // Both cards stand side by side in one frame of the white band.
+    const tail = body.indexOf('<div class="landing-tail">');
+    const frame = body.indexOf('<div class="landing-inner landing-tail-frame">', tail);
+    expect(tail).toBeGreaterThan(body.indexOf('id="secure-title"'));
+    expect(frame).toBe(tail + '<div class="landing-tail">'.length);
+    expect(start).toBeGreaterThan(frame);
+    expect(body.indexOf('<section class="islands duo-card"')).toBeGreaterThan(start);
+    expect(body.indexOf('<section class="islands duo-card"')).toBeLessThan(body.indexOf('<section class="packages'));
+    expect([...section.matchAll(/<li>([^<]*)<\/li>/g)].map((match) => match[1])).toEqual([...FAKES]);
+    expect(section).toContain('href="/docs/testing-pages"');
+    expect(section).toContain('href="/docs/fakes"');
+  });
+
+  it('ends with the three commands, the installation guide, GitHub and three places to read next', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.indexOf('<section class="start stage stage--veins-band"');
+    expect(start).toBeGreaterThan(body.indexOf('id="packages-title"'));
+    const section = body.slice(start, body.indexOf('</section>', start));
+    expect(section).toMatch(/<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"/);
+    expect(section).toContain('Read the installation guide');
+    expect(section).toContain(`<a class="button button--ghost" href="${GITHUB_URL}" rel="noopener">Star on GitHub</a>`);
+    expect([...section.matchAll(/<span class="terminal-line">.*?<\/span>([^<]*)</g)].map((match) => match[1]!.trim())).toEqual(['pnpm create marmeon my-app', 'cd my-app', 'pnpm dev']);
+    expect(section).not.toContain('Ready on');
+    const nav = section.slice(section.indexOf('<nav aria-label="Start reading">'));
+    expect([...nav.matchAll(/<a [^>]*href="([^"]*)"/g)].map((match) => match[1])).toEqual(['/docs/installation', '/docs/structure', '/docs/routing']);
+    expect(section).not.toMatch(/\sstyle=/);
   });
 
   it('shows the nine batteries as cards, each with its checked code, its package and its docs link', async () => {
@@ -284,7 +352,7 @@ describe('the landing page', () => {
     const end = body.indexOf('</section>', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(start).toBeGreaterThan(body.indexOf('id="islands-title"'));
-    expect(end).toBeLessThan(body.indexOf('<section class="start"'));
+    expect(end).toBeLessThan(body.indexOf('<section class="start '));
     const list = body.slice(start, end);
     expect(textOf(list.slice(list.indexOf('<h2'), list.indexOf('</h2>')))).toBe(`${PACKAGES.length} packages, one version.`);
     for (const { name, docs } of PACKAGES) {

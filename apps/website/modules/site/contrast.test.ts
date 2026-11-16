@@ -65,14 +65,29 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--control-line', '--bg', 3],
   ['--accent-bright', '--bg', 3],
   ['--button-fg', '--button-bg', 4.5],
-  // The release-line banner is the one themed callout left: its text on its own tint. The devtools copy and the draft mark
+  // The release-line banner is the one themed callout left: its text on its own tint. The docs' links and the draft mark
   // colour a status on the page ground.
   ['--warning-fg', '--warning-bg', 4.5],
-  ...['--tip-fg', '--accent-strong', '--warning-fg', '--caution-fg'].map((text) => [text, '--bg', 4.5] as const),
+  ...['--accent-strong', '--warning-fg'].map((text) => [text, '--bg', 4.5] as const),
   // Fixed, on the stage.
   ...['--stage-fg', '--stage-soft', '--stage-muted', '--sand', '--thread'].map((text) => [text, '--stage', 4.5] as const),
   ...['--stage-fg', '--stage-soft', '--stage-muted'].map((text) => [text, '--panel-raised', 4.5] as const),
   ['--stage-soft', '--code-bg', 4.5],
+  // The dark band's devtools window and cards, the final call's terminal and the secure icon tiles: text on the panel.
+  ...['--stage-fg', '--stage-fg-strong', '--stage-soft', '--stage-muted', '--stage-dim', '--thread', '--sand', '--error'].map((text) => [text, '--panel', 4.5] as const),
+  ['--stage-dim', '--stage', 4.5],
+  ['--stage-fg-strong', '--stage', 4.5],
+  ['--thread', '--panel-raised', 4.5],
+  ['--sand', '--panel-raised', 4.5],
+  ['--error', '--panel-raised', 4.5],
+  ['--stage-fg', '--panel-raised', 4.5],
+  ['--stage-fg-strong', '--panel-raised', 4.5],
+  ...['--term-fg', '--term-dim', '--term-dim-text'].map((text) => [text, '--panel', 4.5] as const),
+  // The window bars of the final call's terminal, the chain and the hero, and the cards of the secure, testing and audience
+  // sections.
+  ['--term-dim', '--panel-bar', 4.5],
+  ['--stage-muted', '--panel-bar', 4.5],
+  ...['--ink', '--muted-ink', '--teal'].map((text) => [text, '--card', 4.5] as const),
   ['--thread', '--stage', 3],
   ['--ink', '--sand', 4.5],
   // Button hovers: `.button--sand:hover` and `.button--ghost:hover` on their grounds, `.button:hover` on Teal strong.
@@ -86,13 +101,14 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   // The callout's inline code and the agent's call sit on the raised panel.
   ...['--stage-fg-strong', '--thread'].map((text) => [text, '--panel-raised', 4.5] as const),
   // Fixed, the landing's light sections.
-  ...['--ink', '--teal'].flatMap((text) => ['--stone', '--paper'].map((ground) => [text, ground, 4.5] as const)),
+  ...['--ink', '--teal', '--muted-ink'].flatMap((text) => ['--stone', '--paper'].map((ground) => [text, ground, 4.5] as const)),
   // The terminal and the editor.
   ['--term-fg', '--term-bg', 4.5],
   ['--term-dim', '--term-bg', 4.5],
   ['--term-accent', '--term-bg', 4.5],
   ['--term-dim-text', '--term-bg', 4.5],
   ...['--editor-fg', '--editor-dim', '--editor-error', ...EDITOR_ROLES.map((role) => `--editor-syn-${role}`)].map((text) => [text, '--editor-bg', 4.5] as const),
+  ['--editor-dim', '--editor-chrome', 4.5],
   ['--editor-accent', '--editor-chrome', 3],
   ['--editor-accent', '--editor-bg', 3],
 ];

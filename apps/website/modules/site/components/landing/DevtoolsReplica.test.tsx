@@ -24,6 +24,15 @@ const tab = (name: string) => [...container.querySelectorAll<HTMLElement>('[role
 const panel = (name: string) => document.getElementById(tab(name).getAttribute('aria-controls')!)!;
 
 describe('DevtoolsReplica with JavaScript', () => {
+  it('has a window chrome with its title, an environment tag and three decorative dots', () => {
+    const chrome = container.querySelector('.devtools-replica-chrome')!;
+    expect(chrome.querySelector('.devtools-replica-title')?.textContent).toBe('Devtools · localhost:3000');
+    expect(chrome.querySelector('.devtools-replica-env')?.textContent).toBe('DEVELOPMENT');
+    const dots = chrome.querySelector('.devtools-replica-dots')!;
+    expect(dots.getAttribute('aria-hidden')).toBe('true');
+    expect(dots.children).toHaveLength(3);
+  });
+
   it('has two tablists, the pages and the bar, each showing its first tab', () => {
     expect([...container.querySelectorAll('[role="tablist"]')].map((list) => list.getAttribute('aria-label'))).toEqual(['Devtools pages', 'Devtools bar']);
     expect(panel('Requests').hidden).toBe(false);

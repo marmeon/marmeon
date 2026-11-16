@@ -1,55 +1,143 @@
-/* Get started */
-.landing .start-reading nav ul {
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line-strong);
-  list-style: none;
+/* The final call: the stage with veins, the headline and the buttons at the left, the three commands and where to read next at the right. */
+.landing .start {
+  position: relative;
+  overflow: hidden;
 }
 
-.landing .start-reading nav a {
-  display: flex;
+.landing .start-frame {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: 22px 4px;
-  border-bottom: 1px solid var(--line);
-  color: var(--fg);
-  text-decoration: none;
+  gap: 56px;
+  padding: clamp(72px, 9vw, 120px) clamp(20px, 3vw, 40px);
+  border-inline: 1px solid var(--stage-line);
 }
 
-.landing .start-reading nav a:hover .start-reading-title {
-  text-decoration: underline;
-  text-underline-offset: 4px;
+.landing .start-frame > * {
+  min-width: 0;
 }
 
-.landing .start-reading-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--muted);
+.landing .start-mark .mark {
+  width: 56px;
+  height: 56px;
 }
 
-.landing .start-reading-title {
-  color: var(--fg);
-  font-size: 1.5rem;
-  font-weight: 600;
+.landing .start h2 {
+  margin-top: 28px;
+  color: var(--stage-fg-strong);
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 1.6rem + 3vw, 3.75rem);
+  line-height: 1.02;
+  letter-spacing: var(--tracking-display);
 }
 
-.landing .start-reading-arrow {
-  color: var(--accent);
-  font-size: 1.375rem;
+.landing .start h2 .serif-accent {
+  display: block;
+  color: var(--sand);
+}
+
+.landing .start-copy > p {
+  max-width: 500px;
+  margin: 22px 0 0;
+  color: var(--stage-muted);
+  font-size: 1.03125rem;
+  line-height: 1.6;
+}
+
+.landing .start-copy code {
+  color: var(--stage-fg);
 }
 
 .landing .start-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding-top: 28px;
+  margin-top: 32px;
 }
 
-.landing .start-community {
-  margin: var(--space-5) 0 0;
-  color: var(--fg-2);
-  font-size: 1rem;
-  line-height: 1.55;
+.landing .start-actions .button {
+  min-height: 48px;
+}
+
+.landing .start-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The terminal on the final call's panel. */
+.landing .start .terminal {
+  border: 1px solid var(--rail-dark);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: 0 40px 80px -40px rgba(0, 0, 0, 0.9);
+}
+
+.landing .start .terminal-bar {
+  background: var(--panel-bar);
+  border-bottom-color: var(--panel-line);
+}
+
+.landing .start .terminal pre {
+  /* The commands are numbered by a counter in a pseudo-element, so a copy never includes the numbers. */
+  counter-reset: command;
+  font-size: 0.9375rem;
+  line-height: 2;
+}
+
+.landing .start .terminal-line::before {
+  content: counter(command);
+  counter-increment: command;
+  display: inline-block;
+  width: 3ch;
+  color: var(--stage-dim);
+}
+
+.landing .start .terminal .prompt {
+  color: var(--thread);
+}
+
+.landing .start nav ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .start nav a {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--rail-dark);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  text-decoration: none;
+}
+
+.landing .start nav a:hover {
+  border-color: var(--control-dark-hover);
+}
+
+.landing .start-reading-title {
+  color: var(--stage-fg-strong);
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.landing .start-reading-title::after {
+  content: ' \2192' / '';
+  color: var(--thread);
+  white-space: pre;
+}
+
+.landing .start-reading-text {
+  color: var(--stage-muted);
+  font-size: 0.78125rem;
+  line-height: 1.5;
 }

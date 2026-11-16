@@ -244,7 +244,7 @@
   min-height: 36px;
   padding: 0 14px;
   border-bottom: 1px solid var(--panel-line);
-  background: #131a1e;
+  background: var(--panel-bar);
   color: var(--stage-muted);
   font-family: var(--font-mono);
   font-size: 0.71875rem;

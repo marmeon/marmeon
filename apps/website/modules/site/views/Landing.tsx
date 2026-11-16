@@ -27,14 +27,16 @@ export default function Landing({ snippets, chain, packages, moduleFiles }: Page
       <AudienceSection />
       <ChainSection snippets={snippets} chain={chain} />
       <BatteriesSection snippets={snippets} moduleFiles={moduleFiles} />
-      <div className="landing-band stage stage--veins-band">
+      <div className="landing-band stage">
         <DevtoolsSection />
         <AgentsSection />
       </div>
       <SecureSection />
       <div className="landing-tail">
-        <TestingSection snippet={snippets.test} />
-        <IslandSection snippets={snippets} />
+        <div className="landing-inner landing-tail-frame">
+          <TestingSection snippet={snippets.test} />
+          <IslandSection snippets={snippets} />
+        </div>
       </div>
       <PackagesSection packages={packages} />
       <StartSection />

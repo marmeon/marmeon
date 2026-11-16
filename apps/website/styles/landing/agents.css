@@ -1,23 +1,72 @@
-/* Agents: the install terminal and the skills side by side, the MCP tools in a grid below */
-.landing .agents .landing-inner.landing-columns {
-  padding-bottom: 0;
+/* Agents: on the stage, the intro with the install terminal at the left, the skills and the MCP tools, each with its count, at the right. */
+.landing .agents .band-frame {
+  border-top: 1px solid var(--stage-line);
+  padding-top: clamp(56px, 7vw, 88px);
 }
 
-.landing .agents .agents-tools {
-  padding-top: clamp(32px, 4vw, 48px);
+.landing .agents-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: clamp(32px, 5vw, 64px);
+  align-items: start;
+}
+
+.landing .agents-columns > * {
+  min-width: 0;
+}
+
+.landing .agents-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.landing .agents-intro > p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.landing .agents-intro .terminal {
+  align-self: stretch;
+}
+
+.landing .agents-intro .agents-clients {
+  font-size: 0.9375rem;
+}
+
+.landing .agents-intro code,
+.landing .agents-clients code {
+  color: var(--stage-fg);
+}
+
+.landing .agents-lists {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.landing .agents-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  color: var(--stage-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.landing .agents-group-title span {
+  color: var(--sand);
 }
 
 .landing .agents-list {
   margin: 0;
   padding: 0;
-  border-top: 1px solid var(--line-strong);
+  border-top: 1px solid var(--panel-line);
   list-style: none;
-}
-
-.landing .agents-list--grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
-  column-gap: var(--space-6);
 }
 
 .landing .agents-list li {
@@ -26,24 +75,19 @@
   flex-direction: column;
   gap: 2px;
   padding: 12px 4px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--panel-line);
 }
 
 .landing .agents-list code {
-  color: var(--fg);
+  color: var(--stage-fg);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .landing .agents-list span {
-  color: var(--muted);
+  color: var(--stage-muted);
+  font-size: 0.9375rem;
   line-height: 1.5;
-}
-
-.landing .agents-clients {
-  margin: var(--space-5) 0 0;
-  color: var(--fg-2);
-  line-height: 1.6;
 }
 
 .landing .agents-clients a {

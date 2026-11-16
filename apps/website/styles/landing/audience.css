@@ -46,7 +46,7 @@
   overflow: hidden;
   border: 1px solid var(--rail-light);
   border-radius: var(--radius-xl);
-  background: #fbfaf7;
+  background: var(--card);
 }
 
 .landing .audience-card h3 {

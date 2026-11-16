@@ -88,4 +88,13 @@ describe('the stylesheets', () => {
     expect(urls.length).toBeGreaterThan(0);
     expect(urls.filter((path) => !existsSync(path))).toEqual([]);
   });
+
+  it('colours the testing and islands cards\' own headings only: no selector of testing.css reaches the editor\'s file names', () => {
+    const css = readFileSync(resolve(import.meta.dirname, '../../styles/landing/testing.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const selectors = [...css.matchAll(/(?:^|\})\s*([^{}]+)\{/g)].flatMap((match) => match[1]!.split(',').map((selector) => selector.trim()));
+    const headings = selectors.filter((selector) => /(^|[\s>])h[1-6]\b/.test(selector));
+    expect(new Set(headings)).toEqual(new Set(['.landing .duo-card > h2']));
+    // A bare descendant selector on the band or the card would colour `.editor .tabs-heading` too.
+    expect(selectors.filter((selector) => /\.landing-tail\s+(h\d|a)\b/.test(selector))).toEqual([]);
+  });
 });

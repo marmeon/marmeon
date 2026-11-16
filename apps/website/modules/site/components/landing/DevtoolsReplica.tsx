@@ -83,7 +83,11 @@ export function DevtoolsReplica() {
     <figure className="devtools-replica" aria-label="Devtools, illustration with sample data">
       <div className="devtools-replica-window">
         <div className="devtools-replica-chrome">
-          <Mark size={16} />
+          <span className="devtools-replica-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
           <h3 className="devtools-replica-title">Devtools · localhost:3000</h3>
           <span className="devtools-replica-env">DEVELOPMENT</span>
         </div>

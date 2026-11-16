@@ -161,7 +161,7 @@
 
 .landing .chain-window-bar {
   border-bottom: 1px solid var(--panel-line);
-  background: #131a1e;
+  background: var(--panel-bar);
   color: var(--stage-muted);
 }
 
