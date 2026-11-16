@@ -75,7 +75,26 @@ export function readAuth(session: Session, key: keyof AuthSessionKeys, names?: P
   return session.get((names?.session ?? AUTH_SESSION_KEYS)[key]);
 }
 
-/** Writes a sign-in key with the type {@link AuthSessionKeys} names for it. */
-export function writeAuth<K extends keyof AuthSessionKeys>(session: Session, key: K, value: AuthSessionKeys[K], names?: Pick<GuardNames, 'session'>): void {
+/** The sign-in keys whose write means a guard completed a sign-in, a password confirmation or a second factor. */
+const COMPLETING = new Set<keyof AuthSessionKeys>(['id', 'confirmedAt', 'twoFactorAt']);
+
+/** The guards that completed one of those on this request, by session. Only {@link writeAuth} adds to it. */
+const ACTED = new WeakMap<Session, Set<string>>();
+
+/**
+ * The guards (`web` for the app's) that signed in, confirmed the password or proved a second factor on the request `session` belongs to:
+ * the page `redirect().intended()` follows is the one of whoever acted, whatever the route's middleware says.
+ */
+export function guardsThatActed(session: Session): ReadonlySet<string> {
+  return ACTED.get(session) ?? new Set();
+}
+
+/** Writes a sign-in key with the type {@link AuthSessionKeys} names for it; a key that completes something notes the guard as having acted, unless `completes` is false: a restore from the remember-me cookie signs nobody in on this request. */
+export function writeAuth<K extends keyof AuthSessionKeys>(session: Session, key: K, value: AuthSessionKeys[K], names?: Pick<GuardNames, 'session' | 'name'>, completes = true): void {
   session.put<string>((names?.session ?? AUTH_SESSION_KEYS)[key], value);
+  if (completes && COMPLETING.has(key)) {
+    const acted = ACTED.get(session) ?? new Set<string>();
+    acted.add(names?.name ?? 'web');
+    ACTED.set(session, acted);
+  }
 }

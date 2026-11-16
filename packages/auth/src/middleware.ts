@@ -1,6 +1,5 @@
 import { durationToSeconds, type Duration, type Key } from '@marmeon/core';
 import { isPrefetch } from '@marmeon/http';
-import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
@@ -84,7 +83,7 @@ export function authenticateFor(whose: MiddlewareGuard, loginRoute: string): Mid
       // read-only, is no visit either: it gets its `unauthorized` fallback).
       if (ctx.request.method === 'GET' && this.#session.started && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
-        this.#session.put(INTENDED_KEY, url.pathname + url.search);
+        this.#session.put(this.#guard.names.session.intended, url.pathname + url.search);
       }
       return new Response(null, { status: 302, headers: { location: urlFor(this.#router, loginRoute), ...VARY } });
     }
@@ -186,7 +185,7 @@ export function confirmedPasswordFor(whose: MiddlewareGuard, confirmRoute: strin
       if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423, headers: VARY });
       if (ctx.request.method === 'GET' && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
-        this.#session.put(INTENDED_KEY, url.pathname + url.search);
+        this.#session.put(this.#guard.names.session.intended, url.pathname + url.search);
       }
       return new Response(null, { status: 302, headers: { location: urlFor(this.#router, confirmRoute), ...VARY } });
     }

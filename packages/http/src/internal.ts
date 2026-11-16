@@ -7,7 +7,7 @@ export { isViewResult } from './view.ts';
 export { isJsonResult, jsonResponse } from './json.ts';
 export { isIslandResult } from './island.ts';
 export { isLayerResult } from './layer.ts';
-export { flashableInput, Flasher, INTENDED_KEY, isRedirectResult, OLD_INPUT_KEY } from './redirect.ts';
+export { flashableInput, Flasher, INTENDED_KEY, IntendedKey, isRedirectResult, OLD_INPUT_KEY } from './redirect.ts';
 export { PageSession } from './page-session.ts';
 export { ServerClosing, ServerServing } from './server-closing.ts';
 export { warnIfSharedNonce, withDefaultPolicy } from './csp.ts';

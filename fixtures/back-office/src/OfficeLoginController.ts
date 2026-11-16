@@ -1,10 +1,7 @@
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
-import { Session } from '@marmeon/session';
 import { rules as r } from '@marmeon/validation';
-import { BackOfficeConfig } from './BackOfficeConfig.ts';
 import { OfficeAuth } from './guard.ts';
-import { intendedBelow } from './intended.ts';
 
 export const LoginRequest = defineRequest({
   schema: r.object({
@@ -18,19 +15,15 @@ export const LoginRequest = defineRequest({
 /** Signs an editor in: the guard's limits (a minute per client and address, a day per account) count before the password is checked. An editor with a second factor goes on to the code. */
 export class OfficeLoginController extends Controller {
   static request = LoginRequest;
-  static readonly inject = [OfficeAuth, Translator, Session, BackOfficeConfig] as const;
+  static readonly inject = [OfficeAuth, Translator] as const;
 
   readonly #auth: OfficeAuth;
   readonly #translator: Translator;
-  readonly #session: Session;
-  readonly #config: BackOfficeConfig;
 
-  constructor(auth: OfficeAuth, translator: Translator, session: Session, config: BackOfficeConfig) {
+  constructor(auth: OfficeAuth, translator: Translator) {
     super();
     this.#auth = auth;
     this.#translator = translator;
-    this.#session = session;
-    this.#config = config;
   }
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
@@ -41,8 +34,7 @@ export class OfficeLoginController extends Controller {
       // Without it, anyone who knows an address could lock its owner out for good, and the package has no password reset yet.
       const device = await this.#auth.deviceCookie();
       if (device) ctx.cookies.set(device.name, device.value, device.options);
-      // Only a page of the back office: the session keeps one wished-for page for all guards, and the last one stored may be the app's.
-      return intendedBelow(this.#session, this.#config.path) ? this.redirect().intended().route('office.index') : this.redirect().route('office.index');
+      return this.redirect().intended().route('office.index');
     }
     // The password was right, but the editor has a second factor and nobody is signed in yet: on to the code (or passkey). The guard's sign-in waits for it.
     if (signedIn.error.kind === 'two-factor-required') return this.redirect().route('office.two-factor.challenge');

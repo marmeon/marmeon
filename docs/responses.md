@@ -190,7 +190,7 @@ export class StoreNoteController extends Controller {
 | `this.redirect('/notes')` | The URL as written. |
 | `this.redirect().route(name, params, query)` | A named route. Parameters the path does not take go into the query. |
 | `this.back(fallback)` | The previous page of this site, from the `Referer` header, or `fallback`, by default `/`. |
-| `this.redirect().intended().route(name)` | The page a guest wanted before `authenticate()` sent them to the login, else the route. |
+| `this.redirect().intended().route(name)` | The page a guest wanted before the route's guard sent them to its login, else the route. |
 
 A redirect answers a `GET` with 302 and every other method with 303, so the browser follows a form's `PUT` or `DELETE` with a
 `GET`. `.status(301)` sets another status, and `.header(name, value)` adds a header.

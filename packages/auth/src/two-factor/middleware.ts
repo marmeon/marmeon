@@ -1,6 +1,5 @@
 import { durationToSeconds, type Duration } from '@marmeon/core';
 import { isPrefetch } from '@marmeon/http';
-import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, HttpError, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
@@ -88,7 +87,7 @@ export function twoFactorFor(whose: MiddlewareGuard, loginRoute: string | undefi
       // Only a visit is remembered, to come back to after the factor: not a prefetch, not a form post, not a read-only island request.
       if (ctx.request.method === 'GET' && this.#session.started && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
-        this.#session.put(INTENDED_KEY, url.pathname + url.search);
+        this.#session.put(this.#guard.names.session.intended, url.pathname + url.search);
       }
       return new Response(null, { status: 302, headers: { location: urlFor(this.#router, route), ...VARY } });
     }

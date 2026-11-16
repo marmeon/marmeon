@@ -1,10 +1,7 @@
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
-import { Session } from '@marmeon/session';
 import { rules as r } from '@marmeon/validation';
-import { BackOfficeConfig } from './BackOfficeConfig.ts';
 import { OfficeTwoFactor } from './guard.ts';
-import { intendedBelow } from './intended.ts';
 
 export const TwoFactorVerifyRequest = defineRequest({
   schema: r.object({ code: r.string().trim().max(32).default(''), recovery_code: r.string().trim().max(64).default('') }),
@@ -16,27 +13,22 @@ export const TwoFactorVerifyRequest = defineRequest({
  */
 export class OfficeTwoFactorVerifyController extends Controller {
   static request = TwoFactorVerifyRequest;
-  static readonly inject = [OfficeTwoFactor, Translator, Session, BackOfficeConfig] as const;
+  static readonly inject = [OfficeTwoFactor, Translator] as const;
 
   readonly #twoFactor: OfficeTwoFactor;
   readonly #translator: Translator;
-  readonly #session: Session;
-  readonly #config: BackOfficeConfig;
 
-  constructor(twoFactor: OfficeTwoFactor, translator: Translator, session: Session, config: BackOfficeConfig) {
+  constructor(twoFactor: OfficeTwoFactor, translator: Translator) {
     super();
     this.#twoFactor = twoFactor;
     this.#translator = translator;
-    this.#session = session;
-    this.#config = config;
   }
 
   async handle(ctx: ContextOf<typeof TwoFactorVerifyRequest>) {
     const { code, recovery_code: recoveryCode } = ctx.body;
     const field = recoveryCode !== '' ? 'recovery_code' : 'code';
     const done = await this.#twoFactor.stepUp(recoveryCode !== '' ? { recoveryCode } : { code });
-    // Only a page of the back office, as at the sign-in.
-    if (done.ok) return intendedBelow(this.#session, this.#config.path) ? this.redirect().intended().route('office.security') : this.redirect().route('office.security');
+    if (done.ok) return this.redirect().intended().route('office.security');
     switch (done.error.kind) {
       case 'no-challenge':
       case 'expired':
