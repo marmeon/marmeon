@@ -2,7 +2,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import { checkSinkAddress, checkWebhook, type WebhookHref } from './destination.ts';
 import type { ChatJson } from './driver.ts';
-import type { ChatMessage, ChatRaw } from './message.ts';
+import type { ChatMessage, ChatRaw, ChatRawFormats } from './message.ts';
 
 // A format as a driver package declares it: a type alias built from ChatJson.
 type SlackFormat = { readonly blocks: readonly { readonly type: string }[] };
@@ -13,15 +13,83 @@ type DateFormat = { readonly at: Date };
 type UnknownListFormat = readonly unknown[];
 
 describe('chat types', () => {
-  it('accepts no raw value while no format is declared', () => {
-    // @ts-expect-error without a declared format a text is no raw value
+  it('accepts the built-in raw formats through ChatMessage, and only as JSON', () => {
+    const fine: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      raw: {
+        slack: { blocks: [{ type: 'divider' }] },
+        discord: { content: undefined, embeds: [{ title: 'x' }], allowedMentions: { everyone: true, users: 'all', roles: ['1'] } },
+        teams: { card: { type: 'AdaptiveCard', version: '1.2', body: [] } },
+      },
+    };
+    // @ts-expect-error a text is no raw value
     const text: ChatMessage = { to: 'ops', text: 'x', raw: 'text' };
-    // @ts-expect-error without a declared format a list is no raw value
-    const list: ChatMessage = { to: 'ops', text: 'x', raw: [] };
-    // @ts-expect-error without a declared format no key is known
-    const keyed: ChatMessage = { to: 'ops', text: 'x', raw: { slack: {} } };
-    const without: ChatMessage = { to: 'ops', text: 'x' };
-    expectTypeOf([text, list, keyed, without]).toBeArray();
+    // @ts-expect-error `slakc` is no declared format
+    const typo: ChatMessage = { to: 'ops', text: 'x', raw: { slakc: { blocks: [] } } };
+    const date: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error a Date is no JSON
+      raw: { slack: { blocks: [{ type: 'section', at: new Date() }] } },
+    };
+    const blocks: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error `blocks` is a list
+      raw: { slack: { blocks: 'x' } },
+    };
+    const mention: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error users is 'all' or a list of ids
+      raw: { discord: { allowedMentions: { users: 'any' } } },
+    };
+    const parse: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error `parse` is not a field of the format: the driver derives it
+      raw: { discord: { content: 'x', allowedMentions: { parse: ['users'] } } },
+    };
+    const snake: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error `allowed_mentions` is not a key of the format
+      raw: { discord: { content: 'x', allowed_mentions: { parse: [] } } },
+    };
+    const card: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error a card is an AdaptiveCard
+      raw: { teams: { card: { type: 'Other', version: '1.2', body: [] } } },
+    };
+    const noBody: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error a card has a body
+      raw: { teams: { card: { type: 'AdaptiveCard', version: '1.2' } } },
+    };
+    const noType: ChatMessage = {
+      to: 'ops',
+      text: 'x',
+      // @ts-expect-error a block has a type
+      raw: { slack: { blocks: [{ text: 'x' }] } },
+    };
+    expectTypeOf([fine, text, typo, date, blocks, mention, parse, snake, card, noBody, noType]).toBeArray();
+  });
+
+  it('declares every built-in raw format as JSON', () => {
+    expectTypeOf<ChatRawFormats['slack']>().toExtend<ChatJson>();
+    expectTypeOf<ChatRawFormats['discord']>().toExtend<ChatJson>();
+    expectTypeOf<ChatRawFormats['teams']>().toExtend<ChatJson>();
+    expectTypeOf<ChatRawFormats[keyof ChatRawFormats]>().toExtend<ChatJson>();
+  });
+
+  it('accepts no raw value while no format is declared', () => {
+    expectTypeOf<ChatRaw<Record<never, never>>>().toBeNever();
+    // @ts-expect-error without a declared format nothing is a raw value
+    const none: ChatRaw<Record<never, never>> = {};
+    expectTypeOf(none).toBeNever();
   });
 
   it('accepts the declared formats only, and only as JSON', () => {
