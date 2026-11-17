@@ -452,6 +452,16 @@
   }
 }
 
+/* The version at the right end of the docs bar, where its line picker will open: the stage's colours, in the look of the search field. */
+.docs-top .badge {
+  flex: none;
+  padding: 4px 10px;
+  border-color: var(--rail-dark);
+  border-radius: var(--radius-md);
+  background: var(--panel-raised);
+  color: var(--stage-fg);
+}
+
 /* A phone: the wordmark and the menu or search share the header's line; the landing's hero and the docs' first page name the version. */
 @media (max-width: 479px) {
   .version-badge {
@@ -599,6 +609,22 @@
 
   .docs-search-link {
     display: flex;
+    margin-left: auto;
+  }
+
+  /* The version stays at the right, next to the magnifier. */
+  .docs-top .badge {
+    margin-left: auto;
+  }
+
+  .docs-top .badge + .docs-search-link {
+    margin-left: 0;
+  }
+}
+
+/* Below 480 px the version is hidden, so the magnifier takes the right end again. */
+@media (max-width: 479px) {
+  .docs-top .badge + .docs-search-link {
     margin-left: auto;
   }
 }

@@ -33,7 +33,6 @@ export function DocsLayout({ children }: LayoutProps) {
             <Wordmark />
             <span className="wordmark-suffix">docs</span>
           </Link>
-          {onLine && props.line ? <span className="badge">{props.line.version}</span> : <VersionBadge />}
           {!onSearchPage && !onLine && (
             <Link route="docs.search" layer className="docs-search-box" data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS}>
               <SearchIcon size={16} />
@@ -49,6 +48,7 @@ export function DocsLayout({ children }: LayoutProps) {
               GitHub
             </a>
           </nav>
+          {onLine && props.line ? <span className="badge">{props.line.version}</span> : <VersionBadge />}
           {!onSearchPage && !onLine && (
             <Link route="docs.search" layer className="docs-search-link" data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS} aria-label="Search the docs">
               <SearchIcon size={18} />
