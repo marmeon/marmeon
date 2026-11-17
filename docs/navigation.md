@@ -527,12 +527,12 @@ them. Their names and meanings are public API. `@marmeon/http/protocol` exports 
 | `VALIDATED_HEADER` | `x-marmeon-validated` | the `204` and `422` of a live validation | The fields that were checked, so a client tells the answer from a proxy's. |
 | `UPLOAD_HEADER` | `x-marmeon-upload` | an upload's requests | The request asks for an upload target, or is the one that receives the file (with the token's id). |
 | `FLASH_HEADER` | `x-marmeon-flash` | the answer to an action | The flash messages the action delivers, as URI-encoded JSON. |
-| `FLASH_WAITING_HEADER` | `x-marmeon-flash-waiting` | the answer to a prefetch | Flash messages are waiting for the page the user is shown; the client asks the server instead of showing the prefetched page. |
+| `FLASH_WAITING_HEADER` | `x-marmeon-flash-waiting` | the answer to a prefetch | Flash messages, or what a refused form was sent back with, are waiting for the page the user is shown; the client asks the server instead of showing the prefetched page. |
 | `LAYER_CLOSE_HEADER` | `x-marmeon-layer-close` | the answer to a layer's request | `true`: the JSON body says how many layers close and what reloads beneath them. |
 | `LOCATION_HEADER` | `x-marmeon-location` | a `409` | The address the client loads as a whole document. |
 | `DOCUMENT_HEADER` (internal) | `x-marmeon-document` | every request of a tab with tab sync (the default) | A random id of the tab's document: flash messages its request causes go only to it, and tab sync names it. |
 | `CONNECTION_HEADER` (internal) | `x-marmeon-connection` | every request of a tab that follows live hints | The id of the tab's document, so the server leaves that connection out of the hints its own request causes. |
-| `SUBMIT_HEADER` (internal) | `x-marmeon-submit` | a form's submit (`useForm`, `<Form>`) and the redirect it follows | A fresh id per submit: a conflict the server answers with waits for the page request that carries the same id, not for a poll, a partial reload or another tab. |
+| `SUBMIT_HEADER` (internal) | `x-marmeon-submit` | a form's submit (`useForm`, `<Form>`) and the redirect it follows | A fresh id per submit: what a refused form is sent back with (its errors, input or conflict) waits for the page request that carries the same id, not for a poll, a partial reload or another tab. |
 | `CONFLICT_HEADER` | `x-marmeon-conflict` | the `409` of `conflict(…)` | `1`: the JSON body is `{ message, current }` and the `409` is no document change. Never sent with a location. |
 | `RELOAD_HEADER` | `x-marmeon-reload` | a `409` with a location | `version`: a new build, which the client may postpone; `entry`: the page belongs to another package entry's document; anything else is a document change nothing can stop. |
 

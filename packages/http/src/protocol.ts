@@ -309,8 +309,8 @@ export const PARTIAL_COMPONENT_HEADER = 'x-marmeon-partial-component';
 export const PARTIAL_DATA_HEADER = 'x-marmeon-partial-data';
 
 /**
- * Sent with a form's submit by `useForm` and `<Form>`: a fresh id per submit. A conflict the server answers with waits for the page
- * request that carries the same id — the redirect the browser follows — and for no poll, partial reload or other tab.
+ * Sent with a form's submit by `useForm` and `<Form>`: a fresh id per submit. What a refused form is sent back with (its errors, input
+ * or conflict) waits for the page request that carries the same id — the redirect the browser follows — and for no poll, partial reload or other tab.
  *
  * @internal
  */

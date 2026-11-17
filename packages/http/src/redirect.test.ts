@@ -74,7 +74,7 @@ describe('RedirectResult', () => {
 
   it('flashes with() data through the Flasher — and refuses to drop it silently without one', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     new RedirectResult('/').with('status', 'Saved.').with({ count: 2 }).toResponse(request(), { routes: router, flasher: flasher });
     expect(flashed).toEqual({ status: 'Saved.', count: 2 });
 
@@ -85,7 +85,7 @@ describe('RedirectResult', () => {
 
   it('queues flash() messages — each with an id of its own, the same message twice is two — and needs a session for them', () => {
     const queued: { id: string; key: string; data: unknown }[] = [];
-    const flasher = { flashData: () => {}, pull: () => undefined, queueFlash: (message: { id: string; key: string; data: unknown }) => void queued.push(message), takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: () => {}, pull: () => undefined, queueFlash: (message: { id: string; key: string; data: unknown }) => void queued.push(message), queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false, flashed: () => undefined };
     const saved = { kind: 'success', message: 'Saved.' };
     new RedirectResult('/').flash('toast', saved).flash('toast', saved).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(queued.map(({ key, data }) => ({ key, data }))).toEqual([{ key: 'toast', data: saved }, { key: 'toast', data: saved }]);
@@ -95,7 +95,7 @@ describe('RedirectResult', () => {
 
   it('goes to the intended page once (authenticate() stored it), else to the fallback target', () => {
     const stored: Record<string, unknown> = { [INTENDED_KEY]: '/users/7/edit?tab=links' };
-    const flasher = { flashData: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false, flashed: () => undefined };
     const intended = () => new RedirectResult().intended().route('user-profile.show', { id: 1 }).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(intended().headers.get('location')).toBe('/users/7/edit?tab=links');
     expect(intended().headers.get('location')).toBe('/users/1'); // pulled: used once
@@ -104,7 +104,7 @@ describe('RedirectResult', () => {
 
   it('reads the key of the context, and the default key without one', () => {
     const stored: Record<string, unknown> = { [INTENDED_KEY]: '/app-page', '_auth:office:intended': '/office-page' };
-    const flasher = { flashData: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false, flashed: () => undefined };
     const intended = (intendedKey?: string | null) => new RedirectResult('/home').intended().toResponse(request(), { routes: router, flasher: flasher, intendedKey }).headers.get('location');
     expect(intended('_auth:office:intended')).toBe('/office-page');
     expect(intended('_auth:office:intended')).toBe('/home'); // pulled: used once, and the app's page was never read
@@ -116,7 +116,7 @@ describe('RedirectResult', () => {
   it('an intended URL pointing elsewhere is never followed (open redirect)', () => {
     for (const evil of ['//evil.test/phish', '/\\evil.test', 'https://evil.test/', '/\tevil', 'javascript:alert(1)', '', 42]) {
       expect(isLocalPath(evil), String(evil)).toBe(false);
-      const flasher = { flashData: () => {}, pull: () => evil, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+      const flasher = { flashData: () => {}, pull: () => evil, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false, flashed: () => undefined };
       expect(new RedirectResult('/home').intended().toResponse(request(), { routes: router, flasher: flasher }).headers.get('location')).toBe('/home');
     }
     expect(isLocalPath('/users/1?q=a//b')).toBe(true);
@@ -128,7 +128,7 @@ describe('RedirectResult', () => {
 
   it('never flashes a field with "password" in its name, files or the CSRF token', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const input = {
       email: 'ada@example.com',
       password: 'secret',
@@ -146,7 +146,7 @@ describe('RedirectResult', () => {
 
   it('drops a `__proto__` input and keeps one named like another Object member', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const input = JSON.parse('{"__proto__":{"admin":"yes"},"toString":"x"}') as Record<string, unknown>;
     new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
     const old = flashed._old_input as Record<string, unknown>;
@@ -156,7 +156,7 @@ describe('RedirectResult', () => {
 
   it('flashes no one-time code, token, recovery code or card detail — but a zip code', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const input = {
       email: 'ada@example.com',
       otp: '123456',
@@ -185,7 +185,7 @@ describe('RedirectResult', () => {
 
   it('keeps a long field and the short ones — and leaves out only a string that alone cannot fit in 64 KiB', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const long = 'x'.repeat(5000);
     const input = { email: 'ada@example.com', message: long, list: ['a', 'z'.repeat(1024 * 1024)], nested: { note: 'n', big: 'b'.repeat(70_000) }, body: 'x'.repeat(8 * 1024 * 1024) };
     new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
@@ -194,7 +194,7 @@ describe('RedirectResult', () => {
 
   it('leaves out a multi-byte string that alone exceeds 64 KiB as JSON, and keeps the short fields', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const input = { email: 'ada@example.com', euros: '€'.repeat(30_000), controls: '\u0001'.repeat(12_000) };
     new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(flashed._old_input).toEqual({ email: 'ada@example.com' });
@@ -202,7 +202,7 @@ describe('RedirectResult', () => {
 
   it('bounds the flashed errors to 64 KiB: all while they fit, else the first message per field, else the first fields', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const flash = (errors: Record<string, string[]>) => {
       new RedirectResult('/').withErrors(errors).toResponse(request('POST'), { routes: router, flasher: flasher });
       return flashed.errors as Record<string, string[]>;
@@ -223,7 +223,7 @@ describe('RedirectResult', () => {
 
   it('flashes no input at all above 64 KiB — and keeps the errors', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), flashed: (key: string) => flashed[key], pull: () => undefined, queueFlash: () => {}, queueSentBack: () => {}, takeFlash: () => [], hasFlash: () => false };
     const input = Object.fromEntries(Array.from({ length: 70 }, (_, index) => [`field${index}`, 'v'.repeat(1000)]));
     new RedirectResult('/').withInput(input).withErrors({ field0: ['Required.'] }).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(flashed._old_input).toEqual({});

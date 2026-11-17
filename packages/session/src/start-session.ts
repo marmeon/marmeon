@@ -95,9 +95,9 @@ export class StartSession {
         // An asset-version reload (409): the page is requested again, so flash data must survive it.
         if (response.status === 409 && response.headers.has(LOCATION_HEADER)) {
           this.#session.reflash();
-          // A conflict that waits for this submit's follow-up: the browser loads the document anew, with no submit id.
+          // What a form was sent back with waits for this submit's follow-up: the browser loads the document anew, with no submit id.
           const submit = ctx.request.headers.get(SUBMIT_HEADER);
-          if (submit !== null) this.#session.releaseConflict(ctx.request.headers.get(DOCUMENT_HEADER) ?? undefined, submit);
+          if (submit !== null) this.#session.releaseSentBack(ctx.request.headers.get(DOCUMENT_HEADER) ?? undefined, submit);
         }
       } finally {
         // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser

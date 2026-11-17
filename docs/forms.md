@@ -162,6 +162,7 @@ dirty, and the guard still asks.
 
 A validation error on the server sends the browser back with the errors and the input, which the
 [validation](validation.md#from-schema-to-handler) page explains. The first message of each field lands in `form.errors`.
+The errors and the input wait for the page of that submit (for five minutes at most), so a prefetch or another tab in between neither takes nor shows them.
 
 A request that fails, because the server cannot be reached or answers with a server error, leaves the page and everything typed
 in place. The app shows the failure over the page, which the [error handling](errors.md#errors-in-the-browser) page describes, and
