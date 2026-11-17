@@ -484,9 +484,10 @@ It needs `mime`, and every type in it must be one the rule can measure: PNG, JPE
 through unmeasured, so that is a type error, and the rule throws when you build it. It throws for an option or a limit it does not
 know, too, so a typo never drops a limit.
 
-AVIF is not among the types. The size in an AVIF header is the container's, which a decoder does not have to follow: a grid image
-states one size and decodes its tiles. Until the rule can read the coded image, leave `image/avif` out of `mime` when you set
-`dimensions`.
+AVIF is not among the types. Its header states the size of the container, and a decoder decodes each tile, alpha image and other
+image in the file at its own coded size, which the first bytes of the file do not reliably show. To accept AVIF, give it a field
+without `dimensions` and set the pixel limit of the decoder that reads the file later, in the job that processes it. If you do not
+accept AVIF, leave `image/avif` out of `mime`.
 
 The size comes from the file's header, and nothing decodes the file. It is the size a browser shows. A turn that the file's EXIF
 (JPEG, PNG, WebP) names is applied, so a JPEG stored 10 × 200 with the orientation 6 counts as 200 × 10. For a GIF it is the
