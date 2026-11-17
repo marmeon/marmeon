@@ -15,8 +15,8 @@ export function DevtoolsSection() {
               </h2>
             </div>
             <p>
-              In development, devtools records requests, queries, jobs and mails and shows them on a page of its own and in a bar on every page. Secrets are redacted. In production it is not there. The picture
-              below is a copy with invented data; click through its tabs. <Link href="/docs/devtools">Read the devtools page</Link>
+              Requests, queries, jobs and mails, recorded in development with secrets redacted, in a bar on every page and on a page of its own. Production has none of it. Try the copy below; its data is invented.{' '}
+              <Link href="/docs/devtools">Read the devtools page</Link>
             </p>
           </div>
           <DevtoolsReplica />
