@@ -4,6 +4,7 @@ import { ownResponse, type CheckRouteName, type Param, type Query, type Redirect
 import { urlFor } from '@marmeon/router/url';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
+import { SUBMIT_HEADER } from './protocol.ts';
 import { isSensitiveField } from './sensitive-fields.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 
@@ -148,6 +149,15 @@ export class RedirectResult {
   }
 
   /**
+   * @internal — the page branch of `conflict(…)`: the form goes back with `{ message, current }` waiting for the page of this document
+   * (a reserved flash message, never delivered as one), bounded like the errors.
+   */
+  withConflict(conflict: { readonly message: string; readonly current: unknown }): this {
+    this.#messages.push(flashEntry(CONFLICT_KEY, boundedConflict(conflict)));
+    return this;
+  }
+
+  /**
    * Flashes the input for `old()`, so the form can be filled again. Files, uploads and
    * passwords never go into the session, and neither does input over 64 KiB. See `docs/session.md#flash-data`.
    */
@@ -166,7 +176,11 @@ export class RedirectResult {
       // Bound to the document whose request flashed them: another tab's request (a poll, a visit) never takes them —
       // this tab's next answer does, or the full page load that follows a 409.
       const document = request.headers.get(DOCUMENT_HEADER);
-      for (const message of this.#messages) flasher.queueFlash(document ? { ...message, document } : message);
+      const submit = request.headers.get(SUBMIT_HEADER);
+      for (const message of this.#messages) {
+        // A conflict waits for the page request of this very submit: the id the client sent with it.
+        flasher.queueFlash({ ...message, ...(document ? { document } : {}), ...(message.key === CONFLICT_KEY && submit ? { form: submit } : {}) });
+      }
     }
     // Without a session nothing was stored: the fallback.
     const key = this.#intended && flasher !== undefined && flasher.started !== false ? (typeof intendedKey === 'function' ? intendedKey() : intendedKey) : null;
@@ -192,6 +206,8 @@ export class RedirectResult {
 
 /** Session keys shared with @marmeon/session (`old()`) and the shared `errors` prop. */
 export const ERRORS_KEY = 'errors';
+/** The reserved key of the conflict a form was sent back with, among the session's flash messages: `{ message, current? }`. Never shown as a message. */
+export const CONFLICT_KEY = '_conflict';
 export const OLD_INPUT_KEY = '_old_input';
 /** Where the app's `authenticate()` keeps the page a guest wanted, for `redirect().intended()`; a package guard keeps its own, under another key. */
 export const INTENDED_KEY = '_intended_url';
@@ -244,6 +260,39 @@ function boundedErrors(errors: Record<string, readonly string[]>): Record<string
     size += entry;
   }
   return Object.fromEntries(kept); // not `result[field] =`: a field named `__proto__` is a key, not the prototype
+}
+
+/**
+ * The conflict as the session may keep it: `{ message, current }` while that fits in 64 KiB as JSON, else `{ message }` alone — the
+ * page's own props carry the record — and a message that alone does not fit is cut. Serialized once and measured as that very string
+ * (what is stored is what was measured, a `toJSON()` that answers differently the second time changes nothing); a `current` JSON
+ * cannot hold (a cycle, a `BigInt`) is left out the same way.
+ */
+function boundedConflict(conflict: { readonly message: string; readonly current: unknown }): { message: string; current?: unknown } {
+  const serialize = (value: unknown): string | undefined => {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return undefined;
+    }
+  };
+  const fits = (json: string | undefined): json is string => json !== undefined && new TextEncoder().encode(json).byteLength <= MAX_FLASHED_INPUT_BYTES;
+  // `current: undefined` drops out of the JSON: nothing to keep.
+  const whole = serialize({ message: conflict.message, current: conflict.current });
+  if (fits(whole)) return JSON.parse(whole) as { message: string; current?: unknown };
+  const only = serialize({ message: conflict.message });
+  if (fits(only)) return JSON.parse(only) as { message: string };
+  // Cut at a character, never inside a surrogate pair, as long as the whole `{ message }` fits.
+  const characters = Array.from(conflict.message);
+  const shortened = (count: number) => serialize({ message: `${characters.slice(0, count).join('')}…` })!;
+  let low = 0;
+  let high = characters.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (fits(shortened(middle))) low = middle;
+    else high = middle - 1;
+  }
+  return JSON.parse(shortened(low)) as { message: string };
 }
 
 function stripInput(input: Record<string, unknown>): Record<string, unknown> {

@@ -123,8 +123,8 @@ async function boot({ env = {}, override }: { env?: Record<string, string>; over
 const helloDocument = (locale: 'en' | 'de', props: string) =>
   `<!doctype html>\n<html lang="${locale}">\n  <head><meta charset="utf-8" /><title>Marmeon</title><script type="application/json" id="marmeon-page">{"component":"shop/Hello","props":{${props}},"url":"/hello","version":null,"locale":"${locale}","fallbackLocale":"en","epoch":"EPOCH"}</script>\n</head>\n  <body><div id="app"></div></body>\n</html>`;
 const normalized = (html: string) => html.replace(/"epoch":"[^"]*"/, '"epoch":"EPOCH"').replace(/,"csrf":"[^"]*"/, '');
-const EN_PROPS = '"errors":{},"greeting":"Hello Ada","cart":"2 items in your cart","html":"Use \\u003cb>bold\\u003c/b> & \\u003cimg src=x onerror=alert(1)>"';
-const DE_PROPS = '"errors":{},"greeting":"Hallo Ada","cart":"2 Artikel im Warenkorb","html":"Nutze \\u003cb>fett\\u003c/b> & \\u003cimg src=x onerror=alert(1)>"';
+const EN_PROPS = '"errors":{},"_conflict":null,"greeting":"Hello Ada","cart":"2 items in your cart","html":"Use \\u003cb>bold\\u003c/b> & \\u003cimg src=x onerror=alert(1)>"';
+const DE_PROPS = '"errors":{},"_conflict":null,"greeting":"Hallo Ada","cart":"2 Artikel im Warenkorb","html":"Nutze \\u003cb>fett\\u003c/b> & \\u003cimg src=x onerror=alert(1)>"';
 
 const page = async (response: Response) => (await response.json()) as { component: string; props: Record<string, any>; locale?: string; fallbackLocale?: string; timeZone?: string };
 

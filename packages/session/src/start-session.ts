@@ -1,5 +1,5 @@
 import { Container, Logger, Redactor } from '@marmeon/core';
-import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@marmeon/http/internal';
+import { DOCUMENT_HEADER, LOCATION_HEADER, ParentRequest, ReadOnly, SUBMIT_HEADER } from '@marmeon/http/internal';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig, sessionCookieName } from './config.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
@@ -93,7 +93,12 @@ export class StartSession {
       try {
         response = await next();
         // An asset-version reload (409): the page is requested again, so flash data must survive it.
-        if (response.status === 409 && response.headers.has(LOCATION_HEADER)) this.#session.reflash();
+        if (response.status === 409 && response.headers.has(LOCATION_HEADER)) {
+          this.#session.reflash();
+          // A conflict that waits for this submit's follow-up: the browser loads the document anew, with no submit id.
+          const submit = ctx.request.headers.get(SUBMIT_HEADER);
+          if (submit !== null) this.#session.releaseConflict(ctx.request.headers.get(DOCUMENT_HEADER) ?? undefined, submit);
+        }
       } finally {
         // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
         // keeps the one the sign-out sent.

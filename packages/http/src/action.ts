@@ -49,9 +49,12 @@ export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N
 /** Whether the controller of route `N` may answer with `conflict(…)` — the action then ends `{ kind: 'conflict' }`. */
 export type ActionConflicts<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, ConflictResult>] extends [never] ? false : true;
 
-/** `Serialize<T>` of every `ConflictResult<T>` branch of an answer `R` — `never` without one. */
+/**
+ * `Serialize<T>` of every `ConflictResult<T>` branch of an answer `R` — `never` without one. It is the type `C` of `FormConflict<C>`
+ * (`form.conflict` of `useForm`); there `current` may also be `undefined` when it was too big to keep. See docs/forms.md#conflicts.
+ */
 // `undefined` is no JSON: a conflict whose `current` is undefined arrives without one, and the browser reads `undefined`.
-type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
+export type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 
 /** What `current` of a conflict of route `N` is: `Serialize<T>` of its controller's `conflict(current)` — `unknown` for a closure. */
 export type ActionConflictOf<N extends string> = unknown extends ActionAnswerOf<N> ? unknown : ConflictOf<ActionAnswerOf<N>>;

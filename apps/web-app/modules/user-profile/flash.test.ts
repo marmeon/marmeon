@@ -44,7 +44,7 @@ describe('flash messages: taken only by an answer that is shown', () => {
   it('a partial reload delivers what waits — whatever props it asks for (a form sent with `only` lost it)', async () => {
     const browser = await saved();
     const partial = await browser.reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(profile(ada)).assertOk();
-    expect(Object.keys(partial.page()!.props).sort()).toEqual(['activity', 'errors']);
+    expect(Object.keys(partial.page()!.props).sort()).toEqual(['_conflict', 'activity', 'errors']);
     partial.assertFlash('toast', { message: 'Profile saved.' });
   });
 

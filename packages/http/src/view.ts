@@ -9,6 +9,12 @@ const VIEW_RESULT = Symbol.for('marmeon.view-result');
 /** The props a view takes: a record by prop name. See docs/pages.md#props. */
 export type ViewProps = Record<string, unknown>;
 
+/**
+ * Props a page cannot set: `_conflict` is the session's shared prop of the conflict a form shows, and a page's own would be dropped.
+ * Setting one is a type error. See docs/forms.md#conflicts.
+ */
+export type ReservedProps = { readonly _conflict?: never };
+
 /** What `view()` and `json()` take besides the data: the response's `status` (default 200) and extra `headers`. */
 export interface ResultOptions {
   readonly status?: number;
@@ -66,7 +72,7 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
  */
 export function view<const V extends string, const TProps extends ViewProps>(
   component: CheckViewName<V>,
-  props: TProps,
+  props: TProps & ReservedProps,
   options: ResultOptions = {},
 ): PageResult<TProps, V> {
   assertResultOptions('view', options);
@@ -152,13 +158,13 @@ type ActionResult<TAction extends PageAction> = TAction extends { handle: (...ar
 
 /**
  * Infers a page's props from the controller that renders it (`PageProps<ShowUserProfileController>`): its view branches only,
- * plus the `SharedProps` (a controller's own prop of the same name wins), typed as they arrive — resolved (`optional()` and
+ * plus the `SharedProps` (a controller's own prop of the same name wins — but `_conflict`, which is the framework's: a page's own is dropped), typed as they arrive — resolved (`optional()` and
  * `defer()` props are `T | undefined`) and serialized (`Serialize`: a `Date` prop is a `string`). See docs/responses.md#pages.
  */
 export type PageProps<TAction extends PageAction> =
   Awaited<ActionResult<TAction>> extends infer TResult
     ? TResult extends ViewResult<infer TProps>
-      ? Serialize<Omit<SharedProps, keyof TProps> & ResolvedProps<TProps>>
+      ? Serialize<Omit<SharedProps, Exclude<keyof TProps, '_conflict'>> & ResolvedProps<Omit<TProps, '_conflict'>>>
       : never
     : never;
 

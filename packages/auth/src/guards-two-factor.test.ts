@@ -165,7 +165,7 @@ const routes = openRoutes((Route) => {
 });
 
 // The app's error page for a 401, as the page payload names it.
-const ERROR_PAGE = /"component":"system\/errors\/Error","props":\{"errors":\{\},"status":401,"title":"Unauthorized"/;
+const ERROR_PAGE = /"component":"system\/errors\/Error","props":\{"errors":\{\},"_conflict":null,"status":401,"title":"Unauthorized"/;
 
 type Who = 'app' | 'office';
 

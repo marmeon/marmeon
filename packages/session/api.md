@@ -131,7 +131,7 @@ export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 // ShareErrorsFromSession
 export declare class ShareErrorsFromSession {
     #private;
-    handle(_ctx: HttpContext, next: Next<{}>): Promise<Response>;
+    handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // StartSession
 export declare class StartSession {
@@ -180,6 +180,10 @@ interface ModuleDefinition {
 // @marmeon/http/page.SharedProps
 interface SharedProps {
     errors: ValidationErrors;
+    _conflict: {
+        message: string;
+        current?: unknown;
+    } | null;
 }
 ```
 

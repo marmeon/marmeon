@@ -1,6 +1,6 @@
-import { defaultFormEntries, errorRecord, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, linkQuery, liveValidationOnFirstUse, restoreFormEntries, sameEntries, sensitiveControl, type FormLiveValidation } from '@marmeon/http/client/adapter';
+import { conflictOf, submitHeaders, defaultFormEntries, errorRecord, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, linkQuery, liveValidationOnFirstUse, restoreFormEntries, sameEntries, sensitiveControl, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { isSensitiveRememberField, resolveRoute, type Confirm, type LooksLikePassword, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, RouteQueryOf, Routes } from '@marmeon/http/page';
+import type { ActionConflictOf, BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, RouteQueryOf, Routes } from '@marmeon/http/page';
 import {
   useCallback,
   useContext,
@@ -18,7 +18,7 @@ import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
 import { RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
-import type { LiveValidationSetting, PasswordNeverRemembered, RouteFormFields } from './use-form.ts';
+import type { FormConflict, LiveValidationSetting, PasswordNeverRemembered, RouteFormFields } from './use-form.ts';
 
 type Primitive = string | number | boolean | bigint | null | undefined | Date;
 
@@ -64,7 +64,7 @@ export type CheckFormElementRoute<N extends string> =
     : CheckBrowserRouteName<N>;
 
 /** What the render function of `<Form>` gets — the form's state, typed by its route. */
-export interface FormRenderState<F> {
+export interface FormRenderState<F, C = unknown> {
   /** The first message per field (by path: `label`, `links.0.url`) — from the server's answer, or a live validation. */
   readonly errors: Partial<Record<string, string>>;
   readonly hasErrors: boolean;
@@ -72,9 +72,15 @@ export interface FormRenderState<F> {
   readonly processing: boolean;
   /** How far an upload is (a form with a file), else null. */
   readonly progress: VisitProgress | null;
+  /** The last submit succeeded — never after a conflict. */
   readonly wasSuccessful: boolean;
   /** The last submit succeeded less than two seconds ago — for a short "Saved." */
   readonly recentlySuccessful: boolean;
+  /**
+   * The conflict the last submit ended with — someone else saved first — else undefined. The form is not saved: it stays dirty and
+   * keeps what was typed. Cleared by the next submit and by `reset()`. See `docs/forms.md#conflicts`.
+   */
+  readonly conflict: FormConflict<C> | undefined;
   /** Whether a field differs from where the form started (`data-dirty` on the form) — any field, or the one named. */
   isDirty(name?: FieldName<F>): boolean;
   /**
@@ -106,7 +112,7 @@ type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: B
 export type FormProps<N extends string> = {
   /** The route it sends to — method and URL from it; a GET route writes its query. */
   route: CheckFormElementRoute<N>;
-  children: ReactNode | ((form: FormRenderState<FormFieldsOf<N>>) => ReactNode);
+  children: ReactNode | ((form: FormRenderState<FormFieldsOf<N>, ActionConflictOf<N>>) => ReactNode);
   /** Ask first: `confirm="Revoke the token?"`, or with a title, labels or a text to type. A no sends nothing. */
   confirm?: Confirm;
   /** Live validation: fields checked against the server's schema when they are left (or while typed into). Not for GET. */
@@ -126,7 +132,10 @@ export type FormProps<N extends string> = {
   replace?: boolean;
   only?: readonly string[];
   reset?: readonly string[];
+  /** The save went through — not after a conflict, which is not one. */
   onSuccess?: () => void;
+  /** The controller answered `conflict(current)`: someone else changed the record first. The form keeps its edits. See `docs/forms.md#conflicts`. */
+  onConflict?: (conflict: FormConflict<ActionConflictOf<N>>) => void;
   /** The server rejected the input: the first message per field. */
   onError?: (errors: Record<string, string>) => void;
   onFinish?: () => void;
@@ -157,6 +166,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     only,
     reset: resetProps,
     onSuccess,
+    onConflict,
     onError,
     onFinish,
     ...attributes
@@ -172,6 +182,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   const [progress, setProgress] = useState<VisitProgress | null>(null);
   const [wasSuccessful, setWasSuccessful] = useState(false);
   const [recentlySuccessful, setRecentlySuccessful] = useState(false);
+  const [conflict, setConflict] = useState<FormConflict | undefined>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -262,10 +273,12 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     }
     setProcessing(true);
     setWasSuccessful(false);
+    setConflict(undefined);
     try {
       const sent = baseline.current;
       const answer = await visit(url, {
         method,
+        headers: submitHeaders(),
         ...(body !== undefined ? { data: body } : {}),
         preserveScroll,
         ...(preserveState !== undefined ? { preserveState } : {}),
@@ -283,6 +296,16 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
       setErrors(failed);
       if (Object.keys(failed).length > 0) {
         onError?.(failed);
+        return;
+      }
+      const conflicted = conflictOf(answer);
+      if (conflicted) {
+        // Not saved: the form keeps what was typed — no reset, no new baseline, no success.
+        const seen = { message: conflicted.message, current: conflicted.current };
+        setRecentlySuccessful(false);
+        clearTimeout(timer.current);
+        setConflict(seen);
+        (onConflict as ((conflict: FormConflict) => void) | undefined)?.(seen);
         return;
       }
       if (resetOnSuccess) {
@@ -317,6 +340,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     progress,
     wasSuccessful,
     recentlySuccessful,
+    conflict,
     isDirty: (name?: string) => (name === undefined ? dirty : dirtyNames.includes(name)),
     field: (name: string) => ({ name, ...(Object.hasOwn(errors, fieldPath(name)) ? { 'aria-invalid': true as const } : {}) }),
     error: (name: string) => (Object.hasOwn(errors, fieldPath(name)) ? errors[fieldPath(name)] : undefined),
@@ -326,6 +350,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
       element.current?.reset();
       baseline.current = undefined;
       setErrors(errorRecord());
+      setConflict(undefined);
       live?.reset();
       queueMicrotask(measure);
     },

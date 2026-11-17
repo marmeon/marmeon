@@ -4,7 +4,7 @@ export { json } from './json.ts';
 export type { JsonResult } from './json.ts';
 export { conflict } from './conflict.ts';
 export type { ConflictResult } from './conflict.ts';
-export type { ActionAnswerOf, ActionBodyOf, ActionConflictOf, ActionConflicts, ActionDataOf, ActionRedirects, CheckActionRouteName } from './action.ts';
+export type { ActionAnswerOf, ActionBodyOf, ActionConflictOf, ActionConflicts, ConflictOf, ActionDataOf, ActionRedirects, CheckActionRouteName } from './action.ts';
 export { island } from './island.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export { CloseLayerResult } from './layer.ts';

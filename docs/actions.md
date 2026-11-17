@@ -171,7 +171,8 @@ and let the user reload. When the answer says that the user signed out, the brow
 
 A controller that finds the record changed under the user answers with `conflict(current)`, and the action ends `conflict`, with
 `current` typed as the controller sends it. See [responses](responses.md#conflict). Its optimistic patches roll back like those of
-any failure. A `conflict` carries no flash messages: whatever the session holds stays for the next page.
+any failure. A `conflict` carries no flash messages: whatever the session holds stays for the next page. A form sent as a visit
+gets the same answer as `form.conflict` ([forms](forms.md#conflicts)).
 
 An autosave is an action with a `key`, so the latest call wins. On a conflict the action does not retry, and the page compares
 `current` with the draft the user typed:

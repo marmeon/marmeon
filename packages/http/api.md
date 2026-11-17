@@ -77,6 +77,8 @@ export interface CloseLayerOptions {
 export declare class CloseLayerResult extends RedirectResult {
     readonly close: LayerClose;
 }
+// ConflictOf
+export type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 // ConflictResult
 export interface ConflictResult<T = unknown> {
     readonly [CONFLICT_RESULT]: true;
@@ -92,7 +94,7 @@ export interface ContentSecurityPolicyOptions extends CspDirectives {
 export type { ContextOf } from '@marmeon/router';
 // Controller
 export declare abstract class Controller {
-    protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V>;
+    protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps & ReservedProps, options?: ResultOptions): PageResult<TProps, V>;
     protected closeLayer(options?: CloseLayerOptions): CloseLayerResult;
     protected island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V>;
     protected json<T>(data: T, options?: ResultOptions): JsonResult<T>;
@@ -399,7 +401,7 @@ export interface PageObject {
 // PagePropNames
 export type PagePropNames<TProps> = (keyof TProps & string) | (keyof SharedProps & string);
 // PageProps
-export type PageProps<TAction extends PageAction> = Awaited<ActionResult<TAction>> extends infer TResult ? TResult extends ViewResult<infer TProps> ? Serialize<Omit<SharedProps, keyof TProps> & ResolvedProps<TProps>> : never : never;
+export type PageProps<TAction extends PageAction> = Awaited<ActionResult<TAction>> extends infer TResult ? TResult extends ViewResult<infer TProps> ? Serialize<Omit<SharedProps, Exclude<keyof TProps, '_conflict'>> & ResolvedProps<Omit<TProps, '_conflict'>>> : never : never;
 // PageResult
 export interface PageResult<TProps extends ViewProps = ViewProps, TComponent extends string = string> extends ViewResult<TProps, TComponent> {
     readonly layer: LayerMethod<TProps, TComponent>;
@@ -720,7 +722,7 @@ export declare function verifyWebhook(name: string): MiddlewareClass<{}, {
     webhook: WebhookContext;
 }>;
 // view
-export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V>;
+export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps & ReservedProps, options?: ResultOptions): PageResult<TProps, V>;
 ```
 
 ### Referenced, not exported
@@ -738,8 +740,6 @@ type BaseParams<N extends string> = {} extends ParamsOf<N> ? {
 };
 // CONFLICT_RESULT
 declare const CONFLICT_RESULT: unique symbol;
-// ConflictOf
-type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 // DataOf
 type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ConflictResult ? never : R extends ViewResult ? never : R extends {
     readonly region: 'island';
@@ -795,6 +795,10 @@ interface PageProp<K extends PropKind, T> {
 declare const REDIRECT_RESULT: unique symbol;
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
+// ReservedProps
+export type ReservedProps = {
+    readonly _conflict?: never;
+};
 // SerializeElement
 type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
 // SerializeKnown
@@ -2176,6 +2180,11 @@ export declare function accepted(request: ConfirmRequest, answer: ConfirmAnswer)
 export declare const actions: import("../feature.ts").Feature<ActionsFeature>;
 // assertQueryPage
 export declare function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void;
+// conflictOf
+export declare function conflictOf(page: PageObject): {
+    readonly message: string;
+    readonly current: unknown;
+} | undefined;
 // createPoll
 export declare function createPoll(run: () => Promise<unknown>, options: PollOptions): Poll;
 // defaultFormEntries
@@ -2313,6 +2322,8 @@ export declare function sensitiveControl(control: {
 }): 'never' | 'named' | undefined;
 // showProgress
 export declare function showProgress(navigator: ProgressSource, { delayMs, color }?: ProgressOptions, doc?: Document): () => void;
+// submitHeaders
+export declare function submitHeaders(headers?: Record<string, string>): Record<string, string>;
 // uploads
 export declare const uploads: import("../feature.ts").Feature<UploadsFeature>;
 // viewTransitions
@@ -2544,6 +2555,8 @@ export type { CheckRouteName } from '@marmeon/router';
 export type CheckUploadField<F, K extends string> = string extends K ? UploadField<F> : string extends keyof F ? K : K extends UploadField<F> ? K : [UploadField<F>] extends [never] ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)` : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
 // CheckViewName
 export type CheckViewName<V extends string> = string extends V ? ViewName : V extends ViewName ? V : V extends `${infer Module}/${infer Rest}` ? `'${V}' is not a view: create modules/${Module}/views/${Rest}.tsx, or run \`marmeon route:types\` if it exists (\`marmeon dev\` runs it)${Suggest<V, ViewName, '/'>}` : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
+// ConflictOf
+export type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 // ConflictResult
 export interface ConflictResult<T = unknown> {
     readonly [CONFLICT_RESULT]: true;
@@ -2669,7 +2682,7 @@ export interface PageInfo<TProps = ViewProps> {
     readonly flash?: readonly FlashMessage[];
 }
 // PageProps
-export type PageProps<TAction extends PageAction> = Awaited<ActionResult<TAction>> extends infer TResult ? TResult extends ViewResult<infer TProps> ? Serialize<Omit<SharedProps, keyof TProps> & ResolvedProps<TProps>> : never : never;
+export type PageProps<TAction extends PageAction> = Awaited<ActionResult<TAction>> extends infer TResult ? TResult extends ViewResult<infer TProps> ? Serialize<Omit<SharedProps, Exclude<keyof TProps, '_conflict'>> & ResolvedProps<Omit<TProps, '_conflict'>>> : never : never;
 // PaginationMeta
 export interface PaginationMeta {
     readonly page: number;
@@ -2815,8 +2828,6 @@ type Boundary = `${string}${'_' | '-' | '.'}`;
 declare const CODE_PREFIXES = "verification|sms|mfa|2fa|two_factor|auth|backup|security";
 // CONFLICT_RESULT
 declare const CONFLICT_RESULT: unique symbol;
-// ConflictOf
-type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
 // DataOf
 type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ConflictResult ? never : R extends ViewResult ? never : R extends {
     readonly region: 'island';

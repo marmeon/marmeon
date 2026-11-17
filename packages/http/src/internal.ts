@@ -8,7 +8,7 @@ export { isJsonResult, jsonResponse } from './json.ts';
 export { isConflictResult } from './conflict.ts';
 export { isIslandResult } from './island.ts';
 export { isLayerResult } from './layer.ts';
-export { flashableInput, Flasher, INTENDED_KEY, IntendedKey, isRedirectResult, OLD_INPUT_KEY } from './redirect.ts';
+export { CONFLICT_KEY, flashableInput, Flasher, INTENDED_KEY, IntendedKey, isRedirectResult, OLD_INPUT_KEY } from './redirect.ts';
 export { PageSession } from './page-session.ts';
 export { ServerClosing, ServerServing } from './server-closing.ts';
 export { warnIfSharedNonce, withDefaultPolicy } from './csp.ts';
@@ -32,6 +32,7 @@ export {
   APP_ORIGIN_META,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
+  SUBMIT_HEADER,
   PARTIAL_EXCEPT_HEADER,
   protocolHeaders,
   PROTOCOL_VERSION,
@@ -45,7 +46,7 @@ export {
   VERSION_HEADER,
 } from './protocol.ts';
 export { answersWithData, isProtocolRequest, isVisit, SUPPORTED_PROTOCOLS } from './protocol-request.ts';
-export { heldOnceProps, onceScopeOf, partialReloadOf, propOrigins, resolvePageProps } from './page-props.ts';
+export { heldOnceProps, onceScopeOf, pageOwnProps, partialReloadOf, propOrigins, resolvePageProps } from './page-props.ts';
 export type { PropOrigins } from './page-props.ts';
 export { flashOf, serializedFlash } from './flash.ts';
 export type { FlashEntry } from './flash.ts';

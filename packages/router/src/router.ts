@@ -65,6 +65,8 @@ export interface PageQuery {
 export interface ResponseContext {
   readonly request: Request;
   readonly pageQuery?: PageQuery | undefined;
+  /** The route's parsed body (`ctx.input()`) — present for a result a route made, absent for an error or a result outside a route. */
+  readonly input?: (() => Promise<Record<string, unknown>>) | undefined;
 }
 
 /** Turns a handler result into a Response. Needs only the request, so errors outside a route can use it too. */

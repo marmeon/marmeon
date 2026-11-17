@@ -4,7 +4,8 @@ const CONFLICT_RESULT = Symbol.for('marmeon.conflict-result');
  * What `conflict(current)` returns: the answer to a save that went stale — someone else changed the record first. An
  * action (`useAction` of @marmeon/react) ends `{ kind: 'conflict', current, message }`, with `current` as `Serialize<T>`; an
  * API client gets `409` with the same JSON. Not a {@link JsonResult}, and without `headers`: nothing can add a location to
- * it, which would make the `409` a document change. See docs/actions.md#the-result.
+ * it, which would make the `409` a document change. A visit or a form of `useForm` goes back to its page instead, and `form.conflict`
+ * shows it. See docs/actions.md#the-result and docs/forms.md#conflicts.
  */
 export interface ConflictResult<T = unknown> {
   readonly [CONFLICT_RESULT]: true;
@@ -19,7 +20,8 @@ export interface ConflictResult<T = unknown> {
 /**
  * `current` as the answer to a stale save: `return conflict(current)`. `useAction` ends `{ kind: 'conflict', current, message }`,
  * an API client gets `409` with `{ message, current }`. Without `options.message` the text is `marmeon.errors.conflict`, in the
- * request's language; `message` is a text or a key of your language files. Return it from the controller, do not throw it.
+ * request's language; `message` is a text or a key of your language files. A visit or a form of `useForm` goes back to its page and
+ * `form.conflict` shows it. Return it from the controller, do not throw it.
  * Throws a `TypeError` for options that are not an object, an unknown option or a message that is no string.
  * See docs/responses.md#conflict.
  */

@@ -165,6 +165,11 @@ export interface FileInputProps extends Omit<InputHTMLAttributes<HTMLInputElemen
 export type FlashHandler<K extends FlashKey> = (data: FlashMessage<K>['data'], message: FlashMessage<K>) => void;
 // Form
 export declare function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>): import("react").JSX.Element;
+// FormConflict
+export interface FormConflict<C = unknown> {
+    readonly message: string;
+    readonly current: C | undefined;
+}
 // FormField
 export interface FormField {
     readonly form: Pick<RouteForm<Record<string, unknown>>, 'data' | 'set' | 'method' | 'url'>;
@@ -173,13 +178,13 @@ export interface FormField {
 // FormFieldsOf
 export type FormFieldsOf<N extends string> = [MethodOf<N>] extends ['get'] ? QueryFieldsOf<N> : RouteFormFields<N> extends Record<string, unknown> ? (string extends keyof RouteFormFields<N> ? {} : RouteFormFields<N>) : RouteFormFields<N>;
 // FormHandle
-export interface Form<T> extends FormState<FormFields<T>> {
-    submit(method: VisitMethod, url: string, options?: FormSubmitOptions): Promise<void>;
-    get(url: string, options?: FormSubmitOptions): Promise<void>;
-    post(url: string, options?: FormSubmitOptions): Promise<void>;
-    put(url: string, options?: FormSubmitOptions): Promise<void>;
-    patch(url: string, options?: FormSubmitOptions): Promise<void>;
-    delete(url: string, options?: FormSubmitOptions): Promise<void>;
+export interface Form<T> extends FormState<FormFields<T>, ControllerConflictOf<T>> {
+    submit(method: VisitMethod, url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+    get(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+    post(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+    put(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+    patch(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
+    delete(url: string, options?: FormSubmitOptions<ControllerConflictOf<T>>): Promise<void>;
 }
 // FormOptions
 export interface FormOptions<F = Record<string, unknown>> {
@@ -191,7 +196,7 @@ export type FormPart<C, K extends keyof FormFields<C> & string> = Omit<FormState
 // FormProps
 export type FormProps<N extends string> = {
     route: CheckFormElementRoute<N>;
-    children: ReactNode | ((form: FormRenderState<FormFieldsOf<N>>) => ReactNode);
+    children: ReactNode | ((form: FormRenderState<FormFieldsOf<N>, ActionConflictOf<N>>) => ReactNode);
     confirm?: Confirm;
     validate?: true | (Omit<LiveValidationSetting<FormFieldsOf<N>>, 'fields'> & {
         fields?: readonly string[];
@@ -208,17 +213,19 @@ export type FormProps<N extends string> = {
     only?: readonly string[];
     reset?: readonly string[];
     onSuccess?: () => void;
+    onConflict?: (conflict: FormConflict<ActionConflictOf<N>>) => void;
     onError?: (errors: Record<string, string>) => void;
     onFinish?: () => void;
 } & ParamsProp<N> & Omit<FormHTMLAttributes<HTMLFormElement>, 'action' | 'method' | 'children' | 'onSubmit'>;
 // FormRenderState
-export interface FormRenderState<F> {
+export interface FormRenderState<F, C = unknown> {
     readonly errors: Partial<Record<string, string>>;
     readonly hasErrors: boolean;
     readonly processing: boolean;
     readonly progress: VisitProgress | null;
     readonly wasSuccessful: boolean;
     readonly recentlySuccessful: boolean;
+    readonly conflict: FormConflict<C> | undefined;
     isDirty(name?: FieldName<F>): boolean;
     field(name: FieldName<F>): {
         name: string;
@@ -231,7 +238,7 @@ export interface FormRenderState<F> {
     clearErrors(...names: FieldName<F>[]): void;
 }
 // FormState
-export interface FormState<F> {
+export interface FormState<F, C = unknown> {
     readonly data: F;
     set<K extends keyof F & string>(field: K, value: F[K]): void;
     setData(data: F): void;
@@ -242,13 +249,15 @@ export interface FormState<F> {
     readonly progress: VisitProgress | null;
     readonly wasSuccessful: boolean;
     readonly recentlySuccessful: boolean;
+    readonly conflict: FormConflict<C> | undefined;
     isDirty(path?: FieldPath<F>): boolean;
     readonly dirty: readonly string[];
     reset(...fields: Field<F>[]): void;
 }
 // FormSubmitOptions
-export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data' | 'onSuccess' | 'onError' | 'onFinish'> {
+export interface FormSubmitOptions<C = unknown> extends Omit<VisitOptions, 'method' | 'data' | 'onSuccess' | 'onError' | 'onFinish'> {
     onSuccess?: () => void;
+    onConflict?: (conflict: FormConflict<C>) => void;
     onError?: (errors: Record<string, string>) => void;
     onFinish?: () => void;
 }
@@ -498,8 +507,8 @@ export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
 // RevalidateOnBack
 export type RevalidateOnBack<C extends ViewAction> = boolean | readonly (keyof ViewPropsOf<C> & string)[];
 // RouteForm
-export interface RouteForm<F> extends FormState<F> {
-    submit(options?: FormSubmitOptions): Promise<void>;
+export interface RouteForm<F, C = unknown> extends FormState<F, C> {
+    submit(options?: FormSubmitOptions<C>): Promise<void>;
     readonly method: VisitMethod;
     readonly url: string;
     validate<const K extends string>(field?: CheckLiveField<F, K>): void;
@@ -615,8 +624,8 @@ export declare function useFeature<API>(feature: FeatureHandle<API>): API;
 export declare function useFlash<const K extends string>(key: CheckFlashKey<K>, handler: FlashHandler<K & FlashKey>): void;
 // useForm
 export declare function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
-export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>>;
-export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: {} extends BrowserParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>): RouteForm<RouteFormFields<N>>;
+export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>, ActionConflictOf<N>>;
+export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: {} extends BrowserParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>): RouteForm<RouteFormFields<N>, ActionConflictOf<N>>;
 // useIsland
 export declare function useIsland<C extends IslandAction = IslandAction>(): IslandState<C>;
 // useLayer
@@ -682,6 +691,10 @@ type ByLiterals<V, O> = [LiteralKeys<V>] extends [never] ? Extract<O, Partial<V>
 type CheckFormRoute<N extends string> = CheckBrowserRouteName<N> extends N ? N extends keyof Routes ? [RouteFormOf<N>] extends [never] ? `'${N}' has no request schema to type a form with — give its controller \`static request = defineRequest(…)\`` : N : N : CheckBrowserRouteName<N>;
 // CheckQueryRoute
 type CheckQueryRoute<N extends string> = CheckBrowserRouteName<N> extends N ? N extends keyof Routes ? [RouteQueryOf<N>] extends [never] ? `'${N}' has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\`` : N : N : CheckBrowserRouteName<N>;
+// ControllerConflictOf
+type ControllerConflictOf<T> = T extends {
+    handle: (...args: never[]) => infer R;
+} ? ConflictOf<Awaited<R>> : unknown;
 // CurrentProps
 interface CurrentProps {
     activeMatch?: ActiveMatch | readonly ActiveMatch[];
