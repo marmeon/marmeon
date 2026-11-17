@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "sets": {
+    "@marmeon/auth:stubs/migrations": {
+      "files": {
+        "modules/auth/migrations/2026_10_14_120000_create_sign_ins_table.ts": {
+          "sha256": "sha256:3b700a6da979eedb77673b44dd4f3e9f85a478db3b61b056ff0df9e3c3d911e2",
+          "stub": "stubs/migrations/0001_01_01_000000_create_sign_ins_table.ts"
+        }
+      },
+      "package": "@marmeon/auth",
+      "version": "1.1.0"
+    },
+    "@marmeon/cache:stubs/migrations": {
+      "files": {
+        "modules/system/migrations/2026_10_02_195920_create_cache_table.ts": {
+          "sha256": "sha256:a8a7e9562507fe9e1e15f69cb19bd3426a6d7c2ad3bf42e8c9dfc40f3988e04d",
+          "stub": "stubs/migrations/0001_01_01_000000_create_cache_table.ts"
+        }
+      },
+      "package": "@marmeon/cache",
+      "version": "1.1.0"
+    },
+    "@marmeon/live:stubs/migrations": {
+      "files": {
+        "modules/system/migrations/2026_11_08_150839_create_live_hints_table.ts": {
+          "sha256": "sha256:e45e3c9fc75d5f85fc95440b1d58223f5c6124d79addd2b00a42a124994ffd8c",
+          "stub": "stubs/migrations/0001_01_01_000000_create_live_hints_table.ts"
+        }
+      },
+      "package": "@marmeon/live",
+      "version": "1.1.0"
+    },
+    "@marmeon/notifications:stubs/migrations": {
+      "files": {
+        "modules/system/migrations/2026_10_03_094821_create_notifications_table.ts": {
+          "sha256": "sha256:ebc144db0cb2414520c9b7fe885d91f095d367bb4d4744baee8c921c5913f47c",
+          "stub": "stubs/migrations/0001_01_01_000000_create_notifications_table.ts"
+        }
+      },
+      "package": "@marmeon/notifications",
+      "version": "1.1.0"
+    },
+    "@marmeon/queue:stubs/migrations": {
+      "files": {
+        "modules/system/migrations/2026_10_02_211222_create_jobs_table.ts": {
+          "sha256": "sha256:2e751ddc7d418a9c4433eb23e80eec4b60d3c4f67c02d7e6976bfcea9b017a33",
+          "stub": "stubs/migrations/0001_01_01_000000_create_jobs_table.ts"
+        }
+      },
+      "package": "@marmeon/queue",
+      "version": "1.1.0"
+    },
+    "@marmeon/session:stubs/migrations": {
+      "files": {
+        "modules/system/migrations/2026_10_02_203103_create_sessions_table.ts": {
+          "sha256": "sha256:1b754cdc61af6cd6538af8ebd95e1bc7c36e37804fe14386b75c089cc4b0f396",
+          "stub": "stubs/migrations/0001_01_01_000000_create_sessions_table.ts"
+        }
+      },
+      "package": "@marmeon/session",
+      "version": "1.1.0"
+    },
+    "@marmeon/storage:stubs/migrations": {
+      "files": {
+        "modules/system/migrations/2026_10_03_111422_create_temporary_uploads_table.ts": {
+          "sha256": "sha256:c51cb5519868e069097dba620c6f82c495b7b058d81b6c645f5c2ec6719341fd",
+          "stub": "stubs/migrations/0001_01_01_000000_create_temporary_uploads_table.ts"
+        }
+      },
+      "package": "@marmeon/storage",
+      "version": "1.1.0"
+    }
+  }
+}
