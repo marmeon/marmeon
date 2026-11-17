@@ -113,6 +113,10 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ...['--stage-fg-strong', '--thread'].map((text) => [text, '--panel-raised', 4.5] as const),
   // Fixed, the landing's light sections.
   ...['--ink', '--ink-soft', '--teal', '--muted-ink'].flatMap((text) => ['--stone', '--paper', '--card'].map((ground) => [text, ground, 4.5] as const)),
+  // The batteries' pictures: the error under a field and the retry dot on Paper, the mail's button, the chosen disk.
+  ['--error-ink', '--paper', 4.5],
+  ['--paper', '--teal', 4.5],
+  ['--teal-strong', '--stone', 4.5],
   // The terminal and the editor.
   ['--term-fg', '--term-bg', 4.5],
   ['--term-dim', '--term-bg', 4.5],

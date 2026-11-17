@@ -5,15 +5,14 @@
 export interface ModuleFile {
   readonly name: string;
   readonly folder?: boolean;
-  readonly role: string;
 }
 
 export const MODULE_FILES: readonly ModuleFile[] = [
-  { name: 'routes.ts', role: 'routes and their names' },
-  { name: 'controllers/', folder: true, role: 'one class per endpoint' },
-  { name: 'views/', folder: true, role: 'React pages' },
-  { name: 'migrations/', folder: true, role: "the module's tables" },
-  { name: 'policies/', folder: true, role: 'who may do what' },
-  { name: 'notes.test.ts', role: 'tests, next to the code' },
-  { name: 'index.ts', role: 'the definition, and what other modules may import' },
+  { name: 'routes.ts' },
+  { name: 'controllers/', folder: true },
+  { name: 'views/', folder: true },
+  { name: 'migrations/', folder: true },
+  { name: 'policies/', folder: true },
+  { name: 'notes.test.ts' },
+  { name: 'index.ts' },
 ];

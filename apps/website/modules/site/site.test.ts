@@ -4,10 +4,12 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { AGENT_SKILLS, AGENT_TOOLS } from './agents.ts';
+import { JOBS, MAIL, NOTES_TABLE, SCHEDULE, STORAGE } from './batteries.ts';
 import { CHAIN, mistakeLine } from './chain.ts';
 import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
 import { FAKES } from './fakes.ts';
 import { GITHUB_URL } from './links.ts';
+import { MODULE_FILES } from './module-files.ts';
 import { PACKAGES } from './packages.ts';
 import { SNIPPETS } from './snippets.ts';
 
@@ -315,48 +317,73 @@ describe('the landing page', () => {
     expect(section).not.toMatch(/\sstyle=/);
   });
 
-  it('shows the nine batteries as cards, each with its checked code, its package and its docs link', async () => {
+  it('shows the eight batteries as cards: the policy as code, the rest as pictures, each with its package and its docs link', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.indexOf('<section class="batteries');
     const section = body.slice(start, body.indexOf('<div class="landing-band'));
     expect(section).toContain('aria-labelledby="batteries-title"');
     expect(section).not.toContain('tabs-heading');
     const titles = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((match) => match[1]);
-    expect(titles).toEqual(['Auth and policies', 'Database', 'Migrations', 'Validation', 'Queue', 'Mail', 'Scheduler', 'Storage', 'Modules']);
-    expect(section.match(/<article class="card battery/g)).toHaveLength(9);
-    // h2 > h3 (the card) > h4 (the file): no level is skipped.
-    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`2${'34'.repeat(9)}`);
-    const files = Object.keys(SNIPPETS).filter((key) => key.startsWith('battery')).map((name) => (SNIPPETS[name as keyof typeof SNIPPETS] as { file: string }).file);
-    expect(files).toHaveLength(9);
-    // The cards stand in the order of the snippets, each with its file name as an h4.
-    expect([...section.matchAll(/<h4 class="editor-name">([^<]*)<\/h4>/g)].map((match) => match[1])).toEqual(files);
+    expect(titles).toEqual(['Auth and policies', 'Database and migrations', 'Queue', 'Mail', 'Validation', 'Scheduler', 'Modules', 'Storage']);
+    expect(section.match(/<article class="card battery/g)).toHaveLength(8);
+    // The Auth card is the wide one and holds the section's only code: one window, with the policy's file as its h4.
+    expect(section.match(/<article class="card battery battery--wide"/g)).toHaveLength(1);
+    expect(section.match(/<div role="group"[^>]*class="editor /g)).toHaveLength(1);
+    expect(section.match(/class="code-block"/g)).toHaveLength(1);
+    expect(section.indexOf('class="code-block"')).toBeLessThan(section.indexOf('<h3>Database and migrations</h3>'));
+    expect(section.match(/<pre/g)).toHaveLength(1);
+    expect(section).toMatch(/<article class="card battery battery--wide">.*?class="editor battery-editor"/);
+    // h2 > h3 (the card) > h4 (the policy's file, in the first card only): no level is skipped.
+    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`234${'3'.repeat(7)}`);
+    expect([...section.matchAll(/<h4 class="editor-name">([^<]*)<\/h4>/g)].map((match) => match[1])).toEqual([SNIPPETS.batteryAuth.file]);
     const packages = [...section.matchAll(/<p class="battery-foot"><code>([^<]*)<\/code>/g)].map((match) => match[1]!);
-    // The package each card names is the one its code comes from.
-    expect(packages).toEqual(['@marmeon/auth', '@marmeon/database', '@marmeon/database', '@marmeon/validation', '@marmeon/queue', '@marmeon/mail', '@marmeon/scheduler', '@marmeon/storage', '@marmeon/core']);
+    expect(packages).toEqual(['@marmeon/auth', '@marmeon/database', '@marmeon/queue', '@marmeon/mail', '@marmeon/validation', '@marmeon/scheduler', '@marmeon/core', '@marmeon/storage']);
     for (const name of packages) expect(PACKAGES.map((entry) => entry.name), name).toContain(name);
     const heads = [...section.matchAll(/<div class="battery-head"><h3>([^<]*)<\/h3><p>([^<]+)<\/p><\/div>/g)];
     expect(heads.map((match) => match[1])).toEqual(titles);
     for (const match of heads) expect(match[2]!.trim().length, match[1]).toBeGreaterThan(20);
-    // The link at the foot of each card, in the order of the cards.
     expect([...section.matchAll(/<p class="battery-foot">.*?<a [^>]*href="([^"]*)"[^>]*>([^<]*)</g)].map((match) => [match[2], match[1]])).toEqual([
       ['Authorization', '/docs/authorization'],
-      ['Transactions', '/docs/transactions'],
       ['Migrations', '/docs/migrations'],
-      ['Validation', '/docs/validation'],
       ['Queues', '/docs/queues'],
       ['Mail', '/docs/mail'],
+      ['Validation', '/docs/validation'],
       ['Task scheduling', '/docs/scheduling'],
-      ['File storage', '/docs/storage'],
       ['Modules and discovery', '/docs/modules#discovery'],
+      ['File storage', '/docs/storage'],
     ]);
-    expect(section).toContain('aria-label="Files of the notes module"');
-    expect(textOf(section)).toContain('pnpm add -E @marmeon/redis@<version of your app>');
-    expect(textOf(section)).toContain('An installed package registers itself');
-    expect(textOf(section)).not.toContain('pnpm add @marmeon/redis');
-    expect(section).toContain('Installed packages register themselves');
-    for (const href of ['/docs/authorization', '/docs/transactions', '/docs/migrations', '/docs/validation', '/docs/queues', '/docs/mail', '/docs/scheduling', '/docs/storage', '/docs/modules#discovery']) {
-      expect(section, href).toContain(`href="${href}"`);
-    }
+    // Each picture is there, with the real names the data module pins to their files.
+    const article = (title: string): string => {
+      const at = section.indexOf(`<h3>${title}</h3>`);
+      return section.slice(at, section.indexOf('</article>', at));
+    };
+    expect(textOf(article('Database and migrations'))).toContain('notes');
+    for (const { name, type } of NOTES_TABLE.rows) expect(textOf(article('Database and migrations')), name).toContain(`${name}${type}`);
+    const queue = article('Queue');
+    expect(queue).toContain('aria-label="Jobs in the queue"');
+    for (const { name, state } of JOBS) expect(textOf(queue), name).toContain(`${name}${state}`);
+    expect([...queue.matchAll(/art-dot--(\w+)/g)].map((match) => match[1])).toEqual(JOBS.map((job) => job.status));
+    const mail = article('Mail');
+    expect(textOf(mail)).toContain(`To ${MAIL.to}`);
+    expect(textOf(mail)).toContain(`Subject ${MAIL.subject}`);
+    expect(textOf(mail)).toContain(MAIL.button);
+    const validation = article('Validation');
+    expect(validation).toMatch(/<label for="battery-validation-title">Title<\/label>/);
+    expect(validation).toContain('aria-describedby="battery-validation-error"');
+    expect(validation).toMatch(/<small id="battery-validation-error">The title field must not be longer than 120 characters\.<\/small>/);
+    expect(validation).not.toContain('role="alert"');
+    const schedule = article('Scheduler');
+    for (const { when, what } of SCHEDULE) expect(textOf(schedule), what).toContain(`${when}${what}`);
+    const modules = article('Modules');
+    expect(modules).toContain('aria-label="Files of the notes module"');
+    for (const { name } of MODULE_FILES) expect(textOf(modules), name).toContain(name);
+    const storage = article('Storage');
+    expect(textOf(storage)).toContain('locals3');
+    expect(textOf(storage)).toContain(`${STORAGE.key} · signed for ${STORAGE.minutes} min`);
+    expect(textOf(section)).toContain('Installed packages register themselves');
+    expect(textOf(section)).not.toContain('pnpm add');
+    // The pictures are decoration or have a label: no button, no script, no live role.
+    expect(section).not.toMatch(/<button|<script|role="alert"/);
     expect(section).not.toMatch(/\sstyle=/);
   });
 

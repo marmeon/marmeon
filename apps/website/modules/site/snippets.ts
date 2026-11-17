@@ -94,7 +94,7 @@ export type NoteChanges = RowUpdate<'notes'>;
 `,
   },
   routeLink: { source: { app: 'modules/notes/views/Show.tsx' }, lang: 'tsx', code: `<Link route="notes.index">All notes</Link>\n` },
-  // The batteries section: one excerpt of 4 to 10 lines per package, a complete unit (balanced brackets) and a word-for-word piece of the file it names.
+  // The batteries section's one piece of code: an excerpt of 4 to 10 lines, a complete unit (balanced brackets) and a word-for-word piece of the file it names. The other cards draw pictures (`batteries.ts`).
   batteryAuth: {
     file: 'modules/user-profile/policies/ProfileLinkPolicy.ts',
     source: { repo: 'apps/web-app/modules/user-profile/policies/ProfileLinkPolicy.ts' },
@@ -106,100 +106,6 @@ export class ProfileLinkPolicy {
     return link.user_id === user.id || deny('user-profile.validation.own_profile');
   }
 }
-`,
-  },
-  batteryDatabase: {
-    file: 'modules/auth/controllers/RegisterController.ts',
-    source: { repo: 'apps/web-app/modules/auth/controllers/RegisterController.ts' },
-    lang: 'ts',
-    code: `    const created = await this.#connections.transaction(async () => {
-      const created = await this.#users.register({ name, email, password: hash, locale });
-      if (created.ok) await this.#events.dispatch(new Registered(created.value));
-      return created;
-    });
-    if (!created.ok) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
-`,
-  },
-  batteryMigrations: {
-    file: 'modules/auth/migrations/2026_10_01_180000_add_locale_to_users_table.ts',
-    source: { repo: 'apps/web-app/modules/auth/migrations/2026_10_01_180000_add_locale_to_users_table.ts' },
-    lang: 'ts',
-    code: `import { defineMigration } from '@marmeon/database';
-
-export default defineMigration({
-  up: (schema) => schema.alter('users', (table) => table.string('locale', 35).nullable()),
-  down: (schema) => schema.alter('users', (table) => table.dropColumn('locale')),
-});
-`,
-  },
-  batteryValidation: {
-    file: 'modules/notes/noteFields.ts',
-    source: { app: 'modules/notes/noteFields.ts' },
-    lang: 'ts',
-    code: `import { rules as r } from '@marmeon/validation';
-
-export const noteFields = r.object({
-  title: r.string().trim().required().max(120),
-  body: r.string().max(10_000),
-});
-`,
-  },
-  batteryQueue: {
-    file: 'modules/account-export/jobs/SendAccountExportJob.ts',
-    source: { app: 'modules/account-export/jobs/SendAccountExportJob.ts' },
-    lang: 'ts',
-    code: `  async handle(payload: JobPayload<typeof SendAccountExportJob>, job: JobContext): Promise<void> {
-    const user = await this.#users.find(payload.userId);
-    if (!user || user.email_verified_at == null) return job.discard('the account is gone or its address is not confirmed');
-    await job.once(\`account-export:\${job.id}\`, () => this.#mailer.send(new AccountExportMail(user)));
-  }
-`,
-  },
-  batteryMail: {
-    file: 'modules/notes/mail/NoteSharedView.tsx',
-    source: { app: 'modules/notes/mail/NoteSharedView.tsx' },
-    lang: 'tsx',
-    code: `export function NoteSharedView({ t, title }: { t: Translator; title: string }) {
-  return (
-    <Layout t={t} preview={t.get('notes.mail.shared.subject')}>
-      <MjmlText>{t.get('notes.mail.shared.intro', { title })}</MjmlText>
-    </Layout>
-  );
-}
-`,
-  },
-  batteryScheduler: {
-    file: 'modules/user-profile/schedule.ts',
-    source: { repo: 'apps/web-app/modules/user-profile/schedule.ts' },
-    lang: 'ts',
-    code: `export const schedule = defineSchedule((s) => {
-  s.job(RebuildMemberStatsJob).hourly();
-  s.call(PruneDataExports).everyTenMinutes().withoutOverlapping().onOneServer().name('user-profile.prune-data-exports');
-});
-`,
-  },
-  batteryStorage: {
-    file: 'modules/user-profile/controllers/ExportMyDataController.ts',
-    source: { repo: 'apps/web-app/modules/user-profile/controllers/ExportMyDataController.ts' },
-    lang: 'ts',
-    code: `    const disk = this.#storage.disk('local');
-    const key = dataExportKey(user.id);
-    await disk.put(key, JSON.stringify(data, null, 2), { contentType: 'application/json' });
-    return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: \`my-data-\${user.id}.json\` })).status(303);
-`,
-  },
-  batteryModules: {
-    file: 'modules/notes/index.ts',
-    source: { app: 'modules/notes/index.ts' },
-    lang: 'ts',
-    code: `import { defineModule } from '@marmeon/core';
-import routes from './routes.ts';
-
-export default defineModule({
-  name: 'notes',
-  migrations: new URL('./migrations/', import.meta.url),
-  routes,
-});
 `,
   },
   islandController: {

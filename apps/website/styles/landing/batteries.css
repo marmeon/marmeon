@@ -1,4 +1,4 @@
-/* Batteries: the heading and its checks, then a bento grid of nine cards, each with a piece of real code. On Stone in both colour schemes. */
+/* Batteries: the heading and its checks, then a bento grid of eight cards: one with a piece of real code, the others with a small picture of what the package does. On Stone in both colour schemes. */
 .landing .batteries-frame {
   padding: clamp(64px, 8vw, 112px) clamp(20px, 3vw, 40px);
   border-inline: 1px solid var(--rail-light);
@@ -99,12 +99,23 @@
 }
 
 .landing .battery-editor {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   margin: 22px 10px 10px;
   border: 0;
   border-radius: var(--radius-md);
   background: var(--panel);
   box-shadow: none;
+}
+
+/* The window's wrappers grow down to the bottom edge, so the code panel ends there and its scrollbar sits at the edge. */
+.landing .battery-editor .editor-files,
+.landing .battery-editor .editor-file {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .landing .battery .editor-name {
@@ -115,20 +126,14 @@
   font-size: 0.78125rem;
 }
 
-.landing .battery-extra {
-  display: grid;
-  gap: var(--space-3);
-  margin: 0 10px 10px;
-}
-
 .landing .battery-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 4px 16px;
-  margin: 0;
-  padding: 0 26px 12px;
+  margin: auto 0 0;
+  padding: 18px 26px 12px;
   font-family: var(--font-mono);
   font-size: 0.75rem;
 }
@@ -153,60 +158,308 @@
   margin: 28px 0 0;
 }
 
-/* The "Modules" card: the module folder */
-.landing .file-tree {
-  margin: 0;
+/* The pictures: each sits under the card's text, 18 px from the card's edges. */
+.landing .battery > :is(.art-table, .art-jobs, .art-mail, .art-field, .art-schedule, .art-tree, .art-storage) {
+  margin: 22px 18px 0;
+}
+
+.landing .art-table,
+.landing .art-mail,
+.landing .art-schedule,
+.landing .art-tree,
+.landing .art-field,
+.landing .art-jobs li,
+.landing .art-signed,
+.landing .art-disk {
+  border: 1px solid var(--rail-faint);
+}
+
+.landing .art-table,
+.landing .art-mail,
+.landing .art-schedule,
+.landing .art-tree,
+.landing .art-field {
   overflow: hidden;
-  border: 1px solid var(--control-dark);
   border-radius: var(--radius-md);
-  background: var(--panel);
-  color: var(--code-fg);
 }
 
-.landing .file-tree figcaption {
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--panel-line);
-  color: var(--stage-muted);
+.landing .art-table,
+.landing .art-tree {
   font-family: var(--font-mono);
-  font-size: 0.78125rem;
 }
 
-.landing .file-tree ul {
-  margin: 0;
-  padding: 10px 0 14px;
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.5;
+/* Database: the notes table */
+.landing .art-table {
+  width: calc(100% - 36px);
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.landing .art-table th,
+.landing .art-table td {
+  padding: 8px 14px;
+  border-top: 1px solid var(--rail-faint);
+  font-weight: 400;
+}
+
+.landing .art-table th {
+  color: var(--ink);
+}
+
+.landing .art-table td {
+  color: var(--teal);
+  text-align: right;
+}
+
+.landing .art-table thead :is(th, td) {
+  padding-block: 10px;
+  border-top: 0;
+  background: var(--stone);
+}
+
+.landing .art-table thead th {
+  font-weight: 500;
+}
+
+.landing .art-table thead td {
+  color: var(--muted-ink);
+}
+
+/* Queue: a job, its state and a dot for it */
+.landing .art-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
   list-style: none;
 }
 
-.landing .file-tree li {
+.landing .art-jobs li {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px 16px;
-  padding: 6px 18px;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  font-size: 0.8125rem;
 }
 
-/* The branch glyphs are decoration: the second value of `content` is their empty text alternative. */
-.landing .file-tree li > span:first-child::before {
-  color: var(--stage-dim);
-  content: '├─ ';
-  content: '├─ ' / '';
-  white-space: pre;
+.landing .art-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--teal);
 }
 
-.landing .file-tree li:last-child > span:first-child::before {
-  content: '└─ ';
-  content: '└─ ' / '';
+.landing .art-dot--running {
+  background: var(--sand);
+  box-shadow: 0 0 0 1px var(--rail-strong);
 }
 
-.landing .file-tree-folder {
-  color: var(--thread);
+.landing .art-dot--retry {
+  background: var(--error-ink);
 }
 
-.landing .file-tree-role {
-  color: var(--stage-muted);
-  font-family: var(--font-text);
-  font-size: 0.875rem;
+.landing .art-job-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-job-state {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--muted-ink);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+/* Mail: the head lines, the body as bars and the button */
+.landing .art-mail {
+  padding: 0;
+}
+
+.landing .art-mail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rail-faint);
+  color: var(--muted-ink);
+  font-size: 0.75rem;
+}
+
+.landing .art-mail-head b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.landing .art-mail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 14px;
+}
+
+.landing .art-line {
+  width: 80%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--rail-faint);
+}
+
+.landing .art-line--short {
+  width: 62%;
+}
+
+.landing .art-mail-button {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 7px 12px;
+  border-radius: 7px;
+  background: var(--teal);
+  color: var(--paper);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Validation: a label, a field with a value that is too long, its error */
+.landing .art-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 14px;
+}
+
+.landing .art-field label {
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.landing .art-field input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1.5px solid var(--error-ink);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+}
+
+.landing .art-field small {
+  color: var(--error-ink);
+  font-size: 0.75rem;
+}
+
+/* Scheduler: when, what */
+.landing .art-schedule {
+  padding: 0;
+  list-style: none;
+}
+
+.landing .art-schedule li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--rail-faint);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-schedule li:last-child {
+  border-bottom: 0;
+}
+
+.landing .art-when {
+  color: var(--teal);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+}
+
+/* Modules: the module's folder */
+.landing .art-tree {
+  padding: 14px 16px;
+  color: var(--ink);
+  font-size: 0.78125rem;
+}
+
+.landing .art-tree figcaption {
+  line-height: 1.9;
+}
+
+.landing .art-tree ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  line-height: 1.9;
+  list-style: none;
+}
+
+.landing .art-tree li {
+  overflow-wrap: anywhere;
+  color: var(--muted-ink);
+}
+
+.landing .art-tree .art-tree-folder {
+  color: var(--teal);
+}
+
+/* Storage: two disks and a signed file */
+.landing .art-storage {
+  display: grid;
+  gap: 8px;
+}
+
+.landing .art-storage ul {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .art-disk {
+  flex: 1;
+  padding: 12px;
+  border-radius: 10px;
+  color: var(--muted-ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.landing .art-disk--on {
+  border-color: var(--teal);
+  background: var(--stone);
+  color: var(--teal-strong);
+}
+
+.landing .art-signed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border-style: dashed;
+  border-color: var(--rail-mid);
+  border-radius: 10px;
+  color: var(--muted-ink);
+  font-size: 0.78125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-signed svg {
+  flex: none;
+  color: var(--teal);
 }
