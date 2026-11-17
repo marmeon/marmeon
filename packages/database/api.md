@@ -400,6 +400,7 @@ export interface ProjectedColumn {
     readonly primary: boolean;
     readonly identity: boolean;
     readonly default: 'value' | 'now' | 'uuidv7' | null;
+    readonly nullDefault?: true;
     readonly secret: boolean;
     readonly retired?: boolean;
     readonly values?: readonly string[];

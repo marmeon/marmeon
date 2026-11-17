@@ -411,24 +411,145 @@ describe('the projection of a plan', () => {
       expect(() => project(base, (s) => s.alter('pages', (t) => { t.dropIndex('pages_live'); t.retire('stage'); }))).not.toThrow();
     });
 
-    it('takes a partial unique index for the proof of a repeated value only when every new row is in it', () => {
+    it('refuses to retire a fixed-default column that a partial unique index covers, whatever its condition (D19)', () => {
       const base = (condition: Record<string, unknown>) => (s: Schema) =>
-        s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.timestamp('seen').useCurrent(); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: condition as never }); });
+        s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.timestamp('seen').useCurrent(); t.timestamp('deleted_at').nullable(); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: condition as never }); });
       const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
-      // `seen` is set by the database on every insert, so every row is in the index and the second insert collides.
-      expect(() => project(base({ seen: { not: null } }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live"/);
-      expect(() => project(base({ seen: { not: null }, slug: { not: null } }), retire)).not.toThrow();
-      // A nullable column can be inserted as null on purpose, so its rows may stay out of the index.
+      expect(() => project(base({ seen: { not: null } }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live".*where seen is not null/);
+      expect(() => project(base({ seen: { not: null }, slug: { not: null } }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live"/);
+      expect(() => project(base({ slug: 'x' }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live".*where slug = "x"/);
+      expect(() => project(base({ deleted_at: null }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live".*where deleted_at is null/);
       const nullable = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.timestamp('seen').useCurrent().nullable(); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: { seen: { not: null } } }); });
-      expect(() => project(nullable, retire)).not.toThrow();
-      expect(() => project(base({ slug: 'x' }), retire)).not.toThrow();
+      expect(() => project(nullable, retire)).toThrow(/\[marmeon:D19\]/);
     });
 
-    it('does not take a partial unique index for the proof that a retired column with a fixed default repeats a value', () => {
-      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: { slug: 'x' } }); });
-      expect(() => project(base, (s) => s.alter('pages', (t) => t.retire('kind')))).not.toThrow();
+    it('refuses the retirement when the condition is a boolean the release still writes (D19)', () => {
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.boolean('active').default(true); t.unique('kind', { where: { active: true } }); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/D19.*"pages\.kind".*pages_kind_unique.*dropUnique/s);
+    });
+
+    it('refuses the retirement when the condition value differs from the default of its column (D19)', () => {
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('stage').default('draft'); t.string('slug'); t.unique(['kind', 'slug'], { where: { stage: 'live' } }); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\].*where stage = "live"/);
+    });
+
+    it('retires the column once the unique index is dropped in the same alter', () => {
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.boolean('active').default(true); t.unique('kind', { where: { active: true } }); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => { t.dropUnique('pages_kind_unique'); t.retire('kind'); }))).not.toThrow();
+    });
+
+    it('lets a partial unique index that does not contain the retired column, or a column without a fixed default, stay', () => {
+      const other = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.unique('slug', { where: { slug: 'x' } }); });
+      expect(() => project(other, (s) => s.alter('pages', (t) => t.retire('kind')))).not.toThrow();
+      const uuid = (s: Schema) => s.create('pages', (t) => { t.id(); t.uuid('ref').useUuidv7(); t.string('slug'); t.unique('ref', { where: { slug: 'x' } }); });
+      expect(() => project(uuid, (s) => s.alter('pages', (t) => t.retire('ref')))).not.toThrow();
+      const none = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').nullable(); t.string('slug'); t.unique('kind', { where: { slug: 'x' } }); });
+      expect(() => project(none, (s) => s.alter('pages', (t) => t.retire('kind')))).not.toThrow();
+      // The same columns in a whole unique index pass too: the exemption comes from the default, not the condition.
+      const uuidWhole = (s: Schema) => s.create('pages', (t) => { t.id(); t.uuid('ref').useUuidv7(); t.unique('ref'); });
+      expect(() => project(uuidWhole, (s) => s.alter('pages', (t) => t.retire('ref')))).not.toThrow();
+      const noneWhole = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').nullable(); t.unique('kind'); });
+      expect(() => project(noneWhole, (s) => s.alter('pages', (t) => t.retire('kind')))).not.toThrow();
+    });
+
+    it('refuses a whole unique index over a fixed default, and says the other columns become unique for a composite one (D19)', () => {
       const whole = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.unique(['kind', 'slug']); });
-      expect(() => project(whole, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\].*unique index/);
+      expect(() => project(whole, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\].*unique index.*other columns.*unique on their own/);
+      const single = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.unique('kind'); });
+      expect(() => project(single, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\].*a second row the index covers could collide/);
+    });
+
+    it('retires a column whose default is null in a unique index, and still refuses a default of another value (D19)', () => {
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
+      const whole = (value: string | null) => (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').nullable().default(value); t.string('slug'); t.unique(['kind', 'slug']); });
+      const partial = (value: string | null) => (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').nullable().default(value); t.string('slug'); t.unique('kind', { where: { slug: 'x' } }); });
+      expect(() => project(whole(null), retire)).not.toThrow();
+      expect(() => project(partial(null), retire)).not.toThrow();
+      expect(() => project(whole('page'), retire)).toThrow(/\[marmeon:D19\]/);
+      expect(() => project(partial('page'), retire)).toThrow(/\[marmeon:D19\]/);
+      expect(table(project(whole(null)), 'pages').columns.find((c) => c.name === 'kind')).toMatchObject({ default: 'value', nullDefault: true });
+      expect(table(project(whole('page')), 'pages').columns.find((c) => c.name === 'kind')).not.toHaveProperty('nullDefault');
+    });
+
+    it('retires a column of a partial unique index whose condition no row can meet, and refuses the nearest one a row can meet (D19)', () => {
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
+      const base = (slug: (t: any) => unknown, where: Record<string, unknown>) => (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); slug(t); t.unique('kind', { where: where as never }); });
+      // NOT NULL column against IS NULL.
+      expect(() => project(base((t) => t.string('slug'), { slug: null }), retire)).not.toThrow();
+      expect(() => project(base((t) => t.string('slug').nullable(), { slug: null }), retire)).toThrow(/\[marmeon:D19\]/);
+      // A value outside the oneOf values.
+      expect(() => project(base((t) => t.string('stage').oneOf('draft', 'live'), { stage: 'gone' }), retire)).not.toThrow();
+      expect(() => project(base((t) => t.string('stage').oneOf('draft', 'live'), { stage: 'live' }), retire)).toThrow(/\[marmeon:D19\]/);
+      // The state at the retirement counts: nullable() in the same alter makes the condition meetable.
+      expect(() => project(base((t) => t.string('slug'), { slug: null }), (s) => s.alter('pages', (t) => { t.nullable('slug'); t.retire('kind'); }))).toThrow(/\[marmeon:D19\]/);
+    });
+
+    it('refuses a later change that lets a row meet the condition a retirement rested on (D19)', () => {
+      const index = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.string('stage').oneOf('draft', 'live'); t.unique('kind', { name: 'pages_kind_unique', where: { slug: null } }); });
+      const staged = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('stage').oneOf('draft', 'live'); t.unique('kind', { name: 'pages_kind_unique', where: { stage: 'gone' } }); });
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
+      const later = (change: (t: any) => void) => (s: Schema) => s.alter('pages', (t) => change(t));
+      expect(() => project(index, retire, later((t) => t.nullable('slug')))).toThrow(/\[marmeon:D19\].*"pages_kind_unique".*"pages\.kind".*dropUnique/);
+      expect(() => project(staged, retire, later((t) => t.oneOf('stage', ['draft', 'live', 'gone'])))).toThrow(/\[marmeon:D19\].*"pages_kind_unique"/);
+      expect(() => project(staged, retire, later((t) => t.dropCheck('pages_stage_check')))).toThrow(/\[marmeon:D19\].*"pages_kind_unique"/);
+      // A rename in the same alter does not hide the change.
+      expect(() => project(staged, retire, later((t) => { t.dropCheck('pages_stage_check'); t.renameColumn('stage', 'phase'); }))).toThrow(/\[marmeon:D19\].*"pages_kind_unique"/);
+      // Neighbours that pass: no retired column in the index, the index dropped with the change, a change that keeps the condition unmet.
+      expect(() => project(index, later((t) => t.nullable('slug')))).not.toThrow();
+      expect(() => project(staged, later((t) => t.oneOf('stage', ['draft', 'live', 'gone'])))).not.toThrow();
+      expect(() => project(index, retire, later((t) => { t.dropUnique('pages_kind_unique'); t.nullable('slug'); }))).not.toThrow();
+      expect(() => project(staged, retire, later((t) => t.oneOf('stage', ['draft', 'live', 'other'])))).not.toThrow();
+      // The end state counts: the retired column is dropped in the same alter, or the change makes the index stricter.
+      expect(() => project(index, retire, later((t) => { t.nullable('slug'); t.dropColumn('kind'); }))).not.toThrow();
+      expect(() => project(index, (s) => s.alter('pages', (t) => { t.nullable('slug'); }), retire)).toThrow(/\[marmeon:D19\]/);
+      expect(() => project((s) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug').nullable(); t.unique('kind', { name: 'pages_kind_unique', where: { slug: null } }); }), later((t) => t.notNull('slug')))).not.toThrow();
+      expect(() => project(index, retire, later((t) => t.notNull('slug')))).not.toThrow();
+    });
+
+    it('lets a change of a condition column pass when the retired column is not in the index it changes, is no fixed default, or the index is not unique', () => {
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
+      const later = (s: Schema) => s.alter('pages', (t) => t.nullable('slug'));
+      const noDefault = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').nullable(); t.string('slug'); t.unique('kind', { where: { slug: null } }); });
+      expect(() => project(noDefault, retire, later)).not.toThrow();
+      const other = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.string('code'); t.unique('code', { where: { slug: null } }); t.unique('kind', { name: 'pages_kind_whole' }); });
+      expect(() => project(other, (s) => s.alter('pages', (t) => { t.dropUnique('pages_kind_whole'); t.retire('kind'); }), later)).not.toThrow();
+      const plain = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.index('kind', { where: { slug: null } }); });
+      expect(() => project(plain, retire, later)).not.toThrow();
+      const both = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('type').nullable(); t.string('slug'); t.unique(['kind', 'type'], { where: { slug: null } }); });
+      expect(() => project(both, (s) => s.alter('pages', (t) => { t.retire('type'); t.retire('kind'); }), later)).not.toThrow();
+    });
+
+    it('does not take NULL for a primary key that SQLite lets hold it, and keeps an identity or integer key (D19)', () => {
+      const base = (key: (t: any) => unknown) => (s: Schema) => s.create('pages', (t) => { key(t); t.string('kind').default('page'); t.unique('kind', { where: { code: null } as never }); });
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
+      expect(() => project(base((t) => { t.string('code').primary(); }), retire)).toThrow(/\[marmeon:D19\]/);
+      expect(() => project(base((t) => { t.uuid('code').primary(); }), retire)).toThrow(/\[marmeon:D19\]/);
+      expect(() => project(base((t) => { t.id('code'); }), retire)).not.toThrow();
+      expect(() => project(base((t) => { t.integer('code').primary(); }), retire)).not.toThrow();
+      expect(() => project(base((t) => { t.bigInteger('code').primary(); }), retire)).not.toThrow();
+    });
+
+    it('refuses a NOT NULL column with a null default in a unique index (D19)', () => {
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default(null as never); t.unique('kind'); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\]/);
+    });
+
+    it('retires a column of a composite unique index whose other column is retired and always NULL, and refuses it otherwise (D19)', () => {
+      const base = (type: (t: any) => unknown) => (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); type(t); t.unique(['kind', 'type']); });
+      const both = (s: Schema) => s.alter('pages', (t) => { t.retire('type'); t.retire('kind'); });
+      const reversed = (s: Schema) => s.alter('pages', (t) => { t.retire('kind'); t.retire('type'); });
+      expect(() => project(base((t) => t.string('type').nullable()), both)).not.toThrow();
+      expect(() => project(base((t) => t.string('type').nullable()), reversed)).not.toThrow();
+      expect(() => project(base((t) => t.string('type').nullable().default(null)), both)).not.toThrow();
+      expect(() => project(base((t) => t.string('type').nullable()), (s) => s.alter('pages', (t) => t.retire('type')), (s) => s.alter('pages', (t) => t.retire('kind')))).not.toThrow();
+      // Not retired, or with a default that is no NULL: the column can hold a value.
+      expect(() => project(base((t) => t.string('type').nullable()), (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\]/);
+      expect(() => project(base((t) => t.string('type').nullable().default('a')), both)).toThrow(/\[marmeon:D19\]/);
+    });
+
+    it('says rows written at the same moment get the same value for a useCurrent column (D19)', () => {
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.timestamp('seen').useCurrent(); t.unique('seen'); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => t.retire('seen')))).toThrow(/same moment/);
     });
 
     it('is dropped by name like any other', () => {

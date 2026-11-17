@@ -18,6 +18,8 @@ export interface ProjectedColumn {
   /** An auto-incrementing key. */
   readonly identity: boolean;
   readonly default: 'value' | 'now' | 'uuidv7' | null;
+  /** The value of `default(value)` is `null`, which a unique index never counts twice. Present only when set. */
+  readonly nullDefault?: true;
   readonly secret: boolean;
   /**
    * Taken out of use with `retire()`: the database still has it, Marmeon does not know it any more — except that a secret one stays
@@ -321,6 +323,7 @@ function columnOf(spec: ColumnSpec): ProjectedColumn {
     primary: spec.primary,
     identity: spec.identity,
     default: spec.default ? ('now' in spec.default ? 'now' : 'uuidv7' in spec.default ? 'uuidv7' : 'value') : null,
+    ...(spec.default && 'value' in spec.default && spec.default.value === null ? { nullDefault: true as const } : {}),
     secret: spec.secret,
     ...(spec.oneOf ? { values: [...spec.oneOf], valuesCheck: oneOfName(spec.table, spec.name) } : {}),
   };
@@ -455,15 +458,15 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
           `Make it nullable in an earlier migration (table.nullable('${column}'), Postgres only), or drop it with dropColumn() once no process of the previous release is running. See docs/migrations.md#deploying-new-migrations.`,
       );
     }
-    // Every insert of the new release would write the same value, and a unique index would refuse the second.
-    // A partial unique index counts only when every row the release inserts is proven to match its condition: the projection knows no default value, so
-    // that is a condition `{ not: null }` on non-nullable columns that default to the time of the insert (a nullable one can be inserted as null). Any other condition may keep the second insert from meeting the first.
-    const alwaysSet = (c: string) => columns.some((other) => other.name === c && other.default === 'now' && !other.nullable);
-    const everyRowMatches = (i: ProjectedIndex) => Object.entries(i.where ?? {}).every(([c, value]) => typeof value === 'object' && value !== null && alwaysSet(c));
-    const unique = indexes.find((i) => i.unique && i.columns.includes(column) && everyRowMatches(i));
-    if (unique &&(found.default === 'value' || found.default === 'now')) {
+    // Every insert of the new release would write the same value, and a unique index could refuse the second. A partial unique index counts too:
+    // the release still writes the columns of its condition, so a row it inserts can fall under the index. The refusal is the default; only a plan
+    // that proves no two rows can collide gets past it (see `cannotCollide`).
+    const unique = indexes.find((i) => i.unique && i.columns.includes(column) && !cannotCollide(i, found, columns, parts.retirements));
+    if (unique && (found.default === 'value' || found.default === 'now')) {
+      const condition = unique.where ? ` (where ${describeCondition(unique.where)})` : '';
+      const same = found.default === 'now' ? 'rows it writes at the same moment get the same value' : 'every row of the release that no longer knows it gets the same value';
       throw conflict(
-        `${where} retires "${name}.${column}", which has a fixed default and is in the unique index "${unique.name}": the second insert of the release that no longer knows it would write the same value again. ` +
+        `${where} retires "${name}.${column}", which has a fixed default and is in the unique index "${unique.name}"${condition}: ${same}, so ${unique.columns.length > 1 ? 'the other columns of the index could become unique on their own among the rows it covers' : 'a second row the index covers could collide'}, and the migrations do not prove that no row can. ` +
           `Drop the unique index first with dropUnique('${unique.name}'), in this or an earlier alter. See docs/migrations.md#retiring-a-column.`,
       );
     }
@@ -478,6 +481,19 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     // Postgres drops an index with a column it covers or its condition uses; SQLite refuses to drop either.
     indexes = indexes.filter((i) => !i.columns.includes(column) && !(i.where && Object.hasOwn(i.where, column)));
     if (MARKER_COLUMNS[column]) markers = markers.filter((m) => m !== MARKER_COLUMNS[column]);
+  }
+
+  // A retirement may rest on a condition no row can meet, which holds only while it stays so: whatever this alter did, a unique index over a retired
+  // column with a fixed default has to be one that still cannot collide.
+  for (const index of indexes) {
+    if (!index.unique) continue;
+    const open = columns.find((c) => c.retired && index.columns.includes(c.name) && (c.default === 'value' || c.default === 'now') && !cannotCollide(index, c, columns, []));
+    if (open) {
+      throw conflict(
+        `${where} leaves the unique index "${index.name}"${index.where ? ` (where ${describeCondition(index.where)})` : ''} over "${name}.${open.name}", which was retired with a fixed default, with rows that could collide: the retirement rested on a condition no row could meet. ` +
+          `Drop the unique index first with dropUnique('${index.name}'), in this or an earlier alter. See docs/migrations.md#retiring-a-column.`,
+      );
+    }
   }
 
   const { checks: _before, ...rest } = table;
@@ -515,4 +531,32 @@ function rename(tables: Map<string, ProjectedTable>, from: string, to: string, i
     if (!other.foreignKeys.some((k) => k.references === from)) continue;
     tables.set(name, { ...other, foreignKeys: other.foreignKeys.map((k) => (k.references === from ? { ...k, references: to } : k)) });
   }
+}
+
+function describeCondition(where: IndexCondition): string {
+  return Object.entries(where)
+    .map(([column, value]) => {
+      if (value === null) return `${column} is null`;
+      if (typeof value === 'object') return `${column} is not null`;
+      return `${column} = ${JSON.stringify(value)}`;
+    })
+    .join(' and ');
+}
+
+/**
+ * Whether the plan proves that no two rows of the release that no longer knows `retired` can collide in `index`: the column holds NULL (a NULL default),
+ * another column of the index is retired too and holds NULL in every row, or the condition of a partial index is one no row can meet.
+ */
+function cannotCollide(index: ProjectedIndex, retired: ProjectedColumn, columns: readonly ProjectedColumn[], retiring: readonly string[]): boolean {
+  if (retired.nullable && retired.nullDefault) return true;
+  const alwaysNull = (c: ProjectedColumn) => c.nullable && (c.default === null || c.nullDefault === true);
+  const others = index.columns.filter((c) => c !== retired.name).map((c) => columns.find((other) => other.name === c));
+  if (others.some((c) => c && (c.retired || retiring.includes(c.name)) && alwaysNull(c))) return true;
+  return Object.entries(index.where ?? {}).some(([column, value]) => {
+    const held = columns.find((c) => c.name === column);
+    if (!held) return false;
+    // A primary key is NOT NULL on Postgres; on SQLite only an identity or an `integer` key (the rowid) is, any other can hold NULL.
+    if (value === null) return !held.nullable && (!held.primary || held.identity || held.type.sqlite === 'integer');
+    return typeof value === 'string' && held.values !== undefined && !held.values.includes(value);
+  });
 }
