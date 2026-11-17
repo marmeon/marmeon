@@ -5,6 +5,7 @@ import { BuildCommand } from './commands/build.ts';
 import { CheckCommand } from './commands/check.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { DocsCommand } from './commands/docs.ts';
+import { DoctorCommand } from './commands/doctor.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
@@ -46,6 +47,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   DiscoverCommand,
   BuildCommand,
   CheckCommand,
+  DoctorCommand,
   PackageBuildCommand,
   KeyGenerateCommand,
   AgentsSyncCommand,

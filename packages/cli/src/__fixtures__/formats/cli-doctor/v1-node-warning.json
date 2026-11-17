@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "ok": true,
+  "exitCode": 0,
+  "checks": [
+    {
+      "name": "node",
+      "status": "warning",
+      "reason": null,
+      "problems": [
+        {
+          "severity": "warning",
+          "file": null,
+          "line": null,
+          "column": null,
+          "code": null,
+          "rule": null,
+          "fix": null,
+          "docs": "docs/releases.md#node"
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

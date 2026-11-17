@@ -164,6 +164,11 @@ marmeon discover
 marmeon docs [<page>] [--path] [--json]
 --json (boolean)
 --path (boolean)
+// doctor
+marmeon doctor [--only=<names>] [--skip=<names>] [--json]
+--json (boolean)
+--only (string)
+--skip (string)
 // key:generate
 marmeon key:generate [--show] [--force]
 --force (boolean)

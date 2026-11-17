@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "ok": true,
+  "exitCode": 0,
+  "checks": [
+    {
+      "name": "node",
+      "status": "passed",
+      "reason": null,
+      "problems": []
+    },
+    {
+      "name": "boot",
+      "status": "passed",
+      "reason": null,
+      "problems": []
+    }
+  ],
+  "warnings": []
+}
