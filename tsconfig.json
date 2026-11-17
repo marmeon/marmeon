@@ -74,6 +74,9 @@
       "path": "packages/fetch"
     },
     {
+      "path": "packages/chat-notifications"
+    },
+    {
       "path": "packages/devtools"
     },
     {

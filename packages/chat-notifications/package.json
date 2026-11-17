@@ -1,0 +1,63 @@
+{
+  "name": "@marmeon/chat-notifications",
+  "version": "1.1.0",
+  "private": true,
+  "description": "The neutral chat message and the webhook address guard for chat notifications of Marmeon apps: check a message, refuse webhook addresses a driver does not list.",
+  "keywords": [
+    "marmeon",
+    "notifications",
+    "slack",
+    "discord",
+    "teams"
+  ],
+  "bugs": {
+    "url": "https://github.com/marmeon/marmeon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
+    "directory": "packages/chat-notifications"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@marmeon/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@marmeon/core": "workspace:*",
+    "valibot": "^1.5.0"
+  }
+}
