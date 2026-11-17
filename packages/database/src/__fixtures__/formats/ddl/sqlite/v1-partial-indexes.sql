@@ -1,0 +1,7 @@
+create table "ddl_pages" ("id" integer primary key autoincrement, "slug" varchar(255) not null, "locale" varchar(255) not null, "stage" varchar(255) not null, "featured" boolean default false not null, "rank" integer default 0 not null, "note" varchar(255), "deleted_at" datetime);
+create unique index "ddl_pages_slug_locale_unique" on "ddl_pages" ("slug", "locale") where "stage" = 'live';
+create index "ddl_pages_alive" on "ddl_pages" ("slug") where "deleted_at" is null;
+create index "ddl_pages_featured_rank" on "ddl_pages" ("rank") where "featured" = true and "rank" = 3;
+create unique index "ddl_pages_featured_unique" on "ddl_pages" ("slug") where "featured" = true;
+create index "ddl_pages_quoted" on "ddl_pages" ("slug") where "stage" = 'it''s';
+create index "ddl_pages_noted" on "ddl_pages" ("slug") where "note" is not null and "featured" = false;

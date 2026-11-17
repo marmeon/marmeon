@@ -13,7 +13,7 @@ import { runMigration } from '../migrations/run.ts';
 import { kindOf } from '../metadata.ts';
 import { columnType } from '../types-gen/render.ts';
 import { PROJECTION_FILE, forgetProjections } from './projection-file.ts';
-import { applyPlan, emptyProjection, factsOf, projectMigrations, type ProjectedTable, type SchemaProjection } from './projection.ts';
+import { applyPlan, differingTables, emptyProjection, factsOf, projectMigrations, type ProjectedTable, type SchemaProjection } from './projection.ts';
 import { planOf } from './plan.ts';
 import type { Schema } from './schema.ts';
 
@@ -284,6 +284,159 @@ describe('the projection of a plan', () => {
     expect(table(projection, 'notes').uniques).toEqual([['id']]);
   });
 
+  describe('a partial index', () => {
+    const pages = (s: Schema) =>
+      s.create('pages', (t) => {
+        t.id();
+        t.string('slug');
+        t.string('locale');
+        t.string('stage');
+        t.softDeletes();
+        t.unique(['slug', 'locale'], { where: { stage: 'live' } });
+        t.index('slug', { name: 'pages_alive', where: { deleted_at: null } });
+      });
+
+    it('keeps its condition in the projection, and is no unique set; an index without one has no `where` field', () => {
+      const projection = project(pages, (s) => s.alter('pages', (t) => t.index('locale')));
+      const found = table(projection, 'pages');
+      expect(found.indexes).toEqual([
+        { name: 'pages_slug_locale_unique', columns: ['slug', 'locale'], unique: true, where: { stage: 'live' } },
+        { name: 'pages_alive', columns: ['slug'], unique: false, where: { deleted_at: null } },
+        { name: 'pages_locale_index', columns: ['locale'], unique: false },
+      ]);
+      expect(Object.hasOwn(found.indexes[2]!, 'where')).toBe(false);
+      expect(found.uniques).toEqual([['id']]);
+    });
+
+    it('does not turn a hasMany into a hasOne when it is unique on the foreign key column for some rows', () => {
+      const projection = project(
+        (s) => s.create('users', (t) => t.id()),
+        (s) => s.create('drafts', (t) => { t.id(); t.foreignId('user_id').constrained(); t.string('stage'); t.unique('user_id', { where: { stage: 'live' } }); }),
+      );
+      expect(table(projection, 'drafts').uniques).toEqual([['id']]);
+      expect(deriveRelations(factsOf(projection, 'sqlite')).relations.get('users')?.get('drafts')).toMatchObject({ kind: 'hasMany' });
+      const whole = project(
+        (s) => s.create('users', (t) => t.id()),
+        (s) => s.create('drafts', (t) => { t.id(); t.foreignId('user_id').constrained(); t.unique('user_id'); }),
+      );
+      expect(deriveRelations(factsOf(whole, 'sqlite')).relations.get('users')?.get('drafts')).toMatchObject({ kind: 'hasOne' });
+    });
+
+    it('is the same index when it is the same condition, and another one when the condition differs', () => {
+      const a = project(pages);
+      const b = project((s) => s.create('pages', (t) => { t.id(); t.string('slug'); t.string('locale'); t.string('stage'); t.softDeletes(); t.unique(['slug', 'locale'], { where: { stage: 'draft' } }); t.index('slug', { name: 'pages_alive', where: { deleted_at: null } }); }));
+      expect(differingTables(a, project(pages))).toEqual([]);
+      expect(differingTables(a, b)).toEqual(['pages']);
+    });
+
+    it('follows the rename of a column in its condition', () => {
+      const projection = project(pages, (s) => s.alter('pages', (t) => { t.renameColumn('stage', 'state'); t.renameColumn('deleted_at', 'removed_at'); }));
+      expect(table(projection, 'pages').indexes.map((i) => i.where)).toEqual([{ state: 'live' }, { removed_at: null }]);
+    });
+
+    it('is dropped with a column its condition uses, as Postgres does', () => {
+      const projection = project(pages, (s) => s.alter('pages', (t) => t.dropColumn('stage')));
+      expect(table(projection, 'pages').indexes.map((i) => i.name)).toEqual(['pages_alive']);
+    });
+
+    it('refuses a condition on a column the table does not have (D19)', () => {
+      expect(() => project((s) => s.create('pages', (t) => { t.id(); t.index('id', { where: { missing: true } }); }))).toThrow(/\[marmeon:D19\].*"pages\.missing".*where of index "pages_id_index"/);
+      expect(() => project(pages, (s) => s.alter('pages', (t) => t.index('slug', { where: { nope: null } })))).toThrow(/\[marmeon:D19\]/);
+    });
+
+    it('may use a column that the same alter adds or renames', () => {
+      const added = project(pages, (s) => s.alter('pages', (t) => { t.string('state').nullable(); t.index('slug', { name: 'pages_state', where: { state: { not: null } } }); }));
+      expect(table(added, 'pages').indexes.find((i) => i.name === 'pages_state')?.where).toEqual({ state: { not: null } });
+      const renamed = project(pages, (s) => s.alter('pages', (t) => { t.renameColumn('stage', 'state'); t.index('slug', { name: 'pages_state', where: { state: 'live' } }); }));
+      expect(table(renamed, 'pages').indexes.map((i) => [i.name, i.where])).toEqual([
+        ['pages_slug_locale_unique', { state: 'live' }],
+        ['pages_alive', { deleted_at: null }],
+        ['pages_state', { state: 'live' }],
+      ]);
+    });
+
+    it('is dropped by name after a unique() with a where in an alter', () => {
+      const projection = project(pages, (s) => s.alter('pages', (t) => t.unique('locale', { name: 'pages_locale_live', where: { stage: 'live' } })), (s) => s.alter('pages', (t) => t.dropIndex('pages_locale_live')));
+      expect(table(projection, 'pages').indexes.map((i) => i.name)).toEqual(['pages_slug_locale_unique', 'pages_alive']);
+      expect(table(projection, 'pages').uniques).toEqual([['id']]);
+    });
+
+    it.each([
+      ['a string on a boolean column', 'active', 'true'],
+      ['a string that is no whole number on an integer column', 'rank', '3.5'],
+      ['a string with a leading zero on an integer column', 'rank', '03'],
+      ['a number on a boolean column', 'active', 1],
+      ['a number on a string column', 'stage', 3],
+      ['a boolean on a string column', 'stage', true],
+      ['a boolean on an integer column', 'rank', false],
+    ])('refuses %s, which SQLite and Postgres read differently (D19)', (_, column, value) => {
+      const create = (s: Schema) => s.create('flags', (t) => { t.id(); t.boolean('active'); t.integer('rank'); t.string('stage'); t.index('id', { where: { [column]: value } as never }); });
+      expect(() => project(create)).toThrow(/\[marmeon:D19\].*where of index "flags_id_index"/);
+    });
+
+    it('takes a whole number as a string for an integer column, and leaves a uuid column alone whatever the value', () => {
+      const create = (s: Schema) =>
+        s.create('flags', (t) => {
+          t.id();
+          t.bigInteger('big');
+          t.uuid('ref').nullable();
+          t.index('id', { name: 'flags_big', where: { big: '9007199254740993' } });
+          t.index('id', { name: 'flags_negative', where: { big: '-3' } });
+          t.index('id', { name: 'flags_uuid_number', where: { ref: 3 } });
+          t.index('id', { name: 'flags_uuid_boolean', where: { ref: true } });
+        });
+      expect(table(project(create), 'flags').indexes).toHaveLength(4);
+    });
+
+    it('accepts a value of the kind of the column, and leaves other column types alone', () => {
+      const create = (s: Schema) =>
+        s.create('flags', (t) => {
+          t.id();
+          t.boolean('active');
+          t.integer('rank');
+          t.string('stage');
+          t.timestamp('at').nullable();
+          t.index('id', { name: 'flags_ok', where: { active: true, rank: 3, stage: 'live', at: null } });
+          t.index('id', { name: 'flags_loose', where: { at: 'x', stage: { not: null } } });
+        });
+      expect(table(project(create), 'flags').indexes).toHaveLength(2);
+    });
+
+    it('refuses to retire a column its condition names, and retires it once the index is dropped (D19)', () => {
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('stage'));
+      expect(() => project((s) => s.create('pages', (t) => { t.id(); t.string('stage').nullable(); t.index('id', { name: 'pages_live', where: { stage: 'live' } }); }), retire)).toThrow(
+        /\[marmeon:D19\].*retires "pages\.stage".*"pages_live".*dropIndex/,
+      );
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('stage').nullable(); t.index('id', { name: 'pages_live', where: { stage: 'live' } }); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => { t.dropIndex('pages_live'); t.retire('stage'); }))).not.toThrow();
+    });
+
+    it('takes a partial unique index for the proof of a repeated value only when every new row is in it', () => {
+      const base = (condition: Record<string, unknown>) => (s: Schema) =>
+        s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.timestamp('seen').useCurrent(); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: condition as never }); });
+      const retire = (s: Schema) => s.alter('pages', (t) => t.retire('kind'));
+      // `seen` is set by the database on every insert, so every row is in the index and the second insert collides.
+      expect(() => project(base({ seen: { not: null } }), retire)).toThrow(/\[marmeon:D19\].*"pages_kind_live"/);
+      expect(() => project(base({ seen: { not: null }, slug: { not: null } }), retire)).not.toThrow();
+      // A nullable column can be inserted as null on purpose, so its rows may stay out of the index.
+      const nullable = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.timestamp('seen').useCurrent().nullable(); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: { seen: { not: null } } }); });
+      expect(() => project(nullable, retire)).not.toThrow();
+      expect(() => project(base({ slug: 'x' }), retire)).not.toThrow();
+    });
+
+    it('does not take a partial unique index for the proof that a retired column with a fixed default repeats a value', () => {
+      const base = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.unique(['kind', 'slug'], { name: 'pages_kind_live', where: { slug: 'x' } }); });
+      expect(() => project(base, (s) => s.alter('pages', (t) => t.retire('kind')))).not.toThrow();
+      const whole = (s: Schema) => s.create('pages', (t) => { t.id(); t.string('kind').default('page'); t.string('slug'); t.unique(['kind', 'slug']); });
+      expect(() => project(whole, (s) => s.alter('pages', (t) => t.retire('kind')))).toThrow(/\[marmeon:D19\].*unique index/);
+    });
+
+    it('is dropped by name like any other', () => {
+      const projection = project(pages, (s) => s.alter('pages', (t) => t.dropUnique('pages_slug_locale_unique')));
+      expect(table(projection, 'pages').indexes.map((i) => i.name)).toEqual(['pages_alive']);
+    });
+  });
+
   it('adds columns last, in the order alter executes: renames first, then new columns, NOT NULL changes, drops last', () => {
     const projection = project(
       (s) => s.create('notes', (t) => { t.id(); t.string('title').nullable(); t.string('old'); t.string('keep').nullable(); }),
@@ -400,7 +553,8 @@ const GROUPS: Record<string, string[]> = {
   // The DDL groups build on each other: the later ones alter, rename and drop what the first made.
   'ddl-columns': ['ddl/columns'],
   'ddl-indexes': ['ddl/columns', 'ddl/indexes'],
-  ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop', 'ddl/checks'],
+  'ddl-partial-indexes': ['ddl/partial-indexes'],
+  ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop', 'ddl/checks', 'ddl/partial-indexes'],
   // Retiring leaves the column in the database, dropping it later takes it out.
   retired: ['retired-old', 'retired'],
   'retired-drop': ['retired-old', 'retired', 'retired-drop'],

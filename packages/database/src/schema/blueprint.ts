@@ -277,7 +277,55 @@ export class ConstrainedForeignKey {
   }
 }
 
-type IndexSpec = { readonly columns: readonly string[]; readonly unique: boolean; readonly name: string };
+/**
+ * The rows a partial index covers: every key is a column of the table (a name without a dot), the entries are ANDed. A value gives
+ * `column = value`, `null` gives `column IS NULL`, `{ not: null }` gives `column IS NOT NULL`. A value is a string of up to 255 characters
+ * without a NUL character or a backslash, a safe integer, a boolean, `null` or `{ not: null }`; anything else, and an empty condition,
+ * throws. See `docs/migrations.md#partial-indexes`.
+ */
+export type IndexCondition = Readonly<Record<string, string | number | boolean | null | { readonly not: null }>>;
+
+/** What `index()` and `unique()` take besides the columns. */
+export interface IndexOptions {
+  /** The name of the index; default `{table}_{columns}_{index|unique}`. */
+  readonly name?: string;
+  /** Makes the index partial: it covers only the rows that match. */
+  readonly where?: IndexCondition;
+}
+
+type IndexSpec = { readonly columns: readonly string[]; readonly unique: boolean; readonly name: string; readonly where?: IndexCondition };
+
+/** The options of `index()` and `unique()`: a plain object with a `name` and a `where` at most, so a misspelt key is no silent full index. */
+function checkOptions(table: string, options: unknown): IndexOptions {
+  const prototype = typeof options === 'object' && options !== null ? Object.getPrototypeOf(options) : undefined;
+  const isObject = prototype === Object.prototype || prototype === null;
+  const unknown = isObject ? Object.keys(options as object).filter((key) => key !== 'name' && key !== 'where') : [];
+  if (!isObject || unknown.length) {
+    throw new Error(`The options of an index on "${table}" are an object with \`name\` and \`where\` only${unknown.length ? `; got ${unknown.map((key) => JSON.stringify(key)).join(', ')}` : ''}.`);
+  }
+  const { name } = options as IndexOptions;
+  if (name !== undefined && (typeof name !== 'string' || name === '')) throw new Error(`The \`name\` of an index on "${table}" is a non-empty string.`);
+  return options as IndexOptions;
+}
+
+/** The rules for the condition of a partial index: values the projection and both drivers read the same way, written as literals into the DDL. */
+function checkCondition(table: string, where: unknown): IndexCondition {
+  const shown = (value: unknown) => (typeof value === 'bigint' ? `${value}n` : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null ? JSON.stringify(value) : Array.isArray(value) ? 'an array' : typeof value);
+  const entries = typeof where === 'object' && where !== null && !Array.isArray(where) ? Object.entries(where) : [];
+  if (!entries.length) throw new Error(`The \`where\` of an index on "${table}" needs at least one column, like { stage: 'live' }.`);
+  for (const [column, value] of entries) {
+    const text = typeof value === 'string' && value.length <= 255 && !value.includes('\0') && !value.includes('\\');
+    const number = typeof value === 'number' && Number.isSafeInteger(value);
+    const not = typeof value === 'object' && value !== null && Object.keys(value).length === 1 && (value as { not?: unknown }).not === null;
+    if (column === '' || column.includes('.')) throw new Error(`The \`where\` of an index on "${table}" takes column names without a dot or an empty name; got ${JSON.stringify(column)}.`);
+    if (!(text || number || not || typeof value === 'boolean' || value === null)) {
+      throw new Error(
+        `The \`where\` of an index on "${table}" takes, for "${column}", a string of up to 255 characters without a NUL character or a backslash, a safe integer, a boolean, null or { not: null }; got ${shown(value)}.`,
+      );
+    }
+  }
+  return Object.freeze(Object.fromEntries(entries.map(([column, value]) => [column, value !== null && typeof value === 'object' ? Object.freeze({ not: null }) : value]))) as IndexCondition;
+}
 
 /** What a {@link Blueprint} holds about its table; the migrator's plan reads it through {@link blueprintParts}. */
 interface BlueprintParts {
@@ -477,13 +525,17 @@ export class Blueprint {
     this.#parts.oneOfChanges.push({ column, values: Object.freeze([...values]) });
   }
 
-  index(columns: string | readonly string[], name?: string): void {
-    this.#index(columns, false, name);
+  /** An index over one or more columns. Pass a name, or `{ name, where }` for a partial index. See `docs/migrations.md#partial-indexes`. */
+  index(columns: string | readonly string[], nameOrOptions?: string | IndexOptions): void {
+    this.#index(columns, false, nameOrOptions);
   }
 
-  /** A unique index over one or more columns (for one column, `.unique()` on the column is shorter). */
-  unique(columns: string | readonly string[], name?: string): void {
-    this.#index(columns, true, name);
+  /**
+   * A unique index over one or more columns (for one column, `.unique()` on the column is shorter). With `where` it is unique among the rows
+   * that match only, and so identifies no row of the table. See `docs/migrations.md#partial-indexes`.
+   */
+  unique(columns: string | readonly string[], nameOrOptions?: string | IndexOptions): void {
+    this.#index(columns, true, nameOrOptions);
   }
 
   /** Changing a table only: drops a column. */
@@ -584,10 +636,15 @@ export class Blueprint {
     this.#parts.nullability.push({ column, nullable });
   }
 
-  #index(columns: string | readonly string[], unique: boolean, name?: string): void {
+  #index(columns: string | readonly string[], unique: boolean, nameOrOptions?: string | IndexOptions): void {
     this.#open();
     const list = typeof columns === 'string' ? [columns] : columns;
-    this.#parts.indexes.push({ columns: list, unique, name: name ?? `${this.table}_${list.join('_')}_${unique ? 'unique' : 'index'}` });
+    if (nameOrOptions !== undefined && typeof nameOrOptions !== 'object' && (typeof nameOrOptions !== 'string' || nameOrOptions === '')) {
+      throw new Error(`The name of an index on "${this.table}" is a non-empty string.`);
+    }
+    const options = nameOrOptions === undefined || typeof nameOrOptions === 'string' ? { name: nameOrOptions, where: undefined } : checkOptions(this.table, nameOrOptions);
+    const where = options.where === undefined ? undefined : checkCondition(this.table, options.where);
+    this.#parts.indexes.push({ columns: list, unique, name: options.name ?? `${this.table}_${list.join('_')}_${unique ? 'unique' : 'index'}`, ...(where ? { where } : {}) });
   }
 
   #add<T>(name: string, type: Record<Driver, DataTypeExpression>): Column<T> {

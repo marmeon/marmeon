@@ -184,10 +184,10 @@ builder in a data step.
 
 ### Raw SQL
 
-`schema.raw()` adds a statement for what the blueprint cannot express, such as an index with a `where` clause or an extension:
+`schema.raw()` adds a statement for what the blueprint cannot express, such as an extension or an index over an expression:
 
 ```ts
-schema.raw(sql`create index notes_published_index on notes (published_at) where published_at is not null`);
+schema.raw(sql`create index notes_title_lower_index on notes (lower(title))`);
 schema.raw({ sqlite: sql`…`, pgsql: sql`…` }); // one statement per driver; a driver without one skips the step
 ```
 
@@ -205,12 +205,12 @@ Every migration runs in a transaction, so `create index concurrently` of Postgre
 
 `Migrator.projection()` computes the schema the migrations describe from their plans alone, without a database and without running
 anything: every table with its columns in order, their types, nullability, defaults and secret marks, its unique column sets, indexes
-and foreign keys (with `onDelete` and `inverse`), the lists of `oneOf()` and the checks of `check()`, its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. It
+(a [partial index](#partial-indexes) with its `where`, and never as a unique set) and foreign keys (with `onDelete` and `inverse`), the lists of `oneOf()` and the checks of `check()`, its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. It
 replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then dropped checks, renamed columns, new columns, `notNull()`
 and `nullable()` changes (by the column's name after the renames), new checks, new indexes, retired columns and last the dropped columns. A retired column stays in it, marked, and is left out of everything Marmeon derives from it except the secret marks. `schema.raw()` and
 `schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run
 at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
-no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it); dropping such a table is allowed.
+no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it, or a column in the `where` of an index); dropping such a table is allowed.
 
 Tables that nothing in the migrations creates, such as a table another tool made in the same database or one that raw SQL made, are not
 in it, and neither are their columns. Create a table with `schema.create()` when Marmeon is to know it.
@@ -492,7 +492,9 @@ made, but the check after each migration still expects it in the database until 
 - **A fixed default in a unique index is refused.** A column with a `default(value)` or `useCurrent()` default that is in a unique
   index (its own `unique()` or a composite one) would get the same value from every insert of the new release, and the second insert
   would fail, or a composite index would silently make the other column unique. Error D19 asks for `table.dropUnique(name)` first, in
-  the same `alter()` or an earlier one.
+  the same `alter()` or an earlier one. For a [partial unique index](#partial-indexes) the check refuses only when the migrations prove that
+  every new row falls under its condition: every column of the `where` is a non-nullable `useCurrent()` column with `{ not: null }`. With a value
+  default it cannot tell, so check yourself that the rows the index covers will not all get the same value.
 - **A foreign key cannot point at a retired column**: `constrained(table, column)` on one stops with error D19.
 - **The column has to be nullable or have a default**, because the new release inserts without it and the database must accept
   that. A `NOT NULL` column without a default is refused with error D19 rather than left to fail on the first insert in production.
@@ -639,6 +641,39 @@ needs the name the database holds.
 
 The unique index is what keeps a value unique when two requests insert at the same moment. A validation rule only gives the
 friendly message before the insert. The [validation](validation.md#the-unique-index-is-the-truth) page shows both together.
+
+#### Partial indexes
+
+Pass `{ name, where }` instead of a name to index some of the rows only. `where` maps columns to a value; the entries are joined with
+`and`:
+
+```ts
+schema.create('pages', (table) => {
+  table.id();
+  table.string('slug');
+  table.string('locale');
+  table.string('stage');
+  table.softDeletes();
+  // A slug is unique per locale among the live pages; drafts may repeat it.
+  table.unique(['slug', 'locale'], { where: { stage: 'live' } });
+  // Looks up the pages that are not deleted.
+  table.index('slug', { name: 'pages_alive', where: { deleted_at: null } });
+});
+```
+
+A string, a safe integer or a boolean gives `column = value`, `null` gives `column is null` and `{ not: null }` gives `column is not null`.
+A string has up to 255 characters, without a NUL character or a backslash. A column name has no dot. An empty `where`, another kind
+of value, and options other than `name` and `where` throw. Error D19 refuses a column the table does not have, and a value that is not of the
+column's kind: `true` or `false` for a boolean column, a number for an integer column (a whole number as a string, such as `'9007199254740993'`,
+also works there, for a `bigInteger()` above 2^53), a string for a string column. Other column types take any value. The default name of a partial index is the same as that of one without a condition, so two
+indexes over the same columns need a name for one of them.
+
+Both drivers create the index with the condition. A partial unique index is unique among the matching rows only, so it identifies no row of
+the table: Marmeon does not count it as a [unique set](#what-the-migrations-describe), and a foreign key column that is unique for some rows
+only stays a `hasMany`. The condition is a structure and not a SQL string because the migrations need to know which columns it uses:
+Postgres drops an index when a column of its condition is dropped, and SQLite refuses to drop that column. The `where` of a partial index
+is not checked against the database after the migration, as the index itself is not. `retire()` of a column that a condition names is refused with D19: drop the index first, with `dropIndex()` or `dropUnique()`. A `down()` is not checked against the projection, so a `down()` that drops a column a condition names fails in the database on SQLite. For a
+condition this form cannot say, or an index over an expression, use [`schema.raw()`](#raw-sql).
 
 ### Check constraints
 
