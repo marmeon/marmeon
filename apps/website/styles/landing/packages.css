@@ -1,0 +1,101 @@
+/* Packages: every package of the framework in three groups, on Stone in both colour schemes. */
+.landing .packages {
+  border-top: 1px solid var(--rail-light);
+}
+
+.landing .packages-frame {
+  padding: clamp(64px, 8vw, 112px) clamp(20px, 3vw, 40px);
+  border-inline: 1px solid var(--rail-light);
+}
+
+.landing .packages-frame .section-label {
+  color: var(--teal);
+}
+
+.landing .packages-frame h2 {
+  margin-top: 16px;
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+
+.landing .packages-intro {
+  max-width: 620px;
+  margin: 18px 0 0;
+  color: var(--muted-ink);
+  line-height: 1.6;
+}
+
+.landing .package-group {
+  margin-top: 44px;
+}
+
+.landing .package-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.landing .package-group-title span {
+  color: var(--teal);
+}
+
+.landing .package-group-note {
+  margin: -6px 0 14px;
+  color: var(--muted-ink);
+  font-size: 0.8125rem;
+}
+
+.landing .package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .package-grid li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--rail-light);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.landing .package-grid li:hover {
+  border-color: var(--rail-strong);
+}
+
+.landing .package-grid a {
+  align-self: flex-start;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.landing .package-grid a code {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .package-grid li > span {
+  color: var(--muted-ink);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.landing .package-scope {
+  color: var(--muted-ink);
+}

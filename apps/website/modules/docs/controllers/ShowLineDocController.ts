@@ -33,6 +33,7 @@ export class ShowLineDocController extends Controller {
     return this.view('docs/LinePage', {
       title: page.title,
       section: page.section,
+      sectionNumber: line.repository.sections().findIndex((group) => group.title === page.section) + 1,
       body: page.body,
       toc: page.toc,
       description: page.description,

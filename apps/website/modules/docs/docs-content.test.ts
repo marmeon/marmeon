@@ -27,13 +27,14 @@ describe('the content of a page, rendered on the server', () => {
     expect(html).toMatch(/<div class="table"><table>/);
   });
 
-  it('links home from the top bar and the footer, and to the docs start page from the "docs" suffix', async () => {
+  it('links the brand to the docs start page and "Framework" to the landing, from the stage top bar', async () => {
     const html = (await ssr.get('/docs/routing', document).assertOk()).body;
-    const home = /<a [^>]*href="\/"[^>]*aria-label="Marmeon, home"|<a [^>]*aria-label="Marmeon, home"[^>]*href="\/"/;
-    const top = html.slice(html.indexOf('<header class="docs-top"'), html.indexOf('</header>'));
-    expect(top).toMatch(home);
-    expect(top).toMatch(/<a [^>]*href="\/docs"[^>]*><span class="wordmark-suffix">docs<\/span><\/a>/);
-    expect(html.slice(html.indexOf('<footer class="site-footer"'))).toMatch(home);
+    const top = html.slice(html.indexOf('<header class="docs-top stage"'), html.indexOf('</header>'));
+    expect(top).toMatch(/<a [^>]*href="\/docs"[^>]*aria-label="Marmeon docs home"|<a [^>]*aria-label="Marmeon docs home"[^>]*href="\/docs"/);
+    expect(top).toContain('<span class="wordmark-suffix">docs</span>');
+    // The top bar's links give way to the magnifier on a phone: the footer is the way back to the landing there.
+    expect(html.slice(html.indexOf('<footer class="site-footer site-footer--compact'))).toMatch(/<a [^>]*href="\/"[^>]*>Marmeon home<\/a>/);
+    expect(top).toMatch(/<nav aria-label="Site"[^>]*>.*<a [^>]*href="\/"[^>]*>Framework<\/a>/);
   });
 
   it('has no copy button in the document: it appears once the page runs in a browser', async () => {

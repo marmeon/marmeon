@@ -7,6 +7,7 @@ import { ChainSection } from '../components/landing/ChainSection.tsx';
 import { DevtoolsSection } from '../components/landing/DevtoolsSection.tsx';
 import { HeroSection } from '../components/landing/HeroSection.tsx';
 import { IslandSection } from '../components/landing/IslandSection.tsx';
+import { PackagesSection } from '../components/landing/PackagesSection.tsx';
 import { PrinciplesSection } from '../components/landing/PrinciplesSection.tsx';
 import { SecureSection } from '../components/landing/SecureSection.tsx';
 import { StartSection } from '../components/landing/StartSection.tsx';
@@ -16,21 +17,28 @@ import type { ShowLandingController } from '../controllers/ShowLandingController
 import { DESCRIPTIONS } from '../descriptions.ts';
 import { landingNodes } from '../structured-data.ts';
 
-/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in six sections. */
-export default function Landing({ snippets, chain, packages, moduleFiles }: PageProps<ShowLandingController>) {
+/** `/`: what Marmeon is, the batteries it comes with, who it is for, one type followed from the database to the form, the devtools and agents band, the rest of the framework, its principles and the packages. */
+export default function Landing({ snippets, chain, packages, packageGroups, moduleFiles, stack }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
       <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" nodes={(site) => landingNodes(site, DESCRIPTIONS.landing)} />
-      <HeroSection snippets={snippets} />
-      <PrinciplesSection />
+      <HeroSection chain={chain} packages={packages} stack={stack} />
+      <BatteriesSection snippets={snippets} moduleFiles={moduleFiles} />
       <AudienceSection />
       <ChainSection snippets={snippets} chain={chain} />
-      <BatteriesSection snippets={snippets} packages={packages} moduleFiles={moduleFiles} />
+      <div className="landing-band stage">
+        <DevtoolsSection />
+        <AgentsSection />
+      </div>
       <SecureSection />
-      <TestingSection snippet={snippets.test} />
-      <IslandSection snippets={snippets} />
-      <DevtoolsSection />
-      <AgentsSection />
+      <div className="landing-tail">
+        <div className="landing-inner landing-tail-frame">
+          <TestingSection snippet={snippets.test} />
+          <IslandSection snippets={snippets} />
+        </div>
+      </div>
+      <PrinciplesSection />
+      <PackagesSection packages={packages} packageGroups={packageGroups} />
       <StartSection />
     </div>
   );

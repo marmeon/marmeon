@@ -1,6 +1,13 @@
 /** Where a package belongs: in a new app, an addition for what an app needs, or the tools around it. */
 export type PackageGroup = 'app' | 'add' | 'tooling';
 
+/** The landing's three groups of packages, in order: the title and a note under it. The note names packages, so it travels as props, not as source of the client bundle. */
+export const PACKAGE_GROUPS: readonly { readonly group: PackageGroup; readonly title: string; readonly note?: string }[] = [
+  { group: 'app', title: 'In every new app' },
+  { group: 'add', title: 'Add when you need it' },
+  { group: 'tooling', title: 'Dev tools', note: "@marmeon/vite, @marmeon/testing and @marmeon/devtools are in every new app's dev dependencies; create-marmeon starts a new app." },
+];
+
 export interface PackageEntry {
   /** The name on npm, as in the package's `package.json`. */
   readonly name: string;

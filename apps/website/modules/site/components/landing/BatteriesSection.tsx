@@ -1,51 +1,143 @@
 import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
+import type { ReactNode } from 'react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
+import { CACHE, I18N, JOBS, LIVE, MAIL, NOTIFICATION, NOTES_TABLE, SCHEDULE, STORAGE, VALIDATION } from '../../batteries.ts';
 import { PACKAGES_URL } from '../../links.ts';
 import type { ModuleFile } from '../../module-files.ts';
-import type { PackageEntry, PackageGroup } from '../../packages.ts';
-import type { SnippetName } from '../../snippets.ts';
 import { Editor } from '../Editor.tsx';
-import { Tabs } from '../Tabs.tsx';
-import { Terminal } from '../Terminal.tsx';
 
 interface Battery {
-  readonly id: string;
-  readonly label: string;
-  readonly snippet: SnippetName;
+  readonly id: 'auth' | 'database' | 'queue' | 'mail' | 'validation' | 'live' | 'scheduler' | 'modules' | 'storage' | 'cache' | 'notifications' | 'i18n';
+  readonly title: string;
+  readonly text: string;
+  /** The package the card is about: a name in `PACKAGES`. */
+  readonly package: string;
   readonly docs: { readonly href: string; readonly text: string };
+  readonly wide?: boolean;
 }
 
 const BATTERIES: readonly Battery[] = [
-  { id: 'auth', label: 'Auth', snippet: 'batteryAuth', docs: { href: '/docs/authorization', text: 'Authorization' } },
-  { id: 'database', label: 'Database', snippet: 'batteryDatabase', docs: { href: '/docs/queries', text: 'Queries' } },
-  { id: 'migrations', label: 'Migrations', snippet: 'batteryMigrations', docs: { href: '/docs/migrations', text: 'Migrations' } },
-  { id: 'validation', label: 'Validation', snippet: 'batteryValidation', docs: { href: '/docs/validation', text: 'Validation' } },
-  { id: 'queue', label: 'Queue', snippet: 'batteryQueue', docs: { href: '/docs/queues', text: 'Queues' } },
-  { id: 'mail', label: 'Mail', snippet: 'batteryMail', docs: { href: '/docs/mail', text: 'Mail' } },
-  { id: 'scheduler', label: 'Scheduler', snippet: 'batteryScheduler', docs: { href: '/docs/scheduling', text: 'Task scheduling' } },
-  { id: 'storage', label: 'Storage', snippet: 'batteryStorage', docs: { href: '/docs/storage', text: 'File storage' } },
-  { id: 'modules', label: 'Modules', snippet: 'batteryModules', docs: { href: '/docs/modules#discovery', text: 'Modules and discovery' } },
+  {
+    id: 'auth',
+    title: 'Auth and policies',
+    text: 'Sign-in, password reset, email verification and API tokens. Policies stand next to the route, and a misspelt ability does not compile.',
+    package: '@marmeon/auth',
+    docs: { href: '/docs/authorization', text: 'Authorization' },
+    wide: true,
+  },
+  { id: 'database', title: 'Database and migrations', text: 'Tables are declared in migrations, and the table types are generated from them. A transaction rolls back when the code returns an err.', package: '@marmeon/database', docs: { href: '/docs/migrations', text: 'Migrations' } },
+  { id: 'queue', title: 'Queue', text: 'Jobs as classes, workers and retries. The worker starts with the dev server.', package: '@marmeon/queue', docs: { href: '/docs/queues', text: 'Queues' } },
+  { id: 'mail', title: 'Mail', text: 'A mail is a class with a React view, written in MJML components with translated text, and a fake for tests.', package: '@marmeon/mail', docs: { href: '/docs/mail', text: 'Mail' } },
+  { id: 'validation', title: 'Validation', text: "Rules with messages in the request's language. Errors are typed down to the field.", package: '@marmeon/validation', docs: { href: '/docs/validation', text: 'Validation' } },
+  { id: 'live', title: 'Live', text: 'A page follows a channel. When a write hints it, the other open tabs reload the props both of them name: the hint says that something changed, never what.', package: '@marmeon/live', docs: { href: '/docs/realtime', text: 'Real-time updates' }, wide: true },
+  { id: 'scheduler', title: 'Scheduler', text: 'Scheduled tasks in code, next to the module they belong to.', package: '@marmeon/scheduler', docs: { href: '/docs/scheduling', text: 'Task scheduling' } },
+  { id: 'modules', title: 'Modules', text: 'A module brings its routes, providers, migrations, views and tests.', package: '@marmeon/core', docs: { href: '/docs/modules#discovery', text: 'Modules and discovery' } },
+  { id: 'storage', title: 'Storage', text: 'Disks on the server, in S3 or in memory, signed links that expire, and uploads.', package: '@marmeon/storage', docs: { href: '/docs/storage', text: 'File storage' } },
+  { id: 'cache', title: 'Cache', text: 'A value under a key for a time to live, counters that expire, and locks.', package: '@marmeon/cache', docs: { href: '/docs/cache', text: 'Cache' } },
+  { id: 'notifications', title: 'Notifications', text: 'A notification is a class: its data, the channels it takes and what it says on each. A worker delivers it.', package: '@marmeon/notifications', docs: { href: '/docs/notifications', text: 'Notifications' }, wide: true },
+  { id: 'i18n', title: 'Localization', text: 'Texts by key in each language the app ships, picked per request, with numbers and dates formatted for the locale.', package: '@marmeon/i18n', docs: { href: '/docs/localization', text: 'Localization' } },
 ];
 
 const CHECKS = [
   'Installed packages register themselves',
   'Mail, the queue, storage and the schedule each have a fake for tests',
   <>
-    <code>pnpm dev</code> starts the server, the worker and the scheduler together
+    <code>pnpm dev</code> starts the server, and next to it the queue worker and the scheduler your app uses
   </>,
 ];
 
-/** The module's folder, for the "Modules" tab. */
-function ModuleFiles({ files }: { files: readonly ModuleFile[] }) {
+/** The notes table: a header, then a row per column. */
+function TableArt() {
   return (
-    <figure className="file-tree">
+    <table className="art-table">
+      <thead>
+        <tr>
+          <th scope="col">{NOTES_TABLE.name}</th>
+          <td>table</td>
+        </tr>
+      </thead>
+      <tbody>
+        {NOTES_TABLE.rows.map(({ name, type }) => (
+          <tr key={name}>
+            <th scope="row">{name}</th>
+            <td>{type}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Three jobs with a dot for their state; the state is also written, so the colour carries nothing alone. */
+function QueueArt() {
+  return (
+    <ul className="art-jobs" aria-label="Jobs in the queue">
+      {JOBS.map(({ name, status, state }) => (
+        <li key={name}>
+          <span className={`art-dot art-dot--${status}`} aria-hidden="true" />
+          <span className="art-job-name">{name}</span>
+          <span className="art-job-state">{state}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** A mail: the address and subject, two lines of body and the button. */
+function MailArt() {
+  return (
+    <figure className="art-mail" aria-label="A mail with a button">
+      <div className="art-mail-head">
+        <span>
+          <b>To</b> {MAIL.to}
+        </span>
+        <span>
+          <b>Subject</b> {MAIL.subject}
+        </span>
+      </div>
+      <div className="art-mail-body" aria-hidden="true">
+        <span className="art-line" />
+        <span className="art-line art-line--short" />
+        <span className="art-mail-button">{MAIL.button}</span>
+      </div>
+    </figure>
+  );
+}
+
+/** A field with a value that is too long, and the error under it. The error is plain text tied by `aria-describedby`: the picture does not announce itself. */
+function ValidationArt() {
+  return (
+    <div className="art-field">
+      <label htmlFor="battery-validation-title">{VALIDATION.label}</label>
+      <input id="battery-validation-title" value={VALIDATION.value} readOnly aria-invalid="true" aria-describedby="battery-validation-error" />
+      <small id="battery-validation-error">{VALIDATION.error}</small>
+    </div>
+  );
+}
+
+function ScheduleArt() {
+  return (
+    <ul className="art-schedule" aria-label="Scheduled tasks">
+      {SCHEDULE.map(({ when, what }) => (
+        <li key={what}>
+          <span className="art-when">{when}</span>
+          <span>{what}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The folder of the notes module: the names of its files and folders. */
+function ModuleArt({ files }: { files: readonly ModuleFile[] }) {
+  return (
+    <figure className="art-tree">
       <figcaption>modules/notes/</figcaption>
       <ul aria-label="Files of the notes module">
-        {files.map(({ name, folder, role }) => (
-          <li key={name}>
-            <span className={folder ? 'file-tree-folder' : undefined}>{name}</span>
-            <span className="file-tree-role">{role}</span>
+        {files.map(({ name, folder }) => (
+          <li key={name} className={folder ? 'art-tree-folder' : undefined}>
+            {name}
           </li>
         ))}
       </ul>
@@ -53,94 +145,177 @@ function ModuleFiles({ files }: { files: readonly ModuleFile[] }) {
   );
 }
 
-const PACKAGE_GROUPS: readonly { readonly group: PackageGroup; readonly title: string }[] = [
-  { group: 'app', title: 'In every new app' },
-  { group: 'add', title: 'Add when you need it' },
-  { group: 'tooling', title: 'Tooling' },
-];
-
-/** Every package of the framework with a link to its page, in groups, from the list the server hands over. */
-function PackageList({ packages }: { packages: readonly PackageEntry[] }) {
+/** Two disks, one of them chosen, and a file with the time its link holds. */
+function StorageArt() {
   return (
-    <div className="package-list">
-      <h3 className="group-label">{`${packages.length} packages, one version`}</h3>
-      {PACKAGE_GROUPS.map(({ group, title }) => (
-        <div key={group} className="package-group">
-          <h4 className="group-label group-label--small">{title}</h4>
-          <ul className="package-grid" aria-label={title}>
-            {packages.filter((entry) => entry.group === group).map(({ name, docs, text }) => {
-              const scope = name.startsWith('@marmeon/') ? '@marmeon/' : '';
-              return (
-                <li key={name}>
-                  <Link href={`/docs/${docs}`}>
-                    <code>
-                      {scope && <span className="package-scope">{scope}</span>}
-                      {name.slice(scope.length)}
-                    </code>
-                  </Link>
-                  <span>{text}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+    <div className="art-storage">
+      <ul aria-label="Disks">
+        {STORAGE.disks.map((disk) => (
+          <li key={disk} className={disk === STORAGE.active ? 'art-disk art-disk--on' : 'art-disk'}>
+            {disk}
+          </li>
+        ))}
+      </ul>
+      <p className="art-signed">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M12 16V4M6 10l6-6 6 6M4 20h16" />
+        </svg>
+        <span>
+          {STORAGE.key} · signed for {STORAGE.minutes} min
+        </span>
+      </p>
     </div>
   );
 }
 
-/** "The backend comes with it": one tab per package, each with a piece of real code, and the checks that hold the packages together. */
-export function BatteriesSection({ snippets, packages, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'packages' | 'moduleFiles'>) {
+/** A profile page with its links, the newest one just arrived, and the hint that brought it. */
+function LiveArt() {
   return (
-    <section className="batteries" aria-labelledby="batteries-title">
-      <div className="landing-inner batteries-inner">
-        <div className="batteries-head">
-          <div className="section-intro">
-            <p className="section-label">Batteries included</p>
-            <h2 id="batteries-title">The backend comes with it.</h2>
-            <p>
-              Authorization, a database layer, validation, a queue, mail, a scheduler and file storage are packages of the framework, released together and wired to each
-              other. <Link href={PACKAGES_URL}>All packages</Link>
-            </p>
+    <figure className="art-live" aria-label="A profile page that reloads when the server hints its channel">
+      <figcaption>{LIVE.page}</figcaption>
+      <ul aria-label="Links on the page">
+        {LIVE.links.map((link) => (
+          <li key={link}>{link}</li>
+        ))}
+        <li className="art-live-new">{LIVE.added}</li>
+      </ul>
+      <p className="art-live-hint">
+        <span>
+          hint <b>{LIVE.channel}</b>
+        </span>
+        <span>
+          reloads <b>{LIVE.prop}</b>
+        </span>
+      </p>
+    </figure>
+  );
+}
+
+/** One notification, and what each of its channels delivers, joined by thin lines (drawn by borders in the stylesheet). The outer element is the container the stylesheet queries. */
+function NotificationArt() {
+  return (
+    <div className="art-notify" role="group" aria-label="One notification delivered over three channels">
+      <figure className="art-notify-body">
+        <figcaption>
+          <b>{NOTIFICATION.name}</b>
+          <span>{NOTIFICATION.className}</span>
+        </figcaption>
+        <ul aria-label="Channels">
+          {NOTIFICATION.channels.map(({ name, where, text, detail }) => (
+            <li key={name}>
+              <div className="art-tile">
+                <span className="art-channel">
+                  {name} <span>{where}</span>
+                </span>
+                <p className="art-channel-text">{text}</p>
+                {detail !== null && <p className="art-channel-detail">{detail}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </figure>
+    </div>
+  );
+}
+
+/** One key, its text in two languages, and a number in each language's format. */
+function LocalizationArt() {
+  return (
+    <figure className="art-i18n" aria-label="One key with its translations">
+      <figcaption>{I18N.key}</figcaption>
+      <dl>
+        {I18N.texts.map(({ locale, text }) => (
+          <div key={locale}>
+            <dt>{locale}</dt>
+            <dd>{text}</dd>
           </div>
-          <ul className="check-list">
-            {CHECKS.map((check, index) => (
-              <li key={index}>
-                <span>{check}</span>
-              </li>
+        ))}
+      </dl>
+      <dl>
+        {I18N.numbers.map(({ locale, text }) => (
+          <div key={locale}>
+            <dt>{locale}</dt>
+            <dd>
+              <span className="art-i18n-call">format.number({I18N.number})</span> {text}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </figure>
+  );
+}
+
+/** A key with its time to live, and the two ways a read ends. */
+function CacheArt() {
+  return (
+    <figure className="art-cache" aria-label="A cached value with its time to live">
+      <figcaption>
+        {CACHE.key} <span>{CACHE.seconds} s</span>
+      </figcaption>
+      <ul aria-label="A read">
+        <li>{CACHE.hit}</li>
+        <li>{CACHE.miss}</li>
+      </ul>
+    </figure>
+  );
+}
+
+/** "Everything your app needs, already wired together": twelve cards in the design's bento grid — the Auth card with the policy's code, the others with a small picture of what the package does. Plain HTML that reads without JavaScript. */
+export function BatteriesSection({ snippets, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'moduleFiles'>) {
+  const { file, html } = snippets.batteryAuth;
+  if (file === undefined) throw new Error('The landing\'s battery snippet "batteryAuth" has no file name.');
+  const pictures: Record<Battery['id'], ReactNode> = {
+    auth: <Editor label={`Auth and policies: ${file.split('/').at(-1)}`} files={[{ name: file, html }]} headingLevel={4} className="battery-editor" />,
+    database: <TableArt />,
+    queue: <QueueArt />,
+    mail: <MailArt />,
+    validation: <ValidationArt />,
+    live: <LiveArt />,
+    scheduler: <ScheduleArt />,
+    modules: <ModuleArt files={moduleFiles} />,
+    storage: <StorageArt />,
+    cache: <CacheArt />,
+    notifications: <NotificationArt />,
+    i18n: <LocalizationArt />,
+  };
+  return (
+    <section className="batteries landing-light" aria-labelledby="batteries-title">
+      <div className="landing-inner">
+        <div className="batteries-frame">
+          <div className="batteries-head">
+            <div>
+              <p className="section-label">Batteries included</p>
+              <h2 id="batteries-title">
+                Everything your app needs, <span className="serif-accent">already wired together.</span>
+              </h2>
+            </div>
+            <ul className="check-list">
+              {CHECKS.map((check, index) => (
+                <li key={index}>
+                  <span>{check}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="batteries-grid">
+            {BATTERIES.map(({ id, title, text, package: packageName, docs, wide }) => (
+              <article key={id} className={`card battery${wide ? ' battery--wide' : ''}`}>
+                <div className="battery-head">
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </div>
+                {pictures[id]}
+                <p className="battery-foot">
+                  <code>{packageName}</code>
+                  <Link href={docs.href}>{docs.text}</Link>
+                </p>
+              </article>
             ))}
-          </ul>
+          </div>
+          <p className="batteries-all">
+            <Link href={PACKAGES_URL}>All packages</Link>
+          </p>
         </div>
-        <Tabs
-          label="Packages of the framework"
-          idPrefix="batteries"
-          headingLevel={3}
-          className="batteries-tabs"
-          itemClassName="battery"
-          items={BATTERIES.map(({ id, label, snippet, docs }) => {
-            const { file, html } = snippets[snippet];
-            if (file === undefined) throw new Error(`The landing's battery snippet "${snippet}" has no file name.`);
-            return {
-              id,
-              label,
-              content: (
-                <>
-                  <Editor label={`${label}: ${file.split('/').at(-1)}`} files={[{ name: file, html }]} headingLevel={4} />
-                  {id === 'modules' && (
-                    <div className="battery-extra">
-                      <ModuleFiles files={moduleFiles} />
-                      <Terminal commands={['pnpm add @marmeon/redis']} />
-                    </div>
-                  )}
-                  <p className="battery-docs">
-                    <Link href={docs.href}>{docs.text} →</Link>
-                  </p>
-                </>
-              ),
-            };
-          })}
-        />
-        <PackageList packages={packages} />
       </div>
     </section>
   );

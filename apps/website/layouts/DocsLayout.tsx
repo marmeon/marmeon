@@ -1,13 +1,10 @@
 import { Link, usePage, useRoute, type LayoutProps } from '@marmeon/react';
-import { useEffect } from 'react';
 import { DocsMenu, DocsSidebar } from '../modules/docs/components/DocsNav.tsx';
+import { SEARCH_KEYSHORTCUTS, useSearchShortcut, useShortcutHint } from '../modules/docs/components/search-shortcut.ts';
 import { SiteFooter } from '../modules/site/components/SiteFooter.tsx';
 import { VersionBadge } from '../modules/site/components/VersionBadge.tsx';
 import { Wordmark } from '../modules/site/components/Wordmark.tsx';
 import { GITHUB_URL } from '../modules/site/links.ts';
-
-/** A key press that belongs to a field or an editor: the `/` shortcut leaves it alone. */
-const TYPING = 'input, textarea, select, [contenteditable]';
 
 /**
  * Around every page of the docs: the top bar with the search, the side navigation (a shared once-prop), the page. It needs
@@ -22,53 +19,38 @@ export function DocsLayout({ children }: LayoutProps) {
   const searchUrl = route('docs.search');
   const onSearchPage = url.split(/[?#]/)[0] === searchUrl;
 
-  // `/` opens the search through the trigger that is showing, unless the key is meant for a field already, carries a modifier or
-  // a dialog is open (no second layer behind an open one).
-  useEffect(() => {
-    const listen = (event: KeyboardEvent) => {
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return; // no Shift check: `/` needs it on some layouts
-      if (event.target instanceof Element && event.target.closest(TYPING)) return;
-      if (document.querySelector('dialog[open]')) return;
-      // The box is hidden on a phone (the magnifier takes its place): the visible trigger is the one to use. Clicking it opens the
-      // layer and lets the layer hand the focus back to the link.
-      const trigger = Array.from(document.querySelectorAll<HTMLElement>('[data-search-trigger]')).find((element) => element.offsetParent !== null);
-      if (!trigger) return;
-      event.preventDefault();
-      trigger.focus();
-      trigger.click();
-    };
-    document.addEventListener('keydown', listen);
-    return () => document.removeEventListener('keydown', listen);
-  }, []);
+  const hint = useShortcutHint();
+  useSearchShortcut();
 
   return (
     <div className="shell">
       <a className="skip-link" href="#content">
         Skip to content
       </a>
-      <header className="docs-top">
-        <div className="docs-brand">
-          <Link route="site.home" className="docs-brand-link" aria-label="Marmeon, home">
+      <header className="docs-top stage">
+        <div className="docs-top-inner">
+          <Link route="docs.home" className="docs-brand" aria-label="Marmeon docs home">
             <Wordmark />
-          </Link>
-          <Link route="docs.home" className="docs-brand-link docs-brand-docs">
             <span className="wordmark-suffix">docs</span>
           </Link>
-        </div>
-        {!onSearchPage && !onLine && (
-          <Link route="docs.search" layer className="docs-search-box" data-search-trigger aria-keyshortcuts="/">
-            <SearchIcon size={16} />
-            <span className="docs-search-placeholder">Search the docs</span>
-            <kbd aria-hidden="true">/</kbd>
-          </Link>
-        )}
-        <div className="docs-top-end">
-          {onLine && props.line ? <span className="badge">{props.line.version}</span> : <VersionBadge />}
-          <a href={GITHUB_URL} rel="noopener" className="docs-github">
-            GitHub
-          </a>
           {!onSearchPage && !onLine && (
-            <Link route="docs.search" layer className="docs-search-link" data-search-trigger aria-keyshortcuts="/" aria-label="Search the docs">
+            <Link route="docs.search" layer className="docs-search-box" data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS}>
+              <SearchIcon size={16} />
+              <span className="docs-search-placeholder">Search the docs</span>
+              {hint && <kbd aria-hidden="true">{hint}</kbd>}
+            </Link>
+          )}
+          <nav aria-label="Site" className="docs-top-nav">
+            <Link route="site.home" className="docs-framework">
+              Framework
+            </Link>
+            <a href={GITHUB_URL} rel="noopener" className="button button--ghost docs-github">
+              GitHub
+            </a>
+          </nav>
+          {onLine && props.line ? <span className="badge">{props.line.version}</span> : <VersionBadge />}
+          {!onSearchPage && !onLine && (
+            <Link route="docs.search" layer className="docs-search-link" data-search-trigger aria-keyshortcuts={SEARCH_KEYSHORTCUTS} aria-label="Search the docs">
               <SearchIcon size={18} />
             </Link>
           )}
@@ -79,7 +61,7 @@ export function DocsLayout({ children }: LayoutProps) {
         {nav && <DocsSidebar nav={nav} url={url} />}
         <main id="content">{children}</main>
       </div>
-      <SiteFooter />
+      <SiteFooter compact />
     </div>
   );
 }

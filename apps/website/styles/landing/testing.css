@@ -1,21 +1,93 @@
-/* Testing */
-.landing .fake-list {
+/* Testing and islands: two cards side by side on a white band, in both colour schemes. */
+.landing .landing-tail {
+  border-block: 1px solid var(--rail-light);
+  background: var(--paper);
+  color: var(--ink);
+  color-scheme: light;
+}
+
+.landing .duo-card > p a,
+.landing .fakes > a {
+  color: var(--teal);
+}
+
+.landing .landing-tail-frame {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  gap: 20px;
+  padding-block: clamp(64px, 8vw, 104px);
+}
+
+.landing .duo-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--rail-light);
+  border-radius: 20px;
+  background: var(--card);
+}
+
+.landing .duo-card > * {
+  min-width: 0;
+}
+
+.landing .duo-card .section-label {
+  color: var(--teal);
+}
+
+.landing .duo-card > h2 {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 1.4rem + 1.2vw, 2.125rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+.landing .duo-card > p:not(.section-label) {
+  margin: 0;
+  color: var(--muted-ink);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.landing .duo-card figure.code,
+.landing .duo-card .editor {
+  margin: 8px 0 0;
+}
+
+.landing .fakes {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
+  margin-top: 4px;
+}
+
+.landing .fakes .group-label {
+  margin: 0 4px 0 0;
+  color: var(--muted-ink);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+}
+
+.landing .fake-list {
+  display: contents;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .landing .fake-list li {
-  padding: 6px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-2);
+  padding: 6px 10px;
+  border: 1px solid var(--rail-mid);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.78125rem;
 }
 
-.landing .testing .section-intro .group-label {
-  margin: var(--space-2) 0 calc(-1 * var(--space-2));
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
+.landing .fakes > a {
+  flex-basis: 100%;
 }

@@ -1,6 +1,7 @@
 import { Link } from '@marmeon/react';
 import { useEffect, useRef } from 'react';
 import type { Navigation } from '../DocsRepository.ts';
+import { roman } from '../roman.ts';
 
 const pathOf = (url: string) => url.split(/[?#]/)[0];
 
@@ -9,9 +10,12 @@ function Sections({ nav, url }: { nav: Navigation; url: string }) {
   const path = pathOf(url);
   return (
     <>
-      {nav.groups.map((group) => (
+      {nav.groups.map((group, index) => (
         <details key={group.title} className="nav-section" open={group.pages.some((page) => page.path === path)}>
           <summary>
+            <span className="nav-number" aria-hidden="true">
+              {roman(index + 1)}
+            </span>
             {group.title}
             <span className="nav-sign" aria-hidden="true" />
           </summary>

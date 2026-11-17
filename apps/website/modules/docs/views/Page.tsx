@@ -5,13 +5,13 @@ import { docsNodes } from '../../site/structured-data.ts';
 import { SiteHead } from '../../site/components/SiteHead.tsx';
 
 /** `/docs/:page`: a page of the docs. */
-export default function Page({ title, section, body, toc, description, path, markdown, previous, next }: PageProps<ShowDocController>) {
+export default function Page({ slug, title, section, sectionNumber, packages, body, toc, description, path, markdown, previous, next }: PageProps<ShowDocController>) {
   return (
     <>
       <SiteHead title={title} description={description} path={path} type="article" nodes={(site) => docsNodes(site, { title, description, path, version: site.version })}>
         <link rel="alternate" type="text/markdown" href={markdown} />
       </SiteHead>
-      <DocArticle title={title} section={section} body={body} toc={toc} markdown={markdown} previous={previous} next={next} />
+      <DocArticle slug={slug} title={title} section={section} sectionNumber={sectionNumber} packages={packages} body={body} toc={toc} markdown={markdown} previous={previous} next={next} />
     </>
   );
 }

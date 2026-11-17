@@ -82,14 +82,14 @@ describe('withoutCommentLines', () => {
 describe('landingProblems', () => {
   it('refuses names that are not directly in modules/notes/, and an empty list', () => {
     const names = ['../x', '/x', '/', 'a/b', '.', '..', '../'];
-    const problems = landingProblems(repository(''), {}, [], names.map((name) => ({ name, role: 'r' })));
+    const problems = landingProblems(repository(''), {}, [], names.map((name) => ({ name })));
     expect(problems).toEqual(names.map((name) => `module file "${name}": a name is one file or folder name directly in modules/notes/.`));
     expect(landingProblems(repository(''), {}, [], [])).toEqual(['module files: the list is empty.']);
   });
 
   it('accepts the module tree of the landing and refuses a name listed twice or a folder without its slash', () => {
     expect(landingProblems(repository(''), {}, [], MODULE_FILES)).toEqual([]);
-    const files = [{ name: 'a/', folder: true, role: 'r' }, { name: 'a/', folder: true, role: 'r' }, { name: 'b', folder: true, role: 'r' }, { name: 'c/', role: 'r' }];
+    const files = [{ name: 'a/', folder: true }, { name: 'a/', folder: true }, { name: 'b', folder: true }, { name: 'c/' }];
     expect(landingProblems(repository(''), {}, [], files)).toEqual([
       'module file "a/": it is listed twice.',
       'module file "b": a folder has `folder: true` and a name ending in "/", a file neither.',
@@ -346,8 +346,8 @@ describe('checkLanding', () => {
     rmSync(join(target.app, 'modules/notes/routes.ts'));
     symlinkSync(join(target.app, 'modules/gen.ts'), join(target.app, 'modules/notes/routes.ts'));
     await expect(run(MODULE_FILES)).rejects.toThrow('module file "routes.ts": modules/notes/routes.ts is a symlink.');
-    await expect(run([{ name: '../gen.ts', role: 'r' }])).rejects.toThrow(/module file "\.\.\/gen\.ts": a name is one file or folder name directly in modules\/notes\//);
-    await expect(run([{ name: '/', folder: true, role: 'r' }])).rejects.toThrow(/module file "\/": a name is one/);
+    await expect(run([{ name: '../gen.ts' }])).rejects.toThrow(/module file "\.\.\/gen\.ts": a name is one file or folder name directly in modules\/notes\//);
+    await expect(run([{ name: '/', folder: true }])).rejects.toThrow(/module file "\/": a name is one/);
   });
 
   it('fails when a test file of the overlay did not run or the tests did not pass', async () => {

@@ -1,44 +1,76 @@
-/* Principles */
-.landing .principles .landing-inner {
-  padding-block: clamp(56px, 7vw, 88px) clamp(56px, 7vw, 96px);
+/* Principles: seven rows with a serif numeral, on Stone in both colour schemes. */
+.landing .principles-frame {
+  padding-block: clamp(64px, 8vw, 112px) clamp(56px, 7vw, 104px);
+  border-inline: 1px solid var(--rail-light);
+}
+
+.landing .principles-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px 64px;
+  padding-inline: clamp(20px, 3vw, 40px);
+}
+
+.landing .principles-head > div {
+  max-width: 640px;
+}
+
+.landing .principles-head .section-label {
+  color: var(--teal);
+}
+
+.landing .principles-head h2 {
+  margin-top: 16px;
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+
+.landing .principles-head > p {
+  max-width: 380px;
+  margin: 0;
+  color: var(--muted-ink);
+  line-height: 1.6;
 }
 
 .landing .principle-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
-  gap: var(--space-6) 40px;
-  margin: 0;
+  margin: 64px 0 0;
   padding: 0;
+  border-top: 1px solid var(--rail-light);
   list-style: none;
-}
-
-.landing .principles .section-label {
-  margin-bottom: var(--space-6);
-  padding-top: 36px;
-  border-top: 1px solid var(--line-strong);
 }
 
 .landing .principle {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 40px;
+  padding: 30px clamp(20px, 3vw, 40px) 32px;
+  border-bottom: 1px solid var(--rail-light);
 }
 
 .landing .principle-numeral {
-  color: var(--accent);
-  font-size: 1.625rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  flex: 0 0 88px;
+  color: var(--teal);
+  font-family: var(--font-serif);
+  font-size: 3.5rem;
+  line-height: 0.9;
 }
 
-.landing .principle strong {
-  color: var(--fg);
-  font-size: 1.125rem;
-  font-weight: 600;
+.landing .principle h3 {
+  flex: 1 1 300px;
+  font-family: var(--font-display);
+  font-size: 1.625rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .landing .principle-text {
-  color: var(--fg-2);
-  font-size: 1rem;
-  line-height: 1.5;
+  flex: 1.4 1 360px;
+  margin: 0;
+  color: var(--muted-ink);
+  line-height: 1.6;
 }

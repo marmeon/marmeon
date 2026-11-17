@@ -52,61 +52,289 @@
   text-decoration: none;
 }
 
-/* Header */
+/* On the stage the mark inverts to the design's light plate, whatever the colour scheme. */
+.stage .mark-plate {
+  fill: var(--mark-plate-stage);
+}
+
+.stage .mark-groove {
+  stroke: var(--mark-groove-stage);
+}
+
+.stage .wordmark {
+  color: var(--stage-fg-strong);
+}
+
+.stage .wordmark-suffix {
+  color: var(--stage-dim);
+}
+
+/* Landing header: the stage, the wordmark, the mega menu's summaries, then search and the buttons. */
 .site-header {
-  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 20;
+  border-bottom: 1px solid var(--stage-line);
 }
 
 .site-header-inner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
-  max-width: 1280px;
+  max-width: 1440px;
+  min-height: 72px;
   margin: 0 auto;
-  padding: var(--space-4) clamp(20px, 4vw, 48px);
+  padding: var(--space-2) clamp(16px, 2.2vw, 32px);
 }
 
 .site-brand {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--fg);
   text-decoration: none;
-}
-
-.site-header-end {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  /* Keeps the menu at the right when enlarged text wraps the header onto a second line. */
-  margin-left: auto;
 }
 
 .site-nav {
   display: flex;
   align-items: center;
-  gap: 28px;
-  font-size: 1rem;
+  gap: var(--space-1);
+  margin-left: var(--space-5);
+  font-size: var(--text-sm);
 }
 
-.site-nav a,
-.site-menu-panel a,
-.site-footer-nav a {
+.site-header-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* Keeps the buttons at the right when enlarged text wraps the header onto a second line. */
+  margin-left: auto;
+}
+
+.site-nav-link,
+.site-panel > summary {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 44px;
-  color: var(--fg);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--stage-fg-2);
+  font: inherit;
+  list-style: none;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.site-nav a {
+.site-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-nav-link:hover,
+.site-panel > summary:hover,
+.site-panel[open] > summary {
+  background: var(--panel-raised);
+  color: var(--stage-fg-strong);
   text-decoration: none;
 }
 
-.site-nav a:hover,
-.site-footer-nav a:hover {
-  color: var(--accent);
+.site-panel[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.site-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--stage-fg-2);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.site-search:hover {
+  background: var(--panel-raised);
+  color: var(--stage-fg-strong);
+  text-decoration: none;
+}
+
+.site-search-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  color: var(--stage-fg-2);
+  text-decoration: none;
+}
+
+.site-search-icon:hover {
+  background: var(--panel-raised);
+  color: var(--stage-fg-strong);
+}
+
+.site-search kbd {
+  margin-left: var(--space-1);
+}
+
+/* The mega menu: a panel under the header, spanning it. Closed it is not rendered, so it needs no script to stay shut. */
+.site-panel-body {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: clamp(16px, 2.2vw, 32px);
+  left: clamp(16px, 2.2vw, 32px);
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-width: 1376px;
+  margin: 0 auto;
+  padding: 10px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: 0 40px 80px -30px rgb(0 0 0 / 0.85);
+}
+
+.site-panel-columns {
+  display: grid;
+  flex: 999 1 560px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 14px var(--space-2);
+}
+
+.site-panel-column {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.site-panel-title,
+.site-panel-eyebrow {
+  margin: 0 0 var(--space-2);
+  padding: 0 10px;
+  color: var(--stage-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.14em;
+}
+
+.site-panel-item {
+  display: flex;
+  gap: var(--space-3);
+  padding: 10px;
+  border-radius: var(--radius-md);
+  color: var(--stage-fg);
+  text-decoration: none;
+}
+
+.site-panel-item:hover {
+  background: var(--panel-raised);
+  text-decoration: none;
+}
+
+.site-panel-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--rail-dark);
+  border-radius: 9px;
+  background: var(--panel-raised);
+  color: var(--thread);
+}
+
+.site-panel-item-title,
+.site-panel-item-text {
+  display: block;
+}
+
+.site-panel-item-title {
+  color: var(--stage-fg-strong);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.site-panel-item:hover .site-panel-item-title {
+  color: var(--sand);
+}
+
+.site-panel-item-text {
+  margin-top: 2px;
+  color: var(--stage-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.site-panel-feature {
+  display: flex;
+  flex: 1 1 280px;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-md);
+  background: var(--stage);
+}
+
+.site-panel-feature p {
+  margin: 0;
+}
+
+.site-panel-eyebrow {
+  padding: 0;
+  margin: 0;
+  color: var(--sand);
+}
+
+.site-panel-feature-title {
+  color: var(--stage-fg-strong);
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  line-height: 1.1;
+}
+
+.site-panel-feature-text {
+  color: var(--stage-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.site-panel-lines {
+  margin-top: var(--space-1);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--stage-fg);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.9;
+}
+
+.site-panel-lines span {
+  color: var(--thread);
+}
+
+.site-panel-link {
+  margin-top: auto;
+  padding-top: var(--space-2);
+  color: var(--thread);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.site-panel-link:hover {
+  color: var(--sand);
 }
 
 /* The menu on a narrow screen: a <details>, usable without JavaScript. */
@@ -120,9 +348,9 @@
   gap: var(--space-2);
   min-height: 44px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--control-line);
-  border-radius: var(--radius-2);
-  color: var(--fg);
+  border: 1px solid var(--control-dark);
+  border-radius: var(--radius-md);
+  color: var(--stage-fg);
   font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.12em;
@@ -137,12 +365,42 @@
 .site-menu-panel {
   display: flex;
   flex-direction: column;
-  min-width: 11rem;
+  gap: var(--space-3);
+  min-width: 14rem;
+  max-height: calc(100dvh - 96px);
   margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-3);
-  background: var(--bg-raised);
+  padding: var(--space-3) var(--space-4);
+  overflow-y: auto;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.site-menu-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.site-menu-title {
+  margin: 0;
+  color: var(--stage-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.site-menu-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  color: var(--stage-fg);
+  text-decoration: none;
+}
+
+.site-menu-link:hover {
+  color: var(--sand);
 }
 
 .site-header-end {
@@ -153,17 +411,55 @@
   position: absolute;
   top: 100%;
   right: 0;
-  z-index: 10;
+  z-index: 40;
 }
 
-@media (max-width: 719px) {
-  .site-nav {
+@media (max-width: 899px) {
+  .site-nav,
+  .site-search,
+  .site-github {
     display: none;
+  }
+
+  .site-search-icon {
+    display: inline-flex;
   }
 
   .site-menu {
     display: block;
   }
+}
+
+/* Wide enough for the nav (900 px and up): one row at every width. The search keeps its icon and shortcut but not its words below 1150 px, and the gaps tighten. */
+@media (min-width: 900px) {
+  .site-header-inner {
+    flex-wrap: nowrap;
+    gap: var(--space-2);
+  }
+
+  .site-brand {
+    flex: none;
+  }
+
+  .site-nav {
+    margin-left: var(--space-3);
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1149px) {
+  .site-search-label {
+    display: none;
+  }
+}
+
+/* The version at the right end of the docs bar, where its line picker will open: the stage's colours, in the look of the search field. */
+.docs-top .badge {
+  flex: none;
+  padding: 4px 10px;
+  border-color: var(--rail-dark);
+  border-radius: var(--radius-md);
+  background: var(--panel-raised);
+  color: var(--stage-fg);
 }
 
 /* A phone: the wordmark and the menu or search share the header's line; the landing's hero and the docs' first page name the version. */
@@ -173,43 +469,286 @@
   }
 }
 
+/* Docs top bar: sticky and 64 px on a desktop (at 760 px and below it scrolls away), the stage's ground a little see-through. */
+.docs-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--stage) 96%, transparent);
+  border-bottom: 1px solid var(--stage-line);
+}
+
+.docs-top-inner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 1440px;
+  min-height: var(--docs-top);
+  margin: 0 auto;
+  padding: 0 clamp(16px, 2.2vw, 24px);
+}
+
+.docs-brand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  text-decoration: none;
+}
+
+.docs-brand:hover {
+  text-decoration: none;
+}
+
+/* A link in the look of a field: it opens the search layer, and without JavaScript the search page. */
+.docs-search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 20rem;
+  max-width: 460px;
+  min-width: 0;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0 10px 0 14px;
+  background: var(--panel-raised);
+  border: 1px solid var(--rail-dark);
+  border-radius: var(--radius-md);
+  color: var(--stage-dim);
+  font-size: 0.875rem;
+  text-decoration: none;
+  cursor: text;
+}
+
+.docs-search-box:hover {
+  text-decoration: none;
+  color: var(--stage-fg-strong);
+}
+
+.docs-search-box:focus-visible {
+  outline-offset: 0;
+}
+
+.docs-search-placeholder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-top-nav {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+
+.docs-search-box + .docs-top-nav {
+  margin-left: 0;
+}
+
+.docs-framework {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+  color: var(--stage-fg-2);
+  text-decoration: none;
+}
+
+.docs-framework:hover {
+  color: var(--sand);
+  text-decoration: none;
+}
+
+.docs-github {
+  min-height: 36px;
+  margin-left: 6px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.docs-search-link {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--control-dark);
+  border-radius: var(--radius-md);
+  color: var(--stage-fg);
+}
+
+.docs-search-link:hover {
+  text-decoration: none;
+  background: var(--panel-raised);
+}
+
+/* A phone: the bar wraps, the search box and the links give way to the magnifier. */
+@media (max-width: 760px) {
+  .docs-top {
+    position: static;
+  }
+
+  .docs-top-inner {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+  }
+
+  .docs-search-box,
+  .docs-top-nav {
+    display: none;
+  }
+
+  .docs-search-link {
+    display: flex;
+    margin-left: auto;
+  }
+
+  /* The version stays at the right, next to the magnifier. */
+  .docs-top .badge {
+    margin-left: auto;
+  }
+
+  .docs-top .badge + .docs-search-link {
+    margin-left: 0;
+  }
+}
+
+/* Below 480 px the version is hidden, so the magnifier takes the right end again. */
+@media (max-width: 479px) {
+  .docs-top .badge + .docs-search-link {
+    margin-left: auto;
+  }
+}
+
 /* Footer */
 .site-footer {
-  border-top: 1px solid var(--line-strong);
+  border-top: 1px solid var(--stage-line);
+  background: var(--stage-deep);
+  color: var(--stage-muted);
+}
+
+.site-footer a {
+  color: var(--stage-soft);
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--sand);
 }
 
 .site-footer-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 64px clamp(16px, 2.2vw, 24px) 40px;
+}
+
+.site-footer-top {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-6);
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 40px clamp(20px, 4vw, 48px) 48px;
+  gap: var(--space-7);
 }
 
 .site-footer-about {
+  flex: 1 1 260px;
+  max-width: 340px;
+}
+
+.site-footer-about p {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.site-footer-about p a {
+  text-decoration: underline;
+}
+
+.site-footer-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.site-footer-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-7) 56px;
+}
+
+.site-footer-columns ul {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 2px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-footer-columns a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--text-sm);
+}
+
+.site-footer-title {
+  margin: 0;
+  color: var(--stage-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.site-footer-bottom {
+  margin-top: 56px;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--stage-line);
 }
 
 .site-footer-legal {
-  color: var(--muted);
+  color: var(--stage-dim);
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
 }
 
 .site-footer-legal a {
   color: inherit;
 }
 
-.site-footer-nav {
+/* The docs' footer: one row. */
+.site-footer--compact .site-footer-inner {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) 28px;
-  font-size: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4) 28px;
+  max-width: 1440px;
+  padding-block: 28px;
+}
+
+.site-footer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+  font-size: 0.8125rem;
+}
+
+.site-footer-row a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 /* Copy button: quiet text with an icon; once copied its own label turns to "Copied" in the accent colour. */
@@ -241,7 +780,7 @@
   color: var(--accent);
 }
 
-/* Code block: a framed figure with the file name and the copy button in a bar above it; without a name the button sits in the corner. */
+/* Code block: a framed figure (a dark panel in both schemes) with the file name and the copy button in a bar above it; without a name the button sits in the corner. */
 .code-block {
   position: relative;
   min-width: 0;
@@ -268,9 +807,9 @@ figure.code {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-3);
-  background: var(--bg-raised);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-lg);
+  background: var(--code-bg);
 }
 
 .code > figcaption {
@@ -280,17 +819,35 @@ figure.code {
   gap: var(--space-3);
   min-height: 45px; /* the copy button's 44px plus the border */
   padding: 0 6px 0 var(--space-4);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--panel-line);
+  background: var(--panel-raised);
 }
 
 .code-caption {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--stage-muted);
   font-family: var(--font-mono);
   font-size: 0.78125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Code panels are dark in both schemes, so their copy button takes the fixed palette, not the page's. */
+figure.code .copy-button,
+.code-block .copy-button {
+  color: var(--stage-muted);
+}
+
+figure.code .copy-button:hover,
+.code-block .copy-button:hover {
+  background: var(--panel-edge);
+  color: var(--stage-fg);
+}
+
+figure.code .copy-button[data-copied],
+.code-block .copy-button[data-copied] {
+  color: var(--thread);
 }
 
 /* The frame is the figure's; the block inside it has no edge of its own. */
@@ -357,4 +914,47 @@ figure.code pre.code {
   color: var(--term-dim-text);
   font: inherit;
   white-space: pre-wrap;
+}
+
+/* The error page (a 404 has no route of its own; the framework's `marmeon-error` markup renders in the site layout): the reading
+   surface, a mono status label above an Inter Tight title. Its classes are zero-specificity in the framework's stylesheet. */
+.site .marmeon-error {
+  box-sizing: border-box;
+  max-width: 1280px;
+  min-height: 50vh;
+  margin: 0 auto;
+  padding: var(--space-9) clamp(20px, 4vw, 48px) var(--space-8);
+  color: var(--fg-body);
+  font-family: var(--font-text);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+
+.site .marmeon-error__status {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  opacity: 1;
+}
+
+.site .marmeon-error__title {
+  margin: var(--space-3) 0 var(--space-4);
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  line-height: 1;
+}
+
+.site .marmeon-error__exception {
+  max-width: var(--measure);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+  color: var(--fg-body);
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
 }

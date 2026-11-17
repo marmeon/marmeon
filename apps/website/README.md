@@ -16,10 +16,19 @@ pnpm website:check    # marmeon build, the production server on a free port, a s
 pnpm website:image    # the image: built from this checkout, checked, run read-only and behind Caddy — part of the `image` part
 ```
 
-- **Layouts**: `layouts/DocsLayout.tsx` for the `docs/*` pages, `layouts/SiteLayout.tsx` (skip link, header with the version
-  badge, footer) for the landing page and the error pages; `bootstrap/layouts.ts` picks by page name. The shared pieces — mark,
-  wordmark, version badge, copy button, terminal, code block — live in `modules/site/components`. The copy button renders only
-  in the browser, so a page without JavaScript carries none.
+- **Layouts**: `layouts/DocsLayout.tsx` for the `docs/*` pages, `layouts/SiteLayout.tsx` for the landing page and the error pages;
+  `bootstrap/layouts.ts` picks by page name. Both headers and the footer sit on the fixed dark stage in either colour scheme.
+  The landing's header holds the wordmark, a mega menu (Framework, Packages, Resources: `<details>` panels that share a `name`,
+  so a click opens one and closes the others without JavaScript; with it Escape and a press outside close them), Docs, "Search
+  docs", GitHub and Get started, and folds into one `<details>` menu below 900 px. The panels list only targets that exist and
+  are made at boot from `docs.config.ts`, `packages.ts` and `links.ts` (`modules/site/menu.ts`, shared once as `site.menu`; a docs
+  page, a package's page or a feature link that `docs.config.ts` does not list, or a package `packages.ts` does not list, stops the
+  start; the GitHub links are constants and not checked); a 404 has no shared props and gets flat links. The docs' top bar is sticky and
+  64 px on a desktop: brand, version badge, the search box, Framework and GitHub; at 760 px and below it scrolls away and shows the
+  magnifier instead of the box and the links. The landing's "Search docs" shows icon and shortcut only below 1150 px, and below 900 px (the menu is closed) a magnifier link beside the menu button, so ⌘K still has a visible trigger to click. The footer is full (about, three link columns, the legal
+  line) on the landing and compact (one row) in the docs. The shared pieces — mark, wordmark, version badge, copy button,
+  terminal, code block — live in `modules/site/components`. The copy button renders only in the browser, so a page without
+  JavaScript carries none.
 - **`docs.config.ts`** lists the sections and their pages, in reading order: a slug (`/docs/<slug>`), the label in the
   navigation, and the file — `docs/<slug>.md`, or a policy at the root via `file`. Previous and next lead through every page of
   every section in this order. There are no package pages: the package READMEs are short cards for npm that link here, and
@@ -31,8 +40,14 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **The search** (`modules/docs/search.ts`, a route on the server) finds the sections that have every word of the query. The
   page's name weighs most, then the heading — also a heading of the words of a name the section uses, `onOneServer` under "One
   server only" — then how often the prose has the word, and last whether a code block uses it: a section that explains a word
-  comes before an example that only calls it. The page lists the hits grouped by page, each with its navigation section, and
-  works as a plain GET form without JavaScript.
+  comes before an example that only calls it. `scope` (`all`, `pages` or `sections`; any other value is `all`) narrows the answer:
+  `pages` lists the pages whose title holds every word (at most 6, in the order of the docs, the record of changes last), `sections` the
+  ranked hits (20), `all` both as "Pages" and "On a page" (each hit with its page and navigation section, and its excerpt). An empty
+  query lists "Where to start" (`modules/docs/components/start-pages.tsx`, the cards of the docs' start page). The search is a dark panel — centred
+  on the page, and as a layer a palette near the top (the whole screen on a phone) — and works as a plain GET form without JavaScript: the scopes are radio buttons and the
+  results plain links. Hydrated, the field is a combobox over the results (`aria-activedescendant`; ↑ ↓ Home End move, ↵ opens the active
+  one like a click, Esc is the dialog's own). While the list is the previous query's (the field changes at once, the answer a pause later) ↵ opens nothing and the count says
+  "Searching…". The route stays throttled (`DOCS_SEARCH_PER_MINUTE`); each scope has its own URL and cache entry.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; `pnpm check:source` refuses it in `docs/`.
 - **The text speaks to app developers.** `pnpm check:source` rule 5 refuses comparisons with another framework in the pages,
@@ -42,30 +57,35 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   decision number, a wave or another framework.
 - **The landing** (`/`, `modules/site`) is the app's own: `views/Landing.tsx` lists its sections (`components/landing/*Section.tsx`),
   each with its own stylesheet in `styles/landing/` (`base.css` holds what they share).
+  The order is hero (with the stats strip), batteries, audience, chain, the devtools and agents band, secure, testing and islands, principles, packages, start.
+  The hero's numbers are computed, never typed: `HeroSection` counts `PACKAGES`, `FAKES` (`modules/site/fakes.ts`, checked against `docs/fakes.md` and `TestApp`), `AGENT_TOOLS` and the chain's steps and passes them to `StatsStrip`; the release link is `releaseNotesUrl(site.version)`;
+  the diagram beside the copy is five layers and eight battery chips from `modules/site/stack.ts`: `buildStack` resolves them at boot into `SiteStack`, and a docs slug `docs.config.ts` does not list or a package `packages.ts` does not list stops the start.
   Its code lives in `modules/site/snippets.ts` — files of the notes example the docs build up, so keep them in step with the API.
   Every snippet names its `source`, the file it is a piece of (`app`: a file of the smoke app; `repo`: a file of this repository), and
   `scripts/landing.ts` checks it: `pnpm test` the `repo` sources and the files of `examples/landing`, `pnpm pack:smoke` every `app` snippet word
   for word in the smoke app with `examples/landing` laid over it. A snippet holds no comment lines (the landing shows code without them);
-  it is compared with its file after the file's whole-line comments (as oxc-parser reports them; a file it cannot read fails the check) are dropped. A trailing comment stays on its line, so a line that should be shown without it needs its comment moved onto a line of its own. The folder tree of the "Modules" tab (`modules/site/module-files.ts`) is checked too: `pnpm test` checks its shape (unique entries, each one name directly in the folder, a folder ending in `/`), and `pnpm pack:smoke` checks that each entry is in `modules/notes/` of the smoke app, a folder as a directory and nothing a symlink. The seven typos of "one type, end to end" are `modules/site/chain.ts`: each names its snippet, the misspelt line
+  it is compared with its file after the file's whole-line comments (as oxc-parser reports them; a file it cannot read fails the check) are dropped. A trailing comment stays on its line, so a line that should be shown without it needs its comment moved onto a line of its own. The folder tree of the "Modules" card (`modules/site/module-files.ts`) is checked too: `pnpm test` checks its shape (unique entries, each one name directly in the folder, a folder ending in `/`), and `pnpm pack:smoke` checks that each entry is in `modules/notes/` of the smoke app, a folder as a directory and nothing a symlink. The seven typos of "one type, end to end" are `modules/site/chain.ts`: each names its snippet, the misspelt line
   (`mistakeLine`) and the compiler's error (`error`), which `pnpm pack:smoke` reproduces word for word, so a TypeScript update that rewords it
-  turns that check red until `chain.ts` follows. `components/landing/ChainSection.tsx` shows them as a step bar (`Tabs`) of editor windows: the
-  snippet, and under it the misspelt line highlighted at boot (`SiteSnippets.chain()`) with the error printed from `chain.ts`; without JavaScript
-  the seven steps stand one under the other with the same content.
+  turns that check red until `chain.ts` follows. `components/landing/ChainSection.tsx` shows them on the stage as a step bar (`Tabs`), the number of steps counted from the chain: a window with the step's file and snippet
+  (line numbers are a CSS counter), the step's sentence with its docs link, and the "This does not compile" box with the misspelt line highlighted at boot (`SiteSnippets.chain()`) and the error printed from `chain.ts`; without JavaScript
+  the steps stand one under the other with the same content.
   `SiteSnippets` highlights them once at boot with the docs' Shiki and theme (the browser gets markup, no highlighter), and the
   controller hands them to the page. `modules/site` owns the `public` group, the answers' headers and the Content-Security-Policy;
   the version of the framework it shows comes from `@marmeon/core`'s manifest (shared once as `site.version`, with the license and the origin of `APP_URL`). `modules/site/structured-data.ts` builds each page's JSON-LD graph from these (rendered by `SiteHead` through `<Head jsonLd>`).
   `components/Tabs.tsx` stacks its items under their headings in the server's HTML and turns them into an ARIA tablist once React has hydrated, so the page needs no JavaScript to be read.
-  `components/Editor.tsx` is the dark window the hero shows its code in: file names in a title bar, its own `--editor-syn-*` palette, the
-  highlighted markup from the server; the hero shows two files side by side, so nothing there depends on tabs.
-  The batteries section (`components/landing/BatteriesSection.tsx`) puts nine packages in `Tabs`, each with an `Editor` and a `battery…` snippet (4 to 10 lines of a real file, a complete unit with balanced brackets,
-  checked like the others); the "Modules" tab also holds the folder of a module.
-  Under the tabs, every package is listed with a link to its docs page, from `modules/site/packages.ts` (`PACKAGES`); the count on the page is its length,
+  `components/Editor.tsx` is the dark window the batteries cards and the islands section show their code in: file names in a title bar, its own `--editor-syn-*` palette, the
+  highlighted markup from the server.
+  The batteries section (`components/landing/BatteriesSection.tsx`) is a bento grid of twelve cards in plain HTML (it reads without JavaScript), each with a sentence, the package it is about (a name in `PACKAGES`, which `site.test.ts` checks) and its docs link. The wide Auth card holds the section's only code, an `Editor` with the `batteryAuth` snippet (4 to 10 lines of a real file, a complete unit with balanced brackets,
+  checked like the others); the other cards draw a small picture from `modules/site/batteries.ts` (the notes table, jobs, a mail, a field with its error, a profile page and its live hint, scheduled tasks, the module's folder from `module-files.ts`, two disks, a cached key, one notification and its channels, one key in two languages). Their names are real, and `batteries.test.ts` checks them against the jobs, the mail's texts, the schedule files, the storage config, the notes migration, the message of `@marmeon/validation`, the profile channel and props (`user-profile/live.ts` and its two controllers), the sign-in notification class and its lang entries (`notifications`, `auth`, the app's `name`), the `auth` lang files' `verify.title` in both languages, and the cache key and time to live of `MemberStats`.
+  `components/landing/PackagesSection.tsx` lists every package in three groups ("Dev tools" notes that `@marmeon/vite`, `@marmeon/testing` and `@marmeon/devtools` are in every new app's dev dependencies, as `docs/packages.md` says) with a link to its docs page, from `modules/site/packages.ts` (`PACKAGES`, and `PACKAGE_GROUPS` with the group titles and the note, passed as the `packageGroups` prop so the note's package names stay out of the client bundle); the count on the page is its length,
   and `site.test.ts` compares its names with the `name` of every `packages/*/package.json`, so a new package without an entry turns the test red.
-  `/islands/render-clock` is a real island the landing page loads (`ShowRenderClockController`, `views/islands/RenderClock.tsx`): public, no session or cookie, outside the sitemap, a 404 when visited directly. `CachePublicly` keeps its answer (recognised by the response header `x-marmeon-region: island`, which only the kernel sets) for `ISLAND_CACHE_MAX_AGE` (5 s, in `config/site.ts`, capped by `SITE_CACHE_MAX_AGE`) instead of the pages' 300 s. `components/landing/IslandSection.tsx` shows it beside its own code (`<Island load="visible" pollMs={10_000}>`): without JavaScript, and before it scrolls into view, the page holds a fallback sentence and the code, and the snippets are checked against the two files.
+  `/islands/render-clock` is a real island the landing page loads (`ShowRenderClockController`, `views/islands/RenderClock.tsx`): public, no session or cookie, outside the sitemap, a 404 when visited directly. `CachePublicly` keeps its answer (recognised by the response header `x-marmeon-region: island`, which only the kernel sets) for `ISLAND_CACHE_MAX_AGE` (5 s, in `config/site.ts`, capped by `SITE_CACHE_MAX_AGE`) instead of the pages' 300 s. `components/landing/IslandSection.tsx` shows it under its own code, in a card next to the testing card on a white band (`<Island load="visible" pollMs={10_000}>`): without JavaScript, and before it scrolls into view, the page holds a fallback sentence and the code, and the snippets are checked against the two files.
 - **The landing's devtools section** is a copy of the devtools with invented data (`modules/site/devtools-sample.ts`, drawn by
   `components/landing/DevtoolsReplica.tsx`): its page, tab and column names are read from `packages/devtools` by
-  `devtools-sample.test.ts`, so a rename there turns the website red. The figure holds no link.
-- **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
+  `devtools-sample.test.ts`, so a rename there turns the website red. The figure holds no link. It sits on the dark band with the agents section, which counts its skills and MCP tools from `modules/site/agents.ts`; the colours of its windows are the stage tokens, which `contrast.test.ts` pairs. The landing ends with the final call (`StartSection`: the three commands, the installation guide, GitHub and three places to read next); the community links live in the footer.
+- **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): a stage hero with a search trigger and the terminal, the three first
+  pages (`modules/docs/components/start-pages.tsx`), the recipes, every section with its pages, and a block for coding agents
+  (`/llms.txt` and `/llms-full.txt` as plain links, a page as Markdown, the MCP tools).
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
   anchors via github-slugger; code highlighted by Shiki on the server — one Shiki per process — with the `marmeon` theme in `shiki-theme.ts`: one placeholder colour per role, turned into a class by `highlight.ts`; the colours live in `styles/code.css`) and indexes the pages when the app
@@ -73,7 +93,11 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `/docs/:page` (`DocBinding`).
 - **Pages** are a tree of elements, not HTML: links to other pages become `<Link prefetch>`, links to source files code text. A
   code block names its file with `title="…"` in its info string (```` ```ts title="modules/notes/routes.ts" ````): a caption
-  above the block.
+  above the block. A page starts with a breadcrumb, its section's numeral (`roman()`, the section's place in `docs.config.ts`) and the
+  packages it documents (`PACKAGES`, by `docs` slug, chosen in `ShowDocController` so the browser never imports the list). A newest
+  page also carries "For your agent" beside its table of contents: the `docs_read` call of the MCP server (`marmeon mcp`) for the page's
+  slug. A release-line page numbers its section by the line's own navigation, its breadcrumb leads to the line's start, and it has
+  neither packages nor the agent block.
 - **Markdown for tools:** every page is also served at `/docs/<slug>.md` (`text/markdown; charset=utf-8`, `Link: <…/docs/<slug>>; rel="canonical"`),
   and its HTML page names it with `<link rel="alternate" type="text/markdown">`. The route comes before `/docs/:page` and takes
   only `[a-z0-9-]+.md`; it answers from what the boot read, never from the file system. Links are rewritten where they would
@@ -86,7 +110,8 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   (`modules/docs/negotiate.ts`; naming only `text/*` or `*/*` is not enough, so a browser always gets HTML; a Visit with `x-marmeon` always gets
   the page object): the page's `.md` body, and for `/docs` the index of `/llms.txt`. Both variants carry `Vary: Accept` and have
   their own ETag, so a shared cache never serves one for the other.
-  Every docs page shows a "View as Markdown" link to its `.md` above the heading — a plain `<a>` (no `<Link>`, no JavaScript).
+  Every docs page shows a "View as Markdown" link to its `.md` above the heading — a plain `<a>` (no `<Link>`, no JavaScript) — and,
+  once hydrated, a "Copy page" button that fetches that `.md` and writes it to the clipboard (the server renders none).
 - **Head tags** (`modules/site/components/SiteHead.tsx`): every HTML page has `<meta name="description">`, `<link rel="canonical">` and
   Open Graph (`og:title`, `og:description`, `og:url`, `og:type`, `og:site_name`; no image). A docs page describes itself with whole
   sentences of its first paragraph, up to 160 characters (`modules/docs/description.ts`; when that gives under 110 characters and more
@@ -105,7 +130,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   out; the summary is a constant that keeps pace with the root README's first paragraph.
 - **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
-  the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. `/` focuses the search field.
+  the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. ⌘K or Ctrl+K opens the search (`useSearchShortcut`, on the docs pages and the landing; the release-line pages have no search trigger, so no shortcut): it clicks the visible `[data-search-trigger]` link. Inside the open search layer or on the search page it focuses and selects the field; another open dialog keeps ⌘K and Ctrl+K, and a held key opens the layer once.
 - **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'` on every document —
   **no nonce**, because the pages are cached publicly and a nonce (one per response) must never reach a shared cache. The pages
   need none: the server renders no inline script (the page object is inert JSON, nothing streams, code blocks are spans), and the
@@ -120,11 +145,17 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   In development (`no-cache`, nothing shared) Vite's client, React Refresh and the devtools' bar are inline: the strict nonce
   policy there.
 - **Styles** (`styles/`): `app.css` is the only entry (`index.html`) and only `@import`s the parts. `tokens.css` holds every
-  colour, size, space and radius as a custom property — light by default, dark under `prefers-color-scheme` — and the fonts:
-  IBM Plex Sans (text, variable weight) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which
-  Vite bundles into `/assets/` (dev dependencies; the image needs none). `base.css` has the reset, links, buttons, focus ring and
-  helpers. `favicon.svg` carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the tokens
-  in both themes.
+  colour, size, space and radius as a custom property, in blocks that each open with a comment: the fixed palette (the stage,
+  the code panels, the dark callout panel, the landing's light sections: the same in both colour schemes), the themed names (`--bg`,
+  `--fg`, `--muted`, `--accent`, `--line` …: Stone, Ink and Teal in the light theme) and their dark values under
+  `prefers-color-scheme` (Stage, Panel, Rail dark and Thread). So the stage parts look the same everywhere, while the reading
+  surfaces (docs pages, search, legal and error pages) have a dark variant. Fonts are Inter (text), Inter Tight (headlines),
+  Instrument Serif italic (accent words) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which Vite bundles
+  into `/assets/` (dev dependencies; the image needs none); `vite.config.ts` preloads the ones the first screen sets.
+  `base.css` has the reset, headings, links, buttons, chips, the focus ring, the `.stage` ground and the helpers; `code.css`
+  makes every code block a dark panel, with line numbers (a CSS counter) on captioned ones. The marble veins on the stage are
+  static SVG files (`styles/stage/`) used as CSS backgrounds, because the policy allows no `style` attribute. `favicon.svg`
+  carries its own dark variant. The legal pages (`styles/legal.css`) and the error page (the framework's `marmeon-error` markup, restyled in `chrome.css`) are reading surfaces in the site layout. No `.css` file but `tokens.css` declares a hex colour (shadows and faint edges in black or white alpha are not colours of the palette and stay as `rgb()`/`rgba()`), and no token is declared that nothing reads; `modules/site/contrast.test.ts` computes the WCAG contrast of the pairs the pages use, in both themes, and fails on a hex colour anywhere else.
 - **Headers:** `securityHeaders()` in `SiteServiceProvider`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`

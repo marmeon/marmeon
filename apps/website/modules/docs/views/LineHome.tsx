@@ -9,15 +9,15 @@ export default function LineHome({ line, sections }: PageProps<ShowLineHomeContr
   return (
     <div className="docs-home">
       <SiteHead title={`Documentation (${line.name})`} description={`The documentation of Marmeon ${line.version}.`} path="/docs" noindex />
-      <div className="docs-home-inner">
-        <section className="docs-home-intro" aria-labelledby="line-title">
+      <div className="docs-home-frame docs-home-line">
+        <section className="docs-home-line-intro" aria-labelledby="line-title">
           <div className="docs-home-lead">
             <LineBanner line={line} newest="/docs" />
             <h1 id="line-title">Marmeon {line.version}</h1>
           </div>
         </section>
         <section className="docs-home-block" aria-labelledby="line-sections">
-          <h2 id="line-sections" className="docs-home-heading">
+          <h2 id="line-sections" className="docs-home-label">
             Every section
           </h2>
           <div className="docs-home-sections">

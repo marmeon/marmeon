@@ -6,7 +6,7 @@ import { createCodeHighlighter, type CodeHighlighter } from './highlight.ts';
 import { fallbackDescription, summarize } from './description.ts';
 import { renderMarkdown, type RenderedMarkdown } from './markdown.ts';
 import { replaceLinks, servedHref, sourceLinks, type SourceLink } from './markdown-source.ts';
-import { SearchIndex, type SearchResult } from './search.ts';
+import { SearchIndex, type PageResult, type SearchResult } from './search.ts';
 import type { DocNode, TocEntry } from './types.ts';
 
 /** A page of the docs: `/docs/<slug>`. */
@@ -165,6 +165,11 @@ export class DocsRepository {
 
   search(query: string, options?: { limit?: number }): SearchResult[] {
     return this.#state().index.search(query, options);
+  }
+
+  /** The pages whose title holds every word of the query ({@link SearchIndex.pages}). */
+  searchPages(query: string, options?: { limit?: number }): PageResult[] {
+    return this.#state().index.pages(query, options);
   }
 
   #state(): Loaded {

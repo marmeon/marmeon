@@ -1,4 +1,4 @@
-/* Syntax classes, code blocks, terminal and output blocks. The classes come from modules/docs/highlight.ts. */
+/* Syntax classes and code blocks: every pre.code is a dark panel in both schemes. The classes come from modules/docs/highlight.ts. */
 .tk {
   color: var(--syn-keyword);
 }
@@ -27,40 +27,57 @@ pre.code {
   margin: 0;
   padding: 16px 18px 18px;
   overflow-x: auto;
-  --code-edge: 1px solid var(--line);
-  background: var(--bg-raised);
+  --code-edge: 1px solid var(--panel-line);
+  background: var(--code-bg);
   border: var(--code-edge);
-  border-radius: 4px;
-  color: var(--syn-text);
+  border-radius: var(--radius-lg);
+  color: var(--code-fg);
+  color-scheme: dark;
   font: 400 var(--text-code) / 1.75 var(--font-mono);
   tab-size: 2;
 }
 
 pre.code:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--thread);
   outline-offset: 2px;
 }
 
-/* A command is never source: dark in both themes, no syntax colour but the dimmed comment. */
+/* A command is never source: no syntax colour but the dimmed comment. */
 pre.code[data-lang='sh'] {
-  --code-edge: 1px solid var(--term-line);
-  background: var(--term-bg);
-  color: var(--term-fg);
   line-height: 1.85;
 }
 pre.code[data-lang='sh'] :is(.tk, .ty, .ts, .tf, .tg, .tp) {
   color: inherit;
   font-weight: inherit;
 }
-pre.code[data-lang='sh'] .tc {
-  color: var(--term-dim);
-}
 
 /* Output is what the machine printed: a dashed edge, no syntax colour. */
 pre.code[data-lang='text'] {
-  --code-edge: 1px dashed var(--line-strong);
-  background: var(--output-bg);
-  color: var(--fg-2);
+  --code-edge: 1px dashed var(--panel-edge);
+  color: var(--stage-soft);
   font-size: 0.84375rem;
   line-height: 1.7;
+}
+
+/* A captioned block (figure.code) shows line numbers: a CSS counter in a pseudo-element, so a copy never includes them. */
+figure.code pre.code {
+  counter-reset: line;
+  padding-left: 0;
+}
+
+figure.code pre.code .line {
+  display: inline-block;
+  padding-right: 18px;
+}
+
+figure.code pre.code .line::before {
+  content: counter(line);
+  counter-increment: line;
+  display: inline-block;
+  width: 24px;
+  margin: 0 16px 0 18px;
+  color: var(--code-gutter);
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
 }

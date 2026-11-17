@@ -26,6 +26,30 @@ export interface SearchResult {
   readonly excerpt: string;
 }
 
+/** A page whose title holds every word of the query. */
+export interface PageResult {
+  /** `/docs/<slug>`. */
+  readonly href: string;
+  readonly page: string;
+  /** The navigation section of the page. */
+  readonly section: string;
+}
+
+/** What a search looks in: the pages' titles, the sections' text, or both. */
+export const SEARCH_SCOPES = ['all', 'pages', 'sections'] as const;
+export type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+/**
+ * What the route answers: the pages by title and the sections by text — either list is empty when the scope leaves it out — and the
+ * query and scope they answer, so the view can tell a list that is still the previous one's while the next answer is on its way.
+ */
+export interface SearchResults {
+  readonly q: string;
+  readonly scope: SearchScope;
+  readonly pages: readonly PageResult[];
+  readonly sections: readonly SearchResult[];
+}
+
 /** At most this many words of a query count; a query is short anyway (the route's schema allows 100 characters). */
 const MAX_TERMS = 8;
 const EXCERPT_BEFORE = 60;
@@ -54,7 +78,8 @@ interface Term {
  * browser). Words are matched as parts of words, case-insensitively, all of them in one section; a match in the page's name
  * weighs most, then the heading — also a heading with the words of a name (`onOneServer` → "One server only") — then how
  * often the prose has it, and last that a code block uses it: a section that explains a word comes before an example that
- * only calls it. A record of changes comes after every other hit.
+ * only calls it. A record of changes comes after every other hit. {@link SearchIndex.pages} looks in the pages' titles only: every word of the
+ * query must be in the title.
  */
 export class SearchIndex {
   readonly #entries: Entry[];
@@ -73,6 +98,24 @@ export class SearchIndex {
 
   get size(): number {
     return this.#entries.length;
+  }
+
+  /**
+   * The pages whose title holds every word of the query, as parts of words and case-insensitively — one row per page, in the order
+   * of the docs, the record of changes last; at most `limit` (6 by default). Only the first 8 words of the query count, as in
+   * {@link SearchIndex.search}. A name (`onOneServer`) is one word here: titles hold plain words.
+   */
+  pages(query: string, { limit = 6 }: { limit?: number } = {}): PageResult[] {
+    const words = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))].slice(0, MAX_TERMS);
+    if (words.length === 0) return [];
+    const seen = new Set<string>();
+    const found: { page: PageResult; late: boolean }[] = [];
+    for (const entry of this.#entries) {
+      if (seen.has(entry.path)) continue;
+      seen.add(entry.path);
+      if (words.every((word) => entry.lowerPage.includes(word))) found.push({ page: { href: entry.path, page: entry.page, section: entry.section }, late: entry.late ?? false });
+    }
+    return [...found.filter(({ late }) => !late), ...found.filter(({ late }) => late)].slice(0, limit).map(({ page }) => page);
   }
 
   search(query: string, { limit = 20 }: { limit?: number } = {}): SearchResult[] {

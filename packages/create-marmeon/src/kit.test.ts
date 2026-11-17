@@ -35,10 +35,10 @@ it(
     });
     expect(code, said).toBe(0);
     const root = join(cwd, 'kit');
-    // The blank app's installed packages, plus the kit's font (the website has the same version): the build resolves it.
+    // The blank app's installed packages, plus the kit's font (the one `@marmeon/vite` pins, which `create.test.ts` ties to `KIT_DEV_DEPENDENCIES`): the build resolves it.
     mkdirSync(join(root, 'node_modules'));
     for (const entry of readdirSync(join(blank, 'node_modules'))) if (!entry.startsWith('.') || entry === '.bin') symlinkSync(join(blank, 'node_modules', entry), join(root, 'node_modules', entry));
-    symlinkSync(join(repo, 'apps/website/node_modules/@fontsource-variable'), join(root, 'node_modules/@fontsource-variable'), 'dir');
+    symlinkSync(join(repo, 'packages/vite/node_modules/@fontsource-variable'), join(root, 'node_modules/@fontsource-variable'), 'dir');
     const env = { ...process.env };
     for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV') delete env[key];
     // Plain text whatever the CI colours: the assertions match the child Vitest's summary.

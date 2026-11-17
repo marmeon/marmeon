@@ -4,13 +4,17 @@ import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions, securityHeaders } from '@marmeon/http';
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
 import { AppConfig } from '../../config/app.ts';
+import docsConfig from '../../docs.config.ts';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
 import { FATHOM_SCRIPT } from './fathom.ts';
+import { buildMenu } from './menu.ts';
+import { PACKAGES } from './packages.ts';
 import { ShareAnalytics } from './middleware/ShareAnalytics.ts';
 import { ShareSite } from './middleware/ShareSite.ts';
 import { SiteInfo } from './SiteInfo.ts';
 import { SiteSnippets } from './SiteSnippets.ts';
+import { buildStack, SiteStack } from './stack.ts';
 import routes from './routes.ts';
 
 /** The middleware group of the website's public pages: without cookies, session or CSRF. */
@@ -49,14 +53,16 @@ export class SiteServiceProvider implements ServiceProvider {
     container.make(Router).load({ group: PUBLIC_GROUP }, routes);
     container.singleton(SiteInfo, () => {
       const { version, license } = frameworkManifest();
-      return new SiteInfo(version, license, new URL(container.make(AppConfig).url).origin);
+      return new SiteInfo(version, license, new URL(container.make(AppConfig).url).origin, buildMenu(docsConfig, PACKAGES));
     });
     container.singleton(SiteSnippets, () => new SiteSnippets());
+    container.singleton(SiteStack, () => new SiteStack(buildStack(docsConfig, PACKAGES)));
   }
 
   async boot(app: Application): Promise<void> {
-    // Read the version now: a manifest that cannot be found stops the start, not the first request.
+    // Read the version and build the menu and the hero's stack now, not on the first request: a manifest that cannot be found, or a menu target that is no docs page, stops the start.
     app.container.make(SiteInfo);
+    app.container.make(SiteStack);
     await app.container.make(SiteSnippets).load();
     const config = app.container.make(SiteConfig);
     const router = app.container.make(Router);
@@ -80,10 +86,10 @@ function frameworkManifest(): { version: string; license: string } {
   return parseManifest(JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown; license?: unknown });
 }
 
-/** The `version` and `license` of a manifest; throws unless the version is a string and the license a single SPDX identifier, because the license becomes a URL on spdx.org (an expression or a `LicenseRef-` has none). */
+/** The `version` and `license` of a manifest; throws unless the version has the form 1.2.3 or 1.2.3-rc.1 (it becomes a URL path on GitHub) and the license a single SPDX identifier, because the license becomes a URL on spdx.org (an expression or a `LicenseRef-` has none). */
 export function parseManifest({ version, license }: { version?: unknown; license?: unknown }): { version: string; license: string } {
-  if (typeof version !== 'string' || typeof license !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9.+-]*$/.test(license) || license.startsWith('LicenseRef-')) {
-    throw new Error('The manifest of @marmeon/core needs a string "version" and a "license" that is a single SPDX identifier (no expression).');
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version) || typeof license !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9.+-]*$/.test(license) || license.startsWith('LicenseRef-')) {
+    throw new Error('The manifest of @marmeon/core needs a "version" in the form 1.2.3 (or 1.2.3-rc.1) and a "license" that is a single SPDX identifier (no expression).');
   }
   return { version, license };
 }

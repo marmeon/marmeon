@@ -6,6 +6,10 @@ describe('the manifest of the framework', () => {
     expect(parseManifest({ version: '1.0.0', license: 'Apache-2.0' })).toEqual({ version: '1.0.0', license: 'Apache-2.0' });
   });
 
+  it('accepts a prerelease version', () => {
+    expect(parseManifest({ version: '1.2.0-rc.1', license: 'MIT' }).version).toBe('1.2.0-rc.1');
+  });
+
   it.each(['MIT', 'BSD-3-Clause', 'LGPL-2.1-or-later', 'GPL-2.0+'])('accepts %s', (license) => {
     expect(parseManifest({ version: '1.0.0', license }).license).toBe(license);
   });
@@ -16,6 +20,9 @@ describe('the manifest of the framework', () => {
     ['punctuation only', { version: '1.0.0', license: '.' }],
     ['a LicenseRef', { version: '1.0.0', license: 'LicenseRef-Own' }],
     ['no version', { license: 'MIT' }],
+    ['a version that is no semver', { version: '1.0', license: 'MIT' }],
+    ['a version with a path in it', { version: '1.0.0/../../x', license: 'MIT' }],
+    ['a version with a query', { version: '1.0.0?x=1', license: 'MIT' }],
     ['no license', { version: '1.0.0' }],
     ['a license that is no string', { version: '1.0.0', license: ['MIT'] }],
   ])('refuses %s', (_, manifest) => {

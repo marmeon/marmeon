@@ -6,14 +6,21 @@ export function DevtoolsSection() {
   return (
     <section className="devtools" aria-labelledby="devtools-title">
       <div className="landing-inner">
-        <div className="section-intro section-intro--wide">
-          <p className="section-label">Devtools</p>
-          <h2 id="devtools-title">See what a request did.</h2>
-          <p>
-            In development, devtools records requests, queries, jobs and mails and shows them on a page of its own and in a bar on every page. Secrets are redacted. In production it is not there. The picture below is a copy with invented data; click through its tabs. <Link href="/docs/devtools">Read the devtools page</Link>
-          </p>
+        <div className="band-frame">
+          <div className="band-head">
+            <div>
+              <p className="section-label">Devtools</p>
+              <h2 id="devtools-title">
+                See what a request <span className="serif-accent">did.</span>
+              </h2>
+            </div>
+            <p>
+              Requests, queries, jobs and mails, recorded in development with secrets redacted, in a bar on every page and on a page of its own. Production has none of it. Try the copy below; its data is invented.{' '}
+              <Link href="/docs/devtools">Read the devtools page</Link>
+            </p>
+          </div>
+          <DevtoolsReplica />
         </div>
-        <DevtoolsReplica />
       </div>
     </section>
   );

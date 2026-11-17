@@ -1,11 +1,7 @@
 /* Devtools: a copy with sample data. Sizes and status colours follow the real pages, through the website's tokens. */
-.landing .devtools {
-  border-block: 1px solid var(--line);
-  background: var(--bg-raised);
-}
-
 .landing .devtools-replica {
   display: grid;
+  color: var(--stage-fg);
   gap: var(--space-5);
   margin: 0;
 }
@@ -14,9 +10,9 @@
 .landing .devtools-replica-bar {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-3);
-  background: var(--bg);
+  border: 1px solid var(--rail-dark);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
 }
 
 .landing .devtools-replica-chrome {
@@ -24,8 +20,9 @@
   align-items: center;
   gap: var(--space-3);
   padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--panel-line);
+  background: var(--panel-raised);
+  color: var(--stage-muted);
   font-family: var(--font-mono);
   font-size: 0.78125rem;
 }
@@ -33,9 +30,10 @@
 .landing .devtools-replica-title {
   margin: 0;
   font: inherit;
+  font-weight: 400;
   min-width: 0;
   overflow: hidden;
-  color: var(--fg-2);
+  color: var(--stage-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -43,9 +41,9 @@
 .landing .devtools-replica-env {
   margin-left: auto;
   padding: 1px 6px;
-  border: 1px solid var(--warning-fg);
+  border: 1px solid var(--sand);
   border-radius: var(--radius-1);
-  color: var(--warning-fg);
+  color: var(--sand);
   font-size: 0.6875rem;
   letter-spacing: 0.12em;
 }
@@ -56,8 +54,9 @@
   gap: var(--space-2);
   margin: 0;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--panel-line);
+  background: var(--panel-raised);
+  color: var(--stage-fg);
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -108,7 +107,7 @@
 
 .landing .devtools-replica-lines li {
   padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--panel-line);
   overflow-wrap: anywhere;
 }
 
@@ -123,7 +122,7 @@
 }
 
 .landing .devtools-replica-scroll:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--thread);
   outline-offset: 2px;
 }
 
@@ -136,8 +135,8 @@
 
 .landing .devtools-replica th {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
+  border-bottom: 1px solid var(--panel-line);
+  color: var(--stage-muted);
   font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.1em;
@@ -148,7 +147,7 @@
 
 .landing .devtools-replica td {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--panel-line);
   vertical-align: top;
 }
 
@@ -157,19 +156,19 @@
 }
 
 .landing .devtools-replica td.is-ok {
-  color: var(--tip-fg);
+  color: var(--thread);
 }
 
 .landing .devtools-replica td.is-accent {
-  color: var(--accent-strong);
+  color: var(--stage-soft);
 }
 
 .landing .devtools-replica td.is-warn {
-  color: var(--warning-fg);
+  color: var(--sand);
 }
 
 .landing .devtools-replica td.is-bad {
-  color: var(--caution-fg);
+  color: var(--error);
 }
 
 .landing .devtools-replica-block + .devtools-replica-block {
@@ -186,7 +185,7 @@
 .landing .devtools-replica-note {
   margin: 0 0 var(--space-2);
   padding-inline: 12px;
-  color: var(--muted);
+  color: var(--stage-muted);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
 }
@@ -199,7 +198,7 @@
   .landing .devtools-replica-tabs.tabs--vertical .tabs-list {
     flex-direction: row;
     overflow-x: auto;
-    box-shadow: inset 0 -1px 0 var(--line);
+    box-shadow: inset 0 -1px 0 var(--panel-line);
   }
 
   .landing .devtools-replica-tabs.tabs--vertical .tabs-tab {
@@ -208,6 +207,51 @@
   }
 
   .landing .devtools-replica-tabs.tabs--vertical .tabs-tab[aria-selected='true'] {
-    border-color: var(--accent-bright);
+    border-color: var(--thread);
   }
+}
+
+/* The window's three dots: decoration, hidden from assistive technology in the markup. */
+.landing .devtools-replica-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.landing .devtools-replica-dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--control-dark);
+}
+
+/* The tabs sit on the panel: their colours come from the stage, not from the themed names the reading pages use. */
+.landing .devtools-replica .tabs-tab {
+  color: var(--stage-muted);
+}
+
+.landing .devtools-replica .tabs-tab:hover,
+.landing .devtools-replica .tabs-tab[aria-selected='true'] {
+  color: var(--stage-fg-strong);
+}
+
+.landing .devtools-replica .tabs-tab[aria-selected='true'] {
+  border-color: var(--thread);
+}
+
+.landing .devtools-replica .tabs-tab:focus-visible,
+.landing .devtools-replica .tabs-panel:focus-visible {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--thread);
+}
+
+.landing .devtools-replica .tabs-list {
+  box-shadow: inset 0 -1px 0 var(--panel-line);
+}
+
+.landing .devtools-replica .tabs--vertical .tabs-list {
+  box-shadow: inset -1px 0 0 var(--panel-line);
+}
+
+.landing .devtools-replica .tabs-heading,
+.landing .devtools-replica-heading {
+  color: var(--stage-fg);
 }

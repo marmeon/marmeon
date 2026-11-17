@@ -1,60 +1,356 @@
-/* Hero */
+/* Hero: the stage with the headline and the way in at the left, a diagram of the app's layers, one type through them, at the right. */
 .landing .hero {
-  padding-top: clamp(48px, 7vw, 96px);
+  position: relative;
+  padding-top: clamp(40px, 6vw, 72px);
 }
 
 .landing .hero-inner {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
   gap: clamp(32px, 4vw, 56px);
-  align-items: end;
+  align-items: center;
+  padding-bottom: clamp(40px, 5vw, 64px);
+}
+
+.landing .hero-inner > * {
+  min-width: 0;
 }
 
 .landing .hero-copy {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  align-items: flex-start;
+}
+
+.landing .hero-release {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px 0 6px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  color: var(--stage-soft);
+  font-size: 0.8125rem;
+}
+
+.landing .hero-release:hover {
+  border-color: var(--control-dark-hover);
+  color: var(--stage-fg-strong);
+  text-decoration: none;
+}
+
+.landing .hero-release-version {
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--sand);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
 }
 
 .landing .hero h1 {
-  font-size: clamp(2.625rem, 1.4rem + 4.6vw, 5.125rem);
-  line-height: 1.03;
-  letter-spacing: -0.018em;
+  margin-top: 28px;
+  color: var(--stage-fg-strong);
+  font-family: var(--font-display);
+  font-size: clamp(2.625rem, 1.4rem + 4.6vw, 5.25rem);
+  line-height: 0.98;
+  letter-spacing: var(--tracking-display);
 }
 
-/* Each sentence of the heading starts its own line, so a phone does not break it after "Typed end to". */
+/* Each sentence of the heading starts its own line; `.nowrap` keeps "full-stack" from breaking at its hyphen. */
 .landing .hero-line {
   display: block;
 }
 
-.landing .hero-start {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 18px;
+.landing .hero .nowrap {
+  white-space: nowrap;
+}
+
+.landing .hero-line.serif-accent {
+  color: var(--thread);
+}
+
+.landing .hero .lead {
+  max-width: 34em;
+  margin-top: 28px;
+  color: var(--stage-fg-2);
 }
 
 .landing .hero-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3) var(--space-4);
+  gap: var(--space-3);
+  margin-top: 36px;
+}
+
+.landing .hero-actions .button {
+  min-height: 48px;
+  font-size: 0.9375rem;
+}
+
+.landing .hero-install {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  max-width: 420px;
+  min-height: 46px;
+  margin-top: 22px;
+  padding: 0 0 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--panel-line);
+  border-radius: 11px;
+  background: var(--panel-foot);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.landing .hero-install-prompt {
+  color: var(--stage-dim);
+}
+
+.landing .hero-install code {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.5ch;
+  overflow: hidden;
+  color: var(--stage-fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The copy button is the line's last segment: full height, flush with the right edge, one rule between it and the command. */
+.landing .hero-install .copy-button {
+  align-self: stretch;
+  min-width: 44px;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--panel-edge);
+  border-radius: 0;
+  background: var(--panel-raised);
+  color: var(--stage-soft);
+}
+
+.landing .hero-install .copy-button:hover {
+  background: var(--panel-raised);
+  color: var(--stage-fg-strong);
+}
+
+/* The line clips at its rounded edge, so the focus ring sits inside the button. */
+.landing .hero-install .copy-button:focus-visible {
+  outline-offset: -3px;
+}
+
+.landing .hero-install .copy-button[data-copied] {
+  color: var(--thread);
 }
 
 .landing .hero-facts {
-  margin: 0;
-  color: var(--muted);
+  margin: 16px 0 0;
+  color: var(--stage-dim);
   font-family: var(--font-mono);
-  font-size: 0.78125rem;
-  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
 }
 
-.landing .hero-code {
-  margin-top: clamp(40px, 5vw, 64px);
+/* The composition: the batteries as chips above and below, the five layers between them with one thread of the accent colour along their left edge. */
+.landing .hero-composition {
+  display: flex;
+  flex-direction: column;
+  align-self: center;
+  gap: 16px;
+  width: 100%;
 }
 
-.landing .hero-note {
-  margin: var(--space-4) 0 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
+.landing .hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .hero-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-pill);
+  background: var(--panel-raised);
+  color: var(--stage-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.landing .hero-layers {
+  position: relative;
+  padding: 20px 20px 20px 60px;
+  border: 1px solid var(--rail-dark);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+}
+
+/* The thread: a thin line through all five layers, named along its side, read from the bottom up. */
+.landing .hero-layers::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: 40px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--thread);
+}
+
+.landing .hero-thread-label {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  color: var(--thread);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+}
+
+.landing .hero-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A row is one link: title and note stack on a phone, title left and note right from 600px up. */
+.landing .hero-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-line);
+  border-radius: 10px;
+  background: var(--panel-bar);
+  color: var(--stage-fg);
+  text-decoration: none;
+}
+
+.landing .hero-layer-title {
+  color: var(--stage-fg);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.landing .hero-layer-note {
+  color: var(--stage-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.landing .hero-layer:hover,
+.landing .hero-chip:hover {
+  border-color: var(--thread);
+  text-decoration: none;
+}
+
+.landing .hero-layer:hover .hero-layer-title,
+.landing .hero-chip:hover {
+  color: var(--stage-fg-strong);
+}
+
+.landing .hero-chip:focus-visible,
+.landing .hero-layer:focus-visible {
+  border-color: var(--thread);
+  outline: 2px solid var(--thread);
+  outline-offset: 2px;
+  text-decoration: none;
+}
+
+.landing .hero-layer:focus-visible .hero-layer-title {
+  color: var(--stage-fg-strong);
+}
+
+@media (min-width: 600px) {
+  .landing .hero-layer {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 64px;
+    padding: 18px 20px;
+  }
+
+  .landing .hero-layer-title {
+    font-size: 1.125rem;
+  }
+}
+
+@media (min-width: 901px) {
+  .landing .hero-layers {
+    padding-block: 28px;
+  }
+
+  .landing .hero-layers::before {
+    top: 32px;
+    bottom: 32px;
+  }
+
+  .landing .hero-layer {
+    min-height: 76px;
+    padding-block: 24px;
+  }
+
+  .landing .hero-chip {
+    min-height: 40px;
+    padding: 0 16px;
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing .hero-chips {
+    gap: 6px;
+  }
+
+  .landing .hero-chip {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 0.6875rem;
+  }
+
+  .landing .hero-layers {
+    padding: 14px 12px 14px 48px;
+  }
+
+  .landing .hero-layers::before {
+    top: 18px;
+    bottom: 18px;
+    left: 32px;
+  }
+
+  .landing .hero-thread-label {
+    left: 8px;
+  }
+
+  .landing .hero-layer-list {
+    gap: 6px;
+  }
+
+  .landing .hero-layer {
+    min-height: 0;
+    padding: 8px 12px;
+  }
 }

@@ -29,6 +29,7 @@ describe.each([
     const response = await app.get(path, document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
     expect(response.body).toContain(`<h1>${title}</h1>`);
+    expect(response.body).toContain('<p class="legal-eyebrow">Legal</p>');
     expect(response.body).toContain(`>${title} — Marmeon</title>`);
     expect(response.body).toContain(text);
     expect(response.body).toContain('<article class="doc">');
@@ -50,7 +51,7 @@ describe('the legal texts', () => {
     const privacy = (await app.get('/privacy', document).assertOk()).body;
     expect(privacy).toContain('<a href="https://www.hetzner.com/de/legal/privacy-policy/" rel="noopener">');
     expect(privacy).toContain('IN THE EVENT THAT DATA ARE PROCESSED ON THE BASIS OF ART. 6(1)(E) OR (F) GDPR');
-    expect(privacy.match(/<ul>/g)).toHaveLength(2);
+    expect(privacy.slice(privacy.indexOf('<main'), privacy.indexOf('</main>')).match(/<ul>/g)).toHaveLength(2); // the text's own lists, not the footer's
   });
 
   it('are no pages of the docs: not found by its search', async () => {
@@ -64,7 +65,7 @@ describe('the footer', () => {
     const body = (await app.get(path, document).assertOk()).body;
     const footer = body.slice(body.indexOf('<footer'));
     expect(footer).toMatch(/<a [^>]*href="\/imprint"[^>]*>Imprint<\/a>/);
-    expect(footer).toMatch(/<a [^>]*href="\/privacy"[^>]*>Privacy Policy<\/a>/);
+    expect(footer).toMatch(/<a [^>]*href="\/privacy"[^>]*>Privacy policy<\/a>/);
   });
 });
 

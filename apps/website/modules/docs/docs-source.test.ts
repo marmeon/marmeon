@@ -108,7 +108,7 @@ describe('/docs/<slug>.md', () => {
 });
 
 describe('the "View as Markdown" link (server-rendered)', () => {
-  const link = (body: string) => [...body.matchAll(/<a [^>]*class="doc-source"[^>]*>[^<]*<\/a>/g)].map((match) => match[0]);
+  const link = (body: string) => [...body.matchAll(/<a [^>]*class="doc-source"[^>]*>(?:<svg[\s\S]*?<\/svg>)?[^<]*<\/a>/g)].map((match) => match[0]);
 
   it('names the page\'s Markdown on a docs page, as a plain link that opens the Markdown', async () => {
     const ssr = await createTestApp(application, { ssr: true, ssrServer: server });

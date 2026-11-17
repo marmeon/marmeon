@@ -1,55 +1,101 @@
 import type { PageProps } from '@marmeon/http';
 import { Link, usePage } from '@marmeon/react';
+import { AGENT_TOOLS } from '../../agents.ts';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
-import { GITHUB_URL } from '../../links.ts';
-import { Editor } from '../Editor.tsx';
-import { Terminal } from '../Terminal.tsx';
+import { FAKES } from '../../fakes.ts';
+import { releaseNotesUrl } from '../../links.ts';
+import { CopyButton } from '../CopyButton.tsx';
+import { StatsStrip } from './StatsStrip.tsx';
 
-/** The first screen: what Marmeon is, the commands that start an app, and the controller and page that share their prop types. */
-export function HeroSection({ snippets }: Pick<PageProps<ShowLandingController>, 'snippets'>) {
+const INSTALL_COMMAND = 'pnpm create marmeon my-app';
+
+type HeroProps = Pick<PageProps<ShowLandingController>, 'chain' | 'packages' | 'stack'>;
+
+function Arrow() {
+  return (
+    <svg className="button-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+/** A row of the battery chips: each a link to the package's docs page. */
+function Chips({ chips, label }: { chips: HeroProps['stack']['above']; label: string }) {
+  return (
+    <ul className="hero-chips" aria-label={label}>
+      {chips.map((chip) => (
+        <li key={chip.href}>
+          <Link href={chip.href} className="hero-chip">
+            {chip.title}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The first screen: what Marmeon is, the way in, the layers of an app with one type through them, and the numbers the rest of the page backs. */
+export function HeroSection({ chain, packages, stack }: HeroProps) {
   const version = usePage().props.site?.version;
   return (
-    <section className="hero" aria-labelledby="hero-title">
+    <section className="hero stage stage--veins-hero" aria-labelledby="hero-title">
       <div className="landing-inner hero-inner">
         <div className="hero-copy">
-          <p className="eyebrow">A TypeScript framework for the whole app, server first</p>
+          {version && (
+            <a className="hero-release" href={releaseNotesUrl(version)} rel="noopener">
+              <span className="hero-release-version">{version}</span>
+              Release notes
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
+          )}
           <h1 id="hero-title">
-            <span className="hero-line">Typed end to end.</span> <span className="hero-line">Batteries included.</span>
+            <span className="hero-line">The modern <span className="nowrap">full-stack</span> framework</span> <span className="hero-line serif-accent">for TypeScript.</span>
           </h1>
           <p className="lead">
-            Routes, controllers, pages and forms share one type, from the database column to the form error. Authorization, migrations, validation, a queue, mail, a
-            scheduler and storage are part of the framework and work together. Every page renders on the server first.
+            Routes, database, auth, queues, mail and pages in one TypeScript framework. One type runs from the column to the form, and every page renders on the server first.
           </p>
-        </div>
-        <div className="hero-start">
-          <Terminal commands={['pnpm create marmeon my-app', 'cd my-app', 'pnpm dev']} />
           <div className="hero-actions">
-            <Link href="/docs/installation" className="button" prefetch>
+            <Link href="/docs/installation" className="button button--sand" prefetch>
               Get started
+              <Arrow />
             </Link>
-            <Link href="/docs" className="button button--secondary" prefetch>
+            <Link href="/docs" className="button button--ghost" prefetch>
               Read the docs
             </Link>
-            <a className="button button--text" href={GITHUB_URL} rel="noopener">
-              GitHub repository
-            </a>
           </div>
-          <p className="hero-facts">{[version, 'MIT licence', 'Node 26.10+'].filter(Boolean).join(' · ')}</p>
+          <div className="hero-install">
+            <span className="hero-install-prompt" aria-hidden="true">
+              $
+            </span>
+            <code>{INSTALL_COMMAND}</code>
+            <CopyButton text={INSTALL_COMMAND} label="Copy the install command" />
+          </div>
+          <p className="hero-facts">MIT licence · Node 26.10+ · No transpile step</p>
+        </div>
+        <div className="hero-composition" role="group" aria-label="The layers of a Marmeon app">
+          <Chips chips={stack.above} label="Batteries around the layers" />
+          <div className="hero-layers">
+            <span className="hero-thread-label">
+              one type
+            </span>
+            <ol className="hero-layer-list">
+              {stack.layers.map((layer) => (
+                <li key={layer.href}>
+                  <Link href={layer.href} className="hero-layer">
+                    <span className="hero-layer-title">{layer.title}</span>
+                    <span className="hero-layer-note">{layer.note}</span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <Chips chips={stack.below} label="More batteries" />
         </div>
       </div>
       <div className="landing-inner">
-        <div className="hero-code">
-          <Editor
-            label="The controller and the page that takes its props from it"
-            layout="split"
-            headingLevel={null}
-            files={[
-              { name: snippets.controller.file!, html: snippets.controller.html },
-              { name: snippets.page.file!, html: snippets.page.html },
-            ]}
-          />
-        </div>
-        <p className="hero-note">The page takes its prop types from the controller. Change one, and the other no longer compiles.</p>
+        <StatsStrip packages={packages.length} typos={chain.length} fakes={FAKES.length} tools={AGENT_TOOLS.length} />
       </div>
     </section>
   );

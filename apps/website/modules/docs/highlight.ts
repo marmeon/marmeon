@@ -8,8 +8,8 @@ const LANGS = ['ts', 'tsx', 'js', 'json', 'sh', 'yaml', 'sql', 'diff', 'html', '
 const ALIASES: Record<string, string> = { typescript: 'ts', javascript: 'js', bash: 'sh', shell: 'sh', zsh: 'sh', console: 'sh', yml: 'yaml' };
 
 /**
- * The theme's placeholder colour of each role → a class; `styles/code.css` gives each class its light and its dark colour. The
- * plain text colour needs no span at all. A colour missing here keeps its inline style (`unknownColours` lists them — a test
+ * The theme's placeholder colour of each role → a class; `styles/code.css` gives each class its colour on the dark code
+ * panel, the same in both colour schemes. The plain text colour needs no span at all. A colour missing here keeps its inline style (`unknownColours` lists them — a test
  * keeps the list empty).
  */
 export const TOKEN_CLASSES: Readonly<Record<string, string>> = {
