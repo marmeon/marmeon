@@ -438,7 +438,7 @@ holds this table to the code. A feature's page explains its variables; the last 
 
 The names follow a few rules:
 
-- A variable starts with the prefix of its area (`APP_`, `AUTH_`, `HASH_`, `CACHE_`, `CSRF_`, `DB_`, `DEVTOOLS_`, `LIVE_`, `LOG_`,
+- A variable starts with the prefix of its area (`APP_`, `AUTH_`, `HASH_`, `CACHE_`, `CSRF_`, `DB_`, `DEVTOOLS_`, `FETCH_`, `LIVE_`, `LOG_`,
   `MAIL_`, `NOTIFICATIONS_`, `QUEUE_`, `REDIS_`, `SCHEDULE_`, `SERVER_`, `SESSION_`, `UPLOADS_`, `MARMEON_OTEL_`). Only `NODE_ENV`,
   `PORT` and `HOST` have none, because platforms set them, and the names of the OpenTelemetry specification stay as it writes them.
 - `<AREA>_DRIVER` picks the driver. `<AREA>_CONNECTION` names a connection of the database or of Redis, and nothing else.
@@ -497,6 +497,8 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `DB_URL` | database | value | optional | [Database: Getting Started](database.md#configuration) |
 | `DB_USERNAME` | database | value | `"postgres"` | [Database: Getting Started](database.md#configuration) |
 | `DEVTOOLS_ENABLED` | devtools | switch | optional | [Devtools](devtools.md#only-in-development) |
+| `FETCH_ALLOWED_ADDRESSES` | fetch | value | `""` | [HTTP Client](http-client.md#configuration) |
+| `FETCH_DRIVER` | fetch | driver | `"direct"` | [HTTP Client](http-client.md#configuration) |
 | `HASH_ARGON_MEMORY_KB` | auth | size | `19456` | [Hashing](hashing.md#configuration) |
 | `HASH_ARGON_PARALLELISM` | auth | value | `1` | [Hashing](hashing.md#configuration) |
 | `HASH_ARGON_TIME` | auth | value | `2` | [Hashing](hashing.md#configuration) |

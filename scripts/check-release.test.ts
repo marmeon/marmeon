@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkScorecardWorkflow, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkScorecardWorkflow, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, packagesNewSinceLastRelease, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -323,6 +323,26 @@ describe('checkChangelogs', () => {
   it('refuses an Unreleased heading', () => {
     const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': '# @marmeon/http\n\n## Unreleased\n\n- A change\n' };
     expect(problemsOf(repositoryOfPackages('0.1.3', files)).join('\n')).toContain('is not "## x.y.z"');
+  });
+
+  it('accepts a heading-only changelog for a package the record does not list, and leaves it out of the shared section', () => {
+    const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': '# @marmeon/http\n\n' };
+    expectProblems(checkChangelogs(repositoryOfPackages('0.1.3', files), frameworkPackages(repositoryOfPackages('0.1.3', files)), new Set(['@marmeon/http'])), []);
+  });
+
+  it('refuses a heading-only changelog for a package that existed at the last release, and for every package when no record says which are new', () => {
+    const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': '# @marmeon/http\n\n' };
+    const directory = repositoryOfPackages('0.1.3', files);
+    const missing = ['@marmeon/http: packages/http/CHANGELOG.md: its first section is missing, but the package is at 0.1.3 — pnpm release:prepare writes it'];
+    expectProblems(checkChangelogs(directory, frameworkPackages(directory), new Set(['@marmeon/core'])), missing);
+    expectProblems(checkChangelogs(directory, frameworkPackages(directory), new Set()), missing);
+    expectProblems(problemsOf(directory), missing);
+  });
+
+  it('keeps refusing a package that is new but whose changelog has an older section', () => {
+    const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': changelog('@marmeon/http', ['0.1.2', '- Old']) };
+    const directory = repositoryOfPackages('0.1.3', files);
+    expect(checkChangelogs(directory, frameworkPackages(directory), new Set(['@marmeon/http'])).join('\n')).toContain('its first section is "## 0.1.2"');
   });
 
   it('refuses a missing changelog and an empty one', () => {
@@ -1635,5 +1655,34 @@ describe('checkCodeqlWorkflow — code scanning', () => {
   it('wants the config file, with the security-extended suite', () => {
     expect(checkCodeqlWorkflow(repositoryWithCodeql(real, null)).join()).toContain('codeql-config.yml is missing');
     expect(checkCodeqlWorkflow(repositoryWithCodeql(real, realConfig.replaceAll('security-extended', 'security-and-quality'))).join()).toContain('security-extended');
+  });
+});
+
+describe('packagesNewSinceLastRelease', () => {
+  const withRecord = (record: string | undefined, version = '0.1.3') =>
+    repositoryOfPackages(version, {
+      ...(record === undefined ? {} : { '.github/released-packages': record }),
+      'packages/core/CHANGELOG.md': changelog('@marmeon/core', [version, 'x']),
+      'packages/http/CHANGELOG.md': '# @marmeon/http\n\n',
+    });
+
+  it('names the packages the record does not list, with no git involved', () => {
+    const directory = withRecord('@marmeon/core\n');
+    expect([...packagesNewSinceLastRelease(directory, frameworkPackages(directory))]).toEqual(['@marmeon/http']);
+    expectProblems(checkChangelogs(directory, frameworkPackages(directory)), []);
+  });
+
+  it('names nobody when the record is missing or malformed, so the heading-only changelog is refused', () => {
+    const missing = ['@marmeon/http: packages/http/CHANGELOG.md: its first section is missing, but the package is at 0.1.3 — pnpm release:prepare writes it'];
+    for (const record of [undefined, '', '@marmeon/core', '@marmeon/http\n@marmeon/core\n', '@marmeon/core\n@marmeon/core\n', '../x\n']) {
+      const directory = withRecord(record);
+      expect(packagesNewSinceLastRelease(directory, frameworkPackages(directory)).size, JSON.stringify(record)).toBe(0);
+      expectProblems(checkChangelogs(directory, frameworkPackages(directory)), missing);
+    }
+  });
+
+  it('refuses a heading-only changelog of a package the record lists', () => {
+    const directory = withRecord('@marmeon/core\n@marmeon/http\n');
+    expect(checkChangelogs(directory, frameworkPackages(directory)).join('\n')).toContain('its first section is missing');
   });
 });

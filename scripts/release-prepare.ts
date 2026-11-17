@@ -40,6 +40,8 @@ import {
   parseReleaseBase,
   parseVersion,
   RELEASE_BASE,
+  RELEASED_PACKAGES,
+  formatReleasedPackages,
   rcOf,
   releaseCommit,
   releaseOf,
@@ -380,6 +382,8 @@ export function prepare({ root, run, dryRun, rc = false, major = false, replace 
     }
   }
   for (const { file, text } of results) writeFileSync(file, text);
+  mkdirSync(join(root, '.github'), { recursive: true });
+  writeFileSync(join(root, RELEASED_PACKAGES), formatReleasedPackages(packages.map((pkg) => pkg.name)));
   mkdirSync(dirname(baseFile), { recursive: true });
   writeFileSync(baseFile, baseText);
   if (upgradingText !== undefined) writeFileSync(upgradingFile, upgradingText);

@@ -56,6 +56,7 @@ As dev dependencies, a new app has three more:
 | --- | --- | --- |
 | `@marmeon/redis` | Redis connections for the cache, sessions, the queue and live updates. | [Redis](redis.md) |
 | `@marmeon/table` | Data tables driven by the server: columns, sorting, filters, actions and CSV export. | [Data tables](tables.md) |
+| `@marmeon/fetch` | Outgoing HTTP requests that refuse addresses that are not public, with a fake for tests. | [HTTP client](http-client.md) |
 | `@marmeon/otel` | OpenTelemetry traces of requests, queries, jobs and mails. | [Observability](observability.md) |
 
 A package that needs a library of its own names the exact install command when the library is missing. The

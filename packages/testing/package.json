@@ -66,6 +66,7 @@
     "@marmeon/auth": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/devtools": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
     "@marmeon/live": "workspace:*",
     "@marmeon/mail": "workspace:*",
     "@marmeon/notifications": "workspace:*",
@@ -84,6 +85,9 @@
       "optional": true
     },
     "@marmeon/devtools": {
+      "optional": true
+    },
+    "@marmeon/fetch": {
       "optional": true
     },
     "@marmeon/live": {
@@ -119,6 +123,7 @@
     "@marmeon/cache": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/devtools": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
     "@marmeon/live": "workspace:*",
     "@marmeon/mail": "workspace:*",
     "@marmeon/notifications": "workspace:*",

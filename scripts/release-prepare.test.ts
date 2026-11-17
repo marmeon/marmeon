@@ -185,6 +185,16 @@ describe('prepare', () => {
     expect(repo.read('.github/release-base')).toBe(`0.1.3 ${'a'.repeat(40)}\n`);
   });
 
+  it('writes the first section into a heading-only CHANGELOG of a package that is new, the same section as everywhere', () => {
+    const repo = repository('0.1.2', { changelog: (short) => (short === 'http' ? '# @marmeon/http\n\n' : `# @marmeon/${short}\n\n## 0.1.2\n\nNo changes in this release.\n`) });
+    go(repo, { generate: { default: notes({ fix: fixes }) } });
+    const section = (text: string) => text.split('## 0.1.3')[1]!.split('## 0.1.2')[0]!.trim();
+    expect(repo.read('packages/http/CHANGELOG.md').startsWith('# @marmeon/http\n\n## 0.1.3\n\n### Fixes\n\n- Escape the cookie name')).toBe(true);
+    expect(repo.read('packages/http/CHANGELOG.md')).not.toContain('## 0.1.2');
+    expect(section(repo.read('packages/http/CHANGELOG.md'))).toBe(section(repo.read('packages/core/CHANGELOG.md')));
+    expect(repo.read('.github/released-packages')).toBe('@marmeon/core\n@marmeon/http\n');
+  });
+
   it('makes 0.2.0 from a breaking pull request, asks for the notes again and writes the UPGRADING heading', () => {
     const repo = repository();
     const breaking = [`Drop the legacy cookie option by @max in ${PR}/20`];

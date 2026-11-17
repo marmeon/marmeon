@@ -114,6 +114,7 @@ export default defineDocs({
         { slug: 'console', label: 'Console' },
         { slug: 'cache', label: 'Cache' },
         { slug: 'events', label: 'Events' },
+        { slug: 'http-client', label: 'HTTP Client' },
         { slug: 'storage', label: 'File Storage' },
         { slug: 'localization', label: 'Localization' },
         { slug: 'mail', label: 'Mail' },

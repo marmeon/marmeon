@@ -263,6 +263,7 @@ declare module '@marmeon/http/page' {
     'lab/Streaming': true;
     'lab/Survey': true;
     'lab/Validation': true;
+    'lab/WebhookPing': true;
     'members/Exports': true;
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;

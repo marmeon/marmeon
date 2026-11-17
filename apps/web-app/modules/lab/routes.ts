@@ -16,6 +16,7 @@ import { CreateGuestLabController, EditGuestLabController, StoreGuestLabControll
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { AddQuestionLabController, ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 import { Surveys } from './SurveyRepository.ts';
+import { PingWebhookLabController, ShowWebhookPingLabController } from './controllers/WebhookPingLabController.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
@@ -74,4 +75,7 @@ export default defineRoutes((Route) => {
   const form = group.middleware(credentialPage({ referrer: 'same-origin' })).authorize(everyone);
   form.get('/invitation', ShowInvitationLabController);
   form.post('/invitation', StoreInvitationLabController);
+  // An address an editor entered, called by the server: `HttpClient` refuses what is not public when it sends.
+  lab.get('/webhook-ping', ShowWebhookPingLabController);
+  lab.middleware(throttle('lab.webhook-ping')).post('/webhook-ping', PingWebhookLabController);
 });
