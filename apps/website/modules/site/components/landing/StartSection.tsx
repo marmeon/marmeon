@@ -5,7 +5,7 @@ import { Terminal } from '../Terminal.tsx';
 
 const READING: { href: string; title: string; text: string }[] = [
   { href: '/docs/installation', title: 'Installation', text: 'Requirements, the starter kit and its flags.' },
-  { href: '/docs/structure', title: 'Directory Structure', text: 'Where modules and their files live.' },
+  { href: '/docs/structure', title: 'Structure', text: 'Where modules and their files live.' },
   { href: '/docs/routing', title: 'Routing', text: 'Routes, names and route model binding.' },
 ];
 
