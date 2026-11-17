@@ -1,0 +1,106 @@
+{
+  "name": "@marmeon/oauth",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Social login for Marmeon apps: OAuth 2.0 and OpenID Connect providers you register by name, configured from the environment.",
+  "keywords": [
+    "marmeon",
+    "oauth",
+    "openid-connect",
+    "social-login",
+    "authentication"
+  ],
+  "homepage": "https://marmeon.com/docs/oauth",
+  "bugs": {
+    "url": "https://github.com/marmeon/marmeon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
+    "directory": "packages/oauth"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@marmeon/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./accounts": {
+      "@marmeon/source": "./src/accounts/index.ts",
+      "types": "./dist/accounts/index.d.ts",
+      "default": "./dist/accounts/index.js"
+    },
+    "./testing": {
+      "@marmeon/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./accounts": {
+        "types": "./dist/accounts/index.d.ts",
+        "default": "./dist/accounts/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "stubs",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "marmeon": {
+    "providers": [
+      "OAuthServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@marmeon/core": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
+    "@marmeon/session": "workspace:*",
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*"
+  },
+  "devDependencies": {
+    "@marmeon/cache": "workspace:*",
+    "@marmeon/server": "workspace:*",
+    "@marmeon/testing": "workspace:*",
+    "marmeon": "workspace:*"
+  },
+  "peerDependencies": {
+    "marmeon": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "marmeon": {
+      "optional": true
+    }
+  }
+}
