@@ -1,8 +1,8 @@
 import type { Container, Resolver } from '@marmeon/core';
 import { HttpError, type ClassResolver, type HttpContext, type RequestDefinition, type StandardSchemaV1 } from '@marmeon/router';
 import { buildSchema, FRAMEWORK_ROUTES, isControllerClass } from '@marmeon/router/internal';
-import { RejectedUpload } from './temporary-upload.ts';
-import { uploadFields } from './rule.ts';
+import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
+import { MEASURED, uploadFields } from './rule.ts';
 import type { TemporaryUploads } from './service.ts';
 
 type Http = typeof import('@marmeon/http');
@@ -85,15 +85,18 @@ export function registerUploads(http: Http, internal: Internal, uploadHeader: st
     if (fields.size === 0) return;
     const route = ctx.route.routeName;
     const session = sessionScope(internal, resolve as (key: unknown) => unknown);
-    for (const field of fields.keys()) {
+    for (const [field, rule] of fields) {
       const place = locate(input, field);
       if (!place || !Object.hasOwn(place.holder, place.key)) continue;
       const value = place.holder[place.key];
       if (value === null || value === undefined || value === '') continue; // nothing chosen: the rule says "required"
-      place.holder[place.key] =
+      const found =
         typeof value === 'string' && route !== undefined && session !== undefined
           ? await uploads().resolve(value, { session, route, field })
           : new RejectedUpload('invalid'); // a file in the body, a list, an object: never an upload
+      // The header is read here, before any rule or controller sees the file; `upload()` judges the result.
+      if (rule.dimensions && found instanceof TemporaryUpload) MEASURED.set(found, (await found.dimensions()) ?? null);
+      place.holder[place.key] = found;
     }
   });
 

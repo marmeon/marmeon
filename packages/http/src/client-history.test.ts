@@ -1,7 +1,7 @@
 import type { HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
-import { LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION } from './protocol.ts';
+import { CONFLICT_HEADER, LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION } from './protocol.ts';
 
 const ctx = (method: string, path: string, headers: Record<string, string> = {}) =>
   ({ request: new Request(`http://app.test${path}`, { method, headers }) }) as unknown as HttpContext;
@@ -109,5 +109,17 @@ describe('cacheControl()', () => {
     expect(set.headers.get('cache-control')).toBe('private, max-age=60');
     const own = await new Middleware().handle(ctx('GET', '/'), async () => new Response('x', { headers: { 'cache-control': 'no-cache' } }));
     expect(own.headers.get('cache-control')).toBe('no-cache');
+  });
+});
+
+describe('ClearClientHistory and a conflict', () => {
+  it('drops the conflict header from the 409 it makes: a document change never carries both', async () => {
+    const history = new ClientHistory();
+    history.clear();
+    const conflict = new Response(JSON.stringify({ message: 'x', current: 1 }), { status: 409, headers: { 'content-type': 'application/json', [CONFLICT_HEADER]: '1' } });
+    const response = await run(history, ctx('PUT', '/notes/1', { 'x-marmeon-action': 'true', referer: 'http://app.test/notes' }), conflict);
+    expect(response.status).toBe(409);
+    expect(response.headers.get(LOCATION_HEADER)).toBe('/notes');
+    expect(response.headers.has(CONFLICT_HEADER)).toBe(false);
   });
 });

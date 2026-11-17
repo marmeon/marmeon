@@ -366,6 +366,17 @@ The error speaks with the rule's message, in the request's language, with the re
 another index stays a 500: a bug, not the user's input. In a transaction, the 422 rolls it back. `unique` gives the friendly
 message before the insert, and the index is what holds.
 
+A [partial unique index](migrations.md#partial-indexes) holds for some rows only. The rule always checks the value that is submitted, so
+apply it only when the submitted row falls under the index's condition, with `when()`. For `table.unique('slug', { where: { stage: 'live' } })`:
+
+```ts
+r.object({ stage: r.in(['draft', 'live']) })
+  .when((data) => data.stage === 'draft', { slug: r.string().required() })
+  .when((data) => data.stage === 'live', { slug: r.string().required().unique(PageRepository, 'slug', { where: (query) => query.where('stage', '=', 'live') }) }),
+```
+
+A draft with a taken slug passes, as the index lets it; a live page with a taken live slug fails with the rule's message.
+
 > [!WARNING]
 > An account's address is no slug: "taken" tells who has an account. Use a `unique` on an address only with
 > `AUTH_PRIVATE_REGISTRATION=false`. Otherwise do what the starter kit does: the same answer for a free and a taken address, and a
@@ -458,6 +469,35 @@ schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'im
 first bytes, never from its name: HTML sent as `.png` is refused. `upload({ maxBytes, text: true })` takes a text file of any format, a CSV for one: no known binary
 format, no markup at the start, no NUL byte (see [storage](storage.md#uploads) for what that does not promise). Nothing chosen is "Choose a file.". A file needs a field of its own: an `upload()` in a list, a
 union or an optional object stops the start. The [requests](requests.md#files) page shows a whole controller.
+
+A browser decodes an image into every one of its pixels, however few bytes the file has: 33 bytes can state 100 000 × 100 000
+pixels. To refuse such a file before any code decodes it, add `dimensions` to an image rule:
+
+```ts
+schema: r.object({
+  avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'], dimensions: { maxPixels: 40_000_000 } }),
+}),
+```
+
+`dimensions` takes `maxWidth`, `maxHeight` and `maxPixels` (width times height). Give at least one, each a positive integer.
+It needs `mime`, and every type in it must be one the rule can measure: PNG, JPEG, GIF or WebP. A rule without `mime` could let a PDF
+through unmeasured, so that is a type error, and the rule throws when you build it. It throws for an option or a limit it does not
+know, too, so a typo never drops a limit.
+
+AVIF is not among the types. The size in an AVIF header is the container's, which a decoder does not have to follow: a grid image
+states one size and decodes its tiles. Until the rule can read the coded image, leave `image/avif` out of `mime` when you set
+`dimensions`.
+
+The size comes from the file's header, and nothing decodes the file. It is the size a browser shows. A turn that the file's EXIF
+(JPEG, PNG, WebP) names is applied, so a JPEG stored 10 × 200 with the orientation 6 counts as 200 × 10. For a GIF it is the
+larger of the logical screen and the right and bottom edge of any frame, on each side. For an extended WebP it is the larger of the canvas and the
+coded image or first animation frame on each side. An animated WebP counts by that size, not by the pixels of all its frames. A job that decodes the file later sets the pixel limit of its own decoder as well.
+
+A file is refused when its size cannot be read, with the message `marmeon.validation.upload.unreadable`. That covers a JPEG whose
+frame header or start of scan lies past the first 256 KB, a PNG whose metadata cannot be followed in the first 256 KB, and a WebP
+whose EXIF chunk lies behind the image data past the first 256 KB (typical for a large WebP with EXIF). It covers a GIF whose end (its trailer) lies past the
+first 256 KB, an EXIF block that cannot be read, and a file that was not read on this request. The messages for a size over a
+limit are `marmeon.validation.upload.width`, `.height` and `.pixels`.
 
 ## Queries
 

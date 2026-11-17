@@ -146,6 +146,7 @@ describe('temporary uploads: what may wait unsent', () => {
     const stream = (contents: Uint8Array) => new ReadableStream<Uint8Array>({ start: (controller) => (controller.enqueue(contents), controller.close()) });
     const png = new Uint8Array(2000);
     png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x2c, 0, 0, 0, 0xc8]);
+    png.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 33); // an empty IDAT chunk: no metadata chunk can follow it
     const scope = { session: 'a', route: 'avatar.update', field: 'avatar' };
     for (const [contents, expected] of [[png, { width: 300, height: 200 }], [new TextEncoder().encode('just text, no image'), undefined]] as const) {
       const token = (await service.target(request('a', contents.byteLength))).token;
@@ -161,6 +162,7 @@ describe('temporary uploads: what may wait unsent', () => {
     const size = 4 * MB;
     const png = new Uint8Array(size);
     png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x2c, 0, 0, 0, 0xc8]);
+    png.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 33); // an empty IDAT chunk: no metadata chunk can follow it
     const token = (await service.target(request('a', size))).token;
     await service.receive(token.slice(3, 39), 'a', new ReadableStream<Uint8Array>({ start: (controller) => (controller.enqueue(png), controller.close()) }), undefined);
     const found = (await service.resolve(token, { session: 'a', route: 'avatar.update', field: 'avatar' })) as { dimensions(): Promise<unknown> };

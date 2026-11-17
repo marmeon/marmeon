@@ -223,6 +223,10 @@ async function createIndexes(db: Kysely<any>, blueprint: Blueprint): Promise<voi
   for (const index of blueprint.allIndexes()) {
     let builder = db.schema.createIndex(index.name).on(blueprint.table).columns([...index.columns]);
     if (index.unique) builder = builder.unique();
+    // Kysely writes these values into the statement as literals, with its own escaping; the blueprint admits no other kind.
+    for (const [column, value] of Object.entries(index.where ?? {})) {
+      builder = value === null ? builder.where(column, 'is', null) : typeof value === 'object' ? builder.where(column, 'is not', null) : builder.where(column, '=', value);
+    }
     await builder.execute();
   }
 }

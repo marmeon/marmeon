@@ -126,6 +126,18 @@ describe.each(drivers)('actions with input on %s', (driver) => {
     });
   });
 
+  describe('a handler that returns conflict(…)', () => {
+    it('is refused on both endpoints — never a 200 with counts and the conflict as data', async () => {
+      const application = await app(driver);
+      for (const response of [await post(application, 'actions/stale', { key: 2 }), await post(application, 'bulk/stale', { keys: [2] })]) {
+        expect(response.status).toBe(500);
+        expect(response.headers.get('x-marmeon-conflict')).toBeNull();
+        // The developer's error, not the user's: the text of it stays on the server.
+        expect(await response.json()).toEqual({ message: 'marmeon.status.500' });
+      }
+    });
+  });
+
   describe('a form posted without JavaScript', () => {
     const back = { accept: 'text/html', referer: 'http://localhost/teams/1/members' };
 

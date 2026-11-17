@@ -9,6 +9,8 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// CheckDimensionMime
+export type CheckDimensionMime<M extends string> = M extends DimensionMime ? M : M extends 'image/avif' ? `'image/avif' is not measured — its header holds the container's size, not the decoded image's (dimensions takes ${JoinNames<DimensionMime>})` : M extends UploadMime ? `'${M}' has no pixel size to check — dimensions takes ${JoinNames<DimensionMime>}` : CheckUploadMime<M>;
 // CheckDiskName
 export type CheckDiskName<N extends string> = string extends DiskName ? N : string extends N ? DiskName : N extends DiskName ? N : [Near<N>] extends [never] ? `'${N}' is not a disk of this app — its disks: ${Join<DiskName>}` : `'${N}' is not a disk of this app — did you mean ${Join<Near<N>>}?`;
 // CheckUploadMime
@@ -17,6 +19,8 @@ export type CheckUploadMime<M extends string> = M extends UploadMime ? M : M ext
 export type DefaultDiskName = Configured extends {
     default: infer Default extends string;
 } ? Default : string;
+// DimensionMime
+export type DimensionMime = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
 // Disk
 export interface Disk {
     readonly name: string;
@@ -249,6 +253,18 @@ export interface TemporaryUrlOptions {
 }
 // UPLOADS_TABLE
 export declare const UPLOADS_TABLE = "temporary_uploads";
+// UploadDimensions
+export type UploadDimensions = {
+    readonly maxWidth?: number;
+    readonly maxHeight?: number;
+    readonly maxPixels?: number;
+} & ({
+    readonly maxWidth: number;
+} | {
+    readonly maxHeight: number;
+} | {
+    readonly maxPixels: number;
+});
 // UploadInput
 export type UploadInput = Upload | null;
 // UploadMime
@@ -291,14 +307,15 @@ export declare function normalizeKey(key: string): string;
 // serveFile
 export declare function serveFile(disk: Disk, key: string, request: Request, options: ServeFileOptions): Promise<Response>;
 // upload
-export declare function upload<const M extends string = UploadMime>(options: {
+export declare function upload<const M extends string = UploadMime, const D extends UploadDimensions | undefined = undefined>(options: ({
     readonly maxBytes: number;
-    readonly mime?: readonly CheckUploadMime<M>[];
     readonly text?: never;
-} | {
+    readonly dimensions?: D;
+} & MimeOption<M, D>) | {
     readonly maxBytes: number;
     readonly text: true;
     readonly mime?: never;
+    readonly dimensions?: never;
 }): UploadSchema;
 // uploadsTableConnection
 export declare function uploadsTableConnection(container: Resolver): string;
@@ -322,6 +339,12 @@ interface DiskBase {
 type Join<U extends string, Done extends string = ''> = [U] extends [never] ? Done : LastOf<U> extends infer L extends string ? Join<Exclude<U, L>, Done extends '' ? L : `${L}, ${Done}`> : Done;
 // LastOf
 type LastOf<U> = UnionToIntersection<U> extends () => infer R ? R : never;
+// MimeOption
+type MimeOption<M extends string, D> = [D] extends [undefined] ? {
+    readonly mime?: readonly CheckUploadMime<M>[];
+} : {
+    readonly mime: readonly CheckDimensionMime<M>[];
+};
 // NO_ENV
 declare const NO_ENV: import("@marmeon/core").EnvSchema<{}, {}>;
 // Near

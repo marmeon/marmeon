@@ -24,6 +24,7 @@ export default {
     cross_site: 'Anfrage einer fremden Seite abgelehnt.',
     throttled: 'Zu viele Versuche.',
     signature: 'Ungültige Signatur.',
+    conflict: 'Jemand anderes hat das inzwischen geändert.',
   },
   validation: {
     password: {
@@ -39,6 +40,10 @@ export default {
       max: 'Die Datei darf höchstens {max} groß sein.',
       type: 'Dieser Dateityp ist nicht erlaubt (erlaubt: {types}).',
       text: 'Es ist nur eine Textdatei erlaubt, zum Beispiel eine CSV-Datei.',
+      width: 'Das Bild darf höchstens {max} Pixel breit sein.',
+      height: 'Das Bild darf höchstens {max} Pixel hoch sein.',
+      pixels: 'Das Bild darf höchstens {max} Pixel haben.',
+      unreadable: 'Die Größe dieses Bildes lässt sich nicht lesen — speichere es noch einmal als {types}.',
       encoding: 'Die Datei ist kein UTF-8-Text — speichere sie als UTF-8.',
     },
     more: '(und {count, plural, one {# weiterer Fehler} other {# weitere Fehler}})',

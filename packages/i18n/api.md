@@ -349,6 +349,7 @@ declare const en: {
         readonly cross_site: 'Cross-site request refused.';
         readonly throttled: 'Too Many Attempts.';
         readonly signature: 'Invalid signature.';
+        readonly conflict: 'Someone else changed this in the meantime.';
     };
     readonly validation: {
         readonly password: {
@@ -364,6 +365,10 @@ declare const en: {
             readonly max: 'The file may be at most {max}.';
             readonly type: 'This type of file is not accepted (allowed: {types}).';
             readonly text: 'Only a text file is accepted, such as a CSV.';
+            readonly width: 'The image may be at most {max} pixels wide.';
+            readonly height: 'The image may be at most {max} pixels high.';
+            readonly pixels: 'The image may have at most {max} pixels.';
+            readonly unreadable: 'The size of this image cannot be read — save it again as {types}.';
             readonly encoding: 'The file is not UTF-8 text — save it as UTF-8.';
         };
         readonly more: '(and {count, plural, one {# more error} other {# more errors}})';

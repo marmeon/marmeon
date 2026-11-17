@@ -23,6 +23,29 @@ export function serverTypes(ctx: ContextOf<typeof UpdateAvatarRequest>) {
   // @ts-expect-error — not a type at all
   upload({ maxBytes: 1_000_000, mime: ['text/csv'] });
 
+  upload({ maxBytes: 1_000_000, mime: ['image/png', 'image/jpeg'], dimensions: { maxPixels: 40_000_000 } });
+  // @ts-expect-error — dimensions needs mime: any type would let a file through unmeasured
+  upload({ maxBytes: 1_000_000, dimensions: { maxPixels: 40_000_000 } });
+  // @ts-expect-error — a PDF has no pixel size to check
+  upload({ maxBytes: 1_000_000, mime: ['image/png', 'application/pdf'], dimensions: { maxPixels: 40_000_000 } });
+  // The text the compiler shows for those mistakes: naming it as the expected type compiles only while it is exactly this.
+  upload<'application/pdf', { maxPixels: 40_000_000 }>({
+    maxBytes: 1_000_000,
+    mime: ["'application/pdf' has no pixel size to check — dimensions takes image/gif, image/jpeg, image/png, image/webp"],
+    dimensions: { maxPixels: 40_000_000 },
+  });
+  upload<'image/avif', { maxPixels: 40_000_000 }>({
+    maxBytes: 1_000_000,
+    mime: ["'image/avif' is not measured — its header holds the container's size, not the decoded image's (dimensions takes image/gif, image/jpeg, image/png, image/webp)"],
+    dimensions: { maxPixels: 40_000_000 },
+  });
+  // @ts-expect-error — at least one limit
+  upload({ maxBytes: 1_000_000, mime: ['image/png'], dimensions: {} });
+  // @ts-expect-error — a text file has no pixel size
+  upload({ maxBytes: 1_000_000, text: true, dimensions: { maxPixels: 40_000_000 } });
+  // @ts-expect-error — not a limit dimensions knows
+  upload({ maxBytes: 1_000_000, mime: ['image/png'], dimensions: { maxPixel: 40_000_000 } });
+
   upload({ maxBytes: 1_000_000, text: true });
   // @ts-expect-error — text and mime are two statements about the same file
   upload({ maxBytes: 1_000_000, text: true, mime: ['image/png'] });

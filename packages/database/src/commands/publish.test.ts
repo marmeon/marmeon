@@ -2,7 +2,8 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Application, ServiceProviderClass } from '@marmeon/core';
-import type { CommandInput } from 'marmeon';
+import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
+import type { CheckProblem, CommandInput } from 'marmeon';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { PackageMigrationsCheck } from '../checks.ts';
@@ -46,12 +47,12 @@ function install(
   root: string,
   name: string,
   files: Record<string, string>,
-  extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean; spec?: string; from?: string; declare?: boolean } = {},
+  extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean; spec?: string; from?: string; declare?: boolean; version?: string } = {},
 ): void {
   const pkg = join(root, 'node_modules', name);
   mkdirSync(pkg, { recursive: true });
   const marmeon = extra.providers ? { providers: extra.providers } : undefined;
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name, version: '1.0.0', exports: './index.js', ...(marmeon ? { marmeon } : {}) }));
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name, version: extra.version ?? '1.0.0', exports: './index.js', ...(marmeon ? { marmeon } : {}) }));
   if (extra.declare === false) {
     providerClasses.delete(pkg);
     writeFileSync(join(pkg, 'index.js'), extra.entry ?? '');
@@ -1010,7 +1011,7 @@ describe('marmeon publish: the declarations of service providers', () => {
     const outer = join(root, 'node_modules/@acme/outer');
     const inner = join(outer, 'vendor/inner');
     mkdirSync(join(inner, 'stubs/migrations'), { recursive: true });
-    writeFileSync(join(inner, 'package.json'), JSON.stringify({ name: '@acme/inner', exports: './index.js' }));
+    writeFileSync(join(inner, 'package.json'), JSON.stringify({ name: '@acme/inner', version: '1.0.0', exports: './index.js' }));
     writeFileSync(join(inner, 'stubs/migrations/2026_01_01_000000_create_inner_table.ts'), STUB('inner'));
     mkdirSync(join(root, 'node_modules/@acme'), { recursive: true });
     symlinkSync(inner, join(root, 'node_modules/@acme/inner'));
@@ -1120,6 +1121,40 @@ describe('publishOwnMigrations: the make:*-table command of a package', () => {
     expect(written(root)).toEqual([]);
   });
 
+  it('neither reads nor writes marmeon-stubs.json: the package of a make command is not one the app can accept', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    expect((await own(root, packageRoot('@marmeon/a'))).code).toBe(0);
+    expect(existsSync(join(root, STUB_MANIFEST))).toBe(false);
+    const broken = makeApp({ name: '@acme/other' });
+    writeFileSync(join(broken, STUB_MANIFEST), '{ not json');
+    const { code, lines } = await own(broken, packageRoot('@marmeon/a'));
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('✗'))).toEqual([]);
+    expect(readFileSync(join(broken, STUB_MANIFEST), 'utf8')).toBe('{ not json');
+  });
+
+  it('leaves a recorded, changed package alone, and copies one without a version', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const source = packageRoot('@marmeon/a');
+    expect((await own(root, source)).code).toBe(0);
+    const migration = readdirSync(join(root, 'modules/system/migrations'))[0]!;
+    expect(recordStubSet(root, '@marmeon/a:stubs/migrations', { package: '@marmeon/a', version: '1.0.0', files: [{ path: `modules/system/migrations/${migration}`, stub: 'stubs/migrations/2026_01_01_000000_create_a_table.ts', sha256: stubHash('other') }] }).ok).toBe(true);
+    const before = readFileSync(join(root, STUB_MANIFEST), 'utf8');
+    const again = await own(root, source);
+    expect(again.code).toBe(0);
+    expect(again.lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/a is in your app');
+    expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe(before);
+
+    const versionless = packageRoot('@marmeon/b');
+    const json = join(fileURLToPath(versionless), 'package.json');
+    writeFileSync(json, JSON.stringify({ ...JSON.parse(readFileSync(json, 'utf8')), version: undefined }));
+    const other = makeApp({ name: '@acme/other' });
+    const { code, lines } = await own(other, versionless);
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('!'))).toEqual([]);
+    expect(existsSync(join(other, STUB_MANIFEST))).toBe(false);
+  });
+
   it('refuses a package.json without a valid package name, and a root that is no file: URL', async () => {
     const root = makeApp({ name: '@acme/other' });
     for (const name of ['../x', '', 'a b', 5, undefined]) {
@@ -1209,5 +1244,425 @@ describe('publishOwnMigrations: the make:*-table command of a package', () => {
     const { code, lines } = await own(root, pathToFileURL(`${tempDir('marmeon-own-package-')}/`));
     expect(code).toBe(1);
     expect(lines).toEqual(['✗ The package.json of the package that runs this command cannot be read.']);
+  });
+});
+
+describe('marmeon publish: the record of what it published', () => {
+  const PACKAGE = '@acme/perm';
+  const SET = `${PACKAGE}:stubs/migrations`;
+  const D27 = /@acme\/perm changed create_roles_table since you published it — /;
+  const FILES = { 'stubs/migrations/create_permissions_table.ts': STUB('permissions'), 'stubs/migrations/create_roles_table.ts': STUB('roles') };
+  const problemsOf = async (root: string) => (await run(root)) as readonly CheckProblem[];
+  const manifestOf = (root: string) => {
+    const read = readStubManifest(root);
+    if (!read.ok) throw new Error(read.error.message);
+    return read.value;
+  };
+  const release = (root: string, files: Record<string, string>, extra: { version?: string; from?: string } = {}) => {
+    // A new release replaces the files of the old one, so the old timestamps are gone.
+    rmSync(join(root, 'node_modules', PACKAGE, 'stubs'), { recursive: true, force: true });
+    install(root, PACKAGE, files, { dependency: false, version: extra.version ?? '1.1.0', from: extra.from });
+  };
+  const changedRoles = { ...FILES, 'stubs/migrations/create_roles_table.ts': STUB('changed') };
+  const rolesPath = (root: string) => join(root, 'modules/permissions/migrations', readdirSync(join(root, 'modules/permissions/migrations')).find((file) => file.endsWith('create_roles_table.ts'))!);
+  const published = async (setup: Setup = {}) => {
+    const root = makeApp({ files: FILES, ...setup });
+    expect((await publish(root)).code).toBe(0);
+    return root;
+  };
+  const errors = (lines: string[]) => lines.filter((line) => line.startsWith('✗'));
+  const setVersion = (root: string, version: unknown) => {
+    const file = join(root, 'node_modules', PACKAGE, 'package.json');
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), version }));
+  };
+
+  it('records every file it writes, with the hash of that package file and the version that wrote it', async () => {
+    const root = await published();
+    const set = manifestOf(root)!.sets[SET]!;
+    expect(set.package).toBe(PACKAGE);
+    expect(set.version).toBe('1.0.0');
+    expect(Object.entries(set.files).map(([path, file]) => [path.replace(/\d{4}_\d{2}_\d{2}_\d{6}/, 'T'), file.stub.replace(/\d{4}_\d{2}_\d{2}_\d{6}/, 'T'), file.sha256])).toEqual([
+      ['modules/permissions/migrations/T_create_permissions_table.ts', 'stubs/migrations/T_create_permissions_table.ts', stubHash(STUB('permissions'))],
+      ['modules/permissions/migrations/T_create_roles_table.ts', 'stubs/migrations/T_create_roles_table.ts', stubHash(STUB('roles'))],
+    ]);
+    expect(stubHash(STUB('permissions'))).not.toBe(stubHash(STUB('roles')));
+  });
+
+  it('reports a recorded file the package changed as a warning that names the fix, never as an error', async () => {
+    const root = await published();
+    expect(await problemsOf(root)).toEqual([]);
+    release(root, changedRoles);
+    const problems = await problemsOf(root);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ severity: 'warning', code: 'D27', message: expect.stringMatching(D27), docs: 'docs/migrations.md#publishing-the-migrations-of-a-package' });
+    expect(problems[0]!.fix).toBeUndefined();
+    expect(problems[0]!.message).toContain('marmeon publish @acme/perm --accept');
+  });
+
+  it('does not report the package file that is as it was published, nor the app editing its own copy', async () => {
+    const root = await published();
+    writeFileSync(rolesPath(root), 'export default { edited: true };\n');
+    expect(await problemsOf(root)).toEqual([]);
+    expect((await publish(root, [PACKAGE], { check: true })).code).toBe(0);
+    release(root, FILES, { version: '1.0.1' });
+    expect(await problemsOf(root)).toEqual([]);
+  });
+
+  it('judges no copy that has no record: an app published before the record gets one, for the files that equal the package', async () => {
+    const root = await published();
+    rmSync(join(root, STUB_MANIFEST));
+    release(root, changedRoles);
+    expect(await problemsOf(root)).toEqual([]);
+    expect((await publish(root, [PACKAGE], { check: true })).code).toBe(0);
+    expect((await publish(root)).code).toBe(0);
+    const files = Object.keys(manifestOf(root)!.sets[SET]!.files);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/create_permissions_table\.ts$/);
+    expect((await publish(root, [PACKAGE], { accept: true })).code).toBe(0);
+    expect(Object.keys(manifestOf(root)!.sets[SET]!.files)).toHaveLength(2);
+    expect(await problemsOf(root)).toEqual([]);
+  });
+
+  it('compares by the migration, so a copy the app moved to another module is still judged, also when no module says it is the package\'s', async () => {
+    const root = await published();
+    mkdirSync(join(root, 'modules/mine/migrations'), { recursive: true });
+    renameSync(rolesPath(root), join(root, 'modules/mine/migrations/2026_02_02_020202_create_roles_table.ts'));
+    writeFileSync(join(root, 'modules/permissions/index.ts'), 'export default {};\n');
+    expect((await publish(root, [], { check: true })).code).toBe(0);
+    release(root, changedRoles);
+    const { code, lines } = await publish(root, [], { check: true });
+    expect(code).toBe(1);
+    expect(errors(lines)).toEqual([expect.stringMatching(/create_roles_table since you published it .*modules\/mine\/migrations\/2026_02_02_020202_create_roles_table\.ts/)]);
+    expect(await problemsOf(root)).toMatchObject([{ severity: 'warning', code: 'D27', file: 'modules/mine/migrations/2026_02_02_020202_create_roles_table.ts' }]);
+  });
+
+  it('counts a package as used by its record when --module put its files into a module of the app', async () => {
+    const root = makeApp({ files: FILES });
+    mkdirSync(join(root, 'modules/billing'), { recursive: true });
+    writeFileSync(join(root, 'modules/billing/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'billing' });\n");
+    expect((await publish(root, [PACKAGE], { module: 'billing' })).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/billing/migrations'))).toHaveLength(2);
+    expect(await problemsOf(root)).toEqual([]);
+    release(root, changedRoles);
+    expect(await problemsOf(root)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+    expect(errors((await publish(root, [], { check: true })).lines)).toEqual([expect.stringMatching(D27)]);
+  });
+
+  it('finds the record by the name of the migration, so a release that renumbers its files or moves its directory is still reported', async () => {
+    const renumbered = await published();
+    release(renumbered, { 'stubs/migrations/create_roles_table.ts': STUB('changed'), 'stubs/migrations/create_permissions_table.ts': STUB('permissions') });
+    expect(await problemsOf(renumbered)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+    expect(errors((await publish(renumbered, [PACKAGE], { check: true })).lines)).toEqual([expect.stringMatching(D27)]);
+
+    const untouched = await published();
+    release(untouched, { 'stubs/migrations/create_roles_table.ts': STUB('roles'), 'stubs/migrations/create_permissions_table.ts': STUB('permissions') });
+    expect(await problemsOf(untouched)).toEqual([]);
+
+    const moved = await published();
+    release(moved, { 'stubs/db/create_permissions_table.ts': STUB('permissions'), 'stubs/db/create_roles_table.ts': STUB('changed') }, { from: 'stubs/db' });
+    expect(await problemsOf(moved)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+    expect((await publish(moved, [PACKAGE], { accept: true })).code).toBe(0);
+    const sets = manifestOf(moved)!.sets;
+    expect(Object.keys(sets[`${PACKAGE}:stubs/db`]!.files)).toHaveLength(2);
+    expect(Object.keys(sets[SET]!.files)).toEqual([]);
+    expect(await problemsOf(moved)).toEqual([]);
+  });
+
+  it('refuses to publish while a recorded file is changed, writes nothing, and writes the new file after --accept', async () => {
+    const root = await published();
+    release(root, { ...changedRoles, 'stubs/migrations/create_extra_table.ts': STUB('extra') });
+    const before = readFileSync(join(root, STUB_MANIFEST), 'utf8');
+    const files = written(root);
+    const refused = await publish(root);
+    expect(refused.code).toBe(1);
+    expect(errors(refused.lines)).toEqual([expect.stringMatching(D27)]);
+    expect(refused.lines[0]).toContain('[marmeon:D27]');
+    expect(written(root)).toEqual(files);
+    expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe(before);
+
+    expect((await publish(root, [PACKAGE], { accept: true })).code).toBe(0);
+    expect(written(root)).toEqual(files);
+    expect(manifestOf(root)!.sets[SET]).toMatchObject({ version: '1.1.0' });
+    expect(Object.values(manifestOf(root)!.sets[SET]!.files).map((file) => file.sha256)).toEqual([stubHash(STUB('permissions')), stubHash(STUB('changed'))]);
+    expect(await problemsOf(root)).toMatchObject([{ severity: 'error', code: 'D6' }]);
+
+    expect((await publish(root)).code).toBe(0);
+    expect(migrationFiles(root).filter((file) => file.endsWith('create_extra_table.ts'))).toHaveLength(1);
+    expect(await problemsOf(root)).toEqual([]);
+  });
+
+  it('exits 1 from publish --check on a changed file, for the package and for all, until it is accepted', async () => {
+    const root = await published();
+    release(root, changedRoles);
+    for (const args of [[PACKAGE], []]) {
+      const { code, lines } = await publish(root, args, { check: true });
+      expect(code).toBe(1);
+      expect(errors(lines)).toEqual([expect.stringMatching(D27)]);
+    }
+    expect((await publish(root, [PACKAGE], { accept: true })).code).toBe(0);
+    expect((await publish(root, [], { check: true })).code).toBe(0);
+  });
+
+  it('keeps the entries of earlier releases when a later release adds a file', async () => {
+    const root = await published();
+    release(root, { ...FILES, 'stubs/migrations/create_extra_table.ts': STUB('extra') });
+    expect((await publish(root)).code).toBe(0);
+    expect(Object.keys(manifestOf(root)!.sets[SET]!.files)).toHaveLength(3);
+    expect(manifestOf(root)!.sets[SET]!.version).toBe('1.1.0');
+  });
+
+  describe('--accept', () => {
+    it('takes one package and no other option', async () => {
+      const root = await published();
+      for (const [args, options] of [[[], {}], [[PACKAGE], { check: true }], [[PACKAGE], { module: 'x' }], [[PACKAGE], { only: 'migrations' }], [[PACKAGE], { force: true }]] as const) {
+        await expect(publish(root, [...args], { accept: true, ...options })).rejects.toThrow(/--accept takes one package/);
+      }
+    });
+
+    it('refuses a package that is no dependency and leaves the manifest as it was', async () => {
+      const root = await published();
+      install(root, '@acme/other', { 'stubs/migrations/create_other_table.ts': STUB('other') }, { dependency: false });
+      const before = readFileSync(join(root, STUB_MANIFEST), 'utf8');
+      const { code, lines } = await publish(root, ['@acme/other'], { accept: true });
+      expect(code).toBe(1);
+      expect(lines).toEqual(['✗ @acme/other is not a dependency of your app — add it first.']);
+      expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe(before);
+    });
+
+    it('says so when the app has none of the migrations, and when there is nothing to accept', async () => {
+      const fresh = makeApp({ files: FILES });
+      expect(await publish(fresh, [PACKAGE], { accept: true })).toEqual({ code: 1, lines: [`✗ Your app has none of the migrations of ${PACKAGE} — nothing to accept.`] });
+      expect(existsSync(join(fresh, STUB_MANIFEST))).toBe(false);
+      const root = await published();
+      expect(await publish(root, [PACKAGE], { accept: true })).toEqual({ code: 0, lines: [`✓ Nothing to accept — ${STUB_MANIFEST} already records the migrations of ${PACKAGE} as they are`] });
+    });
+
+    it('leaves the manifest byte for byte as it was when the app has none of the migrations any more', async () => {
+      const root = await published();
+      const before = readFileSync(join(root, STUB_MANIFEST), 'utf8');
+      rmSync(join(root, 'modules/permissions/migrations'), { recursive: true });
+      expect(await publish(root, [PACKAGE], { accept: true })).toEqual({ code: 1, lines: [`✗ Your app has none of the migrations of ${PACKAGE} — nothing to accept.`] });
+      expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe(before);
+    });
+
+    it('refuses a package without a usable version, a manifest it cannot read and migrations it cannot read, writing nothing', async () => {
+      const root = await published();
+      const before = readFileSync(join(root, STUB_MANIFEST), 'utf8');
+      const never = makeApp({ files: FILES });
+      await publish(never);
+      rmSync(join(never, STUB_MANIFEST));
+      setVersion(never, undefined);
+      const noVersion = `✗ ${PACKAGE} cannot be accepted: it has no version of the form 1.2.3, so marmeon-stubs.json cannot record its migrations.`;
+      expect(await publish(never, [PACKAGE], { accept: true })).toEqual({ code: 1, lines: [noVersion] });
+      setVersion(never, '1.2');
+      expect(await publish(never, [PACKAGE], { accept: true })).toEqual({ code: 1, lines: [noVersion] });
+      expect(existsSync(join(never, STUB_MANIFEST))).toBe(false);
+      expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe(before);
+
+      writeFileSync(join(root, STUB_MANIFEST), '{ not json');
+      expect(await publish(root, [PACKAGE], { accept: true })).toEqual({ code: 1, lines: ['✗ marmeon-stubs.json is not valid JSON. Nothing was written.'] });
+      expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe('{ not json');
+
+      const unreadable = makeApp({ files: FILES, declare: false });
+      expect(await publish(unreadable, [PACKAGE], { accept: true })).toEqual({ code: 1, lines: [`✗ ${PACKAGE} ships no migrations.`] });
+    });
+  });
+
+  describe('a package that cannot be recorded', () => {
+    const NOTE = (name: string, why: string) => `! ${name} ${why}, so its migrations are not recorded and a later change will not be noticed.`;
+
+    it('is copied as before, with one line that says it is not recorded, and neither the check nor --check say more', async () => {
+      for (const version of [undefined, '1.0', 'next']) {
+        const root = makeApp({ files: FILES });
+        setVersion(root, version);
+        const { code, lines } = await publish(root);
+        expect(code, String(version)).toBe(0);
+        expect(lines.filter((line) => line.startsWith('!'))).toEqual([NOTE(PACKAGE, 'has no version of the form 1.2.3')]);
+        expect(migrationFiles(root)).toHaveLength(2);
+        expect(existsSync(join(root, STUB_MANIFEST))).toBe(false);
+        expect(await problemsOf(root)).toEqual([]);
+        expect(await publish(root, [], { check: true })).toEqual({ code: 0, lines: ['✓ Every package you publish from has its migrations in your app'] });
+        expect((await publish(root, [PACKAGE], { check: true })).code).toBe(0);
+      }
+    });
+
+    it('is copied, and not recorded, when its name is one that marmeon-stubs.json cannot hold, though it is found', async () => {
+      const root = makeApp({ name: 'JSONStream-perm', files: FILES });
+      const { code, lines } = await publish(root, ['JSONStream-perm']);
+      expect(code).toBe(0);
+      expect(lines.filter((line) => line.startsWith('!'))).toEqual([NOTE('JSONStream-perm', 'has a name marmeon-stubs.json cannot record')]);
+      expect(migrationFiles(root)).toHaveLength(2);
+      expect(existsSync(join(root, STUB_MANIFEST))).toBe(false);
+    });
+  });
+
+  describe('sets that are not its own', () => {
+    const kitSet = (root: string, key: string) => {
+      mkdirSync(join(root, 'modules/auth'), { recursive: true });
+      writeFileSync(join(root, 'modules/auth/x.ts'), 'export {};\n');
+      expect(recordStubSet(root, key, { package: PACKAGE, version: '0.9.0', files: [{ path: 'modules/auth/x.ts', stub: 'stubs/modules/auth/x.ts' }] }).ok).toBe(true);
+    };
+
+    it('does not make a package used, and is neither read nor rewritten by publish, which records into a set of its own', async () => {
+      const root = makeApp({ files: FILES });
+      kitSet(root, `${PACKAGE}:stubs/modules/auth`);
+      const kit = manifestOf(root)!.sets[`${PACKAGE}:stubs/modules/auth`];
+      expect(await problemsOf(root)).toEqual([]);
+      expect((await publish(root)).code).toBe(0);
+      expect(manifestOf(root)!.sets[`${PACKAGE}:stubs/modules/auth`]).toEqual(kit);
+      expect(Object.keys(manifestOf(root)!.sets[SET]!.files)).toHaveLength(2);
+      release(root, changedRoles);
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+      expect((await publish(root, [PACKAGE], { accept: true })).code).toBe(0);
+      expect(manifestOf(root)!.sets[`${PACKAGE}:stubs/modules/auth`]).toEqual(kit);
+    });
+
+    it('is left as it is when the set of the migrations directory also holds other files, and the migrations are copied unrecorded', async () => {
+      const root = makeApp({ files: FILES });
+      kitSet(root, SET);
+      const before = readFileSync(join(root, STUB_MANIFEST), 'utf8');
+      const { code, lines } = await publish(root);
+      expect(code).toBe(0);
+      expect(lines.filter((line) => line.startsWith('!'))).toEqual([expect.stringMatching(/^! @acme\/perm shares the set "@acme\/perm:stubs\/migrations" of marmeon-stubs\.json with files that are not migrations, so its migrations are not recorded/)]);
+      expect(migrationFiles(root)).toHaveLength(2);
+      expect(readFileSync(join(root, STUB_MANIFEST), 'utf8')).toBe(before);
+    });
+  });
+
+  describe('what publish says without a package', () => {
+    it('refuses with the manifest error before it lists anything, when marmeon-stubs.json cannot be read', async () => {
+      const root = await published();
+      writeFileSync(join(root, STUB_MANIFEST), JSON.stringify({ format: 2, sets: {} }));
+      const { code, lines } = await publish(root, []);
+      expect(code).toBe(1);
+      expect(lines).toEqual([expect.stringMatching(/^✗ marmeon-stubs\.json was written by a newer Marmeon/)]);
+    });
+
+    it('does not call a package complete whose published migration changed: exit 1 with the same message as for the package', async () => {
+      const root = await published();
+      expect(await publish(root, [])).toEqual({ code: 0, lines: ['✓ Nothing to publish'] });
+      release(root, changedRoles);
+      const { code, lines } = await publish(root, []);
+      expect(code).toBe(1);
+      expect(lines).toEqual([expect.stringMatching(D27)]);
+      expect(lines[0]).toContain('[marmeon:D27]');
+    });
+
+  });
+
+  describe('which package counts as published from', () => {
+    it('keeps a --module package when the app moved all its recorded migrations to another module', async () => {
+      const root = makeApp({ files: FILES });
+      mkdirSync(join(root, 'modules/billing'), { recursive: true });
+      writeFileSync(join(root, 'modules/billing/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'billing' });\n");
+      expect((await publish(root, [PACKAGE], { module: 'billing' })).code).toBe(0);
+      mkdirSync(join(root, 'modules/mine/migrations'), { recursive: true });
+      for (const file of readdirSync(join(root, 'modules/billing/migrations'))) renameSync(join(root, 'modules/billing/migrations', file), join(root, 'modules/mine/migrations', file));
+      release(root, changedRoles);
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'warning', code: 'D27', file: expect.stringMatching(/^modules\/mine\/migrations\//) }]);
+    });
+
+    it('counts a package whose declaration cannot be read as used by its record, so the check and --check say so', async () => {
+      const root = await published({ providers: ['PermServiceProvider'] });
+      const Provider = providerClasses.get(join(root, 'node_modules', PACKAGE))!;
+      (Provider as unknown as { migrations: unknown }).migrations = { from: 'stubs/migrations', module: 'perm' };
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'error' }]);
+      expect((await publish(root, [], { check: true })).code).toBe(1);
+    });
+
+    it('ends the record of a package that can no longer be recorded when it is accepted, and says so', async () => {
+      const root = await published();
+      setVersion(root, undefined);
+      release(root, changedRoles, { version: 'next' });
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+      expect(await publish(root, [PACKAGE], { accept: true })).toEqual({ code: 0, lines: [`✓ ${PACKAGE} has no version of the form 1.2.3, so its migrations are no longer recorded in marmeon-stubs.json`] });
+      expect(Object.keys(manifestOf(root)!.sets[SET]!.files)).toEqual([]);
+      expect(await problemsOf(root)).toEqual([]);
+    });
+
+    it('keeps the record of a migration the app links to a file inside the project, so a later change is still reported', async () => {
+      for (const accept of [false, true]) {
+        const root = await published();
+        mkdirSync(join(root, 'modules/real'), { recursive: true });
+        const link = rolesPath(root);
+        renameSync(link, join(root, 'modules/real/roles.ts'));
+        symlinkSync(join(root, 'modules/real/roles.ts'), link);
+        expect((await publish(root, [PACKAGE], accept ? { accept: true } : {})).code).toBe(0);
+        expect(Object.keys(manifestOf(root)!.sets[SET]!.files)).toHaveLength(2);
+        release(root, changedRoles);
+        expect(await problemsOf(root), String(accept)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+      }
+    });
+
+    it('takes the record that matches when one name is recorded in two sets', async () => {
+      const root = await published();
+      const [path] = Object.entries(manifestOf(root)!.sets[SET]!.files).find(([, file]) => file.stub.endsWith('create_roles_table.ts'))!;
+      expect(recordStubSet(root, `${PACKAGE}:stubs/a-old`, { package: PACKAGE, version: '0.9.0', files: [{ path, stub: 'stubs/old/2025_01_01_000000_create_roles_table.ts', sha256: stubHash(STUB('stale')) }] }).ok).toBe(true);
+      expect(await problemsOf(root)).toEqual([]);
+      release(root, changedRoles);
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'warning', code: 'D27' }]);
+    });
+  });
+
+  describe('a manifest that cannot be read', () => {
+    it('refuses publish before it writes, and the check and --check report it once the app publishes from a package', async () => {
+      const fresh = makeApp({ files: FILES });
+      writeFileSync(join(fresh, STUB_MANIFEST), JSON.stringify({ format: 2, sets: {} }));
+      const refused = await publish(fresh);
+      expect(refused.code).toBe(1);
+      expect(refused.lines).toEqual([expect.stringMatching(/^✗ marmeon-stubs\.json was written by a newer Marmeon.* Nothing was written\.$/)]);
+      expect(written(fresh)).toEqual([]);
+
+      const root = await published();
+      writeFileSync(join(root, STUB_MANIFEST), JSON.stringify({ format: 2, sets: {} }));
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'error', file: STUB_MANIFEST, message: expect.stringMatching(/newer Marmeon/) }]);
+      expect((await publish(root, [], { check: true })).code).toBe(1);
+    });
+
+    it('is an error as soon as a dependency declares migrations, published from or not; an app with none has nothing to say', async () => {
+      const root = makeApp({ files: FILES });
+      writeFileSync(join(root, STUB_MANIFEST), '{ not json');
+      expect(await problemsOf(root)).toMatchObject([{ severity: 'error', file: STUB_MANIFEST, message: expect.stringContaining('not valid JSON') }]);
+      expect((await publish(root, [], { check: true })).code).toBe(1);
+      const none = makeApp({ files: FILES, declare: false });
+      writeFileSync(join(none, STUB_MANIFEST), '{ not json');
+      expect(await problemsOf(none)).toEqual([]);
+    });
+  });
+
+  describe('a marmeon-stubs.json that is a link out of the app', () => {
+    const outside = () => {
+      const file = join(tempDir('marmeon-publish-outside-'), 'manifest.json');
+      writeFileSync(file, '{ not json');
+      return file;
+    };
+    const LEADS_OUT = /^marmeon-stubs\.json leads out of the project/;
+
+    it('is refused by publish, --accept and --check, which read and write nothing through it', async () => {
+      const root = makeApp({ files: FILES });
+      const target = outside();
+      symlinkSync(target, join(root, STUB_MANIFEST));
+      const results = [await publish(root), await publish(root, [PACKAGE], { accept: true }), await publish(root, [PACKAGE], { check: true })];
+      for (const { code, lines } of results) {
+        expect(code).toBe(1);
+        expect(lines).toEqual([expect.stringMatching(/^✗ marmeon-stubs\.json leads out of the project/)]);
+      }
+      expect(written(root)).toEqual([]);
+      expect(readFileSync(target, 'utf8')).toBe('{ not json');
+    });
+
+    it('is an error of the check and of publish --check once the app publishes from a package', async () => {
+      const root = await published();
+      const target = outside();
+      rmSync(join(root, STUB_MANIFEST));
+      symlinkSync(target, join(root, STUB_MANIFEST));
+      const problems = await problemsOf(root);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatchObject({ severity: 'error', file: STUB_MANIFEST, message: expect.stringMatching(LEADS_OUT) });
+      const { code, lines } = await publish(root, [], { check: true });
+      expect(code).toBe(1);
+      expect(lines).toEqual([expect.stringMatching(/^✗ marmeon-stubs\.json leads out of the project/)]);
+      expect(readFileSync(target, 'utf8')).toBe('{ not json');
+    });
   });
 });

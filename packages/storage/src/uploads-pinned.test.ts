@@ -190,6 +190,7 @@ describe('an uploaded S3 object is pinned by its ETag from the check to the stor
     const bytes = new Uint8Array(length);
     bytes.set(PNG);
     bytes.set([0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x2c, 0, 0, 0, 0xc8], 8);
+    bytes.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 33); // an empty IDAT chunk: no metadata chunk can follow it
     return bytes;
   }
 

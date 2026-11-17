@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, CONFLICT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { Navigator } from './navigation.ts';
 import type { RegionOwner } from './owner.ts';
 import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
@@ -239,6 +239,55 @@ describe('optimistic patches', () => {
     expect(await withActions(navigator).action('/logout')).toEqual({ ok: false, kind: 'cancelled' });
     expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(navigator.cachedPages).toBe(0);
+  });
+
+  describe('a conflict (conflict(current) of the controller)', () => {
+    const conflict = (body: unknown, headers: Record<string, string> = { [CONFLICT_HEADER]: '1' }) =>
+      new Response(typeof body === 'string' ? body : JSON.stringify(body), { status: 409, headers: { 'content-type': typeof body === 'string' ? 'text/plain' : 'application/json', ...headers } });
+
+    it('a 409 with the conflict header ends conflict: current and message — and rolls back its patches', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      win.handler = () => conflict({ message: 'Someone else changed this in the meantime.', current: { version: 3 } });
+      const { navigator, visible } = boot(win, profile('/users/1', 1, 2));
+      const outcome = await withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)) });
+      expect(outcome).toEqual({ ok: false, kind: 'conflict', current: { version: 3 }, message: 'Someone else changed this in the meantime.' });
+      expect(linksOf(visible())).toEqual([1, 2]);
+      expect(win.loads).toEqual([]);
+    });
+
+    it('with a location too, the document changes — the location is checked first', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      win.handler = () => conflict({ message: 'x', current: 1 }, { [CONFLICT_HEADER]: '1', [LOCATION_HEADER]: '/login' });
+      const { navigator } = boot(win, profile('/users/1', 1));
+      expect(await withActions(navigator).action('/users/1/links/1', { method: 'delete' })).toEqual({ ok: false, kind: 'cancelled' });
+      expect(win.loads).toEqual(['assign https://app.test/login']);
+    });
+
+    it('a 409 without the header (an app\'s own abort(409)) stays an exception', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      win.handler = () => conflict({ message: 'Taken.', current: 1 }, {});
+      const { navigator } = boot(win, profile('/users/1', 1));
+      expect(await withActions(navigator).action('/users/1/links/1', { method: 'delete' })).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 409, message: 'Taken.' } });
+    });
+
+    it('takes the header only as exactly 1 — any other value is no conflict', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      const { navigator } = boot(win, profile('/users/1', 1));
+      for (const value of ['0', 'true', '']) {
+        win.handler = () => conflict({ message: 'Stale.', current: 1 }, { [CONFLICT_HEADER]: value });
+        expect(await withActions(navigator).action('/users/1/links/1', { method: 'delete' })).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 409, message: 'Stale.' } });
+      }
+    });
+
+    it('the header with a body that is no JSON conflict is an exception — fail closed', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      const { navigator } = boot(win, profile('/users/1', 1));
+      const expected = { ok: false, kind: 'exception', exception: { type: 'server', status: 409, message: undefined } };
+      win.handler = () => conflict('not json');
+      expect(await withActions(navigator).action('/users/1/links/1', { method: 'delete' })).toEqual(expected);
+      win.handler = () => conflict({ current: 1 });
+      expect(await withActions(navigator).action('/users/1/links/1', { method: 'delete' })).toEqual(expected);
+    });
   });
 
   it('a 409 for another version of the protocol loads fully exactly once — whatever the page still sends afterwards (no reload loop)', async () => {

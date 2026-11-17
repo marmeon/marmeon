@@ -79,12 +79,16 @@ function pageOf(url: URL): PageObject {
   };
 }
 
+let fakeConflict = false;
+
 async function server(input: string, init: RequestInit = {}): Promise<Response> {
   const url = new URL(input, 'https://app.test');
   const headers = { ...(init.headers as Record<string, string>) };
   const body = typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
   requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers, body });
   if (url.pathname.startsWith('/members/_tables/members/')) {
+    // A handler that fakes a conflict with a 409 and the header (the table's types and its endpoint refuse `conflict(…)`).
+    if (fakeConflict) return Response.json({ message: 'Stale.', current: { version: 2 } }, { status: 409, headers: { 'x-marmeon-conflict': '1' } });
     const keys = url.pathname.includes('/bulk/') ? ((body as { keys?: number[]; all?: true }).all ? live.map((row) => row.id) : (body as { keys: number[] }).keys) : [(body as { key: number }).key];
     live = live.filter((row) => !keys.includes(row.id));
     return Response.json({ done: keys.length, skipped: 0, missing: 0 });
@@ -119,6 +123,7 @@ let app: ReturnType<typeof textApp>;
 
 beforeEach(() => {
   live = ALL.map((row) => ({ ...row }));
+  fakeConflict = false;
   requests.length = 0;
   window.fetch = server as typeof fetch;
   document.cookie = 'XSRF-TOKEN=token';
@@ -284,6 +289,16 @@ describe('the headless table on the client core alone', () => {
     expect((app.navigator.page.props.members as Members).rows.map((row) => row.name), 'the removed row came back').toEqual(['Ada', 'Alan']);
     expect(app.root.textContent).toBe('Ada, Alan');
     expect(app.navigator.page.props.title).toBe('Members');
+  });
+
+  it('reports a faked conflict (a 409 with the conflict header) as an exception, row and bulk — a table has no conflict outcome', async () => {
+    fakeConflict = true;
+    const table = app.table();
+    const failure = { ok: false, kind: 'exception', exception: { type: 'server', status: 409, message: 'Stale.' } };
+    expect(await table.run('removeLinks', table.data.rows[1]!)).toEqual(failure);
+    table.select(table.data.rows[1]!);
+    expect(await table.runBulk('removeLinks')).toEqual(failure);
+    expect(live.length, 'a row was removed').toBe(3);
   });
 
   it('a bulk run whose page was left before the answer still resolves ok — the selection of the entry that is gone is detached', async () => {

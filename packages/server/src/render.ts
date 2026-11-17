@@ -21,9 +21,11 @@ import { IntendedKey, ReadOnly } from '@marmeon/http/internal';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
+  CONFLICT_HEADER,
   FLASH_HEADER,
   FLASH_WAITING_HEADER,
   flashOf,
+  isConflictResult,
   isIslandResult,
   isJsonResult,
   isLayerResult,
@@ -68,7 +70,7 @@ import {
   type PropOrigins,
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
-import { ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router';
+import { addVary, EXPECTS_JSON_VARY, ownResponse, RequestNonce, type ResponseContext } from '@marmeon/router';
 import { localLocation } from '@marmeon/router/internal';
 import { urlFor } from '@marmeon/router/url';
 import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory, type RouteLookup } from '@marmeon/router/internal';
@@ -588,6 +590,17 @@ export function createResponseFactory(
     if (isIslandResult(result)) {
       return islandResponse(result, ctx, versionOf(result.component), debug(ctx.request), scope, onPage, varied(PAGE_VARY), crossesEntry(ctx.request, result.component));
     }
+    if (isConflictResult(result)) {
+      if (!isActionRequest(ctx.request) && asksForPage(ctx.request)) {
+        // A page — a visit of the client, or a form posted without JavaScript — has no place to show a conflict: a mistake of the controller, like a page sent to an action.
+        throw new HttpError(406, debug(ctx.request) ? CONFLICT_FOR_PAGE : undefined);
+      }
+      const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+      const raw = result.message;
+      const message = translator ? (raw === undefined ? translator.text('marmeon.errors.conflict', {}, 'Someone else changed this in the meantime.') : translator.has(raw) ? translator.text(raw) : raw) : (raw ?? 'Someone else changed this in the meantime.');
+      // No flash messages: a failure leaves them for the page. Never a location: the 409 must not read as a document change.
+      return ownResponse(Response.json({ message, current: result.current }, { status: 409, headers: { ...addVary(undefined, [...EXPECTS_JSON_VARY, PAGE_HEADER]), [CONFLICT_HEADER]: '1', 'cache-control': 'no-store' } }));
+    }
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
       // An action's data: with the messages its controller flashed — an API client's JSON leaves them for a page.
@@ -598,7 +611,7 @@ export function createResponseFactory(
       // An action gets data, never a page: the types refuse such a route for `useAction` — a page here is a mistake.
       throw new HttpError(
         406,
-        debug(ctx.request) ? `[${result.component}] is a page — an action (useAction) gets data: its controller returns this.json(…) or a redirect, not this.view(…).` : undefined,
+        debug(ctx.request) ? `[${result.component}] is a page — an action (useAction) gets data: its controller returns this.json(…), a redirect or conflict(…), not this.view(…).` : undefined,
       );
     }
     if (regionOf(ctx.request) === 'island') {
@@ -877,4 +890,14 @@ function errorFields(error: unknown, redactor: Redactor): { exception: string; m
 /** The document a request of the client core names (`x-marmeon-document`, the tabSync feature) — undefined: none (a full page load). */
 function documentOfRequest(request: Request): string | undefined {
   return request.headers.get(DOCUMENT_HEADER) ?? undefined;
+}
+
+const CONFLICT_FOR_PAGE = 'A conflict answers an action (useAction) or an API client; this request asks for a page (a visit or a form) — return conflict(…) only from a route that those call.';
+
+// A page-protocol request, or one whose first accepted type is HTML (a form posted without JavaScript): it wants a page, not JSON.
+// No `Accept`, or a wildcard, is an API client's.
+function asksForPage(request: Request): boolean {
+  if (request.headers.has(PAGE_HEADER)) return true;
+  const first = (request.headers.get('accept') ?? '').split(',')[0]!.split(';')[0]!.trim().toLowerCase();
+  return first === 'text/html' || first === 'application/xhtml+xml';
 }

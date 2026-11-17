@@ -14,7 +14,7 @@ import type { TableDefinition } from './index.ts';
 import type { TableVisibility } from './index.ts';
 import { rules as r } from '@marmeon/validation';
 import type { AnyTableData, BulkOf, FilterEntryOf, FilterOf, TableController } from './client/index.ts';
-import { json, RedirectResult } from '@marmeon/http';
+import { conflict, json, RedirectResult } from '@marmeon/http';
 import { action, bulk, column, type CheckColumnKey, type CheckFilters, defineTable, exportCsv, filter, type ContextOfTable, type DataTableRow, type TableContext, type TableExportEntry, type TableProps, DataTables } from './index.ts';
 
 class Deactivate {
@@ -619,6 +619,47 @@ describe('actions with input', () => {
       bulk: { setRole: bulk(SetRoles) },
     });
     defineTable({ name: 'x', query: (db) => db.selectFrom('members'), key: 'id', columns: { name: column('name') }, actions: { ok: action(WantsInput).input(r.object({ role: r.string() })) } });
+  });
+
+  it('refuses a handler that answers conflict(…) — a table answers counts, a stale save would read as a success', () => {
+    class StaleRow {
+      handle(_row: { readonly id: number }) {
+        return conflict({ version: 2 });
+      }
+    }
+    class MaybeStale {
+      async handle(_rows: readonly { readonly id: number }[]) {
+        return Math.random() > 0.5 ? conflict({ version: 2 }) : { done: true };
+      }
+    }
+    // A handler that returns `any` (an untyped call inside) says nothing about a conflict: it compiles, the endpoint refuses a real one.
+    class Untyped {
+      handle(_row: { readonly id: number }): any {
+        return JSON.parse('{}');
+      }
+    }
+    class UntypedAsync {
+      async handle(_rows: readonly { readonly id: number }[]): Promise<any> {
+        return JSON.parse('{}');
+      }
+    }
+    defineTable({ name: 'x', query: (db) => db.selectFrom('members'), key: 'id', columns: { name: column('name') }, actions: { untyped: action(Untyped) }, bulk: { untyped: bulk(UntypedAsync) } });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — 'stale': its handler returns conflict(…)
+      actions: { stale: action(StaleRow) },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — 'maybe': its handler returns conflict(…) in one branch
+      bulk: { maybe: bulk(MaybeStale) },
+    });
   });
 
   it('takes a schema or a function building one, and nothing else', () => {

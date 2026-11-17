@@ -277,6 +277,52 @@ export class PinNoteController extends Controller {
 The status defaults to 200; `this.json(data, { status: 201 })` sends another. `this.json(undefined)` answers 204 with no body.
 An API client gets the same JSON, and the [actions](actions.md) page shows how a page calls such a route without leaving.
 
+## Conflict
+
+`conflict(current)` answers a save that went stale: someone else changed the record first. It is a function you import from
+`@marmeon/http`, not a method of the controller. Return it, do not throw it. A data layer that gives a `Result` maps its `err` to it:
+
+```ts title="modules/notes/controllers/SaveNoteController.ts"
+import { can } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { conflict, Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+import { NotePolicy } from '../policies/NotePolicy.ts';
+import { NoteRepository } from '../NoteRepository.ts';
+
+export const SaveNoteRequest = defineRequest({
+  schema: r.object({ body: r.string().required(), version: r.integer().required() }),
+  authorize: can(NotePolicy, 'update', 'note'),
+});
+
+export class SaveNoteController extends Controller {
+  static request = SaveNoteRequest;
+
+  readonly #notes: NoteRepository;
+
+  constructor(notes: NoteRepository) {
+    super();
+    this.#notes = notes;
+  }
+
+  async handle(ctx: ContextOf<typeof SaveNoteRequest, { note: Row<'notes'> }>) {
+    const saved = await this.#notes.saveIfCurrent(ctx.params.note.id, ctx.body.body, ctx.body.version);
+    if (!saved.ok) return conflict({ version: saved.error.version, body: saved.error.body });
+    return this.json({ version: saved.value.version });
+  }
+}
+```
+
+An action gets `{ kind: 'conflict', current, message }`, with `current` typed as `Serialize<T>` (what JSON makes of it). An API client
+gets status `409` with `{ message, current }` and the header `x-marmeon-conflict: 1`. `message` is the framework's text in the
+request's language; `conflict(current, { message: 'notes.stale' })` sends a text of yours or a key of your language files. The
+second argument takes `message` and nothing else; any other option is a `TypeError`.
+
+The answer is never cached, takes no flash messages and never carries a location. A request that asks for a page gets `406`
+instead: a page-protocol request, such as a visit or a form of `useForm`, and a request whose first accepted type is HTML, such as a
+form posted without JavaScript. Every other request is answered, an API client with no `Accept` header or with `*/*` included.
+A table's action cannot return it; see [tables](tables.md#the-answer).
+
 ## Other results
 
 | Result | Response |
