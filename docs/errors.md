@@ -511,6 +511,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | S5 | `i18n` | A message with a syntax error, such as an unclosed placeholder. [Messages](localization.md#messages) |
 | S6 | `i18n` | A file in `lang/marmeon/` or in `lang/<namespace>/` that names a key the texts it rewords do not have, or a text that drops a placeholder of theirs. [The framework's texts](localization.md#the-frameworks-texts), [Texts of a package](localization.md#texts-of-a-package) |
 | S7 | `i18n` | A package with texts and a module of the app (`modules/<namespace>/lang/`) both have texts under one namespace. [Texts of a package](localization.md#texts-of-a-package) |
+| S9 | `fetch` | Outgoing requests are not set up: an entry of `FETCH_ALLOWED_ADDRESSES` is not an address range, `FETCH_DRIVER` names a transport nobody brought, or a provider's factory returns something without `send()`. [Fetch transports](drivers.md#fetch-transports) |
 
 ## Errors in the browser
 

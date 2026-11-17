@@ -799,6 +799,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/fetch:
+    dependencies:
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/http:
     dependencies:
       '@marmeon/core':

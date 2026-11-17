@@ -39,6 +39,7 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 | `diskDrivers` | [File storage](storage.md#disk-drivers) | `driver` of a disk in `defineStorage()` |
 | `cacheDrivers` | [Cache](cache.md#cache-drivers) | `CACHE_DRIVER` |
 | `mailDrivers` | [Mail transports](#mail-transports) | `MAIL_DRIVER` |
+| `fetchDrivers` | [Fetch transports](#fetch-transports) | `FETCH_DRIVER` |
 
 A driver reads its own settings through a configuration of its own, which its provider lists in `static config`
 ([package development](package-development.md#configuration)). The factory resolves what it needs from the `container` it is given.
@@ -278,3 +279,42 @@ same transport in the worker.
 A transport a package brings is responsible for its own route to the provider. The framework's `MAIL_SECURE` and `MAIL_REQUIRE_TLS`
 apply to `smtp` only: a transport of your own sends over TLS, checks the certificate of the provider and keeps its credentials out
 of the messages it throws and logs. Read your own settings from a configuration of your own, listed in `static config`.
+
+## Fetch transports
+
+A fetch transport sends one outgoing request for `HttpClient` and implements `FetchTransport`. It is a `FetchDriverFactory`: it gets the
+`name` it was registered under, the `container` and a `logger` of the `fetch` channel, and returns the transport.
+`FETCH_DRIVER` selects it by name, like the built-in `direct`:
+
+```ts title="src/EgressServiceProvider.ts"
+import type { FetchDriverFactory } from '@marmeon/fetch';
+import { EgressConfig } from './EgressConfig.ts';
+import { EgressTransport } from './EgressTransport.ts';
+
+const egress: FetchDriverFactory = ({ container }) => new EgressTransport(container.make(EgressConfig));
+
+export class EgressServiceProvider {
+  static config = [EgressConfig];
+  static fetchDrivers = { egress };
+}
+```
+
+```sh title=".env"
+FETCH_DRIVER=egress
+```
+
+`send(request, context)` resolves with `{ status, headers, body }`: the status, the `Headers` and the body as a stream of bytes, as
+the server sent them. It follows no redirect. The `context` holds `isPublic(address)`, the `timeouts` for connecting and for the
+response headers, and the `signal` that ends the request at any stage, the reading of the body included. A transport throws a `FetchError` and nothing else, also for the body stream.
+
+A transport resolves the host and connects itself, and it refuses an address for which `context.isPublic` answers `false`.
+The `direct` transport checks every address a name resolves to and connects only to a checked one. A transport that hands the connection to an egress
+proxy hands that check to the proxy, and has to say so in its own documentation.
+
+The client still decides what no transport should: it refuses a host written as an IP address that is not public, a scheme other than `http` and `https`, credentials in
+the address and a redirect from `https` to `http`, at every hop of a redirect, and it follows redirects itself, so every hop is a new `send()`.
+`FETCH_ALLOWED_ADDRESSES` lists address ranges that may be reached although they are not public, comma-separated, as CIDR ranges
+without host names: `FETCH_ALLOWED_ADDRESSES=10.20.0.0/16,fd00::/8`. An entry that is not a range stops the start.
+
+The transport is built at the start, so a factory that throws, or returns something without a `send()`, stops the start. A
+`FETCH_DRIVER` nobody brought stops it too, with the names there are. A transport may have a `close()`: the framework calls it at shutdown.
