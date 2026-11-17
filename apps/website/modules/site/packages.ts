@@ -39,7 +39,7 @@ export const PACKAGES: readonly PackageEntry[] = [
   { name: '@marmeon/storage', docs: 'storage', group: 'app', text: 'Local and S3 disks, signed URLs, uploads.' },
   { name: '@marmeon/live', docs: 'realtime', group: 'app', text: 'Pages reload their data when the server hints a change.' },
   { name: '@marmeon/notifications', docs: 'notifications', group: 'app', text: 'Mail, database and live notifications.' },
-  { name: '@marmeon/fetch', docs: 'http-client', group: 'add', text: 'Outgoing requests that refuse private addresses, with a fake for tests.' },
+  { name: '@marmeon/fetch', docs: 'http-client', group: 'app', text: 'Outgoing requests that refuse private addresses, with a fake for tests.' },
   { name: '@marmeon/redis', docs: 'redis', group: 'add', text: 'Redis connections for the cache, sessions, the queue and live updates.' },
   { name: '@marmeon/table', docs: 'tables', group: 'add', text: 'Server-driven data tables with sorting, filters, actions, CSV export.' },
   { name: '@marmeon/otel', docs: 'observability', group: 'add', text: 'OpenTelemetry traces.' },

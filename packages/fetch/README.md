@@ -4,6 +4,8 @@ Outgoing HTTP requests for Marmeon apps: the client refuses addresses that are n
 
 ## Installation
 
+A new app has it. Otherwise:
+
 ```sh
 pnpm add -E @marmeon/fetch@<version of your app>
 ```
