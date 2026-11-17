@@ -1,4 +1,4 @@
-/* The dark code window: its own syntax palette, file names in a title bar, a soft petrol shadow. */
+/* The dark code window: its own syntax palette, file names in a title bar, a soft petrol shadow, and the radius of the docs' code figures. */
 .editor {
   --syn-keyword: var(--editor-syn-keyword);
   --syn-type: var(--editor-syn-type);
@@ -10,7 +10,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--editor-line);
-  border-radius: var(--radius-3);
+  border-radius: var(--radius-lg);
   background: var(--editor-bg);
   color: var(--editor-fg);
   box-shadow: var(--editor-shadow);
