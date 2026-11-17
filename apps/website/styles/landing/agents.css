@@ -1,4 +1,4 @@
-/* Agents: on the stage, the intro with the install terminal at the left, the skills and the MCP tools, each with its count, at the right. */
+/* Agents: on the stage, the intro with the install terminal at the left and the skills at the right; the MCP tools below at full width, as a grid. Each list shows its count. */
 .landing .agents .band-frame {
   border-top: 1px solid var(--stage-line);
   padding-top: clamp(56px, 7vw, 88px);
@@ -40,9 +40,15 @@
   color: var(--stage-fg);
 }
 
-.landing .agents-lists {
+/* The tools fill the frame's width in cells of at least 240px; each cell keeps the list's rules, so the grid reads as one table. */
+.landing .agents-tools {
+  margin-top: clamp(40px, 5vw, 64px);
+}
+
+.landing .agents-list--grid {
   display: grid;
-  gap: var(--space-6);
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  column-gap: var(--space-6);
 }
 
 .landing .agents-group-title {

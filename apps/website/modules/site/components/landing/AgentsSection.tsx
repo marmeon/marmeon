@@ -2,7 +2,7 @@ import { Link } from '@marmeon/react';
 import { AGENT_SKILLS, AGENT_TOOLS, AGENTS_INSTALL_COMMAND, AGENTS_INSTALL_OUTPUT } from '../../agents.ts';
 import { Terminal } from '../Terminal.tsx';
 
-/** "Your coding agent sees what you see": the install command with its output, the skills and the MCP tools, each list with its count. */
+/** "Your coding agent sees what you see": the install command with its output and the skills side by side, the MCP tools below at full width, each list with its count. */
 export function AgentsSection() {
   return (
     <section className="agents" aria-labelledby="agents-title">
@@ -24,33 +24,31 @@ export function AgentsSection() {
               </p>
             </div>
             <div className="agents-lists">
-              <div>
-                <h3 className="agents-group-title">
-                  Skills <span>{AGENT_SKILLS.length}</span>
-                </h3>
-                <ul className="agents-list">
-                  {AGENT_SKILLS.map(({ name, text }) => (
-                    <li key={name}>
-                      <code>{name}</code>
-                      <span>{text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="agents-group-title">
-                  MCP tools <span>{AGENT_TOOLS.length}</span>
-                </h3>
-                <ul className="agents-list">
-                  {AGENT_TOOLS.map(({ name, text }) => (
-                    <li key={name}>
-                      <code>{name}</code>
-                      <span>{text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <h3 className="agents-group-title">
+                Skills <span>{AGENT_SKILLS.length}</span>
+              </h3>
+              <ul className="agents-list">
+                {AGENT_SKILLS.map(({ name, text }) => (
+                  <li key={name}>
+                    <code>{name}</code>
+                    <span>{text}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
+          </div>
+          <div className="agents-tools">
+            <h3 className="agents-group-title">
+              MCP tools <span>{AGENT_TOOLS.length}</span>
+            </h3>
+            <ul className="agents-list agents-list--grid">
+              {AGENT_TOOLS.map(({ name, text }) => (
+                <li key={name}>
+                  <code>{name}</code>
+                  <span>{text}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
