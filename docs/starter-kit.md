@@ -39,9 +39,8 @@ framework bring them.
 
 `marmeon make:auth` also writes `marmeon-stubs.json` into the root of the app: for every file it copied, except the migrations, the
 template it came from in `@marmeon/auth`, the version of the package and the hash of what it wrote (line endings do not count). Commit it with the
-module. The file belongs to the framework, so do not edit it by hand; without it, where a file came from is unknown. `make:auth --force` also uses its hashes to tell a file of an earlier kit you left unchanged from one you changed. The migrations are not
-in it: they belong to your app, and `make:auth --force` keeps the ones the app has and adds only those it lacks. They are append-only: a file the framework shipped never changes, so a later change of a kit table comes as a new migration. After a merge conflict in `marmeon-stubs.json`, take one side: the hashes then match that side. A file from a
-newer Marmeon makes `make:auth` stop before it writes anything. `create-marmeon` writes the file first, with the sets
+module. The file belongs to the framework, so do not edit it by hand; without it, where a file came from is unknown. `make:auth --force` also uses its hashes to tell a file of an earlier kit you left unchanged from one you changed. `make:auth` and `create-marmeon` leave the migrations out: they belong to your app, and `make:auth --force` keeps the ones the app has and adds only those it lacks. [`marmeon publish`](migrations.md#publishing-the-migrations-of-a-package) records the migrations of the packages it copies in the same file. They are append-only: a file the framework shipped never changes, so a later change of a kit table comes as a new migration. After a merge conflict in `marmeon-stubs.json`, take one side: the hashes then match that side. A file from a
+newer Marmeon makes `make:auth` and `publish` stop before they write anything. `create-marmeon` writes the file first, with the sets
 `create-marmeon:base` (and `create-marmeon:kit` for the starter kit); `make:auth` adds its own set to it.
 
 The module is wiring and pages: the repository, the routes, the controllers, the views, the mails and the migrations. About

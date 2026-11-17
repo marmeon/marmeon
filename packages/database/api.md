@@ -959,7 +959,8 @@ marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 marmeon migrate:status [--json]
 --json (boolean)
 // publish
-marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]
+marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--accept] [--force]
+--accept (boolean)
 --check (boolean)
 --force (boolean)
 --module (string, short m)

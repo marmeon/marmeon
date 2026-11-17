@@ -1219,13 +1219,39 @@ touch the database; run `marmeon migrate` after it. To move the tables to anothe
 names and change their rows in `migrations.module`.
 
 `marmeon publish --check` writes nothing and ends with exit code 1 when a package your app publishes from (see below) lacks
-a migration, or when `publish` would refuse it. A package counts as published from when `publish` made a module for it, or when it
-is a package of the framework with a migration in `system`; a migration of your own that has the name of a file of a package
+a migration, or when `publish` would refuse it. A package counts as published from when `publish` made a module for it, when it
+is a package of the framework with a migration in `system`, or when `marmeon-stubs.json` records one of its migrations that your app still has; a migration of your own that has the name of a file of a package
 does not make it one, so packages you have not published from are left out. A package taken into an existing module with
-`--module` has no line of its own there, so `marmeon check` does not check it; run `marmeon publish --check <package>` for it. With a package
+`--module` has no line of its own there, so `marmeon check` checks it only once `publish` has recorded a file of it that still lies in your app; run `marmeon publish --check <package>` for it. With a package
 (`marmeon publish --check <package>`) it checks that package. [`marmeon check`](check.md#the-app-checks) runs the same test
 as `package-migrations`. Put one of them in CI after you update the packages.
 
+Every migration `publish` writes goes into `marmeon-stubs.json` in your app's root, and so does every migration of the package that
+your app already has and that equals the package's file: one set per package and directory (`@acme/permissions:stubs/migrations`) with
+the package's version and, per file, its path in the package and the hash of the package's file. Commit it with the app. It is the
+starting point for the next release. An app that published before the record existed gets one with the next `marmeon publish <package>`,
+for the files whose copy still equals the package's; a copy that `publish` never recorded is not judged. `publish` records the packages
+your `package.json` lists; the `make:*-table` commands do not record. If `marmeon-stubs.json` cannot be read (broken JSON, a format of a
+newer Marmeon) or is a link out of your project, `publish` refuses and writes nothing (with or without a package, it names the file and ends with exit code 1), and `marmeon check` reports it as an error. The record also says which packages your app
+publishes from: a package with a recorded migration that your app still has counts, whatever module it is in. `publish` writes only migration entries into a set of its own; a set that also holds other files (the starter kit's) is never rewritten.
+A package whose version is not of the form `1.2.3` (a `workspace:` package often has none), or whose set `marmeon-stubs.json` cannot take, is copied as before, with one line saying that its migrations are not recorded, so a later change is not compared. `--accept` refuses it, unless it was recorded earlier: then `--accept` removes its migration entries and says so.
+
+A migration that your database has run must never change, and a package that rewrites one in a later release breaks that. The record
+finds a migration by its name, wherever the release puts the file. When the file of the package differs from the record, `publish`
+stops. It writes no migration and ends with exit code 1 and the message `@acme/permissions changed add_grants_table since you published
+it — …`, which is `D27`, and `marmeon publish --check` ends with exit code 1 too. [`marmeon check`](check.md#the-app-checks) reports
+the same state as a warning, so an update never stops the app from starting. Your copy is not compared and stays as it is: it is yours
+to edit, and it may lie in another module. Compare the package's file in `node_modules` with your copy and write a new migration for the
+difference. Then record what you decided:
+
+```sh
+pnpm marmeon publish @acme/permissions --accept
+```
+
+`--accept` writes no migration. It records the current file of every migration of the package that your app has, takes one package and
+no other option, and refuses as `publish` does when the package is no dependency of your app or cannot be read. A set takes the package's
+version when its entries change, so the version is the one of the last change. Until you accept it, `publish` refuses the package, so a changed file is
+never recorded unseen.
 `publish` only copies files. It reads `static migrations` of the service providers your app boots, and imports the main entry of
 each direct dependency a declaration points into (usually one the app has booted already; a declaration that cannot be read at all
 makes it look at the entry of each direct dependency that lists providers in its `marmeon` field, to find the package that exports the provider). It reads the package's files
