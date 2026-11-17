@@ -2,7 +2,8 @@
  * The code on the landing page — server only: `SiteSnippets` highlights it once at boot, the browser gets markup. Every snippet
  * is a piece of a file of the notes example the docs build up (`docs/migrations.md`, `docs/queries.md`, `docs/controllers.md`, …)
  * or of the example app `apps/web-app`; when the API changes, these change with it. A snippet shows no comment lines: the file it
- * comes from may have them.
+ * comes from may have them. The code keeps the file's indentation, so the comparison stays word for word; `SiteSnippets` removes
+ * the indentation all its lines share before it highlights.
  */
 export type SnippetSource =
   /** A file of the smoke app (starter kit, `examples/notes`, `examples/recipes`, `examples/landing`); a `*` in the last segment stands for one file name, as in an overlay's `edits.json`. */
@@ -24,13 +25,7 @@ export const SNIPPETS = {
     file: 'modules/notes/controllers/ShowNoteController.ts',
     source: { app: 'modules/notes/controllers/ShowNoteController.ts' },
     lang: 'ts',
-    code: `import { can } from '@marmeon/auth';
-import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import { NotePolicy } from '../policies/NotePolicy.ts';
-
-export const ShowNoteRequest = defineRequest({ authorize: can(NotePolicy, 'view', 'note') });
-
-export class ShowNoteController extends Controller {
+    code: `export class ShowNoteController extends Controller {
   static request = ShowNoteRequest;
 
   handle(ctx: ContextOf<typeof ShowNoteRequest>) {
@@ -43,11 +38,7 @@ export class ShowNoteController extends Controller {
     file: 'modules/notes/views/Show.tsx',
     source: { app: 'modules/notes/views/Show.tsx' },
     lang: 'tsx',
-    code: `import type { PageProps } from '@marmeon/http';
-import { Head, Link } from '@marmeon/react';
-import type { ShowNoteController } from '../controllers/ShowNoteController.ts';
-
-export default function Show({ note }: PageProps<ShowNoteController>) {
+    code: `export default function Show({ note }: PageProps<ShowNoteController>) {
   return (
     <main>
       <Head title={note.title} />

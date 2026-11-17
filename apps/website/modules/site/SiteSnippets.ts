@@ -2,6 +2,14 @@ import { createCodeHighlighter } from '../docs/highlight.ts';
 import { CHAIN, mistakeLine, type ChainStepSpec } from './chain.ts';
 import { SNIPPETS, type Snippet, type SnippetName } from './snippets.ts';
 
+/** The code without the indentation all its non-empty lines share: a piece cut from inside a block starts at the left edge. */
+export function dedent(code: string): string {
+  const lines = code.split('\n');
+  const indents = lines.filter((line) => line.trim() !== '').map((line) => line.length - line.trimStart().length);
+  const shared = indents.length === 0 ? 0 : Math.min(...indents);
+  return shared === 0 ? code : lines.map((line) => line.slice(Math.min(shared, line.length - line.trimStart().length))).join('\n');
+}
+
 /** A snippet as the landing shows it: its file name (if it has one) and the markup Shiki made. */
 export interface HighlightedSnippet {
   readonly file?: string;
@@ -33,7 +41,8 @@ export class SiteSnippets {
     const { highlight } = await createCodeHighlighter();
     const entries = (Object.keys(SNIPPETS) as SnippetName[]).map((name) => {
       const { file, lang, code }: Snippet = SNIPPETS[name];
-      return [name, file === undefined ? { html: highlight(code, lang) } : { file, html: highlight(code, lang) }] as const;
+      const html = highlight(dedent(code), lang);
+      return [name, file === undefined ? { html } : { file, html }] as const;
     });
     const snippets = Object.fromEntries(entries) as Record<SnippetName, HighlightedSnippet>;
     this.#snippets = snippets;
