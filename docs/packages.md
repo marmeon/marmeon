@@ -39,6 +39,7 @@ finds a package in another version, and `marmeon dev` warns about it at the star
 | `@marmeon/storage` | Disks on the local file system or S3, signed URLs and uploads. | [File storage](storage.md) |
 | `@marmeon/live` | Live updates: pages reload their data when the server hints a change. | [Real-time updates](realtime.md) |
 | `@marmeon/notifications` | Notifications over mail, the database and live updates. | [Notifications](notifications.md) |
+| `@marmeon/fetch` | Outgoing HTTP requests that refuse addresses that are not public, with a fake for tests. | [HTTP client](http-client.md) |
 | `@marmeon/log` | The logger: readable in development, JSON in production. | [Logging](logging.md) |
 | `@marmeon/react` | The React side: pages, layouts, `<Link>`, forms, islands and dialogs. | [Pages](pages.md), [navigation](navigation.md), [forms](forms.md) |
 
@@ -56,7 +57,6 @@ As dev dependencies, a new app has three more:
 | --- | --- | --- |
 | `@marmeon/redis` | Redis connections for the cache, sessions, the queue and live updates. | [Redis](redis.md) |
 | `@marmeon/table` | Data tables driven by the server: columns, sorting, filters, actions and CSV export. | [Data tables](tables.md) |
-| `@marmeon/fetch` | Outgoing HTTP requests that refuse addresses that are not public, with a fake for tests. | [HTTP client](http-client.md) |
 | `@marmeon/otel` | OpenTelemetry traces of requests, queries, jobs and mails. | [Observability](observability.md) |
 
 A package that needs a library of its own names the exact install command when the library is missing. The

@@ -245,6 +245,7 @@ describe('create-marmeon — the app', () => {
     expect(pinned.length).toBeGreaterThan(15);
     expect(pinned.filter(([, range]) => range !== ownVersion)).toEqual([]);
     expect(manifest.dependencies.marmeon, 'the CLI (the unscoped marmeon) at this version').toBe(ownVersion);
+    expect(manifest.dependencies['@marmeon/fetch'], 'the HTTP client a new app starts with').toBe(ownVersion);
     expect(readFileSync(join(cwd, 'with-npm/README.md'), 'utf8')).toContain('npm run dev');
     expect(readFileSync(join(cwd, 'with-npm/README.md'), 'utf8')).toContain('The guides of your version: node_modules/marmeon/docs (`marmeon docs`); the newest online: https://marmeon.com/docs');
   });

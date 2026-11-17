@@ -220,6 +220,9 @@ importers:
       '@marmeon/encryption':
         specifier: workspace:*
         version: link:../../packages/encryption
+      '@marmeon/fetch':
+        specifier: workspace:*
+        version: link:../../packages/fetch
       '@marmeon/http':
         specifier: workspace:*
         version: link:../../packages/http

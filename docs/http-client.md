@@ -54,6 +54,8 @@ every `FetchError` and write the `reason` to the log: `refused` against `network
 
 ## Installation
 
+A new app has `@marmeon/fetch`. Otherwise add it in the version of the app's other framework packages:
+
 ```sh
 pnpm add -E @marmeon/fetch@<version of your app>
 ```
