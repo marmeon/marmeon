@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, durationToSeconds, err, EventDispatcher, Logger, ok, type Duration, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, ClientInfo } from '@marmeon/http';
@@ -8,6 +8,8 @@ import { Session, SessionConfig } from '@marmeon/session';
 import { sessionScope } from '@marmeon/session/internal';
 import { ANNOUNCE_ENDED, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
+import { APP_GUARD_NAMES } from './guard-names.ts';
+import { CONFIRM_REAUTHENTICATED, PROOF_MAX_AGE_MS, takeProof, type ReauthenticationProof } from './reauthentication.ts';
 import { SignInFailed, SignInLockedOut, SignedIn, MAX_USER_AGENT, SignedOut, PasswordChanged, RememberTokenReused, type SignInVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { RequestGuard } from './guard-stamp.ts';
@@ -60,6 +62,9 @@ export const RECORD_PENDING_FAILURE = Symbol('marmeon.auth.recordPendingFailure'
 export const SIGN_IN_VERIFIED = Symbol('marmeon.auth.signInVerified');
 
 const DROP_EXPIRED = Symbol('marmeon.auth.dropExpired');
+
+/** Whether two account ids are the same, compared in constant time. */
+const sameId = (a: string, b: string): boolean => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 
 const SIGN_IN_VIA: readonly unknown[] = Object.keys({ attempt: true, app: true, remember: true, passkey: true } satisfies Record<SignInVia, true>);
 
@@ -443,6 +448,37 @@ export class Auth {
   }
 
   /**
+   * @internal Opens the confirmation window from a proof of re-authentication that `reauthenticator()` issued: the window opens for the
+   * time the user authenticated, not for now. A refusal opens no window and spends the proof (`user()` may restore a sign-in from the
+   * remember-me cookie). `true` means the window is open. Only the app's guard has it, and only for proofs issued on its own container.
+   */
+  async [CONFIRM_REAUTHENTICATED](proof: ReauthenticationProof): Promise<boolean> {
+    // The proof is spent first, whatever follows: a refused proof is not kept for another try. Only the record is read from here on.
+    const record = takeProof(proof, this.#guard.reauthenticationRoot());
+    if (record === undefined) return false;
+    if (this.#guard.names !== APP_GUARD_NAMES) return false;
+    const age = this.#clock.now() - record.issuedAt;
+    if (!(age >= 0 && age <= PROOF_MAX_AGE_MS)) return false;
+    if (!this.#session.started || this.#session.readOnly) return false;
+    const user = await this.user();
+    if (user === undefined || !sameId(String(idOf(user)), record.userId)) return false;
+    const at = Math.floor(record.at / 1000);
+    const signedInAt = this.#read('signedInAt');
+    const confirmedAt = this.#read('confirmedAt');
+    const now = this.#now();
+    // Stricter than `passwordRecentlyConfirmed()`: no skew before the sign-in, a confirmation counts only in the sign-in it happened in.
+    // And `true` must mean an open window: an authentication outside the timeout, or not later than the confirmation already held (a
+    // proof with an old time would otherwise close a window that is open), opens nothing.
+    if (!Number.isFinite(at) || typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || at < signedInAt || at > now + CLOCK_SKEW_SECONDS) return false;
+    if (!(now - at < this.#guard.settings.passwordTimeoutSeconds)) return false;
+    if (typeof confirmedAt === 'number' && Number.isFinite(confirmedAt) && at <= confirmedAt) return false;
+    // Invariant, as in `checkPassword()`: the new id comes before the window opens, so an id that leaked earlier does not ride into it.
+    this.#session.regenerate();
+    this.#write('confirmedAt', at);
+    return true;
+  }
+
+  /**
    * Whose password checks these are, for `takePasswordCheck()`: this sign-in's own key, and whether it began with a typed password.
    * A session without a key gets one now; on a read-only request it is counted under a hash of the session id, with the account's cap.
    * Throws without a started session: a password check needs a signed-in user.
@@ -460,7 +496,7 @@ export class Auth {
     return { session: key, typed: this.#read('typedPassword') === true };
   }
 
-  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
+  /** Whether a password was typed, a passkey proven (`passkeys.confirm()`, a passwordless sign-in) or a linked provider confirmed (see `docs/oauth.md#confirming-with-a-provider`) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
   passwordRecentlyConfirmed(within?: Duration): boolean {
     const seconds = within === undefined ? this.#guard.settings.passwordTimeoutSeconds : durationToSeconds(within);
     const at = this.#session.started ? this.#read('confirmedAt') : undefined;
