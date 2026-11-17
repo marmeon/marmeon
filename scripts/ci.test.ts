@@ -43,6 +43,19 @@ describe('pnpm run ci', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
   });
 
+  it('runs test:mysql after the build against the mysql container, in a job of its own', () => {
+    expect(parts.find((part) => part.name === 'test:mysql')).toMatchObject({ command: ['pnpm', 'run', 'test:mysql'], services: ['mysql'], after: ['build'] });
+    const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+    const job = /^  mysql:\n([\s\S]*?)(?=^  \S|(?![\s\S]))/m.exec(workflow)?.[1] ?? '';
+    expect(job).toContain('name: test:mysql\n');
+    expect(job).toContain('image: mysql:8.4');
+    const url = new URL(new RegExp(`MARMEON_TEST_${'MYSQL_URL'}=(\\S+)`).exec(readFileSync(join(root, 'package.json'), 'utf8'))![1]!);
+    expect(job).toContain(`MYSQL_ROOT_PASSWORD: ${url.password}`);
+    expect(job).toContain(`MYSQL_DATABASE: ${url.pathname.slice(1)}`);
+    expect(job).toContain('- 127.0.0.1:53306:3306');
+    expect(job).toContain('pnpm run ci --only build,test:mysql --no-compose');
+  });
+
   it('runs zizmor last, as a job of its own in the workflow', () => {
     expect(parts.at(-1)).toMatchObject({ name: 'zizmor', command: ['pnpm', 'run', 'zizmor'] });
     expect(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')).toMatch(/^ {2}zizmor:\n(?: {4}#.*\n)* {4}name: zizmor\n/m);
