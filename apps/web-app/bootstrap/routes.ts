@@ -22,6 +22,7 @@ import type { EditUserProfileController } from '../modules/user-profile/controll
 import type { EndSignInController } from '../modules/auth/controllers/EndSignInController.ts';
 import type { ExportMembersController } from '../modules/members/controllers/ExportMembersController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
+import type { FeatureProfileLinkController } from '../modules/user-profile/controllers/FeatureProfileLinkController.ts';
 import type { ImportMembersController } from '../modules/members/controllers/ImportMembersController.ts';
 import type { ListBookmarksController } from '../modules/bookmarks/controllers/ListBookmarksController.ts';
 import type { ListMembersController } from '../modules/members/controllers/ListMembersController.ts';
@@ -85,6 +86,7 @@ import type { StoreAccessTokenController } from '../modules/auth/controllers/Sto
 import type { StoreBookmarkController } from '../modules/bookmarks/controllers/StoreBookmarkController.ts';
 import type { TwoFactorChallengeController } from '../modules/auth/controllers/TwoFactorChallengeController.ts';
 import type { TwoFactorVerifyController } from '../modules/auth/controllers/TwoFactorVerifyController.ts';
+import type { UnfeatureProfileLinkController } from '../modules/user-profile/controllers/UnfeatureProfileLinkController.ts';
 import type { UnsubscribeController } from '../modules/notifications/controllers/UnsubscribeController.ts';
 import type { UpdateAvatarController } from '../modules/user-profile/controllers/UpdateAvatarController.ts';
 import type { UpdateBookmarkController } from '../modules/bookmarks/controllers/UpdateBookmarkController.ts';
@@ -211,10 +213,12 @@ declare module '@marmeon/router' {
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.export': { method: 'post'; path: '/users/me/export'; controller: typeof ExportMyDataController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
+    'user-profile.links.feature': { method: 'put'; path: '/users/:user/links/:link/feature'; controller: typeof FeatureProfileLinkController };
     'user-profile.links.index': { method: 'get'; path: '/users/:user/links'; controller: typeof SearchProfileLinksController };
     'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
     'user-profile.links.rename': { method: 'patch'; path: '/users/:user/links/:link'; controller: typeof RenameProfileLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
+    'user-profile.links.unfeature': { method: 'delete'; path: '/users/:user/links/:link/feature'; controller: typeof UnfeatureProfileLinkController };
     'user-profile.links.update': { method: 'put'; path: '/users/:user/links/:link'; controller: typeof UpdateProfileLinkController };
     'user-profile.me': { method: 'get'; path: '/users/me'; controller: typeof RedirectToOwnProfileController };
     'user-profile.people': { method: 'get'; path: '/people'; controller: typeof ListPeopleController };

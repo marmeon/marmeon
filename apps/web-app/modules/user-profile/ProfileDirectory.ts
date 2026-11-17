@@ -22,7 +22,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
       // the connection leaves out the secret password hash).
       .selectAll('users')
       .with('login_activity', { as: 'activity' }, (activity) => activity.select('last_login_at'))
-      .with('profile_links', { as: 'links' }, (links) => links.select(['id', 'user_id', 'label', 'url', 'updated_at']).orderBy('created_at').orderBy('id'))
+      .with('profile_links', { as: 'links' }, (links) => links.select(['id', 'user_id', 'label', 'url', 'featured', 'updated_at']).orderBy('featured', 'desc').orderBy('created_at').orderBy('id'))
       .where('users.public_id', '=', publicId)
       .executeTakeFirst();
   }

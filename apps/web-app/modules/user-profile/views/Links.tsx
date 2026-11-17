@@ -40,6 +40,12 @@ export default function Links({ owner, abilities, links }: Props) {
               <a href={link.url} rel="nofollow noopener" target="_blank">
                 {link.label}
               </a>{' '}
+              {link.featured && <strong>{t('links_page.featured')} </strong>}
+              {abilities.update && (
+                <Link route={link.featured ? 'user-profile.links.unfeature' : 'user-profile.links.feature'} params={{ user: owner.public_id, link: link.id }}>
+                  {link.featured ? t('links_page.unfeature') : t('links_page.feature')}
+                </Link>
+              )}{' '}
               {abilities.update && !editing[link.id] && (
                 <button type="button" onClick={() => setEditing((current) => ({ ...current, [link.id]: link }))}>
                   {t('links_page.rename')}

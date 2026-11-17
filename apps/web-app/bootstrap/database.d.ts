@@ -317,6 +317,7 @@ declare module '@marmeon/database' {
       url: string;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
+      featured: Generated<boolean>;
     };
     /**
      * Owned by `system`.

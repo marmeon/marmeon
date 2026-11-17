@@ -32,9 +32,9 @@ export class SearchProfileLinksController extends Controller {
       owner: { public_id, name },
       // What the page may offer (the rename form): the owner only. The UI's hint — the update route checks again.
       abilities: this.#gate.abilities(ctx.params.user, ProfilePolicy, ['update']),
-      // A function: computed only when sent (a partial reload of something else leaves it out). Only the label, the URL and the version (`updated_at`, for a
+      // A function: computed only when sent (a partial reload of something else leaves it out). Only the label, the URL, whether it is featured and the version (`updated_at`, for a
       // save to say what it saw) leave the server, never the row (`user_id`).
-      links: () => links.filter((link) => link.label.toLowerCase().includes(needle)).map(({ id, label, url, updated_at }) => ({ id, label, url, version: new Date(updated_at).toISOString() })),
+      links: () => links.filter((link) => link.label.toLowerCase().includes(needle)).map(({ id, label, url, featured, updated_at }) => ({ id, label, url, featured, version: new Date(updated_at).toISOString() })),
     });
   }
 }

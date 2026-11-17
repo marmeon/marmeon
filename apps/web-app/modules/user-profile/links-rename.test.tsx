@@ -16,6 +16,8 @@ const routes: RouteManifest = {
   'user-profile.show': { method: 'get', path: '/users/:user' },
   'user-profile.links.index': { method: 'get', path: '/users/:user/links' },
   'user-profile.links.update': { method: 'put', path: '/users/:user/links/:link' },
+  'user-profile.links.feature': { method: 'put', path: '/users/:user/links/:link/feature' },
+  'user-profile.links.unfeature': { method: 'delete', path: '/users/:user/links/:link/feature' },
 };
 
 const V1 = '2026-01-01T00:00:00.000Z';
@@ -72,6 +74,22 @@ async function mount(initial: PageObject) {
 
 const editor = () => $('form[novalidate] input') as HTMLInputElement | null;
 const stale = (label: string) => page({ _conflict: { message: 'Someone else changed this in the meantime.', current: { label, savedAt: V2 } }, links: [link(label, V2)] });
+
+describe('the featured link on the links page', () => {
+  it('marks the featured link and offers Unfeature for it and Feature for the others (a form button — only GET is a link), to a viewer who may update the profile', async () => {
+    await mount(page({ links: [{ ...link('Notes', V1), id: '7', featured: true }, { ...link('Blog', V1), id: '8', featured: false }] }));
+    expect(document.body.textContent).toContain('Featured');
+    expect(document.querySelectorAll('li strong')).toHaveLength(1);
+    expect($('form[action$="/links/7/feature"] button')?.textContent).toBe('Unfeature');
+    expect($('form[action$="/links/8/feature"] button')?.textContent).toBe('Feature');
+  });
+
+  it('shows the marker but no Feature or Unfeature control to a viewer who may not update the profile', async () => {
+    await mount(page({ abilities: { update: false }, links: [{ ...link('Notes', V1), featured: true }] }));
+    expect(document.body.textContent).toContain('Featured');
+    expect($('form[action$="/feature"]')).toBeNull();
+  });
+});
 
 describe('renaming a link on the links page', () => {
   it('is offered only to a viewer who may update the profile', async () => {

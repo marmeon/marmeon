@@ -6,11 +6,13 @@ import { ConfirmRemoveLinkController } from './controllers/ConfirmRemoveLinkCont
 import { DeleteProfileLinkController } from './controllers/DeleteProfileLinkController.ts';
 import { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import { ExportMyDataController } from './controllers/ExportMyDataController.ts';
+import { FeatureProfileLinkController } from './controllers/FeatureProfileLinkController.ts';
 import { ListPeopleController } from './controllers/ListPeopleController.ts';
 import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
 import { RenameProfileLinkController } from './controllers/RenameProfileLinkController.ts';
 import { SearchProfileLinksController } from './controllers/SearchProfileLinksController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
+import { UnfeatureProfileLinkController } from './controllers/UnfeatureProfileLinkController.ts';
 import { UpdateAvatarController } from './controllers/UpdateAvatarController.ts';
 import { UpdateProfileLinkController } from './controllers/UpdateProfileLinkController.ts';
 import { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
@@ -66,5 +68,8 @@ export default defineRoutes((Route) => {
   link.patch('/:user/links/:link', RenameProfileLinkController).name('links.rename');
   // The same rename as a form on the links page: a stale save goes back to the form with `form.conflict`.
   link.put('/:user/links/:link', UpdateProfileLinkController).name('links.update');
+  // The one link a profile features, held by a partial unique index.
+  link.put('/:user/links/:link/feature', FeatureProfileLinkController).name('links.feature');
+  link.delete('/:user/links/:link/feature', UnfeatureProfileLinkController).name('links.unfeature');
   link.delete('/:user/links/:link', DeleteProfileLinkController).name('links.destroy');
 });
