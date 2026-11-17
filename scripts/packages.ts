@@ -47,9 +47,10 @@ export interface PackedPackage {
   readonly files: readonly string[];
 }
 
-/** `pnpm pack` of every framework package into `destination` (one pnpm process); throws with pnpm's output on failure. */
+/** `pnpm pack` of every published framework package into `destination` (one pnpm process); throws with pnpm's output on failure. A private package is not packed, so no tarball of it lands in `destination`. */
 export function packAll(root: string, destination: string): PackedPackage[] {
-  const result = spawnSync('pnpm', ['--recursive', '--filter', './packages/*', 'pack', '--pack-destination', destination, '--json'], {
+  const published = frameworkPackages(root).map((pkg) => pkg.name);
+  const result = spawnSync('pnpm', ['--recursive', ...published.flatMap((name) => ['--filter', name]), 'pack', '--pack-destination', destination, '--json'], {
     cwd: root,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

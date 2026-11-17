@@ -184,7 +184,9 @@ describe('the landing page', () => {
 
   it('lists every package of the repository once, with one link each, and counts them from the list', async () => {
     const dirs = readdirSync(join(repo, 'packages'), { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(repo, 'packages', entry.name, 'package.json')));
-    const names = dirs.map((entry) => (JSON.parse(readFileSync(join(repo, 'packages', entry.name, 'package.json'), 'utf8')) as { name: string }).name);
+    // The landing page lists what an app can install: a private package is not published yet.
+    const manifests = dirs.map((entry) => JSON.parse(readFileSync(join(repo, 'packages', entry.name, 'package.json'), 'utf8')) as { name: string; private?: boolean });
+    const names = manifests.filter((manifest) => manifest.private !== true).map((manifest) => manifest.name);
     expect(PACKAGES.map((entry) => entry.name).sort()).toEqual(names.sort());
     expect(new Set(PACKAGES.map((entry) => entry.docs)).size).toBe(PACKAGES.length);
     const body = (await app.get('/', document).assertOk()).body;

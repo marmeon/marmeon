@@ -1,6 +1,6 @@
 /**
- * The tarballs of a release, as the staging job will stage them: `pnpm pack` of every published package into one directory, and a
- * `SHA512SUMS` file (`sha512sum`'s format) naming each. The hash of `SHA512SUMS` itself is the job's output `sums` — the staging job
+ * The tarballs of a release, as the staging job will stage them: `pnpm pack` of every published package (no private one) into one
+ * directory, and a `SHA512SUMS` file (`sha512sum`'s format) naming each. The hash of `SHA512SUMS` itself is the job's output `sums` — the staging job
  * checks the downloaded files against it before it stages anything, so it stages exactly what this job packed and hashed.
  *
  * Imports nothing but `node:*` and `./packages.ts`. The hash proves that the files did not change on their way to the staging job,
@@ -29,7 +29,8 @@ export interface ReleasePack {
 
 /**
  * Packs every published package into `directory` and writes `SHA512SUMS` there. Throws when the directory is not empty (an old
- * tarball would be hashed and staged with the new ones) or when a package made no tarball.
+ * tarball would be hashed and staged with the new ones), when a package made no tarball, or when the directory ends up holding any
+ * other file than `SHA512SUMS` and the tarballs it names (the staging job requires exactly those).
  */
 export function releasePack(
   root: string,
@@ -48,6 +49,9 @@ export function releasePack(
   tarballs.sort();
   const sums = tarballs.map((file) => `${sha512(readFileSync(join(directory, file)))}  ${file}\n`).join('');
   writeFileSync(join(directory, SUMS_FILE), sums);
+  const expected = [...tarballs, SUMS_FILE].sort();
+  const stray = readdirSync(directory).filter((file) => !expected.includes(file));
+  if (stray.length > 0) throw new Error(`${directory} holds ${stray.join(', ')}, which SHA512SUMS does not name — only the tarballs of published packages belong in it`);
   return { tarballs, sums: sha512(sums) };
 }
 
