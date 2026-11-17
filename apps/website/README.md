@@ -20,7 +20,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `bootstrap/layouts.ts` picks by page name. Both headers and the footer sit on the fixed dark stage in either colour scheme.
   The landing's header holds the wordmark, a mega menu (Framework, Packages, Resources: `<details>` panels that share a `name`,
   so a click opens one and closes the others without JavaScript; with it Escape and a press outside close them), Docs, "Search
-  docs", GitHub and Get started, and folds into one `<details>` menu below 900 px. The panels list only targets that exist and
+  docs", GitHub and Get started. Below 900 px it folds into one `<details>` menu with an icon-only toggle: open, it is a full-screen sheet under the header that scrolls on its own and locks the page scroll (and, with JavaScript, makes the rest of the page `inert`). Each panel is a group row; opening it replaces the list with that group's links until its back row is pressed, and below the rows come Docs, GitHub and Get started. Escape closes the innermost open level first. The panels list only targets that exist and
   are made at boot from `docs.config.ts`, `packages.ts` and `links.ts` (`modules/site/menu.ts`, shared once as `site.menu`; a docs
   page, a package's page or a feature link that `docs.config.ts` does not list, or a package `packages.ts` does not list, stops the
   start; the GitHub links are constants and not checked); a 404 has no shared props and gets flat links. The docs' top bar is sticky and

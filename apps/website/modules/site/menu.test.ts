@@ -11,16 +11,16 @@ const without = (slug: string): DocsDefinition => ({ sections: docs.sections.map
 describe('the mega menu', () => {
   it('offers Framework, Packages and Resources, each with its columns and their exact items', () => {
     expect(panels().map((panel) => [panel.label, panel.columns.map((column) => [column.title, column.items.map((item) => item.title)])])).toEqual([
-      ['Framework', [['OVERVIEW', ['Why Marmeon', 'Your First App', 'Directory Structure', 'Modules & Discovery']], ['FEATURES', ['Security Overview', 'Testing', 'Deferred Props & Islands', 'Devtools', 'Coding Agents']]]],
+      ['Framework', [['Overview', ['Why Marmeon', 'Your First App', 'Directory Structure', 'Modules & Discovery']], ['Features', ['Security Overview', 'Testing', 'Deferred Props & Islands', 'Devtools', 'Coding Agents']]]],
       [
         'Packages',
         [
-          ['IN EVERY NEW APP', ['@marmeon/core', '@marmeon/router', '@marmeon/auth', '@marmeon/database', '@marmeon/react']],
-          ['ADD WHEN YOU NEED IT', ['@marmeon/redis', '@marmeon/table', '@marmeon/otel']],
-          ['TOOLING', ['@marmeon/vite', '@marmeon/testing', '@marmeon/devtools']],
+          ['In every new app', ['@marmeon/core', '@marmeon/router', '@marmeon/auth', '@marmeon/database', '@marmeon/react']],
+          ['Add when you need it', ['@marmeon/redis', '@marmeon/table', '@marmeon/otel']],
+          ['Tooling', ['@marmeon/vite', '@marmeon/testing', '@marmeon/devtools']],
         ],
       ],
-      ['Resources', [['LEARN', ['Documentation', 'Installation', 'Upgrade Guide', 'A Resource With Its Policy']], ['COMMUNITY', ['GitHub', 'GitHub Discussions', 'Releases and Support', 'Security Policy']]]],
+      ['Resources', [['Learn', ['Documentation', 'Installation', 'Upgrade Guide', 'A Resource With Its Policy']], ['Community', ['GitHub', 'GitHub Discussions', 'Releases and Support', 'Security Policy']]]],
     ]);
   });
 

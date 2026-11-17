@@ -74,11 +74,12 @@
   position: relative;
   z-index: 20;
   border-bottom: 1px solid var(--stage-line);
+  --site-header-height: 73px; /* the inner row's min-height and the border: where the narrow screen's sheet starts */
 }
 
 .site-header-inner {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-4);
   max-width: 1440px;
@@ -106,7 +107,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  /* Keeps the buttons at the right when enlarged text wraps the header onto a second line. */
+  /* Keeps the buttons at the right. */
   margin-left: auto;
 }
 
@@ -224,6 +225,10 @@
   letter-spacing: 0.14em;
 }
 
+.site-panel-title {
+  text-transform: uppercase;
+}
+
 .site-panel-item {
   display: flex;
   gap: var(--space-3);
@@ -337,52 +342,80 @@
   color: var(--sand);
 }
 
-/* The menu on a narrow screen: a <details>, usable without JavaScript. */
+/*
+ * The menu on a narrow screen: a <details>, usable without JavaScript. Open, its panel is a sheet from the header's bottom edge to
+ * the viewport's, and the page behind it does not scroll. Each group is a nested <details>; open, it hides its siblings and its
+ * summary becomes the back row.
+ */
 .site-menu {
   display: none;
 }
 
-.site-menu summary {
+.site-menu > summary {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 44px;
-  padding: 0 var(--space-3);
+  justify-content: center;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--control-dark);
   border-radius: var(--radius-md);
   color: var(--stage-fg);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
   list-style: none;
   cursor: pointer;
 }
 
-.site-menu summary::-webkit-details-marker {
+.site-menu > summary:hover {
+  border-color: var(--control-dark-hover);
+}
+
+.site-menu > summary::-webkit-details-marker {
   display: none;
+}
+
+.site-menu-close,
+.site-menu[open] .site-menu-open {
+  display: none;
+}
+
+.site-menu[open] .site-menu-close {
+  display: block;
 }
 
 .site-menu-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  min-width: 14rem;
-  max-height: calc(100dvh - 96px);
-  margin-top: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  overflow-y: auto;
-  border: 1px solid var(--panel-edge);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
 }
 
-.site-menu-group {
+.site-menu-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-menu-back {
+  display: none;
+}
+
+.site-menu-group[open] > summary .site-menu-chevron {
+  display: none;
+}
+
+.site-menu-group[open] > summary {
+  justify-content: flex-start;
+}
+
+.site-menu-group[open] > summary .site-menu-back {
+  display: block;
+}
+
+.site-menu-column {
   display: flex;
   flex-direction: column;
 }
 
 .site-menu-title {
   margin: 0;
+  padding: var(--space-5) 0 var(--space-1);
   color: var(--stage-dim);
   font-family: var(--font-mono);
   font-size: var(--text-label);
@@ -391,11 +424,12 @@
 }
 
 .site-menu-link {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 44px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--rail-dark);
   color: var(--stage-fg);
+  font-size: 1.125rem;
   text-decoration: none;
 }
 
@@ -403,21 +437,58 @@
   color: var(--sand);
 }
 
-.site-header-end {
-  position: relative;
+.site-menu-group > summary,
+.site-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rail-dark);
+  border-radius: 0;
+  color: var(--stage-fg);
+  font-size: 1.25rem;
+  text-decoration: none;
 }
 
-.site-menu[open] .site-menu-panel {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 40;
+.site-menu-group > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.site-menu-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-menu-group > summary:hover,
+.site-menu-row:hover {
+  border-color: var(--rail-dark);
+  color: var(--sand);
+}
+
+.site-menu-start {
+  align-self: flex-start;
+  margin-top: var(--space-5);
+}
+
+/* A group is open: its siblings (the other rows, Get started) make room for it. */
+.site-menu-panel:has(> .site-menu-group[open]) > :not([open]) {
+  display: none;
 }
 
 @media (max-width: 899px) {
+  .site-header-inner {
+    gap: var(--space-2);
+  }
+
   .site-nav,
   .site-search,
-  .site-github {
+  .site-github,
+  .site-start {
     display: none;
   }
 
@@ -428,12 +499,31 @@
   .site-menu {
     display: block;
   }
+
+  .site-menu[open] .site-menu-panel {
+    position: fixed;
+    inset: var(--site-header-height) 0 0;
+    z-index: 40;
+    padding: var(--space-1) clamp(16px, 2.2vw, 32px) var(--space-7); /* the top leaves room for the first row's focus ring */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--stage);
+  }
+
+  /* The header stays at the top of the viewport, above the sheet, while the page cannot scroll. */
+  .site-header:has(.site-menu[open]) {
+    position: sticky;
+    top: 0;
+  }
+
+  html:has(.site-menu[open]) {
+    overflow: hidden;
+  }
 }
 
-/* Wide enough for the nav (900 px and up): one row at every width. The search keeps its icon and shortcut but not its words below 1150 px, and the gaps tighten. */
+/* Wide enough for the nav (900 px and up): the gaps tighten, and below 1150 px the search keeps its icon and shortcut but not its words. */
 @media (min-width: 900px) {
   .site-header-inner {
-    flex-wrap: nowrap;
     gap: var(--space-2);
   }
 
@@ -466,6 +556,10 @@
 @media (max-width: 479px) {
   .version-badge {
     display: none;
+  }
+
+  .site-menu-start {
+    align-self: stretch;
   }
 }
 

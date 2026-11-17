@@ -8,8 +8,9 @@ import { Wordmark } from '../modules/site/components/Wordmark.tsx';
 import { DOCS_URL, GET_STARTED_SLUG, GITHUB_URL, PACKAGES_URL } from '../modules/site/links.ts';
 
 /**
- * Around the landing page and the error pages: skip link, stage header, footer. The mega menu's panels and the menu on a narrow
- * screen are `<details>` — they open without JavaScript; with it, a visit, Escape or a press outside closes them again.
+ * Around the landing page and the error pages: skip link, stage header, footer. The mega menu's panels, the menu on a narrow
+ * screen (a sheet) and the groups inside that sheet are `<details>` — they open without JavaScript; with it, a visit, Escape or a
+ * press outside closes them again, Escape one level at a time.
  */
 export function SiteLayout({ children }: LayoutProps) {
   const { url, props } = usePage();
@@ -51,37 +52,36 @@ export function SiteLayout({ children }: LayoutProps) {
             <a href={GITHUB_URL} rel="noopener" className="button button--ghost site-github">
               GitHub
             </a>
-            <Link href={`${DOCS_URL}/${GET_STARTED_SLUG}`} className="button button--sand" prefetch>
+            <Link href={`${DOCS_URL}/${GET_STARTED_SLUG}`} className="button button--sand site-start" prefetch>
               Get started
             </Link>
             <details className="site-menu">
               <summary>
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M2 4.5h12M2 8h12M2 11.5h12" />
+                <svg className="site-menu-open" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M4 7h16M4 12h16M4 17h16" />
                 </svg>
-                MENU
+                <svg className="site-menu-close" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+                <span className="visually-hidden">Menu</span>
               </summary>
               <nav aria-label="Menu" className="site-menu-panel">
                 {panels.length > 0 ? (
                   <SiteMenuGroups panels={panels} />
                 ) : (
-                  <Link href={PACKAGES_URL} className="site-menu-link">
+                  <Link href={PACKAGES_URL} className="site-menu-link site-menu-row">
                     Packages
                   </Link>
                 )}
-                <div className="site-menu-group">
-                  <p className="site-menu-title">More</p>
-                  {panels.length === 0 && (
-                    <>
-                      <Link href={DOCS_URL} className="site-menu-link">
-                        Docs
-                      </Link>
-                      <a href={GITHUB_URL} rel="noopener" className="site-menu-link">
-                        GitHub
-                      </a>
-                    </>
-                  )}
-                </div>
+                <Link href={DOCS_URL} className="site-menu-link site-menu-row">
+                  Docs
+                </Link>
+                <a href={GITHUB_URL} rel="noopener" className="site-menu-link site-menu-row">
+                  GitHub
+                </a>
+                <Link href={`${DOCS_URL}/${GET_STARTED_SLUG}`} className="button button--sand site-menu-start" prefetch>
+                  Get started
+                </Link>
               </nav>
             </details>
           </div>

@@ -51,8 +51,8 @@ function Target({ item, className, children }: { item: MenuItem; className: stri
 }
 
 /**
- * The desktop's mega menu: one `<details>` per panel, so a click opens it without JavaScript. They share a `name`, so opening one
- * closes the others; with JavaScript the header also closes the open one on Escape and returns the focus to its summary.
+ * The desktop's mega menu: one `<details>` per panel, so a click opens it without JavaScript. They share a `name`, so opening
+ * one closes the others; with JavaScript the header also closes the open one on Escape and returns the focus to its summary.
  */
 export function SiteMenuPanels({ panels }: { panels: readonly MenuPanel[] }) {
   return (
@@ -106,24 +106,63 @@ export function SiteMenuPanels({ panels }: { panels: readonly MenuPanel[] }) {
   );
 }
 
-/** The same targets for a narrow screen, inside its `<details>` menu: a title and the links of each panel. */
+function ChevronRight() {
+  return (
+    <svg className="site-menu-chevron" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m9 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+function ArrowLeft() {
+  return (
+    <svg className="site-menu-back" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 12H5M11 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
+/**
+ * The same targets for a narrow screen, inside the sheet of its `<details>` menu: one nested `<details>` per panel, shown as a row
+ * with a chevron. Open, a group replaces the list (the style sheet hides its siblings) and its summary becomes the back row. Inside
+ * it each column is a small label above a list of rows. A page that two columns of one panel name shows once, so a column whose
+ * targets all appeared before is left out.
+ */
 export function SiteMenuGroups({ panels }: { panels: readonly MenuPanel[] }) {
   return (
     <>
       {panels.map((panel) => {
         const shown = new Set<string>(); // within a group only: a page that two columns of one panel name shows once
         return (
-          <div key={panel.id} className="site-menu-group">
-            <p className="site-menu-title">{panel.label}</p>
-            {panel.columns
-              .flatMap((column) => column.items)
-              .filter((item) => !shown.has(item.href) && shown.add(item.href))
-              .map((item) => (
-                <Target key={item.title} item={item} className="site-menu-link">
-                  {item.title}
-                </Target>
-              ))}
-          </div>
+          <details key={panel.id} className="site-menu-group" name="site-menu-group">
+            <summary>
+              <ArrowLeft />
+              {panel.label}
+              <ChevronRight />
+            </summary>
+            {panel.columns.map((column, index) => {
+              const items = column.items.filter((item) => !shown.has(item.href) && shown.add(item.href));
+              const id = `site-menu-${panel.id}-${index}`;
+              return (
+                items.length > 0 && (
+                  <div key={column.title} className="site-menu-column">
+                    <p id={id} className="site-menu-title">
+                      {column.title}
+                    </p>
+                    <ul aria-labelledby={id} className="site-menu-list">
+                      {items.map((item) => (
+                        <li key={item.title}>
+                          <Target item={item} className="site-menu-link">
+                            {item.title}
+                          </Target>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              );
+            })}
+          </details>
         );
       })}
     </>
