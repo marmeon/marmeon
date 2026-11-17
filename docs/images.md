@@ -164,7 +164,7 @@ upload({ maxBytes: 5_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'], d
 
 When the limit depends on something the rule cannot know, the controller reads `dimensions()` and refuses what is too large. It
 calls `discard()` before it refuses, or the file waits on the private disk until `uploads:prune` removes it. It refuses a file whose
-header cannot be read, `undefined`, too: the rule has checked the type, so an image without a readable size is damaged. Leave `image/avif` out of that rule's `mime` here too, since the size of an AVIF is no limit.
+header cannot be read, `undefined`, too: the rule has checked the type, so an image without a readable size is damaged. Leave `image/avif` out of that rule's `mime` here too, since the first bytes of an AVIF do not reliably show the size a decoder decodes ([uploads in validation](validation.md#uploads) says why).
 
 ```ts title="modules/media/controllers/StoreImageController.ts"
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
