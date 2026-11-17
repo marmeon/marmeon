@@ -100,7 +100,8 @@
   max-width: 420px;
   min-height: 46px;
   margin-top: 22px;
-  padding: 0 6px 0 16px;
+  padding: 0 0 0 16px;
+  overflow: hidden;
   border: 1px solid var(--panel-line);
   border-radius: 11px;
   background: var(--panel-foot);
@@ -122,10 +123,14 @@
   white-space: nowrap;
 }
 
+/* The copy button is the line's last segment: full height, flush with the right edge, one rule between it and the command. */
 .landing .hero-install .copy-button {
+  align-self: stretch;
   min-width: 44px;
   justify-content: center;
-  border: 1px solid var(--panel-edge);
+  border: 0;
+  border-left: 1px solid var(--panel-edge);
+  border-radius: 0;
   background: var(--panel-raised);
   color: var(--stage-soft);
 }
@@ -133,6 +138,11 @@
 .landing .hero-install .copy-button:hover {
   background: var(--panel-raised);
   color: var(--stage-fg-strong);
+}
+
+/* The line clips at its rounded edge, so the focus ring sits inside the button. */
+.landing .hero-install .copy-button:focus-visible {
+  outline-offset: -3px;
 }
 
 .landing .hero-install .copy-button[data-copied] {
