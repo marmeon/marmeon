@@ -1,4 +1,4 @@
-/* Batteries: the heading and its checks, then a bento grid of eight cards: one with a piece of real code, the others with a small picture of what the package does. On Stone in both colour schemes. */
+/* Batteries: the heading and its checks, then a bento grid of twelve cards: one with a piece of real code, the others with a small picture of what the package does. On Stone in both colour schemes. */
 .landing .batteries-frame {
   padding: clamp(64px, 8vw, 112px) clamp(20px, 3vw, 40px);
   border-inline: 1px solid var(--rail-light);
@@ -55,9 +55,29 @@
 
 .landing .batteries-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-top: 56px;
+}
+
+/* Twelve cards, three of them wide, fill whole rows at every width: two columns up to 999 px (the last card spans both, the
+   cells being even then), three from 1000 px (five rows of three cells). */
+@media (min-width: 640px) {
+  .landing .batteries-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) and (max-width: 999px) {
+  .landing .batteries-grid > .battery:last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1000px) {
+  .landing .batteries-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .landing .battery {
@@ -159,7 +179,7 @@
 }
 
 /* The pictures: each sits under the card's text, 18 px from the card's edges. */
-.landing .battery > :is(.art-table, .art-jobs, .art-mail, .art-field, .art-schedule, .art-tree, .art-storage) {
+.landing .battery > :is(.art-table, .art-jobs, .art-mail, .art-field, .art-schedule, .art-tree, .art-storage, .art-live, .art-notify, .art-i18n, .art-cache) {
   margin: 22px 18px 0;
 }
 
@@ -168,6 +188,9 @@
 .landing .art-schedule,
 .landing .art-tree,
 .landing .art-field,
+.landing .art-live,
+.landing .art-i18n,
+.landing .art-cache,
 .landing .art-jobs li,
 .landing .art-signed,
 .landing .art-disk {
@@ -178,7 +201,10 @@
 .landing .art-mail,
 .landing .art-schedule,
 .landing .art-tree,
-.landing .art-field {
+.landing .art-field,
+.landing .art-live,
+.landing .art-i18n,
+.landing .art-cache {
   overflow: hidden;
   border-radius: var(--radius-md);
 }
@@ -461,5 +487,239 @@
 
 .landing .art-signed svg {
   flex: none;
+  color: var(--teal);
+}
+
+/* Live, notifications, localization and cache: a framed figure with a mono caption bar above a body. */
+.landing .art-live figcaption,
+.landing .art-i18n figcaption,
+.landing .art-cache figcaption {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rail-faint);
+  background: var(--stone);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-live ul,
+.landing .art-cache ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .art-live li,
+.landing .art-cache li {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--rail-faint);
+  color: var(--muted-ink);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-cache li:last-child {
+  border-bottom: 0;
+}
+
+/* Live: the new row and the hint line */
+.landing .art-live .art-live-new {
+  border-left: 3px solid var(--teal);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.landing .art-live-hint {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 10px 14px;
+  color: var(--muted-ink);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+}
+
+.landing .art-live-hint b {
+  color: var(--teal);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Notifications: the notification, thin lines and a tile per channel. The lines are borders of the list items, so they meet the boxes
+   without offsets: stacked, one vertical line runs from the notification's bottom edge to the last tile's middle, with a tick into
+   each tile; from 30rem of picture width the notification stands left and a stub joins it to a line from the first tile's middle to the last's. */
+.landing .art-notify {
+  container-type: inline-size;
+}
+
+.landing .art-notify-body {
+  display: grid;
+  margin: 0;
+}
+
+.landing .art-notify figcaption {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-self: start;
+  padding: 10px 14px;
+  border: 1px solid var(--rail-mid);
+  border-radius: var(--radius-md);
+  background: var(--stone);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-notify figcaption b {
+  font-weight: 500;
+}
+
+.landing .art-notify figcaption span {
+  color: var(--muted-ink);
+  font-size: 0.6875rem;
+}
+
+.landing .art-notify ul {
+  margin: 0 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+/* A row: the tick (a line centred in its cell), then the tile. The row's left border is the vertical line; the last row draws it down to its middle only. */
+.landing .art-notify li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  padding-block: 4px;
+  border-left: 1px solid var(--rail-strong);
+}
+
+.landing .art-notify li::before {
+  align-self: center;
+  border-top: 1px solid var(--rail-strong);
+  content: '';
+}
+
+.landing .art-notify li:last-child {
+  border-left: 0;
+  background: linear-gradient(var(--rail-strong), var(--rail-strong)) left top / 1px 50% no-repeat;
+}
+
+.landing .art-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--rail-faint);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.landing .art-channel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--teal);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.landing .art-channel span {
+  color: var(--muted-ink);
+}
+
+.landing .art-channel-text {
+  margin: 0;
+  color: var(--ink);
+}
+
+.landing .art-channel-detail {
+  margin: 0;
+  color: var(--muted-ink);
+  font-size: 0.75rem;
+}
+
+@container (min-width: 30rem) {
+  .landing .art-notify-body {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 36px;
+  }
+
+  .landing .art-notify figcaption::after {
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    width: 36px;
+    border-top: 1px solid var(--rail-strong);
+    content: '';
+  }
+
+  .landing .art-notify ul {
+    margin-left: 0;
+  }
+
+  .landing .art-notify li:first-child {
+    border-left: 0;
+    background: linear-gradient(var(--rail-strong), var(--rail-strong)) left bottom / 1px 50% no-repeat;
+  }
+}
+
+/* Localization: language code, then text */
+.landing .art-i18n dl {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+}
+
+.landing .art-i18n dl + dl {
+  border-top: 1px solid var(--rail-faint);
+}
+
+.landing .art-i18n dl > div {
+  display: flex;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.landing .art-i18n dt {
+  flex: none;
+  width: 1.5rem;
+  color: var(--teal);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.landing .art-i18n dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.landing .art-i18n-call {
+  color: var(--muted-ink);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+}
+
+/* Cache: the key with its time to live, the two ends of a read */
+.landing .art-cache figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.landing .art-cache figcaption span {
   color: var(--teal);
 }

@@ -2,13 +2,13 @@ import type { PageProps } from '@marmeon/http';
 import { Link } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
-import { JOBS, MAIL, NOTES_TABLE, SCHEDULE, STORAGE, VALIDATION } from '../../batteries.ts';
+import { CACHE, I18N, JOBS, LIVE, MAIL, NOTIFICATION, NOTES_TABLE, SCHEDULE, STORAGE, VALIDATION } from '../../batteries.ts';
 import { PACKAGES_URL } from '../../links.ts';
 import type { ModuleFile } from '../../module-files.ts';
 import { Editor } from '../Editor.tsx';
 
 interface Battery {
-  readonly id: 'auth' | 'database' | 'queue' | 'mail' | 'validation' | 'scheduler' | 'modules' | 'storage';
+  readonly id: 'auth' | 'database' | 'queue' | 'mail' | 'validation' | 'live' | 'scheduler' | 'modules' | 'storage' | 'cache' | 'notifications' | 'i18n';
   readonly title: string;
   readonly text: string;
   /** The package the card is about: a name in `PACKAGES`. */
@@ -30,9 +30,13 @@ const BATTERIES: readonly Battery[] = [
   { id: 'queue', title: 'Queue', text: 'Jobs as classes, workers and retries. The worker starts with the dev server.', package: '@marmeon/queue', docs: { href: '/docs/queues', text: 'Queues' } },
   { id: 'mail', title: 'Mail', text: 'A mail is a class with a React view, written in MJML components with translated text, and a fake for tests.', package: '@marmeon/mail', docs: { href: '/docs/mail', text: 'Mail' } },
   { id: 'validation', title: 'Validation', text: "Rules with messages in the request's language. Errors are typed down to the field.", package: '@marmeon/validation', docs: { href: '/docs/validation', text: 'Validation' } },
+  { id: 'live', title: 'Live', text: 'A page follows a channel. When a write hints it, the other open tabs reload the props both of them name: the hint says that something changed, never what.', package: '@marmeon/live', docs: { href: '/docs/realtime', text: 'Real-time updates' }, wide: true },
   { id: 'scheduler', title: 'Scheduler', text: 'Scheduled tasks in code, next to the module they belong to.', package: '@marmeon/scheduler', docs: { href: '/docs/scheduling', text: 'Task scheduling' } },
   { id: 'modules', title: 'Modules', text: 'A module brings its routes, providers, migrations, views and tests.', package: '@marmeon/core', docs: { href: '/docs/modules#discovery', text: 'Modules and discovery' } },
   { id: 'storage', title: 'Storage', text: 'Disks on the server, in S3 or in memory, signed links that expire, and uploads.', package: '@marmeon/storage', docs: { href: '/docs/storage', text: 'File storage' } },
+  { id: 'cache', title: 'Cache', text: 'A value under a key for a time to live, counters that expire, and locks.', package: '@marmeon/cache', docs: { href: '/docs/cache', text: 'Cache' } },
+  { id: 'notifications', title: 'Notifications', text: 'A notification is a class: its data, the channels it takes and what it says on each. A worker delivers it.', package: '@marmeon/notifications', docs: { href: '/docs/notifications', text: 'Notifications' }, wide: true },
+  { id: 'i18n', title: 'Localization', text: 'Texts by key in each language the app ships, picked per request, with numbers and dates formatted for the locale.', package: '@marmeon/i18n', docs: { href: '/docs/localization', text: 'Localization' } },
 ];
 
 const CHECKS = [
@@ -164,7 +168,99 @@ function StorageArt() {
   );
 }
 
-/** "Everything your app needs, already wired together": eight cards in the design's bento grid — the Auth card with the policy's code, the others with a small picture of what the package does. Plain HTML that reads without JavaScript. */
+/** A profile page with its links, the newest one just arrived, and the hint that brought it. */
+function LiveArt() {
+  return (
+    <figure className="art-live" aria-label="A profile page that reloads when the server hints its channel">
+      <figcaption>{LIVE.page}</figcaption>
+      <ul aria-label="Links on the page">
+        {LIVE.links.map((link) => (
+          <li key={link}>{link}</li>
+        ))}
+        <li className="art-live-new">{LIVE.added}</li>
+      </ul>
+      <p className="art-live-hint">
+        <span>
+          hint <b>{LIVE.channel}</b>
+        </span>
+        <span>
+          reloads <b>{LIVE.prop}</b>
+        </span>
+      </p>
+    </figure>
+  );
+}
+
+/** One notification, and what each of its channels delivers, joined by thin lines (drawn by borders in the stylesheet). The outer element is the container the stylesheet queries. */
+function NotificationArt() {
+  return (
+    <div className="art-notify" role="group" aria-label="One notification delivered over three channels">
+      <figure className="art-notify-body">
+        <figcaption>
+          <b>{NOTIFICATION.name}</b>
+          <span>{NOTIFICATION.className}</span>
+        </figcaption>
+        <ul aria-label="Channels">
+          {NOTIFICATION.channels.map(({ name, where, text, detail }) => (
+            <li key={name}>
+              <div className="art-tile">
+                <span className="art-channel">
+                  {name} <span>{where}</span>
+                </span>
+                <p className="art-channel-text">{text}</p>
+                {detail !== null && <p className="art-channel-detail">{detail}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </figure>
+    </div>
+  );
+}
+
+/** One key, its text in two languages, and a number in each language's format. */
+function LocalizationArt() {
+  return (
+    <figure className="art-i18n" aria-label="One key with its translations">
+      <figcaption>{I18N.key}</figcaption>
+      <dl>
+        {I18N.texts.map(({ locale, text }) => (
+          <div key={locale}>
+            <dt>{locale}</dt>
+            <dd>{text}</dd>
+          </div>
+        ))}
+      </dl>
+      <dl>
+        {I18N.numbers.map(({ locale, text }) => (
+          <div key={locale}>
+            <dt>{locale}</dt>
+            <dd>
+              <span className="art-i18n-call">format.number({I18N.number})</span> {text}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </figure>
+  );
+}
+
+/** A key with its time to live, and the two ways a read ends. */
+function CacheArt() {
+  return (
+    <figure className="art-cache" aria-label="A cached value with its time to live">
+      <figcaption>
+        {CACHE.key} <span>{CACHE.seconds} s</span>
+      </figcaption>
+      <ul aria-label="A read">
+        <li>{CACHE.hit}</li>
+        <li>{CACHE.miss}</li>
+      </ul>
+    </figure>
+  );
+}
+
+/** "Everything your app needs, already wired together": twelve cards in the design's bento grid — the Auth card with the policy's code, the others with a small picture of what the package does. Plain HTML that reads without JavaScript. */
 export function BatteriesSection({ snippets, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'moduleFiles'>) {
   const { file, html } = snippets.batteryAuth;
   if (file === undefined) throw new Error('The landing\'s battery snippet "batteryAuth" has no file name.');
@@ -174,9 +270,13 @@ export function BatteriesSection({ snippets, moduleFiles }: Pick<PageProps<ShowL
     queue: <QueueArt />,
     mail: <MailArt />,
     validation: <ValidationArt />,
+    live: <LiveArt />,
     scheduler: <ScheduleArt />,
     modules: <ModuleArt files={moduleFiles} />,
     storage: <StorageArt />,
+    cache: <CacheArt />,
+    notifications: <NotificationArt />,
+    i18n: <LocalizationArt />,
   };
   return (
     <section className="batteries landing-light" aria-labelledby="batteries-title">

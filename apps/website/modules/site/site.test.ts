@@ -4,7 +4,7 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { AGENT_SKILLS, AGENT_TOOLS } from './agents.ts';
-import { JOBS, MAIL, NOTES_TABLE, SCHEDULE, STORAGE } from './batteries.ts';
+import { CACHE, I18N, JOBS, LIVE, MAIL, NOTES_TABLE, NOTIFICATION, SCHEDULE, STORAGE } from './batteries.ts';
 import { CHAIN, mistakeLine } from './chain.ts';
 import { DEVTOOLS_BAR_TABS, DEVTOOLS_PAGES, sampleValues } from './devtools-sample.ts';
 import { FAKES } from './fakes.ts';
@@ -32,7 +32,7 @@ const textOf = (markup: string) =>
 const repo = resolve(import.meta.dirname, '../../../..');
 const document = { headers: { accept: 'text/html' } };
 /** The landing's sections in their order, the hero first: the order test and the h2 count read this one list. */
-const SECTIONS = ['hero', 'batteries', 'principles', 'audience', 'chain', 'devtools', 'agents', 'secure', 'testing', 'islands', 'packages', 'start'];
+const SECTIONS = ['hero', 'batteries', 'audience', 'chain', 'devtools', 'agents', 'secure', 'testing', 'islands', 'principles', 'packages', 'start'];
 const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.json'), 'utf8')) as { version: string }).version;
 
 let app: TestApp;
@@ -181,9 +181,9 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<section class="audience landing-light" aria-labelledby="audience-title"');
     expect(body).toContain('<h2 id="audience-title"');
-    const [principles, audience, chain] = ['principles-title', 'audience-title', 'chain-title'].map((id) => body.indexOf(`id="${id}"`)) as [number, number, number];
-    expect(principles).toBeGreaterThan(-1);
-    expect(principles).toBeLessThan(audience);
+    const [batteries, audience, chain] = ['batteries-title', 'audience-title', 'chain-title'].map((id) => body.indexOf(`id="${id}"`)) as [number, number, number];
+    expect(batteries).toBeGreaterThan(-1);
+    expect(batteries).toBeLessThan(audience);
     expect(audience).toBeLessThan(chain);
     const section = body.slice(audience, chain);
     expect(body.match(/<li class="audience-card"/g)).toHaveLength(4);
@@ -205,7 +205,7 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<section class="islands duo-card" aria-labelledby="islands-title"');
     expect(body.indexOf('id="islands-title"')).toBeLessThan(body.indexOf('id="start-title"'));
-    const section = body.slice(body.indexOf('<section class="islands '), body.indexOf('<section class="packages'));
+    const section = body.slice(body.indexOf('<section class="islands '), body.indexOf('<section class="principles'));
     expect(section).toContain('<div class="island-frame" data-island="site.render-clock"');
     expect(section).toContain('With JavaScript, the browser loads an island here: a part of the page the server renders on its own.');
     expect(section).toContain('<h3 class="tabs-heading">ShowRenderClockController.ts</h3>');
@@ -317,27 +317,28 @@ describe('the landing page', () => {
     expect(section).not.toMatch(/\sstyle=/);
   });
 
-  it('shows the eight batteries as cards: the policy as code, the rest as pictures, each with its package and its docs link', async () => {
+  it('shows the twelve batteries as cards: the policy as code, the rest as pictures, each with its package and its docs link', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.indexOf('<section class="batteries');
     const section = body.slice(start, body.indexOf('</section>', start));
     expect(section).toContain('aria-labelledby="batteries-title"');
     expect(section).not.toContain('tabs-heading');
     const titles = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((match) => match[1]);
-    expect(titles).toEqual(['Auth and policies', 'Database and migrations', 'Queue', 'Mail', 'Validation', 'Scheduler', 'Modules', 'Storage']);
-    expect(section.match(/<article class="card battery/g)).toHaveLength(8);
+    expect(titles).toEqual(['Auth and policies', 'Database and migrations', 'Queue', 'Mail', 'Validation', 'Live', 'Scheduler', 'Modules', 'Storage', 'Cache', 'Notifications', 'Localization']);
+    expect(section.match(/<article class="card battery/g)).toHaveLength(12);
     // The Auth card is the wide one and holds the section's only code: one window, with the policy's file as its h4.
-    expect(section.match(/<article class="card battery battery--wide"/g)).toHaveLength(1);
+    // Three wide cards (Auth, Live, Notifications) and nine single ones fill fifteen cells: five rows of three.
+    expect([...section.matchAll(/<article class="card battery( battery--wide)?"><div class="battery-head"><h3>([^<]*)/g)].filter((match) => match[1]).map((match) => match[2])).toEqual(['Auth and policies', 'Live', 'Notifications']);
     expect(section.match(/<div role="group"[^>]*class="editor /g)).toHaveLength(1);
     expect(section.match(/class="code-block"/g)).toHaveLength(1);
     expect(section.indexOf('class="code-block"')).toBeLessThan(section.indexOf('<h3>Database and migrations</h3>'));
     expect(section.match(/<pre/g)).toHaveLength(1);
     expect(section).toMatch(/<article class="card battery battery--wide">.*?class="editor battery-editor"/);
     // h2 > h3 (the card) > h4 (the policy's file, in the first card only): no level is skipped.
-    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`234${'3'.repeat(7)}`);
+    expect([...section.matchAll(/<h([1-6])[ >]/g)].map((match) => match[1]).join('')).toBe(`234${'3'.repeat(11)}`);
     expect([...section.matchAll(/<h4 class="editor-name">([^<]*)<\/h4>/g)].map((match) => match[1])).toEqual([SNIPPETS.batteryAuth.file]);
     const packages = [...section.matchAll(/<p class="battery-foot"><code>([^<]*)<\/code>/g)].map((match) => match[1]!);
-    expect(packages).toEqual(['@marmeon/auth', '@marmeon/database', '@marmeon/queue', '@marmeon/mail', '@marmeon/validation', '@marmeon/scheduler', '@marmeon/core', '@marmeon/storage']);
+    expect(packages).toEqual(['@marmeon/auth', '@marmeon/database', '@marmeon/queue', '@marmeon/mail', '@marmeon/validation', '@marmeon/live', '@marmeon/scheduler', '@marmeon/core', '@marmeon/storage', '@marmeon/cache', '@marmeon/notifications', '@marmeon/i18n']);
     for (const name of packages) expect(PACKAGES.map((entry) => entry.name), name).toContain(name);
     const heads = [...section.matchAll(/<div class="battery-head"><h3>([^<]*)<\/h3><p>([^<]+)<\/p><\/div>/g)];
     expect(heads.map((match) => match[1])).toEqual(titles);
@@ -348,9 +349,13 @@ describe('the landing page', () => {
       ['Queues', '/docs/queues'],
       ['Mail', '/docs/mail'],
       ['Validation', '/docs/validation'],
+      ['Real-time updates', '/docs/realtime'],
       ['Task scheduling', '/docs/scheduling'],
       ['Modules and discovery', '/docs/modules#discovery'],
       ['File storage', '/docs/storage'],
+      ['Cache', '/docs/cache'],
+      ['Notifications', '/docs/notifications'],
+      ['Localization', '/docs/localization'],
     ]);
     // Each picture is there, with the real names the data module pins to their files.
     const article = (title: string): string => {
@@ -380,6 +385,28 @@ describe('the landing page', () => {
     const storage = article('Storage');
     expect(textOf(storage)).toContain('locals3');
     expect(textOf(storage)).toContain(`${STORAGE.key} · signed for ${STORAGE.minutes} min`);
+    for (const label of ['A profile page that reloads when the server hints its channel', 'One notification delivered over three channels', 'One key with its translations', 'A cached value with its time to live']) expect(section, label).toContain(`aria-label="${label}"`);
+    const live = textOf(article('Live'));
+    expect(live).toContain(LIVE.page);
+    expect(live).toContain(`hint ${LIVE.channel}`);
+    expect(live).toContain(`reloads ${LIVE.prop}`);
+    for (const link of [...LIVE.links, LIVE.added]) expect(live, link).toContain(link);
+    const notifications = article('Notifications');
+    expect(textOf(notifications)).toContain(NOTIFICATION.name);
+    expect(textOf(notifications)).toContain(NOTIFICATION.className);
+    for (const { name, where, text, detail } of NOTIFICATION.channels) {
+      expect(notifications, name).toContain(`<p class="art-channel-text">${text}</p>`);
+      expect(textOf(notifications), name).toContain(`${name} ${where}`);
+      if (detail !== null) expect(textOf(notifications), name).toContain(detail);
+    }
+    const i18n = textOf(article('Localization'));
+    expect(i18n).toContain(I18N.key);
+    for (const { locale, text } of I18N.texts) expect(i18n, locale).toContain(`${locale}${text}`);
+    for (const { locale, text } of I18N.numbers) expect(i18n, locale).toContain(`${locale}format.number(${I18N.number}) ${text}`);
+    const cache = textOf(article('Cache'));
+    expect(cache).toContain(`${CACHE.key} ${CACHE.seconds} s`);
+    expect(cache).toContain(CACHE.hit);
+    expect(cache).toContain(CACHE.miss);
     expect(textOf(section)).toContain('Installed packages register themselves');
     expect(textOf(section)).not.toContain('pnpm add');
     // The pictures are decoration or have a label: no button, no script, no live role.

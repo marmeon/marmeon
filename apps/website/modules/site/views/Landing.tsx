@@ -17,14 +17,13 @@ import type { ShowLandingController } from '../controllers/ShowLandingController
 import { DESCRIPTIONS } from '../descriptions.ts';
 import { landingNodes } from '../structured-data.ts';
 
-/** `/`: what Marmeon is, the batteries it comes with, its principles, who it is for, one type followed from the database to the form, the devtools and agents band, and the rest of the framework. */
+/** `/`: what Marmeon is, the batteries it comes with, who it is for, one type followed from the database to the form, the devtools and agents band, the rest of the framework, its principles and the packages. */
 export default function Landing({ snippets, chain, packages, packageGroups, moduleFiles, stack }: PageProps<ShowLandingController>) {
   return (
     <div className="landing">
       <SiteHead title={HOME_TITLE} description={DESCRIPTIONS.landing} path="/" nodes={(site) => landingNodes(site, DESCRIPTIONS.landing)} />
       <HeroSection chain={chain} packages={packages} stack={stack} />
       <BatteriesSection snippets={snippets} moduleFiles={moduleFiles} />
-      <PrinciplesSection />
       <AudienceSection />
       <ChainSection snippets={snippets} chain={chain} />
       <div className="landing-band stage">
@@ -38,6 +37,7 @@ export default function Landing({ snippets, chain, packages, packageGroups, modu
           <IslandSection snippets={snippets} />
         </div>
       </div>
+      <PrinciplesSection />
       <PackagesSection packages={packages} packageGroups={packageGroups} />
       <StartSection />
     </div>
