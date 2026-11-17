@@ -36,7 +36,12 @@ export type ActionResultOf<N extends string> = ([ActionDataOf<N>] extends [never
     readonly kind: 'invalid';
     readonly errors: Partial<Record<ActionField<N>, string>>;
     readonly message: string | undefined;
-} | {
+} | (ActionConflicts<N> extends true ? {
+    readonly ok: false;
+    readonly kind: 'conflict';
+    readonly current: ActionConflictOf<N>;
+    readonly message: string;
+} : never) | {
     readonly ok: false;
     readonly kind: 'exception';
     readonly exception: ActionError;
@@ -70,6 +75,7 @@ export interface ClientAction<N extends string, RequiresParams extends boolean =
     readonly errors: Partial<Record<ActionField<N>, string>>;
     readonly hasErrors: boolean;
     readonly exception: ActionError | undefined;
+    readonly conflict: ActionConflictOf<N> | undefined;
     clearErrors(...fields: ActionField<N>[]): void;
     cancel(): void;
 }

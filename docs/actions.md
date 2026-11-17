@@ -91,11 +91,12 @@ export default defineRoutes((Route) => {
 ```
 
 `this.json(data)` is what the action's result carries, typed. A redirect is reported to the component, not followed. A flash
-message on either goes to the browser with the answer and fires once, as a toast. A route whose controller renders a page, and an
-island's route, are compile errors in `useAction()`:
+message on either goes to the browser with the answer and fires once, as a toast. A route whose controller only answers
+`conflict(…)` is accepted too ([a stale save](#a-stale-save)). A route whose controller renders a page, and an island's route, are
+compile errors in `useAction()`:
 
 ```text
-'notes.index' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect
+'notes.index' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…), a redirect or conflict(…)
 ```
 
 ## Sending
@@ -130,6 +131,7 @@ if (result.ok && result.kind === 'data') console.log(result.data.pinned);
 | `data` | `true` | The controller answered `this.json(…)`. `data` is that value as JSON made it. |
 | `redirect` | `true` | The controller redirected. `redirect` is the URL. |
 | `invalid` | `false` | The request schema refused the input. `errors` has the first message per field. |
+| `conflict` | `false` | The controller answered `conflict(current)`: the save was stale. `current` is that value as JSON made it, `message` says so in the request's language. |
 | `exception` | `false` | Offline, or a status such as 403, 404 or 500. `exception` says which; see below. |
 | `cancelled` | `false` | `cancel()`, a newer call with the same `key`, a no to `confirm`, or the page was left. |
 
@@ -149,7 +151,7 @@ if (!result.ok && result.kind === 'exception') {
 A missing record that a user can run into is an expected answer, not a failure: answer `200` with a field such as `outcome` in
 `this.json(…)` and branch on `result.data.outcome`, so that the page does not parse an error.
 
-`data` and `redirect` also carry the call's flash messages. The action itself keeps the state of its last call for rendering:
+`data` and `redirect` also carry the call's flash messages. `data`, `redirect` and `conflict` exist only when the controller can answer so. The action itself keeps the state of its last call for rendering:
 
 | Member | What it is |
 | --- | --- |
@@ -158,11 +160,31 @@ A missing record that a user can run into is an expected answer, not a failure: 
 | `result` | How the last finished call ended. |
 | `data` | The data of the last call that answered with data. |
 | `errors`, `hasErrors`, `clearErrors(...fields)` | The validation errors of the last call. `errors` has no prototype: ask `Object.hasOwn(errors, field)`. |
+| `conflict` | The `current` of the last call's conflict, until the next call ends otherwise. |
 | `exception` | Why the last call failed, until the next one. |
 | `cancel()` | Aborts this component's calls under way and rolls back their patches. |
 
 An action is never retried by itself. A 401 or 419 means the session is gone, for example after a sign-out in another tab: say so,
 and let the user reload. When the answer says that the user signed out, the browser loads the page anew.
+
+### A stale save
+
+A controller that finds the record changed under the user answers with `conflict(current)`, and the action ends `conflict`, with
+`current` typed as the controller sends it. See [responses](responses.md#conflict). Its optimistic patches roll back like those of
+any failure. A `conflict` carries no flash messages: whatever the session holds stays for the next page.
+
+An autosave is an action with a `key`, so the latest call wins. On a conflict the action does not retry, and the page compares
+`current` with the draft the user typed:
+
+```tsx
+const save = useAction('notes.save', { note: note.id });
+
+async function autosave(draft: string) {
+  const result = await save.submit({ key: `autosave:${note.id}`, data: { body: draft, version } });
+  if (result.kind === 'conflict') setTheirs(result.current);
+  else if (result.ok) setVersion(result.data.version);
+}
+```
 
 ## Optimistic updates
 

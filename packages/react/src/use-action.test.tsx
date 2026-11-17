@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, CONFLICT_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,6 +58,7 @@ function Profile({ links, activity }: { links: Link[]; activity: string }) {
       <p data-testid="pending">{String(remove.pending)}</p>
       <p data-testid="errors">{JSON.stringify(add.errors)}</p>
       <p data-testid="exception">{remove.exception?.type === 'server' ? remove.exception.status : ''}</p>
+      <p data-testid="conflict">{JSON.stringify(remove.conflict ?? null)}</p>
       <p data-testid="activity">{activity}</p>
       <Link href="/people" data-testid="to-people">
         People
@@ -178,6 +179,20 @@ describe('useAction', () => {
     expect(labels()).toEqual(['Notes', 'Blog']);
     expect($('pending').textContent).toBe('false');
     expect($('exception').textContent).toBe('404');
+  });
+
+  it('a conflict (409 with the conflict header) sets conflict, rolls the patch back — and the next call that ends otherwise clears it', async () => {
+    server = (_url, _init) => respond({ message: 'Someone else changed this in the meantime.', current: { version: 3 } }, 409, { [CONFLICT_HEADER]: '1' });
+    await mount(profile(['Notes', 'Blog']));
+    expect($('conflict').textContent).toBe('null');
+    await click('remove-1');
+    await until(() => expect($('conflict').textContent).toBe('{"version":3}'));
+    expect(labels()).toEqual(['Notes', 'Blog']);
+    expect($('exception').textContent).toBe('');
+
+    server = () => respond({ deleted: 1 });
+    await click('remove-2');
+    await until(() => expect($('conflict').textContent).toBe('null'));
   });
 
   it('shows a ghost row while adding — until the reloaded list has the real one; a 422 brings the errors by field', async () => {

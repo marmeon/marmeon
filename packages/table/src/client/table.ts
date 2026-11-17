@@ -39,7 +39,8 @@ export type ExportOf<T extends AnyTableData> = T['exports'][number]['name'];
 export type TableRunOutcome<D = unknown, O = never, W extends boolean = true> =
   | (W extends true ? { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: TableActionResult<D> } : never)
   | ([O] extends [never] ? never : { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: O })
-  | Exclude<ActionOutcome, { readonly ok: true; readonly kind: 'data' }>;
+  // No `conflict` kind: a table refuses a handler that returns `conflict(…)` (a type error, and a thrown one at run time).
+  | Exclude<ActionOutcome, { readonly ok: true; readonly kind: 'data' } | { readonly kind: 'conflict' }>;
 
 /** What one run of an action does besides sending. */
 export interface TableRunOptions {
@@ -376,6 +377,9 @@ export class TableController<T extends AnyTableData = AnyTableData> {
     }
     const outcome = await loaded.runTableAction(this.#navigator, { url, body, confirm, signal, only });
     if (bulk && outcome.ok) this.selection.clear();
+    // A table's endpoint never answers a conflict (`TableRunOutcome` has no such kind): one a handler fakes with a 409 and the conflict
+    // header is a failure like any other status.
+    if (outcome.kind === 'conflict') return { ok: false, kind: 'exception', exception: { type: 'server', status: 409, message: outcome.message } };
     return outcome as TableRunOutcome;
   }
 

@@ -5,6 +5,7 @@
  */
 export { isViewResult } from './view.ts';
 export { isJsonResult, jsonResponse } from './json.ts';
+export { isConflictResult } from './conflict.ts';
 export { isIslandResult } from './island.ts';
 export { isLayerResult } from './layer.ts';
 export { flashableInput, Flasher, INTENDED_KEY, IntendedKey, isRedirectResult, OLD_INPUT_KEY } from './redirect.ts';
@@ -18,6 +19,7 @@ export { ERROR_PAGE, LAYER_BACKDROP, legacyFrameworkPage, pageName, scriptJson }
 export {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
+  CONFLICT_HEADER,
   FLASH_HEADER,
   FLASH_WAITING_HEADER,
   LOCATION_HEADER,

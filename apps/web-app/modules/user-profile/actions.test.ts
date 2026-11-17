@@ -1,9 +1,11 @@
 import { UserFactory } from '#modules/auth';
+import { Connections, sql } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
+import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
@@ -58,6 +60,70 @@ describe('profile links as actions — what useAction sends and gets back', () =
     const notes = (await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }))!;
     await app.actingAs(ada).acting().delete(`/users/${ada.public_id}/links/${notes.id}`).assertActionRedirect(`/users/${ada.public_id}`);
     await app.assertDatabaseMissing('profile_links', { id: notes.id });
+  });
+
+  it('renames a link when the page has its latest version, and answers the new one', async () => {
+    const ada = await verified();
+    const notes = (await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }))!;
+    const saved = await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label: 'Blog', seen: new Date(notes.updated_at).toISOString() } }).assertOk();
+    expect(saved.json<{ label: string }>().label).toBe('Blog');
+    // The answered version is newer than the one the page sent: the next save of the old version is stale.
+    expect(Date.parse(saved.json<{ updated_at: string }>().updated_at)).toBeGreaterThan(Date.parse(new Date(notes.updated_at).toISOString()));
+    await app.assertDatabaseHas('profile_links', { id: notes.id, label: 'Blog' });
+  });
+
+  it('answers a stale rename with a conflict: 409, the header, the link as it is now — and saves nothing', async () => {
+    const ada = await verified();
+    const notes = (await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }))!;
+    const seen = new Date(notes.updated_at).toISOString();
+    const later = new Date(Date.parse(seen) + 5000).toISOString();
+    await app.make(ProfileLinkRepository).update(notes.id, { label: 'Theirs', updated_at: later });
+    const response = await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label: 'Mine', seen } }).assertStatus(409).assertHeader('x-marmeon-conflict', '1');
+    expect(response.json<{ current: unknown }>().current).toEqual({ label: 'Theirs', savedAt: later });
+    expect(response.headers.get('x-marmeon-location')).toBeNull();
+    await app.assertDatabaseHas('profile_links', { id: notes.id, label: 'Theirs' });
+  });
+
+  it('compares versions at the precision the client sees: a link stamped with microseconds (a column default) saves fresh and conflicts when stale', async () => {
+    const ada = await verified();
+    const notes = (await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }))!;
+    // What a write outside the repository leaves: PostgreSQL keeps the microseconds, a JavaScript date and its ISO string cannot.
+    await app.make(Connections).get().updateTable('profile_links').set({ updated_at: sql`'2026-03-01 10:00:00.123456'` as never }).where('id', '=', notes.id).execute();
+    const seen = (await app.make(ProfileLinkRepository).find(notes.id))!.updated_at;
+    await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label: 'Mine', seen: new Date(seen).toISOString() } }).assertOk();
+    await app.assertDatabaseHas('profile_links', { id: notes.id, label: 'Mine' });
+    // The same version again is stale now: the first save moved it.
+    await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label: 'Again', seen: new Date(seen).toISOString() } }).assertStatus(409);
+    await app.assertDatabaseHas('profile_links', { id: notes.id, label: 'Mine' });
+  });
+
+  it('two saves of the same version cannot both pass, not even in the millisecond the link was stamped in', async () => {
+    const ada = await verified();
+    const notes = (await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }))!;
+    const seen = new Date(app.freeze()).toISOString();
+    await app.make(ProfileLinkRepository).update(notes.id, { updated_at: seen });
+    await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label: 'First', seen } }).assertOk();
+    await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label: 'Second', seen } }).assertStatus(409);
+    await app.assertDatabaseHas('profile_links', { id: notes.id, label: 'First' });
+  });
+
+  it('two saves at once with the same version: one passes, the other conflicts', async () => {
+    const ada = await verified();
+    const notes = (await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }))!;
+    const seen = new Date(notes.updated_at).toISOString();
+    const save = (label: string) => app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${notes.id}`, { json: { label, seen } });
+    const statuses = (await Promise.all([save('One'), save('Two')])).map((response) => response.status).sort();
+    expect(statuses).toEqual([200, 409]);
+  });
+
+  it('answers 403 or 404 before any version is compared: someone else’s profile, someone else’s link', async () => {
+    const ada = await verified();
+    const alan = await verified();
+    const theirs = (await app.factory(ProfileLinkFactory).create({ user_id: alan.id, label: 'Theirs' }))!;
+    const stale = { label: 'Mine', seen: '2020-01-01T00:00:00.000Z' };
+    await app.actingAs(ada).acting().patch(`/users/${ada.public_id}/links/${theirs.id}`, { json: stale }).assertNotFound();
+    await app.actingAs(ada).acting().patch(`/users/${alan.public_id}/links/${theirs.id}`, { json: stale }).assertForbidden();
+    await app.assertDatabaseHas('profile_links', { id: theirs.id, label: 'Theirs' });
   });
 
   it('signed out: 401 as JSON — the browser shows it, nothing follows a redirect to the login page', async () => {

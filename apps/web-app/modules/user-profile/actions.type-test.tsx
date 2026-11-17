@@ -35,11 +35,11 @@ export function Actions() {
     // route name — did you mean user-profile.links.destroy?"'.
     // @ts-expect-error
     useAction('user-profile.links.destory');
-    // … '"'user-profile.show' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect"'.
+    // … '"'user-profile.show' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…), a redirect or conflict(…)"'.
     // @ts-expect-error
     useAction('user-profile.show');
     // … '"'dashboard.sign-ins' is an island — embed it with <Island route=\"dashboard.sign-ins\">; an action calls a route that answers
-    // this.json(…) or a redirect"'.
+    // this.json(…), a redirect or conflict(…)"'.
     // @ts-expect-error
     useAction('dashboard.sign-ins');
     // Object literal may only specify known properties, but 'lable' does not exist in type '{ label: string; url: string; }'. Did you

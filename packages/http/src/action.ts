@@ -4,6 +4,7 @@
  * bundle stays free of server code.
  */
 import type { BrowserRouteName, CheckBrowserRouteName, ControllerOf, FormOf, IslandRouteName, MethodOf, Routes } from '@marmeon/router';
+import type { ConflictResult } from './conflict.ts';
 import type { JsonResult } from './json.ts';
 import type { RedirectResult } from './redirect.ts';
 import type { Serialize, ViewResult } from './view.ts';
@@ -24,15 +25,17 @@ type DataOf<R> = R extends JsonResult<infer T>
   ? Serialize<T>
   : R extends RedirectResult
     ? never
-    : R extends ViewResult
-      ? never // a page (or a layer) — not an action's answer: the server refuses it (406)
-      : R extends { readonly region: 'island' }
-        ? never
-        : R extends Response
-          ? unknown
-          : R extends undefined | null | void
-            ? undefined
-            : Serialize<R>;
+    : R extends ConflictResult
+      ? never // its own kind of result (`ActionConflictOf`), not data
+      : R extends ViewResult
+        ? never // a page (or a layer) — not an action's answer: the server refuses it (406)
+        : R extends { readonly region: 'island' }
+          ? never
+          : R extends Response
+            ? unknown
+            : R extends undefined | null | void
+              ? undefined
+              : Serialize<R>;
 
 /**
  * What a successful action of route `N` brings back: `Serialize<T>` of its controller's `this.json(data)` (or of plain data it
@@ -43,6 +46,16 @@ export type ActionDataOf<N extends string> = DataOf<ActionAnswerOf<N>>;
 /** Whether the controller of route `N` may answer with a redirect — the action then ends `{ kind: 'redirect' }` (not followed). */
 export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, RedirectResult>] extends [never] ? false : true;
 
+/** Whether the controller of route `N` may answer with `conflict(…)` — the action then ends `{ kind: 'conflict' }`. */
+export type ActionConflicts<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, ConflictResult>] extends [never] ? false : true;
+
+/** `Serialize<T>` of every `ConflictResult<T>` branch of an answer `R` — `never` without one. */
+// `undefined` is no JSON: a conflict whose `current` is undefined arrives without one, and the browser reads `undefined`.
+type ConflictOf<R> = R extends ConflictResult<infer T> ? Serialize<Exclude<T, undefined>> | (undefined extends T ? undefined : never) : never;
+
+/** What `current` of a conflict of route `N` is: `Serialize<T>` of its controller's `conflict(current)` — `unknown` for a closure. */
+export type ActionConflictOf<N extends string> = unknown extends ActionAnswerOf<N> ? unknown : ConflictOf<ActionAnswerOf<N>>;
+
 /**
  * The body an action of route `N` sends: its controller's request schema input (`FormOf`) — `never` without a schema (and for a
  * GET); any fields for a name the app's routes do not have (no routes generated, a package's own tests).
@@ -50,7 +63,7 @@ export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N
 export type ActionBodyOf<N extends string> = N extends keyof Routes ? (MethodOf<N> extends 'get' ? never : FormOf<Instance<ControllerOf<N>>>) : Record<string, unknown>;
 
 /**
- * `N` when an action may call it: a route the browser may know that answers with data or a redirect; otherwise a
+ * `N` when an action may call it: a route the browser may know that answers with data, a redirect or a conflict; otherwise a
  * message — an island, a page (its controller only returns `this.view(…)`), anything else as {@link CheckBrowserRouteName}.
  */
 export type CheckActionRouteName<N extends string> = string extends N
@@ -59,10 +72,12 @@ export type CheckActionRouteName<N extends string> = string extends N
     ? N
     : CheckBrowserRouteName<N> extends N
       ? N extends IslandRouteName
-        ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…) or a redirect`
+        ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…), a redirect or conflict(…)`
         : [ActionDataOf<N>] extends [never]
           ? ActionRedirects<N> extends true
             ? N
-            : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect`
+            : ActionConflicts<N> extends true
+              ? N
+              : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…), a redirect or conflict(…)`
           : N
       : CheckBrowserRouteName<N>;

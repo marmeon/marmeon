@@ -4,7 +4,7 @@ import { Clock, createApplication, defineModule, Logger, Translator, type Applic
 import { Connections, DatabaseServiceProvider, Repository, sql, type QueryEvent } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
-import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
+import { conflict, Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
 import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
@@ -101,6 +101,21 @@ export class DeactivateMany {
   handle(rows: readonly { readonly id: number }[]) {
     this.#recorder.batches.push(rows.map((row) => row.id));
     return { last: rows.at(-1)?.id };
+  }
+}
+
+/**
+ * Handlers that answer a stale save, which a table's endpoint refuses. They return `unknown` so the definition compiles: the type
+ * check of `ConflictProblem` is `table.type-test.ts`'s, this is the run-time one (a JavaScript caller, a cast).
+ */
+export class Stale {
+  handle(_row: { readonly id: number }): unknown {
+    return conflict({ version: 2 });
+  }
+}
+export class StaleMany {
+  handle(_rows: readonly { readonly id: number }[]): unknown {
+    return conflict({ version: 2 });
   }
 }
 
@@ -556,8 +571,10 @@ export const InputTable = defineTable({
       }),
     setRole: action(SetRole).authorize(MemberPolicy, 'act').input(r.object({ role: r.in(['admin', 'member']) })),
     deactivate: action(Deactivate).authorize(MemberPolicy, 'act'),
+    stale: action(Stale).authorize(MemberPolicy, 'act'),
   },
   bulk: {
+    stale: bulk(StaleMany).authorize(MemberPolicy, 'act'),
     setRole: bulk(SetRoles).authorize(MemberPolicy, 'act').input(r.object({ role: r.in(['admin', 'member']) })).max(5),
     moveToTeam: bulk(MoveToTeam)
       .authorize(MemberPolicy, 'act')

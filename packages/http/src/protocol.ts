@@ -288,6 +288,12 @@ export const VERSION_HEADER = 'x-marmeon-version';
 export const ENTRY_HEADER = 'x-marmeon-entry';
 
 /**
+ * Marks a `409` as the answer of `conflict(…)` — a stale save, JSON `{ message, current }` — not a document change. Never
+ * sent with {@link LOCATION_HEADER}: a location always wins, and `ClearClientHistory` drops this header.
+ */
+export const CONFLICT_HEADER = 'x-marmeon-conflict';
+
+/**
  * With a 409: where the client loads fully — after a deployment (asset version)
  * and after signing in or out (`ClientHistory`), so no page kept in memory outlives either.
  */

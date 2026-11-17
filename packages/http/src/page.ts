@@ -12,7 +12,8 @@ export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export type { LayerResult } from './layer.ts';
 export type { JsonResult } from './json.ts';
-export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionRedirects, CheckActionRouteName } from './action.ts';
+export type { ConflictResult } from './conflict.ts';
+export type { ActionAnswerOf, ActionBodyOf, ActionConflictOf, ActionConflicts, ActionDataOf, ActionRedirects, CheckActionRouteName } from './action.ts';
 export type {
   AlwaysProp,
   DeferredProp,

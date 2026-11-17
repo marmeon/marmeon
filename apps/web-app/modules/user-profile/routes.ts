@@ -8,6 +8,7 @@ import { EditUserProfileController } from './controllers/EditUserProfileControll
 import { ExportMyDataController } from './controllers/ExportMyDataController.ts';
 import { ListPeopleController } from './controllers/ListPeopleController.ts';
 import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
+import { RenameProfileLinkController } from './controllers/RenameProfileLinkController.ts';
 import { SearchProfileLinksController } from './controllers/SearchProfileLinksController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { UpdateAvatarController } from './controllers/UpdateAvatarController.ts';
@@ -60,5 +61,7 @@ export default defineRoutes((Route) => {
   user.post('/:user/links', AddProfileLinkController).name('links.store');
   const link = user.bind('link', ProfileLinkRepository, { scopedBy: 'user' });
   link.get('/:user/links/:link/remove', ConfirmRemoveLinkController).name('links.remove'); // the confirmation, a layer
+  // An action: the label from the page, answered with the new `updated_at` — or a conflict when the link changed meanwhile.
+  link.patch('/:user/links/:link', RenameProfileLinkController).name('links.rename');
   link.delete('/:user/links/:link', DeleteProfileLinkController).name('links.destroy');
 });

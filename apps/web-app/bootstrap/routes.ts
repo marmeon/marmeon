@@ -48,6 +48,7 @@ import type { RegisterPasskeyController } from '../modules/auth/controllers/Regi
 import type { ReleasePasskeyController } from '../modules/auth/controllers/ReleasePasskeyController.ts';
 import type { RemovePasskeyController } from '../modules/auth/controllers/RemovePasskeyController.ts';
 import type { RenamePasskeyController } from '../modules/auth/controllers/RenamePasskeyController.ts';
+import type { RenameProfileLinkController } from '../modules/user-profile/controllers/RenameProfileLinkController.ts';
 import type { ResendVerificationController } from '../modules/auth/controllers/ResendVerificationController.ts';
 import type { ResetPasswordController } from '../modules/auth/controllers/ResetPasswordController.ts';
 import type { RevokeAccessTokenController } from '../modules/auth/controllers/RevokeAccessTokenController.ts';
@@ -211,6 +212,7 @@ declare module '@marmeon/router' {
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
     'user-profile.links.index': { method: 'get'; path: '/users/:user/links'; controller: typeof SearchProfileLinksController };
     'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
+    'user-profile.links.rename': { method: 'patch'; path: '/users/:user/links/:link'; controller: typeof RenameProfileLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
     'user-profile.me': { method: 'get'; path: '/users/me'; controller: typeof RedirectToOwnProfileController };
     'user-profile.people': { method: 'get'; path: '/people'; controller: typeof ListPeopleController };

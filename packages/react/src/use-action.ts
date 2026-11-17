@@ -3,6 +3,8 @@ import { resolveRoute, type ActionError, type ActionMethod, type ActionOutcome, 
 import { actions, errorRecord } from '@marmeon/http/client/adapter';
 import type {
   ActionBodyOf,
+  ActionConflictOf,
+  ActionConflicts,
   ActionDataOf,
   ActionRedirects,
   BrowserParamsOf,
@@ -27,8 +29,9 @@ export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? 
 
 /**
  * How an action of route `N` ended, typed by its controller: `data` (what JSON made of its `this.json(…)`), `redirect`
- * (reported, not followed), `invalid` (422), `exception` (offline or a failure status — never retried by itself) or
- * `cancelled`. `data` and `redirect` exist only when the controller can answer so, and carry its flash messages.
+ * (reported, not followed), `invalid` (422), `conflict` (its `conflict(current)`: a stale save), `exception` (offline or a
+ * failure status — never retried by itself) or `cancelled`. `data` and `redirect` carry its flash messages; `data`, `redirect`
+ * and `conflict` exist only when the controller can answer so (a conflict carries no flash messages).
  * See docs/actions.md#the-result.
  */
 export type ActionResultOf<N extends string> =
@@ -37,6 +40,7 @@ export type ActionResultOf<N extends string> =
       : { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: ActionDataOf<N>; readonly flash: readonly FlashMessage[] })
   | (ActionRedirects<N> extends true ? { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string; readonly flash: readonly FlashMessage[] } : never)
   | { readonly ok: false; readonly kind: 'invalid'; readonly errors: Partial<Record<ActionField<N>, string>>; readonly message: string | undefined }
+  | (ActionConflicts<N> extends true ? { readonly ok: false; readonly kind: 'conflict'; readonly current: ActionConflictOf<N>; readonly message: string } : never)
   | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionError }
   | { readonly ok: false; readonly kind: 'cancelled' };
 
@@ -111,6 +115,8 @@ export interface ClientAction<N extends string, RequiresParams extends boolean =
   readonly hasErrors: boolean;
   /** Why the last call failed — offline, or the server's status (401/419: signed out). Cleared by the next call. */
   readonly exception: ActionError | undefined;
+  /** The `current` of the last call's conflict (`conflict(current)`: someone saved first) — compare it with the local draft. Gone once the next call ends otherwise; also `undefined` for a conflict that has no `current`, so ask `result?.kind === 'conflict'`. */
+  readonly conflict: ActionConflictOf<N> | undefined;
   clearErrors(...fields: ActionField<N>[]): void;
   /** Aborts this component's calls under way: each ends `cancelled`, its patches rolled back. */
   cancel(): void;
@@ -203,6 +209,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       errors,
       hasErrors: Object.keys(errors).length > 0,
       exception: result?.kind === 'exception' ? result.exception : undefined,
+      conflict: result?.kind === 'conflict' ? (result.current as never) : undefined,
       clearErrors,
       cancel,
     }),

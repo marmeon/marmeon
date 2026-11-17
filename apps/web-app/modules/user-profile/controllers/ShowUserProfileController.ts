@@ -52,7 +52,7 @@ export class ShowUserProfileController extends Controller {
         created_at,
         avatar,
         avatarSize,
-        links: (await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete'])).map(({ user_id: _owner, ...link }) => link),
+        links: (await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete'])).map(({ user_id: _owner, updated_at, ...link }) => ({ ...link, version: new Date(updated_at).toISOString() })),
       }),
       // Only the owner may see their e-mail (ProfilePolicy) — the controller decides what leaves the server.
       email: (await this.#gate.allows(ProfilePolicy, 'viewEmail', user)) ? email : null,

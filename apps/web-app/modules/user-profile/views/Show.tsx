@@ -14,7 +14,7 @@ import {
   type Placeholder,
   type RevalidateOnBack,
 } from '@marmeon/react';
-import { ViewTransition } from 'react';
+import { useState, ViewTransition } from 'react';
 import { ActionFailure } from '../../../layouts/ActionFailure.tsx';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
@@ -154,6 +154,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
                     <button type="button" onClick={() => removeLink(link.id, link.label)} aria-label={t('show.remove_label', { label: link.label })}>
                       {t('show.remove')}
                     </button>
+                    {abilities.update && <RenameLink userId={profile.public_id} link={link} />}
                   </>
                 )}
               </li>
@@ -240,6 +241,67 @@ function AddLink({ userId }: { userId: string }) {
       {add.errors.label && <small role="alert"> {add.errors.label}</small>}
       {add.errors.url && <small role="alert"> {add.errors.url}</small>}
       <ActionFailure exception={add.exception} />
+    </form>
+  );
+}
+
+/**
+ * Renaming a link in place — an action that carries the version the page has (`version`). When the link changed meanwhile (another tab,
+ * another device) the answer is a conflict: the link as it is now, shown beside the draft, with a way to load it.
+ */
+function RenameLink({ userId, link }: { userId: string; link: { id: string; label: string; version: string } }) {
+  const t = useTranslation('user-profile');
+  const [editing, setEditing] = useState(false);
+  if (!editing) {
+    return (
+      <>
+        {' '}
+        <button type="button" onClick={() => setEditing(true)}>
+          {t('show.rename')}
+        </button>
+      </>
+    );
+  }
+  // The editor holds the action: closing it drops the state of its last call, a conflict included.
+  return <RenameForm userId={userId} link={link} onClose={() => setEditing(false)} />;
+}
+
+function RenameForm({ userId, link, onClose }: { userId: string; link: { id: string; label: string; version: string }; onClose: () => void }) {
+  const t = useTranslation('user-profile');
+  const router = useRouter<ShowUserProfileController>();
+  const rename = useAction('user-profile.links.rename', { user: userId, link: link.id });
+  const [draft, setDraft] = useState(link.label);
+  // The version the draft was started from: a reload of the profile while the editor is open must not move it, or the save
+  // would overwrite an edit made elsewhere in the meantime instead of reporting the conflict.
+  const [seen] = useState(link.version);
+  return (
+    <form
+      noValidate
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const result = await rename.submit({ data: { label: draft, seen }, reload: router.reloading({ only: ['profile'] }) });
+        if (result.ok) onClose();
+      }}
+    >
+      <input aria-label={t('show.rename_label', { label: link.label })} value={draft} onChange={(e) => (setDraft(e.target.value), rename.clearErrors('label'))} aria-invalid={!!rename.errors.label} />{' '}
+      <button>{t('show.rename_save')}</button>
+      {rename.errors.label && <small role="alert"> {rename.errors.label}</small>}
+      {rename.result?.kind === 'conflict' && (
+        <small role="alert">
+          {' '}
+          {rename.conflict ? t('show.rename_theirs', { label: rename.conflict.label }) : t('show.rename_gone')}{' '}
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              void router.reload({ only: ['profile'] });
+            }}
+          >
+            {t('show.rename_reload')}
+          </button>
+        </small>
+      )}
+      <ActionFailure exception={rename.exception} />
     </form>
   );
 }
