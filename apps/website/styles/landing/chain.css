@@ -184,13 +184,18 @@
   content: '\2713 ' / '';
 }
 
-/* The file's lines are numbered by a counter in a pseudo-element, so a copy never includes them. */
-.landing .chain-window .code-block {
+/* The code fills the window down to its bottom edge, so a horizontal scrollbar sits at the edge, not in the middle; a
+   percentage height would not resolve against a flex item, so the block and its source are columns themselves and the pre grows in them.
+   The file's lines are numbered by a counter in a pseudo-element, so a copy never includes them. */
+.landing .chain-window .code-block,
+.landing .chain-window .code-source {
+  display: flex;
   flex: 1;
+  flex-direction: column;
 }
 
 .landing .chain-window pre.code {
-  height: 100%;
+  flex: 1;
   padding: 18px 18px 22px 0;
   border: 0;
   border-radius: 0;
