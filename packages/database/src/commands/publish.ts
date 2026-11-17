@@ -1,8 +1,8 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, join, posix, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Application, CommandArgumentsError, type ServiceProviderClass } from '@marmeon/core';
-import { findPackage, printable } from '@marmeon/core/internal';
+import { escapesRoot, findPackage, printable, withCode, readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { assignMigrations, migrationDeclarations, type PackageMigrationFile, type PackageMigrations, show } from '../package-migrations.ts';
 import { installRoot } from '../workspace.ts';
@@ -12,8 +12,12 @@ import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE, timestam
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 /** A valid npm package name: never a path. */
 const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
+/** The package names `marmeon-stubs.json` can record. */
+const RECORDABLE_NAME = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 
 type Package = NonNullable<ReturnType<typeof findPackage>>;
+type Stubs = { readonly ok: true; readonly value: StubManifest | undefined } | { readonly ok: false; readonly error: { readonly message: string } };
+type StubManifest = NonNullable<Extract<ReturnType<typeof readStubManifest>, { ok: true }>['value']>;
 
 /**
  * The installed package `name` of the app: in `node_modules` of the app, or of a directory above it up to the first one with a
@@ -33,6 +37,12 @@ function locate(name: string, root: string): Package | undefined {
   }
   return undefined;
 }
+
+/** The version in the package's `package.json`, when it has one. */
+const versionOf = (pkg: Package) => {
+  const { version } = pkg.json as { version?: unknown };
+  return typeof version === 'string' ? version : undefined;
+};
 
 /** The module whose `index.ts` carries the line `publish` writes when it creates a module for `name`. */
 function ownedModule(modules: string, name: string): string | undefined {
@@ -84,13 +94,32 @@ export interface Plan {
   readonly owner?: string;
   readonly missing: readonly PackageMigrationFile[];
   readonly present: readonly { readonly name: string; readonly path: string }[];
+  /** Every migration the package ships and its version, for the record in `marmeon-stubs.json`. */
+  readonly files: readonly PackageMigrationFile[];
+  readonly version?: string;
+  /** Why `publish` copies these migrations without recording them; the rest of a sentence about the package. */
+  readonly unrecordable?: string;
+  /** Migrations the app has whose file in the package changed since the app published them. */
+  readonly changed: readonly Drift[];
+}
+
+/** What `marmeon-stubs.json` records for a package: the migrations it ships and its version. */
+type Recording = Pick<Plan, 'package' | 'files' | 'version'>;
+
+/** A migration the app has that stands apart from the package's file: its name and where it lies. */
+export interface Drift {
+  readonly name: string;
+  /** The file in the package, POSIX. */
+  readonly file: string;
+  /** The app's copy, relative to the app root. */
+  readonly path: string;
 }
 
 /**
  * Where an installed direct dependency that declares migrations stands in the app. `used` is whether the app has at least one of
  * its migrations — `publish --check` and the check `package-migrations` look only at those.
  */
-export type Status = { readonly package: string; readonly used: boolean } & (
+export type Status = { readonly package: string; readonly used: boolean; readonly changed?: readonly Drift[] } & (
   | { readonly state: 'complete' }
   | { readonly state: 'lacks'; readonly missing: readonly string[] }
   | { readonly state: 'unpublished'; readonly missing: readonly string[] }
@@ -115,6 +144,8 @@ interface Context {
   readonly warnings: string[];
   /** Set when reading the declarations failed for every package: nothing can be planned from what is known. */
   readonly failed?: string;
+  /** `marmeon-stubs.json`, where `publish` records the migrations it wrote; a problem is reported where a record is needed. */
+  readonly stubs: Stubs;
 }
 
 /**
@@ -179,7 +210,7 @@ async function inspect(root: string, providers: readonly ServiceProviderClass[],
   // Entries are shown and checked in the order of the app's dependencies.
   const ordered = new Map([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   const modules = join(root, 'modules');
-  return { root, modules, dependencies, entries: ordered, app: appMigrations(modules), shippers, warnings, failed };
+  return { root, modules, dependencies, entries: ordered, app: appMigrations(modules), shippers, warnings, failed, stubs: readStubs(root) };
 }
 
 const presentOf = (context: Context, manifest: PackageMigrations) =>
@@ -187,6 +218,83 @@ const presentOf = (context: Context, manifest: PackageMigrations) =>
     const found = context.app.byName.get(file.name);
     return found ? [{ name: file.name, path: relative(context.root, found.path) }] : [];
   });
+
+/** `marmeon-stubs.json` of the app, read only when it does not lead out of the project. */
+function readStubs(root: string): Stubs {
+  if (escapesRoot(root, STUB_MANIFEST) !== undefined) {
+    return { ok: false, error: { message: `${STUB_MANIFEST} leads out of the project, and publish would read and write through it. Replace the link with a real file, then run publish again.` } };
+  }
+  return readStubManifest(root);
+}
+
+/** The app path of a file as the manifest writes it: relative, POSIX. */
+const appPath = (root: string, path: string) => relative(root, path).split(sep).join('/');
+
+/** The name of a migration from its path in the package: without timestamp and extension, as the app knows it. */
+const migrationName = (file: string) => posix.basename(file).replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '').replace(/\.(ts|js|mts|mjs)$/, '');
+
+/** Whether a template path is a migration of a package (a timestamped file): the only entries `publish` writes into `marmeon-stubs.json`. A set of the starter kit holds others. */
+const isMigrationStub = (stub: string) => /^\d{4}_\d{2}_\d{2}_\d{6}_/.test(posix.basename(stub));
+
+/**
+ * What `publish` recorded for the migration `migration` of the package `name`, in any of the package's sets: a release that moves its
+ * directory or renumbers its files is still the same migration. Only migration entries count; the other files of a set are another command's.
+ */
+function recordsOf(stubs: StubManifest | undefined, name: string, migration: string): { key: string; path: string; sha256: string }[] {
+  const found: { key: string; path: string; sha256: string }[] = [];
+  for (const [key, set] of Object.entries(stubs?.sets ?? {})) {
+    if (set.package !== name) continue;
+    for (const [path, entry] of Object.entries(set.files)) if (isMigrationStub(entry.stub) && migrationName(entry.stub) === migration) found.push({ key, path, sha256: entry.sha256 });
+  }
+  return found;
+}
+
+/** Whether the file at `path` hashes to `hash`; a file that cannot be read is not the same. */
+function hashes(path: string, hash: string): boolean {
+  try {
+    return stubHash(readFileSync(path)) === hash;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The migrations of `manifest` that the app has and whose file in the package no longer matches the record of `publish`. The app's
+ * own copy is not compared (it is the app's to edit, and may lie in another module), and a migration without a record is not judged.
+ */
+function driftOf(context: Context, name: string, manifest: PackageMigrations): Drift[] {
+  // A manifest that cannot be read is reported where it matters (a refusal of `publish`, an error of the check), not judged here.
+  const stubs = context.stubs.ok ? context.stubs.value : undefined;
+  const changed: Drift[] = [];
+  for (const file of manifest.files) {
+    const found = context.app.byName.get(file.name);
+    if (found === undefined) continue;
+    const records = recordsOf(stubs, name, file.name);
+    const hash = stubHash(file.contents);
+    if (records.length > 0 && !records.some((record) => record.sha256 === hash)) changed.push({ name: file.name, file: file.file, path: appPath(context.root, found.path) });
+  }
+  return changed;
+}
+
+const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+/**
+ * Why the migrations of `name` cannot go into `marmeon-stubs.json`, as the rest of a sentence that starts with the package; undefined
+ * when they can. `publish` still copies them, and says it does not record them.
+ */
+function unrecordable(name: string, version: string | undefined, files: readonly PackageMigrationFile[], stubs: StubManifest | undefined): string | undefined {
+  if (version === undefined || !VERSION.test(version)) return 'has no version of the form 1.2.3';
+  if (!RECORDABLE_NAME.test(name)) return 'has a name marmeon-stubs.json cannot record';
+  const odd = files.find((file) => file.file.startsWith('/') || /[\\\0]/.test(file.file) || file.file.split('/').some((part) => part === '' || part === '.' || part === '..'));
+  if (odd) return `ships ${printable(JSON.stringify(odd.file))}, a path marmeon-stubs.json cannot record`;
+  // The set of its migrations is its own: one that also holds other files (the starter kit's) is not rewritten.
+  for (const file of files) {
+    const key = `${name}:${posix.dirname(file.file)}`;
+    const set = stubs?.sets[key];
+    if (set !== undefined && Object.values(set.files).some((entry) => !isMigrationStub(entry.stub))) return `shares the set ${printable(JSON.stringify(key))} of marmeon-stubs.json with files that are not migrations`;
+  }
+  return undefined;
+}
 
 /**
  * The plan for one package whose migrations are read, or why it is refused: a name another installed dependency ships too
@@ -251,7 +359,7 @@ function planOne(context: Context, name: string, pkg: Package, manifest: Package
   // `publishMigration` does not check a module it is given.
   if (module !== undefined && !KEBAB.test(module)) return { refusal: 'Pass the module as a kebab-case name: --module=<name>.' };
 
-  return { plan: { package: name, module, owner: module === SYSTEM_MODULE ? undefined : name, missing, present } };
+  return { plan: { package: name, module, owner: module === SYSTEM_MODULE ? undefined : name, missing, present, files: manifest.files, version: versionOf(pkg), unrecordable: unrecordable(name, versionOf(pkg), manifest.files, context.stubs.ok ? context.stubs.value : undefined), changed: own ? [] : driftOf(context, name, manifest) } };
 }
 
 /** The package whose own command plans: its name and directory, read from there and not from the app's dependencies. */
@@ -282,6 +390,38 @@ async function ownEntry(context: Context, own: Own): Promise<Entry> {
   }
 }
 
+/** Why `publish` cannot read the migrations of `name` from its entry, or undefined when it can. */
+function refusalOf(name: string, entry: Entry): string | undefined {
+  if (entry.kind === 'error') return entry.message;
+  if (entry.kind === 'absent') return `${name} is not installed in your app — install your dependencies first.`;
+  if (entry.kind === 'none') return noMigrations(name);
+  return undefined;
+}
+
+/**
+ * What `publish --accept` records for `name`: every migration of the package that the app has, as the package ships it now. It
+ * plans nothing, so a file the app moved or a module it chose does not stand in the way; the package must be a dependency and
+ * its migrations readable, as for `publish`.
+ */
+async function planAccept(root: string, providers: readonly ServiceProviderClass[], name: string): Promise<{ recording: Recording; warnings: string[] } | { forget: { package: string; reason: string }; warnings: string[] } | { refusal: string }> {
+  const context = await inspect(root, providers);
+  if (!context) return { refusal: 'The package.json of your app cannot be read.' };
+  if (!(name in context.dependencies)) return { refusal: `${name} is not a dependency of your app — add it first.` };
+  const entry = context.entries.get(name)!;
+  const refusal = refusalOf(name, entry);
+  if (refusal !== undefined) return { refusal };
+  const { pkg, manifest } = entry as Extract<Entry, { kind: 'ok' }>;
+  if (!context.stubs.ok) return { refusal: `${context.stubs.error.message} Nothing was written.` };
+  const stubs = context.stubs.value;
+  const unrecorded = unrecordable(name, versionOf(pkg), manifest.files, stubs);
+  if (unrecorded !== undefined) {
+    // What was recorded before cannot be kept up to date, and would be judged for ever: accepting ends that state.
+    if (manifest.files.some((file) => recordsOf(stubs, name, file.name).length > 0)) return { forget: { package: name, reason: unrecorded }, warnings: context.warnings };
+    return { refusal: `${name} cannot be accepted: it ${unrecorded}, so marmeon-stubs.json cannot record its migrations.` };
+  }
+  return { recording: { package: name, files: manifest.files, version: versionOf(pkg) }, warnings: context.warnings };
+}
+
 /**
  * Plans `publish` for `packages` without writing anything: a plan for each, and the reasons any was refused (when there is
  * one, nothing is to be written for any package). `warnings` are declarations a direct dependency does not claim: they never
@@ -309,14 +449,15 @@ export async function planPublish(
       continue;
     }
     const entry = isOwn ? await ownEntry(context, source.own!) : context.entries.get(name)!;
-    if (entry.kind === 'error') refusals.push(entry.message);
-    else if (entry.kind === 'absent') refusals.push(`${name} is not installed in your app — install your dependencies first.`);
-    else if (entry.kind === 'none') refusals.push(noMigrations(name));
+    const refusal = refusalOf(name, entry);
+    if (refusal !== undefined) refusals.push(refusal);
+    else if (!isOwn && !context.stubs.ok) refusals.push(`${context.stubs.error.message} Nothing was written.`);
     else {
-      const planned = planOne(context, name, entry.pkg, entry.manifest, module, isOwn);
+      const ready = entry as Extract<Entry, { kind: 'ok' }>;
+      const planned = planOne(context, name, ready.pkg, ready.manifest, module, isOwn);
       if ('plan' in planned) {
         plans.push(planned.plan);
-        chosen.push({ name, pkg: entry.pkg });
+        chosen.push({ name, pkg: ready.pkg });
       } else refusals.push(planned.refusal);
     }
   }
@@ -342,10 +483,18 @@ export async function planPublish(
 
 /**
  * Whether the app publishes from the package: `publish` made a module for it, or it is a package of the framework with a
- * migration in `system`. A migration of the app that happens to have a name of the package does not make it used.
+ * migration in `system`, or `publish` recorded a file of it that still lies in the app. A migration of the app that happens to have a
+ * name of the package does not make it used.
  */
 function used(context: Context, name: string, entry: Entry): boolean {
   if (ownedModule(context.modules, name) !== undefined) return true;
+  // A record of one of its migrations that the app still has, in whatever module (`--module`, or moved): found by name, not by the
+  // recorded path, and also for a package whose declaration cannot be read now.
+  if (context.stubs.ok) {
+    for (const set of Object.values(context.stubs.value?.sets ?? {})) {
+      if (set.package === name && Object.values(set.files).some((file) => isMigrationStub(file.stub) && context.app.byName.has(migrationName(file.stub)))) return true;
+    }
+  }
   // A package of the framework, by its own package.json: the allowlist of specifications is for opening `system`, not for checking it.
   if (entry.kind !== 'ok' || !name.startsWith('@marmeon/') || entry.pkg.json.name !== name) return false;
   return entry.manifest.files.some((file) => findMigration(context.modules, file.name, SYSTEM_MODULE) !== undefined);
@@ -353,9 +502,10 @@ function used(context: Context, name: string, entry: Entry): boolean {
 
 /**
  * Where every installed direct dependency that declares migrations stands in the app, by package name. `warnings` are declarations
- * that no direct dependency claims, and unreadable ones none exports: they change no status.
+ * that no direct dependency claims, and unreadable ones none exports: they change no status. `manifestError` is why
+ * `marmeon-stubs.json` cannot be read (only said when a direct dependency declares migrations): without it no record can be compared.
  */
-export async function packageStatus(root: string, providers: readonly ServiceProviderClass[]): Promise<{ statuses: Status[]; warnings: string[] }> {
+export async function packageStatus(root: string, providers: readonly ServiceProviderClass[]): Promise<{ statuses: Status[]; warnings: string[]; manifestError?: string }> {
   const context = await inspect(root, providers);
   if (!context) return { statuses: [], warnings: [] };
   const statuses: Status[] = [];
@@ -367,12 +517,23 @@ export async function packageStatus(root: string, providers: readonly ServicePro
     if (entry.kind !== 'ok') continue;
     const isUsed = used(context, name, entry);
     const planned = planOne(context, name, entry.pkg, entry.manifest, undefined);
-    if ('refusal' in planned) statuses.push({ package: name, used: isUsed, state: 'refused', reason: planned.refusal });
-    else if (planned.plan.missing.length === 0) statuses.push({ package: name, used: isUsed, state: 'complete' });
-    else statuses.push({ package: name, used: isUsed, state: isUsed ? 'lacks' : 'unpublished', missing: planned.plan.missing.map((file) => file.name) });
+    if ('refusal' in planned) {
+      statuses.push({ package: name, used: isUsed, state: 'refused', reason: planned.refusal });
+      continue;
+    }
+    const { changed, missing } = planned.plan;
+    if (missing.length === 0) statuses.push({ package: name, used: isUsed, changed, state: 'complete' });
+    else statuses.push({ package: name, used: isUsed, changed, state: isUsed ? 'lacks' : 'unpublished', missing: missing.map((file) => file.name) });
   }
-  return { statuses, warnings: context.warnings };
+  return { statuses, warnings: context.warnings, manifestError: context.stubs.ok || ![...context.entries.values()].some((entry) => entry.kind === 'ok') ? undefined : context.stubs.error.message };
 }
+
+/** What the check and `publish` say of a migration whose file in the package changed after the app published it. */
+export const changedMessage = (name: string, drift: Drift) =>
+  `${name} changed ${drift.name} since you published it — your database ran the version you published, so ${drift.path} stays as it is. Compare it with node_modules/${name}/${drift.file}, write a new migration for the difference, then run marmeon publish ${name} --accept.`;
+
+/** `changedMessage` as `publish` refuses with it. */
+const changedRefusal = (name: string, drift: Drift) => withCode('D27', changedMessage(name, drift));
 
 /** The lines the list shows for a package. A reason names the package itself, so it is not prefixed again. */
 const describe = (status: Status): string[] => {
@@ -456,16 +617,17 @@ function installedDependencies(root: string): { names: Set<string>; installed: I
 }
 
 /**
- * `marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]` copies the migrations of a direct
+ * `marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--accept] [--force]` copies the migrations of a direct
  * dependency of your app into a module, or with `--check` says what is missing; `--only=lang` copies the framework's texts into
  * `lang/marmeon/`. Nothing is written unless every chosen package can be published; see
- * `docs/migrations.md#publishing-the-migrations-of-a-package`.
+ * `docs/migrations.md#publishing-the-migrations-of-a-package`. It records the migrations in `marmeon-stubs.json`; `--accept` records
+ * the package's current files without writing a migration.
  */
 export class PublishCommand {
   static command = 'publish';
   static description = 'Copy the migrations of your packages into your app, or check that they are there';
-  static usage = '[<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]';
-  static options = { module: { type: 'string', short: 'm' }, check: { type: 'boolean' }, only: { type: 'string' }, force: { type: 'boolean' } } as const;
+  static usage = '[<package>] [--module=<name>] [--only=migrations,lang] [--check] [--accept] [--force]';
+  static options = { module: { type: 'string', short: 'm' }, check: { type: 'boolean' }, accept: { type: 'boolean' }, only: { type: 'string' }, force: { type: 'boolean' } } as const;
 
   readonly #app: Application;
 
@@ -489,6 +651,12 @@ export class PublishCommand {
 
     const kinds = kindsOf(input.options.only);
     const force = input.options.force === true;
+    if (input.options.accept === true) {
+      if (name === undefined || input.options.check === true || module !== undefined || input.options.only !== undefined || force) {
+        throw new CommandArgumentsError('--accept takes one package and no other option: marmeon publish <package> --accept');
+      }
+      return this.#accept(input, name);
+    }
     if (input.options.check === true && kinds.has('lang')) {
       throw new CommandArgumentsError('--check covers migrations: the language files you published are yours.');
     }
@@ -511,6 +679,32 @@ export class PublishCommand {
       if (code !== 0 || !kinds.has('lang')) return code;
     }
     return await this.#lang(input, name, force, kinds.size === 2 ? shipsMigrations : undefined);
+  }
+
+  /** `--accept`: records the migrations of the package as it ships them now, and writes none. */
+  async #accept(input: CommandInput, name: string): Promise<number> {
+    const { output } = input;
+    const accepted = await planAccept(input.root, this.#app.providers, name);
+    if ('refusal' in accepted) {
+      output.error(accepted.refusal);
+      return 1;
+    }
+    for (const warning of accepted.warnings) output.warn(warning);
+    if ('forget' in accepted) {
+      forget(input.root, accepted.forget.package);
+      output.success(`${name} ${accepted.forget.reason}, so its migrations are no longer recorded in ${STUB_MANIFEST}`);
+      return 0;
+    }
+    const { recording } = accepted;
+    // Before anything is written: `record` also drops entries of migrations the app no longer has.
+    const have = appMigrations(join(input.root, 'modules')).byName;
+    if (!recording.files.some((file) => have.has(file.name))) {
+      output.error(`Your app has none of the migrations of ${name} — nothing to accept.`);
+      return 1;
+    }
+    const recorded = record(input.root, [recording], true);
+    output.success(recorded.changed ? `Recorded the migrations of ${name} as they are now in ${STUB_MANIFEST}` : `Nothing to accept — ${STUB_MANIFEST} already records the migrations of ${name} as they are`);
+    return 0;
   }
 
   /** `--only=lang`: the language files of the packages that publish some, written into `lang/marmeon/`. */
@@ -576,6 +770,8 @@ export class PublishCommand {
     for (const warning of warnings) input.output.warn(warning);
     for (const refusal of refusals) input.output.error(refusal);
     if (refusals.length > 0) return 1;
+    for (const drift of plans[0]!.changed) input.output.error(changedRefusal(name, drift));
+    if (plans[0]!.changed.length > 0) return 1;
     const lacking = plans[0]!.missing;
     if (lacking.length > 0) {
       input.output.error(`${name} lacks ${lacking.length}: ${lacking.map((file) => file.name).join(', ')} — marmeon publish ${name} writes ${lacking.length === 1 ? 'it' : 'them'}`);
@@ -588,10 +784,20 @@ export class PublishCommand {
   /** `--check` alone: the packages the app publishes from. */
   async #checkUsed(input: CommandInput): Promise<number> {
     let failed = false;
-    const { statuses, warnings } = await packageStatus(input.root, this.#app.providers);
+    const { statuses, warnings, manifestError } = await packageStatus(input.root, this.#app.providers);
     for (const warning of warnings) input.output.warn(warning);
+    // A manifest that cannot be read is the refusal `publish` gives.
+    if (manifestError !== undefined) {
+      input.output.error(manifestError);
+      failed = true;
+    }
     for (const status of statuses) {
-      if (!status.used || (status.state !== 'lacks' && status.state !== 'refused')) continue;
+      if (!status.used) continue;
+      for (const drift of status.changed ?? []) {
+        failed = true;
+        input.output.error(changedRefusal(status.package, drift));
+      }
+      if (status.state !== 'lacks' && status.state !== 'refused') continue;
       failed = true;
       if (status.state === 'lacks') input.output.error(`${status.package} lacks ${status.missing.length}: ${status.missing.join(', ')} — marmeon publish ${status.package}`);
       else input.output.error(status.reason);
@@ -604,8 +810,19 @@ export class PublishCommand {
   /** No package: list, and at a terminal let the person choose. */
   async #choose(input: CommandInput, announce = true): Promise<number> {
     const { output, prompt } = input;
-    const { statuses, warnings } = await packageStatus(input.root, this.#app.providers);
+    const { statuses, warnings, manifestError } = await packageStatus(input.root, this.#app.providers);
     for (const warning of warnings) output.warn(warning);
+    // The refusal `publish <package>` gives, and `--check` too: with a record that cannot be read nothing is complete.
+    if (manifestError !== undefined) {
+      output.error(manifestError);
+      return 1;
+    }
+    // A published migration that changed in its package is no "Nothing to publish": the list would otherwise call the package complete.
+    const changed = statuses.flatMap((status) => (status.changed ?? []).map((drift) => changedRefusal(status.package, drift)));
+    if (changed.length > 0) {
+      for (const message of changed) output.error(message);
+      return 1;
+    }
     const selectable = statuses.filter((status) => status.state === 'lacks' || status.state === 'unpublished');
     if (statuses.length === 0 || (selectable.length === 0 && !statuses.some((status) => status.state === 'refused'))) {
       if (announce) output.success('Nothing to publish');
@@ -667,14 +884,19 @@ export async function publishOwnMigrations(raw: CommandInput, packageRoot: URL, 
   const module = typeof input.options.module === 'string' ? input.options.module : undefined;
   const { plans, refusals, warnings } = await planPublish(input.root, [Provider, ...providers], [name], module, { own: { name, dir, Provider } });
   for (const warning of warnings) input.output.warn(warning);
-  return write(input, [name], plans, refusals);
+  // The package of a `make:*-table` command is not recorded: the app need not list it, so `publish --accept` could not reach it.
+  return write(input, [name], plans, refusals, false);
 }
 
 /** Writes the plans, in one run: a refusal and nothing is written. */
-function write(input: CommandInput, packages: readonly string[], plans: readonly Plan[], refusals: readonly string[]): number {
+function write(input: CommandInput, packages: readonly string[], plans: readonly Plan[], refusals: readonly string[], recording = true): number {
   const { output } = input;
-  if (refusals.length > 0) {
-    for (const refusal of refusals) output.error(refusal);
+  // A migration the app has that the package changed since: publishing on would hide it, so the developer accepts it first.
+  const changed = plans.flatMap((plan) => plan.changed.map((drift) => changedRefusal(plan.package, drift)));
+  // With a refusal (several packages chosen at a terminal) the output stays the refusals: the changed file is reported once they are out of the way.
+  const stopped = [...refusals, ...(refusals.length === 0 ? changed : [])];
+  if (stopped.length > 0) {
+    for (const refusal of stopped) output.error(refusal);
     return 1;
   }
 
@@ -715,6 +937,11 @@ function write(input: CommandInput, packages: readonly string[], plans: readonly
         written += 1;
       }
     }
+    // Written files and files found unchanged alike: the record is what a later release is compared with.
+    if (recording) {
+      for (const plan of plans) if (plan.unrecordable !== undefined) output.warn(`${plan.package} ${plan.unrecordable}, so its migrations are not recorded and a later change will not be noticed.`);
+      record(input.root, plans.filter((plan) => plan.unrecordable === undefined), false);
+    }
   } catch (error) {
     reportWritten();
     throw error;
@@ -726,4 +953,80 @@ function write(input: CommandInput, packages: readonly string[], plans: readonly
 
   output.line('Then: marmeon migrate');
   return 0;
+}
+
+/**
+ * Records the migrations of `recordings` that the app has in `marmeon-stubs.json`, one set per package and directory in the package.
+ * A migration is found by its name, in any set of the package, so a release that renumbers or moves its files is the same migration.
+ * A file the app has equal to the package's, or that is already recorded, is entered; with `accept`, every file the app has, as the
+ * package ships it now, and the entries the name had in other sets are dropped. A file already recorded keeps its hash, so a changed
+ * package file is never recorded unseen. Entries of files the app no longer has are dropped. The version of a set moves only when its
+ * entries change. A set that holds a file that is no migration is never rewritten. A failure throws: the plan has checked what can be.
+ */
+function record(root: string, recordings: readonly Recording[], accept: boolean): { changed: boolean; files: number } {
+  const manifest = readStubs(root);
+  // The plan has refused a manifest that cannot be read before anything was written; only one that changes between planning and here gets
+  // this far, and no test covers that.
+  if (!manifest.ok) throw new Error(manifest.error.message);
+  const byName = appMigrations(join(root, 'modules')).byName;
+  let changed = false;
+  let files = 0;
+  for (const recording of recordings) {
+    const original = new Map<string, Readonly<Record<string, { stub: string; sha256: string }>>>();
+    const sets = new Map<string, Map<string, { stub: string; sha256: string }>>();
+    for (const [key, set] of Object.entries(manifest.value?.sets ?? {})) {
+      // A set that holds a file that is no migration is not `publish`'s: it stays as it is.
+      if (set.package !== recording.package || Object.values(set.files).some((entry) => !isMigrationStub(entry.stub))) continue;
+      original.set(key, set.files);
+      sets.set(key, new Map(Object.entries(set.files)));
+    }
+    for (const file of recording.files) {
+      const found = byName.get(file.name);
+      if (found === undefined) continue;
+      const hash = stubHash(file.contents);
+      const before = recordsOf(manifest.value, recording.package, file.name);
+      // With a record and no `accept` the recorded hash stays: a file of the package that changed is not recorded by a publish that did not look at it.
+      const kept = before.find((record) => record.sha256 === hash) ?? before[0];
+      const sha256 = accept ? hash : (kept?.sha256 ?? (hashes(found.path, hash) ? hash : undefined));
+      if (sha256 === undefined) continue;
+      for (const entries of sets.values()) for (const [path, entry] of entries) if (migrationName(entry.stub) === file.name) entries.delete(path);
+      const key = `${recording.package}:${posix.dirname(file.file)}`;
+      if (!sets.has(key)) sets.set(key, new Map());
+      sets.get(key)!.set(appPath(root, found.path), { stub: file.file, sha256 });
+      files += 1;
+    }
+    for (const [key, entries] of sets) {
+      // A migration the app links to a file inside the project is still there; only one that is really gone, or links out, loses its entry.
+      for (const path of [...entries.keys()]) if (escapesRoot(root, path) !== undefined || statSync(join(root, path), { throwIfNoEntry: false })?.isFile() !== true) entries.delete(path);
+      const before = original.get(key);
+      const same = before !== undefined && Object.keys(before).length === entries.size && Object.entries(before).every(([path, entry]) => entries.get(path)?.stub === entry.stub && entries.get(path)?.sha256 === entry.sha256);
+      if (same || (before === undefined && entries.size === 0)) continue;
+      // `unrecordable` has set a package without a recordable version aside before anything was written.
+      const result = recordStubSet(root, key, {
+        package: recording.package,
+        version: recording.version!,
+        files: [...entries].map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })),
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      changed = true;
+    }
+  }
+  return { changed, files };
+}
+
+/**
+ * Removes the migration entries of `name` from `marmeon-stubs.json`, for a package that can no longer be recorded. Other files of its
+ * sets stay, and so does each set's version.
+ */
+function forget(root: string, name: string): void {
+  const manifest = readStubs(root);
+  // `planAccept` has refused a manifest that cannot be read; only one that changes in between gets here.
+  if (!manifest.ok) throw new Error(manifest.error.message);
+  for (const [key, set] of Object.entries(manifest.value?.sets ?? {})) {
+    if (set.package !== name) continue;
+    const kept = Object.entries(set.files).filter(([, entry]) => !isMigrationStub(entry.stub));
+    if (kept.length === Object.keys(set.files).length) continue;
+    const result = recordStubSet(root, key, { package: name, version: set.version, files: kept.map(([path, entry]) => ({ path, stub: entry.stub, sha256: entry.sha256 })) });
+    if (!result.ok) throw new Error(result.error.message);
+  }
 }

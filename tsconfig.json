@@ -71,6 +71,9 @@
       "path": "packages/validation"
     },
     {
+      "path": "packages/fetch"
+    },
+    {
       "path": "packages/devtools"
     },
     {

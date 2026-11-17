@@ -54,6 +54,21 @@ const ON_DELETE = new Set(['cascade', 'set null', 'restrict', 'no action']);
 
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 
+/** Whether `value` is the condition of a partial index: columns with a string, a safe integer, a boolean, null or `{ not: null }`; at least one. */
+function isCondition(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return (
+    entries.length > 0 &&
+    entries.every(([column, entry]) => {
+      if (column === '') return false;
+      if (entry === null || typeof entry === 'boolean' || typeof entry === 'string') return true;
+      if (typeof entry === 'number') return Number.isSafeInteger(entry);
+      return typeof entry === 'object' && !Array.isArray(entry) && Object.keys(entry).length === 1 && (entry as { not?: unknown }).not === null;
+    })
+  );
+}
+
 /** Whether `value` has the shape of a {@link ProjectedTable} — enough that a reader of the file cannot be made to fail on it. */
 function isTable(value: unknown, name: string): value is ProjectedTable {
   if (typeof value !== 'object' || value === null) return false;
@@ -84,7 +99,7 @@ function isTable(value: unknown, name: string): value is ProjectedTable {
     ) &&
     Array.isArray(table.uniques) &&
     table.uniques.every(isStrings) &&
-    each(table.indexes, (i) => text(i, 'name') && isStrings(i.columns) && typeof i.unique === 'boolean') &&
+    each(table.indexes, (i) => text(i, 'name') && isStrings(i.columns) && typeof i.unique === 'boolean' && (i.where === undefined || isCondition(i.where))) &&
     each(
       table.foreignKeys,
       (k) =>

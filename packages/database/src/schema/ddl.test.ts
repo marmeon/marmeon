@@ -13,7 +13,7 @@ import { Migrator } from '../index.ts';
 // file: a v1 file that changes is a change of what old migrations build, and a release note has to call it breaking.
 
 // A group may have a sibling directory `<group>-pgsql` for what SQLite cannot do, loaded on Postgres only.
-const GROUPS = ['columns', 'indexes', 'alter', 'rename', 'drop', 'checks'];
+const GROUPS = ['columns', 'indexes', 'alter', 'rename', 'drop', 'checks', 'partial-indexes'];
 const POSTGRES_MAJOR = 18;
 
 const directory = (driver: string) => new URL(`../__fixtures__/formats/ddl/${driver}/`, import.meta.url);

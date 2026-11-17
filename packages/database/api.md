@@ -36,8 +36,8 @@ export declare class Blueprint {
     foreignUuid(name: string): ForeignIdColumn<string>;
     foreign(column: string): ForeignKeyReference;
     oneOf(column: string, values: readonly string[]): void;
-    index(columns: string | readonly string[], name?: string): void;
-    unique(columns: string | readonly string[], name?: string): void;
+    index(columns: string | readonly string[], nameOrOptions?: string | IndexOptions): void;
+    unique(columns: string | readonly string[], nameOrOptions?: string | IndexOptions): void;
     dropColumn(name: string): void;
     dropIndex(name: string): void;
     dropUnique(name: string): void;
@@ -217,6 +217,15 @@ export declare class ForeignKeyReference {
 }
 // Generated
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U> ? ColumnType<S, I | undefined, U> : ColumnType<T, T | undefined, T>;
+// IndexCondition
+export type IndexCondition = Readonly<Record<string, string | number | boolean | null | {
+    readonly not: null;
+}>>;
+// IndexOptions
+export interface IndexOptions {
+    readonly name?: string;
+    readonly where?: IndexCondition;
+}
 // InfrastructureTransactionError
 export declare class InfrastructureTransactionError extends TransactionError {
     name: string;
@@ -409,6 +418,7 @@ export interface ProjectedIndex {
     readonly name: string;
     readonly columns: readonly string[];
     readonly unique: boolean;
+    readonly where?: IndexCondition;
 }
 // ProjectedTable
 export interface ProjectedTable {
@@ -959,7 +969,8 @@ marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 marmeon migrate:status [--json]
 --json (boolean)
 // publish
-marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]
+marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--accept] [--force]
+--accept (boolean)
 --check (boolean)
 --force (boolean)
 --module (string, short m)

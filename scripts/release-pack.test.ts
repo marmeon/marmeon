@@ -18,9 +18,9 @@ function repository(...names: readonly string[]): string {
   return root;
 }
 
-/** A packer that writes one tarball per package directory (private ones too, as `pnpm --filter './packages/*' pack` does). */
-const fakePack = (root: string, destination: string) =>
-  readdirSync(join(root, 'packages')).map((short) => {
+/** A packer that writes one tarball per package directory; `alsoPrivate` packs the private one too, as a filter on every package would. */
+const fakePack = (root: string, destination: string, alsoPrivate = false) =>
+  readdirSync(join(root, 'packages')).filter((short) => alsoPrivate || short !== 'internal').map((short) => {
     const name = `@marmeon/${short}`;
     const tarball = join(destination, `marmeon-${short}-1.2.3.tgz`);
     writeFileSync(tarball, `contents of ${name}`);
@@ -37,6 +37,14 @@ describe('releasePack', () => {
     const sums = readFileSync(join(directory, SUMS_FILE), 'utf8');
     expect(sums).toBe(`${sha512('contents of @marmeon/auth')}  marmeon-auth-1.2.3.tgz\n${sha512('contents of @marmeon/core')}  marmeon-core-1.2.3.tgz\n`);
     expect(result.sums).toBe(sha512(sums));
+    expect(readdirSync(directory).sort()).toEqual([SUMS_FILE, 'marmeon-auth-1.2.3.tgz', 'marmeon-core-1.2.3.tgz']);
+  });
+
+  it('refuses a directory with a tarball that SHA512SUMS does not name', () => {
+    const directory = join(tempDir('marmeon-release-pack-'), 'tarballs');
+    expect(() => releasePack(repository('@marmeon/core'), directory, (root, destination) => fakePack(root, destination, true))).toThrow(
+      `${directory} holds marmeon-internal-1.2.3.tgz, which SHA512SUMS does not name — only the tarballs of published packages belong in it`,
+    );
   });
 
   it('leaves a private package out of the sums, so it is never staged', () => {

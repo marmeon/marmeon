@@ -49,6 +49,7 @@ export { secret, secretEquals } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { ChangedMigration, MigrationFile, MigrationStatus } from './migrations/migrator.ts';
 export type { ProjectedCheck, ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTable, SchemaProjection } from './schema/projection.ts';
+export type { IndexCondition, IndexOptions } from './schema/blueprint.ts';
 export { Blueprint, Column, ConstrainedColumn, ConstrainedForeignKey, ForeignIdColumn, ForeignKeyReference, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema, SchemaError } from './schema/schema.ts';
 export { MigrationStateError } from './migration-state.ts';
