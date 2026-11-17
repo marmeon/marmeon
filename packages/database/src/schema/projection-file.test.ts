@@ -208,9 +208,19 @@ describe('the schema projection file', () => {
     expect(project).toHaveBeenCalledTimes(1);
   });
 
+  it('writes and reads a column whose default is null', async () => {
+    forgetProjections();
+    const { root, files } = app(`export default { up(schema) { schema.create('users', (t) => { t.id(); t.string('nick').nullable().default(null); }); } };\n`);
+    const projection = await loadProjection(root, files);
+    const column = readProjection(root, files)!.tables.get('users')!.columns.find((c) => c.name === 'nick');
+    expect(column).toMatchObject({ default: 'value', nullDefault: true });
+    expect(readProjection(root, files)).toEqual(projection);
+  });
+
   it.each([
     ['a column type that is not text', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], type: { sqlite: 1, pgsql: 'bigint' } }] } } })],
     ['an unknown default', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], default: 'random' }] } } })],
+    ['a null default flag on a column without a value default', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], nullDefault: true }] } } })],
     ['a retired flag that is not a boolean', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], retired: 'yes' }] } } })],
     ['an unknown marker', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, markers: ['hidden'] } } })],
     ['a pivot flag that is not false', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, pivot: true } } })],

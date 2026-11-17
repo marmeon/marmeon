@@ -490,11 +490,14 @@ made, but the check after each migration still expects it in the database until 
   key references be retired. A foreign key on a retired column and the relation it gave are no longer known; the constraint stays in
   the database until the column is dropped.
 - **A fixed default in a unique index is refused.** A column with a `default(value)` or `useCurrent()` default that is in a unique
-  index (its own `unique()` or a composite one) would get the same value from every insert of the new release, and the second insert
-  would fail, or a composite index would silently make the other column unique. Error D19 asks for `table.dropUnique(name)` first, in
-  the same `alter()` or an earlier one. For a [partial unique index](#partial-indexes) the check refuses only when the migrations prove that
-  every new row falls under its condition: every column of the `where` is a non-nullable `useCurrent()` column with `{ not: null }`. With a value
-  default it cannot tell, so check yourself that the rows the index covers will not all get the same value.
+  index (its own `unique()` or a composite one) gets the same value from every insert of the new release (from those written at the
+  same moment, for `useCurrent()`), so the second insert could fail, or a composite index could make the other columns unique on
+  their own. Error D19 asks for `table.dropUnique(name)` first, in the same `alter()` or an earlier one. A
+  [partial unique index](#partial-indexes) counts the same, because the release still writes the columns of its condition, so a row
+  it inserts can fall under the index. The refusal stands unless the migrations prove that no two rows can collide:
+  - the default is `null` (`nullable().default(null)`), because a unique index never counts two NULLs as equal;
+  - another column of a composite index is retired too, in this `alter()` or an earlier one, and is nullable with no default or a `null` default, so it is NULL in every row;
+  - the condition of a partial index is one no row can meet: `null` for a `NOT NULL` column, or a value its `oneOf()` does not list. The columns are judged as they stand when `retire()` runs, and an `alter()` after which the condition could be met (for example `nullable()` on a column of the `where`, or `oneOf()` or `dropCheck()` on it) is refused with D19 until you drop the index. A primary key counts as nullable when it is neither an `id()` nor an `integer()` or `bigInteger()` key, because SQLite lets such a key hold NULL.
 - **A foreign key cannot point at a retired column**: `constrained(table, column)` on one stops with error D19.
 - **The column has to be nullable or have a default**, because the new release inserts without it and the database must accept
   that. A `NOT NULL` column without a default is refused with error D19 rather than left to fail on the first insert in production.
