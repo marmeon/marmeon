@@ -56,7 +56,7 @@ export function AudienceSection() {
             Your business logic <span className="serif-accent">gets a home.</span>
           </h2>
           <p className="audience-intro">
-            Marmeon is a backend framework for TypeScript that brings the frontend with it. Who may open a record, what happens after a sign-up, which failure a caller must handle: each has its place in a module on
+            Marmeon is a full-stack TypeScript framework, from the database to the React page. Who may open a record, what happens after a sign-up, which failure a caller must handle: each has its place in a module on
             the server, as code you can read, test and review.
           </p>
           <ul className="audience-list">
