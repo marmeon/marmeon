@@ -11,8 +11,8 @@ import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
-/** A real PNG: the 8 signature bytes, then whatever — the server goes by the first bytes. */
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 1, 2, 3, 4]);
+/** A PNG as far as the server reads it: the 8 signature bytes and an IHDR that states 1 × 1 — the server goes by the first bytes. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
 const png = (name = 'me.png') => new File([PNG], name, { type: 'image/png' });
 const HTML = '<!DOCTYPE html><html><body><script>fetch("/users/me/export",{method:"POST"})</script></body></html>';
 const SVG = '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>';
@@ -66,6 +66,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     const { ada, as } = await setUp();
     const large = new Uint8Array(20 * 1024);
     large.set(PNG);
+    large.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 33); // an empty IDAT chunk: the pixels begin, so no metadata chunk can follow
     const token = await as.upload(ROUTE, 'avatar', new File([large], 'big.png', { type: 'image/png' }), { user: ada.public_id });
     await send(as, ada, token).assertRedirect(`/users/${ada.public_id}`);
     expect((await app.make(UserRepository).find(ada.id))!.avatar_path).toMatch(KEY);
@@ -81,12 +82,29 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     const profile = (await as.navigating().get(`/users/${ada.public_id}`).assertOk()).page()!.props as { profile: { avatarSize: unknown } };
     expect(profile.profile.avatarSize).toEqual({ width: 300, height: 200 });
 
-    // A picture whose header says nothing keeps no size; the profile then shows the fixed frame.
-    await send(as, ada, await as.upload(ROUTE, 'avatar', png(), { user: ada.public_id })).assertRedirect();
-    const unsized = (await app.make(UserRepository).find(ada.id))!;
-    expect([unsized.avatar_width, unsized.avatar_height]).toEqual([null, null]);
-    const again = (await as.navigating().get(`/users/${ada.public_id}`).assertOk()).page()!.props as { profile: { avatarSize: unknown } };
-    expect(again.profile.avatarSize).toBeNull();
+    // A user whose size was never kept (an older avatar) still shows the fixed frame.
+    await app.make(UserRepository).update(ada.id, { avatar_width: null, avatar_height: null });
+    const unsized = (await as.navigating().get(`/users/${ada.public_id}`).assertOk()).page()!.props as { profile: { avatarSize: unknown } };
+    expect(unsized.profile.avatarSize).toBeNull();
+  });
+
+  it('a picture whose header states 100000 × 100000 pixels, or none that can be read, is a 422 on the field — the stored avatar stays as it was', async () => {
+    const { ada, as } = await setUp();
+    const sized = new Uint8Array([...PNG.subarray(0, 16), 0, 0, 1, 0x2c, 0, 0, 0, 0xc8, 8, 6, 0, 0, 0]); // 300 × 200
+    await send(as, ada, await as.upload(ROUTE, 'avatar', new File([sized], 'me.png', { type: 'image/png' }), { user: ada.public_id })).assertRedirect();
+    const before = (await app.make(UserRepository).find(ada.id))!;
+    expect([before.avatar_width, before.avatar_height]).toEqual([300, 200]);
+
+    const bomb = new Uint8Array([...PNG.subarray(0, 16), 0, 1, 0x86, 0xa0, 0, 1, 0x86, 0xa0, 8, 6, 0, 0, 0]); // 100000 × 100000 in 29 bytes
+    const bombed = await as.upload(ROUTE, 'avatar', new File([bomb], 'bomb.png', { type: 'image/png' }), { user: ada.public_id });
+    (await send(as, ada, bombed).assertStatus(422)).assertInvalid({ avatar: 'The image may have at most 40000000 pixels.' });
+    // A header that cannot be read is refused as well, never let through unmeasured.
+    const cut = await as.upload(ROUTE, 'avatar', new File([PNG.subarray(0, 18)], 'cut.png', { type: 'image/png' }), { user: ada.public_id });
+    (await send(as, ada, cut).assertStatus(422)).assertInvalid({ avatar: 'The size of this image cannot be read — save it again as PNG, JPG, WEBP.' });
+
+    const after = (await app.make(UserRepository).find(ada.id))!;
+    expect([after.avatar_path, after.avatar_width, after.avatar_height]).toEqual([before.avatar_path, 300, 200]);
+    app.storage.disk('public').assertCount(1).assertExists(before.avatar_path!, (bytes) => bytes.join() === sized.join());
   });
 
   it('path traversal in the file name: stored under a random name in avatars/ — the name never becomes a path', async () => {
@@ -159,7 +177,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
 
   it('the bytes of a target are sent once: a second PUT (another file) is refused (409) — the first file stays', async () => {
     const { ada, as } = await setUp();
-    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string; upload: { url: string } };
+    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: PNG.byteLength } }).assertOk()).json() as { token: string; upload: { url: string } };
     const bytes = as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' });
     await bytes.put(target.upload.url, { body: PNG }).assertOk();
     await bytes.put(target.upload.url, { body: new TextEncoder().encode(HTML) }).assertStatus(409);
@@ -178,7 +196,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
   it('a session with 20 open uploads gets a 429 with the message and Retry-After for the 21st — a sent form frees a place', async () => {
     const { ada, as } = await setUp();
     app.freeze();
-    const target = () => as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } });
+    const target = () => as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: PNG.byteLength } });
     const tokens: string[] = [];
     for (let index = 0; index < 20; index++) {
       tokens.push(((await target().assertOk()).json() as { token: string }).token);
@@ -217,7 +235,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     (await send(as, ada, made).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
     (await send(as, ada, null).assertStatus(422)).assertInvalid({ avatar: 'Choose a file.' });
 
-    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string };
+    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: PNG.byteLength } }).assertOk()).json() as { token: string };
     (await send(as, ada, target.token).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' }); // no bytes sent
 
     // A real upload's id with a signature of one's own: the HMAC refuses it before anything else is looked at.

@@ -242,6 +242,9 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
   ETag like the type check) and decodes nothing; a file that is no image, or whose header is cut off or damaged, gives
   `undefined`. Call it before `store()`, which moves the file (afterwards it throws), and keep the size with the record. See
   [images](images.md#images-from-the-server).
+- **A limit on the pixels.** `dimensions: { maxWidth, maxHeight, maxPixels }` on an image rule refuses a file by the size in its
+  header, read once on submit before the rule and the controller run; one that cannot be read is refused too. See
+  [validation](validation.md#uploads).
 - **A session.** An upload belongs to the session it was made in, and a request without one gets a 419. A guest's page keeps no
   session by itself, so a guest's page with an upload field calls `persist()` of the injected `Session` in its controller. The
   [session](session.md#when-a-session-is-kept) page explains why.
