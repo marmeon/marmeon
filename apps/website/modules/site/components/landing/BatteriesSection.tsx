@@ -164,7 +164,7 @@ function StorageArt() {
   );
 }
 
-/** "The backend comes with it": eight cards in the design's bento grid — the Auth card with the policy's code, the others with a small picture of what the package does. Plain HTML that reads without JavaScript. */
+/** "Everything your app needs, already wired together": eight cards in the design's bento grid — the Auth card with the policy's code, the others with a small picture of what the package does. Plain HTML that reads without JavaScript. */
 export function BatteriesSection({ snippets, moduleFiles }: Pick<PageProps<ShowLandingController>, 'snippets' | 'moduleFiles'>) {
   const { file, html } = snippets.batteryAuth;
   if (file === undefined) throw new Error('The landing\'s battery snippet "batteryAuth" has no file name.');
@@ -186,7 +186,7 @@ export function BatteriesSection({ snippets, moduleFiles }: Pick<PageProps<ShowL
             <div>
               <p className="section-label">Batteries included</p>
               <h2 id="batteries-title">
-                The backend <span className="serif-accent">comes with it.</span>
+                Everything your app needs, <span className="serif-accent">already wired together.</span>
               </h2>
             </div>
             <ul className="check-list">

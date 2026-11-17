@@ -32,7 +32,7 @@ const textOf = (markup: string) =>
 const repo = resolve(import.meta.dirname, '../../../..');
 const document = { headers: { accept: 'text/html' } };
 /** The landing's sections in their order, the hero first: the order test and the h2 count read this one list. */
-const SECTIONS = ['hero', 'principles', 'audience', 'chain', 'batteries', 'devtools', 'agents', 'secure', 'testing', 'islands', 'packages', 'start'];
+const SECTIONS = ['hero', 'batteries', 'principles', 'audience', 'chain', 'devtools', 'agents', 'secure', 'testing', 'islands', 'packages', 'start'];
 const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.json'), 'utf8')) as { version: string }).version;
 
 let app: TestApp;
@@ -130,7 +130,7 @@ describe('the landing page', () => {
       ['VII', 'Secure by default'],
     ]);
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
-    const section = body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="batteries-title"'));
+    const section = body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="devtools-title"'));
     expect(section.match(/<h3[\s>]/g)).toHaveLength(7);
     // The step bar needs JavaScript; the server's page has no tablist and no dead button.
     expect(section).not.toContain('role="tablist"');
@@ -320,7 +320,7 @@ describe('the landing page', () => {
   it('shows the eight batteries as cards: the policy as code, the rest as pictures, each with its package and its docs link', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.indexOf('<section class="batteries');
-    const section = body.slice(start, body.indexOf('<div class="landing-band'));
+    const section = body.slice(start, body.indexOf('</section>', start));
     expect(section).toContain('aria-labelledby="batteries-title"');
     expect(section).not.toContain('tabs-heading');
     const titles = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((match) => match[1]);
