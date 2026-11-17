@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { cpSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,41 @@ it.each(['@marmeon/auth', '@marmeon/cache', '@marmeon/live', '@marmeon/notificat
   const run = await app.command('publish', { args: [name], options: { check: true } });
   expect(run.lines).toEqual([`✓ Every migration of ${name} is in your app`]);
   expect(run.code).toBe(0);
+});
+
+// `marmeon-stubs.json` is what `publish` records, and what a later release of a package is compared with: for each of the seven packages
+// it holds every migration of the package that the app has, with the hash of the package's file now.
+it.each(['auth', 'cache', 'live', 'notifications', 'queue', 'session', 'storage'])('records every migration of @marmeon/%s in marmeon-stubs.json', (directory) => {
+  const appRoot = fileURLToPath(new URL('../..', import.meta.url));
+  const manifest = JSON.parse(readFileSync(join(appRoot, 'marmeon-stubs.json'), 'utf8')) as { sets: Record<string, { files: Record<string, { stub: string; sha256: string }> }> };
+  const stubs = fileURLToPath(new URL(`../../../../packages/${directory}/stubs/migrations/`, import.meta.url));
+  const appFiles = readdirSync(join(appRoot, 'modules'), { recursive: true, encoding: 'utf8' }).filter((path) => path.endsWith('.ts'));
+  const expected: Record<string, { stub: string; sha256: string }> = {};
+  for (const file of readdirSync(stubs).filter((name) => name.endsWith('.ts'))) {
+    const migration = file.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
+    const own = appFiles.filter((path) => path.replace(/^.*\//, '').replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '') === migration);
+    expect(own, file).toHaveLength(1);
+    expected[`modules/${own[0]}`] = { stub: `stubs/migrations/${file}`, sha256: `sha256:${createHash('sha256').update(readFileSync(join(stubs, file))).digest('hex')}` };
+  }
+  expect(manifest.sets[`@marmeon/${directory}:stubs/migrations`]?.files).toEqual(expected);
+});
+
+// The web app's copy of a package migration is the package's file, byte for byte. The exception is the sign-ins table of @marmeon/auth,
+// its only migration: the web app ran an older form of it and upgraded it with a migration of its own, and a migration that ran is never
+// rewritten. packages/auth/src/framework-tables.test.ts proves that upgraded table equals the package's, so auth is not listed here.
+const UPGRADE_HISTORY = ['create_sign_ins_table.ts'];
+it.each(['cache', 'live', 'notifications', 'queue', 'session', 'storage'])('has the migrations of @marmeon/%s as the package ships them', (directory) => {
+  const appRoot = fileURLToPath(new URL('../..', import.meta.url));
+  const stubs = fileURLToPath(new URL(`../../../../packages/${directory}/stubs/migrations/`, import.meta.url));
+  const appFiles = readdirSync(join(appRoot, 'modules'), { recursive: true, encoding: 'utf8' }).filter((path) => path.endsWith('.ts'));
+  const named = (path: string) => path.replace(/^.*\//, '').replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
+  const files = readdirSync(stubs).filter((name) => name.endsWith('.ts') && !UPGRADE_HISTORY.includes(named(name)));
+  expect(files.length, `@marmeon/${directory} ships no migration to compare`).toBeGreaterThan(0);
+  for (const file of files) {
+    const own = appFiles.filter((path) => named(path) === named(file));
+    expect(own, file).toHaveLength(1);
+    expect(readFileSync(join(appRoot, 'modules', own[0]!), 'utf8'), file).toBe(readFileSync(join(stubs, file), 'utf8'));
+  }
 });
 
 const MAKE_COMMANDS = [
