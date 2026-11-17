@@ -69,7 +69,7 @@ export function buildMenu(docs: DocsDefinition, packages: readonly PackageEntry[
       label: 'Framework',
       columns: [
         {
-          title: 'OVERVIEW',
+          title: 'Overview',
           items: [
             page('why-marmeon', 'One framework for the whole app, server first.', 'why'),
             page('first-app', 'Build a small app from the first command on.', 'rules'),
@@ -78,7 +78,7 @@ export function buildMenu(docs: DocsDefinition, packages: readonly PackageEntry[
           ],
         },
         {
-          title: 'FEATURES',
+          title: 'Features',
           items: [
             page('security', 'The protections an app has without asking.', 'shield'),
             page('testing', 'Through the whole kernel, with fakes.', 'flask', 'Testing'),
@@ -101,11 +101,11 @@ export function buildMenu(docs: DocsDefinition, packages: readonly PackageEntry[
       label: 'Packages',
       columns: [
         {
-          title: 'IN EVERY NEW APP',
+          title: 'In every new app',
           items: ['@marmeon/core', '@marmeon/router', '@marmeon/auth', '@marmeon/database', '@marmeon/react'].map((name) => pkg(name, 'pkg')),
         },
-        { title: 'ADD WHEN YOU NEED IT', items: ['@marmeon/redis', '@marmeon/table', '@marmeon/otel'].map((name) => pkg(name, 'plus')) },
-        { title: 'TOOLING', items: ['@marmeon/vite', '@marmeon/testing', '@marmeon/devtools'].map((name) => pkg(name, 'wrench')) },
+        { title: 'Add when you need it', items: ['@marmeon/redis', '@marmeon/table', '@marmeon/otel'].map((name) => pkg(name, 'plus')) },
+        { title: 'Tooling', items: ['@marmeon/vite', '@marmeon/testing', '@marmeon/devtools'].map((name) => pkg(name, 'wrench')) },
       ],
       feature: {
         eyebrow: 'ONE RELEASE',
@@ -119,7 +119,7 @@ export function buildMenu(docs: DocsDefinition, packages: readonly PackageEntry[
       label: 'Resources',
       columns: [
         {
-          title: 'LEARN',
+          title: 'Learn',
           items: [
             { title: 'Documentation', text: 'Every topic on its own page.', href: DOCS_URL, icon: 'doc' },
             page('installation', 'Requirements, the starter kit and its flags.', 'term'),
@@ -128,7 +128,7 @@ export function buildMenu(docs: DocsDefinition, packages: readonly PackageEntry[
           ],
         },
         {
-          title: 'COMMUNITY',
+          title: 'Community',
           items: [
             { title: 'GitHub', text: 'The source and the issues.', href: GITHUB_URL, icon: 'code', external: true },
             { title: 'GitHub Discussions', text: 'Questions, ideas and show and tell.', href: DISCUSSIONS_URL, icon: 'chat', external: true },

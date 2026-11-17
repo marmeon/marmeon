@@ -531,8 +531,9 @@ describe('the shared chrome', () => {
     expect(header).toMatch(/<nav aria-label="Main"[^>]*>.*href="\/docs".*<\/nav>/);
     expect(header).toMatch(/<a [^>]*href="\/docs\/search"[^>]*data-search-trigger="true"[^>]*aria-keyshortcuts="Control\+K Meta\+K"|<a [^>]*aria-keyshortcuts="Control\+K Meta\+K"[^>]*data-search-trigger="true"[^>]*href="\/docs\/search"/);
     expect(header).toMatch(/<a [^>]*href="https:\/\/github\.com\/marmeon\/marmeon"[^>]*>GitHub<\/a>/);
-    expect(header).toMatch(/<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"[^>]*>Get started<\/a>|<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"[^>]*>Get started<\/a>/);
+    expect(header).toMatch(/<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand site-start"[^>]*>Get started<\/a>|<a [^>]*class="button button--sand site-start"[^>]*href="\/docs\/installation"[^>]*>Get started<\/a>/);
     expect(header).toContain('<details class="site-menu"');
+    expect(header).toMatch(/<summary>(?:<svg[^>]*>.*?<\/svg>){2}<span class="visually-hidden">Menu<\/span><\/summary>/);
     // Below 900px the labelled link is hidden: a magnifier link outside the closed menu keeps a trigger the shortcut can click.
     const icon = header.match(/<a [^>]*class="site-search-icon"[^>]*>/)?.[0] ?? '';
     expect(icon).toContain('data-search-trigger="true"');
@@ -559,17 +560,47 @@ describe('the shared chrome', () => {
     expect(nav).not.toMatch(/Blog|Guides|Discord/);
   });
 
-  it('folds the same targets into the phone menu: groups, every desktop package once, /docs once', async () => {
+  it('folds the same targets into the phone menu: a <details> group per panel in order, every desktop package once, Docs and GitHub rows, Get started inside', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.indexOf('<nav aria-label="Menu"');
     const menu = body.slice(start, body.indexOf('</nav>', start));
-    expect([...menu.matchAll(/<p class="site-menu-title">([^<]*)<\/p>/g)].map((match) => match[1])).toEqual(['Framework', 'Packages', 'Resources', 'More']);
+    const groups = [...menu.matchAll(/<details class="site-menu-group" name="site-menu-group"><summary>(?:<svg[^>]*>.*?<\/svg>)?([^<]*)<svg/g)].map((match) => match[1]);
+    expect(groups).toEqual(['Framework', 'Packages', 'Resources']);
+    expect(menu).not.toContain('>More<');
+    expect(menu).not.toContain('<details class="site-menu-group" name="site-menu-group" open');
+    // Every group holds links: none is a title without targets.
+    for (const group of menu.split('<details class="site-menu-group"').slice(1)) expect(group.slice(0, group.indexOf('</details>'))).toMatch(/<a [^>]*class="site-menu-link"/);
     const desktop = body.slice(body.indexOf('<nav aria-label="Main"'), body.indexOf('</nav>'));
     const packages = [...desktop.matchAll(/<span class="site-panel-item-title">(@marmeon\/[a-z]+)<\/span>/g)].map((match) => match[1]!);
     expect(packages).toHaveLength(11);
-    const group = menu.slice(menu.indexOf('Packages</p>'), menu.indexOf('Resources</p>'));
+    const group = menu.slice(menu.indexOf('Packages<svg'), menu.indexOf('Resources<svg'));
     for (const name of packages) expect(group, name).toContain(`>${name}</a>`);
-    expect(menu.match(/href="\/docs"/g)).toHaveLength(1);
+    // Column titles are the section labels inside a group, each naming the list below it.
+    const titles = (text: string) => [...text.matchAll(/<p id="[^"]+" class="site-menu-title">([^<]*)<\/p>/g)].map((match) => match[1]);
+    const sections = menu.split('<details class="site-menu-group"').slice(1);
+    expect(sections.map(titles)).toEqual([
+      ['Overview', 'Features'],
+      ['In every new app', 'Add when you need it', 'Tooling'],
+      ['Learn', 'Community'],
+    ]);
+    const ids = [...menu.matchAll(/<p id="([^"]+)" class="site-menu-title">/g)].map((match) => match[1]!);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(menu).toContain(`<ul aria-labelledby="${id}" class="site-menu-list">`);
+    // No page shows twice within a group.
+    for (const section of sections) {
+      const hrefs = [...section.slice(0, section.indexOf('</details>')).matchAll(/<a href="([^"]+)"/g)].map((match) => match[1]);
+      expect(new Set(hrefs).size).toBe(hrefs.length);
+    }
+    // Docs and GitHub follow the groups as plain rows; Get started closes the sheet.
+    const rows = menu.slice(menu.lastIndexOf('</details>'));
+    expect(rows).toMatch(/<a [^>]*href="\/docs"[^>]*>Docs<\/a>/);
+    expect(rows).toMatch(/<a [^>]*href="https:\/\/github\.com\/marmeon\/marmeon"[^>]*rel="noopener"[^>]*>GitHub<\/a>|<a [^>]*rel="noopener"[^>]*href="https:\/\/github\.com\/marmeon\/marmeon"[^>]*>GitHub<\/a>/);
+    expect(rows).toMatch(/class="button button--sand site-menu-start"[^>]*>Get started<\/a>|href="\/docs\/installation"[^>]*class="button button--sand site-menu-start"[^>]*>Get started<\/a>/);
+    expect(rows.indexOf('>Docs<')).toBeLessThan(rows.indexOf('>GitHub<'));
+    expect(rows.indexOf('>GitHub<')).toBeLessThan(rows.indexOf('>Get started<'));
+    // The top level mirrors the desktop bar's Docs and GitHub, which Resources also lists: these two appear twice, by design.
+    expect(menu.match(/href="\/docs"/g)).toHaveLength(2); // Resources › Documentation and the Docs row
+    expect(menu.match(/href="https:\/\/github\.com\/marmeon\/marmeon"/g)).toHaveLength(2); // Resources › GitHub and the GitHub row
     expect(menu).not.toContain('data-search-trigger'); // the header's magnifier is the trigger below 900px
   });
 
@@ -603,6 +634,13 @@ describe('the shared chrome', () => {
     expect(nav).toContain('href="/docs"');
     expect(response.body).toContain('data-search-trigger');
     expect(response.body).not.toContain('site-panel');
+    const start = response.body.indexOf('<nav aria-label="Menu"');
+    const menu = response.body.slice(start, response.body.indexOf('</nav>', start));
+    expect(menu).not.toContain('site-menu-group');
+    const rows = [...menu.matchAll(/<a [^>]*class="site-menu-link site-menu-row"[^>]*>([^<]*)<\/a>/g)].map((match) => match[1]);
+    expect(rows).toEqual(['Packages', 'Docs', 'GitHub']);
+    expect(menu).toContain('href="/docs/packages"');
+    expect(menu).toContain('class="button button--sand site-menu-start"');
   });
 
   it('keeps the docs layout for the docs pages', async () => {
