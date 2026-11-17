@@ -1,22 +1,15 @@
 import type { PageProps } from '@marmeon/http';
 import { Link, usePage } from '@marmeon/react';
 import { AGENT_TOOLS } from '../../agents.ts';
-import type { ChainStepId } from '../../chain.ts';
 import type { ShowLandingController } from '../../controllers/ShowLandingController.ts';
 import { FAKES } from '../../fakes.ts';
 import { releaseNotesUrl } from '../../links.ts';
-import type { HighlightedSnippet } from '../../SiteSnippets.ts';
-import { CodeBlock } from '../CodeBlock.tsx';
 import { CopyButton } from '../CopyButton.tsx';
 import { StatsStrip } from './StatsStrip.tsx';
 
 const INSTALL_COMMAND = 'pnpm create marmeon my-app';
 
-/** The steps of the chain the rail lights, and the one that ends in the compiler's error. */
-const LIT: readonly ChainStepId[] = ['migration', 'controller', 'props'];
-const FAILING: ChainStepId = 'props';
-
-type HeroProps = Pick<PageProps<ShowLandingController>, 'snippets' | 'chain' | 'packages'>;
+type HeroProps = Pick<PageProps<ShowLandingController>, 'chain' | 'packages' | 'stack'>;
 
 function Arrow() {
   return (
@@ -26,30 +19,24 @@ function Arrow() {
   );
 }
 
-/** One window of the hero's composition: a piece of the app, with the step of the chain it stands for. */
-function HeroCard({ snippet, step, chain }: { snippet: HighlightedSnippet; step: ChainStepId; chain: HeroProps['chain'] }) {
+/** A row of the battery chips: each a link to the package's docs page. */
+function Chips({ chips, label }: { chips: HeroProps['stack']['above']; label: string }) {
   return (
-    <figure className={`hero-card hero-card--${step}`}>
-      <figcaption>
-        <span className="hero-card-dots" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
-        <span className="hero-card-file">{snippet.file}</span>
-        <span className="hero-card-tag">{chain.find((candidate) => candidate.id === step)?.title}</span>
-      </figcaption>
-      <div className="hero-card-code">
-        <CodeBlock html={snippet.html} copy={false} />
-      </div>
-    </figure>
+    <ul className="hero-chips" aria-label={label}>
+      {chips.map((chip) => (
+        <li key={chip.href}>
+          <Link href={chip.href} className="hero-chip">
+            {chip.title}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-/** The first screen: what Marmeon is, the way in, a thread of one type through three files, and the numbers the rest of the page backs. */
-export function HeroSection({ snippets, chain, packages }: HeroProps) {
+/** The first screen: what Marmeon is, the way in, the layers of an app with one type through them, and the numbers the rest of the page backs. */
+export function HeroSection({ chain, packages, stack }: HeroProps) {
   const version = usePage().props.site?.version;
-  const failing = chain.find((step) => step.id === FAILING);
   return (
     <section className="hero stage stage--veins-hero" aria-labelledby="hero-title">
       <div className="landing-inner hero-inner">
@@ -64,11 +51,10 @@ export function HeroSection({ snippets, chain, packages }: HeroProps) {
             </a>
           )}
           <h1 id="hero-title">
-            <span className="hero-line">Typed end to end.</span> <span className="hero-line serif-accent">Batteries included.</span>
+            <span className="hero-line">The modern <span className="nowrap">full-stack</span> framework</span> <span className="hero-line serif-accent">for TypeScript.</span>
           </h1>
           <p className="lead">
-            A TypeScript framework for the whole app, server first. Routes, controllers, pages and forms share one type, from the database column to the form error. Authorization, migrations, validation, a
-            queue, mail, a scheduler and storage are part of the framework and work together. Every page renders on the server first.
+            Routes, database, auth, queues, mail and pages in one TypeScript framework. One type runs from the column to the form, and every page renders on the server first.
           </p>
           <div className="hero-actions">
             <Link href="/docs/installation" className="button button--sand" prefetch>
@@ -88,34 +74,24 @@ export function HeroSection({ snippets, chain, packages }: HeroProps) {
           </div>
           <p className="hero-facts">MIT licence · Node 26.10+ · No transpile step</p>
         </div>
-        <div className="hero-composition">
-          <ol className="hero-rail" aria-hidden="true">
-            {chain.map((step) => (
-              <li key={step.id} className={`hero-rail-step${LIT.includes(step.id) ? ' is-lit' : ''}${step.id === FAILING ? ' is-error' : ''}`}>
-                <span className="hero-rail-dot" />
-                {step.title}
-              </li>
-            ))}
-          </ol>
-          <div className="hero-cards">
-            <HeroCard snippet={snippets.migrationColumns} step="migration" chain={chain} />
-            <HeroCard snippet={snippets.controller} step="controller" chain={chain} />
-            <HeroCard snippet={snippets.page} step="props" chain={chain} />
-            {failing && (
-              <div className="hero-error" role="note">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 7v6M12 16.5v.5" />
-                </svg>
-                <div>
-                  <div className="hero-error-line">
-                    <CodeBlock html={failing.mistake} copy={false} />
-                  </div>
-                  <p>{`error ${failing.error.code}: ${failing.error.message}`}</p>
-                </div>
-              </div>
-            )}
+        <div className="hero-composition" role="group" aria-label="The layers of a Marmeon app">
+          <Chips chips={stack.above} label="Batteries around the layers" />
+          <div className="hero-layers">
+            <span className="hero-thread-label">
+              one type
+            </span>
+            <ol className="hero-layer-list">
+              {stack.layers.map((layer) => (
+                <li key={layer.href}>
+                  <Link href={layer.href} className="hero-layer">
+                    <span className="hero-layer-title">{layer.title}</span>
+                    <span className="hero-layer-note">{layer.note}</span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
           </div>
+          <Chips chips={stack.below} label="More batteries" />
         </div>
       </div>
       <div className="landing-inner">

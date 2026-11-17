@@ -84,16 +84,18 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ...['--stage-muted', '--stage-fg', '--thread'].flatMap((text) => ['--panel-raised', '--code-bg'].map((ground) => [text, ground, 4.5] as const)),
   ['--stage-fg', '--panel-edge', 4.5],
   ['--stage-fg-strong', '--panel-raised', 4.5],
+  // The hero's layers (on the panel bar) and chips (on the raised panel).
+  ...['--stage-fg', '--stage-fg-strong'].map((text) => [text, '--panel-bar', 4.5] as const),
+  ['--stage-soft', '--panel-raised', 4.5],
   ...['--term-fg', '--term-dim', '--term-dim-text'].map((text) => [text, '--panel', 4.5] as const),
-  // The window bars of the final call's terminal, the chain and the hero, and the cards of the secure, testing and audience
-  // sections.
+  // The window bars of the final call's terminal, the chain, and the cards of the secure, testing and audience
+  // sections, and the hero's layer notes.
   ['--term-dim', '--panel-bar', 4.5],
   ['--stage-muted', '--panel-bar', 4.5],
   ...['--ink', '--muted-ink', '--teal'].map((text) => [text, '--card', 4.5] as const),
   ['--thread', '--stage', 3],
-  // The compiler's answer on the landing: the failing line's box and the hero's error chip.
+  // The compiler's answer on the landing: the failing line's box and the error box in the chain.
   ['--error-fg', '--error-bg', 4.5],
-  ['--error-fg', '--error-bg-raised', 4.5],
   ['--error', '--error-bg', 4.5],
   ['--stage-fg', '--error-bg', 4.5],
   ['--ink', '--sand', 4.5],

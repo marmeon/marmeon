@@ -59,7 +59,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   each with its own stylesheet in `styles/landing/` (`base.css` holds what they share).
   The order is hero (with the stats strip), principles, audience, chain, batteries, the devtools and agents band, secure, testing and islands, start.
   The hero's numbers are computed, never typed: `HeroSection` counts `PACKAGES`, `FAKES` (`modules/site/fakes.ts`, checked against `docs/fakes.md` and `TestApp`), `AGENT_TOOLS` and the chain's steps and passes them to `StatsStrip`; the release link is `releaseNotesUrl(site.version)`;
-  the rail lists the chain's titles and the error note is the `props` step's mistake line and compiler message from `chain.ts`.
+  the diagram beside the copy is five layers and eight battery chips from `modules/site/stack.ts`: `buildStack` resolves them at boot into `SiteStack`, and a docs slug `docs.config.ts` does not list or a package `packages.ts` does not list stops the start.
   Its code lives in `modules/site/snippets.ts` — files of the notes example the docs build up, so keep them in step with the API.
   Every snippet names its `source`, the file it is a piece of (`app`: a file of the smoke app; `repo`: a file of this repository), and
   `scripts/landing.ts` checks it: `pnpm test` the `repo` sources and the files of `examples/landing`, `pnpm pack:smoke` every `app` snippet word

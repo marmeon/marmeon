@@ -14,6 +14,7 @@ import { ShareAnalytics } from './middleware/ShareAnalytics.ts';
 import { ShareSite } from './middleware/ShareSite.ts';
 import { SiteInfo } from './SiteInfo.ts';
 import { SiteSnippets } from './SiteSnippets.ts';
+import { buildStack, SiteStack } from './stack.ts';
 import routes from './routes.ts';
 
 /** The middleware group of the website's public pages: without cookies, session or CSRF. */
@@ -55,11 +56,13 @@ export class SiteServiceProvider implements ServiceProvider {
       return new SiteInfo(version, license, new URL(container.make(AppConfig).url).origin, buildMenu(docsConfig, PACKAGES));
     });
     container.singleton(SiteSnippets, () => new SiteSnippets());
+    container.singleton(SiteStack, () => new SiteStack(buildStack(docsConfig, PACKAGES)));
   }
 
   async boot(app: Application): Promise<void> {
-    // Read the version and build the menu now: a manifest that cannot be found, or a menu target that is no docs page, stops the start, not the first request.
+    // Read the version and build the menu and the hero's stack now, not on the first request: a manifest that cannot be found, or a menu target that is no docs page, stops the start.
     app.container.make(SiteInfo);
+    app.container.make(SiteStack);
     await app.container.make(SiteSnippets).load();
     const config = app.container.make(SiteConfig);
     const router = app.container.make(Router);

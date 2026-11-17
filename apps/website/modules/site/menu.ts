@@ -33,7 +33,7 @@ export interface MenuPanel {
 }
 
 /** The docs pages by slug with their name in the navigation, from `docs.config.ts`. */
-function pageIndex(docs: DocsDefinition): Map<string, string> {
+export function pageIndex(docs: DocsDefinition): Map<string, string> {
   return new Map(docs.sections.flatMap((section) => section.pages.map((page) => [page.slug, page.label] as const)));
 }
 

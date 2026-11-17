@@ -43,12 +43,12 @@ describe('the landing page', () => {
   it('answers / rendered on the server, with one h1, two buttons and the install line', async () => {
     const response = await app.get('/', document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
-    expect(response.body).toContain('<span class="hero-line">Typed end to end.</span> <span class="hero-line serif-accent">Batteries included.</span>');
+    expect(response.body).toContain('<span class="hero-line">The modern <span class="nowrap">full-stack</span> framework</span> <span class="hero-line serif-accent">for TypeScript.</span>');
     expect(response.body).toMatch(/<a [^>]*class="button button--sand"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button button--sand"/);
     expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--ghost"|<a [^>]*class="button button--ghost"[^>]*href="\/docs"/);
   });
 
-  it('shows the release link, two buttons, the install line, the three files, the rail and the props error in the hero, with nothing that needs JavaScript', async () => {
+  it('shows the release link, the install line, the new framing, the five layers and the eight chips in the hero, with nothing that needs JavaScript', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.indexOf('<section class="hero stage');
     const end = body.indexOf('</section>', start);
@@ -60,25 +60,40 @@ describe('the landing page', () => {
     expect(hero).toContain('<code>pnpm create marmeon my-app</code>');
     expect(hero).toMatch(/<p class="hero-facts">[^<]*MIT licence[^<]*<\/p>/);
     expect(hero).not.toContain('release in preparation');
-    const cards = [['migration', 'migrationColumns'], ['controller', 'controller'], ['props', 'page']] as const;
-    expect([...hero.matchAll(/<figure class="hero-card hero-card--(\w+)"/g)].map((match) => match[1])).toEqual(cards.map(([step]) => step));
-    for (const [step, name] of cards) {
-      const title = CHAIN.find((candidate) => candidate.id === step)!.title;
-      expect(hero, step).toContain(`<span class="hero-card-file">${SNIPPETS[name].file}</span><span class="hero-card-tag">${title}</span>`);
-      const figure = hero.slice(hero.indexOf(`<figure class="hero-card hero-card--${step}"`), hero.indexOf('</figure>', hero.indexOf(`hero-card--${step}"`)));
-      const line = SNIPPETS[name].code.split('\n').map((candidate) => candidate.trim()).sort((a, b) => b.length - a.length)[0]!;
-      expect(figure, step).toContain('<div class="hero-card-code"><div class="code-block">');
-      expect(textOf(figure), step).toContain(line);
-    }
-    const rail = hero.slice(hero.indexOf('<ol class="hero-rail"'), hero.indexOf('</ol>'));
-    expect([...rail.matchAll(/<li class="([^"]*)"><span class="hero-rail-dot"><\/span>([^<]*)<\/li>/g)].map((match) => match[2])).toEqual(CHAIN.map((step) => step.title));
-    expect([...rail.matchAll(/<li class="([^"]*is-error[^"]*)"><span class="hero-rail-dot"><\/span>([^<]*)<\/li>/g)].map((match) => match[2])).toEqual(['Props']);
+    expect(textOf(hero.slice(hero.indexOf('<h1'), hero.indexOf('</h1>')))).toBe('The modern full-stack framework for TypeScript.');
+    expect(textOf(hero.slice(hero.indexOf('<p class="lead">'), hero.indexOf('</p>', hero.indexOf('<p class="lead">'))))).toBe(
+      'Routes, database, auth, queues, mail and pages in one TypeScript framework. One type runs from the column to the form, and every page renders on the server first.',
+    );
+
+    const from = hero.indexOf('<div class="hero-composition"');
+    const last = hero.indexOf('aria-label="More batteries"');
+    const diagram = hero.slice(from, hero.indexOf('</ul>', last) + '</ul>'.length);
+    expect(diagram).toContain('aria-label="The layers of a Marmeon app"');
+    expect(diagram).not.toContain('aria-hidden');
+    const layers = diagram.slice(diagram.indexOf('<ol class="hero-layer-list"'), diagram.indexOf('</ol>'));
+    expect([...layers.matchAll(/<a href="([^"]+)" class="hero-layer"><span class="hero-layer-title">([^<]*)<\/span>/g)].map((match) => [match[2], match[1]])).toEqual([
+      ['Forms', '/docs/forms'],
+      ['Pages', '/docs/pages'],
+      ['Controllers', '/docs/controllers'],
+      ['Queries', '/docs/queries'],
+      ['Database', '/docs/migrations'],
+    ]);
+    expect(diagram).toContain('<span class="hero-thread-label">one type</span>');
+    const chips = [...diagram.matchAll(/<a href="([^"]+)" class="hero-chip">([^<]*)<\/a>/g)].map((match) => [match[2], match[1]]);
+    const docsOf = (name: string) => `/docs/${PACKAGES.find((entry) => entry.name === name)!.docs}`;
+    expect(chips).toEqual([
+      ['Auth', docsOf('@marmeon/auth')],
+      ['Mail', docsOf('@marmeon/mail')],
+      ['Queue', docsOf('@marmeon/queue')],
+      ['Storage', docsOf('@marmeon/storage')],
+      ['Scheduler', docsOf('@marmeon/scheduler')],
+      ['Cache', docsOf('@marmeon/cache')],
+      ['Notifications', docsOf('@marmeon/notifications')],
+      ['Live', docsOf('@marmeon/live')],
+    ]);
+    for (const gone of ['hero-rail', 'hero-card', 'hero-error']) expect(hero, gone).not.toContain(gone);
     expect(hero).not.toContain('<button');
     expect(hero).not.toContain('copy-button');
-    const props = CHAIN.find((step) => step.id === 'props')!;
-    expect(hero).toMatch(/<div class="hero-error" role="note"/);
-    expect(hero.slice(hero.indexOf('class="hero-error"'))).toContain('<div class="hero-error-line"><div class="code-block">');
-    expect(textOf(hero.slice(hero.indexOf('class="hero-error"')))).toContain(`${mistakeLine(props)}error ${props.error.code}: ${props.error.message}`);
     expect(hero).not.toMatch(/<h[2-6]/);
     expect(hero).not.toContain('role="tablist"');
   });

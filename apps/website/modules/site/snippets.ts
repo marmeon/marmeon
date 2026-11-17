@@ -21,34 +21,6 @@ export interface Snippet {
 }
 
 export const SNIPPETS = {
-  controller: {
-    file: 'modules/notes/controllers/ShowNoteController.ts',
-    source: { app: 'modules/notes/controllers/ShowNoteController.ts' },
-    lang: 'ts',
-    code: `export class ShowNoteController extends Controller {
-  static request = ShowNoteRequest;
-
-  handle(ctx: ContextOf<typeof ShowNoteRequest>) {
-    return this.view('notes/Show', { note: ctx.params.note });
-  }
-}
-`,
-  },
-  page: {
-    file: 'modules/notes/views/Show.tsx',
-    source: { app: 'modules/notes/views/Show.tsx' },
-    lang: 'tsx',
-    code: `export default function Show({ note }: PageProps<ShowNoteController>) {
-  return (
-    <main>
-      <Head title={note.title} />
-      <h1>{note.title}</h1>
-      <Link route="notes.index">All notes</Link>
-    </main>
-  );
-}
-`,
-  },
   // The columns of the migration, as a piece of it.
   migrationColumns: {
     file: 'modules/notes/migrations/2026_10_01_120000_create_notes_table.ts',
