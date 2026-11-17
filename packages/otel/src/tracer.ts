@@ -140,7 +140,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             'http.route': request.routePath,
             'http.response.status_code': status,
             'url.path': redactedPath(request.path, request.routePath, redactor),
-            'url.query': url && url.search.length > 1 ? redactor.text(recordQueryValues ? url.search.slice(1) : queryKeys(url.search)) : undefined,
+            'url.query': url && url.search.length > 1 ? (recordQueryValues ? redactor.queryText(url.search.slice(1)) : redactor.text(queryKeys(url.search))) : undefined,
             'marmeon.route.name': request.route,
             'marmeon.controller': request.controller,
           }),
