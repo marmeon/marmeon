@@ -49,6 +49,9 @@ export default {
     rename_keep: 'Meine Bezeichnung behalten',
     renaming: 'Wird umbenannt',
     rename_cancel: 'Abbrechen',
+    featured: 'Hervorgehoben',
+    feature: 'Hervorheben',
+    unfeature: 'Nicht mehr hervorheben',
   },
   people: {
     title: 'Leute',
@@ -94,6 +97,10 @@ export default {
     saved: 'Profil gespeichert.',
     link_added: 'Link hinzugefügt.',
     link_removed: 'Link entfernt.',
+    link_featured: 'Link hervorgehoben.',
+    link_unfeatured: 'Link nicht mehr hervorgehoben.',
+    link_feature_raced: 'Gleichzeitig wurde ein anderer Link hervorgehoben. Versuche es noch einmal.',
+    link_gone: 'Dieser Link existiert nicht mehr.',
     avatar_saved: 'Bild gespeichert.',
   },
   validation: {

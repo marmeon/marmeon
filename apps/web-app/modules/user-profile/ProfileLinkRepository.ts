@@ -13,6 +13,37 @@ export class ProfileLinkRepository extends Repository<'profile_links', ModuleTab
   }
 
   /**
+   * Features a link and unfeatures its user's other one. The unique index `profile_links_one_featured_per_user` is what holds when two
+   * requests race: the loser gets a `duplicate` err and nothing changes. `missing` when the link is gone.
+   * `updated_at` is the version `renameIfCurrent()` compares, and featuring is no change of what a rename saw: the featured link and the
+   * one it unfeatures both keep it. The featured link's version is read under the row lock, so a rename cannot land between the read and the write.
+   */
+  feature(link: Pick<Row<'profile_links'>, 'id' | 'user_id'>) {
+    return this.transaction(async (links) => {
+      const current = await links.query().select(['updated_at']).where('id', '=', link.id).forUpdate().executeTakeFirst();
+      if (!current) return err({ kind: 'missing' } as const);
+      // A query-builder write does not touch `updated_at`, which is what keeps the other link's version.
+      await links.db
+        .updateTable('profile_links')
+        .set({ featured: false })
+        .where('user_id', '=', link.user_id)
+        .where('featured', '=', true)
+        .where('id', '<>', link.id)
+        .execute();
+      return links.tryUpdate(link.id, { featured: true, updated_at: current.updated_at });
+    });
+  }
+
+  /** Unfeatures a link, keeping its version (read under the row lock): its row, or a `missing` err when it is gone. */
+  unfeature(id: Row<'profile_links'>['id']) {
+    return this.transaction(async (links) => {
+      const current = await links.query().select(['updated_at']).where('id', '=', id).forUpdate().executeTakeFirst();
+      if (!current) return err({ kind: 'missing' } as const);
+      return links.tryUpdate(id, { featured: false, updated_at: current.updated_at });
+    });
+  }
+
+  /**
    * Renames a link unless it changed since `seen` (the `updated_at` the caller read): then `err` holds the link as it is now. The row is
    * locked while it is compared, and the save moves its version past `seen` (at least `now`), so two saves with the same version
    * cannot both pass. `undefined` when the link is gone.

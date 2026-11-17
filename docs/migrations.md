@@ -675,6 +675,8 @@ Postgres drops an index when a column of its condition is dropped, and SQLite re
 is not checked against the database after the migration, as the index itself is not. `retire()` of a column that a condition names is refused with D19: drop the index first, with `dropIndex()` or `dropUnique()`. A `down()` is not checked against the projection, so a `down()` that drops a column a condition names fails in the database on SQLite. For a
 condition this form cannot say, or an index over an expression, use [`schema.raw()`](#raw-sql).
 
+The example app in `apps/web-app` has a partial unique index: the migration of `profile_links_one_featured_per_user` allows one featured link per user, and `ProfileLinkRepository.feature()` unfeatures the other one first.
+
 ### Check constraints
 
 `oneOf()` holds a string column to a list of values. The database refuses any other value, and `Row<'memberships'>['role']` is the union

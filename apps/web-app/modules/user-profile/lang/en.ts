@@ -48,6 +48,9 @@ const en = {
     rename_keep: 'Keep my label',
     renaming: 'Renaming',
     rename_cancel: 'Cancel',
+    featured: 'Featured',
+    feature: 'Feature',
+    unfeature: 'Unfeature',
   },
   people: {
     title: 'People',
@@ -93,6 +96,10 @@ const en = {
     saved: 'Profile saved.',
     link_added: 'Link added.',
     link_removed: 'Link removed.',
+    link_featured: 'Link featured.',
+    link_unfeatured: 'Link no longer featured.',
+    link_feature_raced: 'Another link was featured at the same moment. Try again.',
+    link_gone: 'This link no longer exists.',
     avatar_saved: 'Picture saved.',
   },
   validation: {
