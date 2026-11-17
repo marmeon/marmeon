@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Redactor } from '@marmeon/core';
 import { RedirectResult } from '@marmeon/http';
 import { Router } from '@marmeon/router';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -117,127 +117,367 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.takeFlash().map((taken) => taken.id)).toEqual(['b']));
   });
 
-  it('keeps the conflict of a form that went back apart from the messages: only takeConflict() takes it, validated, hidden from all()', async () => {
+  it('keeps the conflict of a form that went back apart from the messages: only takeSentBack() takes it, validated, hidden from all()', async () => {
     const store = new MemorySessionStore();
-    const entry = (id: string, data: unknown, document?: string) => ({ id, key: '_conflict', data, ...(document ? { document } : {}) });
-    const { id } = await request(store, undefined, (session) => session.queueFlash(entry('c', { message: 'Stale.', current: { v: 2 } }, 'tab-a')));
+    const entry = (id: string, data: unknown, document?: string) => ({ id, key: '_sent_back', data, ...(document ? { document } : {}) });
+    const { id } = await request(store, undefined, (session) => session.queueSentBack(entry('c', { conflict: { message: 'Stale.', current: { v: 2 } } }, 'tab-a')));
     await request(store, id, (session) => {
       // Not a message (a prefetch is told something waits), and not session data.
       expect(session.hasFlash('tab-a')).toBe(true);
       expect(session.takeFlash('tab-a')).toEqual([]);
       expect(session.all()).toEqual({});
       // Another document's request leaves it.
-      expect(session.takeConflict('tab-b')).toBeUndefined();
+      expect(session.takeSentBack('tab-b')).toBeUndefined();
     });
     await request(store, id, (session) => {
-      expect(session.takeConflict('tab-a')).toEqual({ message: 'Stale.', current: { v: 2 } });
+      expect(session.takeSentBack('tab-a')).toEqual({ conflict: { message: 'Stale.', current: { v: 2 } } });
       // A 409 puts it back, like a message.
       session.reflash();
     });
     await request(store, id, (session) => {
-      expect(session.takeConflict()).toEqual({ message: 'Stale.', current: { v: 2 } });
-      expect(session.takeConflict()).toBeUndefined();
+      expect(session.takeSentBack()).toEqual({ conflict: { message: 'Stale.', current: { v: 2 } } });
+      expect(session.takeSentBack()).toBeUndefined();
     });
     // A value of another shape is dropped, never handed on.
-    for (const data of [null, 'Stale.', ['Stale.'], { message: 5 }, {}]) {
-      const { id: other } = await request(store, undefined, (session) => session.queueFlash(entry('x', data)));
+    for (const data of [null, 'Stale.', ['Stale.'], { conflict: { message: 5 } }, { conflict: 'Stale.' }, {}]) {
+      const { id: other } = await request(store, undefined, (session) => session.queueSentBack(entry('x', data)));
       await request(store, other, (session) => {
-        expect(session.takeConflict()).toBeUndefined();
-        expect(session.takeConflict()).toBeUndefined();
+        expect(session.takeSentBack()).toBeUndefined();
+        expect(session.takeSentBack()).toBeUndefined();
       });
     }
     // A submit binds it: only the request carrying that id takes it, not a poll or a partial reload of the same document.
-    const { id: bound } = await request(store, undefined, (session) => session.queueFlash({ ...entry('b', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    const { id: bound } = await request(store, undefined, (session) => session.queueSentBack({ ...entry('b', { conflict: { message: 'Stale.' } }, 'tab-a'), form: 'submit-1' }));
     await request(store, bound, (session) => {
-      expect(session.takeConflict('tab-a')).toBeUndefined();
-      expect(session.takeConflict('tab-a', 'submit-2')).toBeUndefined();
-      // One bound to a submit never makes a prefetch wait: its follow-up may never come.
-      expect(session.hasFlash('tab-a')).toBe(false);
-    });
-    await request(store, bound, (session) => expect(session.takeConflict('tab-a', 'submit-1')).toEqual({ message: 'Stale.' }));
-    // Released (its follow-up became a full load): the rule of the document applies, and a prefetch waits for it.
-    const { id: released } = await request(store, undefined, (session) => session.queueFlash({ ...entry('r', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
-    await request(store, released, (session) => {
-      session.releaseConflict('tab-b', 'submit-1');
-      session.releaseConflict('tab-a', 'submit-2');
-      expect(session.takeConflict('tab-a')).toBeUndefined();
-      session.releaseConflict('tab-a', 'submit-1');
+      expect(session.takeSentBack('tab-a')).toBeUndefined();
+      expect(session.takeSentBack('tab-a', 'submit-2')).toBeUndefined();
+      // One bound to a submit makes a prefetch wait too: it must not stand in for the follow-up.
       expect(session.hasFlash('tab-a')).toBe(true);
-      expect(session.takeConflict('tab-a')).toEqual({ message: 'Stale.' });
+    });
+    await request(store, bound, (session) => expect(session.takeSentBack('tab-a', 'submit-1')).toEqual({ conflict: { message: 'Stale.' } }));
+    // Released (its follow-up became a full load): the rule of the document applies, and a prefetch waits for it.
+    const { id: released } = await request(store, undefined, (session) => session.queueSentBack({ ...entry('r', { conflict: { message: 'Stale.' } }, 'tab-a'), form: 'submit-1' }));
+    await request(store, released, (session) => {
+      session.releaseSentBack('tab-b', 'submit-1');
+      session.releaseSentBack('tab-a', 'submit-2');
+      expect(session.takeSentBack('tab-a')).toBeUndefined();
+      session.releaseSentBack('tab-a', 'submit-1');
+      expect(session.hasFlash('tab-a')).toBe(true);
+      expect(session.takeSentBack('tab-a')).toEqual({ conflict: { message: 'Stale.' } });
     });
     // A later submit of the same document ends a conflict it did not answer; another document's submit does not.
-    const { id: dropped } = await request(store, undefined, (session) => session.queueFlash({ ...entry('d', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    const { id: dropped } = await request(store, undefined, (session) => session.queueSentBack({ ...entry('d', { conflict: { message: 'Stale.' } }, 'tab-a'), form: 'submit-1' }));
     await request(store, dropped, (session) => {
       // Its own submit ends nothing; a later one of the same document does.
-      session.dropConflict('tab-a', 'submit-1');
-      session.dropConflict('tab-a', 'submit-2');
+      session.dropSentBack('tab-a', 'submit-1');
+      session.dropSentBack('tab-a', 'submit-2');
     });
-    await request(store, dropped, (session) => expect(session.takeConflict('tab-a', 'submit-1')).toBeUndefined());
-    const { id: kept } = await request(store, undefined, (session) => session.queueFlash({ ...entry('k', { message: 'Stale.' }, 'tab-a'), form: 'submit-1' }));
+    await request(store, dropped, (session) => expect(session.takeSentBack('tab-a', 'submit-1')).toBeUndefined());
+    const { id: kept } = await request(store, undefined, (session) => session.queueSentBack({ ...entry('k', { conflict: { message: 'Stale.' } }, 'tab-a'), form: 'submit-1' }));
     await request(store, kept, (session) => {
-      session.dropConflict('tab-b', 'submit-9');
-      session.dropConflict(undefined, 'submit-9');
-      session.dropConflict('tab-a', 'submit-1');
+      session.dropSentBack('tab-b', 'submit-9');
+      session.dropSentBack(undefined, 'submit-9');
+      session.dropSentBack('tab-a', 'submit-1');
     });
-    await request(store, kept, (session) => expect(session.takeConflict('tab-a', 'submit-1')).toEqual({ message: 'Stale.' }));
+    await request(store, kept, (session) => expect(session.takeSentBack('tab-a', 'submit-1')).toEqual({ conflict: { message: 'Stale.' } }));
     // A read-only request takes none.
-    const { id: third } = await request(store, undefined, (session) => session.queueFlash(entry('r', { message: 'Stale.' })));
+    const { id: third } = await request(store, undefined, (session) => session.queueSentBack(entry('r', { conflict: { message: 'Stale.' } })));
     const island = new Session(store, config, plainSessionCodec);
     await island.start(third);
     island.lock(() => false);
-    expect(island.takeConflict()).toBeUndefined();
+    expect(island.takeSentBack()).toBeUndefined();
   });
 
   it('keeps the newest conflict of each document and submit — ten at most — beside the twenty messages: a run of stale posts evicts no toast', async () => {
     const store = new MemorySessionStore();
     const toast = (id: number) => ({ id: `t${id}`, key: 'toast', data: { message: `Saved ${id}.` } });
-    const stale = (id: string, document?: string, form?: string) => ({ id, key: '_conflict', data: { message: `Stale ${id}.` }, ...(document ? { document } : {}), ...(form ? { form } : {}) });
+    const stale = (id: string, document?: string, form?: string) => ({ id, key: '_sent_back', data: { conflict: { message: `Stale ${id}.` } }, ...(document ? { document } : {}), ...(form ? { form } : {}) });
     const { id } = await request(store, undefined, (session) => {
       for (let n = 0; n < 20; n++) session.queueFlash(toast(n));
       // The same document and submit: the newest replaces; no document and no id: one slot too.
-      for (let n = 0; n < 25; n++) session.queueFlash(stale(`same${n}`, 'tab-a', 's1'));
-      for (let n = 0; n < 25; n++) session.queueFlash(stale(`anon${n}`));
+      for (let n = 0; n < 25; n++) session.queueSentBack(stale(`same${n}`, 'tab-a', 's1'));
+      for (let n = 0; n < 25; n++) session.queueSentBack(stale(`anon${n}`));
     });
     await request(store, id, (session) => {
       expect(session.takeFlash().map((message) => message.id)).toEqual(Array.from({ length: 20 }, (_, n) => `t${n}`));
-      expect(session.takeConflict('tab-a', 's1')).toEqual({ message: 'Stale same24.' });
-      expect(session.takeConflict()).toEqual({ message: 'Stale anon24.' });
-      expect(session.takeConflict()).toBeUndefined();
+      expect(session.takeSentBack('tab-a', 's1')).toEqual({ conflict: { message: 'Stale same24.' } });
+      expect(session.takeSentBack()).toEqual({ conflict: { message: 'Stale anon24.' } });
+      expect(session.takeSentBack()).toBeUndefined();
     });
     // Another tab’s conflict does not erase this one’s.
     const { id: tabs } = await request(store, undefined, (session) => {
-      session.queueFlash(stale('a', 'tab-a', 'a1'));
-      session.queueFlash(stale('b', 'tab-b', 'b1'));
+      session.queueSentBack(stale('a', 'tab-a', 'a1'));
+      session.queueSentBack(stale('b', 'tab-b', 'b1'));
     });
     await request(store, tabs, (session) => {
-      expect(session.takeConflict('tab-a', 'a1')).toEqual({ message: 'Stale a.' });
-      expect(session.takeConflict('tab-b', 'b1')).toEqual({ message: 'Stale b.' });
+      expect(session.takeSentBack('tab-a', 'a1')).toEqual({ conflict: { message: 'Stale a.' } });
+      expect(session.takeSentBack('tab-b', 'b1')).toEqual({ conflict: { message: 'Stale b.' } });
     });
     // Beyond ten the oldest is dropped.
     const { id: many } = await request(store, undefined, (session) => {
-      for (let n = 0; n < 15; n++) session.queueFlash(stale(`m${n}`, `tab-${n}`, `s${n}`));
+      for (let n = 0; n < 15; n++) session.queueSentBack(stale(`m${n}`, `tab-${n}`, `s${n}`));
     });
     await request(store, many, (session) => {
-      expect(session.takeConflict('tab-0', 's0')).toBeUndefined();
-      expect(session.takeConflict('tab-4', 's4')).toBeUndefined();
-      expect(session.takeConflict('tab-5', 's5')).toEqual({ message: 'Stale m5.' });
-      expect(session.takeConflict('tab-14', 's14')).toEqual({ message: 'Stale m14.' });
+      expect(session.takeSentBack('tab-0', 's0')).toBeUndefined();
+      expect(session.takeSentBack('tab-4', 's4')).toBeUndefined();
+      expect(session.takeSentBack('tab-5', 's5')).toEqual({ conflict: { message: 'Stale m5.' } });
+      expect(session.takeSentBack('tab-14', 's14')).toEqual({ conflict: { message: 'Stale m14.' } });
     });
     // Twenty-one toasts: the oldest goes, as before — and a conflict never counts among them.
     const { id: second } = await request(store, undefined, (session) => {
-      session.queueFlash(stale('c'));
+      session.queueSentBack(stale('c'));
       for (let n = 0; n < 21; n++) session.queueFlash(toast(n));
     });
     await request(store, second, (session) => {
       expect(session.takeFlash()).toHaveLength(20);
-      expect(session.takeConflict()).toEqual({ message: 'Stale c.' });
+      expect(session.takeSentBack()).toEqual({ conflict: { message: 'Stale c.' } });
     });
+  });
+
+  it('an island resolved in-process reads the same old() and errors as its page: the record the page took, not a second take', async () => {
+    const store = new MemorySessionStore();
+    const record = { id: 'r', key: '_sent_back', data: { errors: { title: ['Required.'] }, input: { title: 'typed' } }, document: 'tab-a', form: 's1' };
+    const { id } = await request(store, undefined, (session) => session.queueSentBack(record));
+    const page = new Session(store, config, plainSessionCodec);
+    await page.start(id);
+    page.expectSentBack('tab-a', 's1');
+    const island = new Session(store, config, plainSessionCodec);
+    island.adopt(page);
+    island.lock(() => false);
+    expect(island.old()).toEqual({ title: 'typed' });
+    expect(island.shownErrors()).toEqual({ title: ['Required.'] });
+    expect(page.old()).toEqual({ title: 'typed' });
+    // A request that is no page (a prefetch, an island of its own) shows none of it while a record waits.
+    await request(store, id, (other) => {
+      expect(other.old()).toEqual({});
+      expect(other.shownErrors()).toEqual({});
+    });
+  });
+
+  describe('the lifetime of a record of a form sent back', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('ends after five minutes: not taken, not waited for, and dropped when the session loads or another record is queued', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const store = new MemorySessionStore();
+      const record = (id: string, document: string) => ({ id, key: '_sent_back', data: { conflict: { message: 'Stale.' } }, document, form: id });
+      const { id } = await request(store, undefined, (session) => session.queueSentBack(record('a', 'tab-a')));
+      vi.advanceTimersByTime(5 * 60_000);
+      await request(store, id, (session) => expect(session.hasFlash('tab-a')).toBe(true));
+      vi.advanceTimersByTime(1_000);
+      await request(store, id, (session) => {
+        expect(session.hasFlash('tab-a')).toBe(false);
+        expect(session.takeSentBack('tab-a', 'a')).toBeUndefined();
+      });
+      expect((await stored(store, id))?._sent_back).toBeUndefined();
+      // Queueing a new record drops the expired one beside it.
+      const { id: second } = await request(store, undefined, (session) => session.queueSentBack(record('b', 'tab-b')));
+      vi.advanceTimersByTime(6 * 60_000);
+      await request(store, second, (session) => session.queueSentBack(record('c', 'tab-c')));
+      const left = ((await stored(store, second))?._sent_back ?? []) as { id: string }[];
+      expect(left.map((message) => message.id)).toEqual(['c']);
+    });
+  });
+
+  it('keeps the records of forms sent back under a key of their own: a flash message taker of the release before finds none', async () => {
+    const store = new MemorySessionStore();
+    const record = (id: string, document: string) => ({ id, key: '_sent_back', data: { conflict: { message: 'Stale.' } }, document });
+    const { id } = await request(store, undefined, (session) => {
+      session.queueSentBack(record('r', 'tab-a'));
+      session.queueFlash({ id: 'm', key: 'toast', data: { message: 'Saved.' } });
+    });
+    const payload = (await stored(store, id)) ?? {};
+    expect(((payload._flash_messages ?? []) as { id: string }[]).map((message) => message.id)).toEqual(['m']);
+    expect(((payload._sent_back ?? []) as { id: string }[]).map((message) => message.id)).toEqual(['r']);
+    await request(store, id, (session) => expect(session.takeFlash().map((message) => message.id)).toEqual(['m']));
+  });
+
+  describe('plain copies that a record of a form sent back mirrors', () => {
+    const rec = (id: string, errors: Record<string, string[]>, input: Record<string, unknown> = { title: id }) => ({ id, key: '_sent_back', data: { errors, input }, document: 'tab-a', form: id });
+    /** A refused form: its plain copies, and the record that mirrors them. */
+    const refuse = (session: Session, id: string) => {
+      session.flashData('errors', { title: [`Required ${id}.`] });
+      session.flashInput({ title: id });
+      session.queueSentBack(rec(id, { title: [`Required ${id}.`] }));
+    };
+
+    it('keeps the mark of a copy when a concurrent request aged the mark away: the other tab never sees the copy', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => refuse(session, 'one'));
+      // A poll and a second refused submit load the same session; the poll saves first and ages the first copies and their mark away.
+      const poll = new Session(store, config, plainSessionCodec);
+      await poll.start(id);
+      const submit = new Session(store, config, plainSessionCodec);
+      await submit.start(id);
+      poll.put('visits', 1);
+      await poll.save();
+      refuse(submit, 'two');
+      await submit.save();
+      await request(store, id, (other) => {
+        expect(other.shownErrors()).toEqual({});
+        expect(other.old()).toEqual({});
+      });
+    });
+
+    it('does not expose a copy another request just replaced when this one unmarks the older generation: errors', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => refuse(session, 'one'));
+      const a = new Session(store, config, plainSessionCodec);
+      await a.start(id);
+      const b = new Session(store, config, plainSessionCodec);
+      await b.start(id);
+      // B refuses anew (marked) and saves first; A flashes errors equal to the ones it loaded, unmirrored.
+      refuse(b, 'two');
+      await b.save();
+      a.flashData('errors', { title: ['Required one.'] });
+      await a.save();
+      await request(store, id, (other) => {
+        expect(other.shownErrors()).toEqual({ title: ['Required one.'] });
+        // B's input is still its record's mirror: shown to no one.
+        expect(other.old()).toEqual({});
+      });
+    });
+
+    it('does not expose a copy another request just replaced when this one unmarks the older generation: input', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => refuse(session, 'one'));
+      const a = new Session(store, config, plainSessionCodec);
+      await a.start(id);
+      const b = new Session(store, config, plainSessionCodec);
+      await b.start(id);
+      refuse(b, 'two');
+      await b.save();
+      a.flashInput({ title: 'one' });
+      await a.save();
+      await request(store, id, (other) => {
+        expect(other.old()).toEqual({ title: 'one' });
+        expect(other.shownErrors()).toEqual({});
+      });
+    });
+
+    it('keeps the copies of a refused form hidden when the request that aged the older ones saves last', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => refuse(session, 'one'));
+      const poll = new Session(store, config, plainSessionCodec);
+      await poll.start(id);
+      const submit = new Session(store, config, plainSessionCodec);
+      await submit.start(id);
+      refuse(submit, 'two');
+      await submit.save();
+      poll.put('visits', 1);
+      await poll.save();
+      await request(store, id, (other) => {
+        expect(other.shownErrors()).toEqual({});
+        expect(other.old()).toEqual({});
+      });
+    });
+
+    it.each([
+      ['errors', (session: Session) => session.flashData('errors', { title: ['Same.'] }), (session: Session) => session.shownErrors(), { title: ['Same.'] }],
+      ['input', (session: Session) => session.flashInput({ title: 'same' }), (session: Session) => session.old(), { title: 'same' }],
+    ])('shows a plain-only refusal’s own %s when a concurrent request marked the same value as a record’s copy', async (_name, flash, read, expected) => {
+      const store = new MemorySessionStore();
+      const same = { id: 'r', key: '_sent_back', data: { errors: { title: ['Same.'] }, input: { title: 'same' } }, document: 'tab-a', form: 'r' };
+      // The session holds the plain, unmarked copies, aged to the next request.
+      const { id } = await request(store, undefined, (session) => {
+        session.flashData('errors', { title: ['Same.'] });
+        session.flashInput({ title: 'same' });
+      });
+      const refusal = new Session(store, config, plainSessionCodec);
+      await refusal.start(id);
+      const plain = new Session(store, config, plainSessionCodec);
+      await plain.start(id);
+      // One refuses with a record and the same values (marked), and saves first; the other flashes the same value again, with no record.
+      refusal.flashData('errors', { title: ['Same.'] });
+      refusal.flashInput({ title: 'same' });
+      refusal.queueSentBack(same);
+      await refusal.save();
+      flash(plain);
+      await plain.save();
+      await request(store, id, (other) => expect(read(other)).toEqual(expected));
+    });
+
+    it('is absent from the stored session once the copies aged away', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => refuse(session, 'one'));
+      expect(await stored(store, id)).toHaveProperty('_flash_mirrored');
+      await request(store, id);
+      await request(store, id);
+      const payload = (await stored(store, id)) ?? {};
+      expect(payload).not.toHaveProperty('_flash_mirrored');
+      expect(payload).not.toHaveProperty('errors');
+      expect(payload).toHaveProperty('_sent_back');
+    });
+
+    it('shows what the request flashed itself after the record: that value is not a copy', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => {
+        refuse(session, 'one');
+        session.flashData('errors', { title: ['Own.'] });
+      });
+      await request(store, id, (session) => expect(session.shownErrors()).toEqual({ title: ['Own.'] }));
+    });
+
+    it('is kept with its copies by keep(): a later request of another tab still sees neither', async () => {
+      const store = new MemorySessionStore();
+      const { id } = await request(store, undefined, (session) => refuse(session, 'one'));
+      await request(store, id, (session) => session.keep('errors', '_old_input'));
+      await request(store, id, (later) => {
+        expect(later.shownErrors()).toEqual({});
+        expect(later.old()).toEqual({});
+      });
+    });
+  });
+
+  it('hands an island a copy of the record: what the island changes in old() and the errors, the page does not see', async () => {
+    const store = new MemorySessionStore();
+    const { id } = await request(store, undefined, (session) => session.queueSentBack({ id: 'r', key: '_sent_back', data: { errors: { title: ['Required.'] }, input: { title: 'typed' } }, document: 'tab-a', form: 's1' }));
+    const page = new Session(store, config, plainSessionCodec);
+    await page.start(id);
+    page.expectSentBack('tab-a', 's1');
+    const island = new Session(store, config, plainSessionCodec);
+    island.adopt(page);
+    island.old().title = 'changed';
+    island.shownErrors().title!.push('Injected.');
+    expect(page.old()).toEqual({ title: 'typed' });
+    expect(page.shownErrors()).toEqual({ title: ['Required.'] });
+  });
+
+  it('forgets the record this request took when the session is flushed or invalidated: old() and the errors are empty, and reflash() brings nothing back', async () => {
+    const store = new MemorySessionStore();
+    const { id } = await request(store, undefined, (session) => session.queueSentBack({ id: 'r', key: '_sent_back', data: { errors: { title: ['Required.'] }, input: { title: 'typed' } }, document: 'tab-a', form: 's1' }));
+    const session = new Session(store, config, plainSessionCodec);
+    await session.start(id);
+    session.expectSentBack('tab-a', 's1');
+    expect(session.old()).toEqual({ title: 'typed' });
+    session.invalidate();
+    expect(session.old()).toEqual({});
+    expect(session.shownErrors()).toEqual({});
+    session.reflash();
+    expect(session.takeSentBack('tab-a', 's1')).toBeUndefined();
+  });
+
+  it('merges the records of two requests of one session by id: both are kept, and one a faster request took does not come back', async () => {
+    const store = new MemorySessionStore();
+    const record = (id: string, document: string) => ({ id, key: '_sent_back', data: { conflict: { message: `Stale ${id}.` } }, document, form: id });
+    const { id } = await request(store, undefined, (session) => session.queueSentBack(record('x', 'tab-x')));
+    const first = new Session(store, config, plainSessionCodec);
+    await first.start(id);
+    const second = new Session(store, config, plainSessionCodec);
+    await second.start(id);
+    first.queueSentBack(record('a', 'tab-a'));
+    expect(second.takeSentBack('tab-x', 'x')).toEqual({ conflict: { message: 'Stale x.' } });
+    second.queueSentBack(record('b', 'tab-b'));
+    await first.save();
+    await second.save();
+    const ids = (((await stored(store, id))?._sent_back ?? []) as { id: string }[]).map((message) => message.id).sort();
+    expect(ids).toEqual(['a', 'b']);
   });
 
   it('a conflict released to the document stays released when another request of the session saves in between', async () => {
     const store = new MemorySessionStore();
-    const bound = { id: 'c', key: '_conflict', data: { message: 'Stale.' }, document: 'tab-a', form: 'submit-1' };
-    const { id } = await request(store, undefined, (session) => session.queueFlash(bound));
+    const bound = { id: 'c', key: '_sent_back', data: { conflict: { message: 'Stale.' } }, document: 'tab-a', form: 'submit-1' };
+    const { id } = await request(store, undefined, (session) => session.queueSentBack(bound));
     // The release (the asset-version 409 of the follow-up) and an unrelated write of another request start from the same session.
     const release = new Session(store, config, plainSessionCodec);
     await release.start(id);
@@ -245,12 +485,12 @@ describe('Session', () => {
     await other.start(id);
     other.put('visits', 1);
     await other.save();
-    release.releaseConflict('tab-a', 'submit-1');
+    release.releaseSentBack('tab-a', 'submit-1');
     await release.save();
     await request(store, id, (session) => {
       expect(session.get('visits')).toBe(1);
       // No submit id, as on a full document load: it is taken — the merge kept the release, not the old binding.
-      expect(session.takeConflict('tab-a')).toEqual({ message: 'Stale.' });
+      expect(session.takeSentBack('tab-a')).toEqual({ conflict: { message: 'Stale.' } });
     });
   });
 

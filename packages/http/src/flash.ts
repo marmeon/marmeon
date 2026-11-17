@@ -16,8 +16,10 @@ export interface FlashEntry {
    * document, or one naming none (a full page load), takes it. Never sent to the browser.
    */
   readonly document?: string;
-  /** For a conflict: the id of the submit that was answered with it (`x-marmeon-submit`) — only the page request carrying it takes it. */
+  /** For what a refused form is sent back with (its errors, input or conflict): the id of the submit that was answered with it (`x-marmeon-submit`) — only the page request carrying it takes it. */
   readonly form?: string;
+  /** @internal — when the session queued a record of a form sent back (ms since the epoch): it is dropped after a few minutes, however it waits. */
+  readonly at?: number;
 }
 
 /** A new message with an id of its own. */

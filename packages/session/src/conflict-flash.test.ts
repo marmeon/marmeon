@@ -172,7 +172,7 @@ describe('a form that is answered with conflict(current)', () => {
       const response = await send('/notes/page', { headers });
       expect((await props(response))._conflict, JSON.stringify(headers)).toBeNull();
     }
-    // A prefetch takes nothing, and one that finds a conflict bound to a submit is not told to wait (the follow-up may never come).
+    // A prefetch takes nothing.
     const prefetch = await send('/notes/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [DOCUMENT_HEADER]: 'tab-a', purpose: 'prefetch' } });
     expect((await props(prefetch))._conflict).toBeNull();
     const followed = await send('/notes/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [DOCUMENT_HEADER]: 'tab-a', [SUBMIT_HEADER]: 'submit-1' } });
@@ -217,13 +217,13 @@ describe('a form that is answered with conflict(current)', () => {
     expect((await props(full))._conflict).toMatchObject({ message: 'Edited by Ada.' });
   });
 
-  it('does not make a prefetch wait for a conflict bound to a submit — only for one without an id', async () => {
+  it('makes a prefetch wait for a conflict whether it is bound to a submit or not — but not one of another document', async () => {
     const send = await boot();
-    const prefetch = () => send('/notes/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [DOCUMENT_HEADER]: 'tab-a', purpose: 'prefetch' } });
+    const prefetch = (document: string) => send('/notes/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [DOCUMENT_HEADER]: document, purpose: 'prefetch' } });
+    expect((await prefetch('tab-a')).headers.get(FLASH_WAITING_HEADER)).toBeNull();
     expect((await send('/notes/1', submit({ ...VISIT, [DOCUMENT_HEADER]: 'tab-a', [SUBMIT_HEADER]: 's1' }))).status).toBe(303);
-    expect((await prefetch()).headers.get(FLASH_WAITING_HEADER)).toBeNull();
-    expect((await send('/notes/1', submit({ ...VISIT, [DOCUMENT_HEADER]: 'tab-a' }))).status).toBe(303);
-    expect((await prefetch()).headers.get(FLASH_WAITING_HEADER)).toBe('true');
+    expect((await prefetch('tab-a')).headers.get(FLASH_WAITING_HEADER)).toBe('true');
+    expect((await prefetch('tab-b')).headers.get(FLASH_WAITING_HEADER)).toBeNull();
   });
 
   it('stores what it measured, whole, at most 64 KiB: a toJSON that answers differently the second time, a message that nearly fills it, multi-byte text', async () => {

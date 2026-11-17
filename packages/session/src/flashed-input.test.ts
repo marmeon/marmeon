@@ -19,6 +19,13 @@ const routes = openRoutes((Route) => {
   });
 });
 
+const nearCapRoutes = openRoutes((Route) => {
+  // Errors and input each just under the cap: they fit, so they are kept whole — twice (plain flash data and the record).
+  Route.post('/near-cap', () => {
+    throw new ValidationError({ a: ['x'.repeat(30_000)], b: ['y'.repeat(30_000)] }, { text: 'z'.repeat(60_000) });
+  });
+});
+
 const FIELDS = { name: 'Ada', national_id: 'X-1234', person: { National_ID: 'Y-5678', city: 'Z' } };
 
 const fieldRoutes = openRoutes((Route) => {
@@ -72,9 +79,29 @@ describe('a failed form and the session store', () => {
     expect(response.status).toBe(303);
     expect(written).toHaveLength(1);
     const payload = written[0]!;
-    // Errors and input are each capped at 64 KiB; the whole session (both, plus its own fields) stays well under twice that.
-    expect(payload.length).toBeLessThan(2 * MAX + 1024);
+    // Errors and input are each capped at 64 KiB, and kept twice (plain flash data and the record of the form sent back): the session stays under four times that.
+    expect(payload.length).toBeLessThan(4 * MAX + 1024);
     expect(payload).toContain('Item 0 must be a string.');
     expect(payload).not.toContain('Item 29999');
+  });
+
+  it('keeps errors and input that each fit just under the cap whole, in both copies, within four times the cap', async () => {
+    const memory = new MemorySessionStore();
+    const written: string[] = [];
+    const store = wrapped(memory, { write: (key, data, options) => (written.push(data), memory.write(key, data, options)) });
+    const application = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
+      modules: [defineModule({ name: 'forms', routes: nearCapRoutes })],
+    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LOG_LEVEL: 'silent' }, override: (container) => void container.instance(SessionStore, store) });
+
+    const response = await createHttpKernel(application).request('/near-cap', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' } });
+    expect(response.status).toBe(303);
+    expect(written).toHaveLength(1);
+    const payload = written[0]!;
+    expect(payload.split('z'.repeat(60_000))).toHaveLength(3);
+    expect(payload.split('x'.repeat(30_000))).toHaveLength(3);
+    expect(payload.length).toBeLessThan(4 * MAX + 1024);
   });
 });

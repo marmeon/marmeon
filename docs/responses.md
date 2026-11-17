@@ -223,7 +223,9 @@ return this.back().with('email', ctx.body.email);
 name looks secret, among them one that contains "password", "passcode", "secret", "token", "credential", "signature", "jwt", "recovery", "card", "cvc", "cvv" or
 "iban", an API key, private key or session id, or a one-time code (`otp`, `totp_secret`, `code`, `sms_code`, `backup_codes`;
 not `footprint`, `zip_code`, `language_code` or `promoCode`), the `_token` and every file are left out of the input. The names follow the rules of [remembered input](forms.md#remembering-input), without `include`, and every field whose name your app added with `redact.keys` (or a package with `addKeys()`) is left out as well. The framework does both for you when validation
-fails, so you rarely call them.
+fails, so you rarely call them. The errors and the input, whichever way you flashed them, wait for the page of that submit (for five minutes at most), as the
+conflict of a stale save does, so a prefetch or another tab in between neither takes nor shows them; read them through the `errors`
+prop and `old()`. See [flash data](session.md#flash-data).
 
 A flash message is something to show the user once, such as "Note saved.":
 

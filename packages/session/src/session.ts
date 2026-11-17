@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { Redactor } from '@marmeon/core';
 import type { ValidationErrors } from '@marmeon/http';
-import { CONFLICT_KEY, flashableInput, OLD_INPUT_KEY, type FlashEntry } from '@marmeon/http/internal';
+import { flashableInput, OLD_INPUT_KEY, type FlashEntry, type SentBack } from '@marmeon/http/internal';
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
 import { EMPTY_PAYLOAD, openPayload, sealPayload } from './format.ts';
@@ -14,7 +14,7 @@ import { createSessionId, isSessionIdentityKey, SESSION_ID, SESSION_USER_KEY, se
  * (`put('user_id', 1)` is an error); other keys are `unknown`.
  */
 export interface SessionData {
-  /** Validation errors of the previous request (flashed by a failed page request). */
+  /** Validation errors flashed by a failed page request — read through the `errors` prop, not here (`docs/session.md#flash-data`). */
   errors: ValidationErrors;
 }
 
@@ -32,10 +32,26 @@ function withoutAddedKeys(given: unknown, redactor: Redactor | undefined): unkno
 const FLASH = '_flash';
 /** Flash messages waiting for a response that is shown. */
 const MESSAGES = '_flash_messages';
+/**
+ * The records of forms sent back — a session key of their own, never among the flash messages: an instance of the release before
+ * keeps an unknown key as it is and hands out only `_flash_messages`, which it would send to the browser.
+ */
+const RECORDS = '_sent_back';
+/** The flash keys (`errors`, `_old_input`) a queued record of a form sent back mirrors: flash data that ages with them. */
+const MIRRORED = '_flash_mirrored';
+/** The flash keys a record of a form sent back can mirror. */
+const MIRRORABLE: readonly string[] = ['errors', OLD_INPUT_KEY];
+// `_flash_mirrored` is `{ [flash key]: generation }`.
 /** At most this many wait: an app that never shows them does not grow the session without end (the oldest go). */
 const MAX_MESSAGES = 20;
-/** The conflicts of forms sent back that may wait at once in one session: one per document and submit. */
-const MAX_CONFLICTS = 10;
+/** The records of forms sent back that may wait at once in one session: one per document and submit. */
+const MAX_SENT_BACK = 10;
+/**
+ * How long a record of a form sent back waits for its page: five minutes. The follow-up of a submit comes within a round trip
+ * (seconds), a form without JavaScript is loaded again by the same browser at once; five minutes cover a slow network or a tab
+ * that was frozen, and a follow-up that never comes cannot keep up to 64 KiB of errors and input in a session for its whole lifetime.
+ */
+const SENT_BACK_LIFETIME_MS = 5 * 60_000;
 const TOKEN = '_token';
 const OLD_INPUT = OLD_INPUT_KEY; // what `redirect().withInput()` flashes
 /**
@@ -89,8 +105,16 @@ export class Session {
   #permit: ((what: string) => boolean) | undefined;
   /** Its added names keep their fields out of the flashed input. */
   readonly #redactor: Redactor | undefined;
+  /** Set by `expectSentBack()`: this request is a page the user is shown, and takes what a form was sent back with for this document and submit. */
+  #expectedSentBack: { readonly document: string | undefined; readonly submit: string | undefined } | undefined;
+  /** What this request took of it (taken once, on the first `sentBack()`). */
+  #sentBack: { readonly value: SentBack | undefined } | undefined;
   /** The flash messages this request took — put back by `reflash()` (a 409: the page is requested again). */
   #taken: FlashEntry[] = [];
+  /** The records this request took — put back by `reflash()` too. */
+  #takenRecords: FlashEntry[] = [];
+  /** The flash keys this request flashed — a write back that meets another request's counts each as changed, even when it equals what was loaded. */
+  readonly #flashedKeys = new Set<string>();
   /** Something bound to this session was handed out (its CSRF token, a live subscription — `persist()`): a new session is kept. */
   #issued = false;
   /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (their live streams close). */
@@ -172,6 +196,12 @@ export class Session {
       this.#base = EMPTY_PAYLOAD;
     }
     this.#data = data ?? {};
+    // A record whose follow-up never came is gone: the session is not read and written back with it on every request.
+    if (Array.isArray(this.#data[RECORDS])) {
+      const live = capRecords(this.#data[RECORDS] as FlashEntry[]);
+      if (live.length > 0) this.#data[RECORDS] = live;
+      else delete this.#data[RECORDS];
+    }
     this.#loaded = data !== undefined;
     this.#started = true;
     // No CSRF token yet: it is made when something needs it — `token()`, a page of a session that is kept, the
@@ -186,6 +216,9 @@ export class Session {
   adopt(page: Session): void {
     // The page's token first (made on demand) — the island hands out the same one, never one of its own that is never saved.
     if (page.exists && !page.readOnly) page.#ensureToken();
+    // What a form was sent back with is taken by the page, once — before the copy, so the island does not hold it again; the island reads the same record.
+    this.#sentBack = page.#expectedSentBack !== undefined && page.#started ? { value: structuredClone(page.sentBack()) } : undefined;
+    this.#expectedSentBack = page.#expectedSentBack;
     this.#id = page.id;
     this.#key = page.#key;
     this.#data = structuredClone(page.#data);
@@ -241,7 +274,12 @@ export class Session {
   /** Removes all data, the CSRF token included. */
   flush(): void {
     this.#ensureStarted();
-    if (this.#may('session.flush()')) this.#data = {};
+    if (!this.#may('session.flush()')) return;
+    this.#data = {};
+    // What this request took of the data that is gone is gone with it: not shown by `old()`, not put back by `reflash()`.
+    this.#sentBack = { value: undefined };
+    this.#taken = [];
+    this.#takenRecords = [];
   }
 
   // -- Flash data ------------------------------------------------------------
@@ -254,9 +292,31 @@ export class Session {
     // reaches the store, `old()` or the next page's props. The core's own list is for the browser's and the log's sake, not this.
     const redactor = this.#redactor;
     data[key] = key === OLD_INPUT ? withoutAddedKeys(value, redactor?.hasAddedKeys ? redactor : undefined) : value;
+    this.#flashedKeys.add(key);
+    // A value flashed now is the controller's own, not a copy of a record: shown, whatever an earlier record mirrored under that key.
+    const mirrored = data[MIRRORED] as Record<string, string> | undefined;
+    if (mirrored !== undefined && Object.hasOwn(mirrored, key)) {
+      const { [key]: _own, ...rest } = mirrored;
+      if (Object.keys(rest).length > 0) data[MIRRORED] = rest;
+      else delete data[MIRRORED];
+    }
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, key])];
     flash.old = flash.old.filter((old) => old !== key);
+  }
+
+  /**
+   * What this request flashed under `key` (`flashData()`, `flashInput()`, a redirect's `with()`), `undefined` when it flashed nothing.
+   * @internal
+   */
+  flashed(key: string): unknown {
+    const data = this.#ensureStarted();
+    return this.#flashedHere(key) && Object.hasOwn(data, key) ? data[key] : undefined;
+  }
+
+  /** Whether this request flashed `key` — read without creating the bookkeeping. */
+  #flashedHere(key: string): boolean {
+    return ((this.#ensureStarted()[FLASH] as FlashState | undefined)?.new ?? []).includes(key);
   }
 
   /**
@@ -274,11 +334,16 @@ export class Session {
       this.#ensureStarted()[MESSAGES] = capMessages([...this.#taken, ...waiting]);
       this.#taken = [];
     }
+    if (this.#takenRecords.length > 0) {
+      this.#setRecords(capRecords([...this.#takenRecords, ...this.#records()]));
+      this.#takenRecords = [];
+    }
   }
 
   /**
    * Keeps a flash message (`redirect().flash()`) until a response the user is shown takes it — not aged by the
-   * requests in between (a prefetch, an island, an API call).
+   * requests in between (a prefetch, an island, an API call). What a refused form is sent back with is no message:
+   * {@link queueSentBack}.
    * @internal
    */
   queueFlash(message: FlashEntry): void {
@@ -288,14 +353,45 @@ export class Session {
   }
 
   /**
+   * Keeps the record of a refused form (its {@link SentBack}, in `data`) until the page of its submit takes it: in a session key of
+   * its own, apart from the flash messages. The plain copies of its errors and input that this request flashed are marked as
+   * mirrored, and shown by no other request.
+   * @internal
+   */
+  queueSentBack(message: FlashEntry): void {
+    this.#ensureStarted();
+    if (!this.#may('session.queueSentBack()')) return;
+    // Like `flashData()` for `_old_input`: a field whose name the app added to the redactor never reaches the store, in the record of a form sent back either.
+    const redactor = this.#redactor?.hasAddedKeys ? this.#redactor : undefined;
+    const input = (message.data as { input?: unknown } | null)?.input;
+    const stamped = { ...message, at: message.at ?? Date.now() };
+    const kept = redactor !== undefined && typeof input === 'object' && input !== null ? { ...stamped, data: { ...(message.data as object), input: withoutAddedKeys(input, redactor) } } : stamped;
+    this.#setRecords(capRecords([...this.#records(), kept]));
+    const record = sentBackOf(message.data);
+    this.#mirror([...(record?.errors !== undefined && this.#flashedHere('errors') ? ['errors'] : []), ...(record?.input !== undefined && this.#flashedHere(OLD_INPUT) ? [OLD_INPUT] : [])]);
+  }
+
+  /** The records of forms sent back that wait (a session key of their own, not the flash messages). */
+  #records(): FlashEntry[] {
+    const list = this.#ensureStarted()[RECORDS];
+    return Array.isArray(list) ? (list as FlashEntry[]) : [];
+  }
+
+  #setRecords(list: FlashEntry[]): void {
+    if (list.length > 0) this.#ensureStarted()[RECORDS] = list;
+    else delete this.#ensureStarted()[RECORDS];
+  }
+
+  /**
    * The flash messages waiting, taken — by the response that delivers them. Nothing for a read-only request (an island,
    * a layer's base resolved in-process: they are not what the user is shown) or an unstarted session.
    * @internal
    */
   hasFlash(document?: string): boolean {
-    // A waiting conflict counts when any page of the document takes it: a prefetch must not stand in for that page. One bound to a submit is
-    // taken by that submit's follow-up alone — it never makes a prefetch wait (the follow-up may never come).
-    return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).some((message) => mayTake(message, document) && (message.key !== CONFLICT_KEY || message.form === undefined));
+    // A waiting record of a form sent back counts when any page of the document takes it — also one bound to a submit: a prefetch
+    // must not stand in for that page, nor be kept as one that has none.
+    const now = Date.now();
+    return this.#started && (((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).some((message) => mayTake(message, document)) || this.#records().some((message) => mayTake(message, document) && !expired(message, now)));
   }
 
   /**
@@ -306,54 +402,72 @@ export class Session {
   takeFlash(document?: string): FlashEntry[] {
     if (!this.#started || this.#permit) return [];
     const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
-    // The conflict of a form that went back is no message: `takeConflict()` hands it to the page's `conflict` prop.
-    return this.#takeMessages(waiting.filter((message) => message.key !== CONFLICT_KEY && mayTake(message, document)));
+    return this.#takeMessages(waiting.filter((message) => mayTake(message, document)));
   }
 
   /**
-   * The conflict a form was sent back with (`conflict(…)` answering a page request), taken by the page of the document that
-   * sent it — a prefetch, an island or another tab's request leaves it waiting. Only a value of the shape `{ message, current? }`
-   * counts; anything else is dropped. Nothing for a read-only request or an unstarted session. `document`: as for {@link takeFlash}.
-   * `submit`: the id the request carries (`x-marmeon-submit`). A conflict bound to the submit that was answered with it is taken by the
+   * What a form was sent back with — its validation errors, its input for `old()`, the conflict of a stale save — taken by the page of
+   * the document that sent it: a prefetch, an island or another tab's request leaves it waiting. Only the parts of the right shape
+   * count (`errors` a record of string lists, `input` an object, `conflict` `{ message, current? }`); an entry with none counts as none.
+   * Nothing for a read-only request or an unstarted session. `document`: as for {@link takeFlash}.
+   * `submit`: the id the request carries (`x-marmeon-submit`). A record bound to the submit that was answered with it is taken by the
    * request that carries that id only — not by a poll or a partial reload of the same document; one without an id (a form
    * without JavaScript) follows the rule of `document`.
    * @internal
    */
-  takeConflict(document?: string, submit?: string): { readonly message: string; readonly current?: unknown } | undefined {
+  takeSentBack(document?: string, submit?: string): SentBack | undefined {
     if (!this.#started || this.#permit) return undefined;
-    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
-    const matches = waiting.filter((message) => message.key === CONFLICT_KEY && mayTake(message, document) && (message.form === undefined || message.form === submit));
-    // The one made for this submit, else the newest that follows the rule of the document: another form's waiting conflict stays.
+    const now = Date.now();
+    const matches = this.#records().filter((message) => !expired(message, now) && mayTake(message, document) && (message.form === undefined || message.form === submit));
+    // The one made for this submit, else the newest that follows the rule of the document: another form's waiting record stays.
     const own = matches.findLast((message) => message.form !== undefined) ?? matches.at(-1);
-    return conflictOf(this.#takeMessages(own ? [own] : []).at(0)?.data);
+    return sentBackOf(this.#takeRecords(own ? [own] : []).at(0)?.data);
+  }
+
+  /** @internal — ShareErrorsFromSession: this request is a page the user is shown; what a form was sent back with is taken on first read. */
+  expectSentBack(document: string | undefined, submit: string | undefined): void {
+    this.#expectedSentBack = { document, submit };
+  }
+
+  /** @internal — the record this request took (taken on the first call, then the same), undefined when it takes none. */
+  sentBack(): SentBack | undefined {
+    const expected = this.#expectedSentBack;
+    if (expected === undefined) return undefined;
+    this.#sentBack ??= { value: this.takeSentBack(expected.document, expected.submit) };
+    return this.#sentBack.value;
   }
 
   /**
-   * The conflict of `submit` loses its binding to it: its follow-up became a full document load (an asset-version 409), which carries no
+   * The record of `submit` loses its binding to it: its follow-up became a full document load (an asset-version 409), which carries no
    * submit id — from then on the rule of `document` (or a full load) applies. Replaced by a new entry (a new id), not changed in place:
    * a concurrent write merges messages by id, and would bring the binding back to an entry that kept its own.
    * @internal
    */
-  releaseConflict(document: string | undefined, submit: string): void {
+  releaseSentBack(document: string | undefined, submit: string): void {
     if (!this.#started || this.#permit) return;
-    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
-    if (!waiting.some((message) => message.key === CONFLICT_KEY && message.form === submit && message.document === document)) return;
-    this.#data[MESSAGES] = capMessages(waiting.map((message) => (message.key === CONFLICT_KEY && message.form === submit && message.document === document ? { id: crypto.randomUUID(), key: message.key, data: message.data, ...(document !== undefined ? { document } : {}) } : message)));
+    const waiting = this.#records();
+    if (!waiting.some((message) => message.form === submit && message.document === document)) return;
+    this.#setRecords(capRecords(waiting.map((message) => (message.form === submit && message.document === document ? { id: crypto.randomUUID(), key: message.key, data: message.data, ...(message.at !== undefined ? { at: message.at } : {}), ...(document !== undefined ? { document } : {}) } : message))));
   }
 
   /**
-   * A submit of `document` that is not the one a conflict waits for ends it: the conflict never lands on the page of another form.
+   * A submit of `document` that is not the one a record waits for ends it: what a form was sent back with never lands on the page of another form.
    * Nothing for a read-only request, an unstarted session or a submit that names no document.
    * @internal
    */
-  dropConflict(document: string | undefined, submit: string): void {
+  dropSentBack(document: string | undefined, submit: string): void {
     if (!this.#started || this.#permit || document === undefined) return;
-    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
-    const stale = waiting.filter((message) => message.key === CONFLICT_KEY && message.document === document && message.form !== submit);
+    const waiting = this.#records();
+    const stale = waiting.filter((message) => message.document === document && message.form !== submit);
     if (stale.length === 0) return;
-    const left = waiting.filter((message) => !stale.includes(message));
-    if (left.length > 0) this.#data[MESSAGES] = left;
-    else delete this.#data[MESSAGES];
+    this.#setRecords(waiting.filter((message) => !stale.includes(message)));
+  }
+
+  #takeRecords(taken: FlashEntry[]): FlashEntry[] {
+    if (taken.length === 0) return [];
+    this.#setRecords(this.#records().filter((message) => !taken.includes(message)));
+    this.#takenRecords.push(...taken);
+    return taken;
   }
 
   #takeMessages(taken: FlashEntry[]): FlashEntry[] {
@@ -371,8 +485,11 @@ export class Session {
     this.#ensureStarted();
     if (!this.#may(`session.keep('${keys.join("', '")}')`)) return;
     const flash = this.#flash();
-    flash.new = [...new Set([...flash.new, ...keys])];
-    flash.old = flash.old.filter((key) => !keys.includes(key));
+    // A copy that a record mirrors keeps its mark: the mark ages with it, so no other request shows it later.
+    const marked = (this.#ensureStarted()[MIRRORED] as Record<string, string> | undefined) ?? {};
+    const kept = keys.some((key) => Object.hasOwn(marked, key)) ? [...keys, MIRRORED] : keys;
+    flash.new = [...new Set([...flash.new, ...kept])];
+    flash.old = flash.old.filter((key) => !kept.includes(key));
   }
 
   /**
@@ -384,12 +501,54 @@ export class Session {
     this.flashData(OLD_INPUT, flashableInput(input));
   }
 
-  /** Input flashed by the previous request — all of it, or one field. */
+  /**
+   * The input a form was sent back with — all of it, or one field: what the request itself flashed, else the record the page of the
+   * submit took, else the plain flash data of the previous request — unless a record of a form sent back mirrors that copy (it is
+   * shown by the page of the submit alone). See `docs/session.md#flash-data`.
+   */
   old(): Record<string, unknown>;
   old(key: string): unknown;
   old(key?: string): unknown {
-    const input = (this.get(OLD_INPUT) ?? {}) as Record<string, unknown>;
+    const input = this.#shown(OLD_INPUT, 'input') ?? {};
     return key === undefined ? input : Object.hasOwn(input, key) ? input[key] : undefined;
+  }
+
+  /**
+   * The validation errors this request shows, chosen as for {@link old}: what it flashed itself, else the record it took, else the
+   * plain flash data of the previous request that no record mirrors. An object, `{}` for anything else.
+   * @internal
+   */
+  shownErrors(): Record<string, string[]> {
+    const shown = this.#shown('errors', 'errors');
+    return isPlainObject(shown) ? shown : {};
+  }
+
+  /** The value of `part` this request shows — see {@link shownErrors}; `undefined` when there is none. */
+  #shown<K extends 'errors' | 'input'>(plainKey: string, part: K): SentBack[K] | undefined {
+    const fresh = this.#flashedHere(plainKey) ? this.#plain(plainKey) : undefined;
+    if (fresh !== undefined) return fresh as SentBack[K];
+    const taken = this.sentBack()?.[part];
+    if (taken !== undefined) return taken;
+    return this.#plain(plainKey) as SentBack[K] | undefined;
+  }
+
+  /** The plain flash data under `key`, unless a record of a form sent back mirrors it: only that record's page shows it. */
+  #plain(key: string): unknown {
+    const data = this.#ensureStarted();
+    const mirrored = (data[MIRRORED] as Record<string, string> | undefined) ?? {};
+    return Object.hasOwn(data, key) && !Object.hasOwn(mirrored, key) ? data[key] : undefined;
+  }
+
+  /** The plain copies `keys` are mirrored by a record just queued: they age with it (a flash key of their own), and are not shown. */
+  #mirror(keys: string[]): void {
+    if (keys.length === 0) return;
+    const data = this.#ensureStarted();
+    const mirrored = (data[MIRRORED] as Record<string, string> | undefined) ?? {};
+    // A fresh generation for every copy: a concurrent request that aged the mark away cannot make a merge lose it (an unchanged value would be skipped).
+    data[MIRRORED] = { ...mirrored, ...Object.fromEntries(keys.map((key) => [key, crypto.randomUUID()])) };
+    const flash = this.#flash();
+    flash.new = [...new Set([...flash.new, MIRRORED])];
+    flash.old = flash.old.filter((old) => old !== MIRRORED);
   }
 
   // -- Security --------------------------------------------------------------
@@ -550,7 +709,7 @@ export class Session {
       const base = this.#baseData();
       // Nothing changed here: the newer session already is what this request would write.
       if (isDeepStrictEqual(base, this.#data)) return true;
-      this.#data = mergeSession(base, this.#data, theirs);
+      this.#data = mergeSession(base, this.#data, theirs, this.#flashedKeys);
       this.#base = json!;
       this.#version = stored!.version;
     }
@@ -593,22 +752,47 @@ function newToken(): string {
   return crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
 }
 
-/**
- * The messages as the session keeps them: the newest {@link MAX_MESSAGES} flash messages, and beside them the waiting conflicts —
- * the newest of each document and submit, at most {@link MAX_CONFLICTS} of them, the oldest dropped first. A conflict never takes a
- * toast's slot, one tab's cannot erase another's, and a run of stale posts cannot grow the session.
- */
+/** The flash messages as the session keeps them: the newest {@link MAX_MESSAGES}. */
 function capMessages(list: readonly FlashEntry[]): FlashEntry[] {
+  return list.slice(-MAX_MESSAGES);
+}
+
+/**
+ * The records of forms sent back as the session keeps them: the newest of each document and submit, at most {@link MAX_SENT_BACK} of
+ * them, the oldest dropped first, and none past its lifetime. One tab's cannot erase another's, and a run of refused posts cannot
+ * grow the session.
+ */
+function capRecords(list: readonly FlashEntry[]): FlashEntry[] {
   const newest = new Map<string, FlashEntry>();
+  const now = Date.now();
   for (const message of list) {
-    if (message.key !== CONFLICT_KEY) continue;
+    if (expired(message, now)) continue;
     const slot = JSON.stringify([message.document ?? null, message.form ?? null]);
     // Re-inserted: the map keeps the order of the newest write.
     newest.delete(slot);
     newest.set(slot, message);
   }
-  return [...list.filter((message) => message.key !== CONFLICT_KEY).slice(-MAX_MESSAGES), ...[...newest.values()].slice(-MAX_CONFLICTS)];
+  return [...newest.values()].slice(-MAX_SENT_BACK);
 }
+
+/** A record of a form sent back that waited longer than {@link SENT_BACK_LIFETIME_MS} (one without a time counts as such). */
+function expired(message: FlashEntry, now: number): boolean {
+  return typeof message.at !== 'number' || now - message.at > SENT_BACK_LIFETIME_MS;
+}
+
+/** What a form was sent back with, as the session may hold it — each part validated, never cast: a part of the wrong shape is dropped, an entry with no part is none. */
+function sentBackOf(value: unknown): SentBack | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const { errors, input } = value as { errors?: unknown; input?: unknown };
+  const kept: { errors?: Record<string, string[]>; input?: Record<string, unknown>; conflict?: { readonly message: string; readonly current?: unknown } } = {};
+  if (isPlainObject(errors) && Object.values(errors).every((list) => Array.isArray(list) && list.every((item) => typeof item === 'string'))) kept.errors = Object.fromEntries(Object.entries(errors).map(([field, list]) => [field, [...(list as string[])]]));
+  if (isPlainObject(input)) kept.input = input;
+  const conflict = Object.hasOwn(value, 'conflict') ? conflictOf((value as { conflict: unknown }).conflict) : undefined;
+  if (conflict !== undefined) kept.conflict = conflict;
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** `{ message, current? }` as the session may hold it — validated, never cast: anything else is no conflict. */
 function conflictOf(value: unknown): { readonly message: string; readonly current?: unknown } | undefined {
@@ -635,27 +819,48 @@ function userIdOf(data: SessionPayload): string | null {
  *
  * - every key this request changed, added or removed: as this request has it — last write wins, key by key;
  * - every other key: as the other request left it;
- * - flash messages (`_flash_messages`) by their ids: the other request's list, minus the messages this request took
+ * - flash messages (`_flash_messages`) and the records of forms sent back (`_sent_back`), each by their ids: the other request's list, minus the messages this request took
  *   (shown), plus the messages it added — none is lost, and none a faster request showed comes back;
+ * - a flash copy that a record mirrors (`errors`, `_old_input`) with its mark, as one unit: this request's if it flashed, marked or unmarked
+ *   it (`flashed`: the keys it flashed — an identical value counts), else the other request's;
  * - the flash bookkeeping (`_flash`): this request's, plus the keys the other request flashed.
  */
-export function mergeSession(base: SessionPayload, ours: SessionPayload, theirs: SessionPayload): SessionPayload {
+export function mergeSession(base: SessionPayload, ours: SessionPayload, theirs: SessionPayload, flashed: ReadonlySet<string> = new Set()): SessionPayload {
   const merged: SessionPayload = { ...theirs };
   for (const key of new Set([...Object.keys(base), ...Object.keys(ours)])) {
-    if (key === MESSAGES || key === FLASH || isDeepStrictEqual(base[key], ours[key])) continue;
+    if (key === MESSAGES || key === RECORDS || key === MIRRORED || MIRRORABLE.includes(key) || key === FLASH || isDeepStrictEqual(base[key], ours[key])) continue;
     if (Object.hasOwn(ours, key)) merged[key] = ours[key];
     else delete merged[key];
   }
 
-  const messages = (data: SessionPayload) => (Array.isArray(data[MESSAGES]) ? (data[MESSAGES] as FlashEntry[]) : []);
-  const before = new Set(messages(base).map((message) => message.id));
-  const kept = new Set(messages(ours).map((message) => message.id));
-  const taken = new Set([...before].filter((id) => !kept.has(id)));
-  const list = messages(theirs).filter((message) => !taken.has(message.id));
-  const present = new Set(list.map((message) => message.id));
-  for (const message of messages(ours)) if (!before.has(message.id) && !present.has(message.id)) list.push(message);
-  if (list.length > 0) merged[MESSAGES] = capMessages(list);
-  else delete merged[MESSAGES];
+  // A mirrored copy merges together with its mark, as one unit: if this request changed either (flashed anew, marked, unmarked, aged
+  // away), the other request's value and mark both give way to this request's; if not, both stay as the other request left them. A mark
+  // never outlives its value, and a value another request just replaced never loses its mark to an older generation.
+  const marks = (data: SessionPayload) => (typeof data[MIRRORED] === 'object' && data[MIRRORED] !== null ? (data[MIRRORED] as Record<string, string>) : {});
+  const mergedMarks = { ...marks(theirs) };
+  for (const name of MIRRORABLE) {
+    if (!flashed.has(name) && isDeepStrictEqual(base[name], ours[name]) && marks(base)[name] === marks(ours)[name]) continue;
+    if (Object.hasOwn(ours, name)) merged[name] = ours[name];
+    else delete merged[name];
+    if (Object.hasOwn(marks(ours), name)) mergedMarks[name] = marks(ours)[name]!;
+    else delete mergedMarks[name];
+  }
+  if (Object.keys(mergedMarks).length > 0) merged[MIRRORED] = mergedMarks;
+  else delete merged[MIRRORED];
+
+  // Both lists merge by id: the messages and the records of forms sent back.
+  for (const [key, cap] of [[MESSAGES, capMessages], [RECORDS, capRecords]] as const) {
+    const entries = (data: SessionPayload) => (Array.isArray(data[key]) ? (data[key] as FlashEntry[]) : []);
+    const before = new Set(entries(base).map((message) => message.id));
+    const kept = new Set(entries(ours).map((message) => message.id));
+    const taken = new Set([...before].filter((id) => !kept.has(id)));
+    const list = entries(theirs).filter((message) => !taken.has(message.id));
+    const present = new Set(list.map((message) => message.id));
+    for (const message of entries(ours)) if (!before.has(message.id) && !present.has(message.id)) list.push(message);
+    const capped = cap(list);
+    if (capped.length > 0) merged[key] = capped;
+    else delete merged[key];
+  }
 
   const flash = (data: SessionPayload): FlashState => (data[FLASH] as FlashState | undefined) ?? { new: [], old: [] };
   const added = (side: 'new' | 'old') => flash(theirs)[side].filter((key) => !flash(base)[side].includes(key));

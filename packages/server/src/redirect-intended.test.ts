@@ -16,8 +16,8 @@ function sessionWith(stored: Record<string, unknown>) {
       return value;
     },
     queueFlash: () => {},
-    takeFlash: () => [],
-    hasFlash: () => false,
+    queueSentBack: () => {}, takeFlash: () => [],
+    hasFlash: () => false, flashed: () => undefined,
   };
   return { flasher, pulled };
 }

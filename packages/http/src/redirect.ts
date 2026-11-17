@@ -30,6 +30,11 @@ export interface Flasher {
   /** False while the request's session has not started — a route without `StartSession` (outside the `web` group). */
   readonly started?: boolean;
   flashData(key: string, value: unknown): void;
+  /**
+   * What was flashed under `key` during this request, whatever way (`flashData()`, `flashInput()`, `with()`), `undefined` when
+   * nothing was. A redirect builds the record of a refused form from it.
+   */
+  flashed(key: string): unknown;
   /** Returns a stored value and removes it. */
   pull(key: string): unknown;
   /**
@@ -38,13 +43,22 @@ export interface Flasher {
    */
   queueFlash(message: FlashEntry): void;
   /**
+   * Keeps what a refused form is sent back with (a {@link SentBack} as the `data` of the entry) until the page of its submit takes it —
+   * apart from the flash messages: it is none, and no message taker delivers it.
+   */
+  queueSentBack(record: FlashEntry): void;
+  /**
    * The flash messages waiting, taken — by the response that delivers them (a page, a layer, an action's answer). Empty
-   * for a read-only request (an island) and without a session. A 409 that reloads the page puts them back (`reflash()`).
+   * for a read-only request (an island) and without a session. A 409 that reloads the page puts them back (`reflash()`). Never a record
+   * of a refused form ({@link queueSentBack}).
    * `document`: the document the request names (`x-marmeon-document`) — a message bound to another document (another
    * tab's request flashed it) is left waiting; without one (a full page load), every message is taken.
    */
   takeFlash(document?: string): FlashEntry[];
-  /** Whether flash messages wait (for `document`, as `takeFlash` takes them) — without taking them (a prefetch says so). */
+  /**
+   * Whether flash messages wait, or a record of a refused form ({@link queueSentBack}) — for `document`, as they are taken — without
+   * taking them (a prefetch says so).
+   */
   hasFlash(document?: string): boolean;
 }
 export const Flasher = token<Flasher>('Flasher');
@@ -75,6 +89,7 @@ export class RedirectResult {
   readonly #headers = new Headers();
   readonly #flash = new Map<string, unknown>();
   readonly #messages: FlashEntry[] = [];
+  #conflict: { message: string; current?: unknown } | undefined;
 
   constructor(url?: string) {
     if (url !== undefined) this.#target = { kind: 'url', url };
@@ -150,10 +165,10 @@ export class RedirectResult {
 
   /**
    * @internal — the page branch of `conflict(…)`: the form goes back with `{ message, current }` waiting for the page of this document
-   * (a reserved flash message, never delivered as one), bounded like the errors.
+   * (part of the record under {@link SENT_BACK_KEY}, never delivered as a message), bounded like the errors.
    */
   withConflict(conflict: { readonly message: string; readonly current: unknown }): this {
-    this.#messages.push(flashEntry(CONFLICT_KEY, boundedConflict(conflict)));
+    this.#conflict = boundedConflict(conflict);
     return this;
   }
 
@@ -171,16 +186,18 @@ export class RedirectResult {
       sessionFor('redirect().with()', request, flasher);
       for (const [key, value] of this.#flash) flasher.flashData(key, value);
     }
-    if (this.#messages.length > 0) {
-      sessionFor('redirect().flash()', request, flasher);
+    // Built from what this request flashed, whatever way it did: a controller's own `session.flashData('errors', …)` is part of it.
+    const sentBack = this.#sentBack(flasher);
+    if (this.#messages.length > 0 || sentBack !== undefined) {
+      sessionFor(this.#messages.length > 0 ? 'redirect().flash()' : 'redirect().withErrors()', request, flasher);
       // Bound to the document whose request flashed them: another tab's request (a poll, a visit) never takes them —
       // this tab's next answer does, or the full page load that follows a 409.
       const document = request.headers.get(DOCUMENT_HEADER);
       const submit = request.headers.get(SUBMIT_HEADER);
-      for (const message of this.#messages) {
-        // A conflict waits for the page request of this very submit: the id the client sent with it.
-        flasher.queueFlash({ ...message, ...(document ? { document } : {}), ...(message.key === CONFLICT_KEY && submit ? { form: submit } : {}) });
-      }
+      for (const message of this.#messages) flasher.queueFlash({ ...message, ...(document ? { document } : {}) });
+      // What a refused form is sent back with waits for the page of this very submit: the id the client sent with it. The plain flash
+      // data above is only a fallback — any next request ages it.
+      if (sentBack !== undefined) flasher.queueSentBack({ ...flashEntry(SENT_BACK_KEY, sentBack), ...(document ? { document } : {}), ...(submit ? { form: submit } : {}) });
     }
     // Without a session nothing was stored: the fallback.
     const key = this.#intended && flasher !== undefined && flasher.started !== false ? (typeof intendedKey === 'function' ? intendedKey() : intendedKey) : null;
@@ -189,6 +206,20 @@ export class RedirectResult {
     headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes, locale));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
     return ownResponse(new Response(null, { status, headers }));
+  }
+
+  /**
+   * The record of what this redirect sends the form back with — what the session holds as flashed in this request for `errors` and
+   * `_old_input`, validated and bounded, and the conflict. Errors that are no record of texts are left out (the plain flash data
+   * then shows as it always did); none when the redirect carries neither errors, input nor conflict.
+   */
+  #sentBack(flasher: Flasher | undefined): SentBack | undefined {
+    const live = flasher !== undefined && flasher.started !== false ? flasher : undefined;
+    const errors = errorsOf(live?.flashed(ERRORS_KEY));
+    const given = live?.flashed(OLD_INPUT_KEY);
+    const input = typeof given === 'object' && given !== null && !Array.isArray(given) ? flashableInput(given as Record<string, unknown>) : undefined;
+    if (errors === undefined && input === undefined && this.#conflict === undefined) return undefined;
+    return { ...(errors !== undefined ? { errors } : {}), ...(input !== undefined ? { input } : {}), ...(this.#conflict !== undefined ? { conflict: this.#conflict } : {}) };
   }
 
   #location(request: Request, routes: RouteLookup, locale: string | undefined): string {
@@ -206,8 +237,16 @@ export class RedirectResult {
 
 /** Session keys shared with @marmeon/session (`old()`) and the shared `errors` prop. */
 export const ERRORS_KEY = 'errors';
-/** The reserved key of the conflict a form was sent back with, among the session's flash messages: `{ message, current? }`. Never shown as a message. */
-export const CONFLICT_KEY = '_conflict';
+/** The reserved key of what a form was sent back with: its own session key, apart from the flash messages; each entry holds a {@link SentBack}. */
+export const SENT_BACK_KEY = '_sent_back';
+
+
+/** @internal — what a form was sent back with: its validation errors, its input for `old()`, or the conflict of a stale save. */
+export interface SentBack {
+  readonly errors?: Record<string, string[]>;
+  readonly input?: Record<string, unknown>;
+  readonly conflict?: { readonly message: string; readonly current?: unknown };
+}
 export const OLD_INPUT_KEY = '_old_input';
 /** Where the app's `authenticate()` keeps the page a guest wanted, for `redirect().intended()`; a package guard keeps its own, under another key. */
 export const INTENDED_KEY = '_intended_url';
@@ -293,6 +332,22 @@ function boundedConflict(conflict: { readonly message: string; readonly current:
     else high = middle - 1;
   }
   return JSON.parse(shortened(low)) as { message: string };
+}
+
+/**
+ * The errors as the record keeps them: a record whose values are lists of texts, or one text each (the browser reads both) — bounded.
+ * Anything else is none: it never becomes fewer errors than were flashed.
+ */
+function errorsOf(value: unknown): Record<string, string[]> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const lists: [string, string[]][] = [];
+  for (const [field, messages] of Object.entries(value)) {
+    const list = typeof messages === 'string' ? [messages] : messages;
+    if (!Array.isArray(list) || !list.every((item) => typeof item === 'string')) return undefined;
+    lists.push([field, [...(list as string[])]]);
+  }
+  const bounded = boundedErrors(Object.fromEntries(lists));
+  return Object.fromEntries(Object.entries(bounded).map(([field, list]) => [field, [...list]]));
 }
 
 function stripInput(input: Record<string, unknown>): Record<string, unknown> {
