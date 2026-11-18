@@ -1,5 +1,4 @@
 import { withCode } from '@marmeon/core/internal';
-import type { ErrorCode } from '@marmeon/core';
 import { OAuthSetupError } from './config.ts';
 import type { OAuthEndpoints } from './definition.ts';
 
@@ -23,14 +22,20 @@ export class EndpointError extends OAuthSetupError {
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/** The code of an endpoint refusal: A11 while the app starts, A10 when a sign-in finds the endpoint. */
+export type EndpointCode = 'A10' | 'A11';
+
+// Each code as a literal, so that the register of error codes sees both.
+const coded = (code: EndpointCode, text: string): string => (code === 'A11' ? withCode('A11', text) : withCode('A10', text));
+
 /**
  * Checks an endpoint the flow will send a code, a secret or a person to: absolute, without a user name or a fragment, and `https:`.
  * Plain `http:` is accepted only for a loopback host while developing or testing (`local` is `true` there). Throws
  * {@link OAuthSetupError} with `code`. See docs/oauth.md#your-own-provider.
  */
-export function checkEndpoint(url: unknown, what: string, code: ErrorCode, local: boolean): URL {
+export function checkEndpoint(url: unknown, what: string, code: EndpointCode, local: boolean): URL {
   const refuse = (why: string): never => {
-    throw new EndpointError(withCode(code, `${what} is not a usable endpoint: ${why}`), why);
+    throw new EndpointError(coded(code, `${what} is not a usable endpoint: ${why}`), why);
   };
   if (typeof url !== 'string') return refuse('it must be a string.');
   let parsed: URL;
@@ -54,9 +59,9 @@ export function checkEndpoint(url: unknown, what: string, code: ErrorCode, local
  * ID token's issuer is compared as text). The query of the authorization address may not set a parameter the flow owns. Reads each
  * property once, so a getter cannot answer differently the second time.
  */
-export function checkEndpoints(endpoints: unknown, where: string, code: ErrorCode, local: boolean): OAuthEndpoints {
+export function checkEndpoints(endpoints: unknown, where: string, code: EndpointCode, local: boolean): OAuthEndpoints {
   const fail = (why: string, reason: string): never => {
-    throw new EndpointError(withCode(code, `${where} ${why}`), reason);
+    throw new EndpointError(coded(code, `${where} ${why}`), reason);
   };
   // The same refusal, with the name of the endpoint in its reason.
   const check = (value: unknown, field: string): URL => {
