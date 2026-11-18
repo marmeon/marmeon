@@ -38,3 +38,15 @@ export class ChatDeliveryError extends ChatError {
     return this.reason === 'refused' || this.reason === 'rejected' || this.reason === 'gone';
   }
 }
+
+/**
+ * Thrown at the start for a chat setup that cannot work: `CHAT_DRIVER` names a driver nobody brought, `CHAT_WEBHOOKS` has an entry
+ * that is not `name=address` or an address its driver refuses, a custom driver breaks its contract, or the `HttpClient` is
+ * missing. Its message starts with the code `S10` and never holds a webhook address.
+ */
+export class ChatSetupError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'ChatSetupError';
+  }
+}

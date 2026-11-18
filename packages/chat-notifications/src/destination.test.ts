@@ -19,6 +19,69 @@ function href(url: string, rule: { hosts: string[]; paths: string[] } = slack): 
   return result.href;
 }
 
+describe('the written form of an address', () => {
+  const teamsPath = `/powerautomate/automations/direct/${token}?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sig=${'q'.repeat(20)}`;
+  const accepted: [string, string, { hosts: string[]; paths: string[] }, string][] = [
+    ['canonical', slackUrl('hooks.slack.com'), slack, `https://hooks.slack.com/services/${token}`],
+    ['an upper-case address', slackUrl('HOOKS.SLACK.COM').replace('https', 'HTTPS'), slack, `https://hooks.slack.com/services/${token}`],
+    ['port 443', slackUrl('hooks.slack.com:443'), slack, `https://hooks.slack.com/services/${token}`],
+    ['a trailing dot', slackUrl('hooks.slack.com.'), slack, `https://hooks.slack.com/services/${token}`],
+    ['a trailing dot and port 443', slackUrl('hooks.slack.com.:443'), slack, `https://hooks.slack.com/services/${token}`],
+    ['a query on Discord', `https://discord.com/api/webhooks/${token}?thread_id=42`, { hosts: ['discord.com'], paths: ['/api/webhooks/'] }, `https://discord.com/api/webhooks/${token}?thread_id=42`],
+    [
+      'a full Teams address with :443 and %2F in the query',
+      `https://prod-12.westeurope.environment.api.powerplatform.com:443${teamsPath}`,
+      teams,
+      `https://prod-12.westeurope.environment.api.powerplatform.com${teamsPath}`,
+    ],
+  ];
+
+  it.each(accepted)('accepts %s', (_name, url, rule, expected) => {
+    expect(href(url, rule)).toBe(expected);
+    expect(checkSinkAddress(url).ok).toBe(true);
+  });
+
+  const refused: [string, string][] = [
+    ['no slashes after the scheme', `https:hooks.slack.com/services/${token}`],
+    ['one slash after the scheme', `https:/hooks.slack.com/services/${token}`],
+    ['three slashes after the scheme', `https:///hooks.slack.com/services/${token}`],
+    ['a tab in the host', `https://hooks.sla\tck.com/services/${token}`],
+    ['a newline in the path', `https://hooks.slack.com/serv\nices/${token}`],
+    ['a tab in the scheme', `ht\ttps://hooks.slack.com/services/${token}`],
+    ['a leading space', ` https://hooks.slack.com/services/${token}`],
+    ['a dot segment', `https://hooks.slack.com/./services/${token}`],
+    ['a dot-dot segment', `https://hooks.slack.com/x/../services/${token}`],
+    ['an encoded dot segment', `https://hooks.slack.com/%2e/services/${token}`],
+    ['a fullwidth host', `https://hooks.slack.\uFF43\uFF4F\uFF4D/services/${token}`],
+    ['a percent-encoded host', `https://hooks.slack.%63om/services/${token}`],
+    ['an empty port', `https://hooks.slack.com:/services/${token}`],
+    ['a port with a leading zero', `https://hooks.slack.com:0443/services/${token}`],
+    ['another port', `https://hooks.slack.com:8443/services/${token}`],
+    ['credentials', `https://user:pw@hooks.slack.com/services/${token}`],
+    ['a double quote in the secret', `https://hooks.slack.com/services/${token}"x`],
+    ['a single quote in the secret', `https://hooks.slack.com/services/${token}'x`],
+    ['an angle bracket in the secret', `https://hooks.slack.com/services/${token}<x`],
+    ['a backslash as a separator', `https://hooks.slack.com\\services\\${token.replaceAll('/', '\\')}`],
+    ['a backslash after the scheme', `https:\\\\hooks.slack.com/services/${token}`],
+    ['a backslash in the query', `https://hooks.slack.com/services/${token}?a=b\\c`],
+    ['a backslash in the fragment', `https://hooks.slack.com/services/${token}#a\\b`],
+    ['an empty query', `https://hooks.slack.com/services/${token}?`],
+    ['a non-ASCII character in the path', `https://hooks.slack.com/services/${token}\u00E9`],
+    ['http', `http://hooks.slack.com/services/${token}`],
+    ['no path', 'https://hooks.slack.com'],
+  ];
+
+  it.each(refused)('refuses %s, and the refusal holds neither the path nor the query', (_name, url) => {
+    const found = checkWebhook(url, slack, 'slack');
+    expect(found.ok, url).toBe(false);
+    expect(checkSinkAddress(url).ok, url).toBe(false);
+    if (!found.ok) {
+      expect(found.problem).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
+      expect(found.problem).not.toContain(token);
+    }
+  });
+});
+
 describe('checkWebhook', () => {
   it('returns the parsed address: lower-case host, no trailing dot, no explicit default port', () => {
     expect(href(`HTTPS://HOOKS.SLACK.COM.:443/services/${token}`)).toBe(`https://hooks.slack.com/services/${token}`);
@@ -37,11 +100,9 @@ describe('checkWebhook', () => {
   });
 
   it('refuses credentials, a user, a password only, and a ports other than 443', () => {
-    expect(problem(`https://user:pw@hooks.slack.com/services/${token}`)).toContain('credentials');
-    expect(problem(`https://user@hooks.slack.com/services/${token}`)).toContain('credentials');
-    expect(problem(`https://:pw@hooks.slack.com/services/${token}`)).toContain('credentials');
-    expect(problem(slackUrl('hooks.slack.com:8443'))).toContain('port');
-    expect(problem(slackUrl('hooks.slack.com@evil.example'))).toContain('credentials');
+    for (const url of [`https://user:pw@hooks.slack.com/services/${token}`, `https://user@hooks.slack.com/services/${token}`, `https://:pw@hooks.slack.com/services/${token}`, slackUrl('hooks.slack.com:8443'), slackUrl('hooks.slack.com@evil.example')]) {
+      expect(problem(url), url).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
+    }
   });
 
   it('refuses a host that merely contains or ends like a listed one', () => {
@@ -58,17 +119,17 @@ describe('checkWebhook', () => {
   });
 
   it('refuses IP literals, also when a rule lists the same text', () => {
-    for (const host of ['1.2.3.4', '[::1]', '[2001:db8::1]', '0x7f.1']) {
-      expect(problem(slackUrl(host)), host).toContain('hosts of driver');
-    }
+    expect(problem(slackUrl('1.2.3.4'))).toContain('hosts of driver');
+    for (const host of ['[::1]', '[2001:db8::1]', '0x7f.1']) expect(problem(slackUrl(host)), host).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
     expect(problem(slackUrl('1.2.3.4'), { hosts: ['1.2.3.4'], paths: ['/services/'] })).toContain('hosts of driver');
-    expect(problem(slackUrl('[::1]'), { hosts: ['[::1]'], paths: ['/services/'] })).toContain('hosts of driver');
+    expect(problem(slackUrl('[::1]'), { hosts: ['[::1]'], paths: ['/services/'] })).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
   });
 
   it('refuses a path outside the prefixes, also one that dots or encoded dots lead out of', () => {
-    for (const path of ['/api/chat.postMessage', '/services/../api/x', '/services/%2e%2e/x', '/services/%2E%2E/x', '/services%2Fx', '/services']) {
+    for (const path of ['/api/chat.postMessage', '/services%2Fx', '/services']) {
       expect(problem(slackUrl('hooks.slack.com', path)), path).toContain('not a webhook address of driver "slack"');
     }
+    for (const path of ['/services/../api/x', '/services/%2e%2e/x', '/services/%2E%2E/x']) expect(problem(slackUrl('hooks.slack.com', path)), path).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
   });
 
   it('refuses an encoded slash or backslash inside the prefix', () => {
@@ -91,12 +152,12 @@ describe('checkWebhook', () => {
 
   it('refuses an object that only converts to a good address', () => {
     const url = { toString: () => slackUrl('hooks.slack.com') } as unknown as string;
-    expect(problem(url)).toBe('The webhook address is not an address.');
+    expect(problem(url)).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
   });
 
   it('refuses a string that is not an address, an empty one, one without a host and a non-string', () => {
     for (const url of ['not a url', '', 'https://', 5 as never, undefined as never]) {
-      expect(problem(url), String(url)).toBe('The webhook address is not an address.');
+      expect(problem(url), String(url)).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
     }
   });
 
@@ -131,12 +192,8 @@ describe('checkSinkAddress', () => {
       if (result.ok) throw new Error('expected a refusal');
       return result.problem;
     };
-    expect(problemOf('http://anything.example/x')).toContain('https');
-    expect(problemOf('https://u:p@anything.example/x')).toContain('credentials');
-    expect(problemOf('https://anything.example:81/x')).toContain('port');
+    for (const url of ['http://anything.example/x', 'https://u:p@anything.example/x', 'https://anything.example:81/x', 'https://[::1]/x', 'nope']) expect(problemOf(url), url).toBe('The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.');
     expect(problemOf('https://1.2.3.4/x')).toContain('IP address');
-    expect(problemOf('https://[::1]/x')).toContain('IP address');
-    expect(problemOf('nope')).toContain('not an address');
   });
 });
 

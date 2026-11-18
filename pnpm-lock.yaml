@@ -699,9 +699,19 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
+      '@marmeon/fetch':
+        specifier: workspace:*
+        version: link:../fetch
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@marmeon/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@marmeon/queue':
+        specifier: workspace:*
+        version: link:../queue
 
   packages/cli:
     dependencies:

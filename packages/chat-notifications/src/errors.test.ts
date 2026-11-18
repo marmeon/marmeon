@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ChatDeliveryError, ChatError } from './errors.ts';
+import { ChatDeliveryError, ChatError, ChatSetupError } from './errors.ts';
 
 describe('ChatError', () => {
   it('is named, and keeps its cause', () => {
@@ -31,5 +31,16 @@ describe('ChatDeliveryError', () => {
     const error = new ChatDeliveryError('refused', 'x');
     for (const key of ['status', 'providerCode', 'retryAfterSeconds', 'cause']) expect(error, key).not.toHaveProperty(key);
     expect(Object.keys(error)).toEqual(['name', 'reason']);
+  });
+});
+
+describe('ChatSetupError', () => {
+  it('is named, is no ChatError (it stops the start, it is not about a message) and keeps its cause', () => {
+    const cause = new Error('x');
+    const error = new ChatSetupError('[marmeon:S10] x', { cause });
+    expect(error).toMatchObject({ name: 'ChatSetupError', message: '[marmeon:S10] x' });
+    expect(error).not.toBeInstanceOf(ChatError);
+    expect(error.cause).toBe(cause);
+    expect(new ChatSetupError('y')).not.toHaveProperty('cause');
   });
 });

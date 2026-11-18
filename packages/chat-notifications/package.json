@@ -2,7 +2,7 @@
   "name": "@marmeon/chat-notifications",
   "version": "1.1.0",
   "private": true,
-  "description": "The neutral chat message and the webhook address guard for chat notifications of Marmeon apps: check a message, refuse webhook addresses a driver does not list.",
+  "description": "Chat notifications for Marmeon apps: post to Slack, Discord and Microsoft Teams through incoming webhooks, now or queued, with webhook addresses restricted to their provider's hosts.",
   "keywords": [
     "marmeon",
     "notifications",
@@ -56,8 +56,26 @@
   "scripts": {
     "build": "tsc -b"
   },
+  "marmeon": {
+    "providers": [
+      "ChatServiceProvider"
+    ]
+  },
   "dependencies": {
     "@marmeon/core": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
     "valibot": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@marmeon/queue": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@marmeon/queue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/queue": "workspace:*"
   }
 }
