@@ -1,9 +1,12 @@
 import { Clock, EnvironmentConfig, Logger, type Application, type Container, type ServiceProvider } from '@marmeon/core';
+import type { ProviderMigrations } from '@marmeon/database';
 import { HttpClient } from '@marmeon/fetch';
 import { Session, SessionConfig } from '@marmeon/session';
+import type { CommandClass } from 'marmeon';
 import { OAuthConfig } from './config.ts';
 import { oauthCredentials } from './credentials.ts';
 import type { OAuthProviderFactory } from './definition.ts';
+import { MakeOAuthCommand } from './make-oauth.ts';
 import { OAuth } from './oauth.ts';
 import { discord } from './providers/discord.ts';
 import { github } from './providers/github.ts';
@@ -26,7 +29,7 @@ declare module '@marmeon/core' {
  * Registers `OAuthProviders`, built at the start from the providers that bring a name through `static oauthProviders` (a bad
  * name, a name twice, missing `oauthCredentials`, a definition that is wrong or an active provider without an `HttpClient`
  * stops the start), and `OAuth` for each request. Found by `marmeon discover`. The built-in providers (GitHub, Google, Microsoft,
- * GitLab and Discord) come through the same record, so their names are taken. See docs/oauth.md#the-built-in-providers.
+ * GitLab and Discord) come through the same record, so their names are taken. Brings the command `make:oauth`, which writes the sign-in module into the app, and the migration of the `social_accounts` table for `marmeon publish`. See docs/oauth.md#the-built-in-providers and docs/oauth.md#the-generated-module.
  */
 export class OAuthServiceProvider implements ServiceProvider {
   static config = [
@@ -37,6 +40,10 @@ export class OAuthServiceProvider implements ServiceProvider {
     oauthCredentials('gitlab', { issuer: 'optional' }),
     oauthCredentials('discord'),
   ];
+  static commands: readonly CommandClass[] = [MakeOAuthCommand];
+  // The migration of `social_accounts`, which `marmeon publish @marmeon/oauth` copies into the app's `system` module. It is declared here and not on
+  // `SocialAccountsServiceProvider`: publish reads only the providers a package exports at its main entry, and the table serves `@marmeon/oauth/accounts`.
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
   static oauthProviders: Readonly<Record<string, OAuthProviderFactory>> = { github, google, microsoft, gitlab, discord };
 
   register(container: Container): void {

@@ -1182,6 +1182,8 @@ pnpm marmeon migrate
 | `make:sign-ins-table` | `publish @marmeon/auth` | `sign_ins`, on the default connection |
 | `make:live-table` | `publish @marmeon/live` | `live_hints`, on the live connection |
 
+`@marmeon/oauth` has no `make:*-table` command: `publish @marmeon/oauth` copies the `social_accounts` table of the installed package ([social login](oauth.md#storing-tokens)).
+
 Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-migrations-of-a-package) for its own package. It
 writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap
 and the choice of the module), and ends with exit code 0 and "Nothing to publish" when they are all there. The package need not be

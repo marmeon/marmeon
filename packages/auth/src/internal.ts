@@ -16,3 +16,4 @@ export { idOf } from './user.ts';
  */
 export { ACCOUNT_STILL_CLAIMED, CLAIM_ACCOUNT } from './auth.ts';
 export { claimRefused } from './account-sessions.ts';
+export { AUTH_STUBS } from './stub-files.ts';
