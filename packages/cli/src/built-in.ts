@@ -1,4 +1,5 @@
 import type { CommandClass } from './command.ts';
+import { AddCommand } from './commands/add.ts';
 import { AgentsInstallCommand } from './commands/agents-install.ts';
 import { AgentsSyncCommand } from './commands/agents-sync.ts';
 import { BuildCommand } from './commands/build.ts';
@@ -45,6 +46,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   ModulesListCommand,
   SchemaProjectCommand,
   DiscoverCommand,
+  AddCommand,
   BuildCommand,
   CheckCommand,
   DoctorCommand,
