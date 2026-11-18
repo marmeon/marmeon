@@ -3,7 +3,7 @@ import { Application, Clock, durationToSeconds, ErrorReports, EventDispatcher, L
 import { collectDrivers } from '@marmeon/core/internal';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, FailedJobStoreFactory, QueueConnection, QueueDriver, QueueDriverFactory } from './driver.ts';
-import { DatabaseFailedJobStore, DatabaseQueueDriver, type DatabaseQueueConnection } from './drivers/database.ts';
+import { DATABASE_QUEUE_DRIVERS, DatabaseFailedJobStore, DatabaseQueueDriver, FAILED_DATABASE_DRIVER, QUEUE_DATABASE_DRIVER, type DatabaseQueueConnection } from './drivers/database.ts';
 import { NullFailedJobStore } from './drivers/memory.ts';
 import { RedisQueueDriver } from './drivers/redis.ts';
 import type { JobEvent } from './events.ts';
@@ -131,7 +131,7 @@ export class QueueConnections {
           ? this.#customConnection(name)!.driver
           : options.driver === 'redis'
           ? new RedisQueueDriver(async () => this.#container.make((await importRedis()).RedisConnections).get(options.connection), { retryAfterSeconds: options.retryAfterSeconds, clock })
-          : new DatabaseQueueDriver(async () => this.#database(options.connection), { retryAfterSeconds: options.retryAfterSeconds, clock });
+          : new DatabaseQueueDriver(async () => this.#database(options.connection, QUEUE_DATABASE_DRIVER), { retryAfterSeconds: options.retryAfterSeconds, clock });
       this.#drivers.set(name, driver);
     }
     return driver;
@@ -146,7 +146,7 @@ export class QueueConnections {
   #failedStore(): FailedJobStore {
     const name = this.#config.failed.driver;
     if (name === 'null') return new NullFailedJobStore();
-    if (name === 'database') return new DatabaseFailedJobStore(async () => this.#database(this.#config.failed.connection, 'QUEUE_FAILED_DRIVER=database'));
+    if (name === 'database') return new DatabaseFailedJobStore(async () => this.#database(this.#config.failed.connection, FAILED_DATABASE_DRIVER));
     const factory = this.#failedFactories.get(name);
     if (!factory) throw new QueueSetupError(withCode('Q4', `QUEUE_FAILED_DRIVER=${name} is not a failed-job store. Known: ${[...BUILT_IN_FAILED_DRIVERS, ...this.#failedFactories.keys()].join(', ')}.`));
     const key = `failed:${name}`;
@@ -213,12 +213,15 @@ export class QueueConnections {
     });
   }
 
-  async #database(connection: string, what?: string): Promise<DatabaseQueueConnection> {
-    const { Connections } = await importDatabase(what);
+  async #database(connection: string, feature: { readonly what: string; readonly instead: string }): Promise<DatabaseQueueConnection> {
+    const { Connections } = await importDatabase(feature.what);
+    const { requireDriver } = await import('@marmeon/database/internal');
     const connections = this.#container.make(Connections);
+    // The driver first: a connection that cannot run the queue's SQL is never opened.
+    const driver = requireDriver(connections.options(connection).driver, DATABASE_QUEUE_DRIVERS, feature);
     return {
       db: connections.get(connection),
-      driver: connections.options(connection).driver,
+      driver,
       inTransaction: () => connections.inTransaction(connection),
       transaction: (work) => connections.transaction(() => work(), { connection }),
     };

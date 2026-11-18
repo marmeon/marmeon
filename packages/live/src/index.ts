@@ -10,7 +10,7 @@ import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { MakeLiveTableCommand } from './commands/make-live-table.ts';
 import { LiveConfig } from './config.ts';
-import { DatabaseLiveBackend, LIVE_HINTS_COLUMNS, LIVE_HINTS_TABLE } from './database.ts';
+import { DATABASE_LIVE_DRIVERS, DatabaseLiveBackend, LIVE_DATABASE_DRIVER, LIVE_HINTS_COLUMNS, LIVE_HINTS_TABLE } from './database.ts';
 import { LiveTableHealthCheck } from './table-check.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub } from './hub.ts';
@@ -175,8 +175,11 @@ export class LiveServiceProvider implements ServiceProvider {
         if (!database) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
         return new DatabaseLiveBackend(
           async () => {
+            const { requireDriver } = await import('@marmeon/database/internal');
             const connections = c.make(database.Connections);
-            return { db: connections.infrastructure(config.connection, LIVE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
+            // The driver first: a connection that cannot run the backend's SQL is never opened.
+            const driver = requireDriver(connections.options(config.connection).driver, DATABASE_LIVE_DRIVERS, LIVE_DATABASE_DRIVER);
+            return { db: connections.infrastructure(config.connection, LIVE_INFRASTRUCTURE), driver };
           },
           { pollMs: config.pollMs, logger: c.make(Logger).child({ channel: 'live' }), redactor: c.make(Redactor), clock: c.make(Clock) },
         );
@@ -218,9 +221,10 @@ export class LiveServiceProvider implements ServiceProvider {
     if (config.driver === 'database') {
       this.#database = await importOptional(() => import('@marmeon/database'), '@marmeon/database');
       if (!this.#database || !container.has(this.#database.Connections)) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
-      // An unknown connection name fails the start, with the known ones (D11). A missing table does not: /up/ready is red and
+      // An unknown connection name (D11) or a driver the backend has no SQL for (D29) fails the start. A missing table does not: /up/ready is red and
       // `marmeon check` says so, until `marmeon make:live-table && marmeon migrate`.
-      container.make(this.#database.Connections).options(config.connection);
+      const { requireDriver } = await import('@marmeon/database/internal');
+      requireDriver(container.make(this.#database.Connections).options(config.connection).driver, DATABASE_LIVE_DRIVERS, LIVE_DATABASE_DRIVER);
       container.make(this.#database.SchemaRequirements).require({ connection: config.connection, table: LIVE_HINTS_TABLE, columns: LIVE_HINTS_COLUMNS });
       container.make(HealthChecks).add([LiveTableHealthCheck]);
     }

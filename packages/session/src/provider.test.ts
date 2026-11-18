@@ -6,7 +6,7 @@ import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encr
 import { abort, Controller, HttpServiceProvider } from '@marmeon/http';
 import { RedisConnections, RedisServiceProvider } from '@marmeon/redis';
 import { createHttpKernel } from '@marmeon/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionConfig } from './config.ts';
@@ -73,6 +73,26 @@ const sessionCookie = (response: Response) => response.headers.getSetCookie().fi
 /** The session id a `Set-Cookie` header carries (encrypted like every cookie). */
 const cookieValue = (app: Awaited<ReturnType<typeof boot>>, header: string) =>
   app.container.make(Encrypter).decrypt(decodeURIComponent(header.split(';')[0]!.split('=')[1]!), 'cookie:marmeon_session');
+
+/** Makes the named connection answer with a driver the packages have no SQL for, and records every connection taken from it. */
+function onMysql(connection: string): { taken: string[]; restore: () => void } {
+  const taken: string[] = [];
+  const options = Connections.prototype.options;
+  const spies = [
+    vi.spyOn(Connections.prototype, 'options').mockImplementation(function (this: Connections, name?: string) {
+      return (name ?? 'default') === connection ? ({ driver: 'mysql', url: 'mysql://x@127.0.0.1/db' } as never) : options.call(this, name);
+    }),
+    vi.spyOn(Connections.prototype, 'get').mockImplementation((name?: string) => {
+      taken.push(`get ${name ?? ''}`);
+      throw new Error('no connection may be taken');
+    }),
+    vi.spyOn(Connections.prototype, 'infrastructure').mockImplementation((name?: string) => {
+      taken.push(`infrastructure ${name ?? ''}`);
+      throw new Error('no connection may be taken');
+    }),
+  ];
+  return { taken, restore: () => spies.forEach((spy) => spy.mockRestore()) };
+}
 
 describe('SESSION_DRIVER', () => {
   it('database: sessions live in the app database — and bots leave no rows behind', async () => {
@@ -179,6 +199,42 @@ describe('SESSION_DRIVER', () => {
     await expect(boot({ SESSION_DRIVER: 'database', SESSION_CONNECTION: 'reporting', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
       /Database connection "reporting" is not configured/,
     );
+  });
+
+  it('database: refuses a connection on a driver the store has no SQL for (D29) before a connection is taken', async () => {
+    const mysql = onMysql('reporting');
+    try {
+      await expect(boot({ SESSION_DRIVER: 'database', SESSION_CONNECTION: 'reporting', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
+        /\[marmeon:D29\] SESSION_DRIVER=database needs a sqlite or pgsql connection, not "mysql"; use SESSION_DRIVER=redis, file or memory\./,
+      );
+      expect(mysql.taken).toEqual([]);
+    } finally {
+      mysql.restore();
+    }
+  });
+
+  it('database: refuses on first use when the connection changed driver after the start — before a connection is taken', async () => {
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const mysql = onMysql('default');
+    try {
+      await expect(app.container.make(SessionStore).read('a'.repeat(64))).rejects.toThrow(/\[marmeon:D29\] SESSION_DRIVER=database needs a sqlite or pgsql connection, not "mysql"/);
+      expect(mysql.taken).toEqual([]);
+    } finally {
+      mysql.restore();
+      await app.shutdown();
+    }
+  });
+
+  it('memory: starts on a connection of a driver the database store has no SQL for', async () => {
+    const mysql = onMysql('default');
+    try {
+      const app = await boot({ SESSION_DRIVER: 'memory', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+      expect(app.container.make(SessionStore)).toBeDefined();
+      expect(mysql.taken).toEqual([]);
+      await app.shutdown();
+    } finally {
+      mysql.restore();
+    }
   });
 
   it('redis: names what is missing at startup', async () => {

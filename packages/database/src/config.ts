@@ -1,5 +1,5 @@
 import { defineConfig, env, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@marmeon/core';
-import { maskUrlPasswords } from '@marmeon/core/internal';
+import { maskUrlPasswords, withCode } from '@marmeon/core/internal';
 
 /**
  * Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. `pgsql`: a URL, the size of its
@@ -57,6 +57,10 @@ function hasValidConnectTimeout(url: string): boolean {
 
 /** `options` as the connections use them: a Postgres server's parts made into its URL, unless the URL is given. */
 function connectionOptions(name: string, options: ConnectionDefinitionOptions): ConnectionOptions {
+  // A JavaScript caller (or a cast) with another driver gets this refusal, not a Postgres connection.
+  if (options.driver !== 'sqlite' && options.driver !== 'pgsql') {
+    throw new TypeError(withCode('D29', `The connection "${name}" names the driver ${JSON.stringify((options as { driver: unknown }).driver)}; use sqlite or pgsql.`));
+  }
   const managed = options.managed === false ? { managed: false } : {};
   if (options.driver === 'sqlite') return { driver: 'sqlite', database: options.database, ...managed };
   const pools = {
