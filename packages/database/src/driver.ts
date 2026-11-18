@@ -2,6 +2,7 @@ import { TransactionError } from '@marmeon/core';
 import { leftTransactionOf, transactionOf, withCode, type TransactionFrame } from '@marmeon/core/internal';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
+import { transactionControls } from './mysql-transaction-control.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
 import type { Driver as SqlDriver } from './schema/blueprint.ts';
 
@@ -291,7 +292,7 @@ export class MarmeonDriver implements Driver {
     const acquired = await this.#connecting(() => this.#driver.acquireConnection());
     // Not the cached one: this isolation's own object tells its late releases from those of whoever gets the client next.
     const connection = this.#serialOf(acquired, false);
-    await this.#driver.beginTransaction(connection, {});
+    await this.#driver.beginTransaction(this.#controls(connection), {});
     this.#depth.set(connection, 1);
     this.#tainted.delete(connection);
     this.#pinned = connection;
@@ -305,7 +306,7 @@ export class MarmeonDriver implements Driver {
         this.#tainted.delete(connection);
         this.#context.metadata?.release(connection);
         try {
-          await this.#driver.rollbackTransaction(connection);
+          await this.#driver.rollbackTransaction(this.#controls(connection));
         } finally {
           await this.#driver.releaseConnection(acquired);
         }
@@ -319,7 +320,7 @@ export class MarmeonDriver implements Driver {
     // SQLite upgrades a deferred transaction to a write lock at its first write — and fails at once with SQLITE_BUSY when another
     // connection (the worker, the scheduler) wrote in between. `begin immediate` takes the lock first and waits under the busy timeout.
     if (depth === 0 && this.#single && settings.accessMode !== 'read only') await connection.executeQuery(CompiledQuery.raw('begin immediate'));
-    else if (depth === 0) await this.#driver.beginTransaction(connection, settings);
+    else if (depth === 0) await this.#driver.beginTransaction(this.#controls(connection), settings);
     else await connection.executeQuery(CompiledQuery.raw(`savepoint ${savepoint(depth)}`));
     this.#depth.set(connection, depth + 1);
     this.#tainted.get(connection)?.delete(depth + 1);
@@ -336,7 +337,7 @@ export class MarmeonDriver implements Driver {
     const depth = this.#leave(connection);
     if (depth === 0) {
       try {
-        await this.#driver.commitTransaction(connection);
+        await this.#driver.commitTransaction(this.#controls(connection));
       } catch (error) {
         // The commit itself failed (a deferred constraint, a serialization failure): Kysely rolls back next, with the original error kept.
         this.#depth.set(connection, 1);
@@ -364,7 +365,7 @@ export class MarmeonDriver implements Driver {
     if (depth === 0) {
       this.#tainted.delete(connection);
       try {
-        await this.#driver.rollbackTransaction(connection);
+        await this.#driver.rollbackTransaction(this.#controls(connection));
       } finally {
         this.#context.metadata?.release(connection);
       }
@@ -422,7 +423,7 @@ export class MarmeonDriver implements Driver {
       this.#tainted.delete(pinned);
       this.#context.metadata?.release(pinned);
       try {
-        await this.#driver.rollbackTransaction(pinned);
+        await this.#driver.rollbackTransaction(this.#controls(pinned));
       } finally {
         await this.#driver.releaseConnection(pinned);
       }
@@ -464,6 +465,7 @@ export class MarmeonDriver implements Driver {
       }
       // The schema of a managed connection is the migrations', not the catalog's: a statement that changes the catalog changes nothing there.
       if (metadata && !metadata.managed) hooks.ran = (query) => this.#ran(serial!, query, metadata);
+      if (this.#context.driver === 'mysql') hooks.refuse = (query) => this.#refuse(serial!, query);
       if (this.#context.driver === 'pgsql') {
         hooks.failed = (error) => this.#failed(serial!, error);
         hooks.passed = (query) => this.#passed(serial!, query);
@@ -472,6 +474,24 @@ export class MarmeonDriver implements Driver {
       if (cached) this.#serial.set(connection, serial);
     }
     return serial;
+  }
+
+  /** The driver's own `begin`, `commit` and `rollback` on MySQL are marked, so its guard tells them from the app's SQL; elsewhere the connection as it is. */
+  #controls(connection: DatabaseConnection): DatabaseConnection {
+    return this.#context.driver === 'mysql' ? transactionControls(connection) : connection;
+  }
+
+  /** MySQL commits a transaction at a schema change, silently: inside one the builder refuses it, before anything is sent. A temporary table, made or dropped, is no schema change to it. */
+  #refuse(connection: DatabaseConnection, query: CompiledQuery): Error | undefined {
+    if ((this.#depth.get(connection) ?? 0) === 0 || !MYSQL_COMMITS.has(query.query.kind)) return undefined;
+    if ((query.query.kind === 'CreateTableNode' || query.query.kind === 'DropTableNode') && (query.query as { temporary?: boolean }).temporary === true) return undefined;
+    return new TransactionError(
+      withCode(
+        'D30',
+        'MySQL commits a transaction at a schema change (create, alter or drop of a table, an index, a view or a schema), so this statement was not sent: it would end the transaction ' +
+          'without an error and leave what follows outside of it. Make the schema change outside of transaction().',
+      ),
+    );
   }
 
   /** A statement failed on the server (pg's error with a SQLSTATE) inside a transaction: Postgres aborted the level it ran in. */
@@ -609,6 +629,11 @@ const ABORTED_TRANSACTION =
   'A statement failed inside this transaction and its error was caught inside it. Postgres aborted the transaction (or its savepoint), so nothing in it was ' +
   'committed. Catch the error outside the nested transaction(), or use tryInsert().';
 
+/** The nodes of the builder that MySQL commits a transaction at: the ones that change the metadata, and views and schemas, which it does not reload for. */
+const MYSQL_COMMITS: ReadonlySet<string> = new Set([
+  'CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode', 'CreateViewNode', 'DropViewNode', 'CreateSchemaNode', 'DropSchemaNode',
+]);
+
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
 /** A statement that may roll a savepoint back — a false alarm (the word in a string) costs one load, and only after a schema change. */
 const ROLLBACK = /rollback/i;
@@ -641,6 +666,8 @@ export interface SerialHooks {
   passed?(query: CompiledQuery): void;
   /** A statement failed (before the error goes on to the caller). */
   failed?(error: unknown): void;
+  /** Why a statement must not be sent, checked on its turn, before it runs or streams: the error it fails with instead. */
+  refuse?(query: CompiledQuery): Error | undefined;
   /** The connection's name, for the message when a query holds placeholders nobody resolves. */
   name?: string;
   /** The rows of a query that ran (or of each chunk of a stream), with the query as it ran. */
@@ -669,13 +696,19 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   const execute = connection.executeQuery.bind(connection) as Execute;
   const stream = connection.streamQuery.bind(connection) as Stream;
   const own = new Map<PropertyKey, unknown>();
-  const { ran, failed, passed } = hooks;
+  const { ran, failed, passed, refuse } = hooks;
+  const checked: Execute = refuse
+    ? (query, ...rest) => {
+        const refusal = refuse(query);
+        return refusal ? Promise.reject(refusal) : execute(query, ...rest);
+      }
+    : execute;
   const run: Execute =
     ran || failed || passed
       ? async (query, ...rest) => {
           ran?.(query);
           try {
-            const result = await execute(query, ...rest);
+            const result = await checked(query, ...rest);
             passed?.(query);
             return result;
           } catch (error) {
@@ -685,7 +718,7 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
             ran?.(query);
           }
         }
-      : execute;
+      : checked;
   let tail: Promise<unknown> | undefined;
   const turn = <T>(run: () => Promise<T>): Promise<T> => {
     const result = tail ? tail.then(run, run) : run();
@@ -707,6 +740,8 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
       }),
     );
     try {
+      const refusal = refuse?.(query);
+      if (refusal) throw refusal;
       yield* stream(query, ...rest);
     } catch (error) {
       failed?.(error);

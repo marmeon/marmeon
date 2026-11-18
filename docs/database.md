@@ -176,6 +176,9 @@ Every connection of the pool is set up before its first query, and read back:
   of being cut, `'a' || 'b'` is `'ab'` and `"x"` is a name, as in SQL on the other drivers. `NO_BACKSLASH_ESCAPES` is not part of
   it, and a session that has it is refused: Kysely escapes a backslash in a literal and in a JSON path, which that mode would store
   doubled.
+- `completion_type` is `NO_CHAIN`, so that a commit or rollback never starts another transaction, and `session_track_system_variables` names
+  `time_zone`, `autocommit`, `character_set_client`, `character_set_results`, `character_set_connection` and `completion_type`: the server
+  then reports in the answer when a statement of yours changes one of them, which the checks of a lease read.
 - A session that does not report these values, or does not autocommit, is refused with `D28`.
 
 The session is set up when a connection is opened and read back. A connection that goes back to the pool is reset with
@@ -203,12 +206,15 @@ consequences:
 - Statement text that MySQL reads is still the one Kysely writes: names, JSON paths and `sql.lit()` / `sql.raw()` text. A change the app
   makes to its own session inside a lease (`sql_mode`, `set names`) holds until the connection goes back and then affects only that
   text, never a value. So an answer that says that the session has `NO_BACKSLASH_ESCAPES`, or names a client character set other than
-  `utf8mb4` (`set names latin1`, `set names gbk`; the server tells so with its session tracking, on by default), makes every later
-  statement of the lease fail with `D28`, with nothing sent, and the connection is closed; a lease in which an answer said so is not
+  `utf8mb4` (`set names latin1`, `set names gbk`; the server tells so with its session tracking, which Marmeon sets on every connection:
+  `session_track_system_variables` names the six variables listed above), makes every later
+  statement of the lease fail with `D28`, with nothing sent, and the connection is closed. The same holds for an answer that says
+  `autocommit` is OFF, or `completion_type` is not `NO_CHAIN` (every connection is set to it): a commit would chain a new transaction, and the next
+  statement is refused before it goes out, so nothing is committed. See [Transactions on MySQL](transactions.md#on-mysql). A lease in which an answer said so is not
   given back either, so the next one is not refused. Only what an answer says counts. A routine that sets the mode and sets it back
   stays unnoticed when the flag is gone from the answer of its call, and so does a failed statement that sent no OK packet: nothing
-  is affected but the text Kysely writes. The same holds for a server with `session_track_system_variables` emptied, which tells
-  nothing about `set names`. A routine that sets the mode only inside itself can leave the bit on in its answer and make the rest of
+  is affected but the text Kysely writes. The same holds for a lease that empties `session_track_system_variables` itself, which tells
+  nothing about what it changes afterwards; the way back resets it. A routine that sets the mode only inside itself can leave the bit on in its answer and make the rest of
   the lease fail, which fails closed. A value is a value in any case. Another time zone is not refused inside a lease; the connection
   is reset when it goes back, and one that a `use` moved is replaced.
 - A statement prepared before a `use` keeps reading the database it was prepared in. When the server tells of the change of database

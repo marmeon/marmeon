@@ -1,8 +1,10 @@
 import { EventEmitter } from 'node:events';
-import type { MysqlPool, MysqlPoolConnection } from 'kysely';
+import { TransactionError } from '@marmeon/core';
+import { CompiledQuery, type DatabaseConnection, type MysqlPool, type MysqlPoolConnection } from 'kysely';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseConnectionError } from './driver.ts';
-import { bind, CastFailure, COLLATION, guardedPool, NO_FREE_CONNECTION, SQL_MODE } from './mysql-session.ts';
+import { bind, CastFailure, COLLATION, guardedPool, NO_FREE_CONNECTION, SQL_MODE, TRACKED_VARIABLES } from './mysql-session.ts';
+import { transactionControls } from './mysql-transaction-control.ts';
 
 /** What `mysql2` answers an insert, a `set` or a `begin` with: it is told from a row by its class. */
 class ResultSetHeader {
@@ -16,7 +18,7 @@ class ResultSetHeader {
 }
 const ok = (status: number, systemVariables?: Record<string, string>, schema?: string) => new ResultSetHeader(status, systemVariables, schema);
 
-const SESSION = { version: '8.4.3', version_comment: 'MySQL Community Server - GPL', sql_mode: SQL_MODE, time_zone: '+00:00', collation: COLLATION, client: 'utf8mb4', autocommit: 1, db: 'app' };
+const SESSION = { version: '8.4.3', version_comment: 'MySQL Community Server - GPL', sql_mode: SQL_MODE, time_zone: '+00:00', collation: COLLATION, client: 'utf8mb4', autocommit: 1, completion_type: 'NO_CHAIN', tracked: TRACKED_VARIABLES.join(','), db: 'app' };
 
 /** How the tests send a `bigint`: the real one is a typed LONGLONG of `mysql2`. */
 const integer = (value: bigint, unsigned: boolean) => ({ integer: value, unsigned });
@@ -55,7 +57,7 @@ function stubConnection(session: Record<string, unknown> = SESSION) {
       callback(raw.resetError ?? null);
     },
     /** What `mysql2` returns without a callback: something to ask for a stream of rows. */
-    running(rows: unknown[]) {
+    running(rows: unknown[], failure?: Error) {
       const events = new EventEmitter();
       return Object.assign(events, {
         // What `mysql2` emits: a statement without rows gives its OK packet as a 'result' after 'fields' without fields.
@@ -66,6 +68,7 @@ function stubConnection(session: Record<string, unknown> = SESSION) {
               events.emit('result', row);
               yield row;
             }
+            if (failure) throw failure;
           })(),
       });
     },
@@ -74,7 +77,7 @@ function stubConnection(session: Record<string, unknown> = SESSION) {
         if (!pattern.test(sql)) continue;
         Object.assign(raw.session, answer.change);
         if (callback && answer.hold) return void raw.held.push(() => callback(answer.error ?? null, answer.result));
-        if (!callback) return raw.running(answer.error ? [] : answer.result === undefined ? rows : [answer.result]);
+        if (!callback) return raw.running(answer.error ? [] : answer.result === undefined ? rows : [answer.result], answer.error);
         return callback(answer.error ?? null, answer.result);
       }
       if (!callback) return raw.running(rows);
@@ -135,7 +138,9 @@ describe('a connection the pool hands out', () => {
     expect(raw.sent).toEqual([
       // The server's version first, then the set-up, then the full reading.
       expect.stringMatching(/^select @@version as version, @@version_comment as version_comment$/),
-      `set names utf8mb4 collate ${COLLATION}, session sql_mode = '${SQL_MODE}', time_zone = '+00:00', session_track_schema = 1`,
+      // The tracked variables and the end of a transaction are part of the set-up: the checks of a lease read what the server reports of them.
+      `set names utf8mb4 collate ${COLLATION}, session sql_mode = '${SQL_MODE}', time_zone = '+00:00', session_track_schema = 1, ` +
+        `session_track_system_variables = '${TRACKED_VARIABLES.join(',')}', completion_type = 'NO_CHAIN'`,
       expect.stringMatching(/^select @@version as version, @@version_comment/),
     ]);
     connection!.query('select 1', [], () => {});
@@ -179,6 +184,8 @@ describe('a connection the pool hands out', () => {
     ['a time zone other than UTC', { time_zone: 'SYSTEM' }, 'time_zone is "SYSTEM"'],
     ['another collation', { collation: 'utf8mb4_general_ci' }, 'collation is "utf8mb4_general_ci"'],
     ['a session without autocommit', { autocommit: 0 }, 'does not autocommit'],
+    ['a session that chains transactions', { completion_type: 'CHAIN' }, 'completion_type is "CHAIN"'],
+    ['a session that does not report what a lease checks', { tracked: 'time_zone,autocommit' }, 'does not report changes of character_set_client, character_set_results, character_set_connection, completion_type'],
   ])('is refused with D28 for %s', async (_name, change, reason) => {
     const raw = stubConnection({ ...SESSION, ...change });
     const { error } = await acquire(stubPool(raw));
@@ -1003,5 +1010,539 @@ describe('a statement that never answers', () => {
     await vi.advanceTimersByTimeAsync(2);
     expect(raw.destroy).toHaveBeenCalledTimes(1);
     expect(released).not.toHaveBeenCalled();
+  });
+});
+
+describe('a transaction that MySQL ended', () => {
+  const IN_TRANS = 0x3;
+  const AUTOCOMMIT = 0x2;
+  const error = (errno: number) => Object.assign(new Error(`mysql error ${errno}`), { errno });
+  const run = (connection: MysqlPoolConnection, sql: string, parameters: unknown[] = []) =>
+    new Promise<{ error: unknown; result: unknown }>((resolve) => connection.query(sql, parameters, (failure, result) => resolve({ error: failure, result })));
+  /** What Kysely's driver does for `begin`, `commit` and `rollback`: the statements of the transaction, marked as the driver's own. */
+  const driverOf = (connection: MysqlPoolConnection) =>
+    transactionControls({
+      executeQuery: (query: CompiledQuery) =>
+        new Promise((resolve, reject) => connection.query(query.sql, query.parameters as unknown[], (failure, result) => (failure ? reject(failure) : resolve({ rows: [], result })))),
+    } as unknown as DatabaseConnection);
+  const control = (connection: MysqlPoolConnection, sql: 'begin' | 'commit' | 'rollback') => driverOf(connection).executeQuery(CompiledQuery.raw(sql));
+  const lease = async () => {
+    const raw = stubConnection();
+    raw.answers.set(/^begin$/, { result: ok(IN_TRANS) });
+    raw.answers.set(/^(commit|rollback)$/, { result: ok(AUTOCOMMIT) });
+    raw.answers.set(/^update t /, { result: ok(IN_TRANS) });
+    raw.answers.set(/^(insert|delete) /, { result: ok(IN_TRANS) });
+    raw.answers.set(/^do 0$/, { result: ok(IN_TRANS) });
+    const released = raw.release;
+    const guarded = guardedPool(stubPool(raw, raw), { integer, poolMax: 10 });
+    const get = () => new Promise<MysqlPoolConnection>((resolve) => guarded.getConnection((_error, connection) => resolve(connection)));
+    const connection = await get();
+    raw.sent.length = 0;
+    return { raw, connection, get, released };
+  };
+  const nothingSent = (raw: ReturnType<typeof stubConnection>) => ({ sent: [...raw.sent], prepared: [...raw.prepared], executed: [...raw.executed] });
+  const D24 = /^\[marmeon:D24\] This transaction was ended by MySQL: /;
+
+  it.each([
+    ['a deadlock', 1213, /rolled it back after a deadlock \(error 1213\): nothing of it is committed/],
+    ['a lock wait timeout', 1205, /a lock wait timed out \(error 1205\)/],
+  ])('after %s, refuses every statement and the commit without sending them, on both ways to the server, and sends the rollback', async (_name, errno, wording) => {
+    const { raw, connection } = await lease();
+    await control(connection, 'begin');
+    // The error of either way ends it: the text protocol, and a prepared statement.
+    for (const parameters of [[], [1]]) {
+      raw.answers.set(/^update locked/, { error: error(errno) });
+      await control(connection, 'rollback');
+      await control(connection, 'begin');
+      expect((await run(connection, 'update locked set a = ?'.replace('?', parameters.length === 0 ? '1' : '?'), parameters)).error).toMatchObject({ errno });
+      const before = nothingSent(raw);
+      for (const [sql, values] of [['insert into t values (1)', []], ['insert into t values (?)', [1]], ['release savepoint s', []], ['select 1', []]] as const) {
+        const refused = (await run(connection, sql, [...values])).error;
+        expect(refused).toBeInstanceOf(TransactionError);
+        expect((refused as Error).message).toMatch(D24);
+        expect((refused as Error).message).toMatch(wording);
+      }
+      await expect(drain(connection.query('select 1', []))).rejects.toBeInstanceOf(TransactionError);
+      await expect(drain(connection.query('select ?', [1]))).rejects.toBeInstanceOf(TransactionError);
+      await expect(control(connection, 'commit')).rejects.toBeInstanceOf(TransactionError);
+      expect(nothingSent(raw)).toEqual(before);
+    }
+    await control(connection, 'rollback');
+    expect(raw.sent.at(-1)).toBe('rollback');
+    expect((await run(connection, 'insert into t values (1)')).error).toBeNull();
+    expect(raw.sent.at(-1)).toBe('insert into t values (1)');
+  });
+
+  it('lets a rollback to a savepoint of the ended transaction pass without sending it, and still refuses what follows', async () => {
+    const { raw, connection } = await lease();
+    await control(connection, 'begin');
+    raw.answers.set(/^update locked/, { error: error(1213) });
+    await run(connection, 'update locked set a = 1');
+    const before = nothingSent(raw);
+    expect((await run(connection, 'rollback to savepoint marmeon_savepoint_1')).error).toBeNull();
+    expect((await run(connection, 'rollback to `s`')).error).toBeNull();
+    expect(nothingSent(raw)).toEqual(before);
+    expect((await run(connection, 'select 1')).error).toBeInstanceOf(TransactionError);
+  });
+
+  it('ends the transaction at an OK packet without IN_TRANS, whichever way the statement went, and says the cause is an implicit commit', async () => {
+    for (const [sql, parameters] of [['create table t2 (id int)', []], ['alter table t add column b int', []], ['commit', []], ['lock tables t write', []]] as const) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^(create|alter|lock) |^commit$/, { result: ok(AUTOCOMMIT) });
+      await control(connection, 'begin');
+      expect((await run(connection, sql, [...parameters])).error).toBeNull();
+      const before = nothingSent(raw);
+      const refused = (await run(connection, 'insert into t values (1)')).error;
+      expect((refused as Error).message, sql).toMatch(/^\[marmeon:D24\] This transaction was ended by MySQL: a statement committed it \(/);
+      await expect(control(connection, 'commit')).rejects.toBeInstanceOf(TransactionError);
+      expect(nothingSent(raw), sql).toEqual(before);
+    }
+  });
+
+  it('sees the implicit commit of a statement with parameters (prepared) too, and of a call whose last packet has no IN_TRANS', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^create /, { result: ok(AUTOCOMMIT) });
+    raw.answers.set(/^call p\(/, { result: [[{ a: 1 }], ok(IN_TRANS)] });
+    raw.answers.set(/^call q\(/, { result: [[{ a: 1 }], ok(AUTOCOMMIT)] });
+    await control(connection, 'begin');
+    expect((await run(connection, 'call p(?)', [1])).error).toBeNull();
+    expect((await run(connection, 'select 1')).error).toBeNull();
+    expect((await run(connection, 'call q(?)', [1])).error).toBeNull();
+    expect((await run(connection, 'select 1')).error).toBeInstanceOf(TransactionError);
+  });
+
+  it('sees the implicit commit of a statement that streams', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^create /, { result: ok(AUTOCOMMIT) });
+    await control(connection, 'begin');
+    await drain(connection.query('create table t2 (id int)', []));
+    expect((await run(connection, 'select 1')).error).toBeInstanceOf(TransactionError);
+  });
+
+  it('takes a begin or start transaction of the app inside the transaction for what it is: it commits the one that is open', async () => {
+    for (const sql of ['begin', 'start transaction', '  START TRANSACTION read only']) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^\s*(begin|start)/i, { result: ok(IN_TRANS) });
+      await control(connection, 'begin');
+      await run(connection, sql);
+      expect((await run(connection, 'select 1')).error, sql).toBeInstanceOf(TransactionError);
+    }
+  });
+
+  it('does not take the words of the app for the transaction of the driver: a commit of the app alone starts and ends nothing it tracks', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^create /, { result: ok(AUTOCOMMIT) });
+    expect((await run(connection, 'begin')).error).toBeNull();
+    expect((await run(connection, 'create table t2 (id int)')).error).toBeNull();
+    expect((await run(connection, 'select 1')).error).toBeNull();
+    expect(raw.sent).toEqual(['begin', 'create table t2 (id int)', 'select 1']);
+  });
+
+  it('is not ended by an error that is none of the two, nor by a deadlock outside of a transaction', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^update dup/, { error: error(1062) });
+    raw.answers.set(/^update locked/, { error: error(1213) });
+    await control(connection, 'begin');
+    expect((await run(connection, 'update dup set a = 1')).error).toMatchObject({ errno: 1062 });
+    expect((await run(connection, 'select 1')).error).toBeNull();
+    await control(connection, 'commit');
+    expect((await run(connection, 'update locked set a = 1')).error).toMatchObject({ errno: 1213 });
+    expect((await run(connection, 'select 1')).error).toBeNull();
+  });
+
+  it('keeps a transaction open that went on: the OK packets of its statements say IN_TRANS, and the commit goes out', async () => {
+    const { raw, connection } = await lease();
+    await control(connection, 'begin');
+    expect((await run(connection, 'update t set a = 1')).error).toBeNull();
+    expect((await run(connection, 'update t set a = ?', [2])).error).toBeNull();
+    await control(connection, 'commit');
+    expect(raw.sent).toEqual(['begin', 'update t set a = 1', 'commit']);
+  });
+
+  /** The answer of `do 0`, the probe: a different one than the lease's default. */
+  const probeAnswer = (raw: ReturnType<typeof stubConnection>, answer: Answer) => {
+    for (const pattern of [...raw.answers.keys()]) if (pattern.source === '^do 0$') raw.answers.delete(pattern);
+    raw.answers.set(/^do 0$/, answer);
+  };
+  /** An answer that wins over the lease's own for the same statement: the first pattern that matches is the one used. */
+  const answerFirst = (raw: ReturnType<typeof stubConnection>, pattern: RegExp, answer: Answer) => {
+    const others = [...raw.answers];
+    raw.answers.clear();
+    raw.answers.set(pattern, answer);
+    for (const [key, value] of others) raw.answers.set(key, value);
+  };
+  const rows = (name: string) => [{ Table: name, Op: 'analyze', Msg_type: 'status', Msg_text: 'OK' }];
+
+  it('asks with `do 0` before the next statement after an answer without a status, and goes on when the transaction is still open', async () => {
+    for (const parameters of [[], [1]]) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^analyze table/, { result: rows('t') });
+      raw.answers.set(/^create table exists/, { error: error(1050) });
+      await control(connection, 'begin');
+      for (const statement of ['analyze table t', 'create table exists (id int)']) {
+        raw.sent.length = 0;
+        await run(connection, statement);
+        expect(raw.sent).toEqual([statement]);
+        expect((await run(connection, parameters.length === 0 ? 'insert into t values (1)' : 'insert into t values (?)', parameters)).error).toBeNull();
+        // The probe went out first, over the text protocol, and then the statement.
+        expect(raw.sent).toEqual([statement, 'do 0', ...(parameters.length === 0 ? ['insert into t values (1)'] : [])]);
+        expect(raw.executed.at(-1)).toEqual(parameters.length === 0 ? raw.executed.at(-1) : { sql: 'insert into t values (?)', values: [1] });
+      }
+    }
+  });
+
+  it('refuses what follows an answer without a status when the probe finds the transaction gone, whatever the statement was, with nothing but the probe sent', async () => {
+    for (const [statement, answer] of [
+      ['analyze table t', { result: rows('t') }],
+      ['create table exists (id int)', { error: error(1050) }],
+      ['alter table missing add column a int', { error: error(1146) }],
+      ['drop table missing', { error: error(1051) }],
+      ['call commits_then_signals()', { error: error(1644) }],
+      ['/*! analyze table t */', { result: rows('t') }],
+      ['/*+ x */ select 1', { result: rows('t') }],
+      ['(select 1)', { result: rows('t') }],
+    ] as const) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/analyze table|^create table exists|^alter table missing|^drop table missing|^call commits_then|^\/\*\+ x|^\(select 1\)/, answer);
+      await control(connection, 'begin');
+      await run(connection, statement);
+      probeAnswer(raw, { result: ok(AUTOCOMMIT) });
+      raw.sent.length = 0;
+      const refused = (await run(connection, 'insert into t values (1)')).error;
+      expect(refused, statement).toBeInstanceOf(TransactionError);
+      expect((refused as Error).message).toMatch(/it is no longer open: a statement or an error of the transaction ended it, committed or rolled back/);
+      expect(raw.sent, statement).toEqual(['do 0']);
+      await expect(control(connection, 'commit')).rejects.toBeInstanceOf(TransactionError);
+      // The rollback of the driver goes out without a question first.
+      await control(connection, 'rollback');
+      expect(raw.sent, statement).toEqual(['do 0', 'rollback']);
+    }
+  });
+
+  it('does not ask after the answers that cannot end a transaction: a plain read, a signal of a procedure that did not commit is asked once', async () => {
+    const { raw, connection } = await lease();
+    await control(connection, 'begin');
+    raw.sent.length = 0;
+    for (const statement of ['select 1', 'with a as (select 1) select * from a', 'show tables', 'explain select 1', 'describe t', 'desc t', 'table t', 'values row(1)', '/* a */ select 2', '-- c\nselect 3', '# c\nselect 4']) {
+      await run(connection, statement);
+    }
+    await drain(connection.query('select 5', []));
+    await drain(connection.query('select ?', [6]));
+    expect(raw.sent.filter((sent) => sent === 'do 0')).toEqual([]);
+    // A statement that is none of them is asked about, once, and the answer with a status ends the asking.
+    raw.answers.set(/^call p_fail/, { error: error(1644) });
+    await run(connection, 'call p_fail()');
+    await run(connection, 'select 1');
+    await run(connection, 'select 1');
+    expect(raw.sent.filter((sent) => sent === 'do 0')).toEqual(['do 0']);
+    expect((await run(connection, 'insert into t values (1)')).error).toBeNull();
+  });
+
+  it('asks before the commit of the driver, a rollback to and a release savepoint too; a failing probe ends the transaction', async () => {
+    for (const next of [(c: MysqlPoolConnection) => control(c, 'commit').then(() => undefined), (c: MysqlPoolConnection) => run(c, 'release savepoint s').then((r) => r.error), (c: MysqlPoolConnection) => run(c, 'rollback to savepoint s').then((r) => r.error)]) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^analyze table/, { result: rows('t') });
+      await control(connection, 'begin');
+      await run(connection, 'analyze table t');
+      probeAnswer(raw, { error: error(2013) });
+      raw.sent.length = 0;
+      const outcome = await next(connection).then((value) => value, (failure: unknown) => failure);
+      expect(raw.sent[0]).toBe('do 0');
+      // The commit and the release are refused; a rollback to passes, and the rollback of the driver would end it.
+      if (outcome !== null) expect(outcome === undefined || outcome instanceof TransactionError).toBe(true);
+      expect(raw.sent).toEqual(['do 0']);
+    }
+  });
+
+  it('asks a stream too, and a deadlock that ends a stream, over the text and the prepared way, ends the transaction', async () => {
+    for (const parameters of [[], [1]]) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^select locked/, { error: error(1213) });
+      await control(connection, 'begin');
+      await expect(drain(connection.query(parameters.length === 0 ? 'select locked from t' : 'select locked from t where a = ?', parameters))).rejects.toMatchObject({ errno: 1213 });
+      const before = nothingSent(raw);
+      expect((await run(connection, 'insert into t values (1)')).error).toBeInstanceOf(TransactionError);
+      await expect(drain(connection.query('select 1', []))).rejects.toBeInstanceOf(TransactionError);
+      expect(nothingSent(raw)).toEqual(before);
+    }
+  });
+
+  it('ends the transaction at a prepared statement without IN_TRANS as at a text one, and at a stream that streams one', async () => {
+    const { raw, connection } = await lease();
+    answerFirst(raw, /^delete from gone/, { result: ok(AUTOCOMMIT) });
+    await control(connection, 'begin');
+    expect((await run(connection, 'delete from gone where id = ?', [1])).error).toBeNull();
+    expect((await run(connection, 'select 1')).error).toBeInstanceOf(TransactionError);
+    const second = await lease();
+    answerFirst(second.raw, /^delete from gone/, { result: ok(AUTOCOMMIT) });
+    await control(second.connection, 'begin');
+    await drain(second.connection.query('delete from gone where id = ?', [1]));
+    expect((await run(second.connection, 'select 1')).error).toBeInstanceOf(TransactionError);
+  });
+
+  it('ends the transaction at a full lock table, like a deadlock', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^update locked/, { error: error(1206) });
+    await control(connection, 'begin');
+    await run(connection, 'update locked set a = 1');
+    const refused = (await run(connection, 'select 1')).error;
+    expect(refused).toBeInstanceOf(TransactionError);
+    expect((refused as Error).message).toMatch(/lock table was full \(error 1206\)/);
+  });
+
+  it('knows a begin, commit or rollback of the app by its text, behind comments and executable comments, and with chain, work or release', async () => {
+    const cases: Array<[string, RegExp]> = [
+      ['/* own */ begin', /committed it/],
+      ['-- x\nstart transaction', /committed it/],
+      ['# x\nbegin', /committed it/],
+      ['/*! begin */', /committed it/],
+      ['/*!50000 start transaction */', /committed it/],
+      ['commit and chain', /committed it/],
+      ['commit work release', /committed it/],
+      ['/* x */ rollback and chain', /a rollback written by hand undid it/],
+      ['rollback work', /a rollback written by hand undid it/],
+    ];
+    for (const [sql, wording] of cases) {
+      const { raw, connection } = await lease();
+      // Chained: the server keeps the transaction open (IN_TRANS), which the status alone would not call ended.
+      raw.answers.set(/begin|start|commit|rollback/, { result: ok(IN_TRANS) });
+      await control(connection, 'begin');
+      await run(connection, sql);
+      const refused = (await run(connection, 'insert into t values (1)')).error;
+      expect((refused as Error | undefined)?.message, sql).toMatch(wording);
+    }
+  });
+
+  it('lets a rollback to a savepoint of the app pass behind comments, and does not take it for a rollback', async () => {
+    for (const sql of ['/* x */ rollback to savepoint s', 'rollback work to savepoint s', '-- c\nrollback to s']) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/rollback/, { result: ok(IN_TRANS) });
+      await control(connection, 'begin');
+      raw.answers.set(/^update locked/, { error: error(1213) });
+      await run(connection, 'update locked set a = 1');
+      raw.sent.length = 0;
+      expect((await run(connection, sql)).error, sql).toBeNull();
+      expect(raw.sent).toEqual([]);
+    }
+  });
+
+  it('spoils the lease when the commit or rollback of the driver leaves a transaction open (completion_type chains them): the error says so, and the connection is destroyed, not given back', async () => {
+    for (const sql of ['commit', 'rollback'] as const) {
+      const { raw, connection, released } = await lease();
+      await control(connection, 'begin');
+      answerFirst(raw, /^(commit|rollback)$/, { result: ok(IN_TRANS) });
+      const failure = await control(connection, sql).then(() => undefined, (caught: unknown) => caught);
+      expect(failure).toBeInstanceOf(DatabaseConnectionError);
+      expect((failure as Error).message).toMatch(/^\[marmeon:D28\] .*completion_type/);
+      expect(raw.destroy).toHaveBeenCalled();
+      connection.release();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(released).not.toHaveBeenCalled();
+    }
+  });
+
+  it('refuses everything after an answer that says autocommit is OFF, as it does for a changed character set, and gives the connection up', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^set autocommit/, { result: ok(IN_TRANS, { autocommit: 'OFF' }) });
+    await run(connection, 'set autocommit = 0');
+    const refused = (await run(connection, 'select 1')).error;
+    expect(refused).toBeInstanceOf(DatabaseConnectionError);
+    expect((refused as Error).message).toMatch(/^\[marmeon:D28\] .*autocommit is OFF/);
+    expect(raw.destroy).toHaveBeenCalled();
+  });
+
+  it('asks before a stream too: the probe finds the transaction gone, so the stream is refused with only the probe sent, text and prepared', async () => {
+    for (const [sql, parameters] of [['select 1', []], ['select ?', [1]]] as const) {
+      for (const first of ['analyze table t', 'create table exists (id int)']) {
+        const { raw, connection } = await lease();
+        raw.answers.set(/^analyze table/, { result: rows('t') });
+        raw.answers.set(/^create table exists/, { error: error(1050) });
+        await control(connection, 'begin');
+        await run(connection, first);
+        probeAnswer(raw, { result: ok(AUTOCOMMIT) });
+        raw.sent.length = 0;
+        await expect(drain(connection.query(sql, [...parameters]))).rejects.toBeInstanceOf(TransactionError);
+        expect(raw.sent, `${first} ${sql}`).toEqual(['do 0']);
+        expect(raw.prepared).toEqual([]);
+      }
+    }
+  });
+
+  it('forgets that it has to ask when the driver rolls back or the lease is given back: the next transaction runs without a question', async () => {
+    const { raw, connection, get } = await lease();
+    raw.answers.set(/^analyze table/, { result: rows('t') });
+    await control(connection, 'begin');
+    await run(connection, 'analyze table t');
+    await control(connection, 'rollback');
+    await control(connection, 'begin');
+    await run(connection, 'update t set a = 1');
+    expect(raw.sent.filter((sent) => sent === 'do 0')).toEqual([]);
+    await run(connection, 'analyze table t');
+    connection.release();
+    await new Promise((resolve) => setImmediate(resolve));
+    const next = await get();
+    raw.sent.length = 0;
+    await control(next, 'begin');
+    await run(next, 'update t set a = 1');
+    expect(raw.sent).toEqual(['begin', 'update t set a = 1']);
+  });
+
+  it('sends the rollback of the driver without a question first, even when an answer left the state unknown', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^analyze table/, { result: rows('t') });
+    await control(connection, 'begin');
+    await run(connection, 'analyze table t');
+    raw.sent.length = 0;
+    await control(connection, 'rollback');
+    expect(raw.sent).toEqual(['rollback']);
+  });
+
+  it('ends the transaction when the probe has no OK packet to read, and reads the probe like any answer: a session it changed refuses the statement behind it', async () => {
+    const stateless = await lease();
+    stateless.raw.answers.set(/^analyze table/, { result: rows('t') });
+    await control(stateless.connection, 'begin');
+    await run(stateless.connection, 'analyze table t');
+    probeAnswer(stateless.raw, { result: [] });
+    expect((await run(stateless.connection, 'insert into t values (1)')).error).toBeInstanceOf(TransactionError);
+
+    for (const [name, packet, reason] of [
+      ['autocommit', ok(IN_TRANS, { autocommit: 'OFF' }), /autocommit is OFF/],
+      ['NO_BACKSLASH_ESCAPES', ok(IN_TRANS | 0x200), /NO_BACKSLASH_ESCAPES/],
+      ['completion_type', ok(IN_TRANS, { completion_type: 'CHAIN' }), /completion_type/],
+    ] as const) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^analyze table/, { result: rows('t') });
+      await control(connection, 'begin');
+      await run(connection, 'analyze table t');
+      probeAnswer(raw, { result: packet });
+      raw.sent.length = 0;
+      const refused = (await run(connection, 'insert into t values (1)')).error;
+      expect(refused, name).toBeInstanceOf(DatabaseConnectionError);
+      expect((refused as Error).message).toMatch(reason);
+      // Only the probe went out: the statement behind it was refused after the probe's answer changed the session.
+      expect(raw.sent, name).toEqual(['do 0']);
+      expect(raw.destroy).toHaveBeenCalled();
+    }
+  });
+
+  it('asks after a stream that ended without an OK packet and without a plain read, and after one that was left before its end, whatever it began with', async () => {
+    const analyzed = await lease();
+    analyzed.raw.answers.set(/^analyze table/, { result: rows('t') });
+    await control(analyzed.connection, 'begin');
+    await drain(analyzed.connection.query('analyze table t', []));
+    await run(analyzed.connection, 'insert into t values (1)');
+    expect(analyzed.raw.sent.slice(-2)).toEqual(['do 0', 'insert into t values (1)']);
+
+    for (const [sql, parameters] of [['select a from t', []], ['select ? as a', [1]]] as const) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^select (a from t|\? as a)/, { result: undefined });
+      await control(connection, 'begin');
+      raw.sent.length = 0;
+      const leaving = connection.query(sql, [...parameters]) as unknown as { stream: () => AsyncIterable<unknown> };
+      for await (const _row of leaving.stream()) {
+        void _row;
+        break;
+      }
+      await run(connection, 'insert into t values (1)');
+      expect(raw.sent.filter((sent) => sent === 'do 0'), sql).toEqual(['do 0']);
+      // A stream that ran to its end asks nothing.
+      raw.sent.length = 0;
+      await drain(connection.query(sql, [...parameters]));
+      await run(connection, 'insert into t values (2)');
+      expect(raw.sent.filter((sent) => sent === 'do 0'), sql).toEqual([]);
+    }
+  });
+
+  it('refuses a commit after an answer that changed completion_type, before it is sent: nothing was committed, and the connection is destroyed', async () => {
+    const { raw, connection } = await lease();
+    raw.answers.set(/^set session completion_type/, { result: ok(IN_TRANS, { completion_type: 'CHAIN' }) });
+    await control(connection, 'begin');
+    await run(connection, 'set session completion_type = 1');
+    raw.sent.length = 0;
+    expect((await run(connection, 'insert into t values (1)')).error).toBeInstanceOf(DatabaseConnectionError);
+    const commit = await control(connection, 'commit').then(() => undefined, (failure: unknown) => failure);
+    expect(commit).toBeInstanceOf(DatabaseConnectionError);
+    expect((commit as Error).message).toMatch(/^\[marmeon:D28\] .*completion_type is no longer NO_CHAIN \(now "CHAIN"\)/);
+    expect(raw.sent).toEqual([]);
+    expect(raw.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('says that the commit ran when its own answer still has IN_TRANS (the fallback behind the check of the variable)', async () => {
+    const { raw, connection } = await lease();
+    await control(connection, 'begin');
+    answerFirst(raw, /^commit$/, { result: ok(IN_TRANS) });
+    const failure = await control(connection, 'commit').then(() => undefined, (caught: unknown) => caught);
+    expect((failure as Error).message).toMatch(/^\[marmeon:D28\] .*the commit or rollback of the transaction ran, but it left a transaction open/);
+  });
+
+  it('takes a version comment as the server does: one of a newer version than the server (8.4.3 here) is skipped, so what it hides is not run', async () => {
+    for (const [sql, ended] of [
+      ['/*!99999 COMMIT */ SELECT 1', false],
+      ['/*!99999begin*/ select 1', false],
+      ['/*!800000 begin */ select 1', false],
+      ['/*!80404 commit */ select 1', false],
+      ['/*!80000 begin */', true],
+      ['/*!80403 begin */', true],
+      ['/*!080000 begin */', true],
+      ['/*!80000begin */', true],
+      ['/*! commit */', true],
+      ['/*!99999 x */ /*!80000 begin */', true],
+    ] as const) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^\/\*!/, { result: ok(IN_TRANS) });
+      await control(connection, 'begin');
+      await run(connection, sql);
+      expect((await run(connection, 'insert into t values (1)')).error instanceof TransactionError, sql).toBe(ended);
+    }
+  });
+
+  it('does not take a version comment for a transaction statement when no reading of it is one', async () => {
+    for (const sql of ['/*!80000 select 1 */', '/*!99999 x */ /*!80000 select 1 */ select 2', '/*!80000 rollback to s */', '/*!80000 commit_log */']) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/^\/\*!/, { result: ok(IN_TRANS) });
+      await control(connection, 'begin');
+      await run(connection, sql);
+      const after = (await run(connection, 'insert into t values (1)')).error;
+      // A statement that is not one is not taken for one: the answer has IN_TRANS, so the transaction goes on.
+      expect(after, sql).toBeNull();
+    }
+  });
+
+  it('knows a begin or commit behind a comment that a server may skip (/*!99999 … */), whether the comment hides it or not', async () => {
+    for (const sql of [
+      '/*!99999 select 1 */ begin',
+      '/*!99999 x */ commit and chain',
+      '/*!50000 begin */',
+      '/*!99999 x */ rollback and chain',
+      // Several version comments: the keyword may stand in any of them.
+      '/*!99999 x */ /*!80000 begin */',
+      '/*!99999 x */ /*! commit and chain */',
+      '/*!99999 x */ /* y */ /*!80000 start transaction */',
+      '/*!80000 rollback */ and chain',
+    ]) {
+      const { raw, connection } = await lease();
+      raw.answers.set(/begin|commit|rollback/, { result: ok(IN_TRANS) });
+      await control(connection, 'begin');
+      await run(connection, sql);
+      expect((await run(connection, 'insert into t values (1)')).error, sql).toBeInstanceOf(TransactionError);
+    }
+  });
+
+  it('starts the next lease clean: a lease that ended inside an ended transaction leaves nothing of it', async () => {
+    const { raw, connection, get } = await lease();
+    await control(connection, 'begin');
+    raw.answers.set(/^update locked/, { error: error(1213) });
+    await run(connection, 'update locked set a = 1');
+    expect((await run(connection, 'select 1')).error).toBeInstanceOf(TransactionError);
+    connection.release();
+    await new Promise((resolve) => setImmediate(resolve));
+    const next = await get();
+    raw.sent.length = 0;
+    expect((await run(next, 'select 1')).error).toBeNull();
+    // A transaction of the next lease is its own: the driver's begin opens it, and a statement before it refused nothing.
+    await control(next, 'begin');
+    expect((await run(next, 'update t set a = 1')).error).toBeNull();
+    await control(next, 'commit');
+    expect(raw.sent).toEqual(['select 1', 'begin', 'update t set a = 1', 'commit']);
   });
 });
