@@ -803,6 +803,25 @@ A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PA
 not confirmed, see [resetting the password](passwords.md#resetting-the-password)), and "sign out other devices" never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains when to turn it on.
 
+## Accounts without a password
+
+The starter kit's `users.password` may hold `NULL`, and `UserRepository.register()` takes `password: null`. Such an account has no password to
+check: `Credentials.passwordHash` is `null`. `auth.attempt()` answers as it does for a wrong password or an unknown address, whatever is typed:
+the same failure, the same padded time and `SignInFailed`. Only a sign-in your app adds can open the account. A passkey or an authenticator app
+needs a password first (see [passkeys](passkeys.md)). Every check of the password fails for such an account until it has one:
+`confirmedPassword()`, [changing the password](#changing-the-password), the API tokens page and the rest. The [reset link](passwords.md#resetting-the-password)
+sets the first password. It is mailed and used up as for any account, and the hash is written through `updatePasswordHash()`.
+
+A new app has the migration `make_users_password_optional`. An app made before it takes the file from the installed package,
+`node_modules/@marmeon/auth/stubs/react/modules/auth/migrations/0001_01_01_000008_make_users_password_optional.ts`, into the `migrations` folder of the
+module that owns `users`, under a name with the date of the day (`2026_11_18_120000_make_users_password_optional.ts`), then runs `marmeon migrate` and `marmeon db:types`.
+Rename it before you run `marmeon migrate`: `marmeon make:auth --force` writes the file under its own name when the app has no migration of that name, and `migrate` refuses it as soon as
+later migrations have changed `users`. Once it has a dated name, `make:auth` keeps it and leaves it alone.
+
+SQLite changes no column in place, so the migration adds a nullable `password_optional` column, copies the hashes, drops `password` and renames the new
+column. The column stays `.secret()`: select-all results and `Row<'users'>` never hold the hash, and `secret(eb, 'password')` reads it as `string | null`.
+The migration cannot be undone, and `down()` says so by doing nothing: a rollback leaves the column nullable.
+
 ## Changing the address
 
 `EmailChange` decides what is a matter of security when a signed-in user asks for a new address, and leaves the writing of the address

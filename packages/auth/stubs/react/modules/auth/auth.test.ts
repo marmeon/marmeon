@@ -6,7 +6,7 @@ import type { SharedProps } from '@marmeon/http/page';
 import type { Mailable } from '@marmeon/mail';
 import { createHttpKernel } from '@marmeon/server';
 import { cookieNames } from '@marmeon/auth/testing';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, type TestApp, type TestResponse } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { AppConfig } from '../../config/app.ts';
@@ -196,6 +196,47 @@ describe('password reset', { timeout: 30_000 }, () => {
     await reset().assertRedirect('/login');
     await reset().assertInvalid({ password: /invalid or has expired/ }); // used up
     await app.post('/login', credentials(ada, 'a new password')).assertAuthenticated(ada);
+  });
+
+  it('an account without a password is not signed in by any password, and a reset link gives it one', async () => {
+    const users = app.make(UserRepository);
+    const made = await users.register({ name: 'No Password', email: 'none@example.com', password: null, locale: 'en' });
+    if (!made.ok) throw new Error('the account was not made');
+    const none = made.value;
+    await users.markEmailVerified(none.id, new Date());
+    const stored = await users.findForSignIn(none.email);
+    expect(stored?.passwordHash).toBeNull();
+
+    // Nothing signs it in: whatever is typed, the answer is the one a wrong password gets.
+    const ada = await app.factory(UserFactory).create();
+    const answer = (response: TestResponse) => ({ status: response.status, location: response.headers.get('location'), errors: response.session().errors });
+    const login = (user: User, password: string) => app.post('/login', { ...credentials(user, password), headers: { referer: 'http://localhost/login' } });
+    const wrong = answer(await login(ada, 'wrong').assertGuest());
+    for (const password of ['password', 'null', 'wrong', ' ']) expect(answer(await login(none, password).assertGuest()), password).toEqual(wrong);
+
+    // The reset link sets a password.
+    await app.post('/forgot-password', { form: { email: none.email } });
+    await app.queue.work();
+    const opened = await app.get(linkIn(ResetPasswordMail, '/reset-password')).assertRedirect('/reset-password');
+    await app.withCookie('password_reset', opened.cookie('password_reset')!).post('/reset-password', { form: { password: 'a new password', password_confirmation: 'a new password' } }).assertRedirect('/login');
+    expect((await users.findForSignIn(none.email))?.passwordHash).toMatch(/^\$argon2id\$/);
+    await app.post('/login', credentials(none, 'a new password')).assertAuthenticated(none);
+  });
+
+  it('asks a signed-in account without a password to confirm like a wrong password does, not with a server error', async () => {
+    const users = app.make(UserRepository);
+    const made = await users.register({ name: 'No Password', email: 'none@example.com', password: null, locale: 'en' });
+    if (!made.ok) throw new Error('the account was not made');
+    await users.markEmailVerified(made.value.id, new Date());
+    const ada = await app.factory(UserFactory).create();
+    const answer = (response: TestResponse) => ({ status: response.status, location: response.headers.get('location'), errors: response.session().errors });
+    const confirm = (user: User) => app.actingAs(user).post('/confirm-password', { form: { password: 'password' }, headers: { referer: 'http://localhost/confirm-password' } });
+    const wrong = await app.actingAs(ada).post('/confirm-password', { form: { password: 'wrong' }, headers: { referer: 'http://localhost/confirm-password' } });
+    const none = await confirm(made.value);
+    expect(wrong.status).toBeLessThan(500);
+    wrong.assertInvalid({ password: /^The password is incorrect/ });
+    none.assertInvalid({ password: /^The password is incorrect/ });
+    expect(answer(none)).toEqual(answer(wrong));
   });
 });
 

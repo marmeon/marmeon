@@ -480,8 +480,8 @@ it, so the callback would find no session and no flow, and every sign-in would f
 Everything it decides on (provider, ID, address, whether the provider verified the address) it reads from what the flow recorded.
 
 The package never makes a user itself. The app says how users are found and made by binding `SocialUserProvider`. The class below follows
-the `UserRepository` of the starter kit. A user who registers with a provider has no password, so make `password` nullable with a
-migration ([Changing tables](migrations.md#changing-tables)). Add this method to your `UserRepository`:
+the `UserRepository` of the starter kit. A user who registers with a provider has no password; see
+[Accounts without a password](authentication.md#accounts-without-a-password) for how the starter kit keeps such a user. Add this method to your `UserRepository`:
 
 ```ts
 /** A new user from a provider: no password, and a confirmed address only when the provider vouched for it. */

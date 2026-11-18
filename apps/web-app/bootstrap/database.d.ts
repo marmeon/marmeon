@@ -415,7 +415,6 @@ declare module '@marmeon/database' {
       public_id: Generated<string>;
       name: string;
       email: string;
-      password: Secret<string>;
       session_key: Secret<string | null>;
       bio: Generated<string>;
       first_verified_at: Timestamp | null;
@@ -426,6 +425,7 @@ declare module '@marmeon/database' {
       avatar_path: string | null;
       avatar_width: number | null;
       avatar_height: number | null;
+      password: Secret<string | null>;
     };
   }
   interface Relations {
