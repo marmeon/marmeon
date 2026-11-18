@@ -1,3 +1,4 @@
+import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
 import { credentialPage, defineRoutes, describeAccess, everyone } from '@marmeon/http';
 import {
@@ -13,9 +14,11 @@ import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controll
 import { CreateOneTimeLinkLabController, ShowAnnouncementLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
 import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
 import { CreateGuestLabController, EditGuestLabController, StoreGuestLabController, UpdateGuestLabController } from './controllers/GuestLabController.ts';
+import { LabOnly } from './LabOnly.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { AddQuestionLabController, ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 import { Surveys } from './SurveyRepository.ts';
+import { SendChatLabController, ShowChatLabController } from './controllers/ChatLabController.ts';
 import { PingWebhookLabController, ShowWebhookPingLabController } from './controllers/WebhookPingLabController.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
@@ -78,4 +81,9 @@ export default defineRoutes((Route) => {
   // An address an editor entered, called by the server: `HttpClient` refuses what is not public when it sends.
   lab.get('/webhook-ping', ShowWebhookPingLabController);
   lab.middleware(throttle('lab.webhook-ping')).post('/webhook-ping', PingWebhookLabController);
+  // A chat notification: a signed-in user sends a message that the `chat` channel posts to the `ops` destination of `CHAT_WEBHOOKS`.
+  // The lab's 404 comes first, so a guest or a limit never shows the route when the lab is off. A confirmed address, as the other modules ask for.
+  const chat = lab.middleware(LabOnly).middleware(authenticate()).middleware(verified());
+  chat.get('/chat', ShowChatLabController);
+  chat.middleware(throttle('lab.chat')).post('/chat', SendChatLabController);
 });

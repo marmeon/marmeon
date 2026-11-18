@@ -1,6 +1,7 @@
 import { defineModule } from '@marmeon/core';
 import { LabConfig } from './config.ts';
 import { LabServiceProvider } from './LabServiceProvider.ts';
+import { LabChatNotification } from './notifications.ts';
 import routes from './routes.ts';
 
 /** How server rendering behaves when it is slow or fails — pages under `/lab`, off in production. */
@@ -9,5 +10,7 @@ export default defineModule({
   config: [LabConfig],
   migrations: new URL('./migrations/', import.meta.url),
   providers: [LabServiceProvider],
+  // The lab's chat notification (a worker finds it by name).
+  notifications: [LabChatNotification],
   routes,
 });
