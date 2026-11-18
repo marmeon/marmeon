@@ -18,7 +18,8 @@ import { createMysqlDialect } from './mysql.ts';
 import { factsOf, projectMigrations } from './schema/projection.ts';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = workspaceTempDir('marmeon-mysql-catalog-app-');
+// Made once the MySQL tests run: a file whose tests are all skipped (no MySQL in the run) does not remove what its top level made.
+let root = '';
 
 // The catalog of MySQL is read in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL; the file is skipped without it.
 // The tables are made by SQL here: what a migration makes on MySQL is not what these tests are about.
@@ -42,6 +43,10 @@ const RELATION_TABLES = [
 ];
 
 withMysql('the catalog of MySQL', () => {
+  beforeAll(() => {
+    root = workspaceTempDir('marmeon-mysql-catalog-app-');
+  });
+
   describe('the facts of an unmanaged connection', () => {
     let connections: Connections;
     let close: () => Promise<void>;
