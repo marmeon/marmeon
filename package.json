@@ -19,6 +19,7 @@
     "test:pgsql": "MARMEON_TEST_PGSQL_URL=postgres://marmeon:secret@127.0.0.1:55432/marmeon DB_DRIVER=pgsql DB_URL=postgres://marmeon:secret@127.0.0.1:55432/marmeon pnpm test --project '*pgsql*'",
     "test:redis": "MARMEON_TEST_REDIS_URL=redis://127.0.0.1:56379 pnpm test --project '*redis*'",
     "size": "node packages/react/src/__fixtures__/size-report.ts",
+    "test:mysql": "MARMEON_TEST_MYSQL_URL=mysql://root:secret@127.0.0.1:53306/marmeon pnpm test --project '*mysql*'",
     "test:s3": "MARMEON_TEST_S3_ENDPOINT=http://127.0.0.1:56333 pnpm test --project '*s3*'",
     "types:check": "export NODE_ENV=test && cd apps/web-app && marmeon route:types --check && marmeon db:types --check && cd ../blank-app && marmeon route:types --check && marmeon db:types --check && cd ../website && marmeon route:types --check",
     "lint": "oxlint --deny-warnings",
