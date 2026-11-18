@@ -10,6 +10,7 @@ import { AppGuardContext } from './app-guard-context.ts';
 import { bootGuards, guardRegistry, hasPackageGuards } from './define-guard.ts';
 import { Auth } from './auth.ts';
 import { sealReauthentication } from './reauthentication.ts';
+import { sealPasswordResetHooks } from './reset-hooks.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
@@ -182,6 +183,7 @@ export class AuthServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     // No re-authentication is claimed from here on: only what providers claimed while registering can open a confirmation window.
     sealReauthentication(app.container);
+    sealPasswordResetHooks(app.container);
     // Again: the router may be bound only after this provider registered.
     stampRoutes(app.container.make(Router), (Class) => app.container.make(Class as never));
     // After every provider has booted, the start asks: a listener of a slot nobody bound would stay silent, and no route says so.

@@ -64,6 +64,16 @@ describe.each(drivers)('SocialAccountStore on %s', (driver) => {
     return result.value;
   }
 
+  it('removes every account of one user and no other, and says how many went', async () => {
+    await created(1, socialUser({ provider: 'github', id: 'gh-1' }));
+    await created(1, socialUser({ provider: 'gitlab', id: 'gl-1' }));
+    await created(2, socialUser({ provider: 'github', id: 'gh-2' }));
+    expect(await store.removeAll(1)).toBe(2);
+    expect(await store.forUser(1)).toEqual([]);
+    expect((await store.forUser(2)).length).toBe(1);
+    expect(await store.removeAll(1)).toBe(0);
+  });
+
   it('creates an account and finds it by provider and provider id', async () => {
     const record = await created(1);
     expect(record).toMatchObject({ userId: 1, provider: 'github', providerId: 'gh-1', email: 'ada@example.com', nickname: 'ada' });

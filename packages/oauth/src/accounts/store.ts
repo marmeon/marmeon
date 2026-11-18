@@ -189,6 +189,15 @@ export class SocialAccountStore {
   }
 
   /**
+   * Deletes every account of the user, whatever it is worth as a way in. It joins the transaction it is called in: the password reset of
+   * an account with an unconfirmed address calls it in its own. Resolves with how many rows went.
+   */
+  async removeAll(userId: AuthUserId): Promise<number> {
+    const result = await this.#db().deleteFrom(SOCIAL_ACCOUNTS_TABLE).where('user_id', '=', userId).executeTakeFirst();
+    return Number(result.numDeletedRows);
+  }
+
+  /**
    * The stored tokens of the user's account at `provider`, decrypted; `undefined` when there are none: `OAUTH_STORE_TOKENS` is off (nothing
    * is read then), or the account has no tokens. Throws `DecryptError` when a token does not decrypt: it was moved to another row, or
    * its key is no longer in `APP_PREVIOUS_KEYS`. See docs/oauth.md#storing-tokens.
