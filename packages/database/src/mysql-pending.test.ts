@@ -66,20 +66,20 @@ describe.each([
   };
 
   it.each([
-    ['emptying the database', 'Emptying the database', () => dropAllTables(noTables, driver)],
     ['renaming a table with its indexes', 'Renaming a table with its indexes', () => executePlan(dummy, driver, [{ kind: 'rename', from: 'a', to: 'b', indexes: true }])],
-    ['reading the tables for the migrator', 'Reading the tables of the database', () => migrator(driver).undescribedColumns('default', [])],
     ['a relation inside a query', 'A relation inside a query (with())', relation(driver)],
   ])('refuses %s', async (_name, feature, call) => {
     await refuses(call, feature);
   });
 
-  // The record of migrations, the columns, the defaults and the lock run on MySQL (below); a driver nobody knows still has no form of them.
+  // The record of migrations, the columns, the defaults, the lock, the catalog and emptying the database run on MySQL (below, and in mysql-catalog.test.ts); a driver nobody knows still has no form of them.
   if (driver !== mysql) {
     it.each([
       ['a uuidv7 default', 'A uuidv7 default', () => ddl((t) => void t.uuid('c').useUuidv7(), driver)()],
       ['a current-time default', 'A current-time default', () => ddl((t) => void t.timestamp('c').useCurrent(), driver)()],
       ['the migration lock', 'The migration lock', () => MigrationLock.acquire(dummy, { driver })],
+      ['emptying the database', 'Emptying the database', () => dropAllTables(noTables, driver)],
+      ['reading the tables for the migrator', 'Reading the tables of the database', () => migrator(driver).undescribedColumns('default', [])],
       ['the record of migrations', 'The record of migrations', () => createMigrationsTable(dummy, driver)],
       ['reading the columns of the database', 'Reading the columns of the database', () => tableColumns(catalog, driver)],
       ['reading the columns, as introspect starts', 'Reading the columns of the database', () => introspect(catalog, driver)],

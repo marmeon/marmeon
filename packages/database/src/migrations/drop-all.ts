@@ -1,15 +1,16 @@
 import { sql, type Kysely } from 'kysely';
 import type { Driver } from '../schema/blueprint.ts';
-import { mysqlPending } from '../mysql-pending.ts';
 import { LOCK_TABLE } from './lock.ts';
 import { unknownDriver } from '../supported-driver.ts';
 
 /**
  * Empties a connection — `migrate:fresh`: its views, tables (the record of migrations and the tables 0.3 left included), and on Postgres
- * the functions, standalone types and free-standing sequences of the app's schemas. Foreign keys are no obstacle. The migration lock of
- * SQLite is a row in a table: the run that drops everything holds it, so that table stays.
+ * the functions, standalone types and free-standing sequences of the app's schemas. Foreign keys between the tables are no obstacle
+ * (on MySQL, one from another database is). The migration lock of SQLite is a row in a table: the run that drops everything holds it,
+ * so that table stays.
  */
 export async function dropAllTables(db: Kysely<any>, driver: Driver): Promise<void> {
+  if (driver === 'mysql') return dropMysql(db);
   const present = await db.introspection.getTables();
   const tables = present.filter((t) => t.name !== LOCK_TABLE);
   switch (driver) {
@@ -18,8 +19,6 @@ export async function dropAllTables(db: Kysely<any>, driver: Driver): Promise<vo
       return;
     case 'sqlite':
       return dropSqlite(db, tables);
-    case 'mysql':
-      return mysqlPending('Emptying the database');
     default:
       return unknownDriver(driver);
   }
@@ -34,6 +33,24 @@ async function dropSqlite(db: Kysely<any>, tables: { name: string; isView: boole
   } finally {
     await sql`pragma foreign_keys = on`.execute(db);
   }
+}
+
+/**
+ * Every base table of the database in ONE `drop table`, with the foreign key checks on: the server drops the listed tables together, so
+ * the keys between them (a parent before its child, a table to itself, two tables to each other) are no obstacle. A key from a table of
+ * another database is an obstacle: the server refuses (error 3730) and, on InnoDB, drops none of them, so the other database has to let
+ * go first. Other engines drop table by table. The views go after the tables, so that a refusal leaves them standing too. Both lists come
+ * from `information_schema`, not from `getTables()`, which leaves out a view whose table is gone. Works on a transaction too, but a
+ * drop commits it on MySQL. `sql.id` keeps a dot in a name.
+ */
+async function dropMysql(db: Kysely<any>): Promise<void> {
+  const found = await sql<{ name: string; kind: string }>`select table_name as name, table_type as kind from information_schema.tables
+    where table_schema = database() and table_type in ('BASE TABLE', 'VIEW') order by table_name`.execute(db);
+  // The migration lock of MySQL is a named lock on the server (`GET_LOCK`), not a row in a table, so no table is kept here.
+  const named = found.rows;
+  const tables = named.filter((row) => row.kind === 'BASE TABLE');
+  if (tables.length > 0) await sql`drop table ${sql.join(tables.map((row) => sql.id(row.name)))}`.execute(db);
+  for (const view of named.filter((row) => row.kind === 'VIEW')) await sql`drop view if exists ${sql.id(view.name)}`.execute(db);
 }
 
 const SYSTEM_SCHEMA = /^(pg_catalog|information_schema|pg_toast.*|pg_temp.*)$/;

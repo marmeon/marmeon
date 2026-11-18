@@ -8,7 +8,6 @@ import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
 import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
-import { mysqlPending } from '../mysql-pending.ts';
 import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
 import { assertRawFitsMysql, check, executePlan, planOf, type PlanStep } from '../schema/plan.ts';
@@ -496,7 +495,10 @@ export class Migrator {
       }
       return { columns, extension, withheld: new Set() };
     }
-    if (driver === 'mysql') return mysqlPending('Reading the tables of the database');
+    if (driver === 'mysql') {
+      // The base tables of the connection's database, as far as the role sees them (`tableColumns` says what that leaves out).
+      return { columns: await columnsOf(this.#books(connection), driver), extension: new Set(), withheld: new Set() };
+    }
     if (driver !== 'sqlite') return unknownDriver(driver);
     if (file === undefined || !existsSync(file)) return { columns: new Map(), extension: new Set(), withheld: new Set() };
     const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
