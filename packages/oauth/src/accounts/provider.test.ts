@@ -14,7 +14,7 @@ import { SocialAccountsConfig } from './config.ts';
 import { SOCIAL_ACCOUNT_COLUMNS, SocialAccountStore } from './store.ts';
 
 const USERS = new URL('../__fixtures__/migrations/', import.meta.url);
-const STUB = new URL('../../stubs/react/modules/oauth/migrations/', import.meta.url);
+const STUB = new URL('../../stubs/migrations/', import.meta.url);
 const MISSING_COLUMN = new URL('../__fixtures__/missing-column/', import.meta.url);
 const UNMARKED_SECRET = new URL('../__fixtures__/unmarked-secret/', import.meta.url);
 

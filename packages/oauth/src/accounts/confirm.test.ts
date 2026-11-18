@@ -224,7 +224,7 @@ describe.each(drivers)('SocialAccounts.confirm() on %s', (driver) => {
 // The whole flow on a booted app: the real callback, the real guard.
 
 const AUTH_TABLES = new URL('../../../auth/src/__fixtures__/migrations/', import.meta.url);
-const STUB = new URL('../../stubs/react/modules/oauth/migrations/', import.meta.url);
+const STUB = new URL('../../stubs/migrations/', import.meta.url);
 const HUB = { authorizeUrl: 'https://gh.example.com/authorize', tokenUrl: 'https://gh.example.com/token' };
 
 interface Account {

@@ -16,7 +16,7 @@ import { SocialAccountStore } from './store.ts';
 
 // The migrations of the auth package's own tests (its tables) and the stub of this one.
 const AUTH_TABLES = new URL('../../../auth/src/__fixtures__/migrations/', import.meta.url);
-const STUB = new URL('../../stubs/react/modules/oauth/migrations/', import.meta.url);
+const STUB = new URL('../../stubs/migrations/', import.meta.url);
 
 interface Account {
   id: number;

@@ -8,7 +8,7 @@ export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] 
 const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
 /** The stub migration of the package, run as it is: the tests cannot drift from what an app gets. */
-const STUB_MIGRATIONS = new URL('../../stubs/react/modules/oauth/migrations/', import.meta.url);
+const STUB_MIGRATIONS = new URL('../../stubs/migrations/', import.meta.url);
 
 /** Connections on a fresh database with a `users` table and the stub migration of `social_accounts`; `close()` drops it. */
 export async function migratedConnections(driver: 'sqlite' | 'pgsql'): Promise<{ connections: Connections; close: () => Promise<void> }> {
