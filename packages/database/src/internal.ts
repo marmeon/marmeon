@@ -13,3 +13,4 @@ export { watchMigrations } from './migrations/watch.ts';
 export { tableColumns } from './introspection.ts';
 export { isMigratorTable } from './migration-state.ts';
 export { nowOf } from './schema-resolver.ts';
+export { requireDriver } from './supported-driver.ts';

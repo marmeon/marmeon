@@ -2,6 +2,7 @@ import { createHash, randomInt } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import { Clock, ContainerError, durationToSeconds, type Duration } from '@marmeon/core';
 import { Connections, secretEquals, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
+import { storeDatabase } from './store-drivers.ts';
 import { AuthConfig } from './config.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -212,7 +213,7 @@ export class DatabaseAccessTokens extends AccessTokenStore {
   }
 
   #db() {
-    return this.#connections.get<{ [ACCESS_TOKEN_TABLE]: AccessTokenTable }>();
+    return storeDatabase<{ [ACCESS_TOKEN_TABLE]: AccessTokenTable }>(this.#connections, 'The access-token store');
   }
 }
 

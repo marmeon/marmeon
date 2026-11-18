@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, env, resolveConfig } from '@marmeon/core';
 import { DatabaseConfig, defineConnection, describeConnection } from './config.ts';
 
+describe('defineConnection: a driver that is not exactly sqlite or pgsql', () => {
+  it.each(['mysql', 'sqlite3', 'pgsql ', 'postgres', ''])('refuses %j (D29) and does not make it a Postgres connection', (driver) => {
+    const connection = defineConnection('reporting', { env: env({}), resolve: () => ({ driver, url: 'postgres://u:p@127.0.0.1/db' }) as never });
+    expect(() => connection.resolve({})).toThrow(`[marmeon:D29] The connection "reporting" names the driver ${JSON.stringify(driver)}; use sqlite or pgsql.`);
+  });
+});
+
 describe('describeConnection: a password with @ or /', () => {
   it.each([
     ['postgres://app:p@ss/w0rd@db/shop', 'pgsql postgres://app:***@db/shop'],

@@ -12,6 +12,9 @@ import { withCode } from '@marmeon/core/internal';
 
 /** The table `marmeon make:uploads-table` creates (the app owns the migration; this package types it itself). */
 export const UPLOADS_TABLE = 'temporary_uploads';
+/** The database drivers the service's SQL is written for, and what it says of a connection on another one. */
+export const UPLOAD_DRIVERS = ['sqlite', 'pgsql'] as const;
+export const UPLOAD_DRIVER_FEATURE = { what: 'The uploads table', instead: 'point UPLOADS_CONNECTION at one' };
 /** The columns the service reads and writes; readiness is red while the table lacks one. */
 export const UPLOADS_COLUMNS = ['id', 'session', 'route', 'field', 'disk', 'key', 'name', 'max_bytes', 'size', 'created_at', 'expires_at', 'started_at', 'uploaded_at', 'consumed_at'];
 

@@ -11,7 +11,7 @@ import { heldReason, SendQueuedNotification } from './job.ts';
 import type { NotificationClass, RecipientResolvers } from './notification.ts';
 import { NotificationDeliverer, Notifications, NotificationSender, type QueueNotification } from './notifications.ts';
 import { backoffSeconds, NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
-import { NOTIFICATIONS_COLUMNS, NOTIFICATIONS_TABLE, NotificationStore } from './store.ts';
+import { NOTIFICATION_STORE_DRIVERS, NOTIFICATION_STORE_FEATURE, NOTIFICATIONS_COLUMNS, NOTIFICATIONS_TABLE, NotificationStore } from './store.ts';
 import { withCode } from '@marmeon/core/internal';
 
 export type {
@@ -164,6 +164,8 @@ export class NotificationServiceProvider implements ServiceProvider {
     // Only a notification with `static database` is delivered to the table (and the Inbox reads only those rows): then /up/ready is red
     // until the table has the new name and every column the store uses.
     if (registry.all().some((notification) => notification.database !== undefined)) {
+      const { requireDriver } = await import('@marmeon/database/internal');
+      requireDriver(container.make(Connections).options(connection).driver, NOTIFICATION_STORE_DRIVERS, NOTIFICATION_STORE_FEATURE);
       const { SchemaRequirements } = await import('@marmeon/database');
       container.make(SchemaRequirements).require({ connection, table: NOTIFICATIONS_TABLE, columns: NOTIFICATIONS_COLUMNS });
     }
