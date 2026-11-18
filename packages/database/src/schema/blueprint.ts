@@ -1,9 +1,15 @@
 import { sql, type ColumnDefinitionBuilder, type CreateTableBuilder, type Expression, type RawBuilder } from 'kysely';
+import { mysqlPending } from '../mysql-pending.ts';
+import { unknownDriver } from '../supported-driver.ts';
+
+/** MySQL cannot index a `longtext` column without a prefix length: `text()` in a key is a `varchar` of this length (utf8mb4, 3072 bytes). */
+const MYSQL_TEXT = 'longtext' as DataTypeExpression;
+const MYSQL_KEYED_TEXT = 'varchar(768)' as DataTypeExpression;
 
 /** What Kysely accepts as a column type (the type itself is not exported). */
 type DataTypeExpression = Parameters<CreateTableBuilder<string, never>['addColumn']>[1];
 
-export type Driver = 'sqlite' | 'pgsql';
+export type Driver = 'sqlite' | 'pgsql' | 'mysql';
 
 type OnDelete = 'cascade' | 'set null' | 'restrict' | 'no action';
 
@@ -361,7 +367,8 @@ export function blueprintParts(blueprint: Blueprint): BlueprintParts {
 }
 
 /**
- * Describes a table's columns, indexes and foreign keys, and compiles them for SQLite or Postgres.
+ * Describes a table's columns, indexes and foreign keys, and compiles them for SQLite or Postgres. It names the MySQL type of each column too
+ * (for the projection); the DDL of MySQL is not written yet.
  * The declared types are chosen so the type generator (and the SQLite adapter) recognize them:
  * `boolean`, `json`, `datetime`/`timestamptz` stay recognizable on both drivers.
  */
@@ -396,48 +403,48 @@ export class Blueprint {
 
   /** Auto-incrementing big integer primary key. */
   id(name = 'id'): Column<number> {
-    return new Column<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint' }, { primary: true, identity: true }));
+    return new Column<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint', mysql: 'bigint' }, { primary: true, identity: true }));
   }
 
   string(name: string, length = 255): Column<string> {
-    return this.#add(name, { sqlite: `varchar(${length})` as DataTypeExpression, pgsql: `varchar(${length})` as DataTypeExpression });
+    return this.#add(name, { sqlite: `varchar(${length})` as DataTypeExpression, pgsql: `varchar(${length})` as DataTypeExpression, mysql: `varchar(${length})` as DataTypeExpression });
   }
 
   text(name: string): Column<string> {
-    return this.#add(name, { sqlite: 'text', pgsql: 'text' });
+    return this.#add(name, { sqlite: 'text', pgsql: 'text', mysql: MYSQL_TEXT });
   }
 
   integer(name: string): Column<number> {
-    return this.#add(name, { sqlite: 'integer', pgsql: 'integer' });
+    return this.#add(name, { sqlite: 'integer', pgsql: 'integer', mysql: 'integer' });
   }
 
   /** Read back as `number` (values beyond 2^53 throw instead of rounding). */
   bigInteger(name: string): Column<number> {
-    return this.#add(name, { sqlite: 'integer', pgsql: 'bigint' });
+    return this.#add(name, { sqlite: 'integer', pgsql: 'bigint', mysql: 'bigint' });
   }
 
   float(name: string): Column<number> {
-    return this.#add(name, { sqlite: 'real', pgsql: 'double precision' });
+    return this.#add(name, { sqlite: 'real', pgsql: 'double precision', mysql: 'double' as DataTypeExpression });
   }
 
   /** Exact decimal — read back as a `string`, so no precision is lost. */
   decimal(name: string, precision = 8, scale = 2): Column<string> {
     const type = `numeric(${precision}, ${scale})` as DataTypeExpression;
-    return this.#add(name, { sqlite: type, pgsql: type });
+    return this.#add(name, { sqlite: type, pgsql: type, mysql: type });
   }
 
   boolean(name: string): Column<boolean> {
-    return this.#add(name, { sqlite: 'boolean', pgsql: 'boolean' });
+    return this.#add(name, { sqlite: 'boolean', pgsql: 'boolean', mysql: 'boolean' });
   }
 
   /** JSON (`jsonb` on Postgres). Defaults are given as values: `.default({})`. */
   json(name: string): Column<unknown> {
-    return this.#add(name, { sqlite: 'json', pgsql: 'jsonb' });
+    return this.#add(name, { sqlite: 'json', pgsql: 'jsonb', mysql: 'json' });
   }
 
   /** Values are 36-character strings; `useUuidv7()` lets the database generate them. */
   uuid(name: string): UuidColumn<string> {
-    return new UuidColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
+    return new UuidColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression, mysql: 'char(36)' as DataTypeExpression }));
   }
 
   /** A UUIDv7 primary key made by the database: shorthand for `uuid(name).primary().useUuidv7()`. */
@@ -446,17 +453,17 @@ export class Blueprint {
   }
 
   binary(name: string): Column<Uint8Array> {
-    return this.#add(name, { sqlite: 'blob', pgsql: 'bytea' });
+    return this.#add(name, { sqlite: 'blob', pgsql: 'bytea', mysql: 'longblob' as DataTypeExpression });
   }
 
   /** A calendar date, read back as `YYYY-MM-DD`. */
   date(name: string): Column<string> {
-    return this.#add(name, { sqlite: 'date', pgsql: 'date' });
+    return this.#add(name, { sqlite: 'date', pgsql: 'date', mysql: 'date' });
   }
 
   /** A point in time with millisecond precision, read back as an ISO-8601 string in UTC. */
   timestamp(name: string): TimestampColumn<string | Date> {
-    return new TimestampColumn<string | Date>(this.#spec(name, { sqlite: 'datetime', pgsql: 'timestamptz(3)' }));
+    return new TimestampColumn<string | Date>(this.#spec(name, { sqlite: 'datetime', pgsql: 'timestamptz(3)', mysql: 'datetime(3)' as DataTypeExpression }));
   }
 
   /**
@@ -490,12 +497,12 @@ export class Blueprint {
 
   /** A big integer that references another table: `table.foreignId('user_id').constrained().cascadeOnDelete()`. */
   foreignId(name: string): ForeignIdColumn<number> {
-    return new ForeignIdColumn<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint' }));
+    return new ForeignIdColumn<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint', mysql: 'bigint' }));
   }
 
   /** A UUID that references another table: `table.foreignUuid('user_id').constrained().cascadeOnDelete()`. */
   foreignUuid(name: string): ForeignIdColumn<string> {
-    return new ForeignIdColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
+    return new ForeignIdColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression, mysql: 'char(36)' as DataTypeExpression }));
   }
 
   /**
@@ -660,14 +667,50 @@ export class Blueprint {
   }
 }
 
+/**
+ * The type of a column on MySQL. It is the declared one, except that a `text()` column in the primary key, a unique index or an index of
+ * the same blueprint is a `varchar(768)`: MySQL indexes no `longtext` in full. The compile and the projection both read it here.
+ */
+export function mysqlTypeOf(spec: ColumnSpec, blueprint: Blueprint): DataTypeExpression {
+  if (spec.type.mysql !== MYSQL_TEXT) return spec.type.mysql;
+  const keyed = spec.primary || spec.unique || blueprintParts(blueprint).indexes.some((index) => index.columns.includes(spec.name));
+  return keyed ? MYSQL_KEYED_TEXT : MYSQL_TEXT;
+}
+
+/** The type of a column for `driver` as the DDL of `blueprint` writes it. */
+export function typeOf(spec: ColumnSpec, driver: Driver, blueprint: Blueprint): DataTypeExpression {
+  switch (driver) {
+    case 'sqlite':
+      return spec.type.sqlite;
+    case 'pgsql':
+      return spec.type.pgsql;
+    case 'mysql':
+      return mysqlTypeOf(spec, blueprint);
+    default:
+      return unknownDriver(driver);
+  }
+}
+
 /** Applies a column's modifiers to Kysely's column builder for `driver`. */
-export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpression, (column: ColumnDefinitionBuilder) => ColumnDefinitionBuilder] {
+export function compileColumn(spec: ColumnSpec, driver: Driver, blueprint: Blueprint): [DataTypeExpression, (column: ColumnDefinitionBuilder) => ColumnDefinitionBuilder] {
   return [
-    spec.type[driver],
+    typeOf(spec, driver, blueprint),
     (column) => {
       let c = column;
       if (spec.primary) c = c.primaryKey();
-      if (spec.identity) c = driver === 'sqlite' ? c.autoIncrement() : c.generatedByDefaultAsIdentity();
+      if (spec.identity) {
+        switch (driver) {
+          case 'sqlite':
+          case 'mysql':
+            c = c.autoIncrement();
+            break;
+          case 'pgsql':
+            c = c.generatedByDefaultAsIdentity();
+            break;
+          default:
+            return unknownDriver(driver);
+        }
+      }
       if (!spec.nullable && !spec.primary) c = c.notNull();
       if (spec.default) c = c.defaultTo(defaultOf(spec.default, driver));
       if (spec.oneOf) c = c.modifyEnd(oneOfCheck(spec));
@@ -695,13 +738,33 @@ function oneOfCheck(spec: ColumnSpec): RawBuilder<unknown> {
 
 function defaultOf(value: NonNullable<ColumnSpec['default']>, driver: Driver): unknown {
   if ('now' in value) return now(driver);
-  if ('uuidv7' in value) return sql.raw(driver === 'sqlite' ? UUIDV7_SQLITE : UUIDV7_PGSQL);
+  if ('uuidv7' in value) {
+    switch (driver) {
+      case 'sqlite':
+        return sql.raw(UUIDV7_SQLITE);
+      case 'pgsql':
+        return sql.raw(UUIDV7_PGSQL);
+      case 'mysql':
+        return mysqlPending('A uuidv7 default');
+      default:
+        return unknownDriver(driver);
+    }
+  }
   return literal(value.value);
 }
 
 export function now(driver: Driver): Expression<string> {
-  // SQLite stores what the adapter reads back from Postgres: ISO-8601 in UTC, milliseconds.
-  return driver === 'sqlite' ? sql<string>`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` : sql<string>`now()`;
+  switch (driver) {
+    // SQLite stores what the adapter reads back from Postgres: ISO-8601 in UTC, milliseconds.
+    case 'sqlite':
+      return sql<string>`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
+    case 'pgsql':
+      return sql<string>`now()`;
+    case 'mysql':
+      return mysqlPending('A current-time default');
+    default:
+      return unknownDriver(driver);
+  }
 }
 
 function literal(value: unknown): unknown {

@@ -93,6 +93,12 @@ export type ConnectionOptions = {
     readonly poolMax?: number;
     readonly infrastructurePoolMax?: number;
     readonly managed?: boolean;
+} | {
+    readonly driver: 'mysql';
+    readonly url: string;
+    readonly poolMax?: number;
+    readonly infrastructurePoolMax?: number;
+    readonly managed?: boolean;
 };
 // Connections
 export declare class Connections {
@@ -724,7 +730,7 @@ export interface DataContext {
 // DeclaredTables
 type DeclaredTables<T> = 0 extends 1 & T ? [never] : [T] extends [never] ? [never] : [];
 // Driver
-export type Driver = 'sqlite' | 'pgsql';
+export type Driver = 'sqlite' | 'pgsql' | 'mysql';
 // ExposedToOthers
 export type ExposedToOthers<All, Owners, Exposed, M extends string> = {
     [T in keyof All as T extends keyof Exposed ? (T extends keyof Owners ? (Owners[T] extends M ? never : T) : never) : never]: ReadOnlyTable<All[T]>;
@@ -773,6 +779,7 @@ export declare const READ_METHODS: readonly ['selectFrom', 'selectNoFrom', 'fn',
 export interface RawStatements {
     readonly sqlite?: RawBuilder<unknown>;
     readonly pgsql?: RawBuilder<unknown>;
+    readonly mysql?: RawBuilder<unknown> | null;
 }
 // ReadMethods
 type ReadMethods = (typeof READ_METHODS)[number];

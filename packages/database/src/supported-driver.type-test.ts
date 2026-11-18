@@ -14,12 +14,15 @@ const named: 'sqlite' | 'pgsql' = fromVariable;
 // @ts-expect-error — `'sqlite' | 'pgsql'` is not `'sqlite'`
 const tooNarrow: 'sqlite' = fromVariable;
 
+// Every driver the connection types name can be listed.
+const withMysql: 'sqlite' | 'mysql' = requireDriver('mysql', ['sqlite', 'mysql'] as const, feature);
+
 // A name that is no driver does not compile in the list.
-// @ts-expect-error — `'mysql'` is not a driver this package knows
-requireDriver('mysql', ['sqlite', 'mysql'], feature);
+// @ts-expect-error — `'oracle'` is not a driver this package knows
+requireDriver('oracle', ['sqlite', 'oracle'], feature);
 // @ts-expect-error — a typo in the list
 requireDriver('sqlite', ['sqlite', 'pgsq'], feature);
 // @ts-expect-error — a list of plain strings
 requireDriver('sqlite', [] as string[], feature);
 
-export type Checked = [typeof narrowed, typeof alone, typeof named, typeof tooNarrow];
+export type Checked = [typeof narrowed, typeof alone, typeof named, typeof tooNarrow, typeof withMysql];

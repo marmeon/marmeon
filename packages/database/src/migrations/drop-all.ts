@@ -1,6 +1,8 @@
 import { sql, type Kysely } from 'kysely';
 import type { Driver } from '../schema/blueprint.ts';
+import { mysqlPending } from '../mysql-pending.ts';
 import { LOCK_TABLE } from './lock.ts';
+import { unknownDriver } from '../supported-driver.ts';
 
 /**
  * Empties a connection — `migrate:fresh`: its views, tables (the record of migrations and the tables 0.3 left included), and on Postgres
@@ -10,10 +12,20 @@ import { LOCK_TABLE } from './lock.ts';
 export async function dropAllTables(db: Kysely<any>, driver: Driver): Promise<void> {
   const present = await db.introspection.getTables();
   const tables = present.filter((t) => t.name !== LOCK_TABLE);
-  if (driver === 'pgsql') {
-    await dropPostgres(db, present.map((t) => t.schema).filter((schema): schema is string => !!schema), tables);
-    return;
+  switch (driver) {
+    case 'pgsql':
+      await dropPostgres(db, present.map((t) => t.schema).filter((schema): schema is string => !!schema), tables);
+      return;
+    case 'sqlite':
+      return dropSqlite(db, tables);
+    case 'mysql':
+      return mysqlPending('Emptying the database');
+    default:
+      return unknownDriver(driver);
   }
+}
+
+async function dropSqlite(db: Kysely<any>, tables: { name: string; isView: boolean }[]): Promise<void> {
   await sql`pragma foreign_keys = off`.execute(db);
   try {
     // `getTables()` lists views too, and `drop table` on a view is an error.

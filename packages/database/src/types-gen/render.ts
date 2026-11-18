@@ -29,7 +29,7 @@ const DATETIME = 'Timestamp';
 const DECIMAL = 'Decimal';
 
 /**
- * The TypeScript type of a column, by its declared (SQLite) or reported (Postgres) type — the type
+ * The TypeScript type of a column, by its declared (SQLite) or reported (Postgres, MySQL) type — the type
  * that actually arrives, after the connection's normalization (int8 → number, timestamps → ISO strings).
  */
 export function columnType(dataType: string, driver: Driver, jsonKey?: string): string | undefined {
@@ -40,9 +40,9 @@ export function columnType(dataType: string, driver: Driver, jsonKey?: string): 
   if (t === 'datetime' || t === 'timestamp' || t === 'timestamptz') return DATETIME;
   if (t === 'date') return 'string';
   if (t === 'numeric' || t === 'decimal') return DECIMAL;
-  if (t === 'blob' || t === 'bytea') return 'Uint8Array';
-  if (['integer', 'int', 'bigint', 'smallint', 'int2', 'int4', 'int8', 'real', 'float4', 'float8', 'double precision', 'double', 'float'].includes(t)) return 'number';
-  if (['text', 'varchar', 'character varying', 'char', 'character', 'bpchar', 'uuid', 'citext', 'clob'].includes(t)) return 'string';
+  if (['blob', 'bytea', 'longblob', 'mediumblob', 'tinyblob', 'varbinary', 'binary'].includes(t)) return 'Uint8Array';
+  if (['integer', 'int', 'bigint', 'smallint', 'tinyint', 'int2', 'int4', 'int8', 'real', 'float4', 'float8', 'double precision', 'double', 'float'].includes(t)) return 'number';
+  if (['text', 'varchar', 'character varying', 'char', 'character', 'bpchar', 'uuid', 'citext', 'clob', 'longtext', 'mediumtext', 'tinytext'].includes(t)) return 'string';
   return driver === 'sqlite' && /char|clob|text/.test(t) ? 'string' : undefined;
 }
 

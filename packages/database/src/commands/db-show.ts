@@ -1,9 +1,11 @@
 import type { CommandInput } from 'marmeon';
 import { printable } from '@marmeon/core/internal';
 import { sql } from 'kysely';
+import { mysqlPending } from '../mysql-pending.ts';
 import { inspectionConnection } from '../migrator-connection.ts';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';
+import { unknownDriver } from '../supported-driver.ts';
 
 /**
  * Shows where a connection points, the server version and its tables. The target is `describeConnection`'s text and
@@ -28,10 +30,20 @@ export class DbShowCommand {
     // The database as it is, also while migrations are pending: that is when one wants to look. It counts rows and reads none.
     const db = inspectionConnection(this.#connections, name);
 
-    const version =
-      settings.driver === 'sqlite'
-        ? `SQLite ${(await sql<{ v: string }>`select sqlite_version() as v`.execute(db)).rows[0]?.v}`
-        : ((await sql<{ v: string }>`select version() as v`.execute(db)).rows[0]?.v.split(' on ')[0] ?? 'PostgreSQL');
+    let version: string;
+    switch (settings.driver) {
+      case 'sqlite':
+        version = `SQLite ${(await sql<{ v: string }>`select sqlite_version() as v`.execute(db)).rows[0]?.v}`;
+        break;
+      case 'pgsql':
+        version = (await sql<{ v: string }>`select version() as v`.execute(db)).rows[0]?.v.split(' on ')[0] ?? 'PostgreSQL';
+        break;
+      case 'mysql':
+        // Not reached today: `Connections` refuses a MySQL connection when it is built, before this command has one.
+        return mysqlPending('db:show');
+      default:
+        return unknownDriver(settings);
+    }
     const tables = await db.introspection.getTables();
     const found = await Promise.all(
       tables.map(async (table) => {

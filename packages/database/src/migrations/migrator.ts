@@ -8,6 +8,9 @@ import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
 import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
+import { mysqlPending } from '../mysql-pending.ts';
+import { unknownDriver } from '../supported-driver.ts';
+import type { Driver } from '../schema/blueprint.ts';
 import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
 import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
@@ -129,7 +132,7 @@ function runner(db: Kysely<any>): CatalogQuery {
 }
 
 /** Table → its columns, on a connection (a catalog reading). */
-async function columnsOf(db: Kysely<any>, driver: 'sqlite' | 'pgsql'): Promise<Map<string, string[]>> {
+async function columnsOf(db: Kysely<any>, driver: Driver): Promise<Map<string, string[]>> {
   const { types } = await tableColumns(runner(db), driver);
   return new Map([...types].map(([table, columns]) => [table, [...columns.keys()]]));
 }
@@ -485,6 +488,8 @@ export class Migrator {
       }
       return { columns, extension, withheld: new Set() };
     }
+    if (driver === 'mysql') return mysqlPending('Reading the tables of the database');
+    if (driver !== 'sqlite') return unknownDriver(driver);
     if (file === undefined || !existsSync(file)) return { columns: new Map(), extension: new Set(), withheld: new Set() };
     const db = new DatabaseSync(file, { readOnly: true, timeout: 1000 });
     try {

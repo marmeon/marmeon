@@ -2,14 +2,18 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
+import { mysqlPending } from '../mysql-pending.ts';
 import { Blueprint, blueprintParts, compileColumn, foreignKeyName, oneOfCondition, oneOfName, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
+import { unknownDriver } from '../supported-driver.ts';
 
 /** What a `schema.raw()` step runs per driver; a driver without a statement runs nothing. */
 export interface RawStatements {
   readonly sqlite?: RawBuilder<unknown>;
   readonly pgsql?: RawBuilder<unknown>;
+  /** `null`: nothing on MySQL, said on purpose. */
+  readonly mysql?: RawBuilder<unknown> | null;
 }
 
 /** What a `schema.data()` callback is told besides the connection. */
@@ -159,7 +163,20 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
       return;
     case 'rename':
       await db.schema.alterTable(step.from).renameTo(step.to).execute();
-      if (step.indexes) await (driver === 'pgsql' ? renameNamesPgsql(db, driver, step.from, step.to) : renameIndexesSqlite(db, step.from, step.to));
+      if (step.indexes) {
+        switch (driver) {
+          case 'sqlite':
+            await renameIndexesSqlite(db, step.from, step.to);
+            break;
+          case 'pgsql':
+            await renameNamesPgsql(db, driver, step.from, step.to);
+            break;
+          case 'mysql':
+            return mysqlPending('Renaming a table with its indexes');
+          default:
+            return unknownDriver(driver);
+        }
+      }
       return;
     case 'raw': {
       const statement = step.statements[driver];
@@ -176,7 +193,7 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
 async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Promise<void> {
   const parts = blueprintParts(blueprint);
   let builder = db.schema.createTable(blueprint.table);
-  for (const spec of parts.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver));
+  for (const spec of parts.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver, blueprint));
   for (const { name, sql: condition } of parts.checks) builder = builder.addCheckConstraint(name, sql.raw(condition));
   await builder.execute();
   await createIndexes(db, blueprint);
@@ -191,7 +208,7 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, list
   for (const { from, to } of parts.renames) {
     await db.schema.alterTable(table).renameColumn(from, to).execute();
   }
-  for (const spec of parts.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver)).execute();
+  for (const spec of parts.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver, blueprint)).execute();
   for (const { column, nullable } of parts.nullability) {
     await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
   }

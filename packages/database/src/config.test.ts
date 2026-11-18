@@ -2,11 +2,12 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, env, resolveConfig } from '@marmeon/core';
 import { DatabaseConfig, defineConnection, describeConnection } from './config.ts';
+import { UnsupportedDriverError } from './supported-driver.ts';
 
 describe('defineConnection: a driver that is not exactly sqlite or pgsql', () => {
   it.each(['mysql', 'sqlite3', 'pgsql ', 'postgres', ''])('refuses %j (D29) and does not make it a Postgres connection', (driver) => {
     const connection = defineConnection('reporting', { env: env({}), resolve: () => ({ driver, url: 'postgres://u:p@127.0.0.1/db' }) as never });
-    expect(() => connection.resolve({})).toThrow(`[marmeon:D29] The connection "reporting" names the driver ${JSON.stringify(driver)}; use sqlite or pgsql.`);
+    expect(() => connection.resolve({})).toThrow(new UnsupportedDriverError(`[marmeon:D29] The connection "reporting" names the driver ${JSON.stringify(driver)}; use sqlite or pgsql.`));
   });
 });
 
@@ -20,6 +21,74 @@ describe('describeConnection: a password with @ or /', () => {
     ['postgres://:p@ss@db/shop', 'pgsql postgres://:***@db/shop'],
   ])('masks the password of %s whole', (url, expected) => {
     expect(describeConnection({ driver: 'pgsql', url })).toBe(expected);
+  });
+});
+
+describe('describeConnection: a URL that is not scheme://host/…', () => {
+  // `postgres:app:pw@h/db` has an opaque path and no host: it parses, and the password stays in the text a masking would see.
+  it.each(['postgres:app:hunter2x@127.0.0.1/app', 'postgres:///app?password=hunter2x', 'mysql:app:hunter2x@127.0.0.1/app', 'app:hunter2x@tcp(127.0.0.1)/app', 'mysql://app:hunter2x@127.0.0.1/app'])(
+    'says nothing of %s for the driver whose scheme it lacks',
+    (url) => {
+      for (const driver of ['pgsql', 'mysql'] as const) {
+        const text = describeConnection({ driver, url });
+        expect(text, `${driver} ${url}`).not.toContain('hunter2x');
+      }
+    },
+  );
+
+  it.each([
+    ['pgsql', 'postgres:app:hunter2x@127.0.0.1/app'],
+    ['pgsql', 'app:hunter2x@tcp(127.0.0.1)/app'],
+    ['pgsql', 'mysql://app:hunter2x@127.0.0.1/app'],
+    ['mysql', 'mysql:app:hunter2x@127.0.0.1/app'],
+    ['mysql', 'app:hunter2x@tcp(127.0.0.1)/app'],
+    ['mysql', 'postgres://app:hunter2x@127.0.0.1/app'],
+  ] as const)('is %s (invalid URL) for %s', (driver, url) => {
+    expect(describeConnection({ driver, url })).toBe(`${driver} (invalid URL)`);
+  });
+
+  it.each(['postgres:///app?host=/var/run/postgresql', 'postgresql:///app?host=/var/run/postgresql'])('keeps the libpq socket form %s, which has no host', (url) => {
+    const text = describeConnection({ driver: 'pgsql', url });
+    expect(text).toBe(`pgsql ${new URL(url).href.replace('%2F', '/')}`.replaceAll('%2F', '/'));
+    expect(text).not.toContain('invalid');
+  });
+
+  it('keeps the socket form with a password in the query string masked out', () => {
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres:///app?host=/var/run/postgresql&password=hunter2x' })).not.toContain('hunter2x');
+  });
+
+  it.each(['postgres:///app:hunter2x@h/db', 'postgres:///app@h/db?host=/tmp', 'postgres:///app?host=socket'])('refuses %s as no URL of a server, and shows no password', (url) => {
+    const text = describeConnection({ driver: 'pgsql', url });
+    expect(text).toBe('pgsql (invalid URL)');
+  });
+
+  it.each([
+    'postgres:///app%3Ahunter2x%40h/db?host=/tmp',
+    'postgres:///app%3ahunter2x%40h/db?host=/tmp',
+    'postgres:///app%3Ahunter2x%40h/db',
+    'postgres://us/er:hunter2x@db/shop',
+    'postgres://us/er%3Ahunter2x%40db/shop',
+    'postgres:///app:hunter2x/db?host=/tmp',
+    'postgres://db/app:hunter2x',
+    'postgres://db/%E0%A4%A?host=/tmp',
+    'postgres://a:b@db/x%3Ahunter2x%40h',
+    'postgres://a:b@db/x%3ahunter2x%40h',
+  ])('refuses %s: `@` or `:` in the decoded path, or a path that does not decode, hides userinfo', (url) => {
+    expect(describeConnection({ driver: 'pgsql', url })).toBe('pgsql (invalid URL)');
+    expect(describeConnection({ driver: 'mysql', url: url.replace('postgres:', 'mysql:') })).toBe('mysql (invalid URL)');
+  });
+
+  it.each([
+    ['postgres://app@[::1]:5432/shop', 'pgsql postgres://app@[::1]:5432/shop'],
+    ['postgres://db/shop%20two', undefined],
+  ])('still shows %s', (url, expected) => {
+    const text = describeConnection({ driver: 'pgsql', url });
+    expect(text).not.toContain('invalid');
+    if (expected) expect(text).toBe(expected);
+  });
+
+  it('masks the password of a mysql URL like that of a Postgres one', () => {
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:hunter2x@db:3307/shop?password=x9&sslmode=required' })).toBe('mysql mysql://app:***@db:3307/shop?sslmode=required');
   });
 });
 

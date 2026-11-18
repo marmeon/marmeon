@@ -44,6 +44,8 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
     if (!cleaned.has(file)) removeStaleDatabases(dirname(file), file);
     return { key: file, env: { DB_DRIVER: 'sqlite', DB_DATABASE: file } };
   }
+  // `requireDriver` refused mysql above; the line keeps this branch exhaustive.
+  if (options.driver === 'mysql') throw new Error('A test app with a database has no worker database on the mysql driver.');
   // Only Postgres is left: a driver added to the list above stops here until it has its own database.
   if (options.driver !== 'pgsql') throw new Error(`A test app with a database has no worker database on the ${String(options satisfies never)} driver.`);
   const url = new URL(options.url);
@@ -80,6 +82,9 @@ export function prepareWorkerDatabase(database: DatabaseModule, app: Application
         for (const suffix of ['', '-wal', '-shm']) rmSync(`${options.database}${suffix}`, { force: true });
       } else if (options.driver === 'pgsql') {
         await recreatePostgresDatabase(database, app, options.url, worker.adminUrl!);
+      } else if (options.driver === 'mysql') {
+        // `workerDatabase` refused it before the app booted; the branch throws, not skips, if a caller got here without it.
+        throw new Error('A test app with a database cannot prepare its database on the mysql driver.');
       } else {
         throw new Error(`A test app with a database cannot prepare its database on the ${String(options satisfies never)} driver.`);
       }
@@ -118,6 +123,9 @@ function sameDatabase(options: ReturnType<InstanceType<DatabaseModule['Connectio
       return options.database === worker.key;
     case 'pgsql':
       return new URL(options.url).host === new URL(worker.key).host && new URL(options.url).pathname === new URL(worker.key).pathname;
+    case 'mysql':
+      // `assertWorkerConnection` refuses it through `requireDriver` first; this throws too, so a caller that skipped that is refused.
+      throw new Error('A test app with a database cannot compare its connection on the mysql driver.');
     default:
       throw new Error(`A test app with a database cannot compare its connection on the ${String(options satisfies never)} driver.`);
   }

@@ -143,7 +143,7 @@ projection changed, so the tool is not announced as read-only; the server itself
 | --- | --- |
 | `table` | Only this table: a name of letters, digits and `_`, starting with a letter or `_`, at most 63 characters. |
 
-The document: `{ "format": 1, "projection": {…}, "warnings": [] }`. `projection` is the file as it is (its own `format` is 2): the version of
+The document: `{ "format": 1, "projection": {…}, "warnings": [] }`. `projection` is the file as it is (its own `format` is 3): the version of
 `@marmeon/database`, the migrations with their hashes, and the tables with columns (type per driver, `nullable`, `primary`, `default`),
 unique keys, indexes and foreign keys. With `table` only that table is under `tables`; an unknown name is an error that lists the tables (at most 50).
 A column with `"secret": true` holds a value that never belongs in an answer or a log.

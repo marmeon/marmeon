@@ -341,6 +341,15 @@ describe('what up() refuses while it builds the plan', () => {
     expect(() => schema.raw(sql`/* note */ drop table migrations`)).toThrow(/names "migrations", a table of the migrator/);
   });
 
+  it('checks the mysql statement of schema.raw() by the lexing rules of SQLite and Postgres, which MySQL does not share', () => {
+    const schema = new Schema();
+    expect(() => schema.raw({ mysql: sql`drop table migrations` })).toThrow(/\[marmeon:D4\]/);
+    // PINS TODAY'S BEHAVIOUR, not a guarantee: MySQL runs the text of a `/*! … */` comment (and reads a backslash in a string as an escape), but
+    // the check strips the comment as plain SQL does. Nothing runs a `mysql` statement yet; the step that
+    // does must replace the check with a stripping of MySQL's own, and this test with one that refuses it.
+    expect(() => schema.raw({ mysql: sql`/*! drop table migrations */ select 1` })).not.toThrow();
+  });
+
   it('refuses a table without columns, a drop in create() and a column named twice', () => {
     const schema = new Schema();
     expect(() => schema.create('empty', () => {})).toThrow('Table "empty" needs at least one column.');
