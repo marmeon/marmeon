@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm and `--agents`, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -26,6 +26,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
 export const SKIPPED = 75;
 export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode|ENOTCACHED/;
+/** The checks `marmeon doctor` reports, in order, in a migrated app on SQLite; every one must pass in both smoke apps. */
+const DOCTOR_CHECKS = ['node', 'packages', 'boot', 'route-types', 'package-migrations', 'db-types', 'migrations', 'readiness'];
 /** The Redis of compose.yaml (marmeon-redis) — the driver step of the starter kit talks to it. */
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL ?? 'redis://127.0.0.1:56379';
 /** What a missing AWS SDK says (optional peers, the exact command with the tested major). */
@@ -310,6 +312,30 @@ class Smoke {
 
   marmeon(...args: string[]): string {
     return this.run(join(this.app, 'node_modules/.bin/marmeon'), args);
+  }
+
+  /**
+   * `marmeon doctor --json`: exit 0, `ok: true`, and the checks it reports are exactly `expected`, in order, every one passed —
+   * a new doctor check turns this red until the list is updated. A red run prints the document (the CLI redacted it).
+   */
+  doctor(expected: readonly string[]): void {
+    const result = spawnSync(join(this.app, 'node_modules/.bin/marmeon'), ['doctor', '--json'], { cwd: this.app, env: this.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const fail = (why: string): never => {
+      throw new SmokeError(`marmeon doctor in the ${this.label} app: ${why} (exit ${result.status ?? result.signal})${result.error ? ` — ${result.error.message}` : ''}:\n${result.stdout ?? ''}${result.stderr ?? ''}`);
+    };
+    let document: { ok?: boolean; checks?: { name: string; status: string }[] } | null;
+    try {
+      document = JSON.parse(result.stdout ?? '');
+    } catch {
+      return fail('printed no JSON document');
+    }
+    if (typeof document !== 'object' || document === null) return fail('printed no JSON document');
+    if (result.status !== 0 || document.ok !== true) fail('did not pass');
+    const checks = document.checks ?? [];
+    const names = checks.map((check) => check.name);
+    if (names.join(',') !== expected.join(',')) fail(`reported the checks ${names.join(', ')}, expected ${expected.join(', ')}`);
+    const notPassed = checks.filter((check) => check.status !== 'passed').map((check) => check.name);
+    if (notPassed.length > 0) fail(`${notPassed.join(', ')} did not pass`);
   }
 
   /**
@@ -780,6 +806,8 @@ async function main(): Promise<number> {
       const output = pnpmApp.marmeon('migrate');
       if (!output.includes('Environment: development (APP_ENV=local, NODE_ENV from .env)')) throw new SmokeError(`marmeon migrate did not take NODE_ENV=development from .env:\n${output}`);
     });
+    // The kit is migrated by now (create-marmeon and the step above), so `migrations` has nothing pending; SQLite needs no service.
+    await pnpmApp.step('marmeon doctor --json → ok, every check passed', () => pnpmApp.doctor(DOCTOR_CHECKS));
     await pnpmApp.step('marmeon docs routing → the page of the installed version, node_modules/marmeon/docs/index.json', () => {
       if (!existsSync(join(app, 'node_modules/marmeon/docs/index.json'))) throw new SmokeError('the installed marmeon has no docs/index.json — the tarball must carry the documentation.');
       // The path is the app's own (node_modules/marmeon/…), not the version-bound one under .pnpm.
@@ -917,6 +945,7 @@ async function main(): Promise<number> {
       const npmAgents = readFileSync(join(npmApp.app, 'AGENTS.md'), 'utf8');
       if (!npmAgents.includes("`marmeon agents:install` adds the framework's skills") || npmAgents.includes('## Skills')) throw new SmokeError('the AGENTS.md of the npm app is not the block for an app without skills.');
     });
+    await npmApp.step('marmeon doctor --json → ok, every check passed', () => npmApp.doctor(DOCTOR_CHECKS));
     await npmApp.step('marmeon build without .env, the framework\'s stylesheet linked', () => {
       npmApp.buildWithoutEnv();
       checkStyles(npmApp.app, ['marmeon-layer']);
@@ -976,7 +1005,7 @@ async function main(): Promise<number> {
 
     const total = ((performance.now() - started) / 1000).toFixed(1);
     console.log(
-      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, lint, build, start, the notes demo, production install, the drivers: SMTP, Redis, S3 without its SDK) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
+      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, doctor, lint, build, start, the notes demo, production install, the drivers: SMTP, Redis, S3 without its SDK) and a blank app with npm (${npmTests} test, doctor, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
     );
     return 0;
   } catch (error) {
