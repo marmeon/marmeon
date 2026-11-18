@@ -634,5 +634,6 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - More than one instance or `--workers`: shared drivers for sessions, cache, queue, live updates and files, and Postgres instead
   of SQLite.
 - `storage/` on a volume.
+- `marmeon doctor` on the server after each deploy: it checks Node, the packages, the configuration, the generated files and the services ([the command](check.md#the-environment-marmeon-doctor)).
 
 The [security](security.md#your-checklist) page has the rest of the list.

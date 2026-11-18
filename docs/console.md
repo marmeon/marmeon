@@ -67,7 +67,7 @@ When the app fails to load, the message ends with the place in the app where it 
 
 What `marmeon` prints about a failed command or a failed start, including the hints on how to fix it, is masked with the app's [redactor](logging.md#patterns-of-your-own) (the core's lists and the `redact` additions of the app), as the messages of `marmeon check` are. Its control characters are written out, and the lines after the first of a command's error are indented. Three cases mask with the core's lists alone: an app whose definition cannot be read, a wrong option to a built-in command (found before the app starts; those messages quote no values), and the error of a built-in that does not start the app (`make:*`, `key:generate`, `build`). `marmeon` does not read the app's definition only to mask these.
 
-[`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
+[`marmeon check` and `marmeon doctor`](check.md#exit-codes) add a `3` for a check that could not run.
 
 A command that ends with an error (exit code 1 because it threw) is also handed to the app's [error reporters](errors.md#reporting)
 (`source` `command`), with the command's name and never its arguments, which can carry secrets. A wrong call (2), a cancelled question
@@ -108,6 +108,7 @@ pnpm marmeon route:list --json
 | --- | --- |
 | `route:list --json` | [Listing routes](routing.md#listing-routes) |
 | `check --json` | [Checking an app](check.md#json-output) |
+| `doctor --json` | [The environment](check.md#the-environment-marmeon-doctor) |
 | `schedule:list --json` | [Running the scheduler](scheduling.md#running-the-scheduler) |
 | `db:show --json` | [Inspecting a connection](database.md#inspecting-a-connection) |
 | `db:query --json` | [Querying a connection](database.md#querying-a-connection) |
@@ -157,6 +158,7 @@ start`, and `marmeon dev` refuses it.
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
 | `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint, the scan for imports of framework internals and the checks of the app (route and database types, boot, readiness), and exits with a code a script can read. See [checking an app](check.md). |
+| `doctor [--only=<names>] [--skip=<names>] [--json]` | Checks that this machine can run the app: Node, the versions of the packages, the configuration and `APP_KEY`, the generated files and the services, with the report and exit codes of `check`. See [the environment](check.md#the-environment-marmeon-doctor). |
 | `serve [--workers=N]` | The command behind `dev` and `start`; hidden from `marmeon list`, but its name and options are API. Run `marmeon start` rather than it. |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action, with `(island)` after an island's controller. See [listing routes](routing.md#listing-routes). |
