@@ -9,7 +9,8 @@ import type { JsonRun } from '../spawn.ts';
 
 // The doctor path runs `marmeon migrate:status` as a child; the stand-in answers in its place.
 const stand = vi.hoisted(() => ({ run: undefined as unknown as () => Promise<unknown> }));
-vi.mock('../spawn.ts', () => ({ runMarmeonJson: () => stand.run() }));
+// Partial: the app this check loads imports other exports of spawn.ts, and only the child run is stubbed.
+vi.mock('../spawn.ts', async (importOriginal) => ({ ...(await importOriginal<typeof import('../spawn.ts')>()), runMarmeonJson: () => stand.run() }));
 
 const { migrationsCheck } = await import('./migrations.ts');
 
