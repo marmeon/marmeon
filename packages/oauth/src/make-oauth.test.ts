@@ -261,6 +261,7 @@ describe('make:oauth', () => {
       ['modules', (root) => (cpSync(join(root, 'modules'), join(root, 'real-modules'), { recursive: true }), rmSync(join(root, 'modules'), { recursive: true }), symlinkSync(join(root, 'real-modules'), join(root, 'modules'), 'dir')), { force: false }],
       ['a directory of the module', (root) => (mkdirSync(join(root, 'modules/oauth')), mkdirSync(join(root, 'modules/elsewhere')), symlinkSync(join(root, 'modules/elsewhere'), join(root, 'modules/oauth/controllers'), 'dir')), { force: true }],
       ['a file of the module', (root) => (mkdirSync(join(root, 'modules/oauth')), symlinkSync(join(root, 'README.md'), join(root, 'modules/oauth/sign-in.test.ts'))), { force: true }],
+      ['bootstrap', (root) => (cpSync(join(root, 'bootstrap'), join(root, 'real-bootstrap'), { recursive: true }), rmSync(join(root, 'bootstrap'), { recursive: true }), symlinkSync(join(root, 'real-bootstrap'), join(root, 'bootstrap'), 'dir')), { force: false }],
       ['bootstrap/app.ts', (root) => (writeFileSync(join(root, 'real-app.ts'), readFileSync(join(root, 'bootstrap/app.ts'))), rmSync(join(root, 'bootstrap/app.ts')), symlinkSync(join(root, 'real-app.ts'), join(root, 'bootstrap/app.ts'))), { force: false }],
       ['marmeon-stubs.json', (root) => (writeFileSync(join(root, 'real-stubs.json'), '{"format":1,"sets":{}}\n'), symlinkSync(join(root, 'real-stubs.json'), join(root, 'marmeon-stubs.json'))), { force: false }],
     ];
@@ -348,10 +349,22 @@ describe('make:oauth', () => {
     });
   });
 
-  it('counts a hand-written import of the module as registered even when the modules list is not written out', async () => {
+  it('prints the registration when the module is imported but the modules list does not hold it', async () => {
     const root = blankApp();
     const bootstrap = join(root, 'bootstrap/app.ts');
     const source = readFileSync(bootstrap, 'utf8').replace('modules: [system]', 'modules: appModules').replace("import system from '#modules/system';", "import system from '#modules/system';\nimport oauth from '#modules/oauth';");
+    writeFileSync(bootstrap, source);
+    const { input, lines, spawned } = fakeInput(root);
+    expect(await new MakeOAuthCommand().handle(input)).toBe(0);
+    expect(readFileSync(bootstrap, 'utf8')).toBe(source);
+    expect(lines).toContain('Register the module in bootstrap/app.ts:');
+    expect(spawned).toEqual([]);
+  });
+
+  it('answers present, and prints no registration, when the module is already in the modules list', async () => {
+    const root = blankApp();
+    const bootstrap = join(root, 'bootstrap/app.ts');
+    const source = readFileSync(bootstrap, 'utf8').replace('modules: [system]', 'modules: [system, oauth]').replace("import system from '#modules/system';", "import system from '#modules/system';\nimport oauth from '#modules/oauth';");
     writeFileSync(bootstrap, source);
     const { input, lines } = fakeInput(root);
     expect(await new MakeOAuthCommand().handle(input)).toBe(0);

@@ -2,7 +2,7 @@ import { cpSync, existsSync, lstatSync, readdirSync, readFileSync } from 'node:f
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AUTH_STUBS } from '@marmeon/auth/internal';
-import { CommandArgumentsError, editDefinitionFile, importedBindings } from '@marmeon/core';
+import { CommandArgumentsError, editDefinitionFile } from '@marmeon/core';
 import { escapesRoot, readStubManifest, recordStubSet, removeLeftovers, STUB_MANIFEST } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
@@ -84,7 +84,12 @@ export class MakeOAuthCommand {
     }
     // `escapesRoot` refuses only a link that leaves the project. A link that stays inside it is refused as well: `cpSync` with `force` writes
     // through a link at its destination, so a link in the module (or at the two files it edits) would overwrite another file of the app.
-    for (const path of [join(input.root, 'modules'), target, ...written]) {
+    // Every directory between the project and a written file is checked too: a link at `bootstrap` would send the edit of app.ts elsewhere.
+    const ancestors = new Set<string>();
+    for (const path of written) {
+      for (let directory = join(path, '..'); directory !== input.root && relative(input.root, directory).startsWith('..') === false; directory = join(directory, '..')) ancestors.add(directory);
+    }
+    for (const path of [...ancestors, target, ...written]) {
       if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true) {
         input.output.error(`${relative(input.root, path).split(sep).join('/')} is a link, and make:oauth would write through it. Replace the link with a real file or directory, then run marmeon make:oauth again. Nothing was written.`);
         return 1;
@@ -184,12 +189,8 @@ function register(file: string): { status: 'added' | 'present' } | { status: 'ma
     add: { element: (names) => names.oauth!, position: 'last' },
     imports: [{ name: 'oauth', from: '#modules/oauth', kind: 'default' }],
   }, 'bootstrap/app.ts');
-  if (edited.status !== 'manual') return { status: edited.status };
-  // A list the editor cannot read may still be the app's own, with the module imported by hand: that is registered.
-  const binding = [...importedBindings(readFileSync(file, 'utf8'), 'bootstrap/app.ts').values()].find(
-    (candidate) => candidate.from === '#modules/oauth' && candidate.imported === 'default' && !candidate.typeOnly,
-  );
-  return binding ? { status: 'present' } : { status: 'manual', reason: edited.reason };
+  // An import alone is no proof that the module is in `modules` (`modules: appModules`, an unused import): only the editor's own answer counts.
+  return edited.status === 'manual' ? { status: 'manual', reason: edited.reason } : { status: edited.status };
 }
 
 function missingDependencies(root: string): string[] {
