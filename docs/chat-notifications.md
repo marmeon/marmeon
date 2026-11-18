@@ -337,3 +337,25 @@ A webhook address is accepted only in the form `https://host/path`: no spaces, q
 443. The host and the beginning of the path must belong to the driver, and the request goes through the
 [`HttpClient`](http-client.md), which refuses private addresses. A package can add a provider with its own driver, as
 [Chat drivers](drivers.md#chat-drivers) shows.
+
+## Testing
+
+A test app replaces `ChatNotifier` with a fake: `app.chat`. A message is checked as for real and recorded, and nothing is posted,
+so no request leaves the test. A test uses a made-up address in the driver's shape, because nothing is posted. `send()` and `queue()` are recorded apart, and a notification with the `chat` channel is recorded
+as queued when `app.notifications.deliver()` delivers it:
+
+```ts title="modules/orders/payment-alert.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('queues a message for the ops channel', async () => {
+  const app = await createTestApp(application, { env: { CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: 'ops=https://hooks.slack.com/services/test-ops' } });
+  await app.chat.queue({ to: 'ops', title: 'Payment failed', text: 'Order o-1 was declined.' });
+  app.chat.assertQueued({ to: 'ops', title: 'Payment failed' });
+});
+```
+
+`assertSent`, `assertQueued`, their counts and `assertNothingSent` and `assertNothingQueued` check the rest, as the
+[fakes](fakes.md#chat) page lists. `createTestApp(app, { chat: 'real' })` keeps the real notifier, and then `app.http` answers the
+webhook's request and `app.queue.work()` runs the queued job.

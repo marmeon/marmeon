@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -58,7 +58,12 @@ export function malformedCalls(text: string): string[] {
 }
 
 describe('the register of server error codes', () => {
-  const sources = readdirSync(PACKAGES, { recursive: true, encoding: 'utf8' })
+  // Each package's src/ only: a walk of `packages/` follows the workspace links of every node_modules, and each package a package
+  // depends on multiplies the paths.
+  const files = readdirSync(PACKAGES).flatMap((name) =>
+    existsSync(join(PACKAGES, name, 'src')) ? readdirSync(join(PACKAGES, name, 'src'), { recursive: true, encoding: 'utf8' }).map((file) => `${name}/src/${file}`) : [],
+  );
+  const sources = files
     .filter((file) => /^[^/]+\/src\/.*\.tsx?$/.test(file) && !/node_modules|\.test\.tsx?$|\.type-test\.ts$|__fixtures__|test-helpers|\/client\//.test(file))
     .map((file) => ({ file, text: withoutComments(readFileSync(join(PACKAGES, file), 'utf8')) }));
   const used = sources.flatMap(({ text }) =>

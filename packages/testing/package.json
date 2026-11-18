@@ -64,6 +64,7 @@
   },
   "peerDependencies": {
     "@marmeon/auth": "workspace:*",
+    "@marmeon/chat-notifications": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/devtools": "workspace:*",
     "@marmeon/fetch": "workspace:*",
@@ -79,6 +80,9 @@
   },
   "peerDependenciesMeta": {
     "@marmeon/auth": {
+      "optional": true
+    },
+    "@marmeon/chat-notifications": {
       "optional": true
     },
     "@marmeon/database": {
@@ -121,6 +125,7 @@
   "devDependencies": {
     "@marmeon/auth": "workspace:*",
     "@marmeon/cache": "workspace:*",
+    "@marmeon/chat-notifications": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/devtools": "workspace:*",
     "@marmeon/fetch": "workspace:*",

@@ -392,4 +392,4 @@ it('notifies the person a note is shared with', async () => {
 ```
 
 `assertSentTimes`, `assertNotSent` and `assertNothingSent` check the rest. `createTestApp(app, { notifications: 'real' })` keeps the
-real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md#notifications) page covers every fake.
+real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md#notifications) page covers every fake. A message of the `chat` channel is recorded on `app.chat`, as [fakes](fakes.md#chat) shows.

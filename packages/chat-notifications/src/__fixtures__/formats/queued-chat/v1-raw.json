@@ -1,0 +1,23 @@
+{
+  "to": {
+    "name": "ops"
+  },
+  "content": {
+    "text": "Deploy done",
+    "fields": [],
+    "links": [],
+    "raw": {
+      "slack": {
+        "blocks": [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*Deploy* done"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
