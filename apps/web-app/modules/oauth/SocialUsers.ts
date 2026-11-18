@@ -38,7 +38,7 @@ export class SocialUsers implements SocialUserProvider<User> {
   async create(social: SocialUser & { readonly email: string }, options: { readonly emailVerified: boolean }): Promise<Result<User, { readonly kind: 'duplicate' }>> {
     const email = social.email.trim().toLowerCase();
     const name = [social.name, social.nickname, email.split('@')[0]].map((candidate) => candidate?.trim() ?? '').find((candidate) => candidate !== '') ?? email;
-    const created = await this.#users.register({ name: name.slice(0, 255), email, password: null, locale: this.#translator.locale });
+    const created = await this.#users.register({ name: Array.from(name).slice(0, 255).join(''), email, password: null, locale: this.#translator.locale });
     if (!created.ok) return err(created.error);
     if (!options.emailVerified) return created;
     await this.#users.markEmailVerified(created.value.id, new Date(this.#clock.now()));

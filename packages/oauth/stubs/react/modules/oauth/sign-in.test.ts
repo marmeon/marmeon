@@ -348,6 +348,15 @@ describe('signing in at a provider', { timeout: 30_000 }, () => {
     app.mail.assertQueuedCount(SocialAccountExistsMail, 2);
   });
 
+  it('cuts a long name by characters, so an emoji at the limit stays whole', async () => {
+    // The package caps what a provider sends at 255 characters already; the bridge cuts for itself too, so it never depends on that.
+    const users = app.container.createScope().make(SocialUsers);
+    const name = `${'a'.repeat(254)}😀😀`;
+    const created = await users.create({ provider: 'github', id: '42', email: 'ada@example.com', emailVerified: true, name, nickname: null, avatar: null, raw: {}, tokens: {} } as never, { emailVerified: true });
+    expect(created.ok).toBe(true);
+    expect((await users.findByEmail('ada@example.com'))!.user.name).toBe(`${'a'.repeat(254)}😀`);
+  });
+
   it('says so when the provider shares no address, and makes nobody', async () => {
     const oauth = fakeOAuth(app).user('github', { id: '42', email: null });
     (await signIn(app.keepingCookies(), oauth)).assertRedirect('/login').assertGuest().assertFlashed('toast', { kind: 'error', message: 'The provider shared no e-mail address, and this app needs one. Sign in another way.' });
