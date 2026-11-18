@@ -13,6 +13,32 @@ export class ChatError extends Error {
   }
 }
 
+/**
+ * Thrown when a driver of JavaScript could not be built (its factory threw) or threw while it rendered: the driver may work next time, so
+ * the `chat` channel of notifications retries the delivery. It keeps what the driver threw as `cause` (which may be anything, `undefined`
+ * included: tell it by its class). A driver that breaks its contract without throwing is a plain `ChatError`.
+ * @internal
+ */
+export class ChatDriverError extends ChatError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'ChatDriverError';
+  }
+}
+
+/**
+ * Thrown by `chat.queue()` for an address its driver's rule does not accept. The address is data (a recipient entered it), so the `chat`
+ * channel of notifications skips such a message with a warning instead of failing the delivery. Every other `ChatError` is a mistake of
+ * the code or the configuration, except a `ChatDriverError`: a driver that threw, which a retry may fix.
+ * @internal
+ */
+export class ChatAddressError extends ChatError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChatAddressError';
+  }
+}
+
 /** Thrown when a webhook did not take a message. Retrying helps for `throttled` and `unavailable` only (see `permanent`). */
 export class ChatDeliveryError extends ChatError {
   readonly reason: ChatDeliveryReason;

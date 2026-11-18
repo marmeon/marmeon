@@ -540,7 +540,7 @@ describe('ChatPoster: what a driver returns has a size', () => {
 });
 
 describe('ChatPoster: a driver that cannot be built', () => {
-  it('is built once: a factory that throws is called once and gives the same error again', async () => {
+  it('is built again after a failure: a factory that throws is called by the next delivery, and a driver that was built stays', async () => {
     let calls = 0;
     const { deliver, http } = setup({
       driver: 'slack',
@@ -549,10 +549,25 @@ describe('ChatPoster: a driver that cannot be built', () => {
     http.respond(/./, reply(200));
     const first = await deliver({ url: 'https://chat.example.com/hooks/abc', driver: 'mm' }).then(() => undefined, (caught: unknown) => caught);
     const second = await deliver({ url: 'https://chat.example.com/hooks/abc', driver: 'mm' }).then(() => undefined, (caught: unknown) => caught);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     expect(first).toBeInstanceOf(ChatError);
-    expect(second).toBe(first);
-    expect((first as Error).message).toBe('The chat driver "mm" could not be built.');
+    expect(second).not.toBe(first);
+    expect((second as Error).message).toBe('The chat driver "mm" could not be built.');
+  });
+
+  it('delivers once the factory works: it threw on the first attempt and succeeds on the second, in the same poster', async () => {
+    let calls = 0;
+    const { deliver, http } = setup({
+      driver: 'slack',
+      custom: { mm: () => { calls += 1; if (calls === 1) throw new Error('not yet'); return { hosts: ['chat.example.com'], paths: ['/hooks/'], render: () => ({ json: { text: 'x' } }) }; } },
+    });
+    http.respond(/./, reply(200));
+    const to = { url: 'https://chat.example.com/hooks/abc', driver: 'mm' };
+    await expect(deliver(to)).rejects.toThrow('could not be built');
+    await deliver(to);
+    await deliver(to);
+    http.assertSentCount(2);
+    expect(calls).toBe(2);
   });
 });
 

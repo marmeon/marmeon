@@ -2,7 +2,7 @@ import type { Duration, StandardSchemaV1 } from '@marmeon/core';
 import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import type { ChatJson } from './driver.ts';
-import { ChatDeliveryError, ChatError } from './errors.ts';
+import { ChatDeliveryError, ChatDriverError, ChatError } from './errors.ts';
 import { normalizeMessage } from './message.ts';
 import type { ChatPoster } from './poster.ts';
 import type { ChatTargets } from './targets.ts';
@@ -74,6 +74,8 @@ export class SendQueuedChatMessage {
         if (error.permanent) return job.fail(error);
         throw error;
       }
+      // a driver that threw may work next time: the job's tries and backoff apply
+      if (error instanceof ChatDriverError) throw error;
       // a destination or a driver this worker lacks, or content that does not hold: trying again will not change it
       if (error instanceof ChatError) return job.fail(error);
       throw error;

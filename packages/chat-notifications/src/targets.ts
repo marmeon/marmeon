@@ -1,7 +1,7 @@
 import { checkSinkAddress, checkWebhook, describeDestination, hostPatternProblem, NAME, pathPrefixProblem } from './destination.ts';
 import type { ChatDriver, ChatDriverContext, ChatDriverFactory, ChatJson } from './driver.ts';
 import { BUILT_IN_DRIVERS } from './drivers/index.ts';
-import { ChatError } from './errors.ts';
+import { ChatDriverError, ChatError } from './errors.ts';
 import { checkedJson, type ChatContent, type ChatDestination } from './message.ts';
 
 /** Where one message goes: the address, the driver that formats it, and whether anything is sent (`CHAT_DRIVER=log` sends nothing). */
@@ -79,7 +79,7 @@ export function renderFor(driver: ChatDriver, name: string, content: ChatContent
     request = driver.render(content, raw);
   } catch (error) {
     if (error instanceof ChatError) throw error;
-    throw new ChatError(`The chat driver "${name}" failed to render the message.`, { cause: error });
+    throw new ChatDriverError(`The chat driver "${name}" failed to render the message.`, { cause: error });
   }
   try {
     if (typeof request !== 'object' || request === null) throw new ChatError(`The chat driver "${name}" returned no request: render() returns { json, search? }.`);
@@ -131,8 +131,6 @@ export interface TargetsOptions {
 export class ChatTargets {
   readonly #options: TargetsOptions;
   readonly #drivers = new Map<string, ChatDriver>(Object.entries(BUILT_IN_DRIVERS));
-  /** A driver that failed to build is not built again: later lookups get the same error. */
-  readonly #failed = new Map<string, ChatError>();
 
   constructor(options: TargetsOptions) {
     this.#options = options;
@@ -143,7 +141,7 @@ export class ChatTargets {
     return [...new Set([...Object.keys(BUILT_IN_DRIVERS), ...this.#options.custom().keys()])];
   }
 
-  /** The driver registered under `name`, built once and checked when it comes from a provider; a name nobody brought is a `ChatError`. */
+  /** The driver registered under `name`, built once and checked when it comes from a provider (a build that failed is tried again by the next call); a name nobody brought is a `ChatError`. */
   driver(name: string): ChatDriver {
     const known = this.#drivers.get(name);
     if (known !== undefined) return known;
@@ -151,13 +149,11 @@ export class ChatTargets {
     if (factory === undefined) {
       throw new ChatError(`The chat driver ${NAME.test(name) ? `"${name}" ` : ''}is not known. Known: ${this.names().join(', ')}.`);
     }
-    const failed = this.#failed.get(name);
-    if (failed !== undefined) throw failed;
     let built: unknown;
     try {
       built = factory(this.#options.context(name));
     } catch (error) {
-      throw this.#fail(name, new ChatError(`The chat driver "${name}" could not be built.`, { cause: error }));
+      throw new ChatDriverError(`The chat driver "${name}" could not be built.`, { cause: error });
     }
     // a getter or a proxy that throws is a driver that breaks its contract, like a factory that throws; its error stays out (it may hold data)
     let read: ReturnType<typeof readDriver>;
@@ -166,15 +162,10 @@ export class ChatTargets {
     } catch {
       read = { problem: 'reading it failed.' };
     }
-    if ('problem' in read) throw this.#fail(name, new ChatError(`The chat driver "${name}" must return a ChatDriver: ${read.problem}`));
+    if ('problem' in read) throw new ChatError(`The chat driver "${name}" must return a ChatDriver: ${read.problem}`);
     const { driver } = read;
     this.#drivers.set(name, driver);
     return driver;
-  }
-
-  #fail(name: string, error: ChatError): ChatError {
-    this.#failed.set(name, error);
-    return error;
   }
 
   /** Where `to` points. Throws `ChatError` for a named destination `CHAT_WEBHOOKS` does not list and for a driver nobody brought. */

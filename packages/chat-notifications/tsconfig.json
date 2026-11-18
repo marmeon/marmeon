@@ -20,6 +20,12 @@
     },
     {
       "path": "../encryption"
+    },
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../notifications"
     }
   ]
 }

@@ -22,16 +22,30 @@ declare module '@marmeon/core' {
 }
 
 type QueueModule = typeof import('@marmeon/queue');
+type NotificationsModule = typeof import('@marmeon/notifications');
 
-/** @marmeon/queue is an optional peer: only `chat.queue()` needs it. `load` is the import, replaceable by a test. @internal */
-export async function importQueue(load: () => Promise<QueueModule> = () => import('@marmeon/queue')): Promise<QueueModule | undefined> {
+/**
+ * Imports an optional peer: `undefined` only when the package itself is missing (the importer's path may name it, and so may another
+ * missing package's error). `load` is the import, replaceable by a test.
+ */
+async function importOptional<T>(load: () => Promise<T>, name: string): Promise<T | undefined> {
   try {
     return await load();
   } catch (error) {
-    // only the package itself missing: the importer's path may name it, and so may another missing package's error
-    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && /Cannot find (?:package|module) '@marmeon\/queue'/.test(String((error as Error).message))) return undefined;
+    const missing = new RegExp(`Cannot find (?:package|module) '${name.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}'`);
+    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && missing.test(String((error as Error).message))) return undefined;
     throw error;
   }
+}
+
+/** @marmeon/queue is an optional peer: only `chat.queue()` needs it. `load` is the import, replaceable by a test. @internal */
+export function importQueue(load: () => Promise<QueueModule> = () => import('@marmeon/queue')): Promise<QueueModule | undefined> {
+  return importOptional(load, '@marmeon/queue');
+}
+
+/** @marmeon/notifications is an optional peer: only the `chat` channel needs it. `load` is the import, replaceable by a test. @internal */
+export function importNotifications(load: () => Promise<NotificationsModule> = () => import('@marmeon/notifications')): Promise<NotificationsModule | undefined> {
+  return importOptional(load, '@marmeon/notifications');
 }
 
 /**
@@ -132,6 +146,13 @@ export class ChatServiceProvider implements ServiceProvider {
     }
     const queue = await importQueue();
     if (queue && container.has(queue.JobRegistry)) container.make(queue.JobRegistry).add([SendQueuedChatMessage], '@marmeon/chat-notifications', { framework: true });
+    const notifications = await importNotifications();
+    if (notifications && container.has(notifications.NotificationChannels)) {
+      // loaded only now: the channel imports @marmeon/notifications, which an app without notifications does not have
+      const { ChatChannel } = await import('./notifications.ts');
+      // `scope.make`: the delivery's scope builds the notifier, so an override of `ChatNotifier` in that scope applies
+      container.make(notifications.NotificationChannels).add('chat', (scope) => new ChatChannel(scope.make(ChatNotifier), scope.make(Logger).child({ channel: 'chat' })));
+    }
     if (config.protected && config.driver === 'log') container.make(Logger).warn(CHAT_LOG_WARNING, { driver: 'log' });
   }
 }
