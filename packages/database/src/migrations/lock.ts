@@ -6,7 +6,10 @@ import { isUniqueViolation } from '../errors.ts';
 import { assertLockReadable, LOCK_TABLE } from '../migration-state.ts';
 import { describeConnection } from '../config.ts';
 import { connectionError } from '../driver.ts';
+import { mysqlPending } from '../mysql-pending.ts';
 import { importPg, postgresConnection } from '../postgres.ts';
+import type { Driver } from '../schema/blueprint.ts';
+import { unknownDriver } from '../supported-driver.ts';
 
 export { LOCK_TABLE };
 
@@ -92,7 +95,7 @@ export interface HeldLock {
 }
 
 export interface LockOptions {
-  readonly driver: 'sqlite' | 'pgsql';
+  readonly driver: Driver;
   /** Postgres: the URL the lock's own connection opens (the app's pool is not used). */
   readonly url?: string;
   /** Postgres: the connection's name, for the message when `pg` is missing. */
@@ -119,8 +122,16 @@ export const MigrationLock = {
   async acquire(db: Kysely<any>, options: LockOptions): Promise<HeldLock> {
     const owner = options.owner ?? ownerOf(process.pid);
     const waitMs = (options.waitSeconds ?? 60) * 1000;
-    if (options.driver === 'pgsql') return acquirePostgres(options, owner, waitMs);
-    return acquireSqlite(db, owner, waitMs, options.now ?? (() => new Date()), options.onTakeover);
+    switch (options.driver) {
+      case 'pgsql':
+        return acquirePostgres(options, owner, waitMs);
+      case 'sqlite':
+        return acquireSqlite(db, owner, waitMs, options.now ?? (() => new Date()), options.onTakeover);
+      case 'mysql':
+        return mysqlPending('The migration lock');
+      default:
+        return unknownDriver(options.driver);
+    }
   },
 };
 

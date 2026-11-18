@@ -1,6 +1,8 @@
 import { DummyDriver, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler, sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
-import { touchesSecrets } from './connections.ts';
+import { Connections, touchesSecrets } from './connections.ts';
+import { silent } from './__fixtures__/databases.ts';
+import { UnsupportedDriverError } from './supported-driver.ts';
 
 const db = new Kysely<any>({
   dialect: {
@@ -29,5 +31,25 @@ describe('touchesSecrets', () => {
   it('flags raw SQL that names the table in any case', () => {
     expect(touchesSecrets(sql`select * from USERS`.compile(db), secrets)).toBe(true);
     expect(touchesSecrets(sql`select 1`.compile(db), secrets)).toBe(false);
+  });
+});
+
+describe('a connection of a driver that does not run yet', () => {
+  const build = (driver: string, url: string) => () => new Connections({ connections: { default: { driver, url } as never }, root: '/', logger: silent });
+
+  it.each([
+    ['mysql://app:hunter2x@127.0.0.1/app', 'mysql mysql://app:***@127.0.0.1/app'],
+    ['postgres://app:hunter2x@127.0.0.1/app', 'mysql (invalid URL)'],
+    ['mysql:app:hunter2x@127.0.0.1/app', 'mysql (invalid URL)'],
+    ['app:hunter2x@tcp(127.0.0.1)/app', 'mysql (invalid URL)'],
+  ])('refuses mysql when the connections are built, naming the masked target of %s', (url, described) => {
+    const construct = build('mysql', url);
+    expect(construct).toThrow(UnsupportedDriverError);
+    expect(construct).toThrow(new UnsupportedDriverError(`[marmeon:D29] The connection "default" (${described}) does not run on MySQL yet.`));
+    expect(construct).not.toThrow(/hunter2x/);
+  });
+
+  it.each(['oracle', 'pgsql ', ''])('refuses the driver %j of a connection built without defineConnection with D29, and gives it no Postgres dialect', (driver) => {
+    expect(build(driver, 'postgres://app@127.0.0.1/app')).toThrow(new UnsupportedDriverError(`[marmeon:D29] The database driver ${JSON.stringify(driver)} is not one Marmeon knows; use sqlite or pgsql.`));
   });
 });

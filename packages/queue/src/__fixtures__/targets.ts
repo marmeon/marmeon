@@ -9,7 +9,7 @@ import { CACHE_MIGRATION } from '@marmeon/cache/internal';
 import type { Clock, Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
-import { runMigration } from '@marmeon/database/internal';
+import { requireDriver, runMigration } from '@marmeon/database/internal';
 import { RedisConnections } from '@marmeon/redis';
 import { QUEUE_MIGRATION } from '../commands/failed.ts';
 import type { FailedJobStore, QueueDriver } from '../driver.ts';
@@ -132,7 +132,7 @@ export async function queueUnderTest(kind: QueueKind, options: { retryAfterSecon
     return { driver: new MemoryQueueDriver({ clock, retryAfterSeconds }), failed: new MemoryFailedJobStore(), clock, target, connections: undefined, close: drop };
   }
   const connections = databaseConnections(connectionOptions(target));
-  const connection = { db: connections.get(), driver: connections.options().driver };
+  const connection = { db: connections.get(), driver: requireDriver(connections.options().driver, ['sqlite', 'pgsql'] as const, { what: 'A queue under test' }) };
   const redis = target.kind === 'redis' ? redisConnections(target.url, target.prefix) : undefined;
   return {
     driver: redis ? new RedisQueueDriver(redis.get(), { retryAfterSeconds, clock: clock as Clock }) : new DatabaseQueueDriver(connection, { retryAfterSeconds, clock: clock as Clock }),

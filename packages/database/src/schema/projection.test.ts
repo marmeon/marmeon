@@ -70,6 +70,76 @@ describe('the projection of a plan', () => {
     expect(table(projection, 'posts').foreignKeys).toEqual([{ column: 'user_id', references: 'users', referenced: 'id', onDelete: 'cascade', inverse: 'written'}]);
   });
 
+  it('records the type each method has on MySQL', () => {
+    const projection = project((schema) => {
+      schema.create('kinds', (t) => {
+        t.id();
+        t.string('a', 40);
+        t.text('b');
+        t.integer('c');
+        t.bigInteger('d');
+        t.float('e');
+        t.decimal('f', 10, 3);
+        t.boolean('g');
+        t.json('h');
+        t.uuid('i');
+        t.binary('j');
+        t.date('k');
+        t.timestamp('l');
+        t.foreignId('m');
+        t.foreignUuid('n');
+      });
+    });
+    const types = Object.fromEntries(table(projection, 'kinds').columns.map((column) => [column.name, column.type.mysql]));
+    expect(types).toEqual({
+      id: 'bigint',
+      a: 'varchar(40)',
+      b: 'longtext',
+      c: 'integer',
+      d: 'bigint',
+      e: 'double',
+      f: 'numeric(10, 3)',
+      g: 'boolean',
+      h: 'json',
+      i: 'char(36)',
+      j: 'longblob',
+      k: 'date',
+      l: 'datetime(3)',
+      m: 'bigint',
+      n: 'char(36)',
+    });
+  });
+
+  // Only the type is under test. Two varchar(768) columns in one unique index are 6144 bytes in utf8mb4, more than the 3072 InnoDB allows a key,
+  // so that index would not be created on MySQL: the step that writes MySQL's DDL refuses it before the first statement.
+  it('writes text() as varchar(768) on MySQL when the same blueprint puts it in a key, and as longtext otherwise', () => {
+    const projection = project((schema) => {
+      schema.create('keyed', (t) => {
+        t.id();
+        t.text('unique_alone').unique();
+        t.text('in_index');
+        t.text('in_pair');
+        t.text('free');
+        t.text('slug').primary();
+        t.index('in_index');
+        t.unique(['in_pair', 'free'], 'keyed_pair');
+      });
+      schema.create('loose', (t) => {
+        t.id();
+        t.text('body');
+      });
+    });
+    const types = (name: string) => Object.fromEntries(table(projection, name).columns.map((column) => [column.name, column.type]));
+    expect(types('keyed')).toMatchObject({
+      unique_alone: { mysql: 'varchar(768)', sqlite: 'text', pgsql: 'text' },
+      in_index: { mysql: 'varchar(768)' },
+      in_pair: { mysql: 'varchar(768)' },
+      free: { mysql: 'varchar(768)' },
+      slug: { mysql: 'varchar(768)' },
+    });
+    expect(types('loose').body).toEqual({ sqlite: 'text', pgsql: 'text', mysql: 'longtext' });
+  });
+
   it('refuses to create a name twice, but takes it again after a drop', () => {
     const create: Up = (schema) => schema.create('users', (t) => t.id());
     expect(() => project(create, create)).toThrow(/creates table "users", which an earlier migration created/);
@@ -372,6 +442,25 @@ describe('the projection of a plan', () => {
     ])('refuses %s, which SQLite and Postgres read differently (D19)', (_, column, value) => {
       const create = (s: Schema) => s.create('flags', (t) => { t.id(); t.boolean('active'); t.integer('rank'); t.string('stage'); t.index('id', { where: { [column]: value } as never }); });
       expect(() => project(create)).toThrow(/\[marmeon:D19\].*where of index "flags_id_index"/);
+    });
+
+    it.each([
+      ['a number', 3, false],
+      ['a boolean', true, false],
+      ['a string', 'live', true],
+    ])('on a text() column, which is longtext on MySQL, takes a string and refuses %s: it is a string column on every driver', (_, value, accepted) => {
+      const create = (s: Schema) => s.create('notes', (t) => { t.id(); t.text('state'); t.index('id', { where: { state: value } as never }); });
+      if (accepted) expect(table(project(create), 'notes').indexes).toHaveLength(1);
+      else expect(() => project(create)).toThrow(/\[marmeon:D19\].*where of index "notes_id_index"/);
+    });
+
+    it('joins a text() column to a string() column by foreign(), as both hold strings', () => {
+      const projection = project(
+        (s) => s.create('owners', (t) => { t.id(); t.string('code').unique(); }),
+        (s) => s.create('refs', (t) => { t.id(); t.text('code'); }),
+        (s) => s.alter('refs', (t) => t.foreign('code').constrained('owners', 'code')),
+      );
+      expect(table(projection, 'refs').foreignKeys).toEqual([expect.objectContaining({ column: 'code', references: 'owners', referenced: 'code' })]);
     });
 
     it('takes a whole number as a string for an integer column, and leaves a uuid column alone whatever the value', () => {

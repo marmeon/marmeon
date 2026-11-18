@@ -153,8 +153,10 @@ export class Schema {
    */
   raw(statement: RawBuilder<unknown> | RawStatements): void {
     // A `RawBuilder` has `execute`; the per-driver form is a plain object.
-    const statements: RawStatements = 'execute' in statement ? { sqlite: statement, pgsql: statement } : statement;
-    for (const one of [statements.sqlite, statements.pgsql]) if (one) this.#rawAllowed(rawText(one.toOperationNode() as RawNode));
+    const statements: RawStatements = 'execute' in statement ? { sqlite: statement, pgsql: statement, mysql: statement } : statement;
+    // `#rawAllowed` reads a statement by the lexing rules of SQLite and Postgres. A `mysql` statement is read the same way, which MySQL does not: its
+    // `/*! … */` comments are executed and a backslash escapes inside a string. Run a `mysql` statement only after lexing it by MySQL's rules.
+    for (const one of [statements.sqlite, statements.pgsql, statements.mysql]) if (one) this.#rawAllowed(rawText(one.toOperationNode() as RawNode));
     this.#add({ kind: 'raw', statements });
   }
 }

@@ -1,7 +1,9 @@
 import { printable, withCode } from '@marmeon/core/internal';
-import type { Kysely } from 'kysely';
+import type { ColumnDefinitionBuilder, Kysely } from 'kysely';
 import { tableColumns, type CatalogQuery } from './introspection.ts';
+import { mysqlPending } from './mysql-pending.ts';
 import type { Driver } from './schema/blueprint.ts';
+import { unknownDriver } from './supported-driver.ts';
 
 // Whether the database has the migrations the code knows. The schema itself comes from the migrations (the projection), so this is
 // the one thing a process still asks the database about its schema: which migrations ran. See `docs/migrations.md#how-the-migrator-keeps-track`.
@@ -152,10 +154,22 @@ export function assertLockReadable(columns: ReadonlyMap<string, readonly string[
 
 /** Creates the record of migrations — what the first `migrate` on a database does. */
 export async function createMigrationsTable(db: Kysely<any>, driver: Driver): Promise<void> {
-  const sqlite = driver === 'sqlite';
+  let id: ['integer' | 'bigint', (c: ColumnDefinitionBuilder) => ColumnDefinitionBuilder];
+  switch (driver) {
+    case 'sqlite':
+      id = ['integer', (c) => c.primaryKey().autoIncrement()];
+      break;
+    case 'pgsql':
+      id = ['bigint', (c) => c.primaryKey().generatedByDefaultAsIdentity()];
+      break;
+    case 'mysql':
+      return mysqlPending('The record of migrations');
+    default:
+      return unknownDriver(driver);
+  }
   await db.schema
     .createTable(MIGRATIONS_TABLE)
-    .addColumn('id', sqlite ? 'integer' : 'bigint', (c) => (sqlite ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity()))
+    .addColumn('id', ...id)
     .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
     .addColumn('module', 'varchar(255)', (c) => c.notNull())
     .addColumn('batch', 'integer', (c) => c.notNull())

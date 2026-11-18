@@ -1,5 +1,7 @@
 import { withCode } from '@marmeon/core/internal';
+import { mysqlPending } from './mysql-pending.ts';
 import type { Driver } from './schema/blueprint.ts';
+import { unknownDriver } from './supported-driver.ts';
 
 // What the schema says about relations — read from the database's catalog or taken from the projection of the migrations, and turned
 // into relations by ONE function: the connection at runtime and `db:types` must agree on every name.
@@ -101,15 +103,16 @@ export async function introspect(run: CatalogQuery, driver: Driver): Promise<Int
 
 /** Every table's columns with their types, in order, and the nullable ones (`table\0column`). Views are left out on both drivers. */
 export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{ types: Map<string, Map<string, string>>; nullable: Set<string>; extension: Set<string> }> {
-  const columnRows =
-    driver === 'sqlite'
-      ? await run<ColumnRow>(`select m.name as table_name, p.name as column_name, lower(p.type) as type, (p."notnull" = 0 and p.pk = 0) as nullable
-          from sqlite_master m join pragma_table_info(m.name) p where m.type = 'table' order by m.name, p.cid`)
-      : // Every schema of the search path, not only the first that exists: with `"$user", public` and an empty schema named like the role,
-        // `current_schema()` is that empty one while `public.users` is what an unqualified name finds. `to_regclass` picks the relation an unqualified name finds, so a table in an earlier schema hides the same name in a later one — also for an extension's.
-        // pg_catalog, not information_schema: that shows a role only the tables it has privileges on, and a table it cannot see is a table
-        // the check after a migration would take for missing. Here a table without privileges is seen, and the query on it is refused.
-        await run<ColumnRow>(`select c.relname::text as table_name, a.attname::text as column_name,
+  let columnRows: ColumnRow[];
+  if (driver === 'sqlite') {
+    columnRows = await run<ColumnRow>(`select m.name as table_name, p.name as column_name, lower(p.type) as type, (p."notnull" = 0 and p.pk = 0) as nullable
+          from sqlite_master m join pragma_table_info(m.name) p where m.type = 'table' order by m.name, p.cid`);
+  } else if (driver === 'pgsql') {
+    // Every schema of the search path, not only the first that exists: with `"$user", public` and an empty schema named like the role,
+    // `current_schema()` is that empty one while `public.users` is what an unqualified name finds. `to_regclass` picks the relation an unqualified name finds, so a table in an earlier schema hides the same name in a later one — also for an extension's.
+    // pg_catalog, not information_schema: that shows a role only the tables it has privileges on, and a table it cannot see is a table
+    // the check after a migration would take for missing. Here a table without privileges is seen, and the query on it is refused.
+    columnRows = await run<ColumnRow>(`select c.relname::text as table_name, a.attname::text as column_name,
           case when t.typname = 'numeric' then 'numeric(' || (case when a.atttypmod = -1 then 0 else ((a.atttypmod - 4) >> 16) & 65535 end) || ', ' || (case when a.atttypmod = -1 then 0 else (a.atttypmod - 4) & 65535 end) || ')' else t.typname::text end as type,
           not a.attnotnull as nullable,
           exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') as extension
@@ -120,6 +123,11 @@ export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{
           where n.nspname = any(current_schemas(false)) and c.oid = pg_catalog.to_regclass(quote_ident(c.relname))
             and c.relkind in ('r', 'p') and a.attnum > 0 and not a.attisdropped
           order by c.relname, a.attnum`);
+  } else if (driver === 'mysql') {
+    return mysqlPending('Reading the columns of the database');
+  } else {
+    return unknownDriver(driver);
+  }
   const types = new Map<string, Map<string, string>>();
   const nullable = new Set<string>();
   const extension = new Set<string>();
@@ -156,6 +164,8 @@ async function foreignKeyRows(run: CatalogQuery, driver: Driver): Promise<{ tabl
       .filter((row) => !composite.has(`${row.table_name}\0${row.id}`))
       .map((row) => ({ table: row.table_name, column: row.from, references: row.references, referenced: row.to }));
   }
+  if (driver === 'mysql') return mysqlPending('Reading the foreign keys of the database');
+  if (driver !== 'pgsql') return unknownDriver(driver);
   const rows = await run<{ table_name: string; foreign_table: string; columns: string[]; foreign_columns: string[] }>(`
     select c.conrelid::regclass::text as table_name, c.confrelid::regclass::text as foreign_table,
       array(select a.attname::text from unnest(c.conkey) with ordinality k(n, i) join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.n order by k.i) as columns,
@@ -195,7 +205,10 @@ async function uniqueSets(run: CatalogQuery, driver: Driver): Promise<Map<string
     const primary = new Map<string, string[]>();
     for (const row of keys) primary.set(row.table_name, [...(primary.get(row.table_name) ?? []), row.column_name]);
     for (const [table, columns] of primary) add(table, columns);
+  } else if (driver === 'mysql') {
+    return mysqlPending('Reading the unique indexes of the database');
   } else {
+    if (driver !== 'pgsql') return unknownDriver(driver);
     const rows = await run<{ table_name: string; columns: string[] }>(`
       select i.indrelid::regclass::text as table_name,
         array(select a.attname::text from unnest(i.indkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.n order by k.o) as columns
@@ -215,7 +228,10 @@ async function primaryKeyColumns(run: CatalogQuery, driver: Driver): Promise<Map
       `select m.name as table_name, p.name as column_name from sqlite_master m join pragma_table_info(m.name) p where m.type = 'table' and p.pk > 0 order by m.name, p.pk`,
     );
     for (const row of rows) keys.set(row.table_name, [...(keys.get(row.table_name) ?? []), row.column_name]);
+  } else if (driver === 'mysql') {
+    return mysqlPending('Reading the primary keys of the database');
   } else {
+    if (driver !== 'pgsql') return unknownDriver(driver);
     const rows = await run<{ table_name: string; columns: string[] }>(`
       select i.indrelid::regclass::text as table_name,
         array(select a.attname::text from unnest(i.indkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.n order by k.o) as columns

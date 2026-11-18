@@ -139,3 +139,52 @@ describe('a tinker session (in-process)', () => {
     });
   });
 });
+
+describe('the database line of the tinker banner', () => {
+  const Connections = token<unknown>('Connections');
+  const banner = async (options: unknown) => {
+    const app = await createApplication({ root: tempDir('marmeon-tinker-banner-'), discover: false, modules: [] }, { env: {}, override: (container) => container.instance(Connections, { options: () => options }) });
+    return new TinkerSession(app).database();
+  };
+
+  it.each([
+    [{ driver: 'sqlite', database: 'storage/app.sqlite' }, 'sqlite (storage/app.sqlite)'],
+    [{ driver: 'pgsql', url: 'postgres://app:hunter2x@db:5433/shop' }, 'pgsql (db:5433/shop)'],
+    [{ driver: 'mysql', url: 'mysql://app:hunter2x@db:3307/shop' }, 'mysql (db:3307/shop)'],
+  ])('names the driver and where, never the password: %j', async (options, expected) => {
+    expect(await banner(options)).toBe(expected);
+  });
+
+  it.each([
+    ['pgsql', 'postgres:app:hunter2x@db/shop'],
+    ['pgsql', 'mysql://app:hunter2x@db/shop'],
+    ['mysql', 'mysql:app:hunter2x@db/shop'],
+    ['mysql', 'app:hunter2x@tcp(db)/shop'],
+    ['mysql', 'postgres://app:hunter2x@db/shop'],
+  ])('shows %s (invalid URL) for %s, with nothing of it', async (driver, url) => {
+    expect(await banner({ driver, url })).toBe(`${driver} (invalid URL)`);
+  });
+
+  it('shows the libpq socket form, which has no host', async () => {
+    expect(await banner({ driver: 'pgsql', url: 'postgresql:///app?host=/var/run/postgresql' })).toBe('pgsql (/app)');
+  });
+
+  it.each(['postgres:///app:hunter2x@h/db', 'postgres:///app@h/db?host=/tmp', 'postgres:///app?host=socket'])('refuses %s as no URL of a server', async (url) => {
+    expect(await banner({ driver: 'pgsql', url })).toBe('pgsql (invalid URL)');
+  });
+
+  it.each(['postgres:///app%3Ahunter2x%40h/db?host=/tmp', 'postgres:///app%3ahunter2x%40h/db?host=/tmp', 'postgres://us/er:hunter2x@db/shop', 'postgres://db/app:hunter2x', 'postgres://db/%E0%A4%A'])(
+    'refuses %s: the decoded path holds `@` or `:`, or does not decode',
+    async (url) => {
+      expect(await banner({ driver: 'pgsql', url })).toBe('pgsql (invalid URL)');
+    },
+  );
+
+  it('refuses a password with `@` in it, whose rest would land in the path the banner prints', async () => {
+    expect(await banner({ driver: 'pgsql', url: 'postgres://app:p@ss/w0rd@db/shop' })).toBe('pgsql (invalid URL)');
+  });
+
+  it('refuses a driver it does not know', async () => {
+    await expect(banner({ driver: 'oracle', url: 'oracle://h/db' })).rejects.toThrow(/^\[marmeon:D29\] The database driver "oracle" is not one Marmeon knows\.$/);
+  });
+});

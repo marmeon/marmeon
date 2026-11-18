@@ -13,6 +13,8 @@ import { MarmeonDriver, DatabaseConnectionError, multipleConnections, UncheckedD
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { onlyMigratorTables, registerInspection, registerMigrator } from './migrator-connection.ts';
 import { SchemaMetadata, type SchemaSource } from './metadata.ts';
+import { mysqlPending } from './mysql-pending.ts';
+import { unknownDriver } from './supported-driver.ts';
 import { MigrationStateError } from './migration-state.ts';
 import { migrationFiles } from './migrations/files.ts';
 import { createPostgresDialect } from './postgres.ts';
@@ -61,6 +63,19 @@ export interface QueryEvent {
   readonly error?: unknown;
 }
 
+/** Refuses a connection whose driver cannot open one: `mysql` (named in the types, not run yet) and a driver the types do not name. */
+function openable(name: string, options: ConnectionOptions): void {
+  switch (options.driver) {
+    case 'sqlite':
+    case 'pgsql':
+      return;
+    case 'mysql':
+      return mysqlPending(`The connection "${name}" (${describeConnection(options)})`);
+    default:
+      return unknownDriver(options);
+  }
+}
+
 /** The app's database connections — opened on first use, closed on shutdown: `connections.get<ReportingTables>('reporting')`. */
 export class Connections {
   readonly #options: ReadonlyMap<string, ConnectionOptions>;
@@ -84,6 +99,8 @@ export class Connections {
 
   /** @internal — the service provider builds it; an app gets it from the container. */
   constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application; now?: () => number }) {
+    // At boot, not at the first query: a definition made by hand can carry a driver that no connection can open yet.
+    for (const [name, connection] of Object.entries(options.connections)) openable(name, connection);
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });
@@ -347,13 +364,22 @@ export class Connections {
   }
 
   #dialect(options: ConnectionOptions, name: string): Dialect {
-    if (options.driver === 'sqlite') return createSqliteDialect(this.#sqlitePath(options.database));
-    return createPostgresDialect({
-      url: options.url,
-      name,
-      poolMax: options.poolMax,
-      onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: this.#redactor.text(error.message) }),
-    });
+    // Written for every driver by name: a connection built without `defineConnection` (a JavaScript caller, a cast) with another driver gets no Postgres.
+    switch (options.driver) {
+      case 'sqlite':
+        return createSqliteDialect(this.#sqlitePath(options.database));
+      case 'pgsql':
+        return createPostgresDialect({
+          url: options.url,
+          name,
+          poolMax: options.poolMax,
+          onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: this.#redactor.text(error.message) }),
+        });
+      case 'mysql':
+        return mysqlPending(`The connection "${name}" (${describeConnection(options)})`);
+      default:
+        return unknownDriver(options);
+    }
   }
 
   /** @internal — the file of a SQLite connection as the app opens it; `undefined` for an in-memory database and for Postgres. */

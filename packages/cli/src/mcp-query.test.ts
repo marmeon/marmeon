@@ -204,6 +204,13 @@ describe('query with the child process replaced', () => {
     expect(await QUERY_TOOL.run({ sql: 'select 1' }, context())).toEqual({ failure: 'The query was refused.' });
   });
 
+  it('passes on the safeguard refusal of a MySQL connection (exit 3; the app does not boot with one)', async () => {
+    // The text of `MYSQL_QUERY_REFUSAL` in @marmeon/database, which its own test pins; the CLI does not depend on that package.
+    const reason = '[marmeon:D29] db:query does not run on MySQL yet.';
+    run.mockResolvedValueOnce({ ...exited, code: 3, stderrTail: `connected to mysql://app@127.0.0.1/app\n✗ db:query refused: ${reason}\n` });
+    expect(await QUERY_TOOL.run({ sql: 'select 1' }, context())).toEqual({ failure: `The query was refused: ${reason}` });
+  });
+
   it('never passes on stderr: a fixed sentence for a failure of the database', async () => {
     run.mockResolvedValueOnce({ ...exited, code: 1, stderrTail: 'unable to open database file /home/max/app/storage/database.sqlite\n' });
     const result = (await QUERY_TOOL.run({ sql: 'select 1' }, context())) as { failure: string };

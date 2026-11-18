@@ -188,8 +188,10 @@ builder in a data step.
 
 ```ts
 schema.raw(sql`create index notes_title_lower_index on notes (lower(title))`);
-schema.raw({ sqlite: sql`…`, pgsql: sql`…` }); // one statement per driver; a driver without one skips the step
+schema.raw({ sqlite: sql`…`, pgsql: sql`…`, mysql: sql`…` }); // one statement per driver; a driver without one skips the step
 ```
+
+The plain form runs the statement on every driver. The `mysql` key is reserved: nothing runs it yet.
 
 A statement that names one of the migrator's tables stops with error D4 when the plan is built; that is a check of its words, not a
 parse. Otherwise Marmeon does not look into the statement, but it looks at the result: a statement that renames or drops a table or
@@ -205,7 +207,7 @@ Every migration runs in a transaction, so `create index concurrently` of Postgre
 
 `Migrator.projection()` computes the schema the migrations describe from their plans alone, without a database and without running
 anything: every table with its columns in order, their types, nullability, defaults and secret marks, its unique column sets, indexes
-(a [partial index](#partial-indexes) with its `where`, and never as a unique set) and foreign keys (with `onDelete` and `inverse`), the lists of `oneOf()` and the checks of `check()`, its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. It
+(a [partial index](#partial-indexes) with its `where`, and never as a unique set) and foreign keys (with `onDelete` and `inverse`), the lists of `oneOf()` and the checks of `check()`, its `timestamps()`, `softDeletes()` and `notPivot()` marks and the module that created it. Each column's type is kept for SQLite, Postgres and MySQL; on MySQL a `text()` column is a `varchar(768)` when the same blueprint puts it in a key, and an index that a later `alter()` adds to a `text()` column does not change its type. It
 replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then dropped checks, renamed columns, new columns, `notNull()`
 and `nullable()` changes (by the column's name after the renames), new checks, new indexes, retired columns and last the dropped columns. A retired column stays in it, marked, and is left out of everything Marmeon derives from it except the secret marks. `schema.raw()` and
 `schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run

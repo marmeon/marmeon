@@ -4,6 +4,7 @@ import { glob } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EventDispatcher, EventRegistry, Translator, type Application, type Container, type Key } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 
 /** A helper of the session — what `.ls` lists. */
@@ -21,7 +22,7 @@ export interface Helper {
 /** What `--sandbox` needs of `Connections` (@marmeon/database) — found by name, so the CLI does not depend on the package. */
 interface SandboxConnections {
   transaction<R>(callback: () => Promise<R>): Promise<R>;
-  options(name?: string): { readonly driver: 'sqlite'; readonly database: string } | { readonly driver: 'pgsql'; readonly url: string };
+  options(name?: string): { readonly driver: 'sqlite'; readonly database: string } | { readonly driver: 'pgsql' | 'mysql'; readonly url: string };
 }
 
 type RepositoryClass = (new (...args: any[]) => object) & { readonly table: string };
@@ -267,9 +268,29 @@ export class TinkerSession {
     const connections = this.#connections();
     if (!connections) return undefined;
     const options = connections.options('default');
-    if (options.driver === 'sqlite') return `sqlite (${options.database})`;
-    const url = new URL(options.url);
-    return `pgsql (${url.host}${url.pathname})`;
+    switch (options.driver) {
+      case 'sqlite':
+        return `sqlite (${options.database})`;
+      case 'pgsql':
+      case 'mysql': {
+        // The password is not in what is shown, but a URL that does not parse as `scheme://host/…` (an opaque path such as
+        // `postgres:user:pw@h/db`) is not looked into at all.
+        let url = URL.parse(options.url);
+        const schemes = options.driver === 'mysql' ? ['mysql:'] : ['postgres:', 'postgresql:'];
+        let path = '';
+        try {
+          path = url === null ? '' : decodeURIComponent(url.pathname);
+        } catch {
+          url = null;
+        }
+        // A host, or the libpq socket form `scheme:///db?host=/dir`; either way no `@` or `:` in the decoded path, where userinfo would hide (the banner masks nothing, it prints the path).
+        const server = url !== null && !/[@:]/.test(path) && (url.host !== '' || (url.href.startsWith(`${url.protocol}///`) && (url.searchParams.get('host') ?? '').startsWith('/')));
+        if (url === null || !server || !schemes.includes(url.protocol)) return `${options.driver} (invalid URL)`;
+        return `${options.driver} (${url.host}${url.pathname})`;
+      }
+      default:
+        throw new Error(withCode('D29', `The database driver ${JSON.stringify((options as { driver: unknown }).driver)} is not one Marmeon knows.`));
+    }
   }
 
   /** The app's name, for the banner: its package.json `name`, or its directory. */

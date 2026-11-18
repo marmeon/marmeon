@@ -10,7 +10,7 @@ import type { McpTool, ToolContext } from './tools.ts';
 const FILE = '.marmeon/schema.json';
 
 /** The format of {@link FILE} this version reads. */
-const FILE_FORMAT = 2;
+const FILE_FORMAT = 3;
 
 const NO_DATABASE: ToolDocument = { format: 1, projection: null, warnings: ['This app has no @marmeon/database.'] };
 
