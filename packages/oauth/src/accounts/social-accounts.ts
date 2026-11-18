@@ -333,16 +333,30 @@ export class SocialAccounts {
     if (credentials === undefined) return refused;
     // Before the user is let in: an account unlinked since it was found does not sign in.
     if (!(await this.#store.touch(known.id, social))) return refused;
-    const outcome = await this.#auth.signIn(credentials.user);
-    // Looked up once more now that the sign-in ran, whatever it came to: the account may have been unlinked, or moved, since `touch`. A
-    // sign-in for a link that is gone is undone, a waiting second factor included (`signOut()` drops a pending sign-in too).
-    const still = await this.#store.find(known.provider, known.providerId);
-    if (still === undefined || still.id !== known.id || String(still.userId) !== String(known.userId)) {
+    return this.#enterAs(credentials.user, known, refused, false);
+  }
+
+  /**
+   * Signs `user` in and looks the link `linked` up once more now that the sign-in ran, whatever it came to: the account may have been
+   * unlinked, or moved, since it was written or touched (a password reset removes the links of an unconfirmed address and rotates the
+   * credentials). A sign-in for a link that is gone is undone, a waiting second factor included (`signOut()` drops a pending sign-in
+   * too), and `refused` is answered.
+   */
+  async #enterAs(user: AuthUser, linked: SocialAccountRecord, refused: Result<never, SocialSignInError>, created: boolean): Promise<Result<SocialSignIn, SocialSignInError>> {
+    const outcome = await this.#auth.signIn(user);
+    let still: SocialAccountRecord | undefined;
+    try {
+      still = await this.#store.find(linked.provider, linked.providerId);
+    } catch (error) {
+      // The sign-in stands otherwise: the session is saved on a throw.
+      await this.#auth.signOut();
+      throw error;
+    }
+    if (still === undefined || still.id !== linked.id || String(still.userId) !== String(linked.userId)) {
       await this.#auth.signOut();
       return refused;
     }
-    if (outcome !== 'signed-in') return ok({ kind: 'two-factor-required' });
-    return ok({ kind: 'signed-in', user: credentials.user, created: false });
+    return ok(outcome === 'signed-in' ? { kind: 'signed-in', user, created } : { kind: 'two-factor-required' });
   }
 
   /** Rule 2, strict: links the account to the user who has the address, only when both addresses are verified and the user has no second factor. */
@@ -352,16 +366,25 @@ export class SocialAccounts {
     // Both sides must vouch for the address, and a user with a second factor never signs in around it: they sign in first, then link.
     if (!providerVerified || local.emailVerified !== true) return refused;
     if ((await this.#factors.factors(userId)).length > 0) return refused;
-    const linked = await this.#store.create(userId, social);
-    if (!linked.ok) {
-      if (linked.error.kind === 'provider-linked') return refused;
+    const email = subject.email as string;
+    // Written and checked in one transaction: no other request sees the link before the address has been checked again, and an err (or a
+    // throw) rolls it back. The address may have changed, or lost its verification, since the lookup; the user is asked again the way the
+    // lookup asked, and anything but the same user with a verified address undoes the link.
+    const written = await this.#connections.transaction(async () => {
+      const linked = await this.#store.create(userId, social);
+      if (!linked.ok) return err({ kind: 'not-written' as const, error: linked.error });
+      const now = await this.#socialUsers().findByEmail(email);
+      if (now === undefined || now === null || now.emailVerified !== true || String(idOf(now.user)) !== String(userId)) return err({ kind: 'address-changed' as const });
+      return ok(linked.value);
+    });
+    if (!written.ok) {
+      if (written.error.kind === 'address-changed' || written.error.error.kind === 'provider-linked') return refused;
       // The account was linked between the lookup and the insert: asked again once, it is rule 1.
       const known = await this.#store.find(subject.provider, subject.id);
       return known === undefined ? refused : this.#enter(known, social, providerVerified);
     }
     await this.#events.dispatch(new SocialAccountLinked(local.user, subject.provider, subject.email, social.nickname));
-    const outcome = await this.#auth.signIn(local.user);
-    return ok(outcome === 'signed-in' ? { kind: 'signed-in', user: local.user, created: false } : { kind: 'two-factor-required' });
+    return this.#enterAs(local.user, written.value, refused, false);
   }
 
   /** Rule 3: the user and the link in one transaction. An address taken in the meantime rolls the user back. */
@@ -376,13 +399,12 @@ export class SocialAccounts {
       if (!linked.ok) return err({ kind: 'account-exists' as const, providerVerified });
       // As the registration of the app does, in the same transaction: the verification mail listens to it.
       await this.#events.dispatch(new Registered(made.value));
-      return ok(made.value);
+      return ok({ user: made.value, row: linked.value });
     });
     if (!created.ok) return err(created.error);
-    const user = created.value;
+    const { user, row } = created.value;
     await this.#events.dispatch(new SocialAccountLinked(user, subject.provider, subject.email, social.nickname));
-    const outcome = await this.#auth.signIn(user);
-    return ok(outcome === 'signed-in' ? { kind: 'signed-in', user, created: true } : { kind: 'two-factor-required' });
+    return this.#enterAs(user, row, err({ kind: 'account-exists' as const, providerVerified }), true);
   }
 
   /** The app's `SocialUserProvider`, asked for when a user is looked up, made or checked. One that is bound but cannot be built throws its own error. */

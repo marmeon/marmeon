@@ -349,6 +349,93 @@ describe.each(drivers)('SocialAccounts sign-in on %s', (driver) => {
     expect(w.state.signedIn).toBeUndefined();
   });
 
+  it('signs the user out again when the link vanished between its insert and the sign-in (rule 2)', async () => {
+    await w.add({ id: 1, email: 'ada@example.com', emailVerified: true });
+    w.state.afterAuthSignIn = async () => void (await w.store.removeAll(1 as AuthUserId));
+    expect(await w.accounts.signIn(marked('sign-in'))).toEqual({ ok: false, error: { kind: 'account-exists', providerVerified: true } });
+    expect(w.state.signedIn).toBeUndefined();
+    expect(await accountsOf(1)).toEqual([]);
+    // The link existed when the event went out.
+    expect(w.state.events.length).toBe(1);
+  });
+
+  it('signs the user out again when the link vanished between the registration and the sign-in (rule 3)', async () => {
+    w.state.afterAuthSignIn = async () => void (await connections.get<any>().deleteFrom('social_accounts').execute());
+    expect(await w.accounts.signIn(marked('sign-in'))).toEqual({ ok: false, error: { kind: 'account-exists', providerVerified: true } });
+    expect(w.state.signedIn).toBeUndefined();
+  });
+
+  it('drops a waiting second-factor sign-in when the link of a registration is gone by then', async () => {
+    // Rule 3 asks for factors only at the sign-in: the user the registration made has a second factor.
+    vi.spyOn(w.factors, 'factors').mockResolvedValue(['totp']);
+    w.state.afterAuthSignIn = async () => void (await connections.get<any>().deleteFrom('social_accounts').execute());
+    const made = await w.accounts.signIn(marked('sign-in'));
+    expect(made).toEqual({ ok: false, error: { kind: 'account-exists', providerVerified: true } });
+    expect(w.state.pending).toBeUndefined();
+    expect(w.state.signedIn).toBeUndefined();
+  });
+
+  it('refuses a rule 2 link whose address changed hands after the lookup: no row, no event, nobody signed in', async () => {
+    await w.add({ id: 1, email: 'ada@example.com', emailVerified: true });
+    const other = await w.add({ id: 2, email: 'two@example.com', emailVerified: true });
+    const cases: ((answer: { user: any; emailVerified: boolean } | undefined) => { user: any; emailVerified: boolean } | undefined)[] = [
+      () => undefined, // the address is gone
+      () => ({ user: other, emailVerified: true }), // another user has it now
+      (answer) => answer && { ...answer, emailVerified: false }, // verification lost
+      () => null as never, // a provider that answers loosely
+    ];
+    for (const relookup of cases) {
+      w.state.lookups = 0;
+      w.state.relookup = relookup;
+      expect(await w.accounts.signIn(marked('sign-in'))).toEqual({ ok: false, error: { kind: 'account-exists', providerVerified: true } });
+      expect(await accountsOf(1)).toEqual([]);
+      expect(await w.store.find('github', 'gh-1')).toBeUndefined();
+      expect(w.state.events).toEqual([]);
+      expect(w.state.signedIn).toBeUndefined();
+      expect(w.state.signIns).toEqual([]);
+    }
+  });
+
+  it('rolls the link back when the second lookup of the address throws: no row, no event, nobody signed in', async () => {
+    await w.add({ id: 1, email: 'ada@example.com', emailVerified: true });
+    w.state.relookup = () => {
+      throw new Error('lookup broke');
+    };
+    await expect(w.accounts.signIn(marked('sign-in'))).rejects.toThrow('lookup broke');
+    expect(await w.store.find('github', 'gh-1')).toBeUndefined();
+    expect(w.state.events).toEqual([]);
+    expect(w.state.signedIn).toBeUndefined();
+    expect(w.state.signIns).toEqual([]);
+  });
+
+  it('writes the link and looks the address up again in one transaction, and a refusal leaves no row a later sign-in could use', async () => {
+    // A second request cannot be run beside the transaction on sqlite's single writer; what is proved here is the transaction itself:
+    // the second lookup runs inside it (so the row is not committed before the check), and its rollback leaves nothing behind.
+    await w.add({ id: 1, email: 'ada@example.com', emailVerified: true });
+    w.state.relookup = (answer) => answer && { ...answer, emailVerified: false };
+    expect(await w.accounts.signIn(marked('sign-in'))).toEqual({ ok: false, error: { kind: 'account-exists', providerVerified: true } });
+    expect(w.state.lookupInTransaction).toEqual([false, true]);
+    w.state.lookups = 0;
+    expect(await w.accounts.signIn(marked('sign-in'))).toEqual({ ok: false, error: { kind: 'account-exists', providerVerified: true } });
+    expect(w.state.signedIn).toBeUndefined();
+    expect(await w.store.find('github', 'gh-1')).toBeUndefined();
+  });
+
+  it('signs nobody in when the lookup of the link after the sign-in throws, and keeps no waiting second factor', async () => {
+    await w.add({ id: 1 });
+    w.factors.factorsOf.set(1, ['totp']);
+    await w.store.create(1 as AuthUserId, marked('sign-in'));
+    const find = w.store.find.bind(w.store);
+    vi.spyOn(w.store, 'find').mockImplementation(async (provider, id) => {
+      // The first lookup finds the account; the one after `auth.signIn` breaks.
+      if (w.state.signIns.length > 0) throw new Error('find broke');
+      return find(provider, id);
+    });
+    await expect(w.accounts.signIn(marked('sign-in'))).rejects.toThrow('find broke');
+    expect(w.state.signedIn).toBeUndefined();
+    expect(w.state.pending).toBeUndefined();
+  });
+
   it('reads the profile once: an accessor on the object cannot show the store another identity than the checks saw', async () => {
     await w.add({ id: 1 });
     await w.store.create(1 as AuthUserId, marked('sign-in'));

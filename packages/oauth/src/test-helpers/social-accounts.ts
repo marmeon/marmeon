@@ -106,6 +106,11 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     heldAtEvent: [] as (boolean | undefined)[],
     /** Runs after `findByEmail` answered and before `create` runs: a parallel request. */
     afterLookup: undefined as (() => Promise<void>) | undefined,
+    /** How often `findByEmail` ran, and what it answers from the second run on instead of the truth (the user changed in between). */
+    lookups: 0,
+    relookup: undefined as ((answer: { user: TestUser; emailVerified: boolean } | undefined) => { user: TestUser; emailVerified: boolean } | undefined) | undefined,
+    /** Whether each `findByEmail` ran inside a transaction. */
+    lookupInTransaction: [] as boolean[],
     createCalls: 0,
     duplicate: false,
     boundSocialUsers: true,
@@ -162,7 +167,10 @@ export function world(connections: Connections, options: WorldOptions = {}) {
   const socialUsers: SocialUserProvider<TestUser> = {
     findByEmail: async (email) => {
       const found = [...users.values()].find((user) => user.email === email);
-      const answer = found === undefined ? undefined : { user: found, emailVerified: found.emailVerified };
+      const truth = found === undefined ? undefined : { user: found, emailVerified: found.emailVerified };
+      state.lookups += 1;
+      state.lookupInTransaction.push(inTransaction());
+      const answer = state.lookups > 1 && state.relookup !== undefined ? state.relookup(truth) : truth;
       await state.afterLookup?.();
       return state.lookupNull ? (null as never) : answer;
     },

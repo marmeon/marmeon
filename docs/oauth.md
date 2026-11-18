@@ -564,11 +564,14 @@ account that is linked already needs no binding. A bound class that cannot be bu
 1. **A linked account signs in its owner.** The provider account is found by provider and provider ID, never by address. The owner is
    signed in, or `two-factor-required` is answered when the account has a second factor, exactly as for a password. The time of the
    sign-in, the address and the nickname are noted. If the account was unlinked in the meantime, or its user is gone, nobody is signed in
-   and the answer is `account-exists`. An account that is linked signs in whatever the provider says about the address.
+   and the answer is `account-exists`. The link is looked up once more after the sign-in, in every rule: one that is gone or moved by
+   then (a password reset removes the links of an unconfirmed address) undoes the sign-in, a waiting second factor included, with the same answer. An account that is linked signs in whatever the provider says about the address.
 2. **A matching address links the account, only when nothing is left to doubt.** The provider has verified the address, the app has
    confirmed it for the user it finds, and that user has no second factor (`TwoFactorState`). Then the account is linked,
    `SocialAccountLinked` is dispatched and the user is signed in. In every other case the answer is `account-exists`, and
-   `providerVerified` says whether the provider vouched for the address. Nothing is linked: the person signs in the usual way and links
+   `providerVerified` says whether the provider vouched for the address. The link is written and the address is looked up again in one
+   transaction: when the user no longer has it, or no longer has it verified, the transaction is rolled back, nothing is dispatched and the
+   answer is `account-exists`. Nothing is linked: the person signs in the usual way and links
    the provider account from their settings. A user with a second factor never signs in around it.
 3. **Otherwise a new user is made.** With `OAUTH_REGISTRATION=false` the answer is `registration-closed` and nothing is created.
    The user and the link are written in one transaction. A provider account taken in the meantime undoes the user as well, and the answer is

@@ -11,7 +11,9 @@ export interface SocialUserProvider<U = AuthUser> {
   /**
    * The user whose address is `email`, and whether the app has confirmed that address; `undefined` or `null` when no user has it.
    * The address is unvalidated data of the provider: it has no control characters and is at most 254 characters, but it is not checked
-   * as an address, so compare it the way the app compares addresses (lower case, say) and never trust it further.
+   * as an address, so compare it the way the app compares addresses (lower case, say) and never trust it further. Before an account is
+   * linked to the user found, it is called once more inside the transaction that writes the link: read the current row through the
+   * app's database (which joins that transaction), not a cache or a replica, or the second look proves nothing.
    */
   findByEmail(email: string): Promise<{ readonly user: U; readonly emailVerified: boolean } | undefined | null>;
   /**
