@@ -16,6 +16,12 @@ The sections follow the order of the work:
 - [Testing](#testing) runs the whole flow in an app test without a request leaving the process.
 - [The generated module](#the-generated-module) is the quick way: `marmeon make:oauth` writes the islands (sign-in, connected accounts and confirmation), the routes, the bridge to your users and the mails, and [placing the components](#placing-the-components) puts the buttons on a page.
 
+Install the package first, in the version of the app's other framework packages:
+
+```sh
+pnpm add -E @marmeon/oauth@<version of your app>
+```
+
 A provider is a class that brings a name and the variables it reads:
 
 ```ts title="providers/GiteaProvider.ts"
@@ -884,7 +890,7 @@ It lists what the app lacks (`@marmeon/oauth` and `@marmeon/fetch` among it) and
 - `bootstrap/app.ts`, where it adds `oauth` to the end of `modules` (when the list is not written out there, it prints the line instead and writes the module all the same);
 - `marmeon-stubs.json`, where it records the files it wrote, so a later `--force` removes only the files an earlier version wrote that you left unchanged.
 
-It also runs `marmeon route:types`, which rewrites `bootstrap/routes.ts`, when the packages it needs are installed.
+It also runs `marmeon route:types`, which rewrites `bootstrap/routes.ts`, when the packages it needs are installed and the module is registered in `bootstrap/app.ts`; otherwise it asks you to run it.
 
 It adds nothing to your sign-in page or your settings pages: [placing the components](#placing-the-components) says how the buttons get there.
 It writes no migration either. Run `marmeon make:social-accounts-table` to copy the migration of the `social_accounts` table that the installed package ships (`marmeon publish @marmeon/oauth` writes the same file for a package from the registry and also records it), see [storing tokens](#storing-tokens).
@@ -929,7 +935,7 @@ sign-in page with a general message for a guest; a signed-in person goes back wi
 | `email-unverified` | The sign-in page, with one message whether or not an account has the address. The owner of an account that has it is mailed a note by a job; the job sends at most one an hour per address. That mail needs the [queue](queues.md) (its table and a worker on the `mail` queue) and the [mail](mail.md) packages. |
 | `registration-closed`, `email-required`, a person who cancelled | The sign-in page, with a message of its own. |
 | `signed-in` | Back to the page the person came from, or `home`, with a message: the sign-in page would turn a signed-in person away. |
-| A flow that expired or failed, an unusable answer of the provider | The sign-in page, with a general message. No provider text, query or address is shown or logged. |
+| `invalid-account`, a flow that expired or failed, an unusable answer of the provider | The sign-in page, with a general message; a signed-in person whose flow expired or failed goes back with it (below), and `invalid-account` reaches only a guest. No provider text, query or address is shown or logged. |
 | An unknown or inactive provider | 404. |
 
 After a link, and after a refused link or confirmation, the person goes back to the page they came from, or to `home` when there is none. After a successful confirmation they
