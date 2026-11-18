@@ -468,13 +468,14 @@ pnpm marmeon doctor
 | `route-types` | `bootstrap/routes.ts` is current and the routes pass the route checks. Same as [`route-types`](#the-app-checks) of `check`. | nothing |
 | `package-migrations` | The migrations of the packages you publish from are in the app. Same as [`package-migrations`](#the-app-checks). `skipped` as "@marmeon/database is not installed" when that package is not installed; when it is installed but its provider is not registered, the check is an `error`. | `@marmeon/database` |
 | `db-types` | `bootstrap/database.d.ts` is current. Same as [`db-types`](#the-app-checks). `skipped` when `@marmeon/database` is not installed; an `error` when it is installed and its provider is not registered. | `@marmeon/database` |
+| `migrations` | Each migration the database has not run is a problem, with the fix `marmeon migrate`, from [`marmeon migrate:status`](migrations.md#status). Each warning of that command (a changed file, a gone file, a connection it cannot tell) is a warning. [Details below](#the-migrations-check). | `@marmeon/database`, the database |
 | `readiness` | The [readiness checks](health.md#liveness-and-readiness) of the app and its packages. | the services of the app |
 
 The checks come in this order. `--only` and `--skip` take these names and no others: `--only=types` is a wrong call (exit `2`) that
 lists them. The checks that other packages, modules and your app add (`modules`, `throttle`, `hsts`, `guard-slots`, your own) are not
 run: the doctor checks come from the CLI and database providers. A check whose provider is not in the app's providers cannot run and
 is an `error` (exit `3`) that names the provider to add. The [status](#status), [exit codes](#exit-codes) and [JSON
-output](#json-output) are those of `check`. The app is loaded only when one of the last five checks is selected.
+output](#json-output) are those of `check`. The app is loaded only when one of the last six checks is selected.
 
 When `NODE_ENV` is `development` or `test` and comes from `.env` alone, `marmeon start` refuses to run on this machine, and doctor
 checked the configuration of that environment (`development` or `test`); it says so in `warnings`.
@@ -483,7 +484,24 @@ checked the configuration of that environment (`development` or `test`); it says
 creates a SQLite file that is missing. Loading the app writes `.marmeon/manifest.json`, and `db-types` and `readiness` write
 `.marmeon/schema.json` when it is missing or out of date. Loading the app also runs the boot and shutdown of its providers with
 their usual side effects, such as the devtools pruning `storage/framework/devtools/`. Where `.marmeon/` cannot be written, the app
-is loaded without it and the checks still run.
+is loaded without it and the checks still run. `migrations` runs `marmeon migrate:status` in a child process that starts your app once more and
+connects to the database like `readiness` does: it reads the record of migrations and writes none, and a SQLite file that is missing is created.
+
+### The migrations check
+
+`failed` means that a migration has not run. `migrations` is `skipped` in two cases:
+
+- "@marmeon/database is not installed": the app has the CLI provider, but `@marmeon/database` is not one of its packages.
+- "the app did not load": `boot` runs and failed.
+
+It is an `error` (exit `3`), never `failed`, when it could not decide:
+
+- the app did not load and `boot` does not run, or the packages of the app cannot be discovered;
+- the app has no `CliServiceProvider` of `marmeon`, or `migrate:status` is not registered or is not the command of
+  `@marmeon/database` (add the provider of `@marmeon/database`);
+- the command fails (for example because the database cannot be reached), cannot start, runs out of time (60 seconds), or prints
+  what this version does not read;
+- you interrupted doctor.
 
 ### The node check
 

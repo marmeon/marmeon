@@ -6,23 +6,24 @@ import { environmentChecks, loadDiscoveredPackages } from '@marmeon/core/interna
 import type { CommandInput } from '../command.ts';
 import { describeFailure, runAppChecks } from '../check/app.ts';
 import { nodeCheck } from '../check/node.ts';
+import { migrationsCheck, statusCommandOf, type MigrationsInput, type StatusCommand } from '../check/migrations.ts';
 import { packagesCheck } from '../check/packages.ts';
 import { printReports } from '../check/print.ts';
 import { exitCodeOf, reportJson, unrunReport, type CheckReport } from '../check/report.ts';
 import type { CheckRun } from '../check/tools.ts';
 import { CheckRegistry, type AppCheckClass } from '../check/registry.ts';
-import { appRedactor, loadApplication } from '../load.ts';
+import { appRedactor, loadApplication, redactorAfter } from '../load.ts';
 
 /** The process exits with this when `marmeon doctor` is called wrongly (see docs/check.md#exit-codes). */
 const EXIT_USAGE = 2;
 
 /** The checks of `marmeon doctor`, in report order. Its own list: checks that packages register are not among them. */
-export const DOCTOR_CHECKS = ['node', 'packages', 'boot', 'route-types', 'package-migrations', 'db-types', 'readiness'] as const;
+export const DOCTOR_CHECKS = ['node', 'packages', 'boot', 'route-types', 'package-migrations', 'db-types', 'migrations', 'readiness'] as const;
 
 /** One of the names of {@link DOCTOR_CHECKS}. */
 export type DoctorCheck = (typeof DOCTOR_CHECKS)[number];
 
-/** What each check needs: `tool` runs without the app, with its runner; `app` is run by the app's checks; `database` is one that `@marmeon/database` registers. */
+/** What each check needs: `tool` runs without the app, with its runner; `app` is run by the app's checks; `database` is one that `@marmeon/database` registers; `status` is run by doctor itself, in a child process, once the app's checks have run. */
 const CHECKS = {
   node: { kind: 'tool', run: nodeCheck },
   packages: { kind: 'tool', run: packagesCheck },
@@ -30,8 +31,9 @@ const CHECKS = {
   'route-types': { kind: 'app' },
   'package-migrations': { kind: 'database' },
   'db-types': { kind: 'database' },
+  migrations: { kind: 'status', run: migrationsCheck },
   readiness: { kind: 'app' },
-} as const satisfies Record<DoctorCheck, { kind: 'tool'; run: (root: string) => CheckRun } | { kind: 'app' | 'database' }>;
+} as const satisfies Record<DoctorCheck, { kind: 'tool'; run: (root: string) => CheckRun } | { kind: 'status'; run: (root: string, input: MigrationsInput) => Promise<CheckRun> } | { kind: 'app' | 'database' }>;
 
 /** The package and the provider whose own class a check must be: a check is told by its class, since an app may register any name. */
 const OWNER: Partial<Record<DoctorCheck, { readonly package: string; readonly provider: string }>> = {
@@ -56,11 +58,11 @@ async function ownCheck(root: string, name: DoctorCheck): Promise<AppCheckClass 
 
 /**
  * `marmeon doctor`: whether this machine can run the app — Node, the versions of the @marmeon packages, the configuration and `APP_KEY`,
- * the generated files and the services — with the reports, exit codes and `--json` of `marmeon check`. See docs/check.md#the-environment-marmeon-doctor.
+ * the generated files, the migrations that have not run and the services — with the reports, exit codes and `--json` of `marmeon check`. See docs/check.md#the-environment-marmeon-doctor.
  */
 export class DoctorCommand {
   static command = 'doctor';
-  static description = 'Check that this machine can run the app: Node, packages, configuration, generated files, services';
+  static description = 'Check that this machine can run the app: Node, packages, configuration, generated files, migrations that have not run, services';
   static usage = '[--only=<names>] [--skip=<names>] [--json]';
   static options = { only: { type: 'string' }, skip: { type: 'string' }, json: { type: 'boolean' } } as const;
   static boots = false;
@@ -92,31 +94,76 @@ export class DoctorCommand {
       const check = CHECKS[name];
       if (check.kind === 'tool') tools.set(name, check.run(root));
     }
-    const appNames = selected.filter((name) => CHECKS[name].kind !== 'tool');
+    const appNames = selected.filter((name) => CHECKS[name].kind === 'app' || CHECKS[name].kind === 'database');
+    const statusNames = selected.filter((name) => CHECKS[name].kind === 'status');
     const appReports = new Map<DoctorCheck, CheckReport>();
     let unowned = 0;
-    if (appNames.length > 0) {
-      const build = await loadApplication(root, 'build');
-      // Only the class of the owning package runs under these names: any app can register a check named `db-types`, and its handler
-      // must not run (it could write, connect or hang). A rejected check has no report and falls into the miss branch below.
-      const own = new Map<string, AppCheckClass | undefined>();
-      for (const name of appNames) if (OWNER[name]) own.set(name, await ownCheck(root, name));
-      const accept = (check: AppCheckClass) => !own.has(check.check) || own.get(check.check) === check;
-      ({ unowned } = await runAppChecks({ root, build, selected: appNames, reports: appReports, warnings, accept }));
-      // A check without a report was not registered. Only a package the app does not depend on is proof that this is no fault.
-      const hasRegistry = build instanceof Application && build.container.has(CheckRegistry);
-      let discovered: readonly string[] | Error | undefined;
-      for (const name of appNames) {
-        if (appReports.has(name)) continue;
-        if (CHECKS[name].kind === 'database' && hasRegistry) {
-          if (discovered === undefined) discovered = await loadDiscoveredPackages({ root }).then((found) => found.packages, (error: unknown) => (error instanceof Error ? error : new Error(String(error))));
-          if (discovered instanceof Error) appReports.set(name, unrunReport(name, 'error', `the packages of the app could not be discovered: ${describeFailure(discovered, await appRedactor(root), root)}`, 0));
-          else if (!discovered.includes('@marmeon/database')) appReports.set(name, unrunReport(name, 'skipped', '@marmeon/database is not installed', 0));
-          else appReports.set(name, unrunReport(name, 'error', `the check ${name} is not registered: add \`DatabaseServiceProvider\` of @marmeon/database to the app's providers`, 0));
-        } else {
-          appReports.set(name, unrunReport(name, 'error', `the check ${name} is not registered: add \`CliServiceProvider\` of marmeon to the app's providers`, 0));
+    let status: StatusCommand | undefined;
+    // What app code rejects or throws while no check of the app runs (its load, the wait for the child of `migrations`) belongs to no check: it is kept, masked.
+    const strays: unknown[] = [];
+    // `runAppChecks` keeps its own strays while its checks run; this window takes the rest, from before the load to after the last check.
+    let inChecks = false;
+    const onStray = (error: unknown) => {
+      if (!inChecks) strays.push(error);
+    };
+    const watching = async <T>(work: () => Promise<T>): Promise<T> => {
+      process.on('unhandledRejection', onStray);
+      process.on('uncaughtException', onStray);
+      try {
+        return await work();
+      } finally {
+        // A rejection that is still on its way arrives in the next turn of the loop.
+        await new Promise((resolveTurn) => setImmediate(resolveTurn));
+        process.off('unhandledRejection', onStray);
+        process.off('uncaughtException', onStray);
+      }
+    };
+    let build: Application | Error | undefined;
+    await watching(async () => {
+      build = appNames.length > 0 || statusNames.length > 0 ? await loadApplication(root, 'build') : undefined;
+      if (build !== undefined && statusNames.length > 0) {
+        // Read before the checks shut the build app down.
+        status = statusCommandOf(build);
+        // Only the registry is needed from it: the child of `migrations` loads the app again.
+        if (appNames.length === 0 && build instanceof Application) await build.shutdown().catch(() => undefined);
+      }
+      if (build !== undefined && appNames.length > 0) {
+        // Only the class of the owning package runs under these names: any app can register a check named `db-types`, and its handler
+        // must not run (it could write, connect or hang). A rejected check has no report and falls into the miss branch below.
+        const own = new Map<string, AppCheckClass | undefined>();
+        for (const name of appNames) if (OWNER[name]) own.set(name, await ownCheck(root, name));
+        const accept = (check: AppCheckClass) => !own.has(check.check) || own.get(check.check) === check;
+        inChecks = true;
+        try {
+          ({ unowned } = await runAppChecks({ root, build, selected: appNames, reports: appReports, warnings, accept }));
+        } finally {
+          inChecks = false;
+        }
+        // A check without a report was not registered. Only a package the app does not depend on is proof that this is no fault.
+        const hasRegistry = build instanceof Application && build.container.has(CheckRegistry);
+        let discovered: readonly string[] | Error | undefined;
+        for (const name of appNames) {
+          if (appReports.has(name)) continue;
+          if (CHECKS[name].kind === 'database' && hasRegistry) {
+            if (discovered === undefined) discovered = await loadDiscoveredPackages({ root }).then((found) => found.packages, (error: unknown) => (error instanceof Error ? error : new Error(String(error))));
+            if (discovered instanceof Error) appReports.set(name, unrunReport(name, 'error', `the packages of the app could not be discovered: ${describeFailure(discovered, await appRedactor(root), root)}`, 0));
+            else if (!discovered.includes('@marmeon/database')) appReports.set(name, unrunReport(name, 'skipped', '@marmeon/database is not installed', 0));
+            else appReports.set(name, unrunReport(name, 'error', `the check ${name} is not registered: add \`DatabaseServiceProvider\` of @marmeon/database to the app's providers`, 0));
+          } else {
+            appReports.set(name, unrunReport(name, 'error', `the check ${name} is not registered: add \`CliServiceProvider\` of marmeon to the app's providers`, 0));
+          }
         }
       }
+      // After the app's checks: a `migrations` run asks whether the app loaded, and its child process starts the app once more.
+      for (const name of statusNames) {
+        const check = CHECKS[name];
+        if (check.kind === 'status' && status !== undefined) tools.set(name, await check.run(root, { status, boot: appReports.get('boot') }));
+      }
+    });
+    if (strays.length > 0) {
+      const redactor = await redactorAfter(build instanceof Application ? build : undefined, root, build !== undefined);
+      for (const error of strays) warnings.push(`Unhandled failure that belongs to no check: ${describeFailure(error, redactor, root)}`);
+      unowned += strays.length;
     }
     const runs = selected.map((name): CheckRun => tools.get(name) ?? { report: appReports.get(name)! });
     const reports = runs.map((run) => run.report);
