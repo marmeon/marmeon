@@ -320,12 +320,42 @@ pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon
 
 The variable changes nothing else, and only this command sees it. npm has no such delay.
 
+[`marmeon upgrade`](#how-to-upgrade) passes exact versions (`pnpm add --save-exact --save-prod @marmeon/core@1.2.0 …`), so it installs as a version you
+wrote yourself does, pnpm's note about `minimumReleaseAgeExclude` included. It never sets `minimumReleaseAge`, an exclusion or any flag that changes the
+release-age delay, and it leaves standard input to pnpm, so a question about an explicit `minimumReleaseAge` reaches you at a terminal. Without a
+terminal that install fails, and `upgrade` puts `package.json`, the lockfile and `pnpm-workspace.yaml` back. When the install leaves another
+version than the one asked for, or the packages are not in one version, `upgrade` puts the files back and stops with what it found, before
+it prints the guide or generates anything.
+
 ## How to upgrade
 
-1. Read the section of the new version in the [upgrade guide](../UPGRADING.md). Its entries are sorted by impact, and each says
-   how likely it touches your app.
-2. Move every framework package to the new version at once ([the first day after a release](#the-first-day-after-a-release) has a
-   catch), install, and run `pnpm marmeon build` and your tests. Type errors
-   point to most of what changed.
+1. Run `pnpm marmeon upgrade` (`npx marmeon upgrade` with npm). It moves every `marmeon` and `@marmeon/*` package your app lists to the
+   `latest` version at once, prints the entries of the [upgrade guide](../UPGRADING.md) between your version and the new one, and runs
+   `route:types` and, when the app has `@marmeon/database`, `db:types` with the new version. Then read those entries: they are sorted
+   by impact, and each says how likely it touches your app.
+   - `--to=<version>` moves to that exact version, `--to=<tag>` (such as `next`) to the version a dist-tag names. `--dry-run` prints
+     what it would run and changes nothing. `--json` prints [one document](console.md#machine-readable-output) and never asks a question.
+     Its keys are `format`, `dryRun`, `packageManager`, `from`, `to`, `breaking`, `packages`, `commands`, `guide` (the sections of the guide
+     with their entries), `generated` (the generators that ran, each with its exit code, 0) and `warnings`. `guide` and `generated` are `null`
+     with `--dry-run` and when nothing needs to move; `guide` is also `null` when the guide could not be read, and `warnings` says why.
+   - At a terminal, `upgrade` shows what it will move and asks once before it installs, unless you pass `--json`. A move to another major
+     version (or, below 1.0, another minor) may break your app: without a terminal, and with `--json`, it stops unless you name the exact
+     version with `--to=<exact version>`.
+   - It saves exact versions, installs through your package manager with the arguments it checked, and never lifts
+     [`minimumReleaseAge`](#the-first-day-after-a-release). It does not downgrade. Until the installed packages pass its check (they
+     must all be in the version it asked for), a stop (a failed install, a failed check, Ctrl-C) puts `package.json`, the lockfile and `pnpm-workspace.yaml` back as they were, and it tells you to run
+     `pnpm install` (or `npm install`) to make `node_modules` match. After that check the files keep the new version, whatever happens to
+     `route:types` or `db:types`: `upgrade` then names the generator to run again and exits with 1.
+     A Ctrl-C at the terminal reaches pnpm and `upgrade` together. A SIGTERM sent to `upgrade` alone while pnpm asks you a question stops pnpm only,
+     and a lifecycle script it started may outlive it.
+   - It stops before it changes anything when the framework packages are not in one installed version (`--to=<exact version>` repairs
+     that; a tag does not), when `marmeon` is not listed, when `package.json` pins a framework package above the target, when a framework package is listed only as a peer, with a `workspace:`, `file:`,
+     `link:`, `catalog:` or `npm:` spec or a git URL, or under an override or a patch, when the app is part of a workspace, has no
+     lockfile or two lockfiles of different package managers, or uses yarn, bun or another package manager than pnpm or npm.
+2. Run `marmeon doctor`, your tests, and `pnpm marmeon build`. Type errors point to most of what changed.
 3. Deploy as usual. An entry says so when a change needs a migration or signs users out. The [deployment](deployment.md) page
    covers the rest.
+
+Where `upgrade` stops, do it by hand: read the section of the new version in the [upgrade guide](../UPGRADING.md), move every
+framework package to the new version at once ([the first day after a release](#the-first-day-after-a-release) has a catch), install,
+and run `marmeon route:types` and `marmeon db:types`.

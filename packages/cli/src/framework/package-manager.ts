@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { EXACT_VERSION, FRAMEWORK_NAME, readManifest } from './manifest.ts';
 import { readPnpmWorkspace } from './pnpm-workspace.ts';
 import type { Version } from './versions.ts';
@@ -206,140 +206,165 @@ export interface PackageManagerRun {
  */
 export class PackageManagerProcess {
   run(name: PackageManagerName, args: readonly string[], options: PackageManagerRun): Promise<{ code: number; stdout: string }> {
-    const { timeoutMs = options.stdout === 'capture' ? 60_000 : undefined, graceMs = 5_000, drainMs = 2_000, signal } = options;
-    if (signal?.aborted) return Promise.reject(new Error(`${name} was not started: the run was aborted`));
-    return new Promise((resolve, reject) => {
-      const out = options.stdout === 'capture' ? 'pipe' : options.stdout === 'stderr' ? 2 : 'inherit';
-      // An argument array and no shell: every argument reaches the package manager as the one string it is. A run nobody watches leads a
-      // process group of its own, so a signal reaches what the package manager started; an interactive one stays in the terminal's group.
-      const detached = OWN_GROUP && !options.interactive;
-      const child = spawn(name, args, { cwd: options.cwd, env: packageManagerEnv(), shell: false, detached, stdio: [options.interactive ? 'inherit' : 'ignore', out, 'inherit'] });
-      const chunks: Buffer[] = [];
-      let size = 0;
-      let failure: Error | undefined;
-      let exit: { code: number } | undefined;
-      let done = false;
-      let killTimer: NodeJS.Timeout | undefined;
-      let drainTimer: NodeJS.Timeout | undefined;
-      let pollTimer: NodeJS.Timeout | undefined;
-      let closed = false;
-      let reaped = false;
-      let leaderExited = false;
-      // Set once the group is known to be gone (or was sent its SIGKILL after the leader exited): its id may be reused from then on, so nothing is sent to it again.
-      let groupGone = false;
-      const signalTree = (kind: 'SIGTERM' | 'SIGKILL') => {
-        if (child.pid === undefined || groupGone) return;
+    return runInGroup(name, name, args, packageManagerEnv(), options);
+  }
+}
+
+/**
+ * Runs `command` as `label` says in the messages, with `env`, in the way {@link PackageManagerProcess} runs a package manager: no shell, a process group of its own
+ * unless `interactive`, signals passed on, and a result only after the whole group is gone. Also what runs the installed `marmeon` of the app after an upgrade.
+ */
+export function runInGroup(label: string, command: string, args: readonly string[], env: NodeJS.ProcessEnv, options: PackageManagerRun): Promise<{ code: number; stdout: string }> {
+  const { timeoutMs = options.stdout === 'capture' ? 60_000 : undefined, graceMs = 5_000, drainMs = 2_000, signal } = options;
+  if (signal?.aborted) return Promise.reject(new Error(`${label} was not started: the run was aborted`));
+  return new Promise((resolve, reject) => {
+    const out = options.stdout === 'capture' ? 'pipe' : options.stdout === 'stderr' ? 2 : 'inherit';
+    // An argument array and no shell: every argument reaches the package manager as the one string it is. A run nobody watches leads a
+    // process group of its own, so a signal reaches what the package manager started; an interactive one stays in the terminal's group.
+    const detached = OWN_GROUP && !options.interactive;
+    const child = spawn(command, args, { cwd: options.cwd, env, shell: false, detached, stdio: [options.interactive ? 'inherit' : 'ignore', out, 'inherit'] });
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let failure: Error | undefined;
+    let exit: { code: number } | undefined;
+    let done = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    let drainTimer: NodeJS.Timeout | undefined;
+    let pollTimer: NodeJS.Timeout | undefined;
+    let closed = false;
+    let reaped = false;
+    let leaderExited = false;
+    // Set once the group is known to be gone (or was sent its SIGKILL after the leader exited): its id may be reused from then on, so nothing is sent to it again.
+    let groupGone = false;
+    const signalTree = (kind: 'SIGTERM' | 'SIGKILL') => {
+      if (child.pid === undefined || groupGone) return;
+      try {
+        if (detached) process.kill(-child.pid, kind);
+        else child.kill(kind);
+        if (kind === 'SIGKILL' && leaderExited) groupGone = true;
+      } catch {
+        // ESRCH or EPERM: the group ended in the meantime.
+        groupGone = true;
+      }
+    };
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      clearTimeout(drainTimer);
+      clearTimeout(pollTimer);
+      signal?.removeEventListener('abort', aborted);
+      for (const [forward, handler] of forwarded) process.off(forward, handler);
+      if (failure) reject(failure);
+      else resolve({ code: exit?.code ?? 1, stdout: Buffer.concat(chunks).toString('utf8') });
+    };
+    const settleWhenReady = () => {
+      if (closed && reaped) finish();
+    };
+    // What is left of the group after its leader exited: one SIGTERM, then polling for the group to go. A live group pins its id (POSIX), so
+    // the polling bounds the window in which the id could be reused to one poll interval; SIGKILL goes out only if the group answered every poll for `graceMs`.
+    const onReaped = () => {
+      reaped = true;
+      // A grandchild holding the pipe must not keep this waiting.
+      drainTimer ??= setTimeout(abandon, drainMs);
+      settleWhenReady();
+    };
+    const reapGroup = () => {
+      signalTree('SIGTERM');
+      if (groupGone) {
+        onReaped();
+        return;
+      }
+      let polls = 0;
+      const attempts = Math.max(1, Math.ceil(graceMs / 100));
+      const poll = () => {
         try {
-          if (detached) process.kill(-child.pid, kind);
-          else child.kill(kind);
-          if (kind === 'SIGKILL' && leaderExited) groupGone = true;
+          process.kill(-child.pid!, 0);
         } catch {
-          // ESRCH or EPERM: the group ended in the meantime.
           groupGone = true;
         }
-      };
-      const finish = () => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        clearTimeout(killTimer);
-        clearTimeout(drainTimer);
-        clearTimeout(pollTimer);
-        signal?.removeEventListener('abort', aborted);
-        for (const [forward, handler] of forwarded) process.off(forward, handler);
-        if (failure) reject(failure);
-        else resolve({ code: exit?.code ?? 1, stdout: Buffer.concat(chunks).toString('utf8') });
-      };
-      const settleWhenReady = () => {
-        if (closed && reaped) finish();
-      };
-      // What is left of the group after its leader exited: one SIGTERM, then polling for the group to go. A live group pins its id (POSIX), so
-      // the polling bounds the window in which the id could be reused to one poll interval; SIGKILL goes out only if the group answered every poll for `graceMs`.
-      const onReaped = () => {
-        reaped = true;
-        // A grandchild holding the pipe must not keep this waiting.
-        drainTimer ??= setTimeout(abandon, drainMs);
-        settleWhenReady();
-      };
-      const reapGroup = () => {
-        signalTree('SIGTERM');
+        if (!groupGone && ++polls >= attempts) signalTree('SIGKILL');
         if (groupGone) {
           onReaped();
           return;
         }
-        let polls = 0;
-        const attempts = Math.max(1, Math.ceil(graceMs / 100));
-        const poll = () => {
-          try {
-            process.kill(-child.pid!, 0);
-          } catch {
-            groupGone = true;
-          }
-          if (!groupGone && ++polls >= attempts) signalTree('SIGKILL');
-          if (groupGone) {
-            onReaped();
-            return;
-          }
-          pollTimer = setTimeout(poll, 100);
-        };
         pollTimer = setTimeout(poll, 100);
       };
-      const stop = (because: Error) => {
-        failure ??= because;
-        signalTree('SIGTERM');
-        killTimer ??= setTimeout(() => {
-          // After the leader exited the group is `reapGroup`'s to end.
-          if (!leaderExited) signalTree('SIGKILL');
-        }, graceMs);
-      };
-      // Nothing may keep a pipe: close the pipes and give the result (no signal: the group was dealt with, or its id may be reused).
-      const abandon = () => {
-        child.stdout?.destroy();
-        finish();
-      };
-      const timer = timeoutMs === undefined ? undefined : setTimeout(() => stop(new Error(`${name} did not finish within ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
-      const aborted = () => stop(new Error(`${name} was stopped: the run was aborted`));
-      signal?.addEventListener('abort', aborted, { once: true });
-      // A run in a group of its own does not get the terminal's Ctrl-C: pass the signals the CLI receives on to the group, and stay alive to restore.
-      const forwarded = (['SIGINT', 'SIGTERM', 'SIGHUP'] as const).map((forward) => [forward, () => stop(new Error(`${name} was stopped by ${forward}`))] as const);
-      if (detached) for (const [forward, handler] of forwarded) process.on(forward, handler);
-      child.stdout?.on('data', (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > MAX_CAPTURE) {
-          chunks.length = 0;
-          stop(new Error(`${name} printed more than ${MAX_CAPTURE / 1024 / 1024} MiB`));
-          return;
-        }
-        if (failure === undefined) chunks.push(chunk);
-      });
-      child.once('error', (error) => {
-        failure ??= error;
-        finish();
-      });
-      child.once('exit', (code, signal) => {
-        exit = { code: code ?? (signal ? 1 : 0) };
-        leaderExited = true;
-        if (detached) reapGroup();
-        else onReaped();
-      });
-      // `close`, not `exit`: the pipes are drained by then. The run settles when the group is dealt with as well, so nothing outlives it.
-      child.once('close', () => {
-        closed = true;
-        settleWhenReady();
-      });
+      pollTimer = setTimeout(poll, 100);
+    };
+    const stop = (because: Error) => {
+      failure ??= because;
+      signalTree('SIGTERM');
+      killTimer ??= setTimeout(() => {
+        // After the leader exited the group is `reapGroup`'s to end.
+        if (!leaderExited) signalTree('SIGKILL');
+      }, graceMs);
+    };
+    // Nothing may keep a pipe: close the pipes and give the result (no signal: the group was dealt with, or its id may be reused).
+    const abandon = () => {
+      child.stdout?.destroy();
+      finish();
+    };
+    const timer = timeoutMs === undefined ? undefined : setTimeout(() => stop(new Error(`${label} did not finish within ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
+    const aborted = () => stop(new Error(`${label} was stopped: the run was aborted`));
+    signal?.addEventListener('abort', aborted, { once: true });
+    // A run in a group of its own does not get the terminal's Ctrl-C: pass the signals the CLI receives on to the group, and stay alive to restore.
+    const forwarded = (['SIGINT', 'SIGTERM', 'SIGHUP'] as const).map((forward) => [forward, () => stop(new Error(`${label} was stopped by ${forward}`))] as const);
+    if (detached) for (const [forward, handler] of forwarded) process.on(forward, handler);
+    child.stdout?.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_CAPTURE) {
+        chunks.length = 0;
+        stop(new Error(`${label} printed more than ${MAX_CAPTURE / 1024 / 1024} MiB`));
+        return;
+      }
+      if (failure === undefined) chunks.push(chunk);
     });
-  }
+    child.once('error', (error) => {
+      failure ??= error;
+      finish();
+    });
+    child.once('exit', (code, signal) => {
+      exit = { code: code ?? (signal ? 1 : 0) };
+      leaderExited = true;
+      if (detached) reapGroup();
+      else onReaped();
+    });
+    // `close`, not `exit`: the pipes are drained by then. The run settles when the group is dealt with as well, so nothing outlives it.
+    child.once('close', () => {
+      closed = true;
+      settleWhenReady();
+    });
+  });
 }
 
-/** The exact bytes of `package.json` and the lockfile, so that a failed install can be taken back. `restore` tries both, never deletes, and throws one error naming each file it could not write. */
-export function snapshotInstallFiles(root: string, lockfile: string): { restore(): void } {
-  const files = ['package.json', lockfile].map((name) => ({ name, path: join(root, name), bytes: readFileSync(join(root, name)) }));
+/**
+ * The exact bytes of `package.json`, the lockfile and the `extra` files (names in `root`, such as `pnpm-workspace.yaml`, which pnpm may write
+ * during an install), so that a failed install can be taken back. `restore` tries every file and throws one error naming each it could not
+ * write. It never deletes `package.json` or the lockfile; an `extra` file that did not exist when the snapshot was taken and is a regular file by now was made by the install, and is removed.
+ */
+export function snapshotInstallFiles(root: string, lockfile: string, extra: readonly string[] = []): { restore(): void } {
+  const files = ['package.json', lockfile].map((name) => ({ name, path: join(root, name), bytes: readFileSync(join(root, name)) as Buffer | undefined }));
+  for (const name of extra) {
+    // A name, never a path: the file that is removed on restore stays inside `root`.
+    if (name === '' || name === '.' || name === '..' || name !== basename(name) || name.includes('/') || name.includes('\\')) throw new Error(`"${name}" is not a file name in the app's root`);
+    let bytes: Buffer | undefined;
+    try {
+      bytes = readFileSync(join(root, name));
+    } catch (error) {
+      // Only a missing file is "not there"; one that cannot be read must stop the upgrade before it changes anything.
+      if ((error as { code?: unknown }).code !== 'ENOENT') throw error;
+    }
+    files.push({ name, path: join(root, name), bytes });
+  }
   return {
     restore() {
       const failed: string[] = [];
       for (const { name, path, bytes } of files) {
         try {
-          writeFileSync(path, bytes);
+          if (bytes !== undefined) writeFileSync(path, bytes);
+          else if (lstatSync(path, { throwIfNoEntry: false })?.isFile()) unlinkSync(path);
         } catch {
           failed.push(name);
         }
