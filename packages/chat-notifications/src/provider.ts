@@ -5,8 +5,8 @@ import { BUILT_IN_CHAT_DRIVERS, CHAT_LOG_WARNING, ChatConfig, parseWebhooks } fr
 import { checkWebhook } from './destination.ts';
 import type { ChatDriverFactory } from './driver.ts';
 import { ChatError, ChatSetupError } from './errors.ts';
-import { SendQueuedChatMessage } from './job.ts';
-import { ChatNotifier, WebhookChatNotifier, type ChatQueue } from './notifier.ts';
+import { SendQueuedChatMessage, type QueuedChatPayload } from './job.ts';
+import { ChatNotifier, WebhookChatNotifier, type ChatQueue, type QueueChatOptions } from './notifier.ts';
 import { ChatPoster } from './poster.ts';
 import { ChatTargets } from './targets.ts';
 
@@ -94,14 +94,21 @@ export class ChatServiceProvider implements ServiceProvider {
         protected: config.protected,
       }),
     );
-    const queue: ChatQueue = async (payload, options) => {
+    const available = async (): Promise<QueueModule> => {
       const module = await importQueue();
       if (!module || !container.has(module.Queue)) {
         throw new ChatError('chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
       }
-      // `JobInput` of a payload that holds `ChatJson` is too deep for the compiler; the schema checks the payload at the dispatch.
-      return container.make(module.Queue).dispatch(SendQueuedChatMessage as never, payload as never, options);
+      return module;
     };
+    const queue: ChatQueue = Object.assign(
+      async (payload: QueuedChatPayload, options: QueueChatOptions) => {
+        const module = await available();
+        // `JobInput` of a payload that holds `ChatJson` is too deep for the compiler; the schema checks the payload at the dispatch.
+        return container.make(module.Queue).dispatch(SendQueuedChatMessage as never, payload as never, options);
+      },
+      { ready: async () => void (await available()) },
+    );
     container.singleton(ChatNotifier, (c) => new WebhookChatNotifier(c.make(ChatTargets), c.make(ChatPoster), queue));
     container.bind(SendQueuedChatMessage, (c) => new SendQueuedChatMessage(c.make(ChatPoster), c.make(ChatTargets)));
   }

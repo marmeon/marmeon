@@ -461,6 +461,27 @@ describe('the chat channel', { timeout: 30_000 }, () => {
     queue.assertNotDispatched(SendQueuedChatMessage);
   });
 
+  it('names a missing queue before it skips a refused address: no queue services, no row, a NotificationChannelError', async () => {
+    const app = await createApplication(
+      {
+        root: import.meta.dirname,
+        discover: false,
+        providers: [DatabaseServiceProvider, FetchServiceProvider, NotificationServiceProvider, ChatServiceProvider],
+        modules: [{ name: 'shop', notifications: [Alerted], recipients: { member: Members } }],
+      },
+      { env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', LOG_LEVEL: 'silent', CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: `ops=${slackUrl}` } },
+    );
+    open.push(app);
+    const connections = app.container.make(Connections);
+    const directory = NotificationServiceProvider.migrations.from;
+    for (const name of readdirSync(directory)) await runMigration(connections, ((await import(new URL(name, `${directory.href}/`).href)) as { default: Migration }).default);
+    // Alan's address is one slack refuses
+    const error = await app.container.make(Notifications).sendNow(alan, Alerted, { order: 'o-11' }).then(() => undefined, (caught: unknown) => caught as Error);
+    expect(error).toBeInstanceOf(NotificationChannelError);
+    expect(error?.message).toBe('Alerted (shop.alerted): chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
+    expect(await rowCount(connections)).toBe(0);
+  });
+
   it('rethrows an error that is no ChatError unchanged: a queue that is down is not a NotificationChannelError', async () => {
     const { app } = await harness({ driver: 'slack' });
     const down = new Error('the queue is down');

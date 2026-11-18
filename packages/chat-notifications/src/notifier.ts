@@ -40,7 +40,10 @@ export interface ChatNotifier {
 export const ChatNotifier = token<ChatNotifier>('ChatNotifier');
 
 /** Puts a payload on the queue — the `marmeon.chat` job (`ChatServiceProvider` wires it to @marmeon/queue, and throws `ChatError` when the app has none). */
-export type ChatQueue = (payload: QueuedChatPayload, options: QueueChatOptions) => Promise<unknown>;
+export type ChatQueue = ((payload: QueuedChatPayload, options: QueueChatOptions) => Promise<unknown>) & {
+  /** Throws `ChatError` when the app has no queue to put a message on, without dispatching anything. */
+  ready(): Promise<void>;
+};
 
 function payloadOf(to: ChatDestination, content: ChatContent): QueuedChatPayload {
   return {
@@ -88,6 +91,8 @@ export class WebhookChatNotifier implements ChatNotifier {
       throw new ChatError(refused(error.message), error.cause === undefined ? undefined : { cause: error.cause });
     }
     this.#targets.validate(to, content);
+    // a missing queue is a mistake of the setup: it is told before an address is refused, which a notification skips and so would hide it
+    await this.#queue.ready();
     if (addressError !== undefined) throw addressError;
     const problem = addressProblem(target);
     if (problem !== undefined) throw new ChatAddressError(refused(problem));
