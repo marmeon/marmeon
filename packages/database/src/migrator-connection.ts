@@ -2,6 +2,9 @@ import { withCode } from '@marmeon/core/internal';
 import { OperationNodeTransformer, RawNode, type Kysely, type KyselyPlugin, type PluginTransformQueryArgs, type PluginTransformResultArgs, type QueryResult, type RootOperationNode, type TableNode, type UnknownRow } from 'kysely';
 import type { Connections } from './connections.ts';
 import { isRawSchemaChange } from './metadata.ts';
+import { hasExecutableComment, mysqlCommits } from './schema/mysql-words.ts';
+import type { Driver } from './schema/blueprint.ts';
+import { unknownDriver } from './supported-driver.ts';
 import { isMigratorTable } from './migration-state.ts';
 import { SchemaError } from './schema/schema-error.ts';
 
@@ -126,19 +129,40 @@ export function rawText(node: RawNode): string {
 }
 
 /**
- * On the `db` of a `schema.data()` step: DDL, in the query builder or as raw SQL that begins with `create`, `alter`, `drop` or `do`, throws before it is sent. It is a guard
+ * On the `db` of a `schema.data()` step: DDL, in the query builder or as raw SQL that begins with `create`, `alter`, `drop` or `do`, throws before it is sent. On MySQL the raw SQL is read by
+ * MySQL's rules, and every statement that ends the transaction of the step (`mysqlCommits`) throws as well. It is a guard
  * against mistakes, not a sandbox: a plugin-free connection or a compiled query is not looked into. A data step runs after
  * the plan was made; a schema change there would be missing from what the migration declares.
  */
-export function noSchemaChanges(): KyselyPlugin {
-  const refuse = (): never => {
-    throw new SchemaError(
-      withCode('D4', 'Cannot change the schema in a schema.data() step: the plan of a migration is made before it runs, and a change made here would not be part of it. Use schema.create(), schema.alter() or schema.raw() instead. See docs/migrations.md#changing-the-data.'),
-    );
+export function noSchemaChanges(driver: Driver): KyselyPlugin {
+  const refuse = (text?: string): never => {
+    // On MySQL the text is of a statement that ends the transaction of the step (DDL, `commit`, `rollback`, `lock tables` …), not only of a schema change.
+    const reason =
+      text === undefined
+        ? 'Cannot change the schema in a schema.data() step: the plan of a migration is made before it runs, and a change made here would not be part of it. '
+        : 'Cannot run this statement in a schema.data() step: it ends or steers the transaction of the step, which the migrator controls, and a schema change would be missing from the plan of the migration. ' +
+          (hasExecutableComment(text) ? 'A statement with a /*! or /*+ comment is read with every word, those in strings and comments included. ' : '');
+    throw new SchemaError(withCode('D4', `${reason}Use schema.create(), schema.alter() or schema.raw() instead. See docs/migrations.md#changing-the-data.`));
   };
+  // The rules of the driver's own SQL, chosen once: a driver nobody knows is refused here, not read by the rules of another.
+  const commits = ((): ((text: string) => boolean) => {
+    switch (driver) {
+      case 'sqlite':
+      case 'pgsql':
+        return (text) => isRawSchemaChange(text, true);
+      case 'mysql':
+        return mysqlCommits;
+      default:
+        return unknownDriver(driver);
+    }
+  })();
   return {
     transformQuery({ node }: PluginTransformQueryArgs): RootOperationNode {
-      if (SCHEMA_CHANGES.has(node.kind) || (RawNode.is(node) && isRawSchemaChange(rawText(node), true))) refuse();
+      if (SCHEMA_CHANGES.has(node.kind)) refuse();
+      if (RawNode.is(node)) {
+        const text = rawText(node);
+        if (commits(text)) refuse(driver === 'mysql' ? text : undefined);
+      }
       return node;
     },
     transformResult: ({ result }: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> => Promise.resolve(result),

@@ -1,12 +1,13 @@
+import { hash } from 'node:crypto';
 import { readlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { printable, withCode } from '@marmeon/core/internal';
-import { sql, type Kysely } from 'kysely';
+import { sql, type Kysely, type MysqlPoolConnection } from 'kysely';
 import { isUniqueViolation } from '../errors.ts';
 import { assertLockReadable, LOCK_TABLE } from '../migration-state.ts';
 import { describeConnection } from '../config.ts';
-import { connectionError } from '../driver.ts';
-import { mysqlPending } from '../mysql-pending.ts';
+import { connectionError, DatabaseConnectionError } from '../driver.ts';
+import { mysqlPool } from '../mysql.ts';
 import { importPg, postgresConnection } from '../postgres.ts';
 import type { Driver } from '../schema/blueprint.ts';
 import { unknownDriver } from '../supported-driver.ts';
@@ -21,7 +22,7 @@ export const ADVISORY_KEY = 0x4d4d4e4d_4d494752n;
 const KEY_HIGH = Number(ADVISORY_KEY >> 32n);
 const KEY_LOW = Number(ADVISORY_KEY & 0xffffffffn);
 
-/** Prefix of the connection's `application_name` while it holds the Postgres lock: how a waiter learns who holds it. */
+/** Prefix of the connection's `application_name` (Postgres) or `program_name` attribute (MySQL) while it holds the lock: how a waiter learns who holds it. */
 const NAME_PREFIX = 'marmeon-migrate:';
 
 /** A SQLite lock whose holder has not shown a sign of life for this long belongs to a process that died. */
@@ -73,7 +74,7 @@ export class MigrationLockTimeoutError extends Error {
 }
 
 /**
- * The migration lost its lock while it ran: its database connection ended (Postgres) or another migration took the lock over
+ * The migration lost its lock while it ran: its database connection ended (Postgres, MySQL) or another migration took the lock over
  * (SQLite). The run stops before the next migration; check what the database holds before migrating again.
  */
 export class MigrationLockLostError extends Error {
@@ -96,11 +97,11 @@ export interface HeldLock {
 
 export interface LockOptions {
   readonly driver: Driver;
-  /** Postgres: the URL the lock's own connection opens (the app's pool is not used). */
+  /** Postgres and MySQL: the URL the lock's own connection opens (the app's pool is not used). */
   readonly url?: string;
-  /** Postgres: the connection's name, for the message when `pg` is missing. */
+  /** Postgres and MySQL: the connection's name, for the message when `pg` or `mysql2` is missing. */
   readonly connection?: string;
-  /** Postgres: how long opening the lock's connection may take (default: the URL's `connect_timeout`, else ten seconds). */
+  /** Postgres and MySQL: how long opening the lock's connection may take (default: the URL's `connect_timeout`, else ten seconds). */
   readonly connectTimeoutMs?: number;
   /** How long to wait for another migration to end (default 60). `0` tries once. */
   readonly waitSeconds?: number;
@@ -114,7 +115,9 @@ export interface LockOptions {
 
 /**
  * Lets one migration at a time run on a database. Postgres: `pg_advisory_lock` on a connection of its own (outside the app's
- * pool), in a transaction that stays open for the run and ends with it or with the connection (a crashed process lets go). SQLite: a row in {@link LOCK_TABLE} with a heartbeat; a row
+ * pool), in a transaction that stays open for the run and ends with it or with the connection (a crashed process lets go). MySQL:
+ * `GET_LOCK` on a connection of its own, named for the database (the server's locks are server-wide), held until `RELEASE_LOCK` or the end of
+ * the connection. SQLite: a row in {@link LOCK_TABLE} with a heartbeat; a row
  * nobody has refreshed for {@link STALE_AFTER_MS}, or whose process on this host is gone, is taken over with a warning. See
  * `docs/migrations.md#one-migration-at-a-time`.
  */
@@ -128,7 +131,7 @@ export const MigrationLock = {
       case 'sqlite':
         return acquireSqlite(db, owner, waitMs, options.now ?? (() => new Date()), options.onTakeover);
       case 'mysql':
-        return mysqlPending('The migration lock');
+        return acquireMysql(options, owner, options.waitSeconds ?? 60);
       default:
         return unknownDriver(options.driver);
     }
@@ -206,6 +209,100 @@ async function postgresHolder(client: { query<R>(text: string): Promise<{ rows: 
   const row = result.rows[0];
   const owner = row?.application_name.startsWith(NAME_PREFIX) ? row.application_name.slice(NAME_PREFIX.length) : 'unknown';
   return { owner, since: row?.xact_start ? new Date(row.xact_start) : undefined };
+}
+
+/**
+ * MySQL: `GET_LOCK` names are server-wide, so the name carries a hash of the database as the server compares it (`database()`,
+ * lower-cased unless `lower_case_table_names` is 0): 40 hex digits and the prefix fit its 64 characters. On a server that tells `Orders`
+ * and `orders` apart, they get two locks; on one that does not, one database gets one lock however the URL spells it.
+ */
+export const mysqlLockName = (database: string): string => `${NAME_PREFIX}${hash('sha256', database, 'hex').slice(0, 40)}`;
+
+async function acquireMysql(options: LockOptions, owner: string, waitSeconds: number): Promise<HeldLock> {
+  if (options.url === undefined) throw new TypeError('The MySQL migration lock needs the connection’s url.');
+  const name = options.connection ?? 'default';
+  const target = describeConnection({ driver: 'mysql', url: options.url });
+  // A pool of one, borrowed for the whole lock and given back only after `release_lock`: the reset of the way back would let the lock go.
+  const pool = await mysqlPool({
+    url: options.url,
+    name,
+    poolMax: 1,
+    ...(options.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: options.connectTimeoutMs }),
+    connectAttributes: { program_name: NAME_PREFIX + owner },
+  });
+  const close = () => new Promise<void>((resolve) => pool.end(() => resolve()));
+  let connection: MysqlPoolConnection;
+  try {
+    connection = await new Promise<MysqlPoolConnection>((resolve, reject) => pool.getConnection((error, held) => (error ? reject(error) : resolve(held))));
+  } catch (error) {
+    await close();
+    if (error instanceof DatabaseConnectionError) throw error;
+    throw connectionError({ name, target }, error);
+  }
+  let lost: MigrationLockLostError | undefined;
+  // An ended connection reaches the guard's listener only: this says why the lock is gone, at the next heartbeat.
+  (connection as unknown as { on: (event: 'error', listener: (error: Error) => void) => void }).on('error', (error) => {
+    lost ??= new MigrationLockLostError(`its database connection ended (${error.message})`);
+  });
+  const ask = <R>(text: string, values: unknown[] = []) =>
+    new Promise<R[]>((resolve, reject) => {
+      connection.query(text, values, (error, rows) => (error ? reject(error) : resolve(rows as R[])));
+    });
+  let key: string;
+  try {
+    const [row] = await ask<{ db: string | null }>('select if(@@lower_case_table_names = 0, database(), lower(database())) as db');
+    key = mysqlLockName(row?.db ?? '');
+    const got = (await ask<{ got: unknown }>('select get_lock(?, ?) as got', [key, waitSeconds]))[0]?.got;
+    if (Number(got) !== 1) {
+      // NULL is an error of the server (out of memory, a killed thread); 0 is the time that ran out.
+      if (got === null || got === undefined) throw new Error('MySQL could not take the lock (GET_LOCK answered NULL)');
+      throw new MigrationLockTimeoutError(await mysqlHolder(ask, key));
+    }
+  } catch (error) {
+    connection.destroy();
+    await close();
+    throw error;
+  }
+  return {
+    release: async () => {
+      try {
+        // A connection that ended let go of the lock with it, and a `release_lock` that fails is followed by the end of the connection below:
+        // either way the server holds nothing for this run any more.
+        if (!lost) await ask('select release_lock(?) as released', [key]).catch(() => {});
+      } finally {
+        // Not given back to the pool: the reset on the way back is for a connection that goes on, this one is done.
+        connection.destroy();
+        await close();
+      }
+    },
+    // The connection being alive is not enough: ask whether this connection still holds the lock.
+    heartbeat: async () => {
+      if (lost) throw lost;
+      let held: unknown;
+      try {
+        held = (await ask<{ held: unknown }>('select is_used_lock(?) = connection_id() as held', [key]))[0]?.held;
+      } catch (error) {
+        throw (lost ??= new MigrationLockLostError(`its database connection ended (${(error as Error).message})`));
+      }
+      if (Number(held) !== 1) throw (lost ??= new MigrationLockLostError('the database no longer holds it for this connection'));
+    },
+  };
+}
+
+/** Who holds the MySQL lock `key`: the connection of `is_used_lock`, and the program name it announced when it opened, if the server lets us read it. */
+async function mysqlHolder(ask: <R>(text: string, values?: unknown[]) => Promise<R[]>, key: string): Promise<LockHolder> {
+  try {
+    const [used] = await ask<{ holder: unknown }>('select is_used_lock(?) as holder', [key]);
+    if (used?.holder === null || used?.holder === undefined) return { owner: 'unknown', since: undefined };
+    const [attribute] = await ask<{ value: string | null }>(
+      "select attr_value as value from performance_schema.session_connect_attrs where processlist_id = ? and attr_name = 'program_name'",
+      [String(used.holder)],
+    ).catch(() => []);
+    const value = attribute?.value;
+    return { owner: typeof value === 'string' && value.startsWith(NAME_PREFIX) ? value.slice(NAME_PREFIX.length) : 'unknown', since: undefined };
+  } catch {
+    return { owner: 'unknown', since: undefined };
+  }
 }
 
 interface LockRow {

@@ -5,13 +5,14 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { drivers, freshConnections, freshDatabase, PGSQL_URL, silent } from '../__fixtures__/databases.ts';
+import { drivers, freshConnections, freshDatabase, PGSQL_URL, silent, withMysql } from '../__fixtures__/databases.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand } from '../commands/migrate.ts';
 import { Connections, MigrationLockLostError, MigrationLockTimeoutError, Migrator } from '../index.ts';
 import type { TypeGenerator } from '../types-gen/generator.ts';
 import { createMigrationsTable } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
-import { ADVISORY_KEY, LOCK_TABLE, MigrationLock, ownerOf, STALE_AFTER_MS, type LockOptions } from './lock.ts';
+import { ADVISORY_KEY, LOCK_TABLE, MigrationLock, mysqlLockName, ownerOf, STALE_AFTER_MS, type LockOptions } from './lock.ts';
+import { PAUSE, type Pause } from '../__fixtures__/migrations/state-pause/2026_01_31_000000_create_paused_table.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`../__fixtures__/migrations/${name}/`, import.meta.url);
@@ -33,7 +34,7 @@ function input(options: Record<string, string | boolean> = {}) {
 function lockOf(connections: Connections) {
   const options = connections.options();
   return (extra: Omit<LockOptions, 'driver' | 'url'> = {}) =>
-    MigrationLock.acquire(connections.get<any>(), { driver: options.driver, ...(options.driver === 'pgsql' ? { url: options.url } : {}), ...extra });
+    MigrationLock.acquire(connections.get<any>(), { driver: options.driver, ...(options.driver === 'pgsql' || options.driver === 'mysql' ? { url: options.url } : {}), ...extra });
 }
 
 describe.each(drivers)('the migration lock on %s', (driver) => {
@@ -423,5 +424,176 @@ describe.each(drivers)('a migration that loses the lock on %s', (driver) => {
     loses(undefined);
     expect(await tablesOf('default')).toContain('doomed');
     expect(await recorded()).toEqual(['2026_01_09_000000_create_doomed_table']);
+  });
+});
+
+// MySQL runs in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+withMysql('the MySQL lock', () => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const db = () => connections.get<any>();
+  const acquire = (options: Omit<LockOptions, 'driver' | 'url'> = {}) => lockOf(connections)(options);
+  const paused: ModuleDefinition = { name: 'state-pause', migrations: fixtures('state-pause') };
+  const auth_: ModuleDefinition = auth;
+
+  /** The connection ids of the locks that wait or hold on this server, by the owner they announced. */
+  const holders = async (owner: string) =>
+    (await sql<{ id: string }>`select processlist_id as id from performance_schema.session_connect_attrs where attr_name = 'program_name' and attr_value = ${`marmeon-migrate:${owner}`}`.execute(db())).rows.map((row) => Number(row.id));
+
+  beforeAll(async () => ({ connections, close } = await freshConnections('mysql')));
+  afterAll(() => close());
+
+  it('is held by one migrator at a time: the second times out with D8 and names the holder', async () => {
+    const held = await acquire({ owner: 'build-7:4242' });
+    try {
+      const error = await acquire({ waitSeconds: 0, owner: 'second:2' }).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(MigrationLockTimeoutError);
+      expect((error as Error).message).toMatch(/^\[marmeon:D8\] Another migration has run since an unknown time \(build-7:4242\)\./);
+      expect((error as MigrationLockTimeoutError).holder).toEqual({ owner: 'build-7:4242', since: undefined });
+      await expect(migrator(connections).lockWith({ waitSeconds: 0 }).migrate()).rejects.toBeInstanceOf(MigrationLockTimeoutError);
+    } finally {
+      await held.release();
+    }
+    await (await acquire({ waitSeconds: 0 })).release();
+  });
+
+  it('waits for the holder to end, then takes the lock', async () => {
+    const held = await acquire();
+    const waiting = acquire({ waitSeconds: 10 });
+    let finished = false;
+    void waiting.then(() => (finished = true));
+    await pause(700);
+    expect(finished).toBe(false);
+    await held.release();
+    await (await waiting).release();
+  });
+
+  it('times out when the seconds it was given have run out', async () => {
+    const held = await acquire();
+    try {
+      await expect(acquire({ waitSeconds: 1 })).rejects.toBeInstanceOf(MigrationLockTimeoutError);
+    } finally {
+      await held.release();
+    }
+  });
+
+  it('does not make a migrator on another database of the same server wait', async () => {
+    const other = await freshConnections('mysql');
+    const held = await acquire({ owner: 'here:1' });
+    try {
+      // Any competition for the same lock would be D8 at once.
+      const there = await lockOf(other.connections)({ waitSeconds: 0, owner: 'there:2' });
+      await there.release();
+    } finally {
+      await held.release();
+      await other.close();
+    }
+  });
+
+  it('keeps the lock while the run goes on: a connection that went back to the pool did not take it along', async () => {
+    // The first migration ends, its pinned connection is reset and goes back; the second one is paused in its data step with the lock held.
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    (globalThis as Record<symbol, Pause | undefined>)[PAUSE] = { entered: () => entered.resolve(), released: released.promise };
+    const first = migrator(connections).lockWith({ waitSeconds: 10 });
+    const running = new Migrator({ modules: [auth_, paused], root: '/' } as unknown as Application, connections).lockWith({ waitSeconds: 10 }).migrate();
+    try {
+      await entered.promise;
+      await expect(first.lockWith({ waitSeconds: 0 }).migrate()).rejects.toBeInstanceOf(MigrationLockTimeoutError);
+    } finally {
+      released.resolve();
+      delete (globalThis as Record<symbol, Pause | undefined>)[PAUSE];
+    }
+    expect((await running).map((run) => run.name)).toEqual(['2026_01_01_000000_create_users_table', '2026_01_31_000000_create_paused_table']);
+    await (await acquire({ waitSeconds: 0 })).release();
+  });
+
+  it('throws D22 at the next heartbeat when the connection that holds the lock was killed, and lets go without a fuss', async () => {
+    const held = await acquire({ owner: 'doomed:9' });
+    await held.heartbeat();
+    const [id] = await holders('doomed:9');
+    expect(id).toBeGreaterThan(0);
+    await sql.raw(`kill ${id}`).execute(db());
+    const error = await held.heartbeat().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MigrationLockLostError);
+    expect((error as Error).message).toMatch(/^\[marmeon:D22\] The migration lock was lost: its database connection ended/);
+    await held.release();
+    // The server let the lock go with the connection.
+    await (await acquire({ waitSeconds: 0 })).release();
+  });
+
+  it('is free again when the connection that holds it ends without a release', async () => {
+    const crashed = await acquire({ owner: 'crashed:5' });
+    const [id] = await holders('crashed:5');
+    await expect(acquire({ waitSeconds: 0 })).rejects.toThrow('crashed:5');
+    await sql.raw(`kill ${id}`).execute(db());
+    const next = await acquire({ waitSeconds: 5 });
+    await next.release();
+    await crashed.release();
+  });
+
+  it('stops a run whose lock was lost, records nothing for the migration that was running and says why', async () => {
+    const lockLost: ModuleDefinition = { name: 'lock-lost', migrations: fixtures('lock-lost') };
+    const own = await freshConnections('mysql');
+    const rows = own.connections.get<any>();
+    // The lock of another database on the server, which this run must not take away.
+    const stranger = await freshConnections('mysql');
+    const foreign = await lockOf(stranger.connections)({ waitSeconds: 0, owner: 'stranger:7' });
+    try {
+      (globalThis as { loseMigrationLock?: unknown }).loseMigrationLock = async () => {
+        const [killed] = (await sql<{ id: string }>`select a.processlist_id as id from performance_schema.session_connect_attrs a join information_schema.processlist p on p.id = a.processlist_id where a.attr_name = 'program_name' and a.attr_value like 'marmeon-migrate:%' and p.db = database() and a.processlist_id <> connection_id()`.execute(rows)).rows;
+        await sql.raw(`kill ${killed!.id}`).execute(rows);
+        await pause(300);
+      };
+      await expect(new Migrator({ modules: [lockLost], root: '/' } as unknown as Application, own.connections).migrate()).rejects.toBeInstanceOf(MigrationLockLostError);
+      expect((await sql<{ n: number }>`select count(*) as n from migrations`.execute(rows)).rows[0]?.n).toBe(0);
+      await foreign.heartbeat(); // the lock of the other database is still held
+    } finally {
+      delete (globalThis as { loseMigrationLock?: unknown }).loseMigrationLock;
+      await foreign.release();
+      await stranger.close();
+      await own.close();
+    }
+  });
+
+  it('says a server that cannot be reached with D11, and a missing url with the TypeError of the lock', async () => {
+    await expect(MigrationLock.acquire(db(), { driver: 'mysql', url: 'mysql://app:secret@127.0.0.1:1/x', connectTimeoutMs: 500 })).rejects.toThrow(/^\[marmeon:D11\] Could not connect to the database connection "default"/);
+    await expect(MigrationLock.acquire(db(), { driver: 'mysql' })).rejects.toThrow(new TypeError('The MySQL migration lock needs the connection’s url.'));
+  });
+
+  it('names the holder unknown when the account that waits may not read performance_schema', async () => {
+    const options = connections.options();
+    if (options.driver !== 'mysql') throw new Error('a MySQL connection');
+    const database = decodeURIComponent(new URL(options.url).pathname.slice(1));
+    // An account of the whole server, not of the test database: named with the tag of this checkout like its databases, so a run that was cut off shows what it left.
+    const account = `mlim_${(process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged').slice(0, 12)}_${Math.random().toString(36).slice(2, 8)}`; // at most 32 characters
+    const password = ['limited', Math.random().toString(36).slice(2)].join('-');
+    await sql.raw(`create user '${account}'@'%' identified by '${password}'`).execute(db());
+    try {
+      await sql.raw(`grant all on \`${database}\`.* to '${account}'@'%'`).execute(db());
+      const limited = new URL(options.url);
+      limited.username = account;
+      limited.password = password;
+      const held = await acquire({ owner: 'seen:1' });
+      try {
+        const error = await MigrationLock.acquire(db(), { driver: 'mysql', url: limited.href, waitSeconds: 0 }).catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(MigrationLockTimeoutError);
+        expect((error as MigrationLockTimeoutError).holder).toEqual({ owner: 'unknown', since: undefined });
+        // The account that may read it names the holder.
+        await expect(acquire({ waitSeconds: 0 })).rejects.toThrow('seen:1');
+      } finally {
+        await held.release();
+      }
+    } finally {
+      await sql.raw(`drop user if exists '${account}'@'%'`).execute(db());
+    }
+  });
+});
+
+describe('the name of the MySQL lock', () => {
+  it('differs for two databases whose names differ only in case (a server may tell them apart), and fits the 64 characters GET_LOCK allows', () => {
+    expect(mysqlLockName('Orders')).not.toBe(mysqlLockName('orders'));
+    expect(mysqlLockName('orders')).toBe(mysqlLockName('orders'));
+    expect(mysqlLockName('orders')).toMatch(/^marmeon-migrate:[0-9a-f]{40}$/);
   });
 });

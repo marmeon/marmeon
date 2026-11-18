@@ -341,13 +341,50 @@ describe('what up() refuses while it builds the plan', () => {
     expect(() => schema.raw(sql`/* note */ drop table migrations`)).toThrow(/names "migrations", a table of the migrator/);
   });
 
-  it('checks the mysql statement of schema.raw() by the lexing rules of SQLite and Postgres, which MySQL does not share', () => {
-    const schema = new Schema();
-    expect(() => schema.raw({ mysql: sql`drop table migrations` })).toThrow(/\[marmeon:D4\]/);
-    // PINS TODAY'S BEHAVIOUR, not a guarantee: MySQL runs the text of a `/*! … */` comment (and reads a backslash in a string as an escape), but
-    // the check strips the comment as plain SQL does. Nothing runs a `mysql` statement yet; the step that
-    // does must replace the check with a stripping of MySQL's own, and this test with one that refuses it.
-    expect(() => schema.raw({ mysql: sql`/*! drop table migrations */ select 1` })).not.toThrow();
+  describe('the mysql statement of schema.raw(), lexed as MySQL does', () => {
+    const mysql = (text: string) => () => new Schema().raw({ mysql: sql.raw(text) });
+
+    it.each([
+      ['a plain name', 'drop table migrations'],
+      ['a name in backticks', 'drop table `migrations`'],
+      ['a name in double quotes (ANSI_QUOTES)', 'drop table "migration_lock"'],
+      ['an executable comment', '/*! drop table migrations */ select 1'],
+      ['an executable comment with a version', 'select 1 /*!50100 , (select count(*) from migrations) */'],
+      ['an optimizer hint', 'select /*+ no_index(migrations) */ 1'],
+      ['a string that a backslash keeps open until the quote after the escaped one', "select '\\'' ; delete from migrations ; select ''"],
+      ['a statement after a # comment with an apostrophe in it', "select 1 # it's\n; delete from migrations\n# don't"],
+      ['a statement after a comment with an apostrophe in it', "/* it's */ delete from migrations; /* don't */"],
+      ['arithmetic that only looks like a -- comment', 'select 1--1 ; delete from migrations'],
+      ['a quote inside an executable comment that the server may skip', "delete /*!99999 ' */ from migrations /*!99999 ' */"],
+      ['a quote inside an optimizer hint', "delete /*+ ' */ from migrations /*+ ' */"],
+      ['an unterminated string', "select 'abc ; delete from migrations"],
+      ['an unterminated comment', 'select 1 /* delete from migrations'],
+    ])('refuses %s with D4', (_name, text) => {
+      expect(mysql(text)).toThrow(/\[marmeon:D4\].*a table of the migrator/);
+    });
+
+    it.each([
+      ['the name in a string', "select 'migrations' as name"],
+      ['a string with an escaped quote that holds the name', "select 'it\\'s migrations'"],
+      ['a string with a doubled quote that holds the name', "select 'it''s migrations'"],
+      ['a comment with the name', '/* migrations */ create index notes_index on notes (id)'],
+      ['a # comment with the name', 'select 1 # migrations\n, 2'],
+      ['a -- comment with the name', 'select 1 -- migrations\n, 2'],
+      ['a name with a longer name around it', 'select * from migrations_archive'],
+      ['an optimizer hint that names no table of the migrator', "select /*+ no_index(t) */ 'note' from t"],
+    ])('allows %s', (_name, text) => {
+      expect(mysql(text)).not.toThrow();
+    });
+
+    it('says that every word counts when the statement has an executable comment', () => {
+      expect(mysql('select /*! 1 */ 2 from migrations')).toThrow(/a statement with a \/\*! or \/\*\+ comment is read with every word/);
+      expect(mysql('select 2 from migrations')).toThrow(/^(?!.*every word)/s);
+    });
+
+    it('still reads the statements for the other drivers as before: a # is no comment there, a backslash no escape', () => {
+      expect(() => new Schema().raw({ pgsql: sql`select 1 # migrations` })).toThrow(/\[marmeon:D4\]/);
+      expect(() => new Schema().raw({ sqlite: sql`/*! drop table migrations */ select 1` })).not.toThrow();
+    });
   });
 
   it('refuses a table without columns, a drop in create() and a column named twice', () => {

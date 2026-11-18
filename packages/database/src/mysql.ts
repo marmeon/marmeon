@@ -16,6 +16,8 @@ export interface MysqlOptions {
   connectTimeoutMs?: number;
   /** An idle pooled connection failed (the server restarted, an admin killed it); the pool replaces it. */
   onIdleError?: (error: Error) => void;
+  /** What the server lists for each connection in `performance_schema.session_connect_attrs`, beside the driver's own. */
+  connectAttributes?: Readonly<Record<string, string>>;
 }
 
 /** What to install for MySQL — an optional peer, with the tested major. */
@@ -178,32 +180,36 @@ export function createMysqlDialect(options: MysqlOptions): MysqlDialect {
       return new MarmeonMysqlCompiler();
     }
   })({
-    pool: async () => {
-      const mysql2 = await importMysql2(undefined, options.name);
-      const config = mysqlConnection(options.url, options.connectTimeoutMs);
-      const poolMax = options.poolMax ?? 10;
-      const pool = mysql2.createPool({
-        ...config,
-        queryFormat: textOnly,
-        connectionLimit: poolMax,
-        // The guard holds the callers that wait for a connection, so a caller that timed out leaves nothing behind in the queue of `mysql2`;
-        // it asks for a connection only when one is free or there is room for one. If that ever failed, this says so instead of queueing.
-        waitForConnections: false,
-        // A lease holds at most this many prepared statements (poolMax times it per process, none between leases): the reset of the way back
-        // closes them all. `mysql2` evicts the least recently used one beyond it.
-        maxPreparedStatements: MAX_PREPARED_STATEMENTS,
-        // The guard resets a connection itself on the way back, and sets the session up again after it: a reset of `mysql2` behind ours would
-        // take that set-up away.
-        resetOnRelease: false,
-      });
-      return guardedPool(pool as unknown as MysqlPool, {
-        poolMax,
-        integer: (value, unsigned) => (unsigned ? mysql2.TypedParameter.LONGLONG.unsigned(value) : mysql2.TypedParameter.LONGLONG(value)),
-        ...(options.name === undefined ? {} : { name: options.name }),
-        connectTimeoutMs: config.connectTimeout,
-        ...(options.onIdleError ? { onIdleError: options.onIdleError } : {}),
-      });
-    },
+    pool: () => mysqlPool(options),
+  });
+}
+
+/** The guarded pool of `mysql2` for `options`: what {@link createMysqlDialect} uses, and the migration lock for a connection of its own. */
+export async function mysqlPool(options: MysqlOptions): Promise<MysqlPool> {
+  const mysql2 = await importMysql2(undefined, options.name);
+  const config = mysqlConnection(options.url, options.connectTimeoutMs);
+  const poolMax = options.poolMax ?? 10;
+  const pool = mysql2.createPool({
+    ...config,
+    queryFormat: textOnly,
+    connectionLimit: poolMax,
+    // The guard holds the callers that wait for a connection, so a caller that timed out leaves nothing behind in the queue of `mysql2`;
+    // it asks for a connection only when one is free or there is room for one. If that ever failed, this says so instead of queueing.
+    waitForConnections: false,
+    // A lease holds at most this many prepared statements (poolMax times it per process, none between leases): the reset of the way back
+    // closes them all. `mysql2` evicts the least recently used one beyond it.
+    maxPreparedStatements: MAX_PREPARED_STATEMENTS,
+    // The guard resets a connection itself on the way back, and sets the session up again after it: a reset of `mysql2` behind ours would
+    // take that set-up away.
+    resetOnRelease: false,
+    ...(options.connectAttributes ? { connectAttributes: { ...options.connectAttributes } } : {}),
+  });
+  return guardedPool(pool as unknown as MysqlPool, {
+    poolMax,
+    integer: (value, unsigned) => (unsigned ? mysql2.TypedParameter.LONGLONG.unsigned(value) : mysql2.TypedParameter.LONGLONG(value)),
+    ...(options.name === undefined ? {} : { name: options.name }),
+    connectTimeoutMs: config.connectTimeout,
+    ...(options.onIdleError ? { onIdleError: options.onIdleError } : {}),
   });
 }
 

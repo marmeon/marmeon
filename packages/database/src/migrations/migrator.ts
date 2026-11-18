@@ -11,7 +11,7 @@ import { migratorConnection } from '../migrator-connection.ts';
 import { mysqlPending } from '../mysql-pending.ts';
 import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
-import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
+import { assertRawFitsMysql, check, executePlan, planOf, type PlanStep } from '../schema/plan.ts';
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
 import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
@@ -159,7 +159,7 @@ export class UnknownSecretsError extends Error {
  * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps two tables for it, `migrations` (which
  * ran, in which batch) and, on SQLite, `migration_lock`; what the migrations say about the schema (secret columns, `timestamps()`,
  * `softDeletes()`, `.inverse()`, the owner of a table) is computed from their plans, not stored. After every migration the
- * database is checked against that schema, and a migration that left it different is rolled back.
+ * database is checked against that schema, and a migration that left it different is rolled back (on MySQL, which cannot, it is reported and what it did stays).
  *
  * A migration may run on another connection (`connection` in `defineMigration`, e.g. the cache's own SQLite
  * file): its record stays on `default` (one order, one batch number for all).
@@ -205,7 +205,7 @@ export class Migrator {
     const lock = await MigrationLock.acquire(this.#books(), {
       ...this.#lockOptions,
       driver: options.driver,
-      ...(options.driver === 'pgsql' ? { url: options.url } : {}),
+      ...(options.driver === 'pgsql' || options.driver === 'mysql' ? { url: options.url } : {}),
     });
     this.#held = lock;
     let result: R;
@@ -294,17 +294,26 @@ export class Migrator {
       // names do, stops the run before the first migration. Computed, not read from `.marmeon/schema.json`: the run decides what the
       // database becomes, and the file is only a copy of that computation.
       assertOrder(planned, done, pending);
+      // MySQL runs no statement written for another driver: a raw step without one for it stops the run before the first migration.
+      for (const { file, connection, plan } of pending) {
+        if (this.#driver(connection) === 'mysql') assertRawFitsMysql(plan, `Migration ${file.name} (module "${file.module}")`);
+      }
       // And the database must be what the run starts from: an old mismatch is not the first migration's fault, and a table the run is
       // to create must not be there already (a database that is not this app's).
       await this.#precheck(state, pending);
       const batch = hasRecord ? (await this.#lastBatch()) + 1 : 1;
+      // MySQL commits as it runs DDL, so the record cannot be made in the first migration's transaction: it comes first.
+      if (!hasRecord && this.#driver() === 'mysql') {
+        await createMigrationsTable(this.#books(), 'mysql');
+        hasRecord = true;
+      }
       for (const entry of pending) {
         const { file, connection } = entry;
         await this.#held?.heartbeat();
         const started = performance.now();
         const after = fold([entry], state);
         // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL).
-        if (connection === 'default') {
+        if (connection === 'default' && this.#driver() !== 'mysql') {
           await db.transaction().execute(async (trx) => {
             // The record is made with the first migration, in its transaction: a run that fails leaves no empty record behind, which
             // would turn "tables and no record" into "migrations pending".
@@ -315,14 +324,13 @@ export class Migrator {
           });
           hasRecord = true;
         } else {
-          // On its own connection, then recorded on default — two databases, so two transactions (the record comes last:
-          // a migration that failed is not recorded).
-          await this.#db(connection)
-            .transaction()
-            .execute(async (trx) => {
-              await this.#execute(trx, entry, state.projection, after);
-              await this.#held?.heartbeat(); // before the commit: a lock lost meanwhile rolls the migration back
-            });
+          // Not in one transaction with its record, for one of two reasons. Another connection: two databases, so two transactions (the record
+          // comes last: a migration that failed is not recorded). MySQL: it commits DDL as it runs, so the migration has no transaction to
+          // roll back, and a lock lost meanwhile stops the run with the schema steps that ran left in place.
+          await this.#applying(connection, async (trx) => {
+            await this.#execute(trx, entry, state.projection, after);
+            await this.#held?.heartbeat(); // with a transaction (not on MySQL) a lock lost here rolls the migration back
+          });
           await db.transaction().execute(async (trx) => {
             if (!hasRecord) await createMigrationsTable(trx, this.#driver());
             await this.#held?.heartbeat(trx);
@@ -574,34 +582,41 @@ export class Migrator {
     const left = () => fold(planned.filter(({ file }) => remaining.has(file.name)));
     this.#connections.publish(left().projection);
     const db = this.#db();
-    const runs: MigrationRun[] = [];
+    // Every `down()` is found, planned and checked (what the driver cannot do) before the first one runs: a rollback that cannot go through undoes nothing.
+    const targets: { row: (typeof rows)[number]; entry: Omit<Planned, 'checksum'> }[] = [];
     for (const row of rows) {
-      await this.#held?.heartbeat();
+      const who = `Migration ${printable(row.name)} (module "${printable(row.module)}")`;
       const file = files.get(row.name);
       if (!file) throw new Error(withCode('D16', `Cannot roll back "${printable(row.name)}" (module "${printable(row.module)}"): its file is gone.`));
       const migration = await loadMigration(file);
       if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${printable(row.name)}" (module "${printable(row.module)}"): it has no down().`));
       const connection = this.#connectionOf(migration, file);
-      const entry = { file, connection, plan: planOf(migration, 'down', `Migration ${printable(row.name)} (module "${printable(row.module)}")`) };
+      const plan = planOf(migration, 'down', who);
+      if (this.#driver(connection) === 'mysql') assertRawFitsMysql(plan, who);
+      check(this.#driver(connection), plan);
+      targets.push({ row, entry: { file, connection, plan } });
+    }
+    const runs: MigrationRun[] = [];
+    for (const { row, entry } of targets) {
+      await this.#held?.heartbeat();
+      const { connection } = entry;
       const started = performance.now();
       // The schema this rollback starts from: the constraint of a `oneOf()` list is looked up in it.
       const starting = left().projection;
       // What the migrations that remain leave: their plans again, as `down()` is not looked into for the schema (the database is checked against it).
       remaining.delete(row.name);
       const after = left();
-      if (connection === 'default') {
+      if (connection === 'default' && this.#driver() !== 'mysql') {
         await db.transaction().execute(async (trx) => {
           await this.#execute(trx, entry, undefined, after, starting);
           await this.#held?.heartbeat(trx);
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
         });
       } else {
-        await this.#db(connection)
-          .transaction()
-          .execute(async (trx) => {
-            await this.#execute(trx, entry, undefined, after, starting);
-            await this.#held?.heartbeat();
-          });
+        await this.#applying(connection, async (trx) => {
+          await this.#execute(trx, entry, undefined, after, starting);
+          await this.#held?.heartbeat();
+        });
         await db.transaction().execute(async (trx) => {
           await this.#held?.heartbeat(trx);
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
@@ -679,7 +694,7 @@ export class Migrator {
   /**
    * After a migration, in its transaction: every table and column the schema of the migrations puts on this connection is in the
    * database. A rename or drop in raw SQL leaves the migrations' schema naming something that is gone — a secret column, say, that is
-   * now called something else and would be read as an ordinary one — so the migration is rolled back instead.
+   * now called something else and would be read as an ordinary one — so the migration is rolled back instead (on MySQL it is reported only: DDL cannot be rolled back there).
    *
    * Not the other way round: what the database has beyond the schema is no error. Raw SQL may add a column, another tool a table, a
    * newer release of the app a migration; `selectAll()` writes out the columns the migrations know, so nothing unknown is read by
@@ -692,7 +707,7 @@ export class Migrator {
       withCode(
         'D3',
         `Migration ${file.name} (module "${file.module}") left the database without ${lacking.slice(0, 5).join(', ')}${lacking.length > 5 ? ', …' : ''}, which the migrations say is there: ` +
-          'a table or column was renamed or dropped with raw SQL, and the schema the migrations describe did not follow. The migration was rolled back. ' +
+          `a table or column was renamed or dropped with raw SQL, and the schema the migrations describe did not follow. ${this.#driver(connection) === 'mysql' ? 'MySQL cannot undo a schema change: what the migration did stays, and it is not recorded. ' : 'The migration was rolled back. '}` +
           'Use schema.alter() (renameColumn, dropColumn) and schema.rename(), which keep it in step. See docs/migrations.md#raw-sql.',
       ),
     );
@@ -842,6 +857,17 @@ export class Migrator {
   async #lastBatch(): Promise<number> {
     const row = await this.#books().selectFrom(MIGRATIONS_TABLE).select(sql<number | null>`max(batch)`.as('batch')).executeTakeFirst();
     return row?.batch ?? 0;
+  }
+
+  /**
+   * Runs one migration on `connection`: in a transaction where the database rolls DDL back, on one pinned connection without one on
+   * MySQL, which commits as it runs DDL and has nothing to roll back (the `data` steps each have a transaction of their own). The
+   * pinned connection goes back to the pool when the migration ends, with whatever session state it made reset.
+   */
+  async #applying(connection: string, work: (db: Kysely<any>) => Promise<void>): Promise<void> {
+    const db = this.#db(connection);
+    if (this.#driver(connection) === 'mysql') await db.connection().execute(work);
+    else await db.transaction().execute(work);
   }
 
   #db(connection = 'default'): Kysely<MigrationRecord> {

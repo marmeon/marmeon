@@ -777,8 +777,8 @@ const GROUPS: Record<string, string[]> = {
 };
 /** Directories loaded on Postgres only, next to their group (SQLite cannot do what they do). */
 const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql', 'ddl/checks-pgsql'] };
-/** Directories no parity is asked of: they fail on purpose, write what the projection does not know, or are for the order a test runs them in. */
-const EXCLUDED = ['bad-down', 'broken', 'order', 'order-independent', 'order-late', 'raw-add', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'routines', 'throws-on-import', 'views', 'writes-record'];
+/** Directories no parity is asked of: they fail on purpose, write what the projection does not know, run on MySQL only, or are for the order a test runs them in. */
+const EXCLUDED = ['bad-down', 'broken', 'down-checked', 'down-order', 'mysql-data', 'mysql-defaults', 'mysql-down-two', 'mysql-guard', 'mysql-raw', 'mysql-raw-down', 'mysql-raw-refused', 'order', 'order-independent', 'order-late', 'raw-add', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'routines', 'throws-on-import', 'views', 'writes-record'];
 
 const appMigrations = (app: string): ModuleDefinition[] => {
   const modules = new URL(`../../../../apps/${app}/modules/`, import.meta.url);
