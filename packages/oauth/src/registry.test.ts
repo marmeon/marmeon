@@ -402,4 +402,25 @@ describe('OAuthServiceProvider: definitions', () => {
     expect(kept.mapUser(raw).id).toBe('https://gitea.example.com/eu/eu');
     expect(expectA11(await start({ server: 'https://gitea.example.com' } as never))).toMatch(/"server"/);
   });
+
+  it('calls a function endpoints() as a method of the definition, so a class instance reads its own #private state', async () => {
+    class Gitea {
+      readonly #server = 'https://gitea.example.com';
+      readonly label = 'Gitea';
+      readonly scopes = ['read'];
+      async endpoints() {
+        return { authorizeUrl: `${this.#server}/authorize`, tokenUrl: `${this.#server}/token` };
+      }
+      async profile() {
+        return {};
+      }
+      mapUser() {
+        return { id: '1', email: null, emailVerified: false, name: null, nickname: null, avatar: null };
+      }
+    }
+    const app = await oauthApp([providerBringing('Idp', { idp: () => new Gitea() as never })], activeEnv('idp'));
+    const { definition: kept } = providersOf(app).get('idp')!;
+    expect(typeof kept.endpoints).toBe('function');
+    expect(await (kept.endpoints as (http: never) => Promise<unknown>)({} as never)).toEqual({ authorizeUrl: 'https://gitea.example.com/authorize', tokenUrl: 'https://gitea.example.com/token' });
+  });
 });

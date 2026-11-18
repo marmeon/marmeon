@@ -266,6 +266,20 @@ describe('fakeOAuth()', () => {
     expect(result.ok && result.value.user.tokens.scopes).toEqual(['a', 'b']);
   });
 
+  it('holds the fake to the issuer policy of the real provider: a tenant it does not accept is refused, the configured one is taken', async () => {
+    const CONFIGURED = '11111111-2222-3333-4444-555555555555';
+    const FOREIGN = '99999999-8888-7777-6666-555555555555';
+    const env = { OAUTH_MICROSOFT_TENANT: CONFIGURED };
+    const configured = await signIn('microsoft', (fake) => fake.user('microsoft', { id: '42' }), env);
+    expect(configured.ok && configured.value.user.id).toBe(`${CONFIGURED}|42`);
+    const foreign = await signIn('microsoft', (fake) => fake.user('microsoft', { id: '42', claims: { tid: FOREIGN } }), env);
+    expect(foreign).toEqual({ ok: false, error: { kind: 'invalid-response' } });
+    // Without a tenant of its own the provider takes any tenant that is a GUID, and no other text.
+    const wide = await signIn('microsoft', (fake) => fake.user('microsoft', { id: '42', claims: { tid: FOREIGN } }));
+    expect(wide.ok && wide.value.user.id).toBe(`${FOREIGN}|42`);
+    expect(await signIn('microsoft', (fake) => fake.user('microsoft', { id: '42', claims: { tid: 'not-a-tenant' } }))).toEqual({ ok: false, error: { kind: 'invalid-response' } });
+  });
+
   it('gives a Microsoft-style provider the tenant of its configuration', async () => {
     const tenant = 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE';
     expect((await userOf('microsoft', (fake) => fake.user('microsoft', { id: '42' }), { OAUTH_MICROSOFT_TENANT: tenant })).id).toBe(`${tenant.toLowerCase()}|42`);

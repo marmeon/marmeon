@@ -3,10 +3,10 @@ import { collectDrivers, withCode } from '@marmeon/core/internal';
 import { HttpClient } from '@marmeon/fetch';
 import { OAuthConfig, OAuthSetupError } from './config.ts';
 import { credentialsOf, MAX_NAME_LENGTH, variablePrefix, type OAuthCredentials, type OAuthCredentialsConfig } from './credentials.ts';
-import type { OAuthProviderDefinition, OAuthProviderFactory } from './definition.ts';
+import type { OAuthEndpoints, OAuthHttp, OAuthProviderDefinition, OAuthProviderFactory } from './definition.ts';
 import { MAX_SCOPE_LENGTH, MAX_SCOPES } from './flow.ts';
 import { checkEndpoint, checkEndpoints, RESERVED_PARAMS } from './endpoints.ts';
-import { COMMA_SCOPES, type CommaScopesDefinition, isBuiltByOidc, ISSUER_PARAM, NO_CONFIRM, OIDC, recordBuilt, type OidcDefinition } from './oidc-marker.ts';
+import { ACCEPTED_ISSUERS, COMMA_SCOPES, type CommaScopesDefinition, isBuiltByOidc, ISSUER_PARAM, NO_CONFIRM, OIDC, recordBuilt, type OidcDefinition } from './oidc-marker.ts';
 
 /** An active provider: its definition and the credentials it needs, both checked at the start and frozen. */
 export interface ResolvedOAuthProvider {
@@ -65,7 +65,10 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
   const d = Object.fromEntries(KEYS.map((key) => [key, (definition as Record<string, unknown>)[key]])) as Partial<Record<(typeof KEYS)[number], unknown>>;
 
   if (typeof d.label !== 'string' || d.label.length < 1 || d.label.length > 64) refuse(`${where} needs a label of 1 to 64 characters.`);
-  const endpoints = typeof d.endpoints === 'function' ? (d.endpoints as OAuthProviderDefinition['endpoints']) : checkEndpoints(d.endpoints, where, 'A11', local);
+  // A function is called as a method of the definition it came from, as `profile()` and `mapUser()` are: a class instance reads its `#private` state through `this`.
+  const endpointsOf = d.endpoints;
+  const endpoints: OAuthProviderDefinition['endpoints'] =
+    typeof endpointsOf === 'function' ? (http) => (endpointsOf as (http: OAuthHttp) => Promise<OAuthEndpoints>).call(definition, http) : checkEndpoints(d.endpoints, where, 'A11', local);
   const scopes: unknown = Array.isArray(d.scopes) ? [...d.scopes] : d.scopes;
   if (!Array.isArray(scopes) || scopes.length > MAX_SCOPES || !scopes.every(isScope)) refuse(`${where} needs scopes: a list of at most ${MAX_SCOPES} non-empty strings without spaces, each at most ${MAX_SCOPE_LENGTH} characters (one scope each).`);
   if (d.scopeSeparator !== undefined && (typeof d.scopeSeparator !== 'string' || d.scopeSeparator === '')) refuse(`${where}: scopeSeparator must be a non-empty string.`);
@@ -107,6 +110,7 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
     // The markers `oidc()` sets (the symbols are not exported; see oidc-marker.ts): carried over as they are. They prove nothing by being there.
     ...((definition as Partial<OidcDefinition>)[OIDC] === true ? { [OIDC]: true as const } : {}),
     ...((definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true ? { [ISSUER_PARAM]: true as const } : {}),
+    ...(typeof (definition as Partial<OidcDefinition>)[ACCEPTED_ISSUERS] === 'function' ? { [ACCEPTED_ISSUERS]: (definition as OidcDefinition)[ACCEPTED_ISSUERS] } : {}),
     ...((definition as Partial<OidcDefinition>)[NO_CONFIRM] === true ? { [NO_CONFIRM]: true as const } : {}),
     ...((definition as CommaScopesDefinition)[COMMA_SCOPES] === true ? { [COMMA_SCOPES]: true as const } : {}),
   });

@@ -4,8 +4,8 @@ import { HttpClient } from '@marmeon/fetch';
 import { HttpClientFake } from '@marmeon/fetch/testing';
 import type { OAuthCredentials } from './credentials.ts';
 import type { OAuthProviderDefinition, SocialProfile } from './definition.ts';
-import { COMMA_SCOPES, type CommaScopesDefinition, isBuiltByOidc, NO_CONFIRM, type OidcDefinition } from './oidc-marker.ts';
-import { oidcWith } from './oidc.ts';
+import { ACCEPTED_ISSUERS, COMMA_SCOPES, type CommaScopesDefinition, isBuiltByOidc, NO_CONFIRM, type OidcDefinition } from './oidc-marker.ts';
+import { oidcWith, type OidcOptions } from './oidc.ts';
 import { credentialsFor, OAuthProviders, registeredProviders, resolveProvider, type ResolvedOAuthProvider } from './registry.ts';
 
 /** A person the fake provider vouches for: the `id` is required, whatever else you leave out is empty (`email: null`, `emailVerified: false`, …). See docs/oauth.md#testing. */
@@ -297,7 +297,11 @@ function fakeDefinition(name: string, real: OAuthProviderDefinition, container: 
   };
   if (isBuiltByOidc(real)) {
     const noConfirmation = marked[NO_CONFIRM] === true;
-    const factory = oidcWith({ issuer: base, label: real.label, scopes: real.scopes, mapUser: (claims) => real.mapUser(claims), ...own }, noConfirmation ? { noConfirmation: true } : {});
+    // The issuer policy of the real provider holds: the fake's token (its own issuer) is accepted for the claims the real provider lists an issuer for,
+    // and for no other. A provider restricted to one tenant refuses another tenant here as it does in production.
+    const realIssuers = marked[ACCEPTED_ISSUERS];
+    const policy = realIssuers === undefined ? {} : { acceptedIssuers: (claims: Readonly<Record<string, unknown>>) => (realIssuers(claims).length > 0 ? [base] : []) };
+    const factory = oidcWith({ issuer: base, label: real.label, scopes: real.scopes, mapUser: (claims: Record<string, unknown>) => real.mapUser(claims), ...own, ...policy } as OidcOptions, noConfirmation ? { noConfirmation: true } : {});
     return { definition: factory({ name, credentials: { ...credentials, issuer: undefined }, container }), oidc: true, confirms: !noConfirmation };
   }
   const definition: OAuthProviderDefinition = {

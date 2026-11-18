@@ -15,6 +15,12 @@ export const OIDC = Symbol('marmeon.oauth.oidc');
 export const ISSUER_PARAM = Symbol('marmeon.oauth.oidc.issuer-parameter');
 
 /**
+ * The `acceptedIssuers` function of an `oidc()` provider, when it has one. The fake reads it so that a test is held to the issuer policy
+ * of the real provider (which tenants may sign in). Not exported from the package.
+ */
+export const ACCEPTED_ISSUERS = Symbol('marmeon.oauth.oidc.accepted-issuers');
+
+/**
  * Set to `true` on the definition of an `oidc()` provider that cannot prove a fresh sign-in (its ID token has no usable `auth_time`).
  * `redirect()` with the intent `confirm` then answers `reauthentication-unsupported`, and the callback refuses a confirmation. Only
  * the package's own built-in providers set it; `oidc()` takes no option for it. Not exported from the package.
@@ -65,6 +71,7 @@ export function isBuiltByOidc(definition: object): boolean {
 export type OidcDefinition = OAuthProviderDefinition & {
   readonly [OIDC]: true;
   readonly [ISSUER_PARAM]?: true;
+  readonly [ACCEPTED_ISSUERS]?: (claims: Readonly<Record<string, unknown>>) => readonly string[];
   readonly [NO_CONFIRM]?: true;
 };
 
