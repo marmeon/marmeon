@@ -43,7 +43,7 @@ export const queuedChatSchema = v.object({
  * The framework job behind `chat.queue()`: posts one message. **Encrypted** (APP_KEY): a recipient's webhook address is a secret and
  * travels inside the payload, so `jobs` and `failed_jobs` keep only ciphertext, bound to the job name. The worker checks the message and
  * the address again before it posts: a payload is data, not a promise. A webhook that answers `throttled` or `unavailable` is tried
- * again (waiting what it asks), one that is gone or refuses the message fails the job at once. Delivery is at-least-once.
+ * again (waiting what it asks), one that is gone or refuses the message fails the job at once. Delivery is at-least-once. See `docs/chat-notifications.md#delivery-and-retries`.
  */
 export class SendQueuedChatMessage {
   static readonly job = 'marmeon.chat';

@@ -17,7 +17,7 @@ export interface QueueChatOptions {
 }
 
 /**
- * Posts chat messages to Slack, Discord or Microsoft Teams through incoming webhooks. See `docs/drivers.md#chat-drivers`.
+ * Posts chat messages to Slack, Discord or Microsoft Teams through incoming webhooks. See `docs/chat-notifications.md#sending-without-notifications`.
  */
 export interface ChatNotifier {
   /**
@@ -34,7 +34,7 @@ export interface ChatNotifier {
    * accept throws `ChatError` here. Needs @marmeon/queue and APP_KEY.
    */
   queue(message: ChatMessage, options?: QueueChatOptions): Promise<void>;
-  /** Why `to` is refused, or `undefined` when messages can go there: use it where a user enters a webhook address. */
+  /** Why `to` is refused, or `undefined` when messages can go there: use it where a user enters a webhook address (`docs/chat-notifications.md#destinations`). */
   check(to: ChatDestination): string | undefined;
 }
 export const ChatNotifier = token<ChatNotifier>('ChatNotifier');

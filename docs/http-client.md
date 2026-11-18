@@ -60,7 +60,7 @@ A new app has `@marmeon/fetch`. Otherwise add it in the version of the app's oth
 pnpm add -E @marmeon/fetch@<version of your app>
 ```
 
-The package registers itself: the `HttpClient` is in the container, and a controller or a job asks for it in its constructor.
+The package registers itself: the `HttpClient` is in the container, and a controller or a job asks for it in its constructor. The [chat notifications](chat-notifications.md) post their webhooks through it, so a webhook address is checked like any other.
 
 ## Sending a request
 

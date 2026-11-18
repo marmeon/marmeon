@@ -512,7 +512,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | S6 | `i18n` | A file in `lang/marmeon/` or in `lang/<namespace>/` that names a key the texts it rewords do not have, or a text that drops a placeholder of theirs. [The framework's texts](localization.md#the-frameworks-texts), [Texts of a package](localization.md#texts-of-a-package) |
 | S7 | `i18n` | A package with texts and a module of the app (`modules/<namespace>/lang/`) both have texts under one namespace. [Texts of a package](localization.md#texts-of-a-package) |
 | S9 | `fetch` | Outgoing requests are not set up: an entry of `FETCH_ALLOWED_ADDRESSES` is not an address range, `FETCH_DRIVER` names a transport nobody brought, or a provider's factory returns something without `send()`. [Fetch transports](drivers.md#fetch-transports) |
-| S10 | `chat` | Chat messages are not set up: `CHAT_DRIVER` names a driver nobody brought, an entry of `CHAT_WEBHOOKS` is not `name=address`, repeats a name, or holds an address its driver does not accept, a provider's chat driver breaks its contract, or the `FetchServiceProvider` is missing. [Chat drivers](drivers.md#chat-drivers) |
+| S10 | `chat` | Chat messages are not set up: `CHAT_DRIVER` names a driver nobody brought, an entry of `CHAT_WEBHOOKS` is not `name=address`, repeats a name, or holds an address its driver does not accept, a provider's chat driver breaks its contract, or the `FetchServiceProvider` is missing. [Configuration](chat-notifications.md#configuration), [Chat drivers](drivers.md#chat-drivers) |
 
 ## Errors in the browser
 

@@ -68,7 +68,8 @@ function setup(message: string, options?: { cause?: unknown }): ChatSetupError {
 /**
  * Registers the `ChatNotifier`, which posts chat messages through the `HttpClient` of @marmeon/fetch (`CHAT_DRIVER`), and the
  * `marmeon.chat` job for `chat.queue()` when the app has @marmeon/queue. The configuration is checked at the start: a driver nobody
- * brought, a bad `CHAT_WEBHOOKS` or a driver that breaks its contract stops it. Found by `marmeon discover`.
+ * brought, a bad `CHAT_WEBHOOKS` or a driver that breaks its contract stops it. Found by `marmeon discover`. See
+ * `docs/chat-notifications.md#configuration`.
  */
 export class ChatServiceProvider implements ServiceProvider {
   static config = [ChatConfig];

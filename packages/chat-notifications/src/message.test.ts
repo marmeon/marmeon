@@ -163,7 +163,7 @@ describe('normalizeMessage: refusals', () => {
 
   it('refuses a destination name outside the name grammar, naming "to" and not the value, and accepts a name inside it', () => {
     const slackUrl = ['https://hooks.slack.com/services', 'T0', 'B0', 'x'.repeat(24)].join('/');
-    for (const to of ['Ops', 'ops ', ' ops', 'o ps', slackUrl, `Secret_${secret}`, '1ops', '']) {
+    for (const to of ['Ops', 'ops ', ' ops', 'o ps', slackUrl, `Secret_${secret}`, '1ops', '-ops', '_ops', '']) {
       const message = refusal({ to, text: 'x' });
       expect(message, to).toContain('"to"');
       if (to !== '') expect(message).not.toContain(to);

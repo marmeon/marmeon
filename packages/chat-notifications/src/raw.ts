@@ -20,7 +20,8 @@ export type DiscordActionRow = { readonly type: 1; readonly components: readonly
  * buttons: `{ type: 2, style: 5, label: 1 to 80 characters, url: an http(s) address of at most 512 characters }`, no `custom_id`: the
  * webhook is owned by no application) as the webhook takes them, at least one of the three, and who may be pinged: nobody unless
  * `allowedMentions` says so. `everyone: true` lets `@everyone` and `@here` ping, `users` or `roles` as `'all'` lets every user
- * or role mentioned in the text ping, as a list (at most 100 ids) only those. Anything else is refused with `ChatError`.
+ * or role mentioned in the text ping, as a list (at most 100 ids) only those. Anything else is refused with `ChatError`. See
+ * `docs/chat-notifications.md#raw-formats`.
  */
 export type DiscordRaw = {
   readonly content?: string;

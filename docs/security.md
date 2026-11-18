@@ -542,6 +542,12 @@ cloud metadata address included), for a name too, checks every redirect and limi
 range by itself; `FETCH_ALLOWED_ADDRESSES` lists the ranges you reach on purpose. The check that counts runs when the request is
 sent, not when the form is validated. The [HTTP client](http-client.md) page explains it.
 
+A chat webhook is such an address and a credential as well: whoever has it can post to the channel. `@marmeon/chat-notifications`
+accepts only the hosts and paths of the provider's driver, over https, and never logs an address. A queued message travels
+encrypted, and the content a message carries is shown as plain text, so a user's data cannot ping a channel or inject a link. Keep a
+recipient's own webhook address in a column marked `.secret()`, which `selectAll()` leaves out and a query reads with
+`secret()`, and take only addresses that `chat.check()` accepts. See [chat notifications](chat-notifications.md#untrusted-content).
+
 ## Logs and recordings
 
 The log masks the values of keys that look like secrets, such as `password`, `token`, `cookie` or `authorization`, in nested

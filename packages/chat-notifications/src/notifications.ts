@@ -12,7 +12,7 @@ declare module '@marmeon/notifications' {
      * delivery's transaction with a database queue on the same connection. A webhook address the recipient entered that its driver
      * does not accept (an empty or over-long one included) is skipped with a warning and the other channels are delivered; a mistake of the code or the configuration (a
      * destination `CHAT_WEBHOOKS` lacks, an unknown driver, whose name comes from code or a validated list and never from the recipient's input, a malformed message) fails the delivery at once; a driver that throws,
-     * or a queue that is down, is retried with the notification job. See `docs/notifications.md#channels`.
+     * or a queue that is down, is retried with the notification job. See `docs/notifications.md#the-chat-channel`.
      */
     chat: { toChat(recipient: any, data: any, t: Translator): ChatMessage | Promise<ChatMessage> };
   }

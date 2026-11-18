@@ -1,8 +1,9 @@
-import { Application, createApplication, Logger, Redactor, type LogContext, type ServiceProviderClass } from '@marmeon/core';
+import { Application, Clock, createApplication, Logger, Redactor, type LogContext, type ServiceProviderClass } from '@marmeon/core';
 import { Encrypter, EncryptionServiceProvider } from '@marmeon/encryption';
 import { HttpClient, FetchServiceProvider } from '@marmeon/fetch';
 import { HttpClientFake } from '@marmeon/fetch/testing';
 import { JobRegistry, Queue, QueueServiceProvider } from '@marmeon/queue';
+import { TestClock } from '@marmeon/core/testing';
 import { QueueFake } from '@marmeon/queue/testing';
 import { describe, expect, it } from 'vitest';
 import { CHAT_LOG_WARNING } from './config.ts';
@@ -66,7 +67,7 @@ describe('ChatServiceProvider: the start', () => {
 
   it('stops for a malformed CHAT_WEBHOOKS entry (by position) and a name listed twice', async () => {
     expect((await rejection(boot({ env: { CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: `ops=${slackUrl},${slackUrl}` } }))).message).toBe(
-      '[marmeon:S10] CHAT_WEBHOOKS: entry 2 is not name=https://… — a name of lowercase letters, digits and dashes, "=", then the address; entries are split at commas.',
+      '[marmeon:S10] CHAT_WEBHOOKS: entry 2 is not name=https://… — a name of lowercase letters, digits and dashes, starting with a letter, "=", then the address; entries are split at commas.',
     );
     expect((await rejection(boot({ env: { CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: `ops=${slackUrl},ops=${slackUrl}` } }))).message).toBe('[marmeon:S10] CHAT_WEBHOOKS: the name "ops" is listed twice.');
   });
@@ -456,6 +457,35 @@ describe('ChatServiceProvider: the queue', () => {
     const { queue, chat } = await queued();
     await chat.queue({ to: 'ops', text: 'x' }, { queue: 'chat', connection: 'sync', delay: 30 });
     expect(queue.dispatched(SendQueuedChatMessage)[0]).toMatchObject({ queue: 'chat', connection: 'sync', delaySeconds: 30 });
+  });
+
+  it('retries a refused post after 10 s, 1 min, 5 min and 5 min, and fails the job on the fifth try', async () => {
+    const http = new HttpClientFake().respond(/./, () => new Response('bad gateway', { status: 502 }));
+    const app = await createApplication(
+      { root: import.meta.dirname, discover: false, providers: [FetchServiceProvider, EncryptionServiceProvider, QueueServiceProvider, ChatServiceProvider] },
+      {
+        env: { LOG_LEVEL: 'silent', NODE_ENV: 'test', APP_KEY: KEY, QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null', CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: `ops=${slackUrl}` },
+        override: (container) => {
+          container.instance(Clock, new TestClock());
+          container.instance(HttpClient, http);
+          container.instance(Queue, new QueueFake(container));
+        },
+      },
+    );
+    const queue = app.container.make(Queue) as QueueFake;
+    const clock = app.container.make(Clock) as TestClock;
+    await app.container.make(ChatNotifier).queue({ to: 'ops', text: 'x' });
+    clock.freeze(); // 299 s must still be "not due yet": a running clock could pass the second in between
+    for (const wait of [0, 10, 60, 300]) {
+      clock.travel({ seconds: wait });
+      expect(await queue.work()).toMatchObject({ released: 1, failed: 0 });
+    }
+    clock.travel({ seconds: 299 });
+    expect(await queue.work()).toMatchObject({ processed: 0 });
+    clock.travel({ seconds: 1 });
+    expect(await queue.work()).toMatchObject({ released: 0, failed: 1 });
+    expect(http.requests).toHaveLength(5);
+    expect(queue.pending()).toEqual([]);
   });
 
   it('says what is missing without the QueueServiceProvider, and registers no job', async () => {

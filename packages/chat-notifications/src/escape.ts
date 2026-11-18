@@ -4,7 +4,7 @@ import { clean } from './message.ts';
  * Escapes `text` for Slack's `mrkdwn`: `&`, `<` and `>` become `&amp;`, `&lt;` and `&gt;`, so `<!channel>`, `<@U123>` and
  * `<url|label>` stay text. Use it for data inside the `text` of a block or an `mrkdwn` object of `raw.slack`. Bidirectional and
  * control characters (newline and tab stay) are removed first, lone surrogates replaced and line breaks turned into `\n`, like in
- * every neutral text. Escaping twice escapes twice.
+ * every neutral text. Escaping twice escapes twice. See `docs/chat-notifications.md#raw-formats`.
  */
 export function escapeSlackText(text: string): string {
   return clean(text).replace(/[&<>]/g, (char) => (char === '&' ? '&amp;' : char === '<' ? '&lt;' : '&gt;'));
@@ -18,7 +18,8 @@ export function escapeSlackText(text: string): string {
  * - a backslash before `#`, `-`, `>`, `+` and the dot of `1.` at the start of a line.
  *
  * Use it for data inside `raw.discord`. Bidirectional and control characters (newline and tab stay) are removed first, lone
- * surrogates replaced and line breaks turned into `\n`, like in every neutral text. Escaping twice escapes twice.
+ * surrogates replaced and line breaks turned into `\n`, like in every neutral text. Escaping twice escapes twice. See
+ * `docs/chat-notifications.md#raw-formats`.
  */
 export function escapeDiscordMarkdown(text: string): string {
   return (
