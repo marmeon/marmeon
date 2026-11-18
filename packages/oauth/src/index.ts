@@ -19,3 +19,5 @@ export type { OAuthCallbackOptions, OAuthRedirectError, OAuthRedirectOptions } f
 export { OAuthServiceProvider } from './provider.ts';
 export { OAuthProviders } from './registry.ts';
 export type { ResolvedOAuthProvider } from './registry.ts';
+export { oidc } from './oidc.ts';
+export type { IdTokenClaims, OidcOptions } from './oidc.ts';

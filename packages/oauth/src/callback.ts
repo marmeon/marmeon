@@ -1,10 +1,11 @@
-import { timingSafeEqual } from 'node:crypto';
 import { err, ok, type Logger, type Result } from '@marmeon/core';
 import type { Session } from '@marmeon/session';
 import { EndpointError } from './endpoints.ts';
 import type { OAuthEndpoints, OAuthHttp, SocialUser } from './definition.ts';
 import { exchangeCode, failureOf } from './exchange.ts';
 import { takeFlow } from './flow.ts';
+import { ISSUER_PARAM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { same } from './same.ts';
 import { OAuthHttpError } from './http.ts';
 import type { ResolvedOAuthProvider } from './registry.ts';
 import { toSocialUser } from './social-user.ts';
@@ -55,13 +56,6 @@ const ERROR_CODE = /^[a-z0-9_.-]{1,64}$/i;
 const MAX_CODE = 2048;
 const QUIET = new Set(['no-flow', 'expired', 'cancelled']);
 
-/** Equal texts, compared in constant time for their length (a different length is a difference anyone can see). */
-function same(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 /** The value of a parameter that came exactly once, else `undefined`. */
 function once(params: URLSearchParams, name: string): string | undefined {
   const all = params.getAll(name);
@@ -101,7 +95,9 @@ export async function completeCallback(context: CallbackContext, params: URLSear
   if (iss !== undefined) {
     endpoints = await context.endpoints();
     if (endpoints === undefined) return refuse({ kind: 'unavailable' }, 'endpoints');
-    if (endpoints.issuer !== undefined && iss !== endpoints.issuer) return refuse({ kind: 'invalid' }, 'issuer');
+    // A provider that lists the issuers (several tenants) is checked after `profile()`, against the token's issuer; any other has one issuer.
+    const later = (provider.definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true;
+    if (!later && endpoints.issuer !== undefined && iss !== endpoints.issuer) return refuse({ kind: 'invalid' }, 'issuer');
   }
 
   if (params.has('error')) {
@@ -135,6 +131,11 @@ export async function completeCallback(context: CallbackContext, params: URLSear
   let user: SocialUser | undefined;
   try {
     raw = await definition.profile({ http: context.http, tokens: tokens.value, nonce: flow.nonce, clientId: credentials.clientId, now: context.now });
+    // The parameter and the token must name one issuer: the one the token passed every check with.
+    if (iss !== undefined && (definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true) {
+      const readClaims = (definition as Partial<OidcDefinition>)[OIDC];
+      if (readClaims?.(raw)?.iss !== iss) return refuse({ kind: 'invalid' }, 'issuer');
+    }
     const mapped: unknown = definition.mapUser(raw);
     // An `async` mapUser answers with a promise: refused, and its rejection is taken so that it cannot surface (it may quote a token).
     const then = typeof mapped === 'object' && mapped !== null ? (mapped as { then?: unknown }).then : undefined;

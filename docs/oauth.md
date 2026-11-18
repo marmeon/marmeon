@@ -87,6 +87,7 @@ The providers are checked when the app starts, so a mistake stops the start inst
   `OAUTH_<NAME>_REDIRECT_URL` is not valid;
 - an **active** provider has no `OAUTH_<NAME>_REDIRECT_URL` and `APP_URL` is missing or not valid. The message names the provider. The
   host of a request is never used instead;
+- an **active** `oidc()` provider has no issuer, has one in `oidc()` and in `OAUTH_<NAME>_ISSUER`, or has an issuer or `discoveryUrl` that is not a usable address;
 - a provider is active and no `HttpClient` is bound. Register `FetchServiceProvider` from `@marmeon/fetch`, which a new app has.
 
 Plain `http:` is accepted for an endpoint, `OAUTH_<NAME>_REDIRECT_URL` or `APP_URL` on `localhost`, `127.0.0.1` or `[::1]`, and only while
@@ -134,6 +135,92 @@ static config = [oauthCredentials('gitea', { issuer: 'required', options: ['ORGA
 and finds `OAUTH_GITEA_ORGANIZATION` in `context.credentials.options.ORGANIZATION`. A key is upper case letters, digits and underscores, and
 cannot be one of the names every provider has. `oauthCredentials` throws a `TypeError` for a name or key of another form, and for an
 `issuer` that is not `'required'` or `'optional'`.
+
+## OpenID Connect providers
+
+`oidc()` makes a provider of any OpenID Connect server from its issuer. It finds the endpoints through discovery and sends a `nonce` with
+every flow. It asks for the `openid` scope. It checks the ID token of the token response before it trusts the person:
+
+```ts title="providers/KeycloakProvider.ts"
+import { oauthCredentials, oidc } from '@marmeon/oauth';
+
+export class KeycloakProvider {
+  static config = [oauthCredentials('keycloak', { issuer: 'required' })];
+  static oauthProviders = { keycloak: oidc({ label: 'Keycloak' }) };
+}
+```
+
+`OAUTH_KEYCLOAK_ISSUER` holds the issuer, for example `https://keycloak.example.com/realms/main`. The same line serves Auth0
+(`https://<tenant>.auth0.com/`), Okta, Authentik and every other server that publishes a discovery document.
+
+The variable `OAUTH_<NAME>_ISSUER` exists only when the class lists `oauthCredentials(name, { issuer: 'required' })` or
+`oauthCredentials(name, { issuer: 'optional' })`. When the issuer is fixed, pass `issuer` to `oidc()` and list `oauthCredentials(name)` without
+the option. Giving the issuer in both places stops the start (A11). With `issuer: 'required'` the provider stays inactive until the variable
+is set. With `'optional'` or without the option, no issuer at all stops the start (A11).
+
+| Option | Effect |
+| --- | --- |
+| `issuer` | The issuer, as the provider writes it. A trailing slash matters. Default: `OAUTH_<NAME>_ISSUER`. |
+| `label` | The text of the sign-in button. Default `OpenID Connect`. |
+| `scopes` | Default `openid`, `profile` and `email`. `openid` is added when it is missing. `OAUTH_<NAME>_SCOPES` cannot remove it. |
+| `discoveryUrl` | The address of the discovery document. It must be a usable endpoint address (A11 otherwise). Default: the issuer without a trailing slash, then `/.well-known/openid-configuration`. |
+| `discoveryIssuer` | The issuer the discovery document names, when that text is not `issuer`. This is the case for a server whose document serves many tenants. Default: `issuer`. |
+| `acceptedIssuers` | A function that lists the issuers a sign-in may come from. It is the only way to accept more than the configured issuer, and it needs your own `mapUser` (see below). |
+| `userinfo` | `true` also asks the userinfo endpoint for claims. |
+| `clientAuth` | How the client secret reaches the token endpoint, as in [your own provider](#your-own-provider). |
+| `authorizeParams` | Extra parameters of the authorization request, as in [your own provider](#your-own-provider). |
+| `allowAddresses` | Address ranges the server may resolve to. A server inside your network needs it: the discovery, token and userinfo requests refuse the addresses of your own network otherwise. |
+| `mapUser` | A function from the claims to `{ id, email, emailVerified, name, nickname, avatar }`. Default: `id` is `sub`, `emailVerified` is `email_verified === true`, `nickname` is `preferred_username` or `nickname`, `avatar` is `picture`. |
+
+`oidc()` throws a `TypeError` for an option of the wrong type and for `acceptedIssuers` without `mapUser`. `oidc()` runs when the class is
+loaded, so the `TypeError` appears before the start.
+
+The discovery document is fetched with a GET, at most 256 KiB. It is kept for an hour. A failure is kept for ten seconds, so a server that is
+down does not cost a request for every sign-in. Calls that come while the document is being fetched share the request. The `issuer` in the
+document must be the configured one, character for character. Another text is an `OAuthSetupError` with the code A10 that names both.
+`authorization_endpoint` and `token_endpoint`, and `userinfo_endpoint` with `userinfo: true`, are held to the rule for every endpoint:
+`https:`, no user name, no fragment. A document without them answers `unavailable`, and is kept for ten seconds like any failure.
+
+The ID token is checked in full, as OpenID Connect Core 3.1.3.7 asks:
+
+- It is three parts. The header and the payload are each base64url text of a JSON object. The signature may be empty.
+- `iss` is one of the issuers `acceptedIssuers` lists, or, by default, only the configured issuer. Each is compared as exact text: a
+  trailing slash or another case is refused.
+- `aud` is your client ID or a list that holds it. With several entries `azp` is required. `azp`, when present, is your client ID.
+- `exp` and `iat` are required. `exp` has not passed, and `iat` is not more than a minute ahead. One minute of difference between the
+  clocks is tolerated. `nbf`, when present, is not more than a minute ahead.
+- `nonce` is the one of this flow. A token without it, or with another, is refused: it was not issued for this sign-in.
+- `sub` is one to 255 characters.
+
+**The signature is not checked, and `alg` is read for nothing.** The package takes the ID token only from the token response. It made
+that request itself, over TLS, with its own client secret and the PKCE verifier. OpenID Connect Core 3.1.3.7 (point 6) lets a client rely on
+that channel in place of the signature. No option turns the signature check on. A token from any other source must never be passed to this
+check: the package takes none from the query.
+
+A token that fails a check ends the callback in `invalid-response`. The log holds a fixed reason and never the token. A token response
+with no `id_token` is `invalid-response` as well.
+
+With `userinfo: true`, the userinfo answer must name the same `sub` as the ID token, or the callback is `invalid-response`. The claims of
+the answer are added to those of the ID token and replace a claim of the same name. Only the ID token sets `sub`, `iss`, `aud`, `azp`,
+`exp`, `iat`, `nbf`, `nonce`, `auth_time`, `acr` and `amr`. A value and the flag that vouches for it come from one answer: when the userinfo
+answer gives an `email`, `email_verified` comes from it alone, and an address without a flag there is not verified, whatever the ID token
+said about another address. `phone_number` and `phone_number_verified` work the same way. `mapUser` receives these merged claims.
+
+A `sub` is unique only within its issuer. When `acceptedIssuers` lists several issuers (one for each tenant), two people of two tenants can
+have one `sub`, so `oidc()` requires your own `mapUser`, and the `id` it returns must hold the issuer or the tenant:
+
+```ts
+oidc({
+  discoveryIssuer: 'https://login.example.com/{tenant}/v2',
+  acceptedIssuers: () => ['https://login.example.com/team-a/v2', 'https://login.example.com/team-b/v2'],
+  mapUser: (claims) => ({ id: `${claims.iss}|${claims.sub}`, email: null, emailVerified: false, name: null, nickname: null, avatar: null }),
+});
+```
+
+`acceptedIssuers` answers at once with a list; a function that returns a promise, throws or answers no list accepts no token. It is called
+with the claims of the ID token, so a list can be built from a claim such as a tenant ID. The `iss` parameter of the callback (RFC 9207)
+is then checked against the token: after the token passed every check, it must equal the token's `iss`. Without `acceptedIssuers`, the
+`iss` parameter must be the issuer of the discovery document, and is checked before the code is traded.
 
 ## The flow and its security
 
@@ -192,7 +279,7 @@ A flow holds:
 - a `state`, a random value that the provider sends back unchanged, so the callback knows the answer belongs to the sign-in this browser began;
 - a PKCE verifier, whose SHA-256 (method `S256`) goes to the provider as the challenge. The provider releases the tokens only to the one that
   holds the verifier. A provider turns this off with `pkce: false`;
-- a `nonce` for a provider that sets `nonce: true`;
+- a `nonce` for a provider that sets `nonce: true`, and always for an [OpenID Connect provider](#openid-connect-providers), whose ID token must carry it back;
 - the `intent`, a lower case word such as `sign-in` (the default) or `link`, and the `userId` when you give one.
 
 Each of the three random values has 256 bits. The session keeps them. The address carries the state, the challenge and, for a provider with
@@ -297,7 +384,7 @@ nothing and sends nothing.
 4. The flow is not older than ten minutes (`expired`), and is the flow of this provider (`invalid`).
 5. The flow's user matches the `userId` you pass: both or neither, and the same (`invalid`).
 6. The `state` of the query is the one of the flow, compared in constant time (`invalid`). A missing, repeated or different `state` is refused.
-7. An `iss` parameter must equal the provider's `issuer`, when the provider has one (`invalid`); a repeated `iss` is refused.
+7. An `iss` parameter must equal the provider's `issuer`, when the provider has one (`invalid`); an `oidc()` provider with `acceptedIssuers` is checked after the token is checked instead: the parameter must equal the `iss` of the ID token. A repeated `iss` is refused.
 8. An `error` parameter ends the flow: `access_denied` is `cancelled`, any other is `provider-error` with the code (`unknown` unless it is a
    plain code). The provider's `error_description` is never read.
 9. The `code` is one to 2048 characters (`invalid`).
@@ -317,7 +404,7 @@ milliseconds since the epoch, and `tokens.scopes` the scopes the provider names,
 | `provider-error` | The provider reported an error; `error` holds its code. |
 | `unavailable` | The provider could not be reached, or answered with a server error. Try again later. |
 | `rejected` | The token endpoint answered with a 4xx status for the code (a rate limit with 429 included), or with a `200` that has an `error` field. |
-| `invalid-response` | The provider's answer is not usable: the token answer is no JSON object or has no usable `access_token` or a token type other than bearer, a `200` that is no JSON, a 4xx from your `profile()` request, code of the provider that threw, or a profile without a usable `id`. |
+| `invalid-response` | The provider's answer is not usable: an ID token that fails a check (see [OpenID Connect providers](#openid-connect-providers)) or is missing, the token answer is no JSON object or has no usable `access_token` or a token type other than bearer, a `200` that is no JSON, a 4xx from your `profile()` request, code of the provider that threw, or a profile without a usable `id`. |
 | `not-reauthenticated` | Reserved for a sign-in that must be fresh. |
 
 No error carries a body or a message of the provider, and nothing logs the code, a token, the state or the query: a refusal logs the provider

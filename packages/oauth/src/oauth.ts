@@ -10,6 +10,7 @@ import { checkEndpoint, checkEndpoints, EndpointError } from './endpoints.ts';
 import { completeCallback, type OAuthCallback, type OAuthCallbackError } from './callback.ts';
 import { challengeOf, issueFlow } from './flow.ts';
 import { createOAuthHttp, OAuthHttpError } from './http.ts';
+import { OIDC, type OidcDefinition } from './oidc-marker.ts';
 import type { OAuthProviders, ResolvedOAuthProvider } from './registry.ts';
 
 /** What `redirect()` takes besides the provider. See docs/oauth.md#the-flow-and-its-security. */
@@ -116,7 +117,9 @@ export class OAuth {
     const url = new URL(endpoints.authorizeUrl);
     // The provider's own parameters first; every parameter below replaces one of the same name, so nothing can undo a protection.
     for (const [key, value] of Object.entries(definition.authorizeParams ?? {})) url.searchParams.set(key, value);
-    const asked = [...new Set([...(credentials.scopes ?? definition.scopes), ...(scopes ?? [])])];
+    // An OpenID Connect provider is always asked for `openid`, also when OAUTH_<NAME>_SCOPES leaves it out: without it there is no ID token.
+    const openid = typeof (definition as Partial<OidcDefinition>)[OIDC] === 'function' ? ['openid'] : [];
+    const asked = [...new Set([...openid, ...(credentials.scopes ?? definition.scopes), ...(scopes ?? [])])];
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', credentials.clientId);
     url.searchParams.set('redirect_uri', redirectUri);
@@ -221,7 +224,9 @@ export class OAuth {
     } catch (error) {
       // Only a provider that did not answer is a runtime condition; a bug in the provider's own code is not hidden as one.
       if (!(error instanceof OAuthHttpError)) throw error;
-      this.#logger.warn('An OAuth provider could not be reached to find its endpoints.', { provider: provider.name, status: error.status });
+      // A document that was fetched but is not usable carries the fixed reason of the endpoint check; nothing of its text.
+      const reason = error.cause instanceof EndpointError ? { reason: error.cause.reason } : {};
+      this.#logger.warn('An OAuth provider could not be reached to find its endpoints.', { provider: provider.name, status: error.status, ...reason });
       return undefined;
     }
     // What the provider's server answered is as untrusted as the definition was at the start. A document that fails the check is the
