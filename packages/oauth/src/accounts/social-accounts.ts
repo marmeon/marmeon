@@ -1,6 +1,6 @@
 import { Auth, AuthConfig, Registered, TwoFactorState, UserProvider, type AuthUser, type AuthUserId } from '@marmeon/auth';
-import { CONFIRM_REAUTHENTICATED, idOf, type Reauthenticator } from '@marmeon/auth/internal';
-import { err, EventDispatcher, ok, type Clock, type Logger, type Result } from '@marmeon/core';
+import { ACCOUNT_STILL_CLAIMED, CLAIM_ACCOUNT, claimRefused, CONFIRM_REAUTHENTICATED, idOf, type Reauthenticator } from '@marmeon/auth/internal';
+import { err, EventDispatcher, inTransaction, ok, type Clock, type Logger, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { OAuthSetupError } from '../config.ts';
@@ -12,7 +12,7 @@ import { OAuthProviders } from '../registry.ts';
 import { consumeVerified, verifiedInfo, type VerifiedInfo } from '../verified.ts';
 import { SocialAccountsConfig } from './config.ts';
 import { SocialAccountLinked, SocialAccountUnlinked } from './events.ts';
-import { SocialAccountStore, type SocialAccountRecord } from './store.ts';
+import { removeLinkById, SocialAccountStore, type SocialAccountRecord } from './store.ts';
 import { SocialUserProvider } from './users.ts';
 
 /** What a sign-in with a provider account came to. See docs/oauth.md#signing-users-in. */
@@ -201,10 +201,17 @@ export class SocialAccounts {
    * Links the provider account `social` came from to the signed-in user. Needs the result of a flow that began as a link for this very
    * user (else a `TypeError`: another user's flow is a programming error here, unlike in `confirm()`), a recent confirmation of the user (`confirmation-required`: the middleware is not what guards it) and an
    * address of the user that the app has confirmed (`email-unconfirmed`, asked of {@link SocialUserProvider.emailConfirmed}).
-   * An account that belongs to another user is `taken` and never moves; a second account at one provider is `provider-linked`.
-   * See docs/oauth.md#linking-and-unlinking.
+   * An account that belongs to another user is `taken` and never moves; a second account at one provider is `provider-linked`. The link
+   * is written under the same claim of the account as a new passkey: a session that ended meanwhile links nothing (`signed-out`), for
+   * an account with a session key. An account without one cannot be locked: its link can exist until the check after the commit takes
+   * it out again. Throws an A5 error when the `UserProvider` refuses the claim for the key the session holds (see docs/errors.md#server-error-codes),
+   * throws when called inside a database transaction (the check after the commit assumes the outermost one), and rethrows a failed
+   * take-out of a link after logging it. See docs/oauth.md#linking-and-unlinking.
    */
   async link(given: SocialUser): Promise<Result<SocialAccountSummary, SocialLinkError>> {
+    if (inTransaction()) {
+      throw new Error('SocialAccounts.link() must run outside a database transaction: the check after its commit would run before the outer commit, and a rollback of the caller would bring the ended session back.');
+    }
     const info = verifiedInfo(given);
     if (info?.intent !== 'link') throw new TypeError('SocialAccounts.link() needs the SocialUser that OAuth.callback() returned for a flow that began as a link.');
     const user = await this.#auth.user();
@@ -219,17 +226,58 @@ export class SocialAccounts {
     if ((await this.#socialUsers().emailConfirmed(user)) !== true) return err({ kind: 'email-unconfirmed' });
     if (!storable(social, subject)) return err({ kind: 'invalid-account' });
 
-    const held = await this.#store.find(subject.provider, subject.id);
-    if (held !== undefined) {
-      // The same user again is no new link; any other owner keeps it.
-      if (String(held.userId) !== String(userId)) return err({ kind: 'taken' });
-      if (!(await this.#store.touch(held.id, social))) return err({ kind: 'taken' });
-      return ok(this.#summary((await this.#store.find(subject.provider, subject.id)) ?? held));
+    // One transaction under the claim of the account, as a new passkey is stored: the claim comes first and locks the account's row until
+    // the commit, so a session that ended meanwhile links nothing. An err rolls the write back.
+    const written = await this.#connections.transaction(async () => {
+      if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);
+      // Read again under the claim: an address that became unconfirmed and committed before the lock is seen here, not only in the cached user.
+      const current = await this.#users.findById(userId as never);
+      // Gone under the claim: nobody is signed in any more.
+      if (current === undefined) return err({ kind: 'signed-out' } as const);
+      if ((await this.#socialUsers().emailConfirmed(current.user)) !== true) return err({ kind: 'email-unconfirmed' } as const);
+      const held = await this.#store.find(subject.provider, subject.id);
+      if (held !== undefined) {
+        // The same user again is no new link; any other owner keeps it.
+        if (String(held.userId) !== String(userId)) return err({ kind: 'taken' } as const);
+        if (!(await this.#store.touch(held.id, social))) return err({ kind: 'taken' } as const);
+        return ok({ record: (await this.#store.find(subject.provider, subject.id)) ?? held, created: false });
+      }
+      const created = await this.#store.create(userId, social);
+      if (!created.ok) return err(created.error);
+      return ok({ record: created.value, created: true });
+    });
+    if (!written.ok) {
+      if (written.error.kind !== 'signed-out') return err(written.error);
+      // After the rollback: ends the session for good. A session that still fits means the claim itself failed.
+      if (await this.#auth[ACCOUNT_STILL_CLAIMED]()) throw claimRefused('SocialAccounts.link()');
+      return err(written.error);
     }
-    const created = await this.#store.create(userId, social);
-    if (!created.ok) return err(created.error);
-    await this.#events.dispatch(new SocialAccountLinked(user, subject.provider, subject.email, social.nickname));
-    return ok(this.#summary(created.value));
+    const { record, created } = written.value;
+    // Once more now that the link is committed, with a fresh read and no lock (also for an account without a session key): an ending that
+    // landed in between takes a link written now out again, and so does a check that throws. A link that was there before stays.
+    let claimed: boolean;
+    try {
+      claimed = await this.#auth[ACCOUNT_STILL_CLAIMED]();
+    } catch (error) {
+      if (created) await this.#takeOut(userId, record.id, subject.provider).catch(() => {}); // logged there; the original error is the one that counts
+      throw error;
+    }
+    if (!claimed) {
+      if (created) await this.#takeOut(userId, record.id, subject.provider);
+      return err({ kind: 'signed-out' });
+    }
+    if (created) await this.#events.dispatch(new SocialAccountLinked(user, subject.provider, subject.email, social.nickname));
+    return ok(this.#summary(record));
+  }
+
+  /** Takes the link just written out again (by its id); a failure is logged and thrown: the link may be on without its owner having added it. */
+  async #takeOut(userId: AuthUserId, id: number, provider: string): Promise<void> {
+    try {
+      await removeLinkById(this.#connections, userId, id);
+    } catch (error) {
+      this.#logger.error('A provider account was linked for a session that had ended or could not be checked, and taking it out again failed: the link may be on without its owner having added it', { user: userId, provider, error });
+      throw error;
+    }
   }
 
   /**

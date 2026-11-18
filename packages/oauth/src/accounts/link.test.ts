@@ -6,6 +6,13 @@ import { markVerified } from '../verified.ts';
 import { drivers, migratedConnections } from '../__fixtures__/databases.ts';
 import { marked, UnboundFactors, world, type World, type WorldOptions } from '../test-helpers/social-accounts.ts';
 import { SocialAccountLinked, SocialAccountUnlinked } from './events.ts';
+import { removeLinkById } from './store.ts';
+
+// The take-out of a link is a function of the module, not a method: wrapped so that a test can make it fail once.
+vi.mock('./store.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./store.ts')>();
+  return { ...actual, removeLinkById: vi.fn(actual.removeLinkById) };
+});
 
 describe.each(drivers)('SocialAccounts link and unlink on %s', (driver) => {
   let connections: Connections;
@@ -223,5 +230,134 @@ describe.each(drivers)('SocialAccounts link and unlink on %s', (driver) => {
     // A refusal dispatches nothing.
     await w.accounts.unlink('github');
     expect(w.state.events).toHaveLength(2);
+  });
+
+  describe('under the claim of the account', () => {
+    it('links and dispatches exactly one event when the claim holds', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      expect((await w.accounts.link(link('gh-1'))).ok).toBe(true);
+      expect(await providersOf(1)).toEqual(['github:gh-1']);
+      expect(w.state.events).toHaveLength(1);
+    });
+
+    it('links nothing for a session that ended after the checks and before the insert, and signs it out', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      w.state.beforeClaim = async () => {
+        w.state.claim = false;
+      };
+      w.state.stillClaimed = [false];
+      expect(await w.accounts.link(link('gh-1'))).toEqual({ ok: false, error: { kind: 'signed-out' } });
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+      expect(w.state.signedIn).toBeUndefined();
+    });
+
+    it('throws when the claim failed but the session still fits the account', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      w.state.claim = false;
+      await expect(w.accounts.link(link('gh-1'))).rejects.toThrow(/updateSessionKey/);
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+    });
+
+    it('leaves no link when a password reset of an unconfirmed address commits during the link: the seeded link is gone, none is added', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      await w.store.create(1 as AuthUserId, link('gl-1', 'gitlab'));
+      // The reset strips the links of the unconfirmed address in its own transaction, after the first check; the claim holds (the key is not what changed here).
+      w.state.afterFirstCheck = async () => {
+        w.users.set(1, { ...w.users.get(1)!, emailVerified: false });
+        await w.store.removeAll(1 as AuthUserId);
+      };
+      expect(await w.accounts.link(link('gh-1'))).toEqual({ ok: false, error: { kind: 'email-unconfirmed' } });
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+    });
+
+    it('answers signed-out when the user is gone under the claim, and signs the session out', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      w.state.beforeClaim = async () => {
+        w.users.delete(1);
+      };
+      w.state.stillClaimed = [false];
+      expect(await w.accounts.link(link('gh-1'))).toEqual({ ok: false, error: { kind: 'signed-out' } });
+      expect(w.state.signedIn).toBeUndefined();
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+    });
+
+    it('refuses to run inside a database transaction and writes nothing', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      await expect(connections.transaction(() => w.accounts.link(link('gh-1')))).rejects.toThrow(/SocialAccounts\.link\(\) must run outside a database transaction/);
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+    });
+
+    it('answers email-unconfirmed for an address that became unconfirmed between the first check and the claim', async () => {
+      const ada = await w.add({ id: 1 });
+      w.signInAs(ada);
+      w.state.beforeClaim = async () => {
+        w.users.set(1, { ...ada, emailVerified: false });
+      };
+      expect(await w.accounts.link(link('gh-1'))).toEqual({ ok: false, error: { kind: 'email-unconfirmed' } });
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+    });
+
+    it('takes the written link out again when the session ended right after the commit, with no event', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      w.state.stillClaimed = [false];
+      expect(await w.accounts.link(link('gh-1'))).toEqual({ ok: false, error: { kind: 'signed-out' } });
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+      expect(w.state.signedIn).toBeUndefined();
+    });
+
+    it('keeps a link that was there before when the session ended after a repeated link', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      await w.accounts.link(link('gh-1'));
+      w.state.stillClaimed = [false];
+      expect(await w.accounts.link(link('gh-1'))).toEqual({ ok: false, error: { kind: 'signed-out' } });
+      expect(await providersOf(1)).toEqual(['github:gh-1']);
+      expect(w.state.events).toHaveLength(1);
+    });
+
+    it('logs and rethrows when taking the link out again fails', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      w.state.stillClaimed = [false];
+      const failure = new Error('database gone');
+      vi.mocked(removeLinkById).mockRejectedValueOnce(failure);
+      await expect(w.accounts.link(link('gh-1'))).rejects.toBe(failure);
+      expect(w.state.logs.filter((entry) => entry.level === 'error')).toHaveLength(1);
+      expect(w.state.events).toEqual([]);
+    });
+
+    it('takes the written link out when the check after the commit throws, and rethrows that error', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      const failure = new Error('read failed');
+      w.state.stillClaimed = [failure];
+      await expect(w.accounts.link(link('gh-1'))).rejects.toBe(failure);
+      expect(await providersOf(1)).toEqual([]);
+      expect(w.state.events).toEqual([]);
+      expect(w.state.logs.filter((entry) => entry.level === 'error')).toEqual([]);
+    });
+
+    it('keeps a link that was there before when the check after the commit throws on a repeated link', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      await w.accounts.link(link('gh-1'));
+      const failure = new Error('read failed');
+      w.state.stillClaimed = [failure];
+      await expect(w.accounts.link(link('gh-1'))).rejects.toBe(failure);
+      expect(await providersOf(1)).toEqual(['github:gh-1']);
+    });
+
+    it('logs the failed take-out and still rethrows the error of the check, when both throw', async () => {
+      w.signInAs(await w.add({ id: 1 }));
+      const failure = new Error('read failed');
+      w.state.stillClaimed = [failure];
+      vi.mocked(removeLinkById).mockRejectedValueOnce(new Error('database gone'));
+      await expect(w.accounts.link(link('gh-1'))).rejects.toBe(failure);
+      expect(w.state.logs.filter((entry) => entry.level === 'error')).toHaveLength(1);
+      expect(w.state.events).toEqual([]);
+    });
   });
 });

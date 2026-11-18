@@ -605,7 +605,7 @@ the provider's label. Both changes need a recent confirmation of the user (`auth
 
 `link()` answers `Result<SocialAccountSummary, SocialLinkError>`:
 
-- `signed-out`: nobody is signed in.
+- `signed-out`: nobody is signed in, or the session ended meanwhile.
 - `confirmation-required`: the confirmation is not recent.
 - `email-unconfirmed`: `SocialUserProvider.emailConfirmed()` did not answer `true` for the user. A password reset removes every linked account
   of an account whose address is not confirmed (`email_verified_at` is `null` or missing) in the transaction of the reset, because
@@ -615,6 +615,8 @@ the provider's label. Both changes need a recent confirmation of the user (`auth
 - `invalid-account`: the provider's data cannot be stored, as above.
 - `taken`: the provider account belongs to another user. A provider account is never moved.
 - `provider-linked`: the user has an account at this provider already.
+
+The link is written under the same claim of the account as a new passkey: a session that ended meanwhile (another device changed the password, `AccountSessions.end()` ran, a password reset) links nothing, and the answer is `signed-out`. That holds for an account with a session key; an account without one cannot be locked, so its link can exist for a moment until the check after the commit takes it out again. `link()` throws when it runs inside a database transaction.
 
 Linking an account the user holds already adds nothing and dispatches no event, but it updates the address, the nickname, the time and the
 tokens, as a sign-in does.

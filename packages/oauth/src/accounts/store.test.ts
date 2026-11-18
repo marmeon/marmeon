@@ -4,7 +4,7 @@ import { AesGcmEncrypter, DecryptError, generateKey } from '@marmeon/encryption'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from '../__fixtures__/databases.ts';
 import type { SocialUser } from '../definition.ts';
-import { SOCIAL_ACCOUNT_COLUMNS, SocialAccountStore, type SocialAccountTable } from './store.ts';
+import { removeLinkById, SOCIAL_ACCOUNT_COLUMNS, SocialAccountStore, type SocialAccountTable } from './store.ts';
 
 const TOKEN = ['access', 'token', 'value'].join('-');
 const REFRESH = ['refresh', 'token', 'value'].join('-');
@@ -63,6 +63,17 @@ describe.each(drivers)('SocialAccountStore on %s', (driver) => {
     if (!result.ok) throw new Error(result.error.kind);
     return result.value;
   }
+
+  it('takes out one row by its id and its user, and nothing else', async () => {
+    const mine = await created(1, socialUser({ provider: 'github', id: 'gh-1' }));
+    const other = await created(2, socialUser({ provider: 'github', id: 'gh-2' }));
+    // Another user's id leaves the row where it is.
+    expect(await removeLinkById(connections, 2, mine.id)).toBe(false);
+    expect((await store.forUser(1)).map((record) => record.id)).toEqual([mine.id]);
+    expect(await removeLinkById(connections, 1, mine.id)).toBe(true);
+    expect(await removeLinkById(connections, 1, mine.id)).toBe(false);
+    expect((await store.forUser(2)).map((record) => record.id)).toEqual([other.id]);
+  });
 
   it('removes every account of one user and no other, and says how many went', async () => {
     await created(1, socialUser({ provider: 'github', id: 'gh-1' }));

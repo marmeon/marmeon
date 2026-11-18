@@ -35,12 +35,18 @@ export const READ_PENDING = Symbol('marmeon.auth.readPending');
 
 
 /**
- * Checks this session against the account, in the transaction of the caller (package-internal): `TwoFactor.confirm()` and
- * `Passkeys.register()` call it as the first step of the transaction that stores a new factor.
+ * Checks this session against the account, in the transaction of the caller. Shared with other packages through `@marmeon/auth/internal`:
+ * `TwoFactor.confirm()`, `Passkeys.register()` and `SocialAccounts.link()` call it as the first step of the transaction that stores what
+ * the caller adds to the account (a factor, a provider link). `false` refuses; the caller rolls back and runs `ACCOUNT_STILL_CLAIMED`.
  */
 export const CLAIM_ACCOUNT = Symbol('marmeon.auth.claimAccount');
 
-/** The check of `CLAIM_ACCOUNT` without the lock (package-internal): runs after every commit of a factor, and after a rollback that `CLAIM_ACCOUNT` asked for. */
+/**
+ * The check of `CLAIM_ACCOUNT` without the lock: runs after every commit of what the caller stored (an account without a session key
+ * cannot be locked), and after a rollback that `CLAIM_ACCOUNT` asked for. `false`: the session ended meanwhile and is signed out; the
+ * caller takes out what it stored. It assumes the caller's transaction was the outermost one. Shared through `@marmeon/auth/internal`
+ * as `CLAIM_ACCOUNT` is.
+ */
 export const ACCOUNT_STILL_CLAIMED = Symbol('marmeon.auth.accountStillClaimed');
 
 /** The session key of the account this request verified (package-internal): `string`, or `null` for an account without one. Throws without a verified sign-in. */
@@ -623,11 +629,11 @@ export class Auth {
 
   /**
    * @internal
-   * Whether this session still fits the account, decided inside the transaction that stores a factor: `false` means it ended meanwhile
+   * Whether this session still fits the account, decided inside the transaction that stores what the caller adds (a factor, a provider link): `false` means it ended meanwhile
    * (`AccountSessions.end()`, a password change or a key rotation elsewhere) and the caller rolls back. It ends nothing itself — the
    * caller runs `ACCOUNT_STILL_CLAIMED` after the rollback, so that dropping the device's remember-me token is not rolled back too.
-   * Invariant: a factor stays only while the session still fits the account. With an account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
-   * transaction), so an ending cannot land between this check and the factor. A `null` key is never rotated and cannot be locked
+   * Invariant: what the caller stored stays only while the session still fits the account. With an account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
+   * transaction), so an ending cannot land between this check and what is stored. A `null` key is never rotated and cannot be locked
    * (a rotation would sign the other devices out). Every ending writes the account's row (the key, which every new password writes too, or the row itself), so a
    * fresh read sees each ending that committed before it.
    */

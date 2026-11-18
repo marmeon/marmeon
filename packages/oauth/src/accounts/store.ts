@@ -269,3 +269,13 @@ export class SocialAccountStore {
     return this.#connections.get<Tables>();
   }
 }
+
+/**
+ * Deletes the row `id` of `userId` and nothing else, whatever it is worth as a way in: for taking out a link that was just written and
+ * must not stay (the session that wrote it ended). Unlike `SocialAccountStore.remove()` it looks for no other way in. Resolves with
+ * whether a row went. Not part of the store's API; `SocialAccounts.link()` is its only caller.
+ */
+export async function removeLinkById(connections: Connections, userId: AuthUserId, id: number): Promise<boolean> {
+  const result = await connections.get<Tables>().deleteFrom(SOCIAL_ACCOUNTS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
+  return result.numDeletedRows > 0n;
+}

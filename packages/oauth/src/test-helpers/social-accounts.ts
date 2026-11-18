@@ -1,4 +1,4 @@
-import { CONFIRM_REAUTHENTICATED, type ReauthenticationProof, type Reauthenticator } from '@marmeon/auth/internal';
+import { ACCOUNT_STILL_CLAIMED, CLAIM_ACCOUNT, CONFIRM_REAUTHENTICATED, type ReauthenticationProof, type Reauthenticator } from '@marmeon/auth/internal';
 import { TwoFactorState, type AuthUser, type AuthUserId, type SecondFactor } from '@marmeon/auth';
 import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -129,6 +129,14 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     /** What the guard answers a proof with, and every proof it was given. */
     windowOpens: true,
     proofs: [] as { userId: string; authenticatedAt: number }[],
+    /** Runs when the claim of the account is asked for (inside the transaction): a parallel request that ends the session or changes the user before the lock. */
+    beforeClaim: undefined as (() => Promise<void>) | undefined,
+    /** Runs once, at the first `emailConfirmed` of a link: after the checks of the request, before its transaction. */
+    afterFirstCheck: undefined as (() => Promise<void>) | undefined,
+    /** What the claim answers; `false` is a session that ended. */
+    claim: true,
+    /** What each post-commit check answers, in order, then `true`; a `false` signs the session out as `Auth` does, an error is thrown. */
+    stillClaimed: [] as (boolean | Error)[],
     /** What was logged: level, message and context. */
     logs: [] as { level: string; message: string; context?: Readonly<Record<string, unknown>> }[],
   };
@@ -145,6 +153,16 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     id: async () => state.signedIn?.id,
     passwordRecentlyConfirmed: () => state.confirmed,
     [CONFIRM_REAUTHENTICATED]: async () => state.windowOpens,
+    [CLAIM_ACCOUNT]: async () => {
+      await state.beforeClaim?.();
+      return state.claim;
+    },
+    [ACCOUNT_STILL_CLAIMED]: async () => {
+      const answer = state.stillClaimed.shift() ?? true;
+      if (answer instanceof Error) throw answer;
+      if (!answer) await auth.signOut();
+      return answer;
+    },
     signOut: async () => {
       state.signedIn = undefined;
       state.pending = undefined;
@@ -174,7 +192,12 @@ export function world(connections: Connections, options: WorldOptions = {}) {
       await state.afterLookup?.();
       return state.lookupNull ? (null as never) : answer;
     },
-    emailConfirmed: async (user) => (state.confirmedAnswer !== undefined ? (state.confirmedAnswer as boolean) : user.emailVerified),
+    emailConfirmed: async (user) => {
+      const hook = state.afterFirstCheck;
+      state.afterFirstCheck = undefined;
+      await hook?.();
+      return state.confirmedAnswer !== undefined ? (state.confirmedAnswer as boolean) : user.emailVerified;
+    },
     create: async (social, { emailVerified }): Promise<Result<TestUser, { readonly kind: 'duplicate' }>> => {
       state.createCalls += 1;
       if (state.duplicate) return err({ kind: 'duplicate' });
@@ -216,7 +239,10 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     dispatcher as never,
     socialUsersOf as never,
     clock,
-    { warn: (message: string, context?: Readonly<Record<string, unknown>>) => void state.logs.push({ level: 'warn', message, context }) } as never,
+    {
+      warn: (message: string, context?: Readonly<Record<string, unknown>>) => void state.logs.push({ level: 'warn', message, context }),
+      error: (message: string, context?: Readonly<Record<string, unknown>>) => void state.logs.push({ level: 'error', message, context }),
+    } as never,
     reauthenticator,
   );
   return {
@@ -224,6 +250,7 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     store,
     clock,
     state,
+    users,
     add,
     factors: factors as FakeFactors,
     userCount: async () => (await db().selectFrom('users').select('id').execute()).length,
