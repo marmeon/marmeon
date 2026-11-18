@@ -57,6 +57,15 @@ describe('make:oauth', () => {
     expect(added).toContain('modules/oauth/controllers/OAuthCallbackController.ts');
     expect(added).toContain('modules/oauth/views/SignInButtons.tsx');
     expect(added).toContain('modules/oauth/sign-in.test.ts');
+    expect(added).toContain('modules/oauth/connected-accounts.test.ts');
+    expect(added).toContain('modules/oauth/confirm.test.ts');
+    expect(added).toContain('modules/oauth/views/ConnectedAccounts.tsx');
+    expect(added).toContain('modules/oauth/views/ConfirmButtons.tsx');
+    expect(added).toContain('modules/oauth/listeners/NotifyAboutSocialAccountLinked.ts');
+    for (const file of ['mail/SocialAccountLinkedMail.ts', 'mail/SocialAccountLinkedView.tsx', 'controllers/ShowConnectedAccountsController.ts', 'controllers/LinkSocialAccountController.ts', 'controllers/UnlinkSocialAccountController.ts', 'controllers/ConfirmWithProviderController.ts', 'controllers/ShowConfirmButtonsController.ts']) {
+      expect(added).toContain(`modules/oauth/${file}`);
+    }
+    expect(lines).toContain('Tests: modules/oauth/sign-in.test.ts, modules/oauth/connected-accounts.test.ts, modules/oauth/confirm.test.ts');
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import oauth from '#modules/oauth';");
     expect(app).toMatch(/modules: \[system, oauth\]/);
@@ -67,6 +76,9 @@ describe('make:oauth', () => {
     expect(lines).toEqual(expect.arrayContaining([expect.stringMatching(/^Install what the module uses: pnpm add -E @marmeon\/oauth@<version of your app>/)]));
     // How the buttons get onto a page is told, not done: no insertion line for the sign-in or settings pages.
     expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('<Island route="oauth.sign-in" />')]));
+    // The panel and the confirm buttons are placed the same way.
+    expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('<Island route="oauth.accounts" />')]));
+    expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('<Island route="oauth.confirm-options" />')]));
     expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('OAUTH_GITHUB_CLIENT_ID')]));
     expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('modules/oauth/targets.ts')]));
     expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('modules/oauth/SocialUsers.ts')]));

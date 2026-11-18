@@ -11,4 +11,6 @@ export const TARGETS = {
   login: 'auth.login',
   /** The page that asks for the second factor of an account that has one. */
   twoFactorChallenge: 'auth.two-factor.challenge',
+  /** The page that asks for the password again, where an account with a password confirms. A route without path parameters. */
+  confirm: 'auth.password.confirm',
 } as const satisfies Record<string, RouteName>;

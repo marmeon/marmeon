@@ -1,5 +1,6 @@
-import { defineModule } from '@marmeon/core';
-import { SocialAccountsServiceProvider } from '@marmeon/oauth/accounts';
+import { defineModule, listen } from '@marmeon/core';
+import { SocialAccountLinked, SocialAccountsServiceProvider } from '@marmeon/oauth/accounts';
+import { NotifyAboutSocialAccountLinked } from './listeners/NotifyAboutSocialAccountLinked.ts';
 import { OAuthModuleServiceProvider } from './OAuthModuleServiceProvider.ts';
 import { SendSocialAccountExistsMailJob } from './jobs/SendSocialAccountExistsMailJob.ts';
 import routes from './routes.ts';
@@ -11,6 +12,8 @@ export default defineModule({
   // SocialAccountsServiceProvider keeps the accounts people link in the `social_accounts` table (its migration comes with `marmeon publish @marmeon/oauth`, which copies it from the installed package).
   providers: [OAuthModuleServiceProvider, SocialAccountsServiceProvider],
   routes,
+  // Runs inside the request, not on a worker (an account without a stored language gets the request's): it queues the mail to the owner of an account that got a provider account.
+  listeners: [listen(SocialAccountLinked, NotifyAboutSocialAccountLinked)],
   // Queued work — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   jobs: [SendSocialAccountExistsMailJob],
 });

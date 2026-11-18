@@ -3,10 +3,18 @@ import { clientKey, Limit, RateLimiter, type LimiterCallback } from '@marmeon/ca
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { SessionConfig, sessionCookieName } from '@marmeon/session';
 import { SocialUserProvider } from '@marmeon/oauth/accounts';
+import { LINK_STARTS_PER_DAY } from './limits.ts';
 import { SocialUsers } from './SocialUsers.ts';
 
 /** Every request from one client counts together: an IPv6 address counts as its /64, the block one connection gets. */
 const perClient = (attempts: number): LimiterCallback => (ctx) => Limit.perMinute(attempts).by(clientKey(ctx.ip));
+
+/** Every request of one signed-in user counts together, per minute and, with `daily`, per day; without a user, the requests of one client. */
+const perUser = (attempts: number, daily?: number): LimiterCallback => (ctx) => {
+  const id = (ctx.user as { id?: unknown } | undefined)?.id;
+  const key = typeof id === 'string' || typeof id === 'number' ? `user:${id}` : clientKey(ctx.ip);
+  return daily === undefined ? Limit.perMinute(attempts).by(key) : [Limit.perMinute(attempts).by(key), Limit.perDay(daily).by(key)];
+};
 
 export class OAuthModuleServiceProvider implements ServiceProvider {
   register(container: Container): void {
@@ -33,5 +41,11 @@ export class OAuthModuleServiceProvider implements ServiceProvider {
         return Limit.perMinute(20).by(`session:${hash('sha256', session, 'base64url')}`);
       });
     }
+    // Linking, and confirming with a provider, start flows like the sign-in does, but only for signed-in people (`authenticate()` runs before the
+    // limit). They count per user, so one account cannot use up the limit of another on a shared address. Every link mails its owner; the
+    // daily cap on starts bounds the mails of links made on the panel, and the listener's own cap (`limits.ts`, four times the daily starts) lies above anything decoys can reach there: a callback completes up to ten minutes
+    // after its start, so the starts of three daily windows can land inside one day of mails.
+    if (!limiter.limiter('oauth.link')) limiter.for('oauth.link', perUser(10, LINK_STARTS_PER_DAY));
+    if (!limiter.limiter('oauth.confirm')) limiter.for('oauth.confirm', perUser(10));
   }
 }

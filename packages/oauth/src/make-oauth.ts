@@ -141,10 +141,11 @@ export class MakeOAuthCommand {
     input.output.line('Then: marmeon publish @marmeon/oauth, which copies the migration of the social_accounts table the installed package ships into modules/system/migrations, and marmeon migrate.');
     this.#passwordMigration(input, adapter);
     input.output.line('Place the buttons on your sign-in page with <Island route="oauth.sign-in" /> (a view of the module that owns that page): https://marmeon.com/docs/oauth#placing-the-components');
+    input.output.line('Place the connected accounts on a page of your own with <Island route="oauth.accounts" />, and the buttons that confirm with a provider on your confirmation page with <Island route="oauth.confirm-options" />: https://marmeon.com/docs/oauth#placing-the-components');
     input.output.line('Set the variables of each provider in .env, for GitHub: OAUTH_GITHUB_CLIENT_ID and OAUTH_GITHUB_CLIENT_SECRET, and APP_URL. The provider is sent back to APP_URL/auth/<provider>/callback — register that address with it.');
     input.output.line('modules/oauth/targets.ts (your route names) and modules/oauth/SocialUsers.ts (your users table and UserRepository) hold what the module assumes about your app: change them if yours differ.');
-    input.output.line('Its note to the owner of an address goes through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work).');
-    input.output.line(`Tests: ${relative(input.root, join(target, 'sign-in.test.ts'))}`);
+    input.output.line('Its notes to the owners of an address and of a linked account go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work).');
+    input.output.line(`Tests: ${['sign-in.test.ts', 'connected-accounts.test.ts', 'confirm.test.ts'].map((file) => relative(input.root, join(target, file))).join(', ')}`);
     return 0;
   }
 

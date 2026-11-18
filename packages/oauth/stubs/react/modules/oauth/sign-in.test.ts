@@ -244,7 +244,8 @@ describe('signing in at a provider', { timeout: 30_000 }, () => {
     const opened = await start(browser);
     await browser.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/dashboard');
     // The callback finds ada signed in and a flow of a guest: the flow is refused, not served as a sign-in of somebody else.
-    await browser.get(oauth.callbackUrl(opened)).assertRedirect('/login').assertFlashed('toast', { kind: 'error', message: 'The sign-in did not work. Try again, or sign in another way.' });
+    // A signed-in person goes back with the message (the sign-in page would turn them away and the message with it); a guest ends on the sign-in page.
+    await browser.get(oauth.callbackUrl(opened)).assertRedirect('/dashboard').assertFlashed('toast', { kind: 'error', message: 'That did not work. Try again.' });
     await app.assertDatabaseCount('users', 1);
     await app.assertDatabaseCount('social_accounts', 0);
   });
@@ -255,8 +256,22 @@ describe('signing in at a provider', { timeout: 30_000 }, () => {
     const browser = app.keepingCookies();
     await browser.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/dashboard');
     const opened = await browser.post('/fixtures/oauth/github/sign-in').assertStatus(303);
-    await browser.get(oauth.callbackUrl(opened)).assertRedirect('/login').assertFlashed('toast', { kind: 'error', message: 'You are signed in already.' });
+    // Back with the message, not to the sign-in page, which would turn a signed-in person away and the message with it.
+    await browser.get(oauth.callbackUrl(opened)).assertRedirect('/dashboard').assertFlashed('toast', { kind: 'error', message: 'You are signed in already.' });
     await app.assertDatabaseCount('users', 1);
+  });
+
+  it('sends a signed-in person whose flow has another intent back with the message, and a guest to the sign-in page', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const oauth = fakeOAuth(app).user('github', { id: '42', email: 'other@example.com', emailVerified: true });
+    const signedIn = app.keepingCookies();
+    await signedIn.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/dashboard');
+    const opened = await signedIn.post('/fixtures/oauth/github/delete').assertStatus(303);
+    await signedIn.get(oauth.callbackUrl(opened)).assertRedirect('/dashboard').assertFlashed('toast', { kind: 'error', message: 'That did not work. Try again.' });
+    const guest = app.keepingCookies();
+    const other = await guest.post('/fixtures/oauth/github/delete').assertStatus(303);
+    await guest.get(fakeOAuth(app).user('github', { id: '43', email: 'x@example.com', emailVerified: true }).callbackUrl(other)).assertRedirect('/login').assertGuest().assertFlashed('toast', { kind: 'error', message: 'The sign-in did not work. Try again, or sign in another way.' });
+    await app.assertDatabaseCount('social_accounts', 0);
   });
 
   it('turns away a signed-in person at the start and at the island: signing in is for guests', async () => {

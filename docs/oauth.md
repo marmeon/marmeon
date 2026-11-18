@@ -14,7 +14,7 @@ The sections follow the order of the work:
 - [Confirming with a provider](#confirming-with-a-provider) lets a person prove who they are again, and [opening the confirmation window](#opening-the-confirmation-window) makes that count.
 - [Storing tokens](#storing-tokens) covers the `social_accounts` table and its migration, the service provider and its variables, and how tokens are kept.
 - [Testing](#testing) runs the whole flow in an app test without a request leaving the process.
-- [The generated module](#the-generated-module) is the quick way: `marmeon make:oauth` writes the routes, the sign-in island and the bridge to your users, and [placing the components](#placing-the-components) puts the buttons on a page.
+- [The generated module](#the-generated-module) is the quick way: `marmeon make:oauth` writes the islands (sign-in, connected accounts and confirmation), the routes, the bridge to your users and the mails, and [placing the components](#placing-the-components) puts the buttons on a page.
 
 A provider is a class that brings a name and the variables it reads:
 
@@ -865,7 +865,7 @@ passkey, or an account at a provider that is still active. A passkey removed at 
 
 ## The generated module
 
-`marmeon make:oauth` writes the sign-in side of this page into your app once, and from then on the code is yours. It assumes the
+`marmeon make:oauth` writes the sign-in and the connected-accounts side of this page into your app once, and from then on the code is yours. It assumes the
 [starter kit](starter-kit.md) of `marmeon make:auth`, which keeps the users, the sign-in page and the second factor.
 
 ```sh
@@ -890,29 +890,35 @@ It writes no migration either. Run `marmeon publish @marmeon/oauth` to copy the 
 
 | File | What it holds |
 | --- | --- |
-| `index.ts` | The module: `OAuthModuleServiceProvider`, `SocialAccountsServiceProvider`, the routes and the job. |
+| `index.ts` | The module: `OAuthModuleServiceProvider`, `SocialAccountsServiceProvider`, the routes, the job and the listener. |
 | `routes.ts` | The routes below. |
-| `controllers/` | `ShowSignInButtonsController` (the island), `OAuthRedirectController` (starts a sign-in), `OAuthCallbackController` (completes it). |
-| `views/SignInButtons.tsx` | The island: a form with one button per active provider. Text and classes only. |
+| `controllers/` | `ShowSignInButtonsController` (the island), `OAuthRedirectController` (starts a sign-in), `OAuthCallbackController` (completes every flow), `ShowConnectedAccountsController`, `LinkSocialAccountController`, `UnlinkSocialAccountController`, `ConfirmWithProviderController` and `ShowConfirmButtonsController` (the connected accounts). |
+| `views/` | `SignInButtons.tsx`, `ConnectedAccounts.tsx` and `ConfirmButtons.tsx`: the islands. Text and classes only. |
 | `targets.ts` | The route names the module sends people to. |
+| `limits.ts` | The daily limit of link starts and the cap of mails derived from it. |
 | `SocialUsers.ts` | The bridge to the users of your app. |
-| `OAuthModuleServiceProvider.ts` | Binds `SocialUserProvider` to `SocialUsers` and defines the two rate limits. |
+| `OAuthModuleServiceProvider.ts` | Binds `SocialUserProvider` to `SocialUsers` and defines the four rate limits. |
 | `lang/en.ts`, `lang/de.ts` | The texts, in the `oauth` namespace. |
-| `mail/`, `jobs/` | The note to the owner of an address, and the job that decides whether to send it. |
-| `sign-in.test.ts` | A test of the whole sign-in, with [`fakeOAuth()`](#testing). |
+| `mail/`, `jobs/`, `listeners/` | The note to the owner of an address and the job that decides whether to send it, and the note to the owner of an account that got a provider account (`NotifyAboutSocialAccountLinked`). |
+| `sign-in.test.ts`, `connected-accounts.test.ts`, `confirm.test.ts` | Tests of the whole sign-in, of the panel and of the confirmation, with [`fakeOAuth()`](#testing). |
 
 | Route | Name | Who |
 | --- | --- | --- |
 | `GET /oauth/sign-in` | `oauth.sign-in` | The island with the buttons. Guests only. An island route answers only the request of `<Island>`: a direct visit is a 404 ([islands](deferred-props.md#islands)). |
 | `POST /auth/:provider/redirect` | `oauth.redirect` | Starts a sign-in. Guests only, 10 requests a minute and client. A `GET` to it is not a route. |
 | `GET /auth/:provider/callback` | `oauth.callback` | Where the provider sends the browser back. 20 requests a minute per browser session; a request without a session cookie counts against its client address, also 20 a minute. One callback per session at a time. |
+| `GET /oauth/accounts` | `oauth.accounts` | The island of the connected accounts. Signed-in people only. |
+| `POST /oauth/accounts/:provider` | `oauth.link` | Starts linking an account at a provider. Signed-in people with a confirmed address, 10 requests a minute and 20 a day per user. |
+| `POST /oauth/accounts/:provider/remove` | `oauth.unlink` | Removes the account at a provider. Signed-in people only. One removal per session at a time. |
+| `GET /oauth/confirm` | `oauth.confirm-options` | The island with the buttons that confirm with a provider. Signed-in people only. |
+| `POST /oauth/confirm/:provider` | `oauth.confirm` | Starts a confirmation at a linked provider. Signed-in people only, 10 requests a minute and user. |
 
 The provider in the path starts with a lower case letter and goes on with lower case letters, digits and dashes. The callback is not behind `guest()`: the same route completes the
 flows of a signed-in person, which `guest()` would turn away, and the flow is bound to whoever started it. To change a limit, define a limiter of
-the same name in a provider of your own (`oauth.redirect`, `oauth.callback`); yours replaces the default. The session is the key of the callback's limit so that strangers on a shared address cannot use up the limit of someone who is signing in.
+the same name in a provider of your own (`oauth.redirect`, `oauth.callback`, `oauth.link`, `oauth.confirm`); yours replaces the default. The session is the key of the callback's limit so that strangers on a shared address cannot use up the limit of someone who is signing in. The two limits of the signed-in routes count per user: the person is known there, and one user on a shared address cannot use up another's.
 
-The callback branches on the intent the flow was started with. A sign-in is the one this module starts, and every other intent ends on the
-sign-in page with a general message. For a sign-in, `SocialAccounts.signIn()` decides, and the person sees:
+The callback branches on the intent the flow was started with: a sign-in, a link or a confirmation. Any other intent, and a link or a confirmation of nobody who is signed in, ends on the
+sign-in page with a general message for a guest; a signed-in person goes back with the message instead, since the sign-in page would turn them away. For a sign-in, `SocialAccounts.signIn()` decides, and the person sees:
 
 | Outcome | Where it leads |
 | --- | --- |
@@ -920,13 +926,34 @@ sign-in page with a general message. For a sign-in, `SocialAccounts.signIn()` de
 | `two-factor-required` | The page that asks for the second factor, `twoFactorChallenge`. |
 | `account-exists` | The sign-in page: an account with this address exists, sign in the usual way and connect the provider from the settings. |
 | `email-unverified` | The sign-in page, with one message whether or not an account has the address. The owner of an account that has it is mailed a note by a job; the job sends at most one an hour per address. That mail needs the [queue](queues.md) (its table and a worker on the `mail` queue) and the [mail](mail.md) packages. |
-| `registration-closed`, `email-required`, `signed-in`, a person who cancelled | The sign-in page, with a message of its own. |
+| `registration-closed`, `email-required`, a person who cancelled | The sign-in page, with a message of its own. |
+| `signed-in` | Back to the page the person came from, or `home`, with a message: the sign-in page would turn a signed-in person away. |
 | A flow that expired or failed, an unusable answer of the provider | The sign-in page, with a general message. No provider text, query or address is shown or logged. |
 | An unknown or inactive provider | 404. |
 
+After a link, and after a refused link or confirmation, the person goes back to the page they came from, or to `home` when there is none. After a successful confirmation they
+land on the page that sent them to confirm (`redirect().intended()`), or on `home`. The provider's request has another site as its `Referer`, so in practice
+the person lands on `home` with a message. A signed-in person whose flow fails before its intent is known (it was cancelled, expired, or belonged to another user) goes back the same way,
+with a message of its own; a guest ends on the sign-in page. The answer of a link, a removal or a confirmation is one of these:
+
+| Outcome | Message |
+| --- | --- |
+| Linked, removed, confirmed | A success message. |
+| `confirmation-required` | Confirm it is you first, then start again. A window that ran out during the round trip to the provider is this answer too. |
+| `taken`, `provider-linked`, `email-unconfirmed`, `invalid-account` | A message of its own for each. |
+| `last-method`, `not-found` (removing) | The only way in stays; there is no such account. |
+| `not-reauthenticated`, `not-linked`, `expired` (confirming) | A message of its own for each; the window stays closed. |
+| `signed-out` | The sign-in page: the session ended meanwhile. |
+
+Linking and removing carry no `confirmedPassword()` on their routes, on purpose: the confirmation can come from a provider as well as from a password, and an account
+without a password has none to type. `SocialAccounts` checks it on its own side. A flow that fails before the intent is known (it expired, was cancelled,
+or belonged to another user) ends on the sign-in page for a guest; a signed-in person goes back with the message, as above.
+
+`SocialAccounts.link()` throws when it runs inside a database transaction. The callback opens none; keep it that way when you change the controller.
+
 ### `targets.ts`
 
-The module sends people to routes of your app, and it names them in one place: `home`, `login` and `twoFactorChallenge`. The values
+The module sends people to routes of your app, and it names them in one place: `home`, `login`, `twoFactorChallenge` and `confirm` (the page that asks for the password again, `auth.password.confirm` in the starter kit). The values
 are the names of the starter kit, and the object is checked against the routes of your app, so a name that does not exist is a type error. Change them when your
 routes are named differently.
 
@@ -951,8 +978,8 @@ left it unchanged (and names it when you changed it), and records the set again.
 
 ## Placing the components
 
-The module offers one component, the island `oauth.sign-in`: the buttons, one per provider that is active. A page of yours places it, usually the
-sign-in page of the module that owns your users.
+The module offers three islands: `oauth.sign-in`, the buttons, one per provider that is active; `oauth.accounts`, the connected accounts; and
+`oauth.confirm-options`, the buttons that confirm with a linked provider. A page of yours places each: the sign-in page of the module that owns your users, a settings page, and your confirmation page.
 
 Add two things to the view of your sign-in page: the import, and the island inside what the view returns.
 
@@ -971,3 +998,33 @@ Each button is a form that posts to `oauth.redirect`, so it works without JavaSc
 (`Continue with {provider}`); rewrite it there, and add another language as a file next to it, checked against `en.ts`. The view carries classes
 and no styles, so the look is your app's. To change the markup of a button, edit `modules/oauth/views/SignInButtons.tsx`: the module is yours.
 
+### The connected accounts
+
+`oauth.accounts` lists the accounts the person has connected, with a button to remove each, a button for every provider that is not connected yet, and what confirms it is them:
+a button for each connected provider that [can confirm](#confirming-with-a-provider), and, for an account with a password or a passkey, a link to the confirmation page of your app (`confirm` in `targets.ts`), where the password or the passkey confirms. An account that has none of the three is told how to get a password: sign out and use "Forgot your password?" on the sign-in page. Place it on a settings page of your own. The island is for signed-in people, so a page that a guest can open shows nothing there.
+
+```tsx title="modules/settings/views/Settings.tsx"
+import { Island } from '@marmeon/react';
+
+// … inside the view's `return`:
+<Island route="oauth.accounts" fallback={<p aria-busy="true">…</p>} />
+```
+
+The buttons are forms that post to `oauth.link`, `oauth.unlink` and `oauth.confirm`, so they work without JavaScript. `oauth.confirm-options` has only the buttons
+that confirm, one per connected provider that can; put it beside the password form of your confirmation page:
+
+```tsx title="modules/auth/views/ConfirmPassword.tsx"
+import { Island } from '@marmeon/react';
+
+// … below the password form:
+<Island route="oauth.confirm-options" />
+```
+
+A confirmation sends the person back to the page that asked for it (`redirect().intended()`), as a password does. The texts of both islands are `accounts.*` and `confirm.*` in `modules/oauth/lang/en.ts`,
+and the messages after each action are `messages.*`.
+
+When an account is linked, by `link()`, by signing in or by registering, the owner gets a mail (`NotifyAboutSocialAccountLinked`): the provider, the nickname or address of the provider account and the time, with the
+advice to remove the account and change the password when it was not them. It goes only to an address the app has confirmed, so a stranger's inbox never learns who connected what.
+
+Every link mails. Links started on the panel are bounded by `oauth.link` (10 starts a minute and 20 a day for one user). The mails are bounded by a cap of 80 a day for one account, four times the daily starts: a callback can complete up to ten minutes after its start, so the starts of three daily windows can land inside one day of mails, and the cap stays above that. A lower cap could be used up with decoy links before the real one. The cap is there for the links that signing in makes, which `oauth.link` does not count. An app that raises the daily link limit raises the cap with it: both come from `modules/oauth/limits.ts`. A used-up cap sends nothing and logs a warning with the user and the provider. The mail quotes the address the provider reported, else its nickname cut to 64 characters. If the mail cannot be queued, the link stays, the day's counter is forgotten (more mails, never fewer), and the failure is logged with the user, the provider and the kind of error, never an address, then thrown. The event does not tell a registration from a link, so a new account made with a provider gets the mail too. The mail needs the [queue](queues.md) and
+the [mail](mail.md) packages, like the note about an address.
