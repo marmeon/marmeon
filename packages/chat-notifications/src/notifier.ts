@@ -58,6 +58,34 @@ function payloadOf(to: ChatDestination, content: ChatContent): QueuedChatPayload
   };
 }
 
+/**
+ * Every check `queue()` makes before anything is queued, in their order: the message, the destination and driver, the message
+ * against the driver, that there is a queue (`ready`), then the address. The fake notifier runs the same function with its own `ready`.
+ * @internal
+ */
+export async function checkQueued(targets: ChatTargets, message: ChatMessage, ready: () => Promise<void>): Promise<{ readonly to: ChatDestination; readonly content: ChatContent }> {
+  const { to, content, addressError } = normalizeDeferred(message);
+  // Every check of the code comes first; only then is an address refused, which is data (`ChatAddressError`): an unknown
+  // destination or driver, a raw format the driver refuses or a driver that threw all win over a refused address.
+  const refused = (problem: string) => `The chat message to ${describeDestination(to)} is refused: ${problem}`;
+  let target: Target;
+  try {
+    target = targets.resolve(to);
+  } catch (error) {
+    if (!(error instanceof ChatError)) throw error;
+    // a driver that threw stays one (its class tells it from a mistake), with what it threw as the cause
+    if (error instanceof ChatDriverError) throw new ChatDriverError(refused(error.message), { cause: error.cause });
+    throw new ChatError(refused(error.message), error.cause === undefined ? undefined : { cause: error.cause });
+  }
+  targets.validate(to, content);
+  // a missing queue is a mistake of the setup: it is told before an address is refused, which a notification skips and so would hide it
+  await ready();
+  if (addressError !== undefined) throw addressError;
+  const problem = addressProblem(target);
+  if (problem !== undefined) throw new ChatAddressError(refused(problem));
+  return { to, content };
+}
+
 /** @internal */
 export class WebhookChatNotifier implements ChatNotifier {
   readonly #targets: ChatTargets;
@@ -77,25 +105,7 @@ export class WebhookChatNotifier implements ChatNotifier {
   }
 
   async queue(message: ChatMessage, options: QueueChatOptions = {}): Promise<void> {
-    const { to, content, addressError } = normalizeDeferred(message);
-    // Every check of the code comes first; only then is an address refused, which is data (`ChatAddressError`): an unknown
-    // destination or driver, a raw format the driver refuses or a driver that threw all win over a refused address.
-    const refused = (problem: string) => `The chat message to ${describeDestination(to)} is refused: ${problem}`;
-    let target: Target;
-    try {
-      target = this.#targets.resolve(to);
-    } catch (error) {
-      if (!(error instanceof ChatError)) throw error;
-      // a driver that threw stays one (its class tells it from a mistake), with what it threw as the cause
-      if (error instanceof ChatDriverError) throw new ChatDriverError(refused(error.message), { cause: error.cause });
-      throw new ChatError(refused(error.message), error.cause === undefined ? undefined : { cause: error.cause });
-    }
-    this.#targets.validate(to, content);
-    // a missing queue is a mistake of the setup: it is told before an address is refused, which a notification skips and so would hide it
-    await this.#queue.ready();
-    if (addressError !== undefined) throw addressError;
-    const problem = addressProblem(target);
-    if (problem !== undefined) throw new ChatAddressError(refused(problem));
+    const { to, content } = await checkQueued(this.#targets, message, () => this.#queue.ready());
     await this.#queue(payloadOf(to, content), {
       ...(options.queue === undefined ? {} : { queue: options.queue }),
       ...(options.connection === undefined ? {} : { connection: options.connection }),
