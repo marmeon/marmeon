@@ -1053,11 +1053,18 @@ describe('the driver rule', () => {
       'oxc-transform must be an optional peer of this package',
     ]);
     expect(checkDriverRule('core', { peerDependencies: { 'oxc-transform': '>=0.157.0 <1.0.0' }, peerDependenciesMeta: { 'oxc-transform': { optional: true } } })).toEqual([]);
-    expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0', kysely: '0.29.6' } })).toEqual([
+    expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0', kysely: '0.29.6' }, peerDependencies: { mysql2: '^3.24.6' }, peerDependenciesMeta: { mysql2: { optional: true } } })).toEqual([
       'pg must stay an optional peer, not a dependency — one of several drivers; every app would install it',
       'pg must be an optional peer of this package',
     ]);
-    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' } })).toEqual(['pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver']);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { mysql2: { optional: true } } })).toEqual([
+      'pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver',
+    ]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual(['mysql2 must be an optional peer of this package']);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6', mysql2: '^3.24.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([
+      'mysql2 must stay an optional peer, not a dependency — one of several drivers; every app would install it',
+      'mysql2 must be an optional peer of this package',
+    ]);
     // One API instance: the app's SDK registers on the API the framework reads — a second copy would be a second instance.
     expect(checkDriverRule('otel', { dependencies: { '@opentelemetry/api': '^1.9.0' }, peerDependencies: { '@opentelemetry/api': '^1.9.0' } })).toEqual([
       '@opentelemetry/api must stay a peer, not a dependency — the app and the framework share one instance; a dependency installs a second copy',
@@ -1073,10 +1080,10 @@ describe('the driver rule', () => {
   });
 
   it('refuses a range, a peer and a missing pin for an exact dependency', () => {
-    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([]);
-    expect(checkDriverRule('database', { dependencies: { kysely: '^0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
-    expect(checkDriverRule('database', { peerDependencies: { kysely: '0.29.6', pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
-    expect(checkDriverRule('database', { dependencies: {}, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '^0.29.6' }, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { peerDependencies: { kysely: '0.29.6', pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { dependencies: {}, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([EXACT]);
   });
 
   it('holds the exact pin of the MCP SDK in the marmeon package, and refuses a range there', () => {

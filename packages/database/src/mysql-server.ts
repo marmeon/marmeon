@@ -23,7 +23,7 @@ export function mysqlServerProblem(version: string, comment: string): string | u
     }
   }
   const match = VERSION.exec(version);
-  if (!match) return `unknown version form "${version}"; Marmeon supports MySQL ${MINIMUM.join('.')} or newer`;
+  if (!match) return `unknown version form ${JSON.stringify(version)}; Marmeon supports MySQL ${MINIMUM.join('.')} or newer`;
   const major = Number(match[1]);
   const minor = Number(match[2]);
   if (major < MINIMUM[0] || (major === MINIMUM[0] && minor < MINIMUM[1])) return `MySQL ${version} is older than ${MINIMUM.join('.')}; Marmeon supports MySQL ${MINIMUM.join('.')} or newer`;

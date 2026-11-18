@@ -19,6 +19,8 @@ export function connectionError(context: Pick<DriverContext, 'name' | 'target'>,
     // pg-pool's wait for a free connection shares the connect timeout; opening a connection says "due to connection timeout".
     error instanceof Error && error.message === 'timeout exceeded when trying to connect'
       ? 'no free connection within the connect timeout; raise DB_POOL_MAX or shorten transactions'
+      : isMysqlRefusal(error)
+        ? `${error.code}: ${error.message}`
       : error instanceof Error && typeof (error as { path?: unknown }).path === 'string'
       ? `${(error as { code?: string }).code ?? 'error'}: a certificate or key file named in the URL (sslcert, sslkey, sslrootcert) could not be read`
       : error instanceof Error
@@ -27,12 +29,17 @@ export function connectionError(context: Pick<DriverContext, 'name' | 'target'>,
   return new DatabaseConnectionError(withCode('D11', `Could not connect to the database connection "${context.name}" (${context.target}): ${reason}`), { cause: error });
 }
 
+/** The `mysql2` errors of a connection that reached the server and was turned away: its message names the account and the database, never the password. */
+function isMysqlRefusal(error: unknown): error is Error & { code: string } {
+  return error instanceof Error && ((error as { code?: unknown }).code === 'ER_ACCESS_DENIED_ERROR' || (error as { code?: unknown }).code === 'ER_BAD_DB_ERROR');
+}
+
 export interface DriverContext {
   /** The connection's name, e.g. `default`. */
   readonly name: string;
   /** The SQL dialect. Postgres aborts a transaction whose statement failed ({@link MarmeonDriver}). */
   readonly driver: SqlDriver;
-  /** Where it points, for error messages: `sqlite storage/database.sqlite`, `pgsql postgres://marmeon:***@localhost/app`. */
+  /** Where it points, for error messages: `sqlite storage/database.sqlite`, `pgsql postgres://marmeon:***@localhost/app`, `mysql mysql://marmeon:***@localhost:3306/app`. */
   readonly target: string;
   /** Refreshed on each connection handed out, while stale (see {@link SchemaMetadata}). */
   readonly metadata?: SchemaMetadata;

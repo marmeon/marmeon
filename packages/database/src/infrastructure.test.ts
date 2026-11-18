@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshDatabase, PGSQL_URL, silent } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, freshDatabase, PGSQL_URL, silent, withMysql } from './__fixtures__/databases.ts';
+import { migratorConnection } from './migrator-connection.ts';
 import { Connections, InfrastructureTransactionError, outsideTransaction, TransactionError } from './index.ts';
 import type { ConnectionOptions } from './config.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -271,6 +272,42 @@ describe.runIf(PGSQL_URL)('connections.infrastructure() on Postgres', () => {
     for (let i = 0; i < 20 && (await alive(pid)); i++) await new Promise((resolve) => setTimeout(resolve, 50));
     expect(await alive(pid)).toBe(false);
     expect(() => connections.infrastructure('default', USAGE)).toThrow('The database connections are closed');
+  });
+});
+
+// MySQL has its own pool for the infrastructure, as Postgres does. A MySQL connection is managed (its catalog is not read yet), so the table
+// is made through the migrator's way to the connection. MARMEON_TEST_MYSQL_URL selects this file for `pnpm test:mysql`.
+withMysql('connections.infrastructure() on MySQL', () => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections('mysql'));
+    await migratorConnection(connections).schema.createTable('hits').addColumn('key', 'varchar(64)', (c) => c.primaryKey()).addColumn('n', 'integer', (c) => c.notNull()).execute();
+  });
+  afterAll(() => close());
+
+  const mysqlHit = async (db: Kysely<any>, key = 'login') => void (await sql`insert into hits (\`key\`, n) values (${key}, 1) on duplicate key update n = n + 1`.execute(db));
+
+  const mysqlCount = async (db: Kysely<any>) => Number((await sql<{ n: number }>`select n from hits where \`key\` = ${'login'}`.execute(db)).rows[0]?.n ?? 0);
+
+  it('a rate-limit hit inside a transaction that rolls back is kept, on a pool of its own', async () => {
+    const infrastructure = connections.infrastructure('default', USAGE);
+    await expect(
+      within(
+        connections.transaction(async () => {
+          await mysqlHit(infrastructure);
+          throw new Rollback();
+        }),
+      ),
+    ).rejects.toBeInstanceOf(Rollback);
+    expect(await mysqlCount(migratorConnection(connections))).toBe(1);
+  });
+
+  it('runs single statements only — no transactions of its own', async () => {
+    await expect(connections.infrastructure('default', USAGE).transaction().execute(async () => {})).rejects.toThrow(
+      'The counter runs single statements on its own connection — it has no transactions.',
+    );
   });
 });
 

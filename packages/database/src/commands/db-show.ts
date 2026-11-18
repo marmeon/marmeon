@@ -39,7 +39,7 @@ export class DbShowCommand {
         version = (await sql<{ v: string }>`select version() as v`.execute(db)).rows[0]?.v.split(' on ')[0] ?? 'PostgreSQL';
         break;
       case 'mysql':
-        // Not reached today: `Connections` refuses a MySQL connection when it is built, before this command has one.
+        // Reached only with a `Connections` built by hand: the provider refuses a MySQL connection, so an app never has one.
         return mysqlPending('db:show');
       default:
         return unknownDriver(settings);

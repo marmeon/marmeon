@@ -1,9 +1,11 @@
 import { ConsoleLogger, type Application, type Logger, type ModuleDefinition } from '@marmeon/core';
-import { sql, type Kysely } from 'kysely';
+import { Kysely, sql } from 'kysely';
+import { describe } from 'vitest';
 import { Connections } from '../connections.ts';
 import type { ConnectionOptions } from '../config.ts';
 import { createMigrationsTable } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
+import { createMysqlDialect } from '../mysql.ts';
 import { Migrator } from '../migrations/migrator.ts';
 import { TypeGenerator } from '../types-gen/generator.ts';
 
@@ -12,14 +14,24 @@ export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 export type TestDriver = (typeof drivers)[number];
 
+/**
+ * MySQL runs when the variable named in `test:mysql` is set (`docker compose up -d --wait mysql`, then `pnpm test:mysql`). Spelled in
+ * parts: a file that only imports this module is not a MySQL test. The file that runs on MySQL names the variable itself.
+ */
+export const MYSQL_URL = process.env[`MARMEON_TEST_${'MYSQL_URL'}`];
+
+/** `describe` for the cases that need the MySQL server: skipped when none is configured. */
+export const withMysql = (name: string, body: () => void): void => void describe.runIf(MYSQL_URL !== undefined)(name, body);
+
 export const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
-/** A fresh database per suite: SQLite in memory, or a new Postgres database dropped by `drop()`. */
-export async function freshDatabase(driver: 'sqlite' | 'pgsql', { managed = true }: { managed?: boolean } = {}): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
+/** A fresh database per suite: SQLite in memory, or a new Postgres or MySQL database dropped by `drop()`. */
+export async function freshDatabase(driver: 'sqlite' | 'pgsql' | 'mysql', { managed = true }: { managed?: boolean } = {}): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
   // `managed: false` for a test that builds its tables itself instead of migrating them: no record of migrations, and none is asked for.
   const unmanaged = managed ? {} : { managed: false };
   if (driver === 'sqlite') return { options: { driver: 'sqlite', database: ':memory:', ...unmanaged }, drop: async () => {} };
   const name = `marmeon_test_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  if (driver === 'mysql') return freshMysqlDatabase(name, unmanaged);
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);
@@ -28,6 +40,21 @@ export async function freshDatabase(driver: 'sqlite' | 'pgsql', { managed = true
     options: { driver: 'pgsql', url: url.href, poolMax: 3, ...unmanaged },
     drop: async () => {
       await sql`drop database ${sql.id(name)} with (force)`.execute(admin.get());
+      await admin.destroy();
+    },
+  };
+}
+
+/** The database `name` on the MySQL server, created in the collation of every session. The administration goes through the dialect, not a `Connections`: no record of migrations is asked for. */
+async function freshMysqlDatabase(name: string, unmanaged: { managed?: boolean }): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
+  const admin = new Kysely<any>({ dialect: createMysqlDialect({ url: MYSQL_URL!, poolMax: 1 }) });
+  await sql`create database ${sql.id(name)} default character set utf8mb4 collate utf8mb4_0900_bin`.execute(admin);
+  const url = new URL(MYSQL_URL!);
+  url.pathname = `/${name}`;
+  return {
+    options: { driver: 'mysql', url: url.href, poolMax: 3, ...unmanaged },
+    drop: async () => {
+      await sql`drop database ${sql.id(name)}`.execute(admin);
       await admin.destroy();
     },
   };
@@ -54,7 +81,7 @@ export async function createLegacyTables(db: Kysely<any>): Promise<void> {
 
 /** A `Connections` on a fresh database; `close()` destroys it and drops the database. */
 export async function freshConnections(
-  driver: 'sqlite' | 'pgsql',
+  driver: 'sqlite' | 'pgsql' | 'mysql',
   options: { managed?: boolean; record?: boolean; now?: () => number } = {},
 ): Promise<{ connections: Connections; close: () => Promise<void> }> {
   const fresh = await freshDatabase(driver, options);

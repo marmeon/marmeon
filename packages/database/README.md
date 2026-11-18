@@ -9,7 +9,7 @@ and pagination.
 Part of every new Marmeon app: `pnpm create marmeon` installs it.
 
 SQLite is built in (`node:sqlite`, no native addon). Postgres needs the `pg` driver, an optional peer the app installs as a
-dependency: `pnpm add pg@^8`. Without it, the first query fails and names that command.
+dependency: `pnpm add pg@^8`. Without it, the first query fails and names that command. MySQL needs the `mysql2` driver the same way (`pnpm add mysql2@^3`); an app cannot select MySQL yet.
 
 ## A first repository
 
