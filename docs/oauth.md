@@ -4,7 +4,7 @@
 
 `@marmeon/oauth` describes a service people can sign in with as a **provider** with a name. An app or a package registers providers by
 name, the app configures each one from environment variables, and a provider whose variables are not set does not exist for the app.
-This page covers registering and configuring providers, starting the flow, and completing it in [the callback](#the-callback); the rest follows as it is written.
+This page covers registering and configuring providers, starting the flow, completing it in [the callback](#the-callback), and storing the accounts people link; the rest follows as it is written.
 
 A provider is a class that brings a name and the variables it reads:
 
@@ -532,3 +532,87 @@ address or with `claims: { hd }`, GitLab for gitlab.com, never Microsoft), and t
 OAuth 2.0 provider's own `profile()` and `mapUser()` do not run, and `emailVerified` is what the test says: an own provider that never vouches for an address does vouch in a test.
 
 The fake builds each provider through the checks of the start, so a definition the start refuses (A11) fails in `fakeOAuth()` too. The members are in the table under [social login](fakes.md#social-login).
+
+## Storing tokens
+
+`@marmeon/oauth/accounts` keeps the accounts people link in the `social_accounts` table. A row holds the provider, the provider's ID for the
+account, and the e-mail address and nickname the provider reported last. Two unique indexes carry the rules: one provider account belongs to
+one user (`provider`, `provider_id`), and one user links one account per provider (`user_id`, `provider`). A provider account is never moved
+to another user: creating a link for an account that exists is refused with `taken`, and a second account at one provider with
+`provider-linked`. A provider ID is at most 255 characters, the limit of an OpenID Connect `sub`; the store throws a `TypeError` for a longer
+one or an empty one and never cuts it. Deleting a user deletes their rows.
+
+Copy this migration into the module that owns your users. The table points at your `users` table:
+
+```ts title="modules/auth/migrations/2026_11_18_100000_create_social_accounts_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+// The accounts people sign in with at a provider. Two unique indexes carry the rules: (provider, provider_id) says one provider account
+// belongs to one user, and (user_id, provider) says one user links one account per provider. The tokens are secret columns, empty
+// unless OAUTH_STORE_TOKENS is on, and hold ciphertext only. The e-mail address and nickname are what the provider reported last, as text: a provider's length is no limit of ours, and neither is ever a key.
+export default defineMigration({
+  up: (schema) =>
+    schema.create('social_accounts', (table) => {
+      table.id();
+      table.foreignId('user_id').constrained('users').cascadeOnDelete();
+      table.string('provider', 32);
+      table.string('provider_id', 255);
+      table.text('email').nullable();
+      table.text('nickname').nullable();
+      table.text('access_token').nullable().secret();
+      table.text('refresh_token').nullable().secret();
+      table.timestamp('token_expires_at').nullable();
+      table.text('scopes').nullable();
+      table.timestamp('last_used_at').nullable();
+      table.timestamps();
+      table.unique(['provider', 'provider_id']);
+      table.unique(['user_id', 'provider']);
+    }),
+  down: (schema) => schema.drop('social_accounts'),
+});
+```
+
+Add the provider to the module that owns your users. It needs a database and an `APP_KEY` for the encryption of the tokens. Readiness stays red
+until the table has every column the store reads and the token columns are marked `.secret()`.
+
+```ts title="modules/auth/index.ts"
+import { defineModule } from '@marmeon/core';
+import { SocialAccountsServiceProvider } from '@marmeon/oauth/accounts';
+import { AuthServiceProvider } from './AuthServiceProvider.ts';
+
+export default defineModule({
+  name: 'auth',
+  providers: [AuthServiceProvider, SocialAccountsServiceProvider],
+  // …
+});
+```
+
+`SocialAccountsServiceProvider` registers `SocialAccountStore` and reads two variables:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `OAUTH_REGISTRATION` | `true` | Whether a sign-in at a provider may create a new user; nothing in this package reads it yet. |
+| `OAUTH_STORE_TOKENS` | `false` | Whether the access and refresh token of a provider are stored. |
+
+The tokens are **not stored** unless you turn `OAUTH_STORE_TOKENS` on: sign-in needs the provider's profile, not a token that outlives the
+request, and a token you never use is only a risk. When it is on, both tokens are encrypted with the app key before they are written, and the
+encryption context names the row (`social_accounts:<provider>:<provider_id>:access_token`), so a ciphertext copied into another row does not
+decrypt. The token columns are secret columns: a `select *` does not return them. Read them with `store.tokens(userId, provider)`, which
+decrypts, and which returns `undefined` while the variable is off. It throws a `DecryptError` for a token that does not decrypt: one moved to
+another row, or one sealed with a key that is no longer in `APP_KEY` or `APP_PREVIOUS_KEYS`, so keep an old key listed until the tokens
+sealed with it are replaced (they are, at the next sign-in of the account).
+
+A sign-in that sends no refresh token keeps the one stored, and seals it again with the current key, so the stored token follows a key
+rotation. A stored token that no key decrypts stays as it is until the provider sends a new one or the key is listed again, and the sign-in
+still succeeds. Turning the variable off again clears the tokens of an account the next time it
+signs in. To clear them all at once, run one statement:
+
+```sql
+UPDATE social_accounts SET access_token = NULL, refresh_token = NULL, token_expires_at = NULL, scopes = NULL;
+```
+
+`remove(userId, provider, otherMethod)` unlinks an account in one transaction that locks the user's rows. It resolves with the removed
+account, with `not-found` when the user has none at the provider, or with `last-method` (changing nothing) when `otherMethod` says no. It
+always asks `otherMethod(remaining)`, with the user's remaining accounts, so the caller decides what counts as a way in: a password, a
+passkey, or an account at a provider that is still active. A passkey removed at the same moment is outside that lock; the
+[password reset](passwords.md) remains the way back in.
