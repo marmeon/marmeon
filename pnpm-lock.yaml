@@ -996,6 +996,9 @@ importers:
       '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
+      '@marmeon/http':
+        specifier: workspace:*
+        version: link:../http
       '@marmeon/server':
         specifier: workspace:*
         version: link:../server

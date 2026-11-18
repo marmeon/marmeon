@@ -38,6 +38,22 @@ export function checkedClaimsOf(raw: unknown): IdTokenClaims | undefined {
   return typeof raw === 'object' && raw !== null ? checked.get(raw) : undefined;
 }
 
+/**
+ * The definitions `oidc()` built, by object identity (a spread of a definition copies the marker, never this membership). The registry
+ * carries the membership over to its frozen copy. Module-wide and not exported from the package.
+ */
+const built = new WeakSet<object>();
+
+/** Records that `oidc()` built `definition`. */
+export function recordBuilt(definition: object): void {
+  built.add(definition);
+}
+
+/** Whether `definition` is an object `oidc()` built (or the registry's frozen copy of one). */
+export function isBuiltByOidc(definition: object): boolean {
+  return built.has(definition);
+}
+
 /** The definition `oidc()` builds: a definition with the readers. */
 export type OidcDefinition = OAuthProviderDefinition & {
   readonly [OIDC]: true;

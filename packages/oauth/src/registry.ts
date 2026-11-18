@@ -5,7 +5,7 @@ import { OAuthConfig, OAuthSetupError } from './config.ts';
 import { credentialsOf, MAX_NAME_LENGTH, variablePrefix, type OAuthCredentials, type OAuthCredentialsConfig } from './credentials.ts';
 import type { OAuthProviderDefinition, OAuthProviderFactory } from './definition.ts';
 import { checkEndpoint, checkEndpoints, RESERVED_PARAMS } from './endpoints.ts';
-import { ISSUER_PARAM, NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { isBuiltByOidc, ISSUER_PARAM, NO_CONFIRM, OIDC, recordBuilt, type OidcDefinition } from './oidc-marker.ts';
 
 /** An active provider: its definition and the credentials it needs, both checked at the start and frozen. */
 export interface ResolvedOAuthProvider {
@@ -90,7 +90,7 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
   if (typeof d.mapUser !== 'function') refuse(`${where} needs a mapUser() function that turns that data into a profile.`);
   const profile = d.profile as OAuthProviderDefinition['profile'];
   const mapUser = d.mapUser as OAuthProviderDefinition['mapUser'];
-  return Object.freeze({
+  const frozen = Object.freeze({
     label: d.label as string,
     endpoints,
     scopes: Object.freeze(scopes as readonly string[]),
@@ -108,9 +108,12 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
     ...((definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true ? { [ISSUER_PARAM]: true as const } : {}),
     ...((definition as Partial<OidcDefinition>)[NO_CONFIRM] === true ? { [NO_CONFIRM]: true as const } : {}),
   });
+  // Membership is carried over by identity, as the marker is: only a definition `oidc()` itself built stays one.
+  if (isBuiltByOidc(definition)) recordBuilt(frozen);
+  return frozen;
 }
 
-interface Registered {
+export interface Registered {
   readonly name: string;
   readonly provider: ServiceProviderClass;
   readonly factory: OAuthProviderFactory;
@@ -152,7 +155,7 @@ function checkVariables(providers: readonly ServiceProviderClass[]): void {
 }
 
 /** The credentials config the provider that brings `name` lists for it; A11 with the line to add when it lists none. */
-function credentialsFor({ name, provider }: Registered): { readonly config: OAuthCredentialsConfig; readonly issuer: 'required' | 'optional' | undefined } {
+export function credentialsFor({ name, provider }: Registered): { readonly config: OAuthCredentialsConfig; readonly issuer: 'required' | 'optional' | undefined } {
   const own = (provider.config ?? []).filter((config) => credentialsOf(config)?.name === name);
   if (own.length === 0) {
     return refuse(
@@ -164,10 +167,10 @@ function credentialsFor({ name, provider }: Registered): { readonly config: OAut
 }
 
 /**
- * Builds the registry at the start: names are checked first, then the variables of every provider, then the definition and the
- * settings of each provider that is active. A refusal throws {@link OAuthSetupError} (A11), so the app does not start.
+ * The providers the app registers, after the checks that do not depend on a provider being active: names, variables, no clash.
+ * @internal Shared by the start and by the test fake.
  */
-export function buildProviders(container: Container): OAuthProviders {
+export function registeredProviders(container: Container): Registered[] {
   const providers = container.make(Application).providers;
   let factories: ReadonlyMap<string, OAuthProviderFactory>;
   try {
@@ -180,37 +183,59 @@ export function buildProviders(container: Container): OAuthProviders {
     if (name.length > MAX_NAME_LENGTH) refuse(`${provider.name} brings the OAuth provider "${name}", but a name is at most ${MAX_NAME_LENGTH} characters.`);
   }
   checkVariables(providers);
-  // Positive: plain http to a loopback host is for development and test only; a missing NODE_ENV is production.
+  return entries;
+}
+
+/** Whether plain http to a loopback host is for development and test only; a missing NODE_ENV is production. */
+export function isLocal(container: Container): boolean {
   const node = container.make(EnvironmentConfig).node;
-  const local = node === 'development' || node === 'test';
+  return node === 'development' || node === 'test';
+}
+
+/**
+ * The checks and the copy of one active provider: the callback address, the scopes of the variables, the factory and its definition.
+ * A refusal throws {@link OAuthSetupError} (A11).
+ * @internal Shared by the start and by the test fake, so the fake refuses what the start refuses.
+ */
+export function resolveProvider(container: Container, entry: { readonly name: string; readonly factory: OAuthProviderFactory }, credentials: OAuthCredentials & { readonly clientId: string; readonly clientSecret: string }): ResolvedOAuthProvider {
+  const local = isLocal(container);
   const { appUrl } = container.make(OAuthConfig);
+  const { clientId, clientSecret } = credentials;
+  if (!container.has(HttpClient)) {
+    refuse(`The OAuth provider "${entry.name}" is active, but no HttpClient is bound: register FetchServiceProvider from @marmeon/fetch (a new app has it).`);
+  }
+  // The callback address comes from configuration only, never from the request's host: an override, else APP_URL.
+  const variables = variablePrefix(entry.name);
+  if (credentials.redirectUrl !== undefined) checkEndpoint(credentials.redirectUrl, `${variables}REDIRECT_URL`, 'A11', local);
+  else if (appUrl === undefined) refuse(`The OAuth provider "${entry.name}" is active but has no callback address: set APP_URL, or ${variables}REDIRECT_URL for this provider.`);
+  else checkEndpoint(appUrl, `APP_URL (needed by the OAuth provider "${entry.name}")`, 'A11', local);
+  if (credentials.scopes !== undefined && !credentials.scopes.every(isScope)) refuse(`${variables}SCOPES must list scopes without spaces, separated by commas.`);
+  // What is checked is what is kept, and what the factory is given.
+  const resolved: ResolvedOAuthProvider['credentials'] = Object.freeze({ ...credentials, clientId, clientSecret, scopes: credentials.scopes && Object.freeze([...credentials.scopes]) });
+  const definition = checkDefinition(entry.name, entry.factory({ name: entry.name, credentials: resolved, container }), local);
+  if (definition.allowAddresses !== undefined) {
+    const http = container.make(HttpClient);
+    try {
+      http.allowing(definition.allowAddresses);
+    } catch (error) {
+      refuse(`The OAuth provider "${entry.name}": allowAddresses must be address ranges such as 10.20.0.0/16. ${error instanceof Error ? error.message : String(error)}`, error);
+    }
+  }
+  return Object.freeze({ name: entry.name, label: definition.label, definition, credentials: resolved });
+}
+
+/**
+ * Builds the registry at the start: names are checked first, then the variables of every provider, then the definition and the
+ * settings of each provider that is active. A refusal throws {@link OAuthSetupError} (A11), so the app does not start.
+ */
+export function buildProviders(container: Container): OAuthProviders {
   const active: ResolvedOAuthProvider[] = [];
-  for (const entry of entries) {
+  for (const entry of registeredProviders(container)) {
     const { config, issuer: issuerRule } = credentialsFor(entry);
     const credentials = container.make(config);
     const { clientId, clientSecret, issuer } = credentials;
     if (!clientId || !clientSecret || (issuerRule === 'required' && !issuer)) continue;
-    if (!container.has(HttpClient)) {
-      refuse(`The OAuth provider "${entry.name}" is active, but no HttpClient is bound: register FetchServiceProvider from @marmeon/fetch (a new app has it).`);
-    }
-    // The callback address comes from configuration only, never from the request's host: an override, else APP_URL.
-    const variables = variablePrefix(entry.name);
-    if (credentials.redirectUrl !== undefined) checkEndpoint(credentials.redirectUrl, `${variables}REDIRECT_URL`, 'A11', local);
-    else if (appUrl === undefined) refuse(`The OAuth provider "${entry.name}" is active but has no callback address: set APP_URL, or ${variables}REDIRECT_URL for this provider.`);
-    else checkEndpoint(appUrl, `APP_URL (needed by the OAuth provider "${entry.name}")`, 'A11', local);
-    if (credentials.scopes !== undefined && !credentials.scopes.every(isScope)) refuse(`${variables}SCOPES must list scopes without spaces, separated by commas.`);
-    // What is checked is what is kept, and what the factory is given.
-    const resolved: ResolvedOAuthProvider['credentials'] = Object.freeze({ ...credentials, clientId, clientSecret, scopes: credentials.scopes && Object.freeze([...credentials.scopes]) });
-    const definition = checkDefinition(entry.name, entry.factory({ name: entry.name, credentials: resolved, container }), local);
-    if (definition.allowAddresses !== undefined) {
-      const http = container.make(HttpClient);
-      try {
-        http.allowing(definition.allowAddresses);
-      } catch (error) {
-        refuse(`The OAuth provider "${entry.name}": allowAddresses must be address ranges such as 10.20.0.0/16. ${error instanceof Error ? error.message : String(error)}`, error);
-      }
-    }
-    active.push(Object.freeze({ name: entry.name, label: definition.label, definition, credentials: resolved }));
+    active.push(resolveProvider(container, entry, { ...credentials, clientId, clientSecret }));
   }
   return new OAuthProviders(active);
 }

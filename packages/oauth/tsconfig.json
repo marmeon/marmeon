@@ -44,6 +44,9 @@
       "path": "../cache"
     },
     {
+      "path": "../http"
+    },
+    {
       "path": "../server"
     },
     {

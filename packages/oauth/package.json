@@ -91,6 +91,7 @@
   },
   "devDependencies": {
     "@marmeon/cache": "workspace:*",
+    "@marmeon/http": "workspace:*",
     "@marmeon/server": "workspace:*",
     "@marmeon/testing": "workspace:*",
     "marmeon": "workspace:*"

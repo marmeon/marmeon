@@ -497,3 +497,38 @@ redirect minus 10 seconds (the drift between the clocks of the provider and of t
 non-numeric, old or future `auth_time` answers `not-reauthenticated`; `iat` never takes its place. A confirmation is spent like any flow: a second
 callback with the same state answers `no-flow`. Your app knows the person confirmed when `callback()` answers `ok` with `intent === 'confirm'`; act on that
 and on nothing else.
+
+## Testing
+
+`fakeOAuth()` of `@marmeon/oauth/testing` makes every provider answer from the test's `app.http`, so no request leaves the process and every check of the
+flow still runs: the state, the PKCE verifier against the challenge of the authorization, the nonce, the checks of the ID token, and the confirmation with
+`account` and `auth_time`. The test queues the person a provider vouches for, starts the flow through the routes of the app (the ones under
+[the flow](#the-flow-and-its-security) and [the callback](#the-callback)), and asks the fake for the address the provider would send the browser back to.
+Start and callback must be one browser, since the flow lives in its session: use `app.keepingCookies()`.
+
+```ts
+import { fakeOAuth } from '@marmeon/oauth/testing';
+
+const oauth = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
+const browser = app.keepingCookies();
+const start = await browser.post('/auth/github').assertStatus(303);
+await browser.get(oauth.callbackUrl(start)).assertRedirect('/');
+```
+
+A confirmation needs the signed-in user in that browser and a provider that can prove a fresh sign-in:
+
+```ts
+const oauth = fakeOAuth(app).user('microsoft', { id: '42' }).reauthenticated('microsoft');
+const browser = app.actingAs(user).keepingCookies();
+const start = await browser.post('/account/confirm/microsoft'); // your route calls oauth.redirect('microsoft', { intent: 'confirm', userId, account })
+await browser.get(oauth.callbackUrl(start)).assertRedirect('/account/delete');
+```
+
+Every provider keeps what it can do in production, in three groups. Plain OAuth 2.0 providers (GitHub, Discord and your own) never confirm, and
+`reauthenticated()` throws for them. Google and GitLab are OpenID Connect fakes that cannot confirm either, and throw the same. Microsoft and your own `oidc()`
+providers can confirm after `reauthenticated()`; without it the ID token has no `auth_time`, and `staleAuthentication()` makes it too old. The fake of an `oidc()` provider keeps
+the provider's own mapping over the claims it issues, so `emailVerified: true` counts only where the provider would vouch for the address (Google for a gmail.com
+address or with `claims: { hd }`, GitLab for gitlab.com, never Microsoft), and the `id` is what the mapping makes of the `sub` (Microsoft puts the tenant in front of it). A plain
+OAuth 2.0 provider's own `profile()` and `mapUser()` do not run, and `emailVerified` is what the test says: an own provider that never vouches for an address does vouch in a test.
+
+The fake builds each provider through the checks of the start, so a definition the start refuses (A11) fails in `fakeOAuth()` too. The members are in the table under [social login](fakes.md#social-login).

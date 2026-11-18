@@ -5,7 +5,7 @@ import { createDiscovery } from './discovery.ts';
 import type { OAuthProfileInput, OAuthProviderContext, OAuthProviderDefinition, OAuthProviderFactory, SocialProfile } from './definition.ts';
 import { checkEndpoint } from './endpoints.ts';
 import { checkIdToken, type IdTokenClaims } from './id-token.ts';
-import { ISSUER_PARAM, NO_CONFIRM, OIDC, recordChecked, type OidcDefinition } from './oidc-marker.ts';
+import { ISSUER_PARAM, NO_CONFIRM, OIDC, recordBuilt, recordChecked, type OidcDefinition } from './oidc-marker.ts';
 
 export type { IdTokenClaims } from './id-token.ts';
 export { OIDC, ISSUER_PARAM } from './oidc-marker.ts';
@@ -217,6 +217,9 @@ export function oidcWith(options: OidcOptions, internals: OidcInternals): OAuthP
       ...(accepted === undefined ? {} : { [ISSUER_PARAM]: true as const }),
       ...(internals.noConfirmation === true ? { [NO_CONFIRM]: true as const } : {}),
     };
+    // Frozen before it is recorded: a definition that `oidc()` built cannot gain an own `profile()` afterwards and still count as checked.
+    Object.freeze(definition);
+    recordBuilt(definition);
     return definition;
   };
 }

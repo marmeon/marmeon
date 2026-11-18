@@ -3,7 +3,7 @@ import type { OAuthTokens, SocialUser } from './definition.ts';
 const MAX_TEXT = 255;
 const MAX_AVATAR = 2048;
 
-const textOrNull = (value: unknown): string | null => (typeof value === 'string' && value.length <= MAX_TEXT && !CONTROL.test(value) ? value : null);
+const textOrNull = (value: unknown): string | null => (typeof value === 'string' && value.length <= MAX_TEXT && value.isWellFormed() && !CONTROL.test(value) ? value : null);
 
 // One address in the form the mailer accepts: no white space, no control characters, none of < > ( ) , ; : " [ ] \ and one @.
 const EMAIL = /^[^\s\p{Cc}\p{Cf}@<>()",;:\\[\]]+@[^\s\p{Cc}\p{Cf}@<>()",;:\\[\]]+$/u;
@@ -14,7 +14,7 @@ const CONTROL = /[\p{Cc}\p{Cf}]/u;
  * character that lower-casing would change (the Kelvin sign) makes two spellings of one address that a database compares differently.
  */
 function emailOf(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== 'string' || !value.isWellFormed()) return null;
   const trimmed = value.trim();
   const email = trimmed.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
   if (email !== trimmed.toLowerCase() || email.length > MAX_TEXT) return null;
@@ -42,7 +42,8 @@ export function toSocialUser(provider: string, raw: unknown, mapped: unknown, to
   // Each property is read once, so a getter cannot answer differently the second time.
   const { id: rawId, email: rawEmail, emailVerified, name, nickname, avatar } = mapped as Record<string, unknown>;
   const id = typeof rawId === 'string' ? rawId.trim() : '';
-  if (id === '' || id.length > MAX_TEXT || CONTROL.test(id)) return undefined;
+  // A lone surrogate turns into U+FFFD once stored as UTF-8, and would match another account's id.
+  if (id === '' || !id.isWellFormed() || id.length > MAX_TEXT || CONTROL.test(id)) return undefined;
   const email = emailOf(rawEmail);
   return {
     provider,

@@ -27,6 +27,12 @@ describe('the SocialUser of a provider', () => {
     expect(build({ email: 'broken', emailVerified: true })?.emailVerified).toBe(false);
   });
 
+  it('refuses an id that is not well formed and drops a name or address that is not', () => {
+    expect(build({ id: 'idp-\uD800' })).toBeUndefined();
+    expect(build({ id: 'idp-\uFFFD' })?.id).toBe('idp-\uFFFD');
+    expect(build({ name: 'Ada\uD800', nickname: 'ada\uDC00', email: 'a\uD800@example.com' })).toMatchObject({ name: null, nickname: null, email: null });
+  });
+
   it('refuses an empty or over-long id', () => {
     for (const id of ['', '   ', 'x'.repeat(256), 42, null, undefined]) expect(build({ id }), String(id)).toBeUndefined();
     expect(build({ id: ' 7 ' })?.id).toBe('7');
