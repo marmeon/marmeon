@@ -113,15 +113,16 @@ describe('make:oauth', () => {
     expect(spawned).toEqual([]);
   });
 
-  it('writes no migration: the table comes with marmeon publish', async () => {
+  it('writes no migration: the table comes with make:social-accounts-table', async () => {
     const root = blankApp();
     const { input, lines } = fakeInput(root);
     expect(await new MakeOAuthCommand().handle(input)).toBe(0);
     expect(existsSync(join(root, 'modules/oauth/migrations'))).toBe(false);
     expect(Object.keys(filesOf(root)).filter((path) => path.includes('social_accounts'))).toEqual([]);
-    const publish = lines.findIndex((line) => line.includes('marmeon publish @marmeon/oauth'));
+    const publish = lines.findIndex((line) => line.includes('marmeon make:social-accounts-table'));
     expect(publish).toBeGreaterThan(-1);
     expect(lines[publish]).toContain('marmeon migrate');
+    expect(lines.some((line) => line.includes('marmeon publish'))).toBe(false);
   });
 
   it('names the password migration only when no module has it, and never writes it', async () => {

@@ -6,7 +6,7 @@ import { CommandArgumentsError, editDefinitionFile, importedBindings } from '@ma
 import { escapesRoot, readStubManifest, recordStubSet, removeLeftovers, STUB_MANIFEST } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
-/** The module templates, per UI adapter: `stubs/<adapter>/modules/oauth`. The `migrations` directory beside them holds the table's migration, which `marmeon publish @marmeon/oauth` copies from the installed package. */
+/** The module templates, per UI adapter: `stubs/<adapter>/modules/oauth`. The `migrations` directory beside them holds the table's migration, which `marmeon make:social-accounts-table` copies from the installed package. */
 export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
 /**
@@ -138,7 +138,7 @@ export class MakeOAuthCommand {
     // The module's mail is a TSX view: the server compiles it with oxc-transform, `marmeon build` ahead of time. Not a framework package, so no exact version.
     if (!('oxc-transform' in installed(input.root))) input.output.line('And what compiles its mail view: pnpm add -D oxc-transform');
     if (!typed) input.output.line('Then: marmeon route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
-    input.output.line('Then: marmeon publish @marmeon/oauth, which copies the migration of the social_accounts table the installed package ships into modules/system/migrations, and marmeon migrate.');
+    input.output.line('Then: marmeon make:social-accounts-table, which copies the migration of the social_accounts table the installed package ships into modules/system/migrations, and marmeon migrate.');
     this.#passwordMigration(input, adapter);
     input.output.line('Place the buttons on your sign-in page with <Island route="oauth.sign-in" /> (a view of the module that owns that page): https://marmeon.com/docs/oauth#placing-the-components');
     input.output.line('Place the connected accounts on a page of your own with <Island route="oauth.accounts" />, and the buttons that confirm with a provider on your confirmation page with <Island route="oauth.confirm-options" />: https://marmeon.com/docs/oauth#placing-the-components');

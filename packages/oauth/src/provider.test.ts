@@ -7,13 +7,14 @@ import { describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { SocialAccountsServiceProvider } from './accounts/index.ts';
 import { MakeOAuthCommand } from './make-oauth.ts';
+import { MakeSocialAccountsTableCommand } from './make-social-accounts-table.ts';
 import { OAuthServiceProvider } from './provider.ts';
 
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
 
 describe('OAuthServiceProvider', () => {
-  it('brings make:oauth', () => {
-    expect(OAuthServiceProvider.commands).toContain(MakeOAuthCommand);
+  it('brings make:oauth and make:social-accounts-table', () => {
+    expect(OAuthServiceProvider.commands).toEqual([MakeOAuthCommand, MakeSocialAccountsTableCommand]);
   });
 
   it('lets marmeon publish @marmeon/oauth copy the migration of social_accounts into the system module', async () => {

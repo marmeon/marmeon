@@ -9,7 +9,7 @@ import routes from './routes.ts';
 // the app configures (`OAUTH_<NAME>_CLIENT_ID` …); the mechanics stay in @marmeon/oauth.
 export default defineModule({
   name: 'oauth',
-  // SocialAccountsServiceProvider keeps the accounts people link in the `social_accounts` table (its migration comes with `marmeon publish @marmeon/oauth`, which copies it from the installed package).
+  // SocialAccountsServiceProvider keeps the accounts people link in the `social_accounts` table (its migration comes with `marmeon make:social-accounts-table`, which copies it from the installed package).
   providers: [OAuthModuleServiceProvider, SocialAccountsServiceProvider],
   routes,
   // Runs inside the request, not on a worker (an account without a stored language gets the request's): it queues the mail to the owner of an account that got a provider account.

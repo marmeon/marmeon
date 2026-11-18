@@ -11,7 +11,7 @@ import { SOCIAL_ACCOUNT_COLUMNS, SOCIAL_ACCOUNTS_TABLE, SocialAccountStore } fro
 /**
  * Registers `SocialAccountStore` and `SocialAccounts` (per request), has the password reset of an account with an unconfirmed address
  * remove its links, and reads `OAUTH_REGISTRATION` and `OAUTH_STORE_TOKENS`. Readiness waits for the `social_accounts` table, whose
- * migration comes with `marmeon publish @marmeon/oauth` (declared by `OAuthServiceProvider`). See docs/oauth.md#storing-tokens.
+ * migration comes with `marmeon make:social-accounts-table` (or `marmeon publish @marmeon/oauth` for a registry install; declared by `OAuthServiceProvider`). See docs/oauth.md#storing-tokens.
  */
 export class SocialAccountsServiceProvider implements ServiceProvider {
   static config = [SocialAccountsConfig];
