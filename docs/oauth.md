@@ -4,7 +4,7 @@
 
 `@marmeon/oauth` describes a service people can sign in with as a **provider** with a name. An app or a package registers providers by
 name, the app configures each one from environment variables, and a provider whose variables are not set does not exist for the app.
-This page covers registering and configuring providers, and starting the flow; the rest of the flow follows as it is written.
+This page covers registering and configuring providers, starting the flow, and completing it in [the callback](#the-callback); the rest follows as it is written.
 
 A provider is a class that brings a name and the variables it reads:
 
@@ -55,7 +55,7 @@ underscore: the provider `my-idp` reads `OAUTH_MY_IDP_CLIENT_ID`.
 The callback address is `OAUTH_<NAME>_REDIRECT_URL` when it is set, and otherwise `APP_URL` followed by `/auth/<name>/callback`: with
 `APP_URL=https://app.example.com`, the provider `gitea` is sent `https://app.example.com/auth/gitea/callback` as the `redirect_uri` of the
 authorization request. The address comes from configuration only; the host of a request is never used, so a request with a forged `Host`
-header cannot point the provider's answer at another site. The route that receives the answer is not part of the package yet.
+header cannot point the provider's answer at another site. The package does not register the route that receives the answer; see [the callback](#the-callback).
 
 A provider is **active** when its client ID and client secret are set, and its issuer too where the provider requires one. An empty variable
 counts as not set. An inactive provider is never created: its factory does not run, and its definition, `SCOPES` and `REDIRECT_URL` are
@@ -232,6 +232,103 @@ the `authorizeParams` of the provider, so nothing a provider adds can replace th
 The provider's own requests (discovery, and `http` in `profile`) go through the `HttpClient`: ten seconds at most, 1 MiB of answer, no redirect,
 and no address of your own network unless the provider's `allowAddresses` lists its range. An answer that is not 2xx or not JSON is an error
 that carries its status and never its body. Nothing logs the state, the verifier, the nonce or an address of the flow.
+
+### The callback
+
+The provider sends the browser back to `/auth/<provider>/callback` with a query. `OAuth.callback()` completes the flow from it:
+
+```ts title="modules/auth/controllers/SocialCallbackController.ts"
+import { Controller, type HttpContext } from '@marmeon/http';
+import { OAuth } from '@marmeon/oauth';
+
+export class SocialCallbackController extends Controller {
+  readonly #oauth: OAuth;
+
+  constructor(oauth: OAuth) {
+    super();
+    this.#oauth = oauth;
+  }
+
+  async handle(ctx: HttpContext<{}, { provider: string }>) {
+    const params = new URL(ctx.request.url).searchParams;
+    const result = await this.#oauth.callback(ctx.params.provider, params);
+    if (!result.ok) return this.back('/login');
+    const { user, intent } = result.value;
+    // `user` is the person the provider vouched for; `intent` is what the flow was started for.
+    return this.redirect('/');
+  }
+}
+```
+
+Pass `{ userId }` when somebody is signed in. A flow that was started with a `userId` needs the same `userId` at the callback, or the answer is
+`invalid`; a flow started without one serves only a guest.
+
+Register it as a `GET` route with the same `everyone` rule as the start route, and put `.block()` on it:
+
+```ts title="modules/auth/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { SocialCallbackController } from './controllers/SocialCallbackController.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone).get('/auth/:provider/callback', SocialCallbackController).name('auth.social.callback').block({ lock: { minutes: 1 }, wait: { seconds: 10 } });
+});
+```
+
+The code works once at the provider, but two callbacks that reach the server together can both take the flow from a session before either
+stores it. [`block()`](routing.md#one-request-at-a-time) runs the requests of one session one after another, so the second finds no flow. A
+second request waits up to `wait`, here 10 seconds, and then answers `423`; without `wait` it waits as long as `lock`. The lock needs the
+cache's atomic locks. It must outlast a callback: the token request, the profile and a discovery can take 10 seconds each, so the default
+lock of 10 seconds is too short, and a crashed request holds it for that long.
+
+`callback()` throws, and does not answer, when the app is set up wrongly. It throws a `TypeError` for options of the wrong form. It throws an
+`OAuthSetupError` with the code `A10` ([error codes](errors.md#server-error-codes)) when there is no session package, or no usable callback
+address, or the provider's `profile()` asks `http` for an address that is not usable; the flow has left the session in the last two cases. An
+error thrown by your own `endpoints()` code passes through unchanged, and so does none from your `profile()` or `mapUser`: those end in
+`invalid-response`. A session that is not started, or that this request may not write, is not a setup error: it answers `invalid`, takes
+nothing and sends nothing.
+
+`callback()` checks the answer in this order and stops at the first refusal:
+
+1. The provider is known and active (`unknown-provider`; the session is not touched).
+2. The session is started and this request may write it, or the answer is `invalid` and nothing is taken: a request that cannot write the
+   session could not spend the flow.
+3. The flow leaves the session, before any check below, so a `state` works once even when a check fails (`no-flow` when there is none). A
+   record of another form, or with times that do not fit a flow, is `invalid`.
+4. The flow is not older than ten minutes (`expired`), and is the flow of this provider (`invalid`).
+5. The flow's user matches the `userId` you pass: both or neither, and the same (`invalid`).
+6. The `state` of the query is the one of the flow, compared in constant time (`invalid`). A missing, repeated or different `state` is refused.
+7. An `iss` parameter must equal the provider's `issuer`, when the provider has one (`invalid`); a repeated `iss` is refused.
+8. An `error` parameter ends the flow: `access_denied` is `cancelled`, any other is `provider-error` with the code (`unknown` unless it is a
+   plain code). The provider's `error_description` is never read.
+9. The `code` is one to 2048 characters (`invalid`).
+
+Then the code goes to the token endpoint with the PKCE verifier and the same `redirect_uri` as the start, the client secret in the body or in a
+Basic header as the provider's `clientAuth` says, and the provider's `profile()` and `mapUser()` give the person. The tokens are accepted only
+as a token response of the form the standard gives: a bearer `access_token`, and no `error` field even in a `200`. `tokens.expiresAt` is
+milliseconds since the epoch, and `tokens.scopes` the scopes the provider names, or the ones asked for when it names none.
+
+| Error | Meaning |
+| --- | --- |
+| `unknown-provider` | The name is unknown, or the provider is inactive. |
+| `no-flow` | This session holds no flow of the provider: a second callback, another browser, or an expired session. |
+| `expired` | The ten minutes are over. |
+| `invalid` | The answer does not belong to the flow, or the session cannot be written. Start again. |
+| `cancelled` | The person refused at the provider. |
+| `provider-error` | The provider reported an error; `error` holds its code. |
+| `unavailable` | The provider could not be reached, or answered with a server error. Try again later. |
+| `rejected` | The token endpoint answered with a 4xx status for the code (a rate limit with 429 included), or with a `200` that has an `error` field. |
+| `invalid-response` | The provider's answer is not usable: the token answer is no JSON object or has no usable `access_token` or a token type other than bearer, a `200` that is no JSON, a 4xx from your `profile()` request, code of the provider that threw, or a profile without a usable `id`. |
+| `not-reauthenticated` | Reserved for a sign-in that must be fresh. |
+
+No error carries a body or a message of the provider, and nothing logs the code, a token, the state or the query: a refusal logs the provider
+and a fixed reason only. A second tab, an expired flow and a person who said no are logged at debug level; the other refusals at warn.
+
+What `mapUser` returns is checked, not trusted. The `id` is trimmed, one to 255 characters, with no control or format character (such as a
+zero-width space or a direction override). The `email` is trimmed,
+one address (no white space, control or format character, or any of `<>(),;:"[]\`, and one `@`), at most 255 characters, and lower-cased in ASCII
+only; anything else, or a character that lower-casing would change, makes it `null`. `emailVerified` is `true` only for exactly `true` next to
+an address. A `name` or `nickname` of more than 255 characters, or with a control or format character, is `null`. An `avatar` is kept only as an `https:` address, normalised. A
+`mapUser` that throws, is `async`, or returns a profile without a usable `id` ends in `invalid-response`.
 
 ### SameSite
 

@@ -7,6 +7,7 @@ import { OAuthSetupError, type OAuthConfig } from './config.ts';
 import { variablePrefix } from './credentials.ts';
 import type { OAuthEndpoints } from './definition.ts';
 import { checkEndpoint, checkEndpoints, EndpointError } from './endpoints.ts';
+import { completeCallback, type OAuthCallback, type OAuthCallbackError } from './callback.ts';
 import { challengeOf, issueFlow } from './flow.ts';
 import { createOAuthHttp, OAuthHttpError } from './http.ts';
 import type { OAuthProviders, ResolvedOAuthProvider } from './registry.ts';
@@ -31,18 +32,25 @@ export interface OAuthRedirectOptions {
  */
 export type OAuthRedirectError = { readonly kind: 'unknown-provider' } | { readonly kind: 'unavailable' } | { readonly kind: 'reauthentication-unsupported' };
 
+/** What `callback()` takes besides the provider and the query. See docs/oauth.md#the-callback. */
+export interface OAuthCallbackOptions {
+  /** The signed-in user, if any. It must be the user the flow was started for; a flow started without a user serves only a guest, and passing one is refused. */
+  readonly userId?: string | number;
+}
+
 const INTENT = /^[a-z][a-z-]{0,31}$/;
 const PROMPTS: readonly string[] = ['select_account', 'consent'];
 
 const OPTION_KEYS: readonly string[] = ['intent', 'userId', 'scopes', 'prompt'];
+const CALLBACK_KEYS: readonly string[] = ['userId'];
 
 const misuse = (message: string, cause?: unknown): never => {
   throw new OAuthSetupError(withCode('A10', message), cause === undefined ? undefined : { cause });
 };
 
 /**
- * Starts the sign-in at a provider, in the session of the browser that asks. Resolved per request.
- * See docs/oauth.md#the-flow-and-its-security.
+ * Starts the sign-in at a provider with `redirect()` and completes it with `callback()`, in the session of the browser that asks. Resolved per request.
+ * See docs/oauth.md#the-flow-and-its-security and docs/oauth.md#the-callback.
  */
 export class OAuth {
   readonly #providers: OAuthProviders;
@@ -125,6 +133,47 @@ export class OAuth {
     return ok(url);
   }
 
+  /**
+   * Completes the flow of the provider `name` from the query the provider sent the browser back with, and answers the person it vouches
+   * for. Pass `userId` when somebody is signed in. The flow leaves the session before anything is checked. Throws a `TypeError` for
+   * options of the wrong form, and an `OAuthSetupError` (A10) when the app has no session, or no usable callback address, or the provider's
+   * code asks `http` for an address that is not usable (the flow is spent for the last two). An error in the provider's own `endpoints()`
+   * is thrown as it is. A session that is not started or that this request may
+   * not write answers `invalid` and takes nothing. Put `Route.block()` on the callback route. See docs/oauth.md#the-callback.
+   */
+  async callback(name: string, params: URLSearchParams, options: OAuthCallbackOptions = {}): Promise<Result<OAuthCallback, OAuthCallbackError>> {
+    if (!(params instanceof URLSearchParams)) throw new TypeError('OAuth.callback() takes the URLSearchParams of the callback request as its second argument.');
+    const { userId } = checkCallbackOptions(options);
+    // Before the session is touched: an unknown or inactive name leaves no trace.
+    const provider = this.#providers.get(name);
+    if (provider === undefined) return err({ kind: 'unknown-provider' });
+    const config = this.#sessionConfig();
+    const session = this.#session();
+    if (config === undefined || session === undefined) {
+      return misuse(`OAuth.callback("${provider.name}") needs the session: register the session package (SessionServiceProvider) and add the StartSession middleware to this route (or its group).`);
+    }
+    // A request that may not write the session cannot spend the flow, so it would serve twice: nothing is taken, nothing is exchanged.
+    if (!session.started || session.readOnly) {
+      this.#logger.warn('An OAuth callback was refused.', { provider: provider.name, reason: 'session' });
+      return err({ kind: 'invalid' });
+    }
+    const { allowAddresses } = provider.definition;
+    let found: Promise<OAuthEndpoints | undefined> | undefined;
+    return completeCallback(
+      {
+        provider,
+        session,
+        now: this.#clock.now(),
+        logger: this.#logger,
+        http: createOAuthHttp(allowAddresses === undefined ? this.#http() : this.#http().allowing(allowAddresses), this.#local),
+        endpoints: () => (found ??= this.#endpointsOf(provider)),
+        redirectUri: () => this.#callbackOf(provider),
+      },
+      params,
+      userId,
+    );
+  }
+
   /** The refusals that need the app's attention; checked before anything is fetched or stored. Returns the session to write the flow into. */
   #checkSetup(provider: ResolvedOAuthProvider): Session {
     // Only a missing session package is this app's setup mistake; whatever else fails while resolving goes through as it is.
@@ -188,6 +237,17 @@ export class OAuth {
   }
 }
 
+const isUserId = (userId: unknown): boolean => (typeof userId === 'string' ? userId !== '' : Number.isSafeInteger(userId));
+
+function checkCallbackOptions(options: OAuthCallbackOptions): { userId: string | number | undefined } {
+  if (typeof options !== 'object' || options === null) throw new TypeError('OAuth.callback() takes an options object: { userId }.');
+  const unknown = Object.keys(options).filter((key) => !CALLBACK_KEYS.includes(key));
+  if (unknown.length > 0) throw new TypeError(`OAuth.callback() does not take ${unknown.map((key) => `"${key}"`).join(', ')}. The options are ${CALLBACK_KEYS.join(', ')}.`);
+  const { userId } = options;
+  if (userId !== undefined && !isUserId(userId)) throw new TypeError('The OAuth userId must be a non-empty string or a whole number.');
+  return { userId };
+}
+
 function checkOptions(options: OAuthRedirectOptions): { intent: string; userId: string | number | undefined; scopes: readonly string[] | undefined; prompt: string | undefined } {
   if (typeof options !== 'object' || options === null) throw new TypeError('OAuth.redirect() takes an options object: { intent, userId, scopes, prompt }.');
   // A misspelt key would silently start a flow without its user, or a sign-in where a link was meant.
@@ -195,7 +255,7 @@ function checkOptions(options: OAuthRedirectOptions): { intent: string; userId: 
   if (unknown.length > 0) throw new TypeError(`OAuth.redirect() does not take ${unknown.map((key) => `"${key}"`).join(', ')}. The options are ${OPTION_KEYS.join(', ')}.`);
   const { intent = 'sign-in', userId, scopes, prompt } = options;
   if (typeof intent !== 'string' || !INTENT.test(intent)) throw new TypeError(`The OAuth intent must be a lower case word (letters and dashes, starting with a letter, at most 32), not ${JSON.stringify(intent)}.`);
-  if (userId !== undefined && !(typeof userId === 'string' ? userId !== '' : Number.isSafeInteger(userId))) throw new TypeError('The OAuth userId must be a non-empty string or a whole number.');
+  if (userId !== undefined && !isUserId(userId)) throw new TypeError('The OAuth userId must be a non-empty string or a whole number.');
   if (scopes !== undefined && (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string' && scope !== '' && !/\s/.test(scope)))) {
     throw new TypeError('The OAuth scopes must be a list of non-empty strings without spaces.');
   }

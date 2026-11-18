@@ -12,7 +12,8 @@ export interface OAuthEndpoints {
 export interface OAuthTokens {
   readonly accessToken: string;
   readonly refreshToken?: string;
-  readonly expiresAt?: Date;
+  /** When the access token ends, in milliseconds since the epoch — a number, because a frozen `Date` can still be changed with `setTime`. */
+  readonly expiresAt?: number;
   readonly scopes: readonly string[];
   readonly idToken?: string;
 }

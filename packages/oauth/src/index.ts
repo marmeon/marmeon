@@ -13,8 +13,9 @@ export type {
   SocialProfile,
   SocialUser,
 } from './definition.ts';
+export type { OAuthCallback, OAuthCallbackError } from './callback.ts';
 export { OAuth } from './oauth.ts';
-export type { OAuthRedirectError, OAuthRedirectOptions } from './oauth.ts';
+export type { OAuthCallbackOptions, OAuthRedirectError, OAuthRedirectOptions } from './oauth.ts';
 export { OAuthServiceProvider } from './provider.ts';
 export { OAuthProviders } from './registry.ts';
 export type { ResolvedOAuthProvider } from './registry.ts';
