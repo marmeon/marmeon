@@ -9,9 +9,9 @@ const TOKEN_URL = 'https://github.com/login/oauth/access_token';
 type Emails = readonly Record<string, unknown>[];
 
 /** A GitHub flow whose profile answers are the given ones; `emails` may also be a status for a refusal. */
-async function signIn(user: Record<string, unknown> | number = fixture('github-user'), emails: Emails | number | Record<string, unknown> = fixture<Emails>('github-emails')) {
+async function signIn(user: Record<string, unknown> | number = fixture('github-user'), emails: Emails | number | Record<string, unknown> = fixture<Emails>('github-emails'), token: Record<string, unknown> = {}) {
   const made = builtinWith(github, 'github', { tokenUrl: TOKEN_URL });
-  const { query } = await made.begin(() => tokenResponse());
+  const { query } = await made.begin(() => tokenResponse(token));
   made.http.respond(USER, () => (typeof user === 'number' ? new Response('no', { status: user }) : Response.json(user)));
   made.http.respond(EMAILS, () => (typeof emails === 'number' ? new Response('no', { status: emails }) : Response.json(emails)));
   return { ...made, result: await made.oauth.callback('github', query) };
@@ -89,6 +89,11 @@ describe('github', () => {
     const { oauth, http } = builtinWith(github, 'github', { tokenUrl: TOKEN_URL });
     expect(await oauth.redirect('github', { intent: 'confirm', userId: 7, account: '4815162' })).toEqual({ ok: false, error: { kind: 'reauthentication-unsupported' } });
     http.assertNothingSent();
+  });
+
+  it('reads the comma-separated scopes of the token response as separate scopes', async () => {
+    const { result } = await signIn(undefined, undefined, { scope: 'read:user,user:email' });
+    expect(userOf(result).tokens.scopes).toEqual(['read:user', 'user:email']);
   });
 
   it('asks for the endpoints, scopes and PKCE GitHub documents', async () => {

@@ -22,6 +22,13 @@ export const ISSUER_PARAM = Symbol('marmeon.oauth.oidc.issuer-parameter');
 export const NO_CONFIRM = Symbol('marmeon.oauth.oidc.no-confirmation');
 
 /**
+ * Set to `true` on the definition of a provider whose token response separates the scopes with commas (GitHub). Every other provider's
+ * `scope` is split at white space only, since a comma can be part of a scope. Only the package's own built-in providers set it. Not
+ * exported from the package.
+ */
+export const COMMA_SCOPES = Symbol('marmeon.oauth.comma-separated-scopes');
+
+/**
  * The ID token claims of each raw answer `oidc()` made (a frozen copy, not the object the app holds). A raw answer that is not in it did
  * not come from a checked token. Module-wide and not exported from the package: a definition cannot bring its own reader, so only a token
  * that `oidc()` checked can vouch for anything.
@@ -60,3 +67,6 @@ export type OidcDefinition = OAuthProviderDefinition & {
   readonly [ISSUER_PARAM]?: true;
   readonly [NO_CONFIRM]?: true;
 };
+
+/** A definition that may carry {@link COMMA_SCOPES}. */
+export type CommaScopesDefinition = OAuthProviderDefinition & { readonly [COMMA_SCOPES]?: true };

@@ -19,6 +19,8 @@ export interface ExchangeInput {
   readonly verifier: string | undefined;
   /** The scopes that were asked for: what the tokens are taken to cover when the provider does not say. */
   readonly asked: readonly string[];
+  /** Whether the provider's answer separates the scopes with commas (GitHub); else they are separated by white space. */
+  readonly commaScopes?: boolean;
   /** Milliseconds since the epoch. */
   readonly now: number;
 }
@@ -31,6 +33,18 @@ const formEncoded = (value: string): string => new URLSearchParams({ v: value })
 
 /** `text` when it is a non-empty string of a reasonable length, else `undefined`. */
 const textOf = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' && value.length <= MAX_TOKEN_LENGTH ? value : undefined);
+
+/**
+ * The scopes of the token response. Only a missing `scope` means "what was asked for" (RFC 6749 section 5.1); a `scope` that is there
+ * and says nothing usable covers nothing. A text is split at white space (and at commas for a provider that answers with them), a list of
+ * texts is read as the list, anything else as none.
+ */
+function scopesOf(scope: unknown, input: ExchangeInput): string[] {
+  if (scope === undefined) return [...input.asked];
+  if (Array.isArray(scope)) return scope.every((entry) => typeof entry === 'string') ? scope.filter((entry) => entry !== '') : [];
+  if (typeof scope !== 'string') return [];
+  return scope.split(input.commaScopes === true ? /[\s,]+/ : /\s+/).filter((entry) => entry !== '');
+}
 
 /**
  * Trades the code for tokens at the token endpoint. The answer is untrusted: only a token response of the shape RFC 6749 gives is
@@ -71,7 +85,7 @@ export async function exchangeCode(input: ExchangeInput): Promise<Result<OAuthTo
     accessToken,
     ...(refreshToken === undefined ? {} : { refreshToken }),
     ...(typeof lifetime === 'number' && Number.isFinite(lifetime) && lifetime > 0 && lifetime <= 10 * 365 * 86_400 ? { expiresAt: input.now + lifetime * 1000 } : {}),
-    scopes: typeof answer.scope === 'string' ? answer.scope.split(/[\s,]+/).filter((scope) => scope !== '') : [...input.asked],
+    scopes: scopesOf(answer.scope, input),
     ...(idToken === undefined ? {} : { idToken }),
   });
 }

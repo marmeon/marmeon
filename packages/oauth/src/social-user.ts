@@ -41,9 +41,10 @@ export function toSocialUser(provider: string, raw: unknown, mapped: unknown, to
   if (typeof mapped !== 'object' || mapped === null) return undefined;
   // Each property is read once, so a getter cannot answer differently the second time.
   const { id: rawId, email: rawEmail, emailVerified, name, nickname, avatar } = mapped as Record<string, unknown>;
-  const id = typeof rawId === 'string' ? rawId.trim() : '';
+  // Kept exactly as given: an id with white space around it is not the id without, and trimming would make two accounts one.
+  const id = typeof rawId === 'string' ? rawId : '';
   // A lone surrogate turns into U+FFFD once stored as UTF-8, and would match another account's id.
-  if (id === '' || !id.isWellFormed() || id.length > MAX_TEXT || CONTROL.test(id)) return undefined;
+  if (id === '' || id !== id.trim() || !id.isWellFormed() || id.length > MAX_TEXT || CONTROL.test(id)) return undefined;
   const email = emailOf(rawEmail);
   return {
     provider,

@@ -15,13 +15,32 @@ A package or the app brings a provider by name through `static oauthProviders`, 
 ```ts
 import { defineOAuthProvider, oauthCredentials } from '@marmeon/oauth';
 
+interface GiteaUser {
+  id: number;
+  login: string;
+  email: string;
+  full_name: string;
+  avatar_url: string;
+}
+
 export class GiteaProvider {
   static config = [oauthCredentials('gitea', { issuer: 'required' })];
-  static oauthProviders = { gitea: defineOAuthProvider((context) => ({ /* endpoints, profile, mapUser */ })) };
+  static oauthProviders = {
+    gitea: defineOAuthProvider(({ credentials }) => {
+      const server = credentials.issuer!.replace(/\/$/, '');
+      return {
+        label: 'Gitea',
+        endpoints: { authorizeUrl: `${server}/login/oauth/authorize`, tokenUrl: `${server}/login/oauth/access_token` },
+        scopes: ['read:user'],
+        profile: async ({ http, tokens }) => (await http.json(`${server}/api/v1/user`, { bearer: tokens.accessToken })) as GiteaUser,
+        mapUser: (user) => ({ id: String(user.id), email: user.email, emailVerified: false, name: user.full_name, nickname: user.login, avatar: user.avatar_url }),
+      };
+    }),
+  };
 }
 ```
 
-A provider is active once `OAUTH_GITEA_CLIENT_ID` and `OAUTH_GITEA_CLIENT_SECRET` are set.
+`OAUTH_GITEA_ISSUER` holds the address of your Gitea server. A provider is active once that and `OAUTH_GITEA_CLIENT_ID` and `OAUTH_GITEA_CLIENT_SECRET` are set.
 
 ## Documentation
 

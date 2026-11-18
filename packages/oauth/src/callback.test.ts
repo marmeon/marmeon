@@ -381,7 +381,7 @@ describe('OAuth.callback() trades the code', () => {
         },
       },
     });
-    http.respond(TOKEN_URL, () => tokenResponse({ refresh_token: 'refresh-secret', id_token: 'id-secret', scope: 'a,b c' }));
+    http.respond(TOKEN_URL, () => tokenResponse({ refresh_token: 'refresh-secret', id_token: 'id-secret', scope: 'a b c' }));
     const result = await oauth.callback('idp', query());
     expect(result.ok).toBe(true);
     expect(seen).toMatchObject({
@@ -396,6 +396,27 @@ describe('OAuth.callback() trades the code', () => {
     const { oauth, query } = await started();
     const result = await oauth.callback('idp', query());
     expect(result.ok && result.value.user.tokens.scopes).toEqual(['profile']);
+  });
+
+  it('keeps a comma inside a scope of a provider that is not GitHub', async () => {
+    const { oauth, query, http } = await started();
+    http.respond(TOKEN_URL, () => tokenResponse({ scope: 'read,write other' }));
+    const result = await oauth.callback('idp', query());
+    expect(result.ok && result.value.user.tokens.scopes).toEqual(['read,write', 'other']);
+  });
+
+  it('answers with the scopes the flow asked for, those of redirect() and the forced openid included, when the provider names none', async () => {
+    const plain = await started({}, { scopes: ['extra'] });
+    const result = await plain.oauth.callback('idp', plain.query());
+    expect(result.ok && result.value.user.tokens.scopes).toEqual(['profile', 'extra']);
+  });
+
+  it('refuses an id with white space around it, and keeps the same id without', async () => {
+    const padded = await started({ overrides: { profile: async () => ({}), mapUser: () => ({ id: ' 7 ', email: null, emailVerified: false, name: null, nickname: null, avatar: null }) } });
+    expect(await padded.oauth.callback('idp', padded.query())).toEqual({ ok: false, error: { kind: 'invalid-response' } });
+    const exact = await started({ overrides: { profile: async () => ({}), mapUser: () => ({ id: '7', email: null, emailVerified: false, name: null, nickname: null, avatar: null }) } });
+    const result = await exact.oauth.callback('idp', exact.query());
+    expect(result.ok && result.value.user.id).toBe('7');
   });
 });
 
@@ -436,7 +457,7 @@ describe('OAuth.callback() asks who the person is', () => {
   });
 
   it('returns the user with the intent, and marks it as the result of this flow', async () => {
-    const { oauth, query } = await started({ overrides: { profile: async () => ({ sub: '9' }), mapUser: () => ({ id: ' 9 ', email: ' Ada@Example.COM ', emailVerified: true, name: 'Ada', nickname: null, avatar: null }) } }, { intent: 'link', userId: 7 });
+    const { oauth, query } = await started({ overrides: { profile: async () => ({ sub: '9' }), mapUser: () => ({ id: '9', email: ' Ada@Example.COM ', emailVerified: true, name: 'Ada', nickname: null, avatar: null }) } }, { intent: 'link', userId: 7 });
     const result = await oauth.callback('idp', query(), { userId: 7 });
     if (!result.ok) throw new Error('expected a user');
     expect(result.value.intent).toBe('link');

@@ -16,6 +16,8 @@ export interface OpenFlow {
   readonly userId?: string | number;
   /** The id the provider must vouch for: set for a confirmation only. */
   readonly account?: string;
+  /** The scopes the request asked for: what the tokens are taken to cover when the token response does not say. */
+  readonly scopes: readonly string[];
   /** Seconds since the epoch. */
   readonly issuedAt: number;
   /** Seconds since the epoch. */
@@ -24,8 +26,13 @@ export interface OpenFlow {
 
 export type FlowError = { readonly kind: 'no-flow' } | { readonly kind: 'expired' } | { readonly kind: 'invalid' };
 
+/** How many scopes a flow holds, and how long one is: the start and `redirect()` refuse more, so a flow that was issued is one that can be taken. */
+export const MAX_SCOPES = 64;
+export const MAX_SCOPE_LENGTH = 255;
+
 /** The session key of the flow of `provider`: one slot per provider, so a flow of one never serves another. */
 export const flowKey = (provider: string): string => `_oauth_flow:${provider}`;
+
 
 const random = (): string => randomBytes(32).toString('base64url');
 
@@ -38,7 +45,7 @@ export const challengeOf = (verifier: string): string => createHash('sha256').up
  */
 export function issueFlow(
   session: Session,
-  input: { readonly provider: string; readonly intent: string; readonly userId?: string | number; readonly account?: string; readonly pkce: boolean; readonly nonce: boolean; readonly nowSeconds: number },
+  input: { readonly provider: string; readonly intent: string; readonly userId?: string | number; readonly account?: string; readonly scopes: readonly string[]; readonly pkce: boolean; readonly nonce: boolean; readonly nowSeconds: number },
 ): OpenFlow {
   const flow: OpenFlow = {
     provider: input.provider,
@@ -48,6 +55,7 @@ export function issueFlow(
     intent: input.intent,
     ...(input.userId === undefined ? {} : { userId: input.userId }),
     ...(input.account === undefined ? {} : { account: input.account }),
+    scopes: [...input.scopes],
     issuedAt: input.nowSeconds,
     until: input.nowSeconds + FLOW_SECONDS,
   };
@@ -81,6 +89,7 @@ export function takeFlow(session: Session, provider: string, nowSeconds: number)
   if (flow.nonce !== undefined && (typeof flow.nonce !== 'string' || flow.nonce === '')) return err({ kind: 'invalid' });
   if (flow.userId !== undefined && typeof flow.userId !== 'string' && typeof flow.userId !== 'number') return err({ kind: 'invalid' });
   if (flow.account !== undefined && (typeof flow.account !== 'string' || flow.account === '')) return err({ kind: 'invalid' });
+  if (!Array.isArray(flow.scopes) || flow.scopes.length > MAX_SCOPES || !flow.scopes.every((scope) => typeof scope === 'string' && scope !== '' && scope.length <= MAX_SCOPE_LENGTH)) return err({ kind: 'invalid' });
   return ok({
     provider,
     state: flow.state,
@@ -89,6 +98,7 @@ export function takeFlow(session: Session, provider: string, nowSeconds: number)
     intent: flow.intent,
     ...(flow.userId === undefined ? {} : { userId: flow.userId }),
     ...(flow.account === undefined ? {} : { account: flow.account as string }),
+    scopes: [...(flow.scopes as string[])],
     issuedAt,
     until,
   });

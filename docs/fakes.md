@@ -378,7 +378,7 @@ it('signs a person in with GitHub', async () => {
   const app = await createTestApp(application, { database: 'refresh', env: { APP_URL: 'https://app.example.com' } });
   const oauth = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
   const browser = app.keepingCookies();
-  const start = await browser.post('/auth/github').assertStatus(303);
+  const start = await browser.post('/auth/github/start').assertStatus(303);
   await browser.get(oauth.callbackUrl(start)).assertRedirect('/dashboard');
 });
 ```

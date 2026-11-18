@@ -35,7 +35,10 @@ describe('the SocialUser of a provider', () => {
 
   it('refuses an empty or over-long id', () => {
     for (const id of ['', '   ', 'x'.repeat(256), 42, null, undefined]) expect(build({ id }), String(id)).toBeUndefined();
-    expect(build({ id: ' 7 ' })?.id).toBe('7');
+    // Kept as given, never trimmed: " 7 " is not the account "7".
+    for (const id of [' 7 ', '7 ', ' 7', '7\u00A0', '\u30007']) expect(build({ id }), JSON.stringify(id)).toBeUndefined();
+    expect(build({ id: '7' })?.id).toBe('7');
+    expect(build({ id: 'a b' })?.id).toBe('a b');
     expect(build({ id: 'x'.repeat(255) })?.id).toHaveLength(255);
     expect(toSocialUser('idp', {}, null, tokens)).toBeUndefined();
   });

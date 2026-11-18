@@ -7,7 +7,7 @@ import { fakeSession, oauthWith } from './test-helpers/flow.ts';
 
 const flowOf = (session: { data: Map<string, unknown> }, name = 'idp'): OpenFlow => session.data.get(flowKey(name)) as OpenFlow;
 const issue = (session: ReturnType<typeof fakeSession>, extra: Partial<Parameters<typeof issueFlow>[1]> = {}, provider = 'idp') =>
-  issueFlow(session, { provider, intent: 'sign-in', pkce: true, nonce: false, nowSeconds: 1000, ...extra });
+  issueFlow(session, { provider, intent: 'sign-in', scopes: ['profile'], pkce: true, nonce: false, nowSeconds: 1000, ...extra });
 
 describe('issuing a flow', () => {
   it('issues a 256-bit state and verifier and an S256 challenge of the verifier', async () => {
@@ -47,7 +47,7 @@ describe('issuing a flow', () => {
     const plain = oauthWith();
     await plain.oauth.redirect('idp');
     expect(flowOf(plain.session)).toMatchObject({ provider: 'idp', intent: 'sign-in', issuedAt: 1_700_000_000, until: 1_700_000_000 + FLOW_SECONDS });
-    expect(Object.keys(flowOf(plain.session)).sort()).toEqual(['intent', 'issuedAt', 'provider', 'state', 'until', 'verifier']);
+    expect(Object.keys(flowOf(plain.session)).sort()).toEqual(['intent', 'issuedAt', 'provider', 'scopes', 'state', 'until', 'verifier']);
     const bound = oauthWith({ overrides: { nonce: true } });
     const result = await bound.oauth.redirect('idp', { intent: 'link', userId: 7 });
     const flow = flowOf(bound.session);
@@ -99,8 +99,8 @@ describe('taking a flow', () => {
   });
 
   it('refuses what is not a flow, and a session that is not started', () => {
-    const valid = { provider: 'idp', state: 's', intent: 'sign-in', issuedAt: 1000, until: 1000 + FLOW_SECONDS };
-    for (const value of ['text', 5, true, {}, { ...valid, state: '' }, { ...valid, state: 5 }, { ...valid, intent: 5 }, { ...valid, until: '1500' }, { ...valid, until: Number.NaN }, { ...valid, until: Number.POSITIVE_INFINITY }, { ...valid, until: 1e15 }, { ...valid, issuedAt: 1000.5 }, { ...valid, until: 1000 + FLOW_SECONDS + 1 }, { ...valid, until: 1000 + FLOW_SECONDS - 1 }, { ...valid, issuedAt: 1600, until: 1000 }, { ...valid, issuedAt: 9e15, until: 9e15 + FLOW_SECONDS }, { ...valid, issuedAt: 2000, until: 2000 + FLOW_SECONDS }, { ...valid, issuedAt: undefined }, { ...valid, verifier: 5 }, { ...valid, nonce: '' }, { ...valid, userId: {} }]) {
+    const valid = { provider: 'idp', state: 's', intent: 'sign-in', scopes: ['profile'], issuedAt: 1000, until: 1000 + FLOW_SECONDS };
+    for (const value of ['text', 5, true, {}, { ...valid, state: '' }, { ...valid, state: 5 }, { ...valid, intent: 5 }, { ...valid, until: '1500' }, { ...valid, until: Number.NaN }, { ...valid, until: Number.POSITIVE_INFINITY }, { ...valid, until: 1e15 }, { ...valid, issuedAt: 1000.5 }, { ...valid, until: 1000 + FLOW_SECONDS + 1 }, { ...valid, until: 1000 + FLOW_SECONDS - 1 }, { ...valid, issuedAt: 1600, until: 1000 }, { ...valid, issuedAt: 9e15, until: 9e15 + FLOW_SECONDS }, { ...valid, issuedAt: 2000, until: 2000 + FLOW_SECONDS }, { ...valid, issuedAt: undefined }, { ...valid, verifier: 5 }, { ...valid, nonce: '' }, { ...valid, userId: {} }, { ...valid, scopes: undefined }, { ...valid, scopes: 'profile' }, { ...valid, scopes: [5] }, { ...valid, scopes: [''] }, { ...valid, scopes: Array.from({ length: 65 }, (_, i) => `s${i}`) }, { ...valid, scopes: ['x'.repeat(256)] }]) {
       const session = fakeSession();
       session.data.set(flowKey('idp'), value);
       expect(takeFlow(session, 'idp', 1001), JSON.stringify(value)).toEqual({ ok: false, error: { kind: 'invalid' } });
@@ -115,11 +115,18 @@ describe('taking a flow', () => {
     expect(takeFlow(idle, 'idp', 1001)).toEqual({ ok: false, error: { kind: 'no-flow' } });
   });
 
+  it('serves a flow of 64 scopes of 255 characters, the most the start and redirect() let through', () => {
+    const scopes = Array.from({ length: 64 }, (_, i) => `${i}`.padEnd(255, 'x'));
+    const session = fakeSession();
+    session.data.set(flowKey('idp'), { provider: 'idp', state: 's', intent: 'sign-in', scopes, issuedAt: 1000, until: 1000 + FLOW_SECONDS });
+    expect(takeFlow(session, 'idp', 1001).ok).toBe(true);
+  });
+
   it('keeps only the fields of a flow', () => {
     const session = fakeSession();
-    session.data.set(flowKey('idp'), { provider: 'idp', state: 's', intent: 'link', issuedAt: 1000, until: 1600, userId: 'u', admin: true });
+    session.data.set(flowKey('idp'), { provider: 'idp', state: 's', intent: 'link', scopes: ['a'], issuedAt: 1000, until: 1600, userId: 'u', admin: true });
     const result = takeFlow(session, 'idp', 1001);
-    expect(result).toEqual({ ok: true, value: { provider: 'idp', state: 's', intent: 'link', userId: 'u', issuedAt: 1000, until: 1600 } });
+    expect(result).toEqual({ ok: true, value: { provider: 'idp', state: 's', intent: 'link', userId: 'u', scopes: ['a'], issuedAt: 1000, until: 1600 } });
   });
 });
 

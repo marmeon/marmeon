@@ -4,8 +4,9 @@ import { HttpClient } from '@marmeon/fetch';
 import { OAuthConfig, OAuthSetupError } from './config.ts';
 import { credentialsOf, MAX_NAME_LENGTH, variablePrefix, type OAuthCredentials, type OAuthCredentialsConfig } from './credentials.ts';
 import type { OAuthProviderDefinition, OAuthProviderFactory } from './definition.ts';
+import { MAX_SCOPE_LENGTH, MAX_SCOPES } from './flow.ts';
 import { checkEndpoint, checkEndpoints, RESERVED_PARAMS } from './endpoints.ts';
-import { isBuiltByOidc, ISSUER_PARAM, NO_CONFIRM, OIDC, recordBuilt, type OidcDefinition } from './oidc-marker.ts';
+import { COMMA_SCOPES, type CommaScopesDefinition, isBuiltByOidc, ISSUER_PARAM, NO_CONFIRM, OIDC, recordBuilt, type OidcDefinition } from './oidc-marker.ts';
 
 /** An active provider: its definition and the credentials it needs, both checked at the start and frozen. */
 export interface ResolvedOAuthProvider {
@@ -45,7 +46,7 @@ const refuse = (message: string, cause?: unknown): never => {
 const KEYS = ['label', 'endpoints', 'scopes', 'scopeSeparator', 'pkce', 'nonce', 'clientAuth', 'authorizeParams', 'allowAddresses', 'profile', 'mapUser'] as const;
 
 const isStrings = (value: unknown): value is readonly string[] => Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-const isScope = (scope: unknown): boolean => typeof scope === 'string' && scope !== '' && !/\s/.test(scope);
+const isScope = (scope: unknown): boolean => typeof scope === 'string' && scope !== '' && scope.length <= MAX_SCOPE_LENGTH && !/\s/.test(scope);
 
 /**
  * The definition a factory returned, checked and copied. Each property is read once, a list or record is copied before it is
@@ -66,7 +67,7 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
   if (typeof d.label !== 'string' || d.label.length < 1 || d.label.length > 64) refuse(`${where} needs a label of 1 to 64 characters.`);
   const endpoints = typeof d.endpoints === 'function' ? (d.endpoints as OAuthProviderDefinition['endpoints']) : checkEndpoints(d.endpoints, where, 'A11', local);
   const scopes: unknown = Array.isArray(d.scopes) ? [...d.scopes] : d.scopes;
-  if (!Array.isArray(scopes) || !scopes.every(isScope)) refuse(`${where} needs scopes: a list of non-empty strings without spaces (one scope each).`);
+  if (!Array.isArray(scopes) || scopes.length > MAX_SCOPES || !scopes.every(isScope)) refuse(`${where} needs scopes: a list of at most ${MAX_SCOPES} non-empty strings without spaces, each at most ${MAX_SCOPE_LENGTH} characters (one scope each).`);
   if (d.scopeSeparator !== undefined && (typeof d.scopeSeparator !== 'string' || d.scopeSeparator === '')) refuse(`${where}: scopeSeparator must be a non-empty string.`);
   if (d.pkce !== undefined && typeof d.pkce !== 'boolean') refuse(`${where}: pkce must be true or false.`);
   if (d.nonce !== undefined && typeof d.nonce !== 'boolean') refuse(`${where}: nonce must be true or false.`);
@@ -107,6 +108,7 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
     ...((definition as Partial<OidcDefinition>)[OIDC] === true ? { [OIDC]: true as const } : {}),
     ...((definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true ? { [ISSUER_PARAM]: true as const } : {}),
     ...((definition as Partial<OidcDefinition>)[NO_CONFIRM] === true ? { [NO_CONFIRM]: true as const } : {}),
+    ...((definition as CommaScopesDefinition)[COMMA_SCOPES] === true ? { [COMMA_SCOPES]: true as const } : {}),
   });
   // Membership is carried over by identity, as the marker is: only a definition `oidc()` itself built stays one.
   if (isBuiltByOidc(definition)) recordBuilt(frozen);
@@ -209,7 +211,7 @@ export function resolveProvider(container: Container, entry: { readonly name: st
   if (credentials.redirectUrl !== undefined) checkEndpoint(credentials.redirectUrl, `${variables}REDIRECT_URL`, 'A11', local);
   else if (appUrl === undefined) refuse(`The OAuth provider "${entry.name}" is active but has no callback address: set APP_URL, or ${variables}REDIRECT_URL for this provider.`);
   else checkEndpoint(appUrl, `APP_URL (needed by the OAuth provider "${entry.name}")`, 'A11', local);
-  if (credentials.scopes !== undefined && !credentials.scopes.every(isScope)) refuse(`${variables}SCOPES must list scopes without spaces, separated by commas.`);
+  if (credentials.scopes !== undefined && (credentials.scopes.length > MAX_SCOPES || !Array.from(credentials.scopes).every(isScope))) refuse(`${variables}SCOPES must list at most ${MAX_SCOPES} scopes without spaces, each at most ${MAX_SCOPE_LENGTH} characters, separated by commas.`);
   // What is checked is what is kept, and what the factory is given.
   const resolved: ResolvedOAuthProvider['credentials'] = Object.freeze({ ...credentials, clientId, clientSecret, scopes: credentials.scopes && Object.freeze([...credentials.scopes]) });
   const definition = checkDefinition(entry.name, entry.factory({ name: entry.name, credentials: resolved, container }), local);

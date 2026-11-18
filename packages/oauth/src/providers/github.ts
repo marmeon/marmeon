@@ -1,4 +1,5 @@
 import { defineOAuthProvider, type OAuthProviderFactory } from '../definition.ts';
+import { COMMA_SCOPES } from '../oidc-marker.ts';
 import { OAuthHttpError } from '../http.ts';
 
 /** What GitHub's two answers hold; `emails` is `null` when `/user/emails` was not available. */
@@ -25,6 +26,8 @@ export const github: OAuthProviderFactory = defineOAuthProvider<GitHubRaw>({
   scopes: ['read:user', 'user:email'],
   pkce: true,
   clientAuth: 'client_secret_post',
+  // GitHub asks for scopes separated by spaces but answers with commas. A marker, not a field: no public option for it.
+  ...{ [COMMA_SCOPES]: true as const },
   profile: async ({ http, tokens }) => {
     const user = objectOf(await http.json(`${API}/user`, { bearer: tokens.accessToken, headers: HEADERS }));
     let emails: readonly unknown[] | null = null;

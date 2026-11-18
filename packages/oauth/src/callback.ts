@@ -4,7 +4,7 @@ import { EndpointError } from './endpoints.ts';
 import type { OAuthEndpoints, OAuthHttp, SocialUser } from './definition.ts';
 import { exchangeCode, failureOf } from './exchange.ts';
 import { takeFlow } from './flow.ts';
-import { checkedClaimsOf, ISSUER_PARAM, NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { checkedClaimsOf, COMMA_SCOPES, type CommaScopesDefinition, ISSUER_PARAM, NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
 import { same } from './same.ts';
 import { OAuthHttpError } from './http.ts';
 import type { ResolvedOAuthProvider } from './registry.ts';
@@ -132,7 +132,8 @@ export async function completeCallback(context: CallbackContext, params: URLSear
     redirectUri: context.redirectUri(),
     code,
     verifier: flow.verifier,
-    asked: credentials.scopes ?? definition.scopes,
+    asked: flow.scopes,
+    commaScopes: (definition as CommaScopesDefinition)[COMMA_SCOPES] === true,
     now: context.now,
   });
   if (!tokens.ok) return refuse(tokens.error, `token-${tokens.error.kind}`);

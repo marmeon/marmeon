@@ -23,6 +23,26 @@ async function confirming(claims: Record<string, unknown> = {}, options: { inten
 }
 
 describe('a confirmation with a fresh sign-in at the provider', () => {
+  it('refuses a redirect() whose scopes with the forced openid are more than a flow holds', async () => {
+    const many = (count: number) => Array.from({ length: count }, (_, i) => `s${i}`);
+    const { oauth } = oidcWith({ scopes: ['a'] } as never);
+    // `openid` and `a` are two of the 64: 62 more fit, 63 do not.
+    expect((await oauth.redirect('idp', { scopes: many(62) })).ok).toBe(true);
+    await expect(oauth.redirect('idp', { scopes: many(63) })).rejects.toThrow(TypeError);
+  });
+
+  it('takes the tokens to cover the scopes the flow asked for, openid and the ones of redirect() included, when the token response names none', async () => {
+    const made = oidcWith();
+    const redirect = await made.oauth.redirect('idp', { scopes: ['extra'] });
+    if (!redirect.ok) throw new Error('expected a flow');
+    const flow = made.session.data.get(flowKey('idp')) as OpenFlow;
+    made.http.respond(TOKEN_URL, () => tokenResponse({ id_token: idToken({ nonce: flow.nonce }) }));
+    const result = await made.oauth.callback('idp', new URLSearchParams({ code: 'the-code', state: flow.state }));
+    if (!result.ok) throw new Error(`expected a user, got ${result.error.kind}`);
+    expect(result.value.user.tokens.scopes).toEqual(flow.scopes);
+    expect(result.value.user.tokens.scopes).toEqual(expect.arrayContaining(['openid', 'extra']));
+  });
+
   it('confirms with an auth_time at the redirect and records it in milliseconds', async () => {
     const { oauth, query } = await confirming({ auth_time: SECONDS });
     const result = await oauth.callback('idp', query, { userId: 7 });

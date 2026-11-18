@@ -262,6 +262,8 @@ describe('fakeOAuth()', () => {
     expect(authorization.searchParams.get('access_type')).toBe('offline');
     const result = await oauth.callback('shaped', queryOf(fake.callbackUrl(authorization)));
     expect(result.ok && result.value.user.id).toBe('9');
+    // The answer names the scopes with spaces, as every provider but GitHub does: the separator of the request is not the one of the answer.
+    expect(result.ok && result.value.user.tokens.scopes).toEqual(['a', 'b']);
   });
 
   it('gives a Microsoft-style provider the tenant of its configuration', async () => {
@@ -368,6 +370,11 @@ describe('fakeOAuth()', () => {
       return { app, authorization, code, form, post };
     }
 
+    it('answers with the scopes asked for, separated by commas as GitHub does (another provider answers with spaces, see the shaped provider above)', async () => {
+      const github = await granted((url) => url.searchParams.delete('code_challenge'));
+      expect(await (await github.post(github.form(github.authorization))).json()).toMatchObject({ scope: 'read:user,user:email' });
+    });
+
     it('trades a code once, also when a check fails, and only for the client secret of the app', async () => {
       const { authorization, code, form, post } = await granted((url) => url.searchParams.delete('code_challenge'));
       expect((await post(form(authorization, { client_secret: 'wrong' }))).status).toBe(401);
@@ -463,7 +470,7 @@ describe('fakeOAuth() in an app with routes', () => {
   }
 
   const routes = defineRoutes((Route) => {
-    Route.authorize(everyone).post('/auth/:provider', StartController);
+    Route.authorize(everyone).post('/auth/:provider/start', StartController);
     Route.authorize(everyone).get('/auth/:provider/callback', CallbackController);
   });
 
@@ -477,12 +484,12 @@ describe('fakeOAuth() in an app with routes', () => {
     const app = await boot();
     const fake = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
     const browser = app.keepingCookies();
-    const start = await browser.post('/auth/github').assertStatus(303);
+    const start = await browser.post('/auth/github/start').assertStatus(303);
     await browser.get(fake.callbackUrl(start)).assertJson({ id: '42', email: 'ada@example.com', intent: 'sign-in' });
     // Another browser has no flow: the state belongs to the session that started it.
     fake.user('github', { id: '42' });
     const other = app.keepingCookies();
-    const started = await browser.post('/auth/github');
+    const started = await browser.post('/auth/github/start');
     await other.get(fake.callbackUrl(started)).assertJson({ error: 'no-flow' });
   });
 });

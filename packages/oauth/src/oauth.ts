@@ -8,7 +8,7 @@ import { variablePrefix } from './credentials.ts';
 import type { OAuthEndpoints } from './definition.ts';
 import { checkEndpoint, checkEndpoints, EndpointError } from './endpoints.ts';
 import { completeCallback, type OAuthCallback, type OAuthCallbackError } from './callback.ts';
-import { challengeOf, issueFlow } from './flow.ts';
+import { challengeOf, issueFlow, MAX_SCOPE_LENGTH, MAX_SCOPES } from './flow.ts';
 import { createOAuthHttp, OAuthHttpError } from './http.ts';
 import { NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
 import type { OAuthProviders, ResolvedOAuthProvider } from './registry.ts';
@@ -127,7 +127,13 @@ export class OAuth {
     const endpoints = await this.#endpointsOf(provider);
     if (endpoints === undefined) return err({ kind: 'unavailable' });
 
+    // The flow keeps them: a token response without `scope` is taken to cover exactly these.
+    // An OpenID Connect provider is always asked for `openid`, also when OAUTH_<NAME>_SCOPES leaves it out: without it there is no ID token.
+    const openid = (definition as Partial<OidcDefinition>)[OIDC] === true ? ['openid'] : [];
+    const asked = [...new Set([...openid, ...(credentials.scopes ?? definition.scopes), ...(scopes ?? [])])];
+    if (asked.length > MAX_SCOPES) throw new TypeError(`OAuth.redirect() would ask for ${asked.length} scopes: at most ${MAX_SCOPES}, those of the provider and of options.scopes together.`);
     const flow = issueFlow(session, {
+      scopes: asked,
       provider: provider.name,
       intent,
       ...(userId === undefined ? {} : { userId }),
@@ -140,9 +146,6 @@ export class OAuth {
     const url = new URL(endpoints.authorizeUrl);
     // The provider's own parameters first; every parameter below replaces one of the same name, so nothing can undo a protection.
     for (const [key, value] of Object.entries(definition.authorizeParams ?? {})) url.searchParams.set(key, value);
-    // An OpenID Connect provider is always asked for `openid`, also when OAUTH_<NAME>_SCOPES leaves it out: without it there is no ID token.
-    const openid = (definition as Partial<OidcDefinition>)[OIDC] === true ? ['openid'] : [];
-    const asked = [...new Set([...openid, ...(credentials.scopes ?? definition.scopes), ...(scopes ?? [])])];
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', credentials.clientId);
     url.searchParams.set('redirect_uri', redirectUri);
@@ -293,11 +296,12 @@ function checkOptions(options: OAuthRedirectOptions): { intent: string; userId: 
   if (account !== undefined && (typeof account !== 'string' || account === '')) throw new TypeError('The OAuth account must be a non-empty string.');
   if (intent === 'confirm' && account === undefined) throw new TypeError("OAuth.redirect() with the intent 'confirm' needs the account (the id at the provider) that confirms.");
   if (intent !== 'confirm' && account !== undefined) throw new TypeError("The OAuth account belongs to the intent 'confirm' and is refused with any other intent.");
-  if (scopes !== undefined && (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string' && scope !== '' && !/\s/.test(scope)))) {
-    throw new TypeError('The OAuth scopes must be a list of non-empty strings without spaces.');
+  // Array.from reads a hole as undefined, which `every` would skip.
+  if (scopes !== undefined && (!Array.isArray(scopes) || !Array.from(scopes as readonly unknown[]).every((scope) => typeof scope === 'string' && scope !== '' && scope.length <= MAX_SCOPE_LENGTH && !/\s/.test(scope)))) {
+    throw new TypeError(`The OAuth scopes must be a list of non-empty strings without spaces, each at most ${MAX_SCOPE_LENGTH} characters (and at most ${MAX_SCOPES} in all, with the provider's).`);
   }
   if (prompt !== undefined && (typeof prompt !== 'string' || !PROMPTS.includes(prompt))) {
     throw new TypeError(`The OAuth prompt must be 'select_account' or 'consent', not ${JSON.stringify(prompt)}.`);
   }
-  return { intent, userId, account, scopes: scopes && [...scopes], prompt };
+  return { intent, userId, account, scopes: scopes && Array.from(scopes), prompt };
 }

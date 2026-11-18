@@ -285,6 +285,15 @@ describe('OAuth.redirect()', () => {
     expect(await scopeOf({ scopes: ['openid', 'email'] }, ['email', 'groups'])).toBe('openid email groups');
     expect(await scopeOf({ overrides: { scopeSeparator: ',' } }, ['email'])).toBe('profile,email');
     await expect(oauthWith().oauth.redirect('idp', { scopes: ['a b'] })).rejects.toThrow(TypeError);
+    // The limits of a flow, so that a redirect that answers ok is one the callback takes: 64 scopes of 255 characters, a hole is no scope.
+    const many = (count: number) => Array.from({ length: count }, (_, i) => `s${i}`);
+    await expect(oauthWith().oauth.redirect('idp', { scopes: many(65) })).rejects.toThrow(TypeError);
+    await expect(oauthWith().oauth.redirect('idp', { scopes: ['x'.repeat(256)] })).rejects.toThrow(TypeError);
+    await expect(oauthWith().oauth.redirect('idp', { scopes: Object.assign([], { length: 2 }) as never })).rejects.toThrow(TypeError);
+    // Together with the provider's own scopes (one: profile): 64 is the most, and a duplicate counts once.
+    expect((await oauthWith().oauth.redirect('idp', { scopes: many(63) })).ok).toBe(true);
+    expect((await oauthWith().oauth.redirect('idp', { scopes: [...many(63), 'profile'] })).ok).toBe(true);
+    await expect(oauthWith().oauth.redirect('idp', { scopes: many(64) })).rejects.toThrow(TypeError);
   });
 
   it('puts the prompt option into the URL and refuses any other value', async () => {

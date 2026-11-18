@@ -4,7 +4,7 @@ import { HttpClient } from '@marmeon/fetch';
 import { HttpClientFake } from '@marmeon/fetch/testing';
 import type { OAuthCredentials } from './credentials.ts';
 import type { OAuthProviderDefinition, SocialProfile } from './definition.ts';
-import { isBuiltByOidc, NO_CONFIRM, type OidcDefinition } from './oidc-marker.ts';
+import { COMMA_SCOPES, type CommaScopesDefinition, isBuiltByOidc, NO_CONFIRM, type OidcDefinition } from './oidc-marker.ts';
 import { oidcWith } from './oidc.ts';
 import { credentialsFor, OAuthProviders, registeredProviders, resolveProvider, type ResolvedOAuthProvider } from './registry.ts';
 
@@ -244,9 +244,16 @@ export class OAuthFake {
     }
     const accessToken = `fake-access-${random()}`;
     this.#tokens.set(accessToken, grant.profile);
-    const body: Record<string, unknown> = { access_token: accessToken, token_type: 'Bearer', expires_in: 3600, scope: authorization.get('scope') ?? '' };
+    const body: Record<string, unknown> = { access_token: accessToken, token_type: 'Bearer', expires_in: 3600, scope: this.#scopeAnswer(kind, authorization.get('scope')) };
     if (kind.oidc) body.id_token = this.#idToken(name, kind, grant, clientId ?? CLIENT_ID);
     return Response.json(body);
+  }
+
+  /** The `scope` of the token response: the scopes the authorization asked for, as the provider names them (GitHub with commas, every other provider with spaces). */
+  #scopeAnswer(kind: FakeProviderKind, asked: string | null): string {
+    const definition = kind.resolved.definition as CommaScopesDefinition;
+    const scopes = (asked ?? '').split(definition.scopeSeparator ?? ' ').filter((scope) => scope !== '');
+    return scopes.join(definition[COMMA_SCOPES] === true ? ',' : ' ');
   }
 
   /** An ID token of the form a provider sends: the claims of the checks, the `nonce` of the authorization, and `auth_time` only when the test asked for it. The signature is empty: the package does not check it (docs/oauth.md#openid-connect-providers). */
@@ -301,6 +308,7 @@ function fakeDefinition(name: string, real: OAuthProviderDefinition, container: 
     ...(real.pkce === undefined ? {} : { pkce: real.pkce }),
     ...(real.nonce === undefined ? {} : { nonce: real.nonce }),
     ...own,
+    ...((real as CommaScopesDefinition)[COMMA_SCOPES] === true ? { [COMMA_SCOPES]: true as const } : {}),
     profile: ({ http, tokens }) => http.json(`${base}/userinfo`, { bearer: tokens.accessToken }),
     mapUser: profileOf,
   };

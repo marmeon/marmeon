@@ -203,7 +203,10 @@ describe('OAuthServiceProvider: the settings of an active provider', () => {
 
   it('refuses scopes from OAUTH_<NAME>_SCOPES that hold a space', async () => {
     expect(await start({ OAUTH_IDP_SCOPES: 'openid, email' })).toBeUndefined();
-    expect(expectA11(await start({ OAUTH_IDP_SCOPES: 'openid email,profile' }))).toMatch(/OAUTH_IDP_SCOPES must list scopes without spaces/);
+    expect(expectA11(await start({ OAUTH_IDP_SCOPES: 'openid email,profile' }))).toMatch(/OAUTH_IDP_SCOPES must list at most 64 scopes without spaces/);
+    expect(await start({ OAUTH_IDP_SCOPES: Array.from({ length: 64 }, (_, i) => `${i}`.padEnd(255, 'x')).join(',') })).toBeUndefined();
+    expect(expectA11(await start({ OAUTH_IDP_SCOPES: Array.from({ length: 65 }, (_, i) => `s${i}`).join(',') }))).toMatch(/OAUTH_IDP_SCOPES must list at most 64/);
+    expect(expectA11(await start({ OAUTH_IDP_SCOPES: 'x'.repeat(256) }))).toMatch(/255 characters/);
   });
 
   it('refuses an allowAddresses entry that is no address range, and accepts a range', async () => {
@@ -287,6 +290,12 @@ describe('OAuthServiceProvider: definitions', () => {
     expect(expectA11(await start({ scopes: ['read write'] }))).toMatch(/scopes/);
     expect(expectA11(await start({ scopes: ['read', ''] }))).toMatch(/scopes/);
     expect(expectA11(await start({ scopes: ['read\twrite'] }))).toMatch(/scopes/);
+    // The limits of a flow: 64 scopes of 255 characters at most, so that no flow the app starts is one the callback refuses.
+    expect(await start({ scopes: Array.from({ length: 64 }, (_, i) => `${i}`.padEnd(255, 'x')) })).toBeUndefined();
+    expect(expectA11(await start({ scopes: Array.from({ length: 65 }, (_, i) => `s${i}`) }))).toMatch(/at most 64/);
+    expect(expectA11(await start({ scopes: ['x'.repeat(256)] }))).toMatch(/255 characters/);
+    // A hole is no scope.
+    expect(expectA11(await start({ scopes: Object.assign([], { length: 2 }) as never }))).toMatch(/scopes/);
   });
 
   it('refuses a definition whose parts have the wrong type', async () => {

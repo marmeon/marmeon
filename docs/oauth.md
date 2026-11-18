@@ -48,7 +48,7 @@ underscore: the provider `my-idp` reads `OAUTH_MY_IDP_CLIENT_ID`.
 | `OAUTH_<NAME>_CLIENT_ID` | none | The client ID your app has at the provider. |
 | `OAUTH_<NAME>_CLIENT_SECRET` | none | The client secret. Keep it out of the repository. |
 | `OAUTH_<NAME>_REDIRECT_URL` | none | The callback address of this provider. An absolute `https:` URL (or `http:` on a loopback host in development and test), without a user name or fragment. |
-| `OAUTH_<NAME>_SCOPES` | none | Comma-separated scopes, each without spaces. |
+| `OAUTH_<NAME>_SCOPES` | none | Comma-separated scopes, each without spaces, at most 64 of at most 255 characters. |
 | `OAUTH_<NAME>_ISSUER` | none | Read only by a provider that asked for it with `issuer`. |
 | `APP_URL` | none | The URL of your app, needed by an active provider that has no `OAUTH_<NAME>_REDIRECT_URL`. An absolute `https:` URL (or `http:` on a loopback host in development and test), without a user name or fragment. |
 
@@ -114,7 +114,7 @@ each is `APP_URL` followed by `/auth/<name>/callback` (for example `https://app.
 No built-in provider reports `emailVerified: true` unless the provider says so for that address. A provider that answers the flag for another address,
 or no flag, gives `false`.
 
-**GitHub** asks for the scopes `read:user` and `user:email` with PKCE. The `id` is the numeric id of the account, never the login, which a person can change.
+**GitHub** asks for the scopes `read:user` and `user:email` with PKCE. GitHub asks for its scopes separated by spaces and answers with commas, which the package reads as separate scopes. The `id` is the numeric id of the account, never the login, which a person can change.
 The address is the primary one of `/user/emails` (asked for with `per_page=100`), and `emailVerified` is true only when GitHub says `verified: true` for that entry.
 When the list is not available (403 or 404, or an answer that is no list), the public address of the profile is used and is never verified; the same holds for an
 account whose list has no primary address. Any other failure of the list, such as a 401, ends the sign-in. GitHub cannot confirm: `redirect()` with the intent
@@ -151,8 +151,8 @@ A provider is a name and a definition. Register the name in `static oauthProvide
 | --- | --- |
 | `label` | Text of 1 to 64 characters. |
 | `endpoints` | `{ authorizeUrl, tokenUrl }`, with `issuer` for a service that signs ID tokens, or a function that finds them. |
-| `scopes` | A list of scopes, each non-empty and without spaces. |
-| `scopeSeparator` | A non-empty string. |
+| `scopes` | A list of at most 64 scopes, each non-empty, without spaces and at most 255 characters. |
+| `scopeSeparator` | A non-empty string that joins the scopes in the request. The `scope` of a token response is split at white space only, since a comma can belong to a scope; GitHub, which answers with commas, is the one exception. |
 | `pkce`, `nonce` | `true` or `false`. |
 | `clientAuth` | `'client_secret_post'` or `'client_secret_basic'`. |
 | `authorizeParams` | An object of strings. |
@@ -343,7 +343,7 @@ browser open a flow, and a prefetching browser does not open one either.
 | `intent` | What the sign-in is for: lower case letters and dashes, starting with a letter, at most 32. Default `sign-in`. `confirm` asks for a fresh sign-in, see [Confirming with a provider](#confirming-with-a-provider). |
 | `userId` | The user the flow belongs to. Required for `intent: 'confirm'`. |
 | `account` | For `intent: 'confirm'` only, and required there: the id of the linked account at the provider, which the person must sign in with again. Any other intent throws a `TypeError`. |
-| `scopes` | Scopes to ask for besides the provider's own (or `OAUTH_<NAME>_SCOPES`). Duplicates are dropped. |
+| `scopes` | Scopes to ask for besides the provider's own (or `OAUTH_<NAME>_SCOPES`). Duplicates are dropped. All together, with `openid` where the provider is OpenID Connect, at most 64: more throws a `TypeError`. |
 | `prompt` | `'select_account'` or `'consent'`, to show the provider's account chooser or consent screen. Any other value, `none` and `login` included, throws a `TypeError`. |
 
 The flow sets `response_type`, `client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, `code_challenge_method` and `nonce` itself, after
@@ -441,7 +441,7 @@ nothing and sends nothing.
 Then the code goes to the token endpoint with the PKCE verifier and the same `redirect_uri` as the start, the client secret in the body or in a
 Basic header as the provider's `clientAuth` says, and the provider's `profile()` and `mapUser()` give the person. The tokens are accepted only
 as a token response of the form the standard gives: a bearer `access_token`, and no `error` field even in a `200`. `tokens.expiresAt` is
-milliseconds since the epoch, and `tokens.scopes` the scopes the provider names, or the ones asked for when it names none.
+milliseconds since the epoch, and `tokens.scopes` the scopes the provider names, or the ones the flow asked for (the provider's, those of `redirect({ scopes })` and the added `openid`) when the response has no `scope` at all. A `scope` that is there but is neither a text nor a list of texts counts as none.
 
 | Error | Meaning |
 | --- | --- |
@@ -459,7 +459,7 @@ milliseconds since the epoch, and `tokens.scopes` the scopes the provider names,
 No error carries a body or a message of the provider, and nothing logs the code, a token, the state or the query: a refusal logs the provider
 and a fixed reason only. A second tab, an expired flow and a person who said no are logged at debug level; the other refusals at warn.
 
-What `mapUser` returns is checked, not trusted. The `id` is trimmed, one to 255 characters, with no control or format character (such as a
+What `mapUser` returns is checked, not trusted. The `id` is kept exactly as given, one to 255 characters, with no white space at either end (an `id` such as `" 7 "` is refused, not trimmed into `"7"`) and no control or format character (such as a
 zero-width space or a direction override). The `email` is trimmed,
 one address (no white space, control or format character, or any of `<>(),;:"[]\`, and one `@`), at most 255 characters, and lower-cased in ASCII
 only; anything else, or a character that lower-casing would change, makes it `null`. `emailVerified` is `true` only for exactly `true` next to
@@ -511,7 +511,7 @@ import { fakeOAuth } from '@marmeon/oauth/testing';
 
 const oauth = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
 const browser = app.keepingCookies();
-const start = await browser.post('/auth/github').assertStatus(303);
+const start = await browser.post('/auth/github/start').assertStatus(303);
 await browser.get(oauth.callbackUrl(start)).assertRedirect('/');
 ```
 

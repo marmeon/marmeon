@@ -40,15 +40,22 @@ describe('exchanging the code', () => {
   });
 
   it('reads the scopes the provider names, split at spaces and commas, and an empty answer as none', async () => {
-    const scopes = async (scope: unknown) => {
-      const result = await exchangeCode(input({ access_token: 'a', token_type: 'bearer', scope }));
+    const scopes = async (scope: unknown, commaScopes?: boolean) => {
+      const result = await exchangeCode({ ...input({ access_token: 'a', token_type: 'bearer', scope }), ...(commaScopes === undefined ? {} : { commaScopes }) });
       return result.ok ? result.value.scopes : 'error';
     };
     expect(await scopes('a  b')).toEqual(['a', 'b']);
-    expect(await scopes('a,b c')).toEqual(['a', 'b', 'c']);
+    // A comma belongs to a scope unless the provider answers with commas (GitHub).
+    expect(await scopes('read,write')).toEqual(['read,write']);
+    expect(await scopes('a,b c')).toEqual(['a,b', 'c']);
+    expect(await scopes('a,b c', false)).toEqual(['a,b', 'c']);
+    expect(await scopes('read:user,user:email', true)).toEqual(['read:user', 'user:email']);
+    expect(await scopes('a,b c', true)).toEqual(['a', 'b', 'c']);
     expect(await scopes('')).toEqual([]);
-    // Not a text: the scopes that were asked for.
-    expect(await scopes(7)).toEqual(['profile']);
+    // Only a missing `scope` means the scopes that were asked for; one that is there and no text or list of texts covers none.
+    expect(await scopes(undefined)).toEqual(['profile']);
+    for (const odd of [7, null, true, {}, ['a', 5]]) expect(await scopes(odd), JSON.stringify(odd)).toEqual([]);
+    expect(await scopes(['a', 'b', ''])).toEqual(['a', 'b']);
   });
 
   it('keeps tokens that are strings and drops the others', async () => {
