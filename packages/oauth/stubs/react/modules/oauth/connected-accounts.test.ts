@@ -18,6 +18,7 @@ import { AppConfig } from '../../config/app.ts';
 import type { ShowConnectedAccountsController } from './controllers/ShowConnectedAccountsController.ts';
 import { LINK_MAILS_PER_DAY, LINK_STARTS_PER_DAY } from './limits.ts';
 import { NotifyAboutSocialAccountLinked } from './listeners/NotifyAboutSocialAccountLinked.ts';
+import { VerifyEmailMail } from '../auth/mail/VerifyEmailMail.ts';
 import { SocialAccountLinkedMail } from './mail/SocialAccountLinkedMail.ts';
 import { SocialUsers } from './SocialUsers.ts';
 
@@ -295,6 +296,7 @@ describe('the connected accounts', { timeout: 30_000 }, () => {
   });
 
   it('shows the panel with the accounts, the providers still free, and what confirms', async () => {
+    const KEYS = ['canConfirm', 'createdAt', 'email', 'lastUsedAt', 'label', 'nickname', 'provider'].sort();
     fakeOAuth(app, { only: ['github', 'microsoft', 'google'] });
     const ada = await app.factory(UserFactory).create();
     await seed(ada, 'github', '42', '2026-05-01T10:00:00.000Z');
@@ -311,6 +313,7 @@ describe('the connected accounts', { timeout: 30_000 }, () => {
         expect(props.accounts.find((account) => account.provider === 'google')!.lastUsedAt).toBeNull();
         expect(props).toMatchObject({ confirmed: false, hasPassword: true, hasPasskey: false, confirmUrl: '/confirm-password' });
         // Nothing of the stored data beyond what the panel shows: no tokens, no provider id.
+        for (const account of props.accounts) expect(Object.keys(account).sort()).toEqual(KEYS);
         expect(JSON.stringify(props)).not.toContain('tenant|m-1');
       });
   });
@@ -500,7 +503,7 @@ describe('the listener of the linked account', { timeout: 30_000 }, () => {
     expect(log.error).toHaveBeenCalledTimes(1);
   });
 
-  it('quotes the address the provider reported, and only without one the nickname, cut to 64 characters', async () => {
+  it('quotes the address the provider reported, and only without one the nickname', async () => {
     const ada = await app.factory(UserFactory).create();
     fakeOAuth(app);
     await listener().handle(event(ada, 'other@example.com', 'nick-name'));
@@ -533,7 +536,8 @@ describe('the mail about a linked account, with open registration', { timeout: 3
     expect(await rows()).toHaveLength(1);
     expect((await app.make(Connections).get<any>().selectFrom('users').select('email_verified_at').execute())[0]?.email_verified_at).toBeNull();
     await app.queue.work();
-    // The registration queues its verification mail; the note about a linked account goes to nobody.
+    // The registration queued its verification mail, once, to the stranger's address: the queue ran, and the note about a linked account goes to nobody.
+    expect(app.mail.queued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'stranger@example.com')).toHaveLength(1);
     app.mail.assertQueuedCount(SocialAccountLinkedMail, 0);
   });
 });
@@ -554,6 +558,10 @@ describe('starting a link', { timeout: 30_000 }, () => {
     await signed().withHeaders({ 'sec-fetch-site': 'cross-site' }).post('/oauth/accounts/github').assertStatus(403);
     const start = await signed().withHeaders({ 'sec-fetch-site': 'same-origin' }).post('/oauth/accounts/github').assertStatus(303);
     expect(new URL(start.headers.get('location')!).host).toBe('oauth.fake.invalid');
+    // The start of a sign-in is a guest's POST under the same rule.
+    await app.post('/auth/github/redirect').assertStatus(419);
+    await app.withHeaders({ 'sec-fetch-site': 'cross-site' }).post('/auth/github/redirect').assertStatus(403);
+    await app.withHeaders({ 'sec-fetch-site': 'same-origin' }).post('/auth/github/redirect').assertStatus(303);
     // The removal and the confirmation are guarded the same way.
     await signed().post('/oauth/accounts/github/remove').assertStatus(419);
     await signed().post('/oauth/confirm/github').assertStatus(419);

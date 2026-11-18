@@ -100,11 +100,24 @@ describe('signing in at a provider', { timeout: 30_000 }, () => {
     fakeOAuth(app);
     const browser = app.keepingCookies();
     const get = await browser.get('/auth/github/redirect');
-    expect([404, 405]).toContain(get.status);
+    expect(get.status).toBe(404);
     // Nothing was opened: no flow in the session, no redirect to the provider.
     expect(get.headers.get('location')).toBeNull();
     const post = await browser.post('/auth/github/redirect').assertStatus(303);
-    expect(new URL(post.headers.get('location')!).searchParams.get('state')).toBeTruthy();
+    // The state is 32 random bytes in base64url.
+    expect(new URL(post.headers.get('location')!).searchParams.get('state')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it('says so when the provider account cannot be stored, and signs nobody in', async () => {
+    // An address of 255 characters passes the callback (its limit is 255) and fails the store (254): nothing is kept, not even the user.
+    const long = `${'a'.repeat(243)}@example.com`;
+    expect(long).toHaveLength(255);
+    const oauth = fakeOAuth(app).user('github', { id: '42', email: long, emailVerified: true });
+    const back = await signIn(app.keepingCookies(), oauth);
+    back.assertRedirect('/login').assertFlashed('toast', { kind: 'error', message: 'The sign-in did not work. Try again, or sign in another way.' });
+    back.assertGuest();
+    expect(await users()).toHaveLength(0);
+    expect(await linked()).toEqual([]);
   });
 
   it('answers 404 for an unknown or unconfigured provider', async () => {

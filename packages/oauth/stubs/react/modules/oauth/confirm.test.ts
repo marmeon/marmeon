@@ -202,6 +202,15 @@ describe('confirming with a provider', { timeout: 60_000 }, () => {
     other.assertRedirect('/dashboard').assertFlashed('toast', toast('error', 'That is not an account connected to you. Confirm with one that is, or another way.'));
   });
 
+  it('says so when the provider cannot be reached to start a confirmation', async () => {
+    await microsoftOnly();
+    const browser = await signInAtMicrosoft();
+    fakeOAuth(app);
+    app.http.failNext('network');
+    (await browser.post('/oauth/confirm/microsoft')).assertRedirect('/dashboard').assertFlashed('toast', toast('error', 'That provider cannot be reached right now. Try again in a moment, or confirm another way.'));
+    expect(await confirmed(browser)).toBe(false);
+  });
+
   it('the confirm-options island lists confirmable providers only', async () => {
     const ada = await app.factory(UserFactory).create();
     const now = new Date().toISOString();

@@ -138,8 +138,8 @@ it(
     const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose', '--testTimeout=30000', 'modules/oauth'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
     const failed = tests.out.split('\n').filter((line) => /^\s*(×|FAIL)/.test(line)).join('\n');
     expect(tests.out, `the module's tests failed:\n${failed}`).toMatch(/Test Files\s+3 passed \(3\)/);
-    expect(tests.out, `the module's tests failed:\n${failed}`).toMatch(/Tests\s+75 passed \(75\)/);
-    // The tests of each `describe`: a test added to a stub test changes its count here (75 in all).
+    expect(tests.out, `the module's tests failed:\n${failed}`).toMatch(/Tests\s+77 passed \(77\)/);
+    // The tests of each `describe`: a test added to a stub test changes its count here (77 in all).
     const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/oauth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')} > `, 'g'))?.length ?? 0;
     expect({
       'sign-in': [ran('sign-in', 'signing in at a provider'), ran('sign-in', 'with OAUTH_REGISTRATION=false')],
@@ -152,7 +152,7 @@ it(
         ran('connected-accounts', 'the mail about a linked account, with open registration'),
         ran('connected-accounts', 'starting a link'),
       ],
-    }).toEqual({ 'sign-in': [25, 1], confirm: [13], 'connected-accounts': [22, 1, 4, 7, 1, 1] });
+    }).toEqual({ 'sign-in': [26, 1], confirm: [14], 'connected-accounts': [22, 1, 4, 7, 1, 1] });
     expect(tests.code).toBe(0);
   },
   600_000,

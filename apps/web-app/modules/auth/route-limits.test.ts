@@ -15,6 +15,7 @@ beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 const OUTSIDE_THE_MODULE: RegExp[] = [
   /^\/locale$/, // the language picker
   /^\/lab\//, // the demo pages of the example app
+  /^\/(api\/)?_dev\/oidc\//, // the local OpenID Connect provider of the development setup: 404 outside development and test
   /^\/_marmeon\/uploads\//, // the framework's upload target: a signed address, checked before the file is read
 ];
 
