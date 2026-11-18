@@ -756,7 +756,7 @@ changes follows from its label, as for any release.
   `CONTRIBUTING.md` into `packages/cli/` (`scripts/docs-ship.ts`, gitignored, never checked in) and writes `docs/index.json` and
   `docs/llms.txt`. `pnpm pack:check` demands every copy byte for byte and nothing else under `docs/`.
 - `pnpm pack:smoke` makes a starter-kit app (pnpm) and a minimal one (npm) from the tarballs outside the repository and runs
-  install, tests, lint, build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
+  install, tests, lint, `marmeon doctor --json` (every check must pass, on both apps), build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
   pino-pretty; the Redis step needs the Redis of `compose.yaml`. The apps live under `$TMPDIR`, with no `node_modules/@marmeon`
   or `pnpm-workspace.yaml` above them. On the starter kit it then applies the notes demo (`examples/notes`: `commands.json`,
   `files/`, `edits.json` — each `find` of an edit occurs exactly once, and only `marmeon <command>` lines run) and runs that app's
