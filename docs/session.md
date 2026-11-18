@@ -144,7 +144,7 @@ token it hands out must still be valid when it comes back.
 | `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. Over HTTPS the browser sees it with the [`__Host-` prefix](#the-__host--prefix). |
 | `SESSION_FILES` | `storage/framework/sessions` | Where the `file` driver keeps sessions, relative to the app. |
 | `SESSION_SECURE_COOKIE` | follows `APP_URL` | A boolean (`true`, `false`, `1`, `0`, any case) decides `Secure` yourself; anything else stops the start. Unset or empty, every cookie gets it when `APP_URL` starts with `https://`. |
-| `SESSION_SAME_SITE` | `lax` | The `SameSite` attribute of the session cookie: `lax`, `strict` or `none`. |
+| `SESSION_SAME_SITE` | `lax` | The `SameSite` attribute of the session cookie: `lax`, `strict` or `none`. With `strict`, [social login](oauth.md#samesite) cannot work. |
 | `SESSION_ENCRYPT` | `false` | `true` encrypts the session data in its store with `APP_KEY`. A boolean (`true`, `false`, `1`, `0`); anything else stops the start. |
 | `SESSION_LOTTERY` | `2/100` | The chance that a request also deletes expired sessions, after its response. `0/1` turns it off. |
 

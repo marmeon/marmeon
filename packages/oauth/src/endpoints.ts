@@ -8,6 +8,19 @@ export const RESERVED_PARAMS: readonly string[] = [
   'response_type', 'response_mode', 'client_id', 'redirect_uri', 'scope', 'state', 'code_challenge', 'code_challenge_method', 'nonce', 'prompt', 'max_age', 'request', 'request_uri',
 ];
 
+/** An {@link OAuthSetupError} for an endpoint, with `reason`: which endpoint and why, in a fixed text that holds nothing of the address — safe for a log. */
+export class EndpointError extends OAuthSetupError {
+  readonly reason: string;
+  /** What is wrong in a fixed text, without the endpoint's name. */
+  readonly why: string;
+
+  constructor(message: string, why: string, field?: string) {
+    super(message);
+    this.why = why;
+    this.reason = field === undefined ? why : `${field}: ${why}`;
+  }
+}
+
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
@@ -17,7 +30,7 @@ const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
  */
 export function checkEndpoint(url: unknown, what: string, code: ErrorCode, local: boolean): URL {
   const refuse = (why: string): never => {
-    throw new OAuthSetupError(withCode(code, `${what} is not a usable endpoint: ${why}`));
+    throw new EndpointError(withCode(code, `${what} is not a usable endpoint: ${why}`), why);
   };
   if (typeof url !== 'string') return refuse('it must be a string.');
   let parsed: URL;
@@ -42,17 +55,26 @@ export function checkEndpoint(url: unknown, what: string, code: ErrorCode, local
  * property once, so a getter cannot answer differently the second time.
  */
 export function checkEndpoints(endpoints: unknown, where: string, code: ErrorCode, local: boolean): OAuthEndpoints {
-  const fail = (why: string): never => {
-    throw new OAuthSetupError(withCode(code, `${where} ${why}`));
+  const fail = (why: string, reason: string): never => {
+    throw new EndpointError(withCode(code, `${where} ${why}`), reason);
   };
-  if (typeof endpoints !== 'object' || endpoints === null) return fail('needs endpoints: an object with authorizeUrl and tokenUrl, or a function that finds them.');
+  // The same refusal, with the name of the endpoint in its reason.
+  const check = (value: unknown, field: string): URL => {
+    try {
+      return checkEndpoint(value, `${where}: ${field}`, code, local);
+    } catch (error) {
+      if (error instanceof EndpointError) throw new EndpointError(error.message, error.why, field);
+      throw error;
+    }
+  };
+  if (typeof endpoints !== 'object' || endpoints === null) return fail('needs endpoints: an object with authorizeUrl and tokenUrl, or a function that finds them.', 'endpoints: it must be an object with authorizeUrl and tokenUrl.');
   const { authorizeUrl, tokenUrl, issuer } = endpoints as Record<string, unknown>;
-  const authorize = checkEndpoint(authorizeUrl, `${where}: authorizeUrl`, code, local);
+  const authorize = check(authorizeUrl, 'authorizeUrl');
   for (const key of authorize.searchParams.keys()) {
-    if (RESERVED_PARAMS.includes(key.toLowerCase())) fail(`sets "${key}" in the query of authorizeUrl, but the flow sets it itself.`);
+    if (RESERVED_PARAMS.includes(key.toLowerCase())) fail(`sets "${key}" in the query of authorizeUrl, but the flow sets it itself.`, 'authorizeUrl: its query sets a parameter that the flow sets itself.');
   }
-  const token = checkEndpoint(tokenUrl, `${where}: tokenUrl`, code, local);
+  const token = check(tokenUrl, 'tokenUrl');
   if (issuer === undefined) return Object.freeze({ authorizeUrl: authorize.href, tokenUrl: token.href });
-  checkEndpoint(issuer, `${where}: issuer`, code, local);
+  check(issuer, 'issuer');
   return Object.freeze({ authorizeUrl: authorize.href, tokenUrl: token.href, issuer: issuer as string });
 }

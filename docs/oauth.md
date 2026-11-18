@@ -4,7 +4,7 @@
 
 `@marmeon/oauth` describes a service people can sign in with as a **provider** with a name. An app or a package registers providers by
 name, the app configures each one from environment variables, and a provider whose variables are not set does not exist for the app.
-This page covers registering and configuring providers; the pages of the flow itself follow as they are written.
+This page covers registering and configuring providers, and starting the flow; the rest of the flow follows as it is written.
 
 A provider is a class that brings a name and the variables it reads:
 
@@ -51,6 +51,11 @@ underscore: the provider `my-idp` reads `OAUTH_MY_IDP_CLIENT_ID`.
 | `OAUTH_<NAME>_SCOPES` | none | Comma-separated scopes, each without spaces. |
 | `OAUTH_<NAME>_ISSUER` | none | Read only by a provider that asked for it with `issuer`. |
 | `APP_URL` | none | The URL of your app, needed by an active provider that has no `OAUTH_<NAME>_REDIRECT_URL`. An absolute `https:` URL (or `http:` on a loopback host in development and test), without a user name or fragment. |
+
+The callback address is `OAUTH_<NAME>_REDIRECT_URL` when it is set, and otherwise `APP_URL` followed by `/auth/<name>/callback`: with
+`APP_URL=https://app.example.com`, the provider `gitea` is sent `https://app.example.com/auth/gitea/callback` as the `redirect_uri` of the
+authorization request. The address comes from configuration only; the host of a request is never used, so a request with a forged `Host`
+header cannot point the provider's answer at another site. The route that receives the answer is not part of the package yet.
 
 A provider is **active** when its client ID and client secret are set, and its issuer too where the provider requires one. An empty variable
 counts as not set. An inactive provider is never created: its factory does not run, and its definition, `SCOPES` and `REDIRECT_URL` are
@@ -129,3 +134,107 @@ static config = [oauthCredentials('gitea', { issuer: 'required', options: ['ORGA
 and finds `OAUTH_GITEA_ORGANIZATION` in `context.credentials.options.ORGANIZATION`. A key is upper case letters, digits and underscores, and
 cannot be one of the names every provider has. `oauthCredentials` throws a `TypeError` for a name or key of another form, and for an
 `issuer` that is not `'required'` or `'optional'`.
+
+## The flow and its security
+
+`OAuth` starts the sign-in. Inject it where you handle the request:
+
+```ts title="modules/auth/controllers/StartSocialLoginController.ts"
+import { Controller, type HttpContext } from '@marmeon/http';
+import { OAuth } from '@marmeon/oauth';
+
+export class StartSocialLoginController extends Controller {
+  readonly #oauth: OAuth;
+
+  constructor(oauth: OAuth) {
+    super();
+    this.#oauth = oauth;
+  }
+
+  async handle(ctx: HttpContext<{}, { provider: string }>) {
+    const result = await this.#oauth.redirect(ctx.params.provider);
+    if (!result.ok) return this.back('/login');
+    return this.redirect(result.value.href).status(303);
+  }
+}
+```
+
+Register the route with `POST` in the module's `routes.ts`, which loads into the `web` group, so the session and the CSRF check apply. Anyone may start
+a sign-in, so the route says `everyone`:
+
+```ts title="modules/auth/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { StartSocialLoginController } from './controllers/StartSocialLoginController.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone).post('/auth/:provider/start', StartSocialLoginController).name('auth.social.start');
+});
+```
+
+`OAuth.providers()` lists the active providers, each with its `name` and `label`. A page shows one form for each, and the form is covered by the [CSRF check](csrf.md#forms-and-javascript). The page gets `providers` from `oauth.providers()` in your controller:
+
+```tsx
+import { Form } from '@marmeon/react';
+
+{providers.map(({ name, label }) => (
+  <Form key={name} route="auth.social.start" params={{ provider: name }}>
+    <button type="submit">Sign in with {label}</button>
+  </Form>
+))}
+```
+
+`redirect()` returns the address of the provider's authorization page. It opens a **flow** in the session of the browser that asks, and the
+flow is bound to that browser, to the provider, to an intent and, if you pass `userId`, to one user. Only the session that holds the flow
+can complete it.
+
+A flow holds:
+
+- a `state`, a random value that the provider sends back unchanged, so the callback knows the answer belongs to the sign-in this browser began;
+- a PKCE verifier, whose SHA-256 (method `S256`) goes to the provider as the challenge. The provider releases the tokens only to the one that
+  holds the verifier. A provider turns this off with `pkce: false`;
+- a `nonce` for a provider that sets `nonce: true`;
+- the `intent`, a lower case word such as `sign-in` (the default) or `link`, and the `userId` when you give one.
+
+Each of the three random values has 256 bits. The session keeps them. The address carries the state, the challenge and, for a provider with
+`nonce: true`, the nonce; the verifier never leaves the session.
+
+A flow lasts ten minutes. A provider has one slot per session, so starting a second flow for the same provider replaces the first, and
+the first can no longer be completed. A flow of one provider never serves another.
+
+Start the flow from a `POST` (a form button), not from a link: a `POST` carries the CSRF check, so another site cannot make a visitor's
+browser open a flow, and a prefetching browser does not open one either.
+
+| Option | Effect |
+| --- | --- |
+| `intent` | What the sign-in is for: lower case letters and dashes, starting with a letter, at most 32. Default `sign-in`. |
+| `userId` | The user the flow belongs to. |
+| `scopes` | Scopes to ask for besides the provider's own (or `OAUTH_<NAME>_SCOPES`). Duplicates are dropped. |
+| `prompt` | `'select_account'` or `'consent'`, to show the provider's account chooser or consent screen. Any other value, `none` and `login` included, throws a `TypeError`. |
+
+The flow sets `response_type`, `client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, `code_challenge_method` and `nonce` itself, after
+the `authorizeParams` of the provider, so nothing a provider adds can replace them.
+
+`redirect()` answers with a `Result`:
+
+| Error | Meaning |
+| --- | --- |
+| `unknown-provider` | The name is unknown, or the provider is inactive. The session is not touched. |
+| `unavailable` | The provider's discovery gave no usable answer: no answer, a status other than 2xx, no JSON, a redirect, too large an answer, a timeout, or endpoints that are not usable. No flow is stored. An error in your own `endpoints()` code is not hidden as `unavailable`: it is thrown. |
+| `reauthentication-unsupported` | Reserved for asking a provider for a fresh sign-in. |
+
+`redirect()` throws an `OAuthSetupError` with the code `A10` ([error codes](errors.md#server-error-codes)) when the app cannot run a flow at all:
+
+- `SESSION_SAME_SITE=strict`, see [SameSite](#samesite);
+- the session package is not installed, the session is not started (add the `StartSession` middleware), or the request may not write it, as with an island or a live validation;
+- neither `OAUTH_<NAME>_REDIRECT_URL` nor `APP_URL` is set, or the one that is used is not a usable address;
+- `http` in your `endpoints()` code is asked for an address that is not `https:` (or `http:` on a loopback host in development and test), or that carries a user name or a fragment.
+
+The provider's own requests (discovery, and `http` in `profile`) go through the `HttpClient`: ten seconds at most, 1 MiB of answer, no redirect,
+and no address of your own network unless the provider's `allowAddresses` lists its range. An answer that is not 2xx or not JSON is an error
+that carries its status and never its body. Nothing logs the state, the verifier, the nonce or an address of the flow.
+
+### SameSite
+
+The browser returns from the provider with a request that starts on another site. A session cookie with `SameSite=Strict` is not sent with
+it, so the callback would find no session and no flow, and every sign-in would fail after the person had already signed in at the provider.
+`redirect()` throws an A10 error under `SESSION_SAME_SITE=strict` for that reason. Keep `lax` (the default), or `none` over `https`.

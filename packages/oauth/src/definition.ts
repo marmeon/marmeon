@@ -41,12 +41,14 @@ export interface OAuthHttp {
   json(
     url: string,
     init?: {
-      readonly method?: 'GET' | 'POST';
       readonly bearer?: string;
       readonly headers?: Readonly<Record<string, string>>;
-      readonly form?: Readonly<Record<string, string>>;
       readonly maxBytes?: number;
-    },
+    } & (
+      | { readonly method?: 'GET'; readonly form?: undefined }
+      // A form is sent with POST, which is the default method when there is a form.
+      | { readonly method?: 'POST'; readonly form?: Readonly<Record<string, string>> }
+    ),
   ): Promise<unknown>;
 }
 
