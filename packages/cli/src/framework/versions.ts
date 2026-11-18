@@ -49,3 +49,8 @@ export function compareVersions(a: Version, b: Version): -1 | 0 | 1 {
 export function breaksBetween(from: Version, to: Version): boolean {
   return from.major !== to.major || (from.major === 0 && from.minor !== to.minor);
 }
+
+/** The release a version belongs to: `1.2.0-rc.1` and `1.2.0+build` are both of `1.2.0`. */
+export function releaseOf(version: Version): Version {
+  return { major: version.major, minor: version.minor, patch: version.patch, prerelease: [], text: `${version.major}.${version.minor}.${version.patch}` };
+}
