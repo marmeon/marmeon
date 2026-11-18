@@ -67,6 +67,14 @@ export function isBuiltByOidc(definition: object): boolean {
   return built.has(definition);
 }
 
+/**
+ * Whether `definition` can confirm a person: built by `oidc()` (the membership of {@link isBuiltByOidc}, not the symbol a spread copies)
+ * and not marked {@link NO_CONFIRM}. The one test `OAuth.redirect()`, the callback and `SocialAccounts` share for confirming.
+ */
+export function isOidc(definition: unknown): boolean {
+  return typeof definition === 'object' && definition !== null && isBuiltByOidc(definition) && (definition as Partial<OidcDefinition>)[NO_CONFIRM] !== true;
+}
+
 /** The definition `oidc()` builds: a definition with the readers. */
 export type OidcDefinition = OAuthProviderDefinition & {
   readonly [OIDC]: true;

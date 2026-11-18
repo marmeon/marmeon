@@ -4,7 +4,7 @@ import type { Result } from '@marmeon/core';
 import { expectTypeOf } from 'vitest';
 import type { SocialUser } from '../definition.ts';
 import { SocialAccountLinked, SocialAccountUnlinked } from './events.ts';
-import type { SocialAccountSummary, SocialLinkError, SocialSignIn, SocialSignInError, SocialUnlinkError } from './social-accounts.ts';
+import type { SocialAccountSummary, SocialConfirmError, SocialLinkError, SocialSignIn, SocialSignInError, SocialUnlinkError } from './social-accounts.ts';
 import { SocialAccounts } from './social-accounts.ts';
 import { SocialUserProvider } from './users.ts';
 
@@ -43,4 +43,9 @@ void incomplete;
 const noConfirmation: SocialUserProvider = { findByEmail: async () => undefined, create: async () => ({ ok: false, error: { kind: 'duplicate' } }) };
 void noConfirmation;
 expectTypeOf<SocialUserProvider['emailConfirmed']>().returns.toEqualTypeOf<boolean | Promise<boolean>>();
-expectTypeOf<'canConfirm'>().not.toExtend<keyof SocialAccountSummary>();
+expectTypeOf<SocialAccountSummary['canConfirm']>().toEqualTypeOf<boolean>();
+
+// A confirmation is a Result an app must handle, and the account id is what `redirect()` needs.
+expectTypeOf(accounts.confirm(social)).toEqualTypeOf<Promise<Result<void, SocialConfirmError>>>();
+expectTypeOf<SocialConfirmError['kind']>().toEqualTypeOf<'signed-out' | 'not-reauthenticated' | 'not-linked' | 'expired'>();
+expectTypeOf(accounts.accountId('idp')).toEqualTypeOf<Promise<string | undefined>>();

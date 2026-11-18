@@ -1,6 +1,6 @@
 import { Auth, AuthConfig, TwoFactorState, UserProvider } from '@marmeon/auth';
-import { onPasswordReset } from '@marmeon/auth/internal';
-import { EventDispatcher, Logger, type Application, type Container, type ServiceProvider } from '@marmeon/core';
+import { onPasswordReset, reauthenticator } from '@marmeon/auth/internal';
+import { Clock, EventDispatcher, Logger, type Application, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections, SchemaRequirements } from '@marmeon/database';
 import { OAuthProviders } from '../registry.ts';
 import { SocialAccountsConfig } from './config.ts';
@@ -17,6 +17,9 @@ export class SocialAccountsServiceProvider implements ServiceProvider {
 
   register(container: Container): void {
     container.singleton(SocialAccountStore);
+    // The capability to open the confirmation window, claimed once for this container (A12 for a second claim) and held only here: it goes
+    // to `SocialAccounts`, which issues a proof after the checks of `confirm()` and for nothing else.
+    const reauthentication = reauthenticator(container, 'oauth');
     // A link is a first factor, like an API token: the reset of an account whose address is not confirmed (`email_verified_at` is `null` or missing) removes them, in the transaction
     // of the reset. Whoever registered the address first may have linked an account of their own, and it must not let them in again.
     onPasswordReset(container, 'oauth', async ({ userId, emailConfirmed }) => {
@@ -40,6 +43,9 @@ export class SocialAccountsServiceProvider implements ServiceProvider {
           scope.make(EventDispatcher),
           // Asked only when a user is looked up, made or checked: `undefined` is the app's missing binding (A10), a bound provider that cannot be built throws its own error.
           () => (container.has(SocialUserProvider) ? scope.make(SocialUserProvider) : undefined),
+          scope.make(Clock),
+          scope.make(Logger),
+          reauthentication,
         ),
     );
   }

@@ -1,12 +1,15 @@
 import { Auth, AuthConfig, Registered, TwoFactorState, UserProvider, type AuthUser, type AuthUserId } from '@marmeon/auth';
-import { idOf } from '@marmeon/auth/internal';
-import { err, EventDispatcher, ok, type Result } from '@marmeon/core';
+import { CONFIRM_REAUTHENTICATED, idOf, type Reauthenticator } from '@marmeon/auth/internal';
+import { err, EventDispatcher, ok, type Clock, type Logger, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { OAuthSetupError } from '../config.ts';
 import type { SocialUser } from '../definition.ts';
+import { REAUTH_EARLY } from '../callback.ts';
+import { FLOW_SECONDS } from '../flow.ts';
+import { isOidc } from '../oidc-marker.ts';
 import { OAuthProviders } from '../registry.ts';
-import { verifiedInfo, type VerifiedInfo } from '../verified.ts';
+import { consumeVerified, verifiedInfo, type VerifiedInfo } from '../verified.ts';
 import { SocialAccountsConfig } from './config.ts';
 import { SocialAccountLinked, SocialAccountUnlinked } from './events.ts';
 import { SocialAccountStore, type SocialAccountRecord } from './store.ts';
@@ -38,6 +41,14 @@ export type SocialLinkError =
 /** Why a provider account was not unlinked. See docs/oauth.md#linking-and-unlinking. */
 export type SocialUnlinkError = { readonly kind: 'signed-out' } | { readonly kind: 'confirmation-required' } | { readonly kind: 'not-found' } | { readonly kind: 'last-method' };
 
+/**
+ * Why a confirmation with a provider opened no window. `signed-out`: nobody is signed in. `not-reauthenticated`: the result carries no
+ * fresh sign-in at the provider. `not-linked`: the provider account is not linked to the signed-in user, or the flow was another user's.
+ * `expired`: the guard refused the proof (a confirmation as recent or more recent is held already, the sign-in at the provider lies before this session's sign-in, the proof waited too long, or the request cannot write the session).
+ * See docs/oauth.md#confirming-with-a-provider.
+ */
+export type SocialConfirmError = { readonly kind: 'signed-out' } | { readonly kind: 'not-reauthenticated' } | { readonly kind: 'not-linked' } | { readonly kind: 'expired' };
+
 /** A linked account as a settings page shows it. See docs/oauth.md#linking-and-unlinking. */
 export interface SocialAccountSummary {
   readonly provider: string;
@@ -47,12 +58,21 @@ export interface SocialAccountSummary {
   readonly nickname: string | null;
   readonly createdAt: Date;
   readonly lastUsedAt: Date | null;
+  /** Whether this provider can be offered for a confirmation: it is active and an `oidc()` provider. One that sends no `auth_time` still fails. See docs/oauth.md#opening-the-confirmation-window. */
+  readonly canConfirm: boolean;
 }
 
 /** The longest provider id the table holds; the store throws for a longer one, and a sign-in is refused before it gets there. */
 const ID_MAX = 255;
 /** The longest address of the RFC 5321 path. */
 const EMAIL_MAX = 254;
+/** What the callback may take between reading the clock and handing the result over: token exchange, profile request, a slow node. */
+const CALLBACK_RUNTIME_MS = 30_000;
+/**
+ * How old a fresh sign-in at the provider may be when it is taken: the callback accepts an `auth_time` from `REAUTH_EARLY` seconds before
+ * the redirect, the flow lives `FLOW_SECONDS`, and the callback itself needs some time. Anything older never came out of a flow.
+ */
+const REAUTH_MAX_AGE_MS = (FLOW_SECONDS + REAUTH_EARLY) * 1000 + CALLBACK_RUNTIME_MS;
 
 /**
  * Whether the provider's data can be stored and identifies somebody. The id is not empty, not only white space, at most 255 characters,
@@ -107,6 +127,9 @@ export class SocialAccounts {
   readonly #connections: Connections;
   readonly #events: EventDispatcher;
   readonly #socialUsersOf: () => SocialUserProvider | undefined;
+  readonly #clock: Clock;
+  readonly #logger: Logger;
+  readonly #reauthenticator: Reauthenticator;
 
   /** @internal Built by `SocialAccountsServiceProvider`; `socialUsers` answers the app's {@link SocialUserProvider} when it is first needed, `undefined` when none is bound. */
   constructor(
@@ -120,6 +143,9 @@ export class SocialAccounts {
     connections: Connections,
     events: EventDispatcher,
     socialUsers: () => SocialUserProvider | undefined,
+    clock: Clock,
+    logger: Logger,
+    reauthenticator: Reauthenticator,
   ) {
     this.#auth = auth;
     this.#users = users;
@@ -131,6 +157,9 @@ export class SocialAccounts {
     this.#connections = connections;
     this.#events = events;
     this.#socialUsersOf = socialUsers;
+    this.#clock = clock;
+    this.#logger = logger;
+    this.#reauthenticator = reauthenticator;
   }
 
   /**
@@ -170,7 +199,7 @@ export class SocialAccounts {
 
   /**
    * Links the provider account `social` came from to the signed-in user. Needs the result of a flow that began as a link for this very
-   * user (else a `TypeError`), a recent confirmation of the user (`confirmation-required`: the middleware is not what guards it) and an
+   * user (else a `TypeError`: another user's flow is a programming error here, unlike in `confirm()`), a recent confirmation of the user (`confirmation-required`: the middleware is not what guards it) and an
    * address of the user that the app has confirmed (`email-unconfirmed`, asked of {@link SocialUserProvider.emailConfirmed}).
    * An account that belongs to another user is `taken` and never moves; a second account at one provider is `provider-linked`.
    * See docs/oauth.md#linking-and-unlinking.
@@ -218,6 +247,58 @@ export class SocialAccounts {
     return ok(undefined);
   }
 
+  /**
+   * The id of the signed-in user's account at `provider`, which `OAuth.redirect()` takes as `account` for a confirmation; `undefined`
+   * when nobody is signed in or nothing is linked there. See docs/oauth.md#confirming-with-a-provider.
+   */
+  async accountId(provider: string): Promise<string | undefined> {
+    const userId = await this.#auth.id();
+    if (userId === undefined) return undefined;
+    return (await this.#store.forUser(userId)).find((record) => record.provider === provider)?.providerId;
+  }
+
+  /**
+   * Opens the confirmation window of the signed-in user, counted from the time they signed in again at the provider: the same window a
+   * password opens, so `link()` and `unlink()` accept it. Needs the result of a flow that began as a confirmation of this user, and a
+   * provider account that is linked to them: the account is looked up here and never taken from the flow. Throws a `TypeError` for a
+   * result that did not come from a confirmation flow or was spent already; another user's flow or an unlinked account answers
+   * `not-linked`. Every answer, a refusal too, spends the result: the person confirms again. Unlike `link()`, which throws for another
+   * user's flow (a programming error there), this answers `not-linked`, since a returning tab or a second sign-in in the browser shows
+   * the same thing in a working app. See docs/oauth.md#opening-the-confirmation-window.
+   */
+  async confirm(given: SocialUser): Promise<Result<void, SocialConfirmError>> {
+    if (verifiedInfo(given)?.intent !== 'confirm') throw new TypeError('SocialAccounts.confirm() needs the SocialUser that OAuth.callback() returned for a flow that began as a confirmation.');
+    // Spent before anything else is checked, whatever follows: a result that failed one check is not kept for another try.
+    const info = consumeVerified(given)!;
+    const userId = await this.#auth.id();
+    if (userId === undefined) return err({ kind: 'signed-out' });
+    if (info.flowUserId !== String(userId)) return err({ kind: 'not-linked' });
+    // Checked here again, on the accepting side: the callback records a fresh sign-in, and this is what the window is opened for.
+    const at = info.reauthenticatedAt;
+    if (typeof at !== 'number' || !Number.isFinite(at)) return err({ kind: 'not-reauthenticated' });
+    const age = this.#clock.now() - at;
+    if (!(age >= 0 && age <= REAUTH_MAX_AGE_MS)) return err({ kind: 'not-reauthenticated' });
+    // The account must be linked to this user: a foreign, an unlinked and another user's provider account open nothing.
+    const { subject } = info;
+    // A lone surrogate would be looked up as another text, and the match below is exact: the account that is found is the one named.
+    if (typeof subject.id !== 'string' || !subject.id.isWellFormed()) return err({ kind: 'not-linked' });
+    const held = await this.#store.find(subject.provider, subject.id);
+    if (held === undefined || held.provider !== subject.provider || held.providerId !== subject.id || String(held.userId) !== String(userId)) return err({ kind: 'not-linked' });
+    const proof = this.#reauthenticator.issue({ userId, authenticatedAt: new Date(at) });
+    if (!(await this.#auth[CONFIRM_REAUTHENTICATED](proof))) return err({ kind: 'expired' });
+    // Only after the window is open; what the provider reports now is stored when it can be.
+    const social = snapshotOf(given, subject);
+    if (storable(social, subject)) {
+      try {
+        await this.#store.touch(held.id, social);
+      } catch {
+        // The window is open and stays so; a failed refresh of what the provider reports is no reason to refuse. Nothing of the error is logged: it may quote data.
+        this.#logger.warn('Refreshing a linked provider account after a confirmation failed.', { provider: subject.provider, reason: 'touch' });
+      }
+    }
+    return ok(undefined);
+  }
+
   /** The signed-in user's linked accounts, oldest first; none for nobody. See docs/oauth.md#linking-and-unlinking. */
   async list(): Promise<readonly SocialAccountSummary[]> {
     const userId = await this.#auth.id();
@@ -233,6 +314,7 @@ export class SocialAccounts {
       nickname: record.nickname,
       createdAt: record.createdAt,
       lastUsedAt: record.lastUsedAt,
+      canConfirm: isOidc(this.#providers.get(record.provider)?.definition),
     };
   }
 

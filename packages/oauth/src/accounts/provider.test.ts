@@ -1,5 +1,5 @@
 import { Auth, AuthConfig, TwoFactorState, UserProvider } from '@marmeon/auth';
-import { Container, ContainerError, createApplication, errorCodeOf, token, EventDispatcher, HealthChecks, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Clock, Container, Logger, ContainerError, SystemClock, createApplication, errorCodeOf, token, EventDispatcher, HealthChecks, type Application, type ModuleDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator, SchemaRequirements } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { describe, expect, it } from 'vitest';
@@ -79,6 +79,8 @@ describe('SocialAccountsServiceProvider', () => {
       [AuthConfig, { privateRegistration: true }],
       [Connections, {}],
       [EventDispatcher, {}],
+      [Clock, new SystemClock()],
+      [Logger, {}],
     ]);
     new SocialAccountsServiceProvider().register(container);
     for (const [key, value] of instances) container.bind(key as never, () => value);
@@ -103,6 +105,8 @@ describe('SocialAccountsServiceProvider', () => {
       [AuthConfig, { privateRegistration: true }],
       [Connections, {}],
       [EventDispatcher, {}],
+      [Clock, new SystemClock()],
+      [Logger, {}],
     ]);
     new SocialAccountsServiceProvider().register(container);
     for (const [key, value] of instances) container.bind(key as never, () => value);
@@ -117,5 +121,11 @@ describe('SocialAccountsServiceProvider', () => {
     const broken = await container.createScope().make(SocialAccounts).signIn(profile()).catch((error: unknown) => error);
     expect(broken).toBeInstanceOf(ContainerError);
     expect(errorCodeOf(broken)).toBe('K1');
+  });
+
+  it('claims the re-authentication "oauth" once per container: a second provider on it stops with A12', () => {
+    const container = new Container();
+    new SocialAccountsServiceProvider().register(container);
+    expect(() => new SocialAccountsServiceProvider().register(container)).toThrow(/re-authentication "oauth" is claimed already/);
   });
 });

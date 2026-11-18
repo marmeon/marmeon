@@ -1,3 +1,4 @@
+import { CONFIRM_REAUTHENTICATED, type ReauthenticationProof, type Reauthenticator } from '@marmeon/auth/internal';
 import { TwoFactorState, type AuthUser, type AuthUserId, type SecondFactor } from '@marmeon/auth';
 import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -7,8 +8,10 @@ import { SocialAccountStore } from '../accounts/store.ts';
 import { SocialAccounts } from '../accounts/social-accounts.ts';
 import type { SocialUserProvider } from '../accounts/users.ts';
 import type { SocialUser } from '../definition.ts';
+import { oidc } from '../oidc.ts';
 import { OAuthProviders, type ResolvedOAuthProvider } from '../registry.ts';
 import { markVerified } from '../verified.ts';
+import { contextOf, ISSUER } from './oidc.ts';
 
 /** The app's user in these tests: the row of `users` only holds the id, the rest lives here. */
 export interface TestUser {
@@ -23,8 +26,8 @@ export function idOf(user: AuthUser): number {
   return (user as unknown as TestUser).id;
 }
 
-/** A `SocialUser` the flow would have returned, marked for `intent`; `overrides` change the profile before it is marked. */
-export function marked(intent: 'sign-in' | 'link', overrides: Partial<SocialUser> = {}, flowUserId?: string): SocialUser {
+/** A `SocialUser` the flow would have returned, marked for `intent`; `overrides` change the profile before it is marked, `reauthenticatedAt` (milliseconds) is what a confirmation carries. */
+export function marked(intent: 'sign-in' | 'link' | 'confirm', overrides: Partial<SocialUser> = {}, flowUserId?: string, reauthenticatedAt?: number): SocialUser {
   const user: SocialUser = {
     provider: 'github',
     id: 'gh-1',
@@ -37,7 +40,7 @@ export function marked(intent: 'sign-in' | 'link', overrides: Partial<SocialUser
     tokens: { accessToken: ['access', 'token'].join('-'), scopes: ['read:user'] },
     ...overrides,
   };
-  markVerified(user, { intent, flowUserId });
+  markVerified(user, { intent, flowUserId, ...(reauthenticatedAt === undefined ? {} : { reauthenticatedAt }) });
   return user;
 }
 
@@ -67,14 +70,18 @@ export class UnboundFactors extends TwoFactorState {
 let nextUserId = 1000;
 
 /** An active provider as the registry holds it; only its name and label are read. */
-export function activeProvider(name: string, label = name): ResolvedOAuthProvider {
-  return { name, label, definition: {} as never, credentials: { clientId: 'client', clientSecret: 'secret' } as never };
+export function activeProvider(name: string, label = name, definition: object = {}): ResolvedOAuthProvider {
+  return { name, label, definition: definition as never, credentials: { clientId: 'client', clientSecret: 'secret' } as never };
 }
 
 export interface WorldOptions {
   readonly registration?: boolean;
   readonly privateRegistration?: boolean;
   readonly active?: readonly string[];
+  /** Which of the active providers are `oidc()` providers: their definition is one `oidc()` built, as an own OpenID Connect provider is. */
+  readonly oidc?: readonly string[];
+  /** Definitions to use for active providers, by name (a built-in provider, for one), instead of an empty one. */
+  readonly definitions?: Readonly<Record<string, object>>;
   readonly factors?: TwoFactorState;
 }
 
@@ -114,6 +121,11 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     inTransaction: [] as boolean[],
     /** `findById` knows nobody. */
     noUsers: false,
+    /** What the guard answers a proof with, and every proof it was given. */
+    windowOpens: true,
+    proofs: [] as { userId: string; authenticatedAt: number }[],
+    /** What was logged: level, message and context. */
+    logs: [] as { level: string; message: string; context?: Readonly<Record<string, unknown>> }[],
   };
   const db = () => connections.get<any>();
   const add = async (user: Partial<TestUser> & { id: number }): Promise<TestUser> => {
@@ -127,6 +139,7 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     user: async () => state.signedIn,
     id: async () => state.signedIn?.id,
     passwordRecentlyConfirmed: () => state.confirmed,
+    [CONFIRM_REAUTHENTICATED]: async () => state.windowOpens,
     signOut: async () => {
       state.signedIn = undefined;
       state.pending = undefined;
@@ -172,7 +185,17 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     if (state.buildFails) throw new Error('UserRepository needs a table');
     return state.boundSocialUsers ? socialUsers : undefined;
   };
-  const providers = new OAuthProviders((options.active ?? []).map((name) => activeProvider(name, name.toUpperCase())));
+  const reauthenticator: Reauthenticator = {
+    issue: ({ userId, authenticatedAt }): ReauthenticationProof => {
+      state.proofs.push({ userId: String(userId), authenticatedAt: authenticatedAt.getTime() });
+      return Object.freeze({ via: 'oauth' });
+    },
+  };
+  const definitionOf = (name: string): object => {
+    if (options.definitions?.[name] !== undefined) return options.definitions[name];
+    return (options.oidc ?? []).includes(name) ? oidc({ issuer: ISSUER })(contextOf(() => clock, name)) : {};
+  };
+  const providers = new OAuthProviders((options.active ?? []).map((name) => activeProvider(name, name.toUpperCase(), definitionOf(name))));
   const accounts = new SocialAccounts(
     auth as never,
     userProvider as never,
@@ -184,6 +207,9 @@ export function world(connections: Connections, options: WorldOptions = {}) {
     connections,
     dispatcher as never,
     socialUsersOf as never,
+    clock,
+    { warn: (message: string, context?: Readonly<Record<string, unknown>>) => void state.logs.push({ level: 'warn', message, context }) } as never,
+    reauthenticator,
   );
   return {
     accounts,
