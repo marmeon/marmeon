@@ -103,8 +103,8 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
     // Called as methods of the definition they came from, as a definition written with `this` expects.
     profile: (input: Parameters<typeof profile>[0]) => profile.call(definition, input),
     mapUser: (raw: unknown) => mapUser.call(definition, raw),
-    // The readers `oidc()` sets (the symbols are not exported; see oidc-marker.ts): carried over as they are. They prove nothing by being there, only by what the reader answers.
-    ...(typeof (definition as Partial<OidcDefinition>)[OIDC] === 'function' ? { [OIDC]: (definition as OidcDefinition)[OIDC] } : {}),
+    // The markers `oidc()` sets (the symbols are not exported; see oidc-marker.ts): carried over as they are. They prove nothing by being there.
+    ...((definition as Partial<OidcDefinition>)[OIDC] === true ? { [OIDC]: true as const } : {}),
     ...((definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true ? { [ISSUER_PARAM]: true as const } : {}),
   });
 }

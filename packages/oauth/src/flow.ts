@@ -14,6 +14,8 @@ export interface OpenFlow {
   readonly nonce?: string;
   readonly intent: string;
   readonly userId?: string | number;
+  /** The id the provider must vouch for: set for a confirmation only. */
+  readonly account?: string;
   /** Seconds since the epoch. */
   readonly issuedAt: number;
   /** Seconds since the epoch. */
@@ -36,7 +38,7 @@ export const challengeOf = (verifier: string): string => createHash('sha256').up
  */
 export function issueFlow(
   session: Session,
-  input: { readonly provider: string; readonly intent: string; readonly userId?: string | number; readonly pkce: boolean; readonly nonce: boolean; readonly nowSeconds: number },
+  input: { readonly provider: string; readonly intent: string; readonly userId?: string | number; readonly account?: string; readonly pkce: boolean; readonly nonce: boolean; readonly nowSeconds: number },
 ): OpenFlow {
   const flow: OpenFlow = {
     provider: input.provider,
@@ -45,6 +47,7 @@ export function issueFlow(
     ...(input.nonce ? { nonce: random() } : {}),
     intent: input.intent,
     ...(input.userId === undefined ? {} : { userId: input.userId }),
+    ...(input.account === undefined ? {} : { account: input.account }),
     issuedAt: input.nowSeconds,
     until: input.nowSeconds + FLOW_SECONDS,
   };
@@ -77,6 +80,7 @@ export function takeFlow(session: Session, provider: string, nowSeconds: number)
   if (flow.verifier !== undefined && (typeof flow.verifier !== 'string' || flow.verifier === '')) return err({ kind: 'invalid' });
   if (flow.nonce !== undefined && (typeof flow.nonce !== 'string' || flow.nonce === '')) return err({ kind: 'invalid' });
   if (flow.userId !== undefined && typeof flow.userId !== 'string' && typeof flow.userId !== 'number') return err({ kind: 'invalid' });
+  if (flow.account !== undefined && (typeof flow.account !== 'string' || flow.account === '')) return err({ kind: 'invalid' });
   return ok({
     provider,
     state: flow.state,
@@ -84,6 +88,7 @@ export function takeFlow(session: Session, provider: string, nowSeconds: number)
     ...(flow.nonce === undefined ? {} : { nonce: flow.nonce as string }),
     intent: flow.intent,
     ...(flow.userId === undefined ? {} : { userId: flow.userId }),
+    ...(flow.account === undefined ? {} : { account: flow.account as string }),
     issuedAt,
     until,
   });

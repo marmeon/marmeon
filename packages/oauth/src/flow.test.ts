@@ -36,9 +36,9 @@ describe('issuing a flow', () => {
     const other = flowOf(session, 'other');
     await oauth.redirect('idp', { intent: 'link' });
     const first = flowOf(session);
-    await oauth.redirect('idp', { intent: 'confirm' });
+    await oauth.redirect('idp', { intent: 'reset' });
     expect([...session.data.keys()].sort()).toEqual(['_oauth_flow:idp', '_oauth_flow:other']);
-    expect(flowOf(session)).toMatchObject({ intent: 'confirm' });
+    expect(flowOf(session)).toMatchObject({ intent: 'reset' });
     expect(flowOf(session).state).not.toBe(first.state);
     expect(flowOf(session, 'other')).toBe(other);
   });

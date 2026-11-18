@@ -2,9 +2,8 @@ import type { OAuthProviderDefinition } from './definition.ts';
 import type { IdTokenClaims } from './id-token.ts';
 
 /**
- * Set on the definition that `oidc()` builds, and by nothing else. Its value is a reader: given the `raw` answer of a callback, it
- * answers the claims of the ID token that passed the checks, or `undefined` for anything `oidc()` did not make. Only that answer
- * proves a check; the presence of the symbol proves nothing, since a spread of the definition copies it. Not exported from the package.
+ * A marker, set to `true` on the definition that `oidc()` builds. It proves nothing by being there, since a spread of the definition
+ * copies it: the claims of a checked ID token are read only through `checkedClaimsOf`. Not exported from the package.
  */
 export const OIDC = Symbol('marmeon.oauth.oidc');
 
@@ -15,8 +14,25 @@ export const OIDC = Symbol('marmeon.oauth.oidc');
  */
 export const ISSUER_PARAM = Symbol('marmeon.oauth.oidc.issuer-parameter');
 
+/**
+ * The ID token claims of each raw answer `oidc()` made (a frozen copy, not the object the app holds). A raw answer that is not in it did
+ * not come from a checked token. Module-wide and not exported from the package: a definition cannot bring its own reader, so only a token
+ * that `oidc()` checked can vouch for anything.
+ */
+const checked = new WeakMap<object, IdTokenClaims>();
+
+/** Records the claims of the ID token that passed every check for `raw`. */
+export function recordChecked(raw: object, claims: IdTokenClaims): void {
+  checked.set(raw, claims);
+}
+
+/** The claims of the checked ID token behind `raw`, or `undefined` for an answer `oidc()` did not make. */
+export function checkedClaimsOf(raw: unknown): IdTokenClaims | undefined {
+  return typeof raw === 'object' && raw !== null ? checked.get(raw) : undefined;
+}
+
 /** The definition `oidc()` builds: a definition with the readers. */
 export type OidcDefinition = OAuthProviderDefinition & {
-  readonly [OIDC]: (raw: unknown) => IdTokenClaims | undefined;
+  readonly [OIDC]: true;
   readonly [ISSUER_PARAM]?: true;
 };

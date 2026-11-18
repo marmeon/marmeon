@@ -3,7 +3,7 @@ import type { Result } from '@marmeon/core';
 import { expectTypeOf } from 'vitest';
 import type { OAuthHttp, SocialUser } from './definition.ts';
 import type { OAuthCallback, OAuthCallbackError } from './callback.ts';
-import type { OAuth, OAuthRedirectError } from './oauth.ts';
+import type { OAuth, OAuthRedirectError, OAuthRedirectOptions } from './oauth.ts';
 
 declare const oauth: OAuth;
 declare const http: OAuthHttp;
@@ -20,6 +20,24 @@ void oauth.redirect('idp', { prompt: 'login' });
 void oauth.redirect('idp', { userId: {} });
 // @ts-expect-error a misspelt key would start an unbound flow
 void oauth.redirect('idp', { userid: 7 });
+
+// A confirmation names its user and the account it is for.
+void oauth.redirect('idp', { intent: 'confirm', userId: 7, account: 'sub-1' });
+// @ts-expect-error a confirmation needs the user
+void oauth.redirect('idp', { intent: 'confirm', account: 'sub-1' });
+// @ts-expect-error a confirmation needs the account
+void oauth.redirect('idp', { intent: 'confirm', userId: 7 });
+// @ts-expect-error a user that is undefined is no user
+void oauth.redirect('idp', { intent: 'confirm', userId: undefined, account: 'sub-1' });
+// @ts-expect-error any other intent has no account
+void oauth.redirect('idp', { intent: 'link', userId: 7, account: 'sub-1' });
+// A wide intent and no options at all still compile.
+declare const intent: string;
+void oauth.redirect('idp', { intent });
+void oauth.redirect('idp', {});
+void oauth.redirect('idp');
+declare const opts: OAuthRedirectOptions;
+void oauth.redirect('idp', opts);
 
 // The Result's error is these three kinds.
 expectTypeOf<Awaited<ReturnType<OAuth['redirect']>>>().toEqualTypeOf<Result<URL, OAuthRedirectError>>();

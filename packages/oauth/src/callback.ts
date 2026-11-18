@@ -4,7 +4,7 @@ import { EndpointError } from './endpoints.ts';
 import type { OAuthEndpoints, OAuthHttp, SocialUser } from './definition.ts';
 import { exchangeCode, failureOf } from './exchange.ts';
 import { takeFlow } from './flow.ts';
-import { ISSUER_PARAM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { checkedClaimsOf, ISSUER_PARAM, OIDC, type OidcDefinition } from './oidc-marker.ts';
 import { same } from './same.ts';
 import { OAuthHttpError } from './http.ts';
 import type { ResolvedOAuthProvider } from './registry.ts';
@@ -23,7 +23,7 @@ export interface OAuthCallback {
  * callback, another browser, a session that expired). `expired`: the ten minutes are over. `invalid`: the answer does not belong to
  * the flow (a record of another form, the provider, the user, the state, the issuer, the code, or a session that cannot be written). `cancelled`: the person
  * refused. `provider-error`: the provider reported an error code. `unavailable`: the provider could not be reached. `rejected`: the
- * provider refused the code. `invalid-response`: the provider's answer is not usable. `not-reauthenticated` is reserved. No error
+ * provider refused the code. `invalid-response`: the provider's answer is not usable. `not-reauthenticated`: a confirmation without proof that the person signed in again at the provider. No error
  * holds a body or a message of the provider. See docs/oauth.md#the-callback.
  */
 export type OAuthCallbackError =
@@ -54,6 +54,9 @@ export interface CallbackContext {
 
 const ERROR_CODE = /^[a-z0-9_.-]{1,64}$/i;
 const MAX_CODE = 2048;
+/** How much earlier than the redirect an `auth_time` may be, and how much later than now, in seconds. */
+const REAUTH_EARLY = 10;
+const REAUTH_LATE = 60;
 const QUIET = new Set(['no-flow', 'expired', 'cancelled']);
 
 /** The value of a parameter that came exactly once, else `undefined`. */
@@ -110,6 +113,13 @@ export async function completeCallback(context: CallbackContext, params: URLSear
   const code = once(params, 'code');
   if (code === undefined || code === '' || code.length > MAX_CODE) return refuse({ kind: 'invalid' }, 'code');
 
+  // A confirmation that can never be proven is refused before the code is traded: nothing is sent to the provider for it.
+  if (flow.intent === 'confirm') {
+    if ((provider.definition as Partial<OidcDefinition>)[OIDC] !== true) return refuse({ kind: 'invalid' }, 'confirm-provider');
+    if (flow.userId === undefined) return refuse({ kind: 'invalid' }, 'confirm-user');
+    if (flow.account === undefined) return refuse({ kind: 'invalid' }, 'confirm-account');
+  }
+
   endpoints ??= await context.endpoints();
   if (endpoints === undefined) return refuse({ kind: 'unavailable' }, 'endpoints');
   const { definition, credentials } = provider;
@@ -133,8 +143,7 @@ export async function completeCallback(context: CallbackContext, params: URLSear
     raw = await definition.profile({ http: context.http, tokens: tokens.value, nonce: flow.nonce, clientId: credentials.clientId, now: context.now });
     // The parameter and the token must name one issuer: the one the token passed every check with.
     if (iss !== undefined && (definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true) {
-      const readClaims = (definition as Partial<OidcDefinition>)[OIDC];
-      if (readClaims?.(raw)?.iss !== iss) return refuse({ kind: 'invalid' }, 'issuer');
+      if (checkedClaimsOf(raw)?.iss !== iss) return refuse({ kind: 'invalid' }, 'issuer');
     }
     const mapped: unknown = definition.mapUser(raw);
     // An `async` mapUser answers with a promise: refused, and its rejection is taken so that it cannot surface (it may quote a token).
@@ -161,6 +170,22 @@ export async function completeCallback(context: CallbackContext, params: URLSear
   }
   if (user === undefined) return refuse({ kind: 'invalid-response' }, 'profile-id');
 
-  markVerified(user, { intent: flow.intent, flowUserId: flow.userId === undefined ? undefined : String(flow.userId) });
+  const flowUserId = flow.userId === undefined ? undefined : String(flow.userId);
+  if (flow.intent !== 'confirm') {
+    markVerified(user, { intent: flow.intent, flowUserId });
+    return ok({ user, intent: flow.intent });
+  }
+  // A fresh sign-in proves nothing unless it was the linked account that signed in: the id the provider vouches for is the one the
+  // confirmation was started for, else anybody with a session could confirm with an account of their own.
+  if (flow.account === undefined || !same(user.id, flow.account)) return refuse({ kind: 'invalid' }, 'confirm-account');
+  // A confirmation is worth what the checked ID token proves, nothing else: `iat` says when the token was made, not when the person
+  // signed in, so it never stands in for `auth_time`. The claims come from the module's own record of checked tokens, never from
+  // anything the definition carries. A provider that did not say confirms nothing.
+  const authTime = checkedClaimsOf(raw)?.auth_time;
+  if (typeof authTime !== 'number' || !Number.isFinite(authTime)) return refuse({ kind: 'not-reauthenticated' }, 'auth-time');
+  // Not before the redirect (less the drift between this server and the provider), and not in the future (beyond a minute of drift).
+  // Written as the range that is allowed, so that a value that compares false with everything is refused.
+  if (!(authTime >= flow.issuedAt - REAUTH_EARLY && authTime <= context.now / 1000 + REAUTH_LATE)) return refuse({ kind: 'not-reauthenticated' }, 'auth-time');
+  markVerified(user, { intent: flow.intent, flowUserId, reauthenticatedAt: Math.min(authTime * 1000, context.now) });
   return ok({ user, intent: flow.intent });
 }

@@ -5,6 +5,7 @@ import { OAuthSetupError } from './config.ts';
 import { oauthCredentials } from './credentials.ts';
 import type { IdTokenClaims } from './id-token.ts';
 import type { SocialProfile } from './definition.ts';
+import { checkedClaimsOf } from './oidc-marker.ts';
 import { ISSUER_PARAM, OIDC, oidc, type OidcDefinition } from './oidc.ts';
 import { OAuthProviders } from './registry.ts';
 import { tokenResponse } from './test-helpers/callback.ts';
@@ -142,17 +143,16 @@ describe('oidc()', () => {
   });
 
   it('keeps the id token claims of a checked callback readable through the marker, and only for an answer oidc() made', async () => {
-    const { oauth, http, definition, begin } = oidcWith({ userinfo: true });
+    const { oauth, http, begin } = oidcWith({ userinfo: true });
     const { query } = await begin((f) => tokenResponse({ id_token: idToken({ nonce: f.nonce, auth_time: 5, name: 'From token' }) }));
     http.respond(USERINFO_URL, () => Response.json({ sub: 'user-1', name: 'From userinfo' }));
     const result = await oauth.callback('idp', query);
     if (!result.ok) throw new Error(result.error.kind);
-    const claimsOf = (definition as OidcDefinition)[OIDC];
-    expect(claimsOf(result.value.user.raw)).toMatchObject({ sub: 'user-1', auth_time: 5, name: 'From token' });
+    expect(checkedClaimsOf(result.value.user.raw)).toMatchObject({ sub: 'user-1', auth_time: 5, name: 'From token' });
     // A copy, a look-alike or nothing is no checked answer.
-    expect(claimsOf({ ...(result.value.user.raw as object) })).toBeUndefined();
-    expect(claimsOf({ sub: 'user-1', iss: ISSUER, auth_time: Date.now() })).toBeUndefined();
-    expect(claimsOf(undefined)).toBeUndefined();
+    expect(checkedClaimsOf({ ...(result.value.user.raw as object) })).toBeUndefined();
+    expect(checkedClaimsOf({ sub: 'user-1', iss: ISSUER, auth_time: Date.now() })).toBeUndefined();
+    expect(checkedClaimsOf(undefined)).toBeUndefined();
   });
 
   it('is told apart from any other provider by the marker, and the registry keeps it', async () => {
@@ -163,7 +163,7 @@ describe('oidc()', () => {
     const app = await oauthApp([Keycloak], { ...activeEnv('keycloak'), OAUTH_KEYCLOAK_ISSUER: 'https://keycloak.example.com/realms/main' });
     const provider = app.application.container.make(OAuthProviders).get('keycloak')!;
     expect(provider.label).toBe('Keycloak');
-    expect(typeof (provider.definition as unknown as OidcDefinition)[OIDC]).toBe('function');
+    expect((provider.definition as unknown as OidcDefinition)[OIDC]).toBe(true);
     expect(provider.definition.nonce).toBe(true);
     expect(ISSUER_PARAM in provider.definition).toBe(false);
     // The rule for the issuer parameter comes along when acceptedIssuers is given.
@@ -384,12 +384,12 @@ describe('oidc()', () => {
   });
 
   it('hands the app a raw answer that cannot change what the reader answers: a deeply frozen copy of its own', async () => {
-    const { oauth, definition, begin } = oidcWith();
+    const { oauth, begin } = oidcWith();
     const { query } = await begin((f) => tokenResponse({ id_token: idToken({ nonce: f.nonce, amr: ['pwd'] }) }));
     const result = await oauth.callback('idp', query);
     if (!result.ok) throw new Error(result.error.kind);
     const raw = result.value.user.raw as Record<string, unknown>;
-    const claims = (definition as OidcDefinition)[OIDC](raw)!;
+    const claims = checkedClaimsOf(raw)!;
     expect(claims).not.toBe(raw);
     expect(Object.isFrozen(claims)).toBe(true);
     expect(Object.isFrozen(claims.amr)).toBe(true);

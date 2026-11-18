@@ -5,7 +5,7 @@ import { createDiscovery } from './discovery.ts';
 import type { OAuthProfileInput, OAuthProviderContext, OAuthProviderDefinition, OAuthProviderFactory, SocialProfile } from './definition.ts';
 import { checkEndpoint } from './endpoints.ts';
 import { checkIdToken, type IdTokenClaims } from './id-token.ts';
-import { ISSUER_PARAM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { ISSUER_PARAM, OIDC, recordChecked, type OidcDefinition } from './oidc-marker.ts';
 
 export type { IdTokenClaims } from './id-token.ts';
 export { OIDC, ISSUER_PARAM } from './oidc-marker.ts';
@@ -68,9 +68,6 @@ const OPTION_KEYS = ['issuer', 'label', 'scopes', 'discoveryUrl', 'discoveryIssu
 const FROM_ID_TOKEN = new Set(['sub', 'iss', 'aud', 'azp', 'exp', 'iat', 'nbf', 'nonce', 'auth_time', 'acr', 'amr']);
 /** A claim and the claim that says whether the provider vouches for it. They come from one answer: a flag from one and a value from the other would vouch for the wrong one. */
 const VERIFIED_PAIRS: readonly (readonly [string, string])[] = [['email', 'email_verified'], ['phone_number', 'phone_number_verified']];
-
-/** The ID token claims of each raw answer `oidc()` made (a frozen copy, not the object the app holds): a raw answer that is not in it did not come from a checked token. */
-const checked = new WeakMap<object, IdTokenClaims>();
 
 function deepFreeze<T>(value: T): T {
   if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) {
@@ -189,7 +186,7 @@ export function oidc(options: OidcOptions = {}): OAuthProviderFactory {
       }
       const raw = Object.freeze(merged);
       // A frozen copy of its own: what the app holds as `raw` cannot change what the reader answers.
-      checked.set(raw, deepFreeze(structuredClone({ ...token })) as IdTokenClaims);
+      recordChecked(raw, deepFreeze(structuredClone({ ...token })) as IdTokenClaims);
       return raw;
     };
 
@@ -204,7 +201,7 @@ export function oidc(options: OidcOptions = {}): OAuthProviderFactory {
       ...(options.allowAddresses === undefined ? {} : { allowAddresses: options.allowAddresses }),
       profile,
       mapUser: (raw) => mapUser(raw as IdTokenClaims),
-      [OIDC]: (raw) => (typeof raw === 'object' && raw !== null ? checked.get(raw) : undefined),
+      [OIDC]: true as const,
       ...(accepted === undefined ? {} : { [ISSUER_PARAM]: true as const }),
     };
     return definition;

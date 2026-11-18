@@ -309,7 +309,7 @@ describe('OAuth.redirect()', () => {
     const misspelt: Record<string, unknown> = { userid: 7, Intent: 'link' };
     const error = await rejection(oauth.redirect('idp', misspelt));
     expect(error).toBeInstanceOf(TypeError);
-    expect((error as Error).message).toMatch(/"userid", "Intent".*intent, userId, scopes, prompt/);
+    expect((error as Error).message).toMatch(/"userid", "Intent".*intent, userId, account, scopes, prompt/);
     expect(session.data.size).toBe(0);
     for (const userId of [0, -3, 'abc']) expect((await oauth.redirect('idp', { userId })).ok, String(userId)).toBe(true);
   });

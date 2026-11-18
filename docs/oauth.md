@@ -280,7 +280,7 @@ A flow holds:
 - a PKCE verifier, whose SHA-256 (method `S256`) goes to the provider as the challenge. The provider releases the tokens only to the one that
   holds the verifier. A provider turns this off with `pkce: false`;
 - a `nonce` for a provider that sets `nonce: true`, and always for an [OpenID Connect provider](#openid-connect-providers), whose ID token must carry it back;
-- the `intent`, a lower case word such as `sign-in` (the default) or `link`, and the `userId` when you give one.
+- the `intent`, a lower case word such as `sign-in` (the default) or `link`, the `userId` when you give one, and, for a confirmation, the `account` it is for.
 
 Each of the three random values has 256 bits. The session keeps them. The address carries the state, the challenge and, for a provider with
 `nonce: true`, the nonce; the verifier never leaves the session.
@@ -293,13 +293,14 @@ browser open a flow, and a prefetching browser does not open one either.
 
 | Option | Effect |
 | --- | --- |
-| `intent` | What the sign-in is for: lower case letters and dashes, starting with a letter, at most 32. Default `sign-in`. |
-| `userId` | The user the flow belongs to. |
+| `intent` | What the sign-in is for: lower case letters and dashes, starting with a letter, at most 32. Default `sign-in`. `confirm` asks for a fresh sign-in, see [Confirming with a provider](#confirming-with-a-provider). |
+| `userId` | The user the flow belongs to. Required for `intent: 'confirm'`. |
+| `account` | For `intent: 'confirm'` only, and required there: the id of the linked account at the provider, which the person must sign in with again. Any other intent throws a `TypeError`. |
 | `scopes` | Scopes to ask for besides the provider's own (or `OAUTH_<NAME>_SCOPES`). Duplicates are dropped. |
 | `prompt` | `'select_account'` or `'consent'`, to show the provider's account chooser or consent screen. Any other value, `none` and `login` included, throws a `TypeError`. |
 
 The flow sets `response_type`, `client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, `code_challenge_method` and `nonce` itself, after
-the `authorizeParams` of the provider, so nothing a provider adds can replace them.
+the `authorizeParams` of the provider, so nothing a provider adds can replace them. For `confirm` it also sets `prompt=login` and `max_age=0`, last.
 
 `redirect()` answers with a `Result`:
 
@@ -307,7 +308,7 @@ the `authorizeParams` of the provider, so nothing a provider adds can replace th
 | --- | --- |
 | `unknown-provider` | The name is unknown, or the provider is inactive. The session is not touched. |
 | `unavailable` | The provider's discovery gave no usable answer: no answer, a status other than 2xx, no JSON, a redirect, too large an answer, a timeout, or endpoints that are not usable. No flow is stored. An error in your own `endpoints()` code is not hidden as `unavailable`: it is thrown. |
-| `reauthentication-unsupported` | Reserved for asking a provider for a fresh sign-in. |
+| `reauthentication-unsupported` | `intent: 'confirm'` at a provider that is no `oidc()` provider. See [Confirming with a provider](#confirming-with-a-provider). No flow is stored. |
 
 `redirect()` throws an `OAuthSetupError` with the code `A10` ([error codes](errors.md#server-error-codes)) when the app cannot run a flow at all:
 
@@ -348,7 +349,8 @@ export class SocialCallbackController extends Controller {
 ```
 
 Pass `{ userId }` when somebody is signed in. A flow that was started with a `userId` needs the same `userId` at the callback, or the answer is
-`invalid`; a flow started without one serves only a guest.
+`invalid`; a flow started without one serves only a guest. A confirmation is checked further once the profile is known: the account must be the one
+it was started for (`invalid`) and the ID token must prove a fresh sign-in (`not-reauthenticated`).
 
 Register it as a `GET` route with the same `everyone` rule as the start route, and put `.block()` on it:
 
@@ -405,7 +407,7 @@ milliseconds since the epoch, and `tokens.scopes` the scopes the provider names,
 | `unavailable` | The provider could not be reached, or answered with a server error. Try again later. |
 | `rejected` | The token endpoint answered with a 4xx status for the code (a rate limit with 429 included), or with a `200` that has an `error` field. |
 | `invalid-response` | The provider's answer is not usable: an ID token that fails a check (see [OpenID Connect providers](#openid-connect-providers)) or is missing, the token answer is no JSON object or has no usable `access_token` or a token type other than bearer, a `200` that is no JSON, a 4xx from your `profile()` request, code of the provider that threw, or a profile without a usable `id`. |
-| `not-reauthenticated` | Reserved for a sign-in that must be fresh. |
+| `not-reauthenticated` | A confirmation without proof that the person signed in again: see [Confirming with a provider](#confirming-with-a-provider). |
 
 No error carries a body or a message of the provider, and nothing logs the code, a token, the state or the query: a refusal logs the provider
 and a fixed reason only. A second tab, an expired flow and a person who said no are logged at debug level; the other refusals at warn.
@@ -422,3 +424,29 @@ an address. A `name` or `nickname` of more than 255 characters, or with a contro
 The browser returns from the provider with a request that starts on another site. A session cookie with `SameSite=Strict` is not sent with
 it, so the callback would find no session and no flow, and every sign-in would fail after the person had already signed in at the provider.
 `redirect()` throws an A10 error under `SESSION_SAME_SITE=strict` for that reason. Keep `lax` (the default), or `none` over `https`.
+
+## Confirming with a provider
+
+Some actions ask a signed-in person to prove who they are once more, such as deleting an account. `redirect()` with the intent `confirm` does that
+at the provider: the person has to sign in again there, and the package checks that they did.
+
+```ts
+// `user` is the signed-in user, `account.providerId` the id of the account they linked at this provider.
+const redirect = await oauth.redirect('idp', { intent: 'confirm', userId: user.id, account: account.providerId });
+```
+
+`account` is the id of the account that was linked, the same id `callback()` hands back as `user.id`. A fresh sign-in at the provider with
+another account is refused (`invalid`), since it proves nothing about the account that is linked.
+
+`userId` and `account` are required (without either, `redirect()` throws a `TypeError`), and the callback must be given the same `userId`. The flow adds
+`prompt=login` and `max_age=0` to the authorization request after everything else, so a `prompt` option cannot soften them.
+
+Only [`oidc()`](#openid-connect-providers) providers can confirm, because only an ID token can say when the person signed in. GitHub, Discord and
+your own OAuth 2.0 providers never confirm: `redirect()` answers `reauthentication-unsupported` and opens no flow. There is no fallback to a weaker
+proof, such as asking again for the same session. Some providers leave `auth_time` out unless you request it in their app settings; without it every confirmation at that provider fails.
+
+The callback accepts a confirmation only when the ID token that passed the checks carries a numeric `auth_time` that is no earlier than the
+redirect minus 10 seconds (the drift between the clocks of the provider and of the server) and no later than now plus 60 seconds. A missing,
+non-numeric, old or future `auth_time` answers `not-reauthenticated`; `iat` never takes its place. A confirmation is spent like any flow: a second
+callback with the same state answers `no-flow`. Your app knows the person confirmed when `callback()` answers `ok` with `intent === 'confirm'`; act on that
+and on nothing else.
