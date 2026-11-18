@@ -340,16 +340,21 @@ export class SocialAccounts {
    * Signs `user` in and looks the link `linked` up once more now that the sign-in ran, whatever it came to: the account may have been
    * unlinked, or moved, since it was written or touched (a password reset removes the links of an unconfirmed address and rotates the
    * credentials). A sign-in for a link that is gone is undone, a waiting second factor included (`signOut()` drops a pending sign-in
-   * too), and `refused` is answered.
+   * too), and `refused` is answered. Anything that throws from the sign-in on (the sign-in or the lookup) signs out too and rethrows the
+   * original error. `Auth` writes the session before its last steps and the session is saved on a throw; today those steps take a failed
+   * sign-in back themselves or cannot throw, so this is a second line that holds if that changes. The sign-out is unconditional on
+   * purpose: a guest whose sign-in failed on a database error loses the session's data (the intended URL, a flash, the CSRF token), but
+   * a sign-out only "when something stands" would miss a throw between the session's first write and the cached user, and fail open.
    */
   async #enterAs(user: AuthUser, linked: SocialAccountRecord, refused: Result<never, SocialSignInError>, created: boolean): Promise<Result<SocialSignIn, SocialSignInError>> {
-    const outcome = await this.#auth.signIn(user);
+    let outcome: Awaited<ReturnType<Auth['signIn']>>;
     let still: SocialAccountRecord | undefined;
     try {
+      outcome = await this.#auth.signIn(user);
       still = await this.#store.find(linked.provider, linked.providerId);
     } catch (error) {
-      // The sign-in stands otherwise: the session is saved on a throw.
-      await this.#auth.signOut();
+      // `signOut()` invalidates the session in its own `finally`; a failure of it must not hide the error that got us here.
+      await this.#auth.signOut().catch(() => {});
       throw error;
     }
     if (still === undefined || still.id !== linked.id || String(still.userId) !== String(linked.userId)) {

@@ -436,6 +436,28 @@ describe.each(drivers)('SocialAccounts sign-in on %s', (driver) => {
     expect(w.state.pending).toBeUndefined();
   });
 
+  it('signs out and rethrows the original error when auth.signIn throws after it wrote the session, a waiting second factor included', async () => {
+    await w.add({ id: 1 });
+    await w.store.create(1 as AuthUserId, marked('sign-in'));
+    // The session is written first and something throws after it (unreachable with today's Auth, which takes its own failures back).
+    w.state.afterAuthSignIn = async () => {
+      throw new Error('listener broke');
+    };
+    await expect(w.accounts.signIn(marked('sign-in'))).rejects.toThrow('listener broke');
+    expect(w.state.signedIn).toBeUndefined();
+    w.factors.factorsOf.set(1, ['totp']);
+    await expect(w.accounts.signIn(marked('sign-in'))).rejects.toThrow('listener broke');
+    expect(w.state.signedIn).toBeUndefined();
+    expect(w.state.pending).toBeUndefined();
+    // The link gone by then changes nothing: any throw signs out.
+    w.state.afterAuthSignIn = async () => {
+      await w.store.removeAll(1 as AuthUserId);
+      throw new Error('listener broke');
+    };
+    await expect(w.accounts.signIn(marked('sign-in'))).rejects.toThrow('listener broke');
+    expect(w.state.signedIn).toBeUndefined();
+  });
+
   it('reads the profile once: an accessor on the object cannot show the store another identity than the checks saw', async () => {
     await w.add({ id: 1 });
     await w.store.create(1 as AuthUserId, marked('sign-in'));
