@@ -5,7 +5,7 @@ import { OAuthConfig, OAuthSetupError } from './config.ts';
 import { credentialsOf, MAX_NAME_LENGTH, variablePrefix, type OAuthCredentials, type OAuthCredentialsConfig } from './credentials.ts';
 import type { OAuthProviderDefinition, OAuthProviderFactory } from './definition.ts';
 import { checkEndpoint, checkEndpoints, RESERVED_PARAMS } from './endpoints.ts';
-import { ISSUER_PARAM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { ISSUER_PARAM, NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
 
 /** An active provider: its definition and the credentials it needs, both checked at the start and frozen. */
 export interface ResolvedOAuthProvider {
@@ -106,6 +106,7 @@ function checkDefinition(name: string, definition: unknown, local: boolean): OAu
     // The markers `oidc()` sets (the symbols are not exported; see oidc-marker.ts): carried over as they are. They prove nothing by being there.
     ...((definition as Partial<OidcDefinition>)[OIDC] === true ? { [OIDC]: true as const } : {}),
     ...((definition as Partial<OidcDefinition>)[ISSUER_PARAM] === true ? { [ISSUER_PARAM]: true as const } : {}),
+    ...((definition as Partial<OidcDefinition>)[NO_CONFIRM] === true ? { [NO_CONFIRM]: true as const } : {}),
   });
 }
 

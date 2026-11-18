@@ -95,6 +95,53 @@ Plain `http:` is accepted for an endpoint, `OAUTH_<NAME>_REDIRECT_URL` or `APP_U
 
 The checked definition is copied and frozen at the start. Changing the object a factory returned afterwards changes nothing.
 
+## The built-in providers
+
+`OAuthServiceProvider` brings five providers: `github`, `google`, `microsoft`, `gitlab` and `discord`. They go through the same
+`static oauthProviders` record as your own, so these five names are taken: a class that brings one of them stops the start. Each is active as
+soon as its client ID and client secret are set, with the variables of [configuring a provider](#configuring-a-provider). The callback address of
+each is `APP_URL` followed by `/auth/<name>/callback` (for example `https://app.example.com/auth/github/callback`), unless
+`OAUTH_<NAME>_REDIRECT_URL` says another one. Register that address at the provider.
+
+| Provider | Variables beyond the common ones | Kind | Can confirm |
+| --- | --- | --- | --- |
+| `github` | none | OAuth 2.0 | never |
+| `google` | none | OpenID Connect | never |
+| `microsoft` | `OAUTH_MICROSOFT_TENANT` | OpenID Connect | only with `auth_time` |
+| `gitlab` | `OAUTH_GITLAB_ISSUER` | OpenID Connect | never |
+| `discord` | none | OAuth 2.0 | never |
+
+No built-in provider reports `emailVerified: true` unless the provider says so for that address. A provider that answers the flag for another address,
+or no flag, gives `false`.
+
+**GitHub** asks for the scopes `read:user` and `user:email` with PKCE. The `id` is the numeric id of the account, never the login, which a person can change.
+The address is the primary one of `/user/emails` (asked for with `per_page=100`), and `emailVerified` is true only when GitHub says `verified: true` for that entry.
+When the list is not available (403 or 404, or an answer that is no list), the public address of the profile is used and is never verified; the same holds for an
+account whose list has no primary address. Any other failure of the list, such as a 401, ends the sign-in. GitHub cannot confirm: `redirect()` with the intent
+`confirm` answers `reauthentication-unsupported`.
+
+**Google** is an OpenID Connect provider with the issuer `https://accounts.google.com`. When the callback carries an `iss` parameter, it must be that issuer, and is checked before the
+code is traded. An ID token may write its issuer with or without the scheme (`accounts.google.com`); both are accepted and no other. The `id` is the `sub`.
+`emailVerified` is true when `email_verified` is `true` and the address ends in `@gmail.com`, or the token has a non-empty `hd`. Google cannot confirm: it gives `auth_time` only for a `claims` request that you would have to enable, and it does not document `prompt=login`.
+
+**Microsoft** reads `OAUTH_MICROSOFT_TENANT`: `common` (the default), `organizations`, `consumers` or a tenant ID (a GUID). When the provider is active, a value that is
+no keyword (in lower case) and no tenant ID, such as a domain name like `contoso.onmicrosoft.com`, stops the start (A11): use the tenant ID. With `common` and `organizations` the
+token names the tenant of the person (`tid`), which must be a GUID, and the issuer must be the one of that tenant; `organizations` also refuses the tenant of personal
+Microsoft accounts. With a tenant ID or `consumers`, a token of another tenant is refused. The `id` is the tenant and the `sub` (`<tid>|<sub>`), because a `sub` is unique only within
+a tenant. `emailVerified` is always `false`: the claims of Microsoft do not say that the address was checked. A confirmation needs the optional claim `auth_time` in the ID token; without it
+every confirmation at Microsoft ends in `not-reauthenticated`.
+
+**GitLab** is an OpenID Connect provider for `https://gitlab.com`. For a self-hosted GitLab, set `OAUTH_GITLAB_ISSUER` to its address. The `id` is the issuer and the `sub` (`<issuer>|<sub>`), so
+changing the issuer ends the match with the linked accounts: they are looked up under the new issuer and none is found. `emailVerified` is the `email_verified` claim when the issuer is exactly `https://gitlab.com` (also when `OAUTH_GITLAB_ISSUER` says so). At any other issuer, a self-hosted
+GitLab included, it is always `false`, because such a server does not confirm addresses by default; to trust the flag of a server you run, write your own provider with [`oidc()`](#openid-connect-providers) and
+its `mapUser`. GitLab cannot confirm: its `auth_time` is the last sign-in of the user, not that of the browser session.
+
+The built-in providers are meant to be used under their own names. `microsoft` under another name stops the start (A11), because its tenant variable would not be read; `gitlab` under another name
+runs, but with the variable and credentials of that name, which is a known limit.
+
+**Discord** asks for the scopes `identify` and `email` with PKCE. `emailVerified` is true only for `verified: true` in the answer of Discord. The avatar address is
+built from the id and the avatar hash only when the id is all digits and the hash holds letters, digits and underscores, so an answer cannot change the path. Discord cannot confirm.
+
 ## Your own provider
 
 A provider is a name and a definition. Register the name in `static oauthProviders` of a service provider class, list
@@ -441,7 +488,7 @@ another account is refused (`invalid`), since it proves nothing about the accoun
 `userId` and `account` are required (without either, `redirect()` throws a `TypeError`), and the callback must be given the same `userId`. The flow adds
 `prompt=login` and `max_age=0` to the authorization request after everything else, so a `prompt` option cannot soften them.
 
-Only [`oidc()`](#openid-connect-providers) providers can confirm, because only an ID token can say when the person signed in. GitHub, Discord and
+Only [`oidc()`](#openid-connect-providers) providers can confirm, because only an ID token can say when the person signed in, and among the [built-in providers](#the-built-in-providers) only Microsoft does. GitHub, Google, GitLab, Discord and
 your own OAuth 2.0 providers never confirm: `redirect()` answers `reauthentication-unsupported` and opens no flow. There is no fallback to a weaker
 proof, such as asking again for the same session. Some providers leave `auth_time` out unless you request it in their app settings; without it every confirmation at that provider fails.
 

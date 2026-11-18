@@ -15,6 +15,13 @@ export const OIDC = Symbol('marmeon.oauth.oidc');
 export const ISSUER_PARAM = Symbol('marmeon.oauth.oidc.issuer-parameter');
 
 /**
+ * Set to `true` on the definition of an `oidc()` provider that cannot prove a fresh sign-in (its ID token has no usable `auth_time`).
+ * `redirect()` with the intent `confirm` then answers `reauthentication-unsupported`, and the callback refuses a confirmation. Only
+ * the package's own built-in providers set it; `oidc()` takes no option for it. Not exported from the package.
+ */
+export const NO_CONFIRM = Symbol('marmeon.oauth.oidc.no-confirmation');
+
+/**
  * The ID token claims of each raw answer `oidc()` made (a frozen copy, not the object the app holds). A raw answer that is not in it did
  * not come from a checked token. Module-wide and not exported from the package: a definition cannot bring its own reader, so only a token
  * that `oidc()` checked can vouch for anything.
@@ -35,4 +42,5 @@ export function checkedClaimsOf(raw: unknown): IdTokenClaims | undefined {
 export type OidcDefinition = OAuthProviderDefinition & {
   readonly [OIDC]: true;
   readonly [ISSUER_PARAM]?: true;
+  readonly [NO_CONFIRM]?: true;
 };

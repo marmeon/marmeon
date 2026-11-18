@@ -5,7 +5,7 @@ import { createDiscovery } from './discovery.ts';
 import type { OAuthProfileInput, OAuthProviderContext, OAuthProviderDefinition, OAuthProviderFactory, SocialProfile } from './definition.ts';
 import { checkEndpoint } from './endpoints.ts';
 import { checkIdToken, type IdTokenClaims } from './id-token.ts';
-import { ISSUER_PARAM, OIDC, recordChecked, type OidcDefinition } from './oidc-marker.ts';
+import { ISSUER_PARAM, NO_CONFIRM, OIDC, recordChecked, type OidcDefinition } from './oidc-marker.ts';
 
 export type { IdTokenClaims } from './id-token.ts';
 export { OIDC, ISSUER_PARAM } from './oidc-marker.ts';
@@ -120,6 +120,18 @@ function checkOptions(options: OidcOptions): void {
  * ```
  */
 export function oidc(options: OidcOptions = {}): OAuthProviderFactory {
+  return oidcWith(options, {});
+}
+
+/** What only the package's own providers ask of `oidc()`; the public function takes none of it. */
+export interface OidcInternals {
+  /** Spellings of the issuer that an ID token may carry besides the issuer. The `iss` parameter of the callback is still compared with the issuer of the document, before the code is traded. */
+  readonly tokenIssuerAliases?: readonly string[];
+  /** The provider cannot prove a fresh sign-in: a confirmation at it is refused. */
+  readonly noConfirmation?: true;
+}
+
+export function oidcWith(options: OidcOptions, internals: OidcInternals): OAuthProviderFactory {
   checkOptions(options);
   return (context: OAuthProviderContext): OAuthProviderDefinition => {
     const variable = `OAUTH_${context.name.replaceAll('-', '_').toUpperCase()}_ISSUER`;
@@ -147,7 +159,7 @@ export function oidc(options: OidcOptions = {}): OAuthProviderFactory {
 
     /** The issuers that may sign in for these claims. A function that throws, answers a promise (a rejection is taken, so it cannot surface) or answers no list lists none. */
     const issuersFor = (claims: Readonly<Record<string, unknown>>): readonly string[] => {
-      if (accepted === undefined) return [issuer];
+      if (accepted === undefined) return [issuer, ...(internals.tokenIssuerAliases ?? [])];
       const listed: unknown = accepted(claims);
       const then = typeof listed === 'object' && listed !== null ? (listed as { then?: unknown }).then : undefined;
       if (typeof then === 'function') {
@@ -203,6 +215,7 @@ export function oidc(options: OidcOptions = {}): OAuthProviderFactory {
       mapUser: (raw) => mapUser(raw as IdTokenClaims),
       [OIDC]: true as const,
       ...(accepted === undefined ? {} : { [ISSUER_PARAM]: true as const }),
+      ...(internals.noConfirmation === true ? { [NO_CONFIRM]: true as const } : {}),
     };
     return definition;
   };

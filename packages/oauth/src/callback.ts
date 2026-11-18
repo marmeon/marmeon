@@ -4,7 +4,7 @@ import { EndpointError } from './endpoints.ts';
 import type { OAuthEndpoints, OAuthHttp, SocialUser } from './definition.ts';
 import { exchangeCode, failureOf } from './exchange.ts';
 import { takeFlow } from './flow.ts';
-import { checkedClaimsOf, ISSUER_PARAM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { checkedClaimsOf, ISSUER_PARAM, NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
 import { same } from './same.ts';
 import { OAuthHttpError } from './http.ts';
 import type { ResolvedOAuthProvider } from './registry.ts';
@@ -115,7 +115,7 @@ export async function completeCallback(context: CallbackContext, params: URLSear
 
   // A confirmation that can never be proven is refused before the code is traded: nothing is sent to the provider for it.
   if (flow.intent === 'confirm') {
-    if ((provider.definition as Partial<OidcDefinition>)[OIDC] !== true) return refuse({ kind: 'invalid' }, 'confirm-provider');
+    if ((provider.definition as Partial<OidcDefinition>)[OIDC] !== true || (provider.definition as Partial<OidcDefinition>)[NO_CONFIRM] === true) return refuse({ kind: 'invalid' }, 'confirm-provider');
     if (flow.userId === undefined) return refuse({ kind: 'invalid' }, 'confirm-user');
     if (flow.account === undefined) return refuse({ kind: 'invalid' }, 'confirm-account');
   }

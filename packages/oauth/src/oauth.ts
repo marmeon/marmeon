@@ -10,7 +10,7 @@ import { checkEndpoint, checkEndpoints, EndpointError } from './endpoints.ts';
 import { completeCallback, type OAuthCallback, type OAuthCallbackError } from './callback.ts';
 import { challengeOf, issueFlow } from './flow.ts';
 import { createOAuthHttp, OAuthHttpError } from './http.ts';
-import { OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
 import type { OAuthProviders, ResolvedOAuthProvider } from './registry.ts';
 
 /** What `redirect()` takes besides the provider. See docs/oauth.md#the-flow-and-its-security. */
@@ -121,7 +121,7 @@ export class OAuth {
     const { definition, credentials } = provider;
     // Only the definition `oidc()` built can prove a fresh sign-in (by symbol identity, not by name or label). Anything else is
     // refused here, before a flow exists: there is no fallback to a weaker proof.
-    if (intent === 'confirm' && (definition as Partial<OidcDefinition>)[OIDC] !== true) return err({ kind: 'reauthentication-unsupported' });
+    if (intent === 'confirm' && ((definition as Partial<OidcDefinition>)[OIDC] !== true || (definition as Partial<OidcDefinition>)[NO_CONFIRM] === true)) return err({ kind: 'reauthentication-unsupported' });
     const session = this.#checkSetup(provider);
     const redirectUri = this.#callbackOf(provider);
     const endpoints = await this.#endpointsOf(provider);

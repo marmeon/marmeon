@@ -1,0 +1,4 @@
+[
+  { "email": "other@example.com", "primary": false, "verified": true, "visibility": null },
+  { "email": "Ada@Example.com", "primary": true, "verified": true, "visibility": "private" }
+]

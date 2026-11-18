@@ -2,8 +2,14 @@ import { Clock, EnvironmentConfig, Logger, type Application, type Container, typ
 import { HttpClient } from '@marmeon/fetch';
 import { Session, SessionConfig } from '@marmeon/session';
 import { OAuthConfig } from './config.ts';
+import { oauthCredentials } from './credentials.ts';
 import type { OAuthProviderFactory } from './definition.ts';
 import { OAuth } from './oauth.ts';
+import { discord } from './providers/discord.ts';
+import { github } from './providers/github.ts';
+import { gitlab } from './providers/gitlab.ts';
+import { google } from './providers/google.ts';
+import { microsoft } from './providers/microsoft.ts';
 import { buildProviders, OAuthProviders } from './registry.ts';
 
 declare module '@marmeon/core' {
@@ -19,11 +25,19 @@ declare module '@marmeon/core' {
 /**
  * Registers `OAuthProviders`, built at the start from the providers that bring a name through `static oauthProviders` (a bad
  * name, a name twice, missing `oauthCredentials`, a definition that is wrong or an active provider without an `HttpClient`
- * stops the start), and `OAuth` for each request. Found by `marmeon discover`. See docs/oauth.md#your-own-provider.
+ * stops the start), and `OAuth` for each request. Found by `marmeon discover`. The built-in providers (GitHub, Google, Microsoft,
+ * GitLab and Discord) come through the same record, so their names are taken. See docs/oauth.md#the-built-in-providers.
  */
 export class OAuthServiceProvider implements ServiceProvider {
-  static config = [OAuthConfig];
-  static oauthProviders: Readonly<Record<string, OAuthProviderFactory>> = {};
+  static config = [
+    OAuthConfig,
+    oauthCredentials('github'),
+    oauthCredentials('google'),
+    oauthCredentials('microsoft', { options: ['TENANT'] }),
+    oauthCredentials('gitlab', { issuer: 'optional' }),
+    oauthCredentials('discord'),
+  ];
+  static oauthProviders: Readonly<Record<string, OAuthProviderFactory>> = { github, google, microsoft, gitlab, discord };
 
   register(container: Container): void {
     container.singleton(OAuthProviders, () => buildProviders(container));
