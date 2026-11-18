@@ -31,12 +31,12 @@ export const BUILT_IN_QUEUE_DRIVERS = ['sync', 'database', 'redis'] as const;
 export const BUILT_IN_FAILED_DRIVERS = ['database', 'null'] as const;
 
 export const importDatabase = (what = 'QUEUE_DRIVER=database') =>
-  importOptional(() => import('@marmeon/database'), '@marmeon/database', what, 'pnpm add -E @marmeon/database@<version of your app>');
+  importOptional(() => import('@marmeon/database'), '@marmeon/database', what, 'marmeon add database (or pnpm add -E @marmeon/database@<version of your app>)');
 export const importEncryption = () =>
-  importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', 'An encrypted job (static encrypted)', 'pnpm add -E @marmeon/encryption@<version of your app>');
-export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_DRIVER=redis', 'pnpm add -E @marmeon/redis@<version of your app>');
+  importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', 'An encrypted job (static encrypted)', 'marmeon add encryption (or pnpm add -E @marmeon/encryption@<version of your app>)');
+export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_DRIVER=redis', 'marmeon add redis (or pnpm add -E @marmeon/redis@<version of your app>)');
 export const importCache = () =>
-  importOptional(() => import('@marmeon/cache'), '@marmeon/cache', 'Unique jobs, withoutOverlapping and job.once', 'pnpm add -E @marmeon/cache@<version of your app>');
+  importOptional(() => import('@marmeon/cache'), '@marmeon/cache', 'Unique jobs, withoutOverlapping and job.once', 'marmeon add cache (or pnpm add -E @marmeon/cache@<version of your app>)');
 
 /**
  * The queue's connections, built on first use: a driver per connection, the failed-job store, and workers for

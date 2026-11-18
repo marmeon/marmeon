@@ -7,11 +7,15 @@ the same methods, so code that writes an avatar does not care where it lands. A 
 the files of a public disk, with headers that keep them from running as pages of your app. A private disk's files leave only
 through signed links that expire.
 
-A new app has the package. Otherwise add it in the version of the app's other framework packages:
+A new app has the package. Otherwise add it with [`marmeon add`](packages.md#introduction), in the version of the app's other framework packages:
 
 ```sh
-pnpm add -E @marmeon/storage@<version of your app>
+pnpm marmeon add storage
 ```
+
+`marmeon add` copies the package's migration too, which boots the app, so the `.env` must be valid. Then run `pnpm marmeon migrate`.
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run
+`pnpm add -E @marmeon/storage@<version of your app>`, then `marmeon discover`, `marmeon publish @marmeon/storage` and `marmeon migrate`.
 
 Then inject `Storage` and pick a disk. This controller writes a user's notes to the private `local` disk and sends the browser a
 link to the file that works for five minutes:

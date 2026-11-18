@@ -436,7 +436,7 @@ export class MakeMailCommand {
     if (shared === null) return 1;
     for (const [name, why] of [['@marmeon/mail', 'A mail is sent by the Mailer of'], ['@marmeon/i18n', 'A mail speaks the language of its recipient with the Translators of']] as const) {
       if (!dependsOn(input.root, name)) {
-        input.output.error(`${why} ${name}: pnpm add -E ${name}@<version of your app>`);
+        input.output.error(`${why} ${name}: marmeon add ${name.replace('@marmeon/', '')}`);
         return 1;
       }
     }
@@ -685,7 +685,7 @@ export class MakePolicyCommand {
       );
     }
     if (!dependsOn(input.root, '@marmeon/auth')) {
-      input.output.error('A policy answers with `deny…` of @marmeon/auth: pnpm add -E @marmeon/auth@<version of your app>');
+      input.output.error('A policy answers with `deny…` of @marmeon/auth: marmeon add auth (it publishes migrations, so the app must boot; otherwise pnpm add -E @marmeon/auth@<version of your app>)');
       return 1;
     }
     const source = ability === undefined ? POLICY(name, 'Owned', OWNED) : USER_POLICY(name, ability);
