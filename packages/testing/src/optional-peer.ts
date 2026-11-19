@@ -47,7 +47,8 @@ const absent = new Set<string>();
  * `--preserve-symlinks`), and no `node_modules/<name>` is on disk (the runner reports a missing file of an installed package with
  * the package's name, and the wording of messages is not stable). Known misses: a package that only a Vite `resolve.alias` of
  * this load reaches, and that neither the resolve nor the bare import nor the disk shows, counts as absent; and a package
- * installed after an absent answer in the same process stays absent until the process (one test file, by default) ends.
+ * installed after an absent answer in the same process that then fails to load with ERR_MODULE_NOT_FOUND still counts as absent
+ * until the process (one test file, by default) ends.
  * `from`, `resolve` and `probe` exist for tests.
  *
  * @internal

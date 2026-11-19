@@ -253,4 +253,14 @@ describe('the optional peers of createTestApp()', () => {
       expect(body.trim(), name).toMatch(/^return importOptional\('[^']+', async \(\) => \(\{[\s\S]*\}\)\);$/);
     }
   });
+
+  it('has importChat answer through importOptional alone, and load only the chat package', () => {
+    const chat = readFileSync(new URL('./import-chat.ts', import.meta.url), 'utf8');
+    const body = chat.match(/async function importChat\([^)]*\)[^{]*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+    expect(body.trim()).toBe("return importOptional('@marmeon/chat-notifications', load);");
+    const loader = chat.match(/const loadChat = [^\n]*/)?.[0] ?? '';
+    const specifiers = [...loader.matchAll(/import\('([^']+)'\)/g)].map((match) => match[1]!);
+    expect(specifiers.length).toBeGreaterThan(0);
+    for (const specifier of specifiers) expect(specifier === '@marmeon/chat-notifications' || specifier.startsWith('@marmeon/chat-notifications/')).toBe(true);
+  });
 });
