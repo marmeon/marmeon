@@ -362,6 +362,9 @@ importers:
       '@marmeon/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
+      '@marmeon/oauth':
+        specifier: workspace:*
+        version: link:../../packages/oauth
       '@marmeon/otel':
         specifier: workspace:*
         version: link:../../packages/otel

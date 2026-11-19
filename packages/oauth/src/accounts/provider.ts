@@ -9,8 +9,9 @@ import { SocialUserProvider } from './users.ts';
 import { SOCIAL_ACCOUNT_COLUMNS, SOCIAL_ACCOUNTS_TABLE, SocialAccountStore } from './store.ts';
 
 /**
- * Registers `SocialAccountStore` and `SocialAccounts` (per request), has the password reset of an account with an unconfirmed address remove its links, and reads `OAUTH_REGISTRATION` and `OAUTH_STORE_TOKENS`. Readiness waits for the `social_accounts` table
- * the app's migration creates. See docs/oauth.md#storing-tokens.
+ * Registers `SocialAccountStore` and `SocialAccounts` (per request), has the password reset of an account with an unconfirmed address
+ * remove its links, and reads `OAUTH_REGISTRATION` and `OAUTH_STORE_TOKENS`. Readiness waits for the `social_accounts` table, whose
+ * migration comes with `marmeon add oauth`, or with `marmeon make:social-accounts-table` where `add` did not install the package. See docs/oauth.md#storing-tokens.
  */
 export class SocialAccountsServiceProvider implements ServiceProvider {
   static config = [SocialAccountsConfig];

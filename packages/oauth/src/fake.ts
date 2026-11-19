@@ -340,7 +340,7 @@ const OPTION_KEYS: readonly string[] = ['only'];
  * ```ts
  * const oauth = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
  * const browser = app.keepingCookies();
- * const start = await browser.post('/auth/github');
+ * const start = await browser.post('/auth/github/start');
  * const back = await browser.get(oauth.callbackUrl(start));
  * ```
  */

@@ -1219,7 +1219,7 @@ A connection that is not configured stops the migration with the names of the kn
 
 ## The framework's tables
 
-Some drivers need a table: the database cache, sessions and queue, notifications and uploads. A command writes its migration into
+Some packages need a table: the database drivers of the cache, sessions and queue, notifications, uploads, sign-ins, live hints and linked provider accounts. A command writes its migration into
 your app, so the table is yours to change like any other:
 
 ```sh
@@ -1236,6 +1236,7 @@ pnpm marmeon migrate
 | `make:uploads-table` | `publish @marmeon/storage` | `temporary_uploads`, on the uploads' connection |
 | `make:sign-ins-table` | `publish @marmeon/auth` | `sign_ins`, on the default connection |
 | `make:live-table` | `publish @marmeon/live` | `live_hints`, on the live connection |
+| `make:social-accounts-table` | `publish @marmeon/oauth` | `social_accounts`, on the default connection ([social login](oauth.md#storing-tokens)) |
 
 Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-migrations-of-a-package) for its own package. It
 writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap

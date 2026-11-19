@@ -11,6 +11,7 @@ import type { ConfirmPasswordController } from '../modules/auth/controllers/Conf
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { ConfirmTwoFactorController } from '../modules/auth/controllers/ConfirmTwoFactorController.ts';
 import type { ConfirmUnsubscribeController } from '../modules/notifications/controllers/ConfirmUnsubscribeController.ts';
+import type { ConfirmWithProviderController } from '../modules/oauth/controllers/ConfirmWithProviderController.ts';
 import type { CreateBookmarkController } from '../modules/bookmarks/controllers/CreateBookmarkController.ts';
 import type { DeleteBookmarkController } from '../modules/bookmarks/controllers/DeleteBookmarkController.ts';
 import type { DeleteNotificationController } from '../modules/notifications/controllers/DeleteNotificationController.ts';
@@ -24,6 +25,7 @@ import type { ExportMembersController } from '../modules/members/controllers/Exp
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
 import type { FeatureProfileLinkController } from '../modules/user-profile/controllers/FeatureProfileLinkController.ts';
 import type { ImportMembersController } from '../modules/members/controllers/ImportMembersController.ts';
+import type { LinkSocialAccountController } from '../modules/oauth/controllers/LinkSocialAccountController.ts';
 import type { ListBookmarksController } from '../modules/bookmarks/controllers/ListBookmarksController.ts';
 import type { ListMembersController } from '../modules/members/controllers/ListMembersController.ts';
 import type { ListPeopleController } from '../modules/user-profile/controllers/ListPeopleController.ts';
@@ -33,6 +35,8 @@ import type { LogoutController } from '../modules/auth/controllers/LogoutControl
 import type { LogoutOtherDevicesController } from '../modules/auth/controllers/LogoutOtherDevicesController.ts';
 import type { MarkAllNotificationsReadController } from '../modules/notifications/controllers/MarkAllNotificationsReadController.ts';
 import type { MarkNotificationReadController } from '../modules/notifications/controllers/MarkNotificationReadController.ts';
+import type { OAuthCallbackController } from '../modules/oauth/controllers/OAuthCallbackController.ts';
+import type { OAuthRedirectController } from '../modules/oauth/controllers/OAuthRedirectController.ts';
 import type { PasskeyChallengeController } from '../modules/auth/controllers/PasskeyChallengeController.ts';
 import type { PasskeyChallengeOptionsController } from '../modules/auth/controllers/PasskeyChallengeOptionsController.ts';
 import type { PasskeyConfirmController } from '../modules/auth/controllers/PasskeyConfirmController.ts';
@@ -57,7 +61,9 @@ import type { SearchProfileLinksController } from '../modules/user-profile/contr
 import type { SendPasswordResetLinkController } from '../modules/auth/controllers/SendPasswordResetLinkController.ts';
 import type { ShowAboutController } from '../modules/about/controllers/ShowAboutController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
+import type { ShowConfirmButtonsController } from '../modules/oauth/controllers/ShowConfirmButtonsController.ts';
 import type { ShowConfirmPasswordController } from '../modules/auth/controllers/ShowConfirmPasswordController.ts';
+import type { ShowConnectedAccountsController } from '../modules/oauth/controllers/ShowConnectedAccountsController.ts';
 import type { ShowContactController } from '../modules/support/controllers/ShowContactController.ts';
 import type { ShowCreateAccessTokenController } from '../modules/auth/controllers/ShowCreateAccessTokenController.ts';
 import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
@@ -76,6 +82,7 @@ import type { ShowRegistrationSentController } from '../modules/auth/controllers
 import type { ShowResetPasswordController } from '../modules/auth/controllers/ShowResetPasswordController.ts';
 import type { ShowSecurityController } from '../modules/auth/controllers/ShowSecurityController.ts';
 import type { ShowSensitiveController } from '../modules/auth/controllers/ShowSensitiveController.ts';
+import type { ShowSignInButtonsController } from '../modules/oauth/controllers/ShowSignInButtonsController.ts';
 import type { ShowTalkController } from '../modules/locale/controllers/ShowTalkController.ts';
 import type { ShowTwoFactorChallengeController } from '../modules/auth/controllers/ShowTwoFactorChallengeController.ts';
 import type { ShowTwoFactorController } from '../modules/auth/controllers/ShowTwoFactorController.ts';
@@ -87,6 +94,7 @@ import type { StoreBookmarkController } from '../modules/bookmarks/controllers/S
 import type { TwoFactorChallengeController } from '../modules/auth/controllers/TwoFactorChallengeController.ts';
 import type { TwoFactorVerifyController } from '../modules/auth/controllers/TwoFactorVerifyController.ts';
 import type { UnfeatureProfileLinkController } from '../modules/user-profile/controllers/UnfeatureProfileLinkController.ts';
+import type { UnlinkSocialAccountController } from '../modules/oauth/controllers/UnlinkSocialAccountController.ts';
 import type { UnsubscribeController } from '../modules/notifications/controllers/UnsubscribeController.ts';
 import type { UpdateAvatarController } from '../modules/user-profile/controllers/UpdateAvatarController.ts';
 import type { UpdateBookmarkController } from '../modules/bookmarks/controllers/UpdateBookmarkController.ts';
@@ -176,6 +184,14 @@ declare module '@marmeon/router' {
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
     'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
+    'oauth.accounts': { method: 'get'; path: '/oauth/accounts'; controller: typeof ShowConnectedAccountsController };
+    'oauth.callback': { method: 'get'; path: '/auth/:provider{[a-z][a-z0-9-]*}/callback'; controller: typeof OAuthCallbackController };
+    'oauth.confirm': { method: 'post'; path: '/oauth/confirm/:provider{[a-z][a-z0-9-]*}'; controller: typeof ConfirmWithProviderController };
+    'oauth.confirm-options': { method: 'get'; path: '/oauth/confirm'; controller: typeof ShowConfirmButtonsController };
+    'oauth.link': { method: 'post'; path: '/oauth/accounts/:provider{[a-z][a-z0-9-]*}'; controller: typeof LinkSocialAccountController };
+    'oauth.redirect': { method: 'post'; path: '/auth/:provider{[a-z][a-z0-9-]*}/redirect'; controller: typeof OAuthRedirectController };
+    'oauth.sign-in': { method: 'get'; path: '/oauth/sign-in'; controller: typeof ShowSignInButtonsController };
+    'oauth.unlink': { method: 'post'; path: '/oauth/accounts/:provider{[a-z][a-z0-9-]*}/remove'; controller: typeof UnlinkSocialAccountController };
     'office.confirm': { method: 'get'; path: '/office/confirm-password' };
     'office.confirm.passkey': { method: 'post'; path: '/office/confirm-password/passkey' };
     'office.confirm.passkey.options': { method: 'post'; path: '/office/confirm-password/passkey/options' };
@@ -264,6 +280,7 @@ declare module '@marmeon/http/page' {
     'lab/GuestEdit': true;
     'lab/Invitation': true;
     'lab/LateError': true;
+    'lab/LocalOidcAuthorize': true;
     'lab/OneTimeLink': true;
     'lab/RenderError': true;
     'lab/Streaming': true;
@@ -274,6 +291,9 @@ declare module '@marmeon/http/page' {
     'members/Index': true;
     'notifications/ConfirmUnsubscribe': true;
     'notifications/Index': true;
+    'oauth/ConfirmButtons': true;
+    'oauth/ConnectedAccounts': true;
+    'oauth/SignInButtons': true;
     'office::Challenge': true;
     'office::Confirm': true;
     'office::Login': true;
