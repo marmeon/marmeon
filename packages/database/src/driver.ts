@@ -157,6 +157,8 @@ export class MarmeonDriver implements Driver {
   }
 
   init(options?: Parameters<Driver['init']>[0]): Promise<void> {
+    // A query after the shutdown would open a pool that nothing closes any more.
+    if (this.#closed) return Promise.reject(this.#closedError());
     // Once: Kysely inits lazily on the first query, `isolate()` may need it earlier.
     this.#init ??= this.#connecting(() => this.#driver.init(options)).catch((error: unknown) => {
       this.#init = undefined;
@@ -229,9 +231,13 @@ export class MarmeonDriver implements Driver {
 
   /** A connection of its own (locked on SQLite; the pinned one while isolated), with fresh schema metadata. */
   async #acquire(options?: Parameters<Driver['acquireConnection']>[0], checked = true): Promise<DatabaseConnection> {
+    // After the shutdown the dialect's own error (no client, a closed file) would point at the configuration.
+    if (this.#closed) throw this.#closedError();
     if (this.#single) await this.#lock.obtain();
     let connection: DatabaseConnection;
     try {
+      // A request that waited for the lock while the application shut down gets the shutdown's message, not the closed file's.
+      if (this.#closed) throw this.#closedError();
       connection = this.#pinned ?? this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection(options)));
     } catch (error) {
       if (this.#single) this.#lock.release();
@@ -382,7 +388,31 @@ export class MarmeonDriver implements Driver {
     return this.#driver.releaseSavepoint!(...args);
   }
 
-  async destroy(options?: Parameters<Driver['destroy']>[0]): Promise<void> {
+  /**
+   * Closes the driver's pool, once, and only when it was initialised: a driver that never was has no pool to close, and from now on
+   * `init()` refuses, so a late first query cannot open one. Kysely calls it when its own `destroy()` runs, and `Connections.destroy()`
+   * calls it for every connection, since the migrator's, the inspection's and the infrastructure's Kysely instances and `isolate()`
+   * initialise the driver without the app's `db`.
+   */
+  destroy(options?: Parameters<Driver['destroy']>[0]): Promise<void> {
+    this.#closed = true;
+    this.#closing ??= this.#close(options).catch((error: unknown) => {
+      this.#closing = undefined;
+      throw error;
+    });
+    return this.#closing;
+  }
+
+  #closed = false;
+
+  #closedError(): Error {
+    return new Error(`The database connections are closed (the application shut down); cannot use "${this.#context.name}".`);
+  }
+  #closing: Promise<void> | undefined;
+
+  async #close(options?: Parameters<Driver['destroy']>[0]): Promise<void> {
+    if (this.#init === undefined) return;
+    await this.#init.catch(() => undefined);
     // Closed while isolated (a test that closes its connections itself): its transaction is undone now, before the connection
     // goes — the isolation's rollback() finds nothing left to do instead of failing on a closed database.
     const pinned = this.#pinned;

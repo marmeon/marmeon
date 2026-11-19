@@ -273,7 +273,14 @@ export class Connections {
     this.#instances.clear();
     this.#infrastructure.clear();
     this.#pools.clear();
-    await Promise.all([...instances.map(({ db }) => db.destroy()), ...pools.map((pool) => pool.destroy())]);
+    // The driver itself too: the migrator's, the inspection's and the infrastructure's Kysely instances initialise it without the app's `db`, and then its own `destroy()` leaves the pool open.
+    await Promise.all([
+      ...instances.map(async ({ db, driver }) => {
+        await db.destroy();
+        await driver.destroy();
+      }),
+      ...pools.map((pool) => pool.destroy()),
+    ]);
   }
 
   #instance(name: string): Instance {
