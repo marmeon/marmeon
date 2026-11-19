@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/oauth",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Social login for Marmeon apps: OAuth 2.0 and OpenID Connect providers you register by name, configured from the environment.",
   "keywords": [
     "marmeon",
