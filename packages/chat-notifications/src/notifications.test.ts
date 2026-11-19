@@ -478,7 +478,7 @@ describe('the chat channel', { timeout: 30_000 }, () => {
     // Alan's address is one slack refuses
     const error = await app.container.make(Notifications).sendNow(alan, Alerted, { order: 'o-11' }).then(() => undefined, (caught: unknown) => caught as Error);
     expect(error).toBeInstanceOf(NotificationChannelError);
-    expect(error?.message).toBe('Alerted (shop.alerted): chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
+    expect(error?.message).toBe('Alerted (shop.alerted): chat.queue() needs @marmeon/queue (marmeon add queue; or pnpm add -E @marmeon/queue@<version of your app> and marmeon discover) — or post now: chat.send().');
     expect(await rowCount(connections)).toBe(0);
   });
 

@@ -493,7 +493,7 @@ describe('ChatServiceProvider: the queue', () => {
     expect(app.container.has(JobRegistry)).toBe(false);
     const error = await rejection(app.container.make(ChatNotifier).queue({ to: 'ops', text: 'x' }));
     expect(error).toBeInstanceOf(ChatError);
-    expect(error.message).toBe('chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
+    expect(error.message).toBe('chat.queue() needs @marmeon/queue (marmeon add queue; or pnpm add -E @marmeon/queue@<version of your app> and marmeon discover) — or post now: chat.send().');
   });
 });
 

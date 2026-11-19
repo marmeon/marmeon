@@ -135,7 +135,7 @@ export class ChatFake implements ChatNotifier {
     const { to, content } = await checkQueued(this.#targets, message, async () => {
       const module = await importQueue();
       if (!module || !this.#container.has(module.Queue)) {
-        throw new ChatError('chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
+        throw new ChatError('chat.queue() needs @marmeon/queue (marmeon add queue; or pnpm add -E @marmeon/queue@<version of your app> and marmeon discover) — or post now: chat.send().');
       }
     });
     const module = (await importQueue())!;

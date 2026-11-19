@@ -98,7 +98,7 @@ export class ChatServiceProvider implements ServiceProvider {
     const available = async (): Promise<QueueModule> => {
       const module = await importQueue();
       if (!module || !container.has(module.Queue)) {
-        throw new ChatError('chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
+        throw new ChatError('chat.queue() needs @marmeon/queue (marmeon add queue; or pnpm add -E @marmeon/queue@<version of your app> and marmeon discover) — or post now: chat.send().');
       }
       return module;
     };
