@@ -174,8 +174,31 @@ describe('importOptional on real imports', () => {
     await expect(importOptional('@p/w', () => Promise.reject(error), { from, probe: notFound })).rejects.toBe(error);
   });
 
+  it('rethrows when the package resolves, although the bare import and the disk say absent', async () => {
+    const error = Object.assign(new Error('x'), { code: 'ERR_MODULE_NOT_FOUND' });
+    const from = importer('@probe/none-resolves').url;
+    await expect(importOptional('@probe/none-resolves', () => Promise.reject(error), { from, resolve: () => 'file:///x.js', probe: notFound })).rejects.toBe(error);
+  });
+
+  it('rethrows when resolving fails with another code', async () => {
+    const error = Object.assign(new Error('x'), { code: 'ERR_MODULE_NOT_FOUND' });
+    const from = importer('@probe/none-resolve-other').url;
+    const resolve = () => {
+      throw Object.assign(new Error('y'), { code: 'ERR_INVALID_MODULE_SPECIFIER' });
+    };
+    await expect(importOptional('@probe/none-resolve-other', () => Promise.reject(error), { from, resolve, probe: notFound })).rejects.toBe(error);
+  });
+
+  it('returns undefined when resolving, the bare import and the disk all say absent', async () => {
+    const resolve = () => {
+      throw Object.assign(new Error('y'), { code: 'ERR_MODULE_NOT_FOUND' });
+    };
+    const from = importer('@probe/none-all').url;
+    expect(await importOptional('@probe/none-all', notFound, { from, resolve, probe: notFound })).toBeUndefined();
+  });
+
   it('recognises a package that does not exist under the module runner (default start)', async () => {
-    const name = ['@marmeon', 'not-installed', String(process.pid)].join('-');
+    const name = ['@marmeon/not-installed', String(process.pid)].join('-');
     expect(await importOptional(name, () => import(/* @vite-ignore */ name))).toBeUndefined();
   });
 
@@ -184,11 +207,17 @@ describe('importOptional on real imports', () => {
     const script = join(root, 'native.mjs');
     writeFileSync(
       script,
-      `import { importOptional } from ${JSON.stringify(helper)};
+      `import { registerHooks } from 'node:module';
+// A resolver hook that supplies '@probe/hooked' from memory; its source imports a dependency that does not exist.
+registerHooks({
+  resolve: (specifier, context, next) => (specifier === '@probe/hooked' ? { url: 'file:///hooked/entry.js', shortCircuit: true } : next(specifier, context)),
+  load: (url, context, next) => (url === 'file:///hooked/entry.js' ? { format: 'module', source: "import '@probe/hook-dep';", shortCircuit: true } : next(url, context)),
+});
+const { importOptional } = await import(${JSON.stringify(helper)});
 const answer = async (name, specifier) => {
   try { return String(typeof (await importOptional(name, () => import(specifier), { from: import.meta.url }))); } catch (error) { return 'threw ' + error.code; }
 };
-console.log(JSON.stringify([await answer('@probe/none', '@probe/none'), await answer('@probe/unbuilt', '@probe/unbuilt/testing'), await answer('@probe/ok', '@probe/ok')]));
+console.log(JSON.stringify([await answer('@probe/hooked', '@probe/hooked'), await answer('@probe/none', '@probe/none'), await answer('@probe/unbuilt', '@probe/unbuilt/testing'), await answer('@probe/ok', '@probe/ok')]));
 `,
     );
     const child = spawn(process.execPath, [script], { cwd: root, timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -199,7 +228,7 @@ console.log(JSON.stringify([await answer('@probe/none', '@probe/none'), await an
     child.stderr.on('data', (chunk) => (err += chunk));
     await new Promise((resolve) => child.on('close', resolve));
     expect(err).toBe('');
-    expect(JSON.parse(out)).toEqual(['undefined', 'threw ERR_MODULE_NOT_FOUND', 'object']);
+    expect(JSON.parse(out)).toEqual(['threw ERR_MODULE_NOT_FOUND', 'undefined', 'threw ERR_MODULE_NOT_FOUND', 'object']);
   });
 });
 

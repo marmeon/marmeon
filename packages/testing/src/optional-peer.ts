@@ -41,19 +41,25 @@ const absent = new Set<string>();
  * Any other failure (a syntax error from version skew, a missing dependency of the package, a missing subpath file) is thrown, so
  * a broken install fails the test instead of running it without the package's fake.
  *
- * Both checks must agree: a bare `import(name)` that fails with ERR_MODULE_NOT_FOUND too (the resolver that failed may have been
- * configured differently, by an alias or `--preserve-symlinks`), and no `node_modules/<name>` on disk (the runner reports a missing
- * file of an installed package with the package's name, and the wording of messages is not stable). Known misses: a package reached
- * only through a Vite `resolve.alias`, whose root entry is missing as well, has no proof on disk and counts as absent; and a
- * package installed after an absent answer in the same process stays absent until the process (one test file, by default) ends.
- * `from` and `probe` exist for tests.
+ * All three checks must agree, and each can only make "installed" more likely: `import.meta.resolve(name)` fails with
+ * ERR_MODULE_NOT_FOUND (resolving loads nothing, so a package that a resolver hook supplies, or whose dependency is missing, is
+ * found), a bare `import(name)` fails with it too (the resolver that failed may have been configured differently, by an alias or
+ * `--preserve-symlinks`), and no `node_modules/<name>` is on disk (the runner reports a missing file of an installed package with
+ * the package's name, and the wording of messages is not stable). Known misses: a package that only a Vite `resolve.alias` of
+ * this load reaches, and that neither the resolve nor the bare import nor the disk shows, counts as absent; and a package
+ * installed after an absent answer in the same process stays absent until the process (one test file, by default) ends.
+ * `from`, `resolve` and `probe` exist for tests.
  *
  * @internal
  */
 export async function importOptional<T>(
   name: string,
   load: () => Promise<T>,
-  { from = import.meta.url, probe = (specifier: string): Promise<unknown> => import(specifier) }: { from?: string; probe?: (specifier: string) => Promise<unknown> } = {},
+  {
+    from = import.meta.url,
+    resolve = (specifier: string): unknown => import.meta.resolve(specifier),
+    probe = (specifier: string): Promise<unknown> => import(specifier),
+  }: { from?: string; resolve?: (specifier: string) => unknown; probe?: (specifier: string) => Promise<unknown> } = {},
 ): Promise<T | undefined> {
   try {
     return await load();
@@ -62,6 +68,12 @@ export async function importOptional<T>(
     if (code !== 'ERR_MODULE_NOT_FOUND') throw error;
     const key = `${from}\0${name}`;
     if (absent.has(key)) return undefined;
+    try {
+      resolve(name);
+      throw error; // Resolved: the package is there.
+    } catch (resolveError) {
+      if (resolveError === error || (resolveError as { code?: unknown } | null)?.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    }
     try {
       await probe(name);
     } catch (probeError) {
