@@ -3,12 +3,12 @@ import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
 import { mysqlPending } from '../mysql-pending.ts';
-import { Blueprint, blueprintParts, compileColumn, foreignKeyName, oneOfCondition, oneOfName, type Driver } from './blueprint.ts';
+import { Blueprint, blueprintParts, compileColumn, foreignKeyName, mysqlForeignKeys, oneOfCondition, oneOfName, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
 import { unknownDriver } from '../supported-driver.ts';
 
-/** What a `schema.raw()` step runs per driver; a driver without a statement runs nothing. */
+/** What a `schema.raw()` step runs per driver; SQLite and Postgres run nothing without a statement, MySQL refuses the plan (`mysql: null` runs nothing, on purpose). */
 export interface RawStatements {
   readonly sqlite?: RawBuilder<unknown>;
   readonly pgsql?: RawBuilder<unknown>;
@@ -90,7 +90,31 @@ function fits(driver: Driver, name: string, what: string, hint = "Give it a name
   );
 }
 
-function check(driver: Driver, steps: readonly PlanStep[]): void {
+/**
+ * MySQL runs no statement written for another driver: a `schema.raw()` step whose object has no `mysql` statement (`null` says nothing runs
+ * there; `undefined` is no answer) refuses the plan, naming `who` and the step. Called before the first statement of a run, so nothing is half done.
+ */
+export function assertRawFitsMysql(steps: readonly PlanStep[], who: string): void {
+  for (const [index, step] of steps.entries()) {
+    // `undefined` is no answer, only `null` says nothing runs: a condition that ends in `undefined` must not skip the step without a word.
+    if (step.kind !== 'raw' || step.statements.mysql !== undefined) continue;
+    throw new SchemaError(
+      withCode(
+        'D18',
+        `${who} has a schema.raw() step (step ${index + 1} of its plan) with a statement for ${Object.entries(step.statements).filter(([driver, statement]) => driver !== 'mysql' && statement).map(([driver]) => driver).join(' and ') || 'no driver'} and none for MySQL, ` +
+          'which runs no statement written for another driver. Add `mysql: sql`…`` to it, or `mysql: null` when nothing is to run there. See docs/migrations.md#raw-sql.',
+      ),
+    );
+  }
+}
+
+/** What the plan cannot do on `driver`, refused before its first statement. `executePlan` calls it; a rollback calls it for every `down()` it is to run. */
+export function check(driver: Driver, steps: readonly PlanStep[]): void {
+  if (driver === 'mysql') {
+    assertRawFitsMysql(steps, 'The plan');
+    // Refused here, before the rename itself is committed: a rerun would stop at the table that is already renamed.
+    if (steps.some((step) => step.kind === 'rename' && step.indexes)) mysqlPending('Renaming a table with its indexes');
+  }
   for (const step of steps) {
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
     for (const index of step.blueprint.allIndexes()) fits(driver, index.name, 'index name');
@@ -137,13 +161,14 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
         ),
       );
     }
-    if (step.kind === 'alter' && driver === 'sqlite') {
+    if (step.kind === 'alter' && (driver === 'sqlite' || driver === 'mysql')) {
       const generated = parts.columns.find((spec) => spec.default && 'uuidv7' in spec.default);
       if (generated) {
+        const [database, reason] = driver === 'sqlite' ? ['SQLite', 'SQLite adds no column whose default is computed'] : ['MySQL', 'MySQL refuses to add a column whose default is computed from the time and random bytes (error 1674)'];
         throw new SchemaError(
           withCode(
             'D18',
-          `schema.alter('${step.table}') cannot add the UUIDv7 column "${generated.name}" on SQLite: SQLite adds no column whose default is computed. ` +
+          `schema.alter('${step.table}') cannot add the UUIDv7 column "${generated.name}" on ${database}: ${reason}. ` +
             'Create the table with the column instead (on Postgres, alter works). See docs/migrations.md#uuid-keys.',
           ),
         );
@@ -179,14 +204,19 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
       }
       return;
     case 'raw': {
+      // MySQL's `null` runs nothing, like a driver without a statement.
       const statement = step.statements[driver];
       if (statement) await statement.execute(db);
       return;
     }
-    case 'data':
+    case 'data': {
       // The migrator's tables are its to write, and a schema change here would be missing from the plan.
-      await step.run(db.withPlugin(noMigratorWrites()).withPlugin(noSchemaChanges()) as unknown as Connection<any>, { driver });
+      const guarded = async (on: Kysely<any>) => step.run(on.withPlugin(noMigratorWrites(driver)).withPlugin(noSchemaChanges(driver)) as unknown as Connection<any>, { driver });
+      // MySQL's migration has no transaction around it (its DDL would end it): the rows of a data step are its own, committed or rolled back with it.
+      if (driver === 'mysql' && !db.isTransaction) await db.transaction().execute(guarded);
+      else await guarded(db);
       return;
+    }
   }
 }
 
@@ -195,7 +225,13 @@ async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pr
   let builder = db.schema.createTable(blueprint.table);
   for (const spec of parts.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver, blueprint));
   for (const { name, sql: condition } of parts.checks) builder = builder.addCheckConstraint(name, sql.raw(condition));
-  await builder.execute();
+  if (driver === 'mysql') {
+    for (const [name, column, { table, column: referenced, onDelete }] of mysqlForeignKeys(parts.columns, blueprint.table)) {
+      builder = builder.addForeignKeyConstraint(name, [column] as never[], table, [referenced], (key) => (onDelete ? key.onDelete(onDelete) : key));
+    }
+  }
+  // The table's own collation, binary like the session's: a token or an email compares byte for byte, as on SQLite and Postgres.
+  await (driver === 'mysql' ? builder.modifyEnd(sql`default character set utf8mb4 collate utf8mb4_0900_bin`) : builder).execute();
   await createIndexes(db, blueprint);
 }
 
@@ -203,12 +239,18 @@ async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Pr
 async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, listCheck?: (table: string, column: string) => { readonly name: string; readonly had: boolean } | undefined): Promise<void> {
   const parts = blueprintParts(blueprint);
   const table = blueprint.table;
-  for (const name of parts.dropIndexes) await db.schema.dropIndex(name).execute();
+  // MySQL names the table an index is dropped from.
+  for (const name of parts.dropIndexes) await (driver === 'mysql' ? db.schema.dropIndex(name).on(table) : db.schema.dropIndex(name)).execute();
   for (const name of parts.dropChecks) await db.schema.alterTable(table).dropConstraint(name).execute();
   for (const { from, to } of parts.renames) {
     await db.schema.alterTable(table).renameColumn(from, to).execute();
   }
   for (const spec of parts.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver, blueprint)).execute();
+  if (driver === 'mysql') {
+    for (const [name, column, { table: target, column: referenced, onDelete }] of mysqlForeignKeys(parts.columns, table)) {
+      await db.schema.alterTable(table).addForeignKeyConstraint(name, [column], target, [referenced], (key) => (onDelete ? key.onDelete(onDelete) : key)).execute();
+    }
+  }
   for (const { column, nullable } of parts.nullability) {
     await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
   }

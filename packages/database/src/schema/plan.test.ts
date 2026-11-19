@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application } from '@marmeon/core';
-import { sql } from 'kysely';
+import { DummyDriver, Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, sql, type RawBuilder } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
@@ -330,7 +330,10 @@ describe('what up() refuses while it builds the plan', () => {
       expect(() => schema.raw(sql`drop table ${sql.raw(name)}`)).toThrow(/\[marmeon:D4\]/);
       expect(() => schema.raw({ pgsql: sql`delete from "${sql.raw(name)}"` })).toThrow(SchemaError);
     }
-    expect(() => schema.raw(sql`select 'migrations' as name`)).not.toThrow();
+    expect(() => schema.raw({ pgsql: sql`select 'migrations' as name`, mysql: sql`select 'migrations' as name` })).not.toThrow();
+    // SQLite takes a string for a name where a name is expected (`delete from 'migrations'`), so it counts there.
+    expect(() => schema.raw({ sqlite: sql`select 'migrations' as name` })).toThrow(/\[marmeon:D4\]/);
+    expect(() => schema.raw({ sqlite: sql`delete from 'migrations'` })).toThrow(/\[marmeon:D4\]/);
   });
 
   it('does not read the comments of a raw statement', () => {
@@ -341,13 +344,147 @@ describe('what up() refuses while it builds the plan', () => {
     expect(() => schema.raw(sql`/* note */ drop table migrations`)).toThrow(/names "migrations", a table of the migrator/);
   });
 
-  it('checks the mysql statement of schema.raw() by the lexing rules of SQLite and Postgres, which MySQL does not share', () => {
-    const schema = new Schema();
-    expect(() => schema.raw({ mysql: sql`drop table migrations` })).toThrow(/\[marmeon:D4\]/);
-    // PINS TODAY'S BEHAVIOUR, not a guarantee: MySQL runs the text of a `/*! … */` comment (and reads a backslash in a string as an escape), but
-    // the check strips the comment as plain SQL does. Nothing runs a `mysql` statement yet; the step that
-    // does must replace the check with a stripping of MySQL's own, and this test with one that refuses it.
-    expect(() => schema.raw({ mysql: sql`/*! drop table migrations */ select 1` })).not.toThrow();
+  describe('the mysql statement of schema.raw(), lexed as MySQL does', () => {
+    const mysql = (text: string) => () => new Schema().raw({ mysql: sql.raw(text) });
+
+    it.each([
+      ['a plain name', 'drop table migrations'],
+      ['a name in backticks', 'drop table `migrations`'],
+      ['a name in double quotes (ANSI_QUOTES)', 'drop table "migration_lock"'],
+      ['an executable comment', '/*! drop table migrations */ select 1'],
+      ['an executable comment with a version', 'select 1 /*!50100 , (select count(*) from migrations) */'],
+      ['an optimizer hint', 'select /*+ no_index(migrations) */ 1'],
+      ['a string that a backslash keeps open until the quote after the escaped one', "select '\\'' ; delete from migrations ; select ''"],
+      ['a statement after a # comment with an apostrophe in it', "select 1 # it's\n; delete from migrations\n# don't"],
+      ['a statement after a comment with an apostrophe in it', "/* it's */ delete from migrations; /* don't */"],
+      ['arithmetic that only looks like a -- comment', 'select 1--1 ; delete from migrations'],
+      ['a quote inside an executable comment that the server may skip', "delete /*!99999 ' */ from migrations /*!99999 ' */"],
+      ['a quote inside an optimizer hint', "delete /*+ ' */ from migrations /*+ ' */"],
+      ['an unterminated string', "select 'abc ; delete from migrations"],
+      ['an unterminated comment', 'select 1 /* delete from migrations'],
+    ])('refuses %s with D4', (_name, text) => {
+      expect(mysql(text)).toThrow(/\[marmeon:D4\].*a table of the migrator/);
+    });
+
+    it.each([
+      ['the name in a string', "select 'migrations' as name"],
+      ['a string with an escaped quote that holds the name', "select 'it\\'s migrations'"],
+      ['a string with a doubled quote that holds the name', "select 'it''s migrations'"],
+      ['a comment with the name', '/* migrations */ create index notes_index on notes (id)'],
+      ['a # comment with the name', 'select 1 # migrations\n, 2'],
+      ['a -- comment with the name', 'select 1 -- migrations\n, 2'],
+      ['a name with a longer name around it', 'select * from migrations_archive'],
+      ['an optimizer hint that names no table of the migrator', "select /*+ no_index(t) */ 'note' from t"],
+    ])('allows %s', (_name, text) => {
+      expect(mysql(text)).not.toThrow();
+    });
+
+    it('says that every word counts when the statement has an executable comment', () => {
+      expect(mysql('select /*! 1 */ 2 from migrations')).toThrow(/a statement with a \/\*! or \/\*\+ comment is read with every word/);
+      expect(mysql('select 2 from migrations')).toThrow(/^(?!.*every word)/s);
+    });
+
+    it('reads a name made with sql.id(), sql.table() or sql.ref() as the name it is', () => {
+      for (const name of [sql.id('migrations'), sql.table('migration_lock'), sql.ref('migrations.id')]) {
+        expect(() => new Schema().raw({ mysql: sql`select 1 from ${name}` })).toThrow(/\[marmeon:D4\]/);
+        expect(() => new Schema().raw({ pgsql: sql`select 1 from ${name}` })).toThrow(/\[marmeon:D4\]/);
+      }
+      expect(() => new Schema().raw({ mysql: sql`select ${'migrations'}` })).not.toThrow();
+      // A name that holds `--` or a quote must not hide what follows it from the guard.
+      for (const driver of ['pgsql', 'sqlite'] as const) {
+        expect(() => new Schema().raw({ [driver]: sql`with ${sql.id('--')} as (select 1) delete from migrations` })).toThrow(/\[marmeon:D4\]/);
+        expect(() => new Schema().raw({ [driver]: sql`select ${sql.id("'")} from ${sql.id('migrations')}, ${sql.id("'")}` })).toThrow(/\[marmeon:D4\]/);
+      }
+      expect(() => new Schema().raw({ mysql: sql`select ${sql.id('--')} from ${sql.id('migrations')}` })).toThrow(/\[marmeon:D4\]/);
+    });
+
+    describe('a part that is no plain name or value still shows its words', () => {
+      const db = new Kysely<any>({ dialect: { createAdapter: () => new MysqlAdapter(), createDriver: () => new DummyDriver(), createIntrospector: (d: Kysely<any>) => new MysqlIntrospector(d), createQueryCompiler: () => new MysqlQueryCompiler() } });
+      const forms: [string, RawBuilder<unknown>][] = [
+        ['sql.table().as()', sql`update ${sql.table('migrations').as('m')} set batch = 0`],
+        ['sql.id().as()', sql`update ${sql.id('migrations').as('m')} set batch = 0`],
+        ['sql``.as()', sql`update ${sql`migrations`.as('m')} set batch = 0`],
+        ['db.dynamic.table().as()', sql`update ${db.dynamic.table('migrations').as('m')} set batch = 0`],
+        ['a function over a reference', sql`select ${db.fn.max(sql.ref('migrations.batch'))}`],
+        ['a nested select', sql`insert into t ${db.selectFrom('migrations').select('id')}`],
+        ['a nested update', sql`${db.updateTable('migrations').set({ batch: 0 })}`],
+        ['a fragment behind an empty parameter', sql`${sql``}${sql.raw('select')} * from migrations`],
+      ];
+      it.each(forms.flatMap(([name, form]) => (['pgsql', 'sqlite', 'mysql'] as const).map((driver) => [name, driver, form] as const)))('refuses %s on %s', (_name, driver, form) => {
+        expect(() => new Schema().raw({ [driver]: form })).toThrow(/\[marmeon:D4\]/);
+      });
+
+      it('does not read a bound value in a nested query, and still reads its names', () => {
+        expect(() => new Schema().raw({ pgsql: sql`insert into t ${db.insertInto('notes').values({ body: 'migrations' })}` })).not.toThrow();
+        expect(() => new Schema().raw({ pgsql: sql`select 1 ${db.selectFrom('notes').selectAll().where('body', 'in', ['migrations', 'drop'])}` })).not.toThrow();
+        expect(() => new Schema().raw({ pgsql: sql`select ${{ kind: 'DropTableNode' }}` })).not.toThrow();
+        expect(() => new Schema().raw({ pgsql: sql`select 1 ${db.selectFrom('notes').selectAll().where('body', 'in', [sql`migrations`])}` })).toThrow(/\[marmeon:D4\]/);
+      });
+
+      it('keeps a part that names nothing of the migrator, and the word in a bound value', () => {
+        expect(() => new Schema().raw({ mysql: sql`update ${sql.table('notes').as('n')} set a = ${'migrations'}` })).not.toThrow();
+        expect(() => new Schema().raw({ pgsql: sql`insert into t ${db.selectFrom('notes').select('id')}` })).not.toThrow();
+      });
+    });
+
+    it.each([
+      ['sqlite', "/* ' */ update migrations set name = 'x'"],
+      ['sqlite', "/* it's */ delete from migrations /* don't */"],
+      ['sqlite', "-- it's\ndelete from migrations"],
+      ['sqlite', 'with "--" as (select 1) delete from migrations'],
+      ['sqlite', 'with [it\'s] as (select 1) delete from migrations'],
+      ['sqlite', 'with `it\'s` as (select 1) delete from migrations'],
+      ['pgsql', "/* it's */ delete from migrations /* don't */"],
+      ['pgsql', "with \"it's\" as (select 1) delete from migrations"],
+      ['pgsql', "select $$ ' $$; delete from migrations"],
+      ['pgsql', "select $t$ ' $t$; delete from migrations; select '"],
+      ['pgsql', "select E'\\''; delete from migrations; select '"],
+      ['pgsql', 'do $$ begin delete from migrations; end $$'],
+      ['pgsql', "/* outer /* inner */ ' */ update migrations set name = 'x'"],
+      ['pgsql', "/* /* */ ' */ delete from migrations /* ' */"],
+      ['pgsql', '/* /* */ -- */ delete from migrations'],
+      ['pgsql', '-- x\rdelete from migrations'],
+      ['pgsql', "with x as (select 1 \u00e9$$, ' $$ ') delete from migrations /* ' */"],
+      ['pgsql', "select \u00e9E'\\' from migrations /* ' */"],
+      ['pgsql', `select $${'t'.repeat(300)}$ ' $${'t'.repeat(300)}$; delete from migrations; select '`],
+      ['sqlite', "delete from 'migrations'"],
+      ['pgsql', 'delete from U&"migr\\0061tions"'],
+      ['pgsql', "delete from U&\"migr!0061tions\" UESCAPE '!'"],
+      ['pgsql', "delete from U&\"migr!0061tions\" /* /* */ */ uescape '!'"],
+      ['sqlite', "with x as (select $a(')) delete from migrations where $a(') is null"],
+      ['sqlite', "with x as (select @a(')) delete from migrations where @a(') is null"],
+      ['sqlite', "with x as (select :a(')) delete from migrations where :a(') is null"],
+      ['sqlite', "with x as (select #a(')) delete from migrations where #a(') is null"],
+    ] as const)('reads the %s statement %s by its own lexing, and finds the table', (driver, text) => {
+      expect(() => new Schema().raw({ [driver]: sql.raw(text) })).toThrow(/\[marmeon:D4\]/);
+    });
+
+    it.each(['sqlite', 'pgsql', 'mysql'] as const)('reads a name that holds a quote and a statement as the compiled text has it, on %s', (driver) => {
+      const form = sql`select '${sql.id("'; delete from migrations; -- ")}'`;
+      expect(() => new Schema().raw({ [driver]: form })).toThrow(/\[marmeon:D4\]/);
+    });
+
+    it('reads a literal that Kysely writes into the statement as the text it is: a name on SQLite, a string elsewhere', () => {
+      const lit = sql`delete from ${sql.lit('migrations')}`;
+      expect(() => new Schema().raw({ sqlite: lit })).toThrow(/\[marmeon:D4\]/);
+      expect(() => new Schema().raw({ pgsql: lit, mysql: lit })).not.toThrow();
+      // A bound value is no part of the text.
+      expect(() => new Schema().raw({ sqlite: sql`delete from t where a = ${'migrations'}` })).not.toThrow();
+    });
+
+    it.each(['sqlite', 'pgsql'] as const)('allows the name of a migrator table in a comment on %s, and in a string on Postgres only', (driver) => {
+      for (const text of ['select 1 /* migrations */', 'select 1 -- migrations\n, 2']) expect(() => new Schema().raw({ [driver]: sql.raw(text) }), text).not.toThrow();
+      for (const text of ["select 'migrations'", "select 'it''s migrations'"]) {
+        const raw = () => new Schema().raw({ [driver]: sql.raw(text) });
+        if (driver === 'pgsql') expect(raw, text).not.toThrow();
+        else expect(raw, text).toThrow(/\[marmeon:D4\]/);
+      }
+    });
+
+    it('still reads the statements for the other drivers as before: a # is no comment there, a backslash no escape', () => {
+      expect(() => new Schema().raw({ pgsql: sql`select 1 # migrations` })).toThrow(/\[marmeon:D4\]/);
+      expect(() => new Schema().raw({ sqlite: sql`/*! drop table migrations */ select 1` })).not.toThrow();
+    });
   });
 
   it('refuses a table without columns, a drop in create() and a column named twice', () => {
