@@ -51,7 +51,7 @@ Node 26.10 or newer and pnpm 12 (the version in `packageManager` — `pnpm self-
 
 ```sh
 pnpm install
-docker compose up -d   # Postgres, Redis and S3 for test:pgsql, test:redis and test:s3 (this repository's containers only)
+docker compose up -d   # Postgres, Redis, S3 and MySQL for test:pgsql, test:redis, test:s3 and test:mysql (this repository's containers only)
 pnpm dev               # the web app (apps/web-app) on http://localhost:3000 — first its .env and database (apps/web-app/README.md)
 ```
 
@@ -65,7 +65,7 @@ Optional: [zizmor](https://docs.zizmor.sh) (`brew install zizmor` or `uv tool in
 pnpm run ci            # every check CI runs: build, typecheck, lint, the test suites, sizes, types, docs, tarballs, image, release, workflows
 ```
 
-`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 17 parts (`pnpm run ci --list`;
+`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 18 parts (`pnpm run ci --list`;
 [The repository](#the-repository) names them); some of them: `pnpm run ci --only test,lint`. `pack:smoke` and `image` need the
 package store, the registry and Docker, `zizmor` needs [zizmor](#the-workflows-zizmor) — without them they are reported as skipped, which is not green.
 
@@ -97,7 +97,7 @@ apps/blank-app    an app without modules: what create-marmeon --minimal writes (
 examples/*        demos on the starter kit, each an overlay (files, edits, commands) that pack:smoke applies to its kit app and runs
 apps/website      the documentation as a Marmeon app: docs/*.md and the policies at the root (pnpm website:dev; apps/website/Dockerfile, deploy/website)
 docs              the documentation's pages, in the order apps/website/docs.config.ts lists them
-scripts/ci.ts     pnpm run ci — its 17 parts, from the build to the release rules (below)
+scripts/ci.ts     pnpm run ci — its 18 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 scripts/test      the test suite's temporary directory per run, tempDir() and workspaceTempDir() — the repository's own, not exported by a package
                   (pnpm test fails when a test leaves an entry behind)
@@ -110,7 +110,7 @@ UPGRADING.md      what changes for apps from one version to the next
 
 ```sh
 pnpm run ci            # everything, as CI runs it (pnpm ci without `run` is pnpm's clean install)
-pnpm test              # the test suite; test:pgsql, test:redis, test:s3 against the containers (docker compose up -d)
+pnpm test              # the test suite; test:pgsql, test:redis, test:s3, test:mysql against the containers (docker compose up -d)
 pnpm website:dev       # the docs on http://localhost:3970
 pnpm website:image     # the docs' image (apps/website/Dockerfile): built, run read-only and behind Caddy (deploy/website) — part of `image`
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
@@ -125,9 +125,9 @@ pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome und
 signs in over HTTP and visits the guest and signed-in pages, a layer by deep link and by click, and a failing visit — in headless
 Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <path>` or `CHROME`).
 
-`pnpm run ci` runs 17 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
-`typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
-and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle sizes against the base commit —
+`pnpm run ci` runs 18 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
+`typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`,
+`test:s3` and `test:mysql` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle sizes against the base commit —
 [The bundle sizes](#the-bundle-sizes)), `types:check` (the apps' generated route and table types are current), `api:check` (each package's `api.md` matches its built declarations — [The API snapshot](#the-api-snapshot)), `website:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image), `check-release` and `zizmor`
 (the workflows, [below](#the-workflows-zizmor)).
@@ -135,7 +135,7 @@ and `test:s3` against this repository's containers (`compose.yaml`, started as n
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `--shard i/n` runs one n-th
 of the files of the selected test parts (Vitest's `--shard`; with no test part selected it is an error). `ci.yml` splits the parts
 into jobs that run side by side (the checks, the tests as three shards `test (1/3)` to `test (3/3)`, the tarballs, the image,
-Postgres as two shards `test:pgsql (1/2)` and `(2/2)`, Redis, S3, zizmor); a shard builds for itself, and a job's name is what a required
+Postgres as two shards `test:pgsql (1/2)` and `(2/2)`, Redis, MySQL, S3, zizmor); a shard builds for itself, and a job's name is what a required
 check of the repository would list. The job `test:pgsql` only waits for both Postgres shards and fails unless they passed, so the
 name a required check lists stays the same.
 
@@ -151,6 +151,7 @@ pnpm test:pgsql   # MARMEON_TEST_PGSQL_URL, DB_DRIVER=pgsql and DB_URL → postg
 pnpm test:redis   # MARMEON_TEST_REDIS_URL=redis://127.0.0.1:56379
 pnpm test:s3      # MARMEON_TEST_S3_ENDPOINT=http://127.0.0.1:56333
                   # (MARMEON_TEST_S3_KEY / MARMEON_TEST_S3_SECRET default to the compose identity)
+pnpm test:mysql   # MARMEON_TEST_MYSQL_URL=mysql://root:secret@127.0.0.1:53306/marmeon (MySQL 8.4)
 ```
 
 Each of them runs only the test files that use its service, not the whole suite again. `scripts/test/services.ts` derives the
@@ -163,12 +164,12 @@ specifier, so import a `__fixtures__` file relatively; the selection throws on a
   `test-helpers/`, `*.test-support.ts` or a test) builds a `database: 'refresh'` app; the test lives in an app that depends on
   `@marmeon/database` (`DB_DRIVER` from the environment wins over the app's `.env`); a test or helper starts a nested Vitest
   (its refresh tests inherit `DB_DRIVER`).
-- **Redis** and **S3**: a file reads `MARMEON_TEST_REDIS_URL` or `MARMEON_TEST_S3_ENDPOINT`.
+- **Redis**, **S3** and **MySQL**: a file reads `MARMEON_TEST_REDIS_URL`, `MARMEON_TEST_S3_ENDPOINT` or `MARMEON_TEST_MYSQL_URL`.
 
-Each project gets tripwire values for the services its files were not selected for: `DB_DRIVER=pgsql` with a Postgres URL, a Redis URL and an S3
-endpoint on `not-selected-for-test-….invalid` hosts (which never resolve), so a file that reaches a service the rules do not
+Each project gets tripwire values for the services its files were not selected for: `DB_DRIVER=pgsql` with a Postgres URL, a Redis URL, an S3
+endpoint and a MySQL URL on `not-selected-for-test-….invalid` hosts (which never resolve), so a file that reaches a service the rules do not
 see fails in the plain `pnpm test` instead of silently dropping out of the service runs. An error that names
-`not-selected-for-test-pgsql.invalid` (or `-redis`, `-s3`) means exactly that: import the helper relatively, or extend the
+`not-selected-for-test-pgsql.invalid` (or `-redis`, `-s3`, `-mysql`) means exactly that: import the helper relatively, or extend the
 rule in `scripts/test/services.ts` — do not change the test.
 
 Tests that assert something about wall-clock time (a ratio, an upper bound) live in a file `<name>.timing.test.ts`. These files run
@@ -184,7 +185,7 @@ so what they take depends on their own work, not on the load next to them. The r
 
 With `DB_DRIVER=pgsql` and `DB_URL` in the environment, refreshed test apps of any app use Postgres: the role needs the
 right to create databases (one per worker, next to the configured one). Run `test:pgsql` for every change to the database,
-sessions, auth, queues or locks — Postgres finds races SQLite hides. Never run two Postgres or Redis suites at once: they share
+sessions, auth, queues or locks — Postgres finds races SQLite hides. Never run two Postgres, Redis or MySQL suites at once: they share
 their test databases. A session store of the framework is held to the shared suite in
 `packages/session/src/stores/stores.test.ts`, the contract's test: compare and write in one atomic step.
 
@@ -755,7 +756,7 @@ changes follows from its label, as for any release.
   `CONTRIBUTING.md` into `packages/cli/` (`scripts/docs-ship.ts`, gitignored, never checked in) and writes `docs/index.json` and
   `docs/llms.txt`. `pnpm pack:check` demands every copy byte for byte and nothing else under `docs/`.
 - `pnpm pack:smoke` makes a starter-kit app (pnpm) and a minimal one (npm) from the tarballs outside the repository and runs
-  install, tests, lint, build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
+  install, tests, lint, `marmeon doctor --json` (every check must pass, on both apps), build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
   pino-pretty; the Redis step needs the Redis of `compose.yaml`. The apps live under `$TMPDIR`, with no `node_modules/@marmeon`
   or `pnpm-workspace.yaml` above them. On the starter kit it then applies the notes demo (`examples/notes`: `commands.json`,
   `files/`, `edits.json` — each `find` of an edit occurs exactly once, and only `marmeon <command>` lines run) and runs that app's
@@ -836,7 +837,7 @@ dependent's directory). A package the app adds later comes from its tarball:
 `pnpm add ./vendor/marmeon/marmeon-redis-<version>.tgz`. That is how `pnpm pack:smoke` and `pnpm image:smoke` make their apps
 before anything is published. It is not for apps: the variable never reaches the install and the generators.
 
-The tests next to the kit's stubs (`packages/auth/stubs/react/modules/*/`) do not run where they lie: they import the app's paths, and the root `include` of Vitest takes no package's `stubs/`. They run once in `pnpm test`, in an app that `make:auth` writes: the starter kit in `packages/create-marmeon/src/kit.test.ts` ("the starter kit works"), on SQLite and, under `pnpm test:pgsql`, on Postgres. That one run also generates the routes, migrates, type-checks, lints (module boundaries on `modules/auth` and `modules/system`) and builds the kit. `pnpm pack:smoke` runs the tests again from the tarballs. `kit.test.ts` counts the passing tests of each `describe`, so a test added to one changes its count there. To run them alone: `pnpm test packages/create-marmeon/src/kit.test.ts`. Redis is covered by the copies of the modules in `apps/web-app`, so a change to a stub test belongs in its copy too.
+The tests next to the kit's stubs (`packages/auth/stubs/react/modules/*/`) do not run where they lie: they import the app's paths, and the root `include` of Vitest takes no package's `stubs/`. They run once in `pnpm test`, in an app that `make:auth` writes: the starter kit in `packages/create-marmeon/src/kit.test.ts` ("the starter kit works"), on SQLite and, under `pnpm test:pgsql`, on Postgres. That one run also generates the routes, migrates, type-checks, lints (module boundaries on `modules/auth` and `modules/system`) and builds the kit. `pnpm pack:smoke` runs the tests again from the tarballs. `kit.test.ts` counts the passing tests of each `describe`, so a test added to one changes its count there. To run them alone: `pnpm test packages/create-marmeon/src/kit.test.ts`. Redis is covered by the copies of the modules in `apps/web-app`, so a change to a stub test belongs in its copy too. The stub tests of `@marmeon/oauth` (`packages/oauth/stubs/react/modules/oauth/`) run the same way in `packages/create-marmeon/src/kit-oauth.test.ts`, in a kit app that also ran `make:oauth` and `make:social-accounts-table`, with the same per-`describe` counts; `pnpm pack:smoke` does not run them.
 
 ### The client core and its adapters
 

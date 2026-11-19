@@ -1,7 +1,7 @@
 import { withCode } from '@marmeon/core/internal';
 import { byCodePoint, type ForeignKey, type Introspected, type SchemaMarker } from '../introspection.ts';
 import { loadMigration, type MigrationSource } from '../migrations/load.ts';
-import { blueprintParts, isStringType, oneOfName, type Blueprint, type ColumnSpec, type IndexCondition, type Driver, type TableMarker } from './blueprint.ts';
+import { blueprintParts, isStringType, mysqlTypeOf, oneOfName, type Blueprint, type ColumnSpec, type IndexCondition, type Driver, type TableMarker } from './blueprint.ts';
 import { planOf, type ListCheck, type PlanStep } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -96,6 +96,9 @@ function unknown(where: string, what: string): SchemaError {
 function retiredColumn(where: string, table: string, column: string): SchemaError {
   return new SchemaError(withCode('D19', `${where} changes "${table}.${column}", which an earlier migration retired. A retired column can only be dropped with dropColumn().`));
 }
+
+/** Every driver, from the keys of a record that must name them all: a driver added to the type fails to compile here. */
+const DRIVERS = Object.keys({ sqlite: 0, pgsql: 0, mysql: 0 } satisfies Record<Driver, 0>) as Driver[];
 
 /** Another mistake in a plan that makes the projection impossible (a name taken twice, a column that is there already). */
 function conflict(message: string): SchemaError {
@@ -261,14 +264,14 @@ function referencesLive(tables: ReadonlyMap<string, ProjectedTable>, blueprint: 
 /** The kind of value a column holds, for telling whether a foreign key can join two columns. */
 function family(type: string): string {
   if (/^(integer|bigint)$/.test(type)) return 'integer';
-  if (/^(varchar|text)\b/.test(type)) return 'string';
+  if (/^(varchar|text|longtext)\b/.test(type)) return 'string';
   return type;
 }
 
 /** The kind of a column for the value of a partial index's condition; `other` for a type the projection leaves alone. */
 function conditionKind(column: ProjectedColumn): 'boolean' | 'integer' | 'string' | 'other' {
-  const kinds = [family(column.type.sqlite), family(column.type.pgsql)];
-  if (kinds[0] !== kinds[1]) return 'other';
+  const kinds = DRIVERS.map((driver) => family(column.type[driver]));
+  if (kinds.some((kind) => kind !== kinds[0])) return 'other';
   return kinds[0] === 'boolean' ? 'boolean' : kinds[0] === 'integer' ? 'integer' : kinds[0] === 'string' ? 'string' : 'other';
 }
 
@@ -283,7 +286,7 @@ function tiedColumns(tables: ReadonlyMap<string, ProjectedTable>, blueprint: Blu
     if (!to) throw conflict(`${where} ties "${blueprint.table}.${column}" to "${table}.${referenced}", which is not a column of that table (or an earlier migration retired it).`);
     const from = source.columns.find((c) => c.name === column);
     if (!from) throw conflict(`${where} ties "${blueprint.table}.${column}" to "${table}.${referenced}", but the same alter() drops the column.`);
-    for (const driver of ['sqlite', 'pgsql'] as const) {
+    for (const driver of DRIVERS) {
       if (family(from.type[driver]) !== family(to.type[driver])) {
         throw conflict(`${where} ties "${blueprint.table}.${column}" (${from.type[driver]}) to "${table}.${referenced}" (${to.type[driver]}), which hold different kinds of values. A foreign key joins an integer to an integer and a uuid to a uuid.`);
       }
@@ -313,11 +316,11 @@ function blank(name: string, module: string): ProjectedTable {
   return { name, module, columns: [], uniques: [], indexes: [], foreignKeys: [], markers: [] };
 }
 
-function columnOf(spec: ColumnSpec): ProjectedColumn {
+function columnOf(spec: ColumnSpec, blueprint: Blueprint): ProjectedColumn {
   const { type } = spec;
   return {
     name: spec.name,
-    type: { sqlite: String(type.sqlite), pgsql: String(type.pgsql) },
+    type: { sqlite: String(type.sqlite), pgsql: String(type.pgsql), mysql: String(mysqlTypeOf(spec, blueprint)) },
     // A primary key is never NULL, whatever the blueprint says of the column.
     nullable: spec.nullable && !spec.primary,
     primary: spec.primary,
@@ -375,7 +378,7 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     if (spec.oneOf && (checks.some((check) => check.name === oneOfName(name, spec.name)) || columns.some((c) => c.valuesCheck === oneOfName(name, spec.name)))) {
       throw conflict(`${where} makes the check constraint "${oneOfName(name, spec.name)}" of "${name}.${spec.name}" with oneOf(), but the table has one of that name. Drop it with dropCheck() or name the other one differently.`);
     }
-    columns = [...columns, columnOf(spec)];
+    columns = [...columns, columnOf(spec, blueprint)];
     if (spec.references) {
       const { table: references, column: referenced, onDelete, inverse } = spec.references;
       foreignKeys = [...foreignKeys, { column: spec.name, references, referenced, ...(onDelete ? { onDelete } : {}),...(inverse ? { inverse } : {}) }];

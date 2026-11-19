@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Clock, ContainerError } from '@marmeon/core';
 import { Connections, secretEquals, sql, type Secret } from '@marmeon/database';
+import { storeDatabase } from './store-drivers.ts';
 import { assertTableName } from './table-names.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -169,7 +170,7 @@ export class DatabaseEmailChanges extends EmailChangeStore {
   }
 
   #db() {
-    return this.#connections.get<{ [EMAIL_CHANGES_TABLE]: EmailChangeTable }>();
+    return storeDatabase<{ [EMAIL_CHANGES_TABLE]: EmailChangeTable }>(this.#connections, 'The email-change store');
   }
 }
 

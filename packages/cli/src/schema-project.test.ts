@@ -21,7 +21,7 @@ describe('marmeon schema:project (the schema projection of the migrations)', { t
     expect(code).toBe(0);
     expect(stdout).toContain('→ .marmeon/schema.json');
     const file = JSON.parse(readFileSync(join(dir, '.marmeon/schema.json'), 'utf8')) as { format: number; migrations: unknown[]; tables: Record<string, unknown> };
-    expect(file.format).toBe(2);
+    expect(file.format).toBe(3);
     expect(file.migrations).toHaveLength(3);
     expect(Object.keys(file.tables)).toEqual(['jobs', 'failed_jobs', 'notifications', 'live_hints']);
     expect(marmeon(dir, ['list']).stdout).not.toContain('schema:project');
@@ -70,7 +70,7 @@ describe('marmeon schema:project (the schema projection of the migrations)', { t
     const dir = appWithoutDatabase(true);
     const { code, stderr } = marmeon(dir, ['schema:project']);
     expect(code).toBe(1);
-    expect(stderr).toContain('add @marmeon/database as a dependency of the app');
+    expect(stderr).toContain('marmeon add database (if the app does not boot yet: pnpm add -E @marmeon/database@<version of your app>)');
   });
 
   it('always computes the schema again: a file with altered tables and matching hashes is written over', () => {

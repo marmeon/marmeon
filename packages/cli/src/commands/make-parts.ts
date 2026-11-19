@@ -33,7 +33,7 @@ function partName(input: CommandInput, suffix: string): string | undefined {
 function needs(input: CommandInput, packages: readonly (readonly [name: string, why: string])[]): boolean {
   for (const [name, why] of packages) {
     if (!dependsOn(input.root, name)) {
-      input.output.error(`${why} ${name}: pnpm add -E ${name}@<version of your app>`);
+      input.output.error(`${why} ${name}: marmeon add ${name.replace('@marmeon/', '')} (if the app does not boot yet: pnpm add -E ${name}@<version of your app>)`);
       return false;
     }
   }

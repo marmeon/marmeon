@@ -17,6 +17,8 @@ default, as soon as the app has the package:
 | `app.broadcast` | Nothing. Records every live hint, which still reaches the streams. Needs `@marmeon/live`. | always in place |
 | `app.schedule` | Nothing. Runs the schedule on the test's clock. Needs `@marmeon/scheduler`. | always in place |
 
+`fakeOAuth(app)` for [social login](#social-login) is a function, not an `app.*` getter.
+
 A getter whose package the app lacks, or whose fake the test turned off, says so:
 
 ```text
@@ -357,3 +359,39 @@ it('prunes expired tokens at night and keeps valid ones', async () => {
 
 A time is a `Date`, epoch milliseconds or an ISO string such as `'2026-10-04T03:10:00+02:00'`. Each result names its `task` and
 its `outcome`: `ran`, `skipped` or `failed`. The [task scheduling](scheduling.md) page covers the schedule.
+
+## Social login
+
+`fakeOAuth(app)` of `@marmeon/oauth/testing` makes every social login provider of the app answer from `app.http`, so a test signs in through the
+real `redirect()` and `callback()`: the state, the PKCE check, the nonce, the ID token checks and the confirmation all run. It is not one of the
+`app.*` fakes, since the package does not know what your routes look like; call it in the test, before the request that reads `OAuth`. The routes
+in the example are the ones of your app, as [social login](oauth.md#the-flow-and-its-security) shows them. The start and the callback must be one browser, since the flow
+lives in its session, so both requests go through `app.keepingCookies()`.
+
+```ts title="modules/auth/social.test.ts"
+import { fakeOAuth } from '@marmeon/oauth/testing';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('signs a person in with GitHub', async () => {
+  const app = await createTestApp(application, { database: 'refresh', env: { APP_URL: 'https://app.example.com' } });
+  const oauth = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
+  const browser = app.keepingCookies();
+  const start = await browser.post('/auth/github/start').assertStatus(303);
+  await browser.get(oauth.callbackUrl(start)).assertRedirect('/dashboard');
+});
+```
+
+| Member | What it does |
+| --- | --- |
+| `fakeOAuth(app, { only })` | Makes every registered provider (or the names in `only`) active with test credentials, built through the checks of the start. An `oidc()` provider is replaced by an OpenID Connect fake that keeps its own mapping, any other by a plain OAuth 2.0 one. Throws a `TypeError` when `app.http` is not the app's client (`http: 'real'`). |
+| `user(name, profile)` | The next callback of `name` vouches for `profile`, and starts a new preparation. Only `id` (a non-empty string) is required; `claims` adds ID token claims for an `oidc()` provider. Call it first. |
+| `reauthenticated(name)` | The next callback carries a fresh `auth_time`. Throws for a provider that cannot confirm anybody. |
+| `staleAuthentication(name, secondsAgo)` | The next callback carries an `auth_time` that long ago, to test a confirmation that is too old. Throws as `reauthenticated()` does. |
+| `deny(name)` | The next callback is `error=access_denied`. |
+| `callbackUrl(redirect, { state })` | The path and query the provider sends the browser back to, from the `Location` of the redirect (a response, such as the one of `app.post()`, a `URL` or the address as text). `state` replaces the state, to test a forged callback. Throws when no profile is queued and the provider was not denied. |
+| `authorizations` | The authorization requests `callbackUrl()` was given, as `URLSearchParams`. |
+
+The providers fall into three groups. GitHub, Discord and your own plain OAuth 2.0 providers never confirm. Google and GitLab are OpenID Connect fakes that do not
+confirm either. Microsoft and your own `oidc()` providers confirm after `reauthenticated()`. An ID token has no `auth_time` unless the test asks for it. See [testing social login](oauth.md#testing).

@@ -1,9 +1,12 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import type { Generated } from 'kysely';
+import { sql, type Generated } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, withMysql } from './__fixtures__/databases.ts';
 import { Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
 import { runMigration } from './migrations/run.ts';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
+
+const root = workspaceTempDir('marmeon-uuid-keys-app-');
 
 interface UuidTables {
   teams: { id: Generated<string>; name: string };
@@ -35,7 +38,7 @@ describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
 
   beforeAll(async () => {
     ({ connections, close } = await freshConnections(driver));
-    await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
+    await new Migrator({ modules, root } as unknown as Application, connections).migrate();
     teams = new Teams(connections);
     members = new Members(connections);
     profiles = new Profiles(connections);
@@ -152,4 +155,40 @@ describe.each(drivers)('Adding a UUIDv7 column to an existing table on %s', (dri
       expect((await db.selectFrom('notes').select('public_id').where('title', '=', 'd').executeTakeFirstOrThrow()).public_id).toMatch(V7);
     });
   }
+});
+
+// MySQL runs in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+withMysql('UUID keys on MySQL', () => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections('mysql'));
+    await new Migrator({ modules, root } as unknown as Application, connections).migrate();
+  });
+  afterAll(() => close());
+
+  it('makes a table whose primary key is a UUIDv7 and a char(36) in the binary collation, which finds an id only in the case it was written in', async () => {
+    const db = connections.get<any>();
+    await db.insertInto('teams').values({ name: 'Core' }).execute();
+    const { id } = (await sql<{ id: string }>`select id from teams where name = 'Core'`.execute(db)).rows[0]!;
+    expect(id).toMatch(V7);
+    expect((await sql<{ type: string; collation: string }>`select column_type as type, collation_name as collation from information_schema.columns where table_schema = database() and table_name = 'teams' and column_name = 'id'`.execute(db)).rows).toEqual([{ type: 'char(36)', collation: 'utf8mb4_0900_bin' }]);
+    expect((await sql`select id from teams where id = ${id}`.execute(db)).rows).toHaveLength(1);
+    expect((await sql`select id from teams where id = ${id.toUpperCase()}`.execute(db)).rows).toHaveLength(0);
+  });
+
+  it('refuses to add a UUIDv7 column to an existing table before anything changes: MySQL cannot', async () => {
+    const columnsOf = async () => (await sql<{ name: string }>`select column_name as name from information_schema.columns where table_schema = database() and table_name = 'teams' order by ordinal_position`.execute(connections.get<any>())).rows.map((row) => row.name);
+    const before = await columnsOf();
+    await expect(
+      runMigration(connections, {
+        up: (schema) => {
+          schema.alter('teams', (table) => table.string('title2').nullable());
+          schema.alter('teams', (table) => table.uuid('public_id').unique().useUuidv7());
+        },
+      }),
+    ).rejects.toThrow(/schema\.alter\('teams'\) cannot add the UUIDv7 column "public_id" on MySQL.*docs\/migrations\.md#uuid-keys/);
+    expect(await columnsOf()).toEqual(before);
+  });
 });

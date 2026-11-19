@@ -355,6 +355,28 @@ declare module '@marmeon/database' {
     };
     /**
      * Owned by `system`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: (provider, provider_id); (user_id, provider).
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
+    social_accounts: {
+      id: Generated<number>;
+      user_id: number;
+      provider: string;
+      provider_id: string;
+      email: string | null;
+      nickname: string | null;
+      access_token: Secret<string | null>;
+      refresh_token: Secret<string | null>;
+      token_expires_at: Timestamp | null;
+      scopes: string | null;
+      last_used_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
+     * Owned by `system`.
      * Primary key: id.
      */
     temporary_uploads: {
@@ -415,7 +437,6 @@ declare module '@marmeon/database' {
       public_id: Generated<string>;
       name: string;
       email: string;
-      password: Secret<string>;
       session_key: Secret<string | null>;
       bio: Generated<string>;
       first_verified_at: Timestamp | null;
@@ -426,6 +447,7 @@ declare module '@marmeon/database' {
       avatar_path: string | null;
       avatar_width: number | null;
       avatar_height: number | null;
+      password: Secret<string | null>;
     };
   }
   interface Relations {
@@ -471,6 +493,9 @@ declare module '@marmeon/database' {
     sign_ins: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    social_accounts: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     two_factor_authentications: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -486,6 +511,7 @@ declare module '@marmeon/database' {
       personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       sign_ins: { kind: 'hasMany'; table: 'sign_ins'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      social_accounts: { kind: 'hasMany'; table: 'social_accounts'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       two_factor_authentications: { kind: 'hasOne'; table: 'two_factor_authentications'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       two_factor_recovery_codes: { kind: 'hasMany'; table: 'two_factor_recovery_codes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
     };
@@ -515,6 +541,7 @@ declare module '@marmeon/database' {
     profile_links: 'id';
     sessions: 'id';
     sign_ins: 'id';
+    social_accounts: 'id';
     temporary_uploads: 'id';
     two_factor_authentications: 'id';
     two_factor_recovery_codes: 'id';
@@ -545,6 +572,7 @@ declare module '@marmeon/database' {
     profile_links: 'user-profile';
     sessions: 'system';
     sign_ins: 'auth';
+    social_accounts: 'system';
     temporary_uploads: 'system';
     two_factor_authentications: 'auth';
     two_factor_recovery_codes: 'auth';
@@ -564,6 +592,7 @@ declare module '@marmeon/database' {
     locale: true;
     members: true;
     notifications: true;
+    oauth: true;
     support: true;
     system: true;
     'user-profile': true;

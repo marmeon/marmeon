@@ -16,7 +16,7 @@ import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SESSION_USER_KEY, SessionStore } from './store.ts';
 import { UserSessions } from './user-sessions.ts';
-import { DatabaseSessionStore, SESSIONS_COLUMNS, SESSIONS_TABLE } from './stores/database.ts';
+import { DATABASE_SESSION_DRIVERS, DatabaseSessionStore, SESSIONS_COLUMNS, SESSIONS_TABLE } from './stores/database.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
 import { RedisSessionStore } from './stores/redis.ts';
@@ -92,7 +92,9 @@ export class SessionServiceProvider implements ServiceProvider {
       if (!app.container.has(database.Connections)) {
         throw new SessionSetupError(withCode('A3', 'SESSION_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
-      app.container.make(database.Connections).options(connection);
+      // An unknown connection name (D11) or a driver the store has no SQL for (D29) fails the start.
+      const { requireDriver } = await import('@marmeon/database/internal');
+      requireDriver(app.container.make(database.Connections).options(connection).driver, DATABASE_SESSION_DRIVERS, SESSION_DATABASE_DRIVER);
       // /up/ready is red until the table has the new name and every column the store writes.
       const { SchemaRequirements } = await import('@marmeon/database');
       app.container.make(SchemaRequirements).require({ connection, table: SESSIONS_TABLE, columns: SESSIONS_COLUMNS, secrets: ['payload'] });
@@ -140,8 +142,11 @@ export function sessionTableConnection(container: Resolver): string {
   return config.driver === 'database' ? config.connection : 'default';
 }
 
-const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add -E @marmeon/database@<version of your app>');
-const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add -E @marmeon/redis@<version of your app>');
+const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'marmeon add database (or pnpm add -E @marmeon/database@<version of your app>)');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'marmeon add redis (or pnpm add -E @marmeon/redis@<version of your app>)');
+
+/** What `SESSION_DRIVER=database` says of a connection on a driver the store has no SQL for. */
+const SESSION_DATABASE_DRIVER = { what: 'SESSION_DRIVER=database', instead: 'use SESSION_DRIVER=redis, file or memory' };
 
 /** The store of `SESSION_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
 function storeFor(config: SessionConfig, container: Resolver): SessionStore {
@@ -153,7 +158,13 @@ function storeFor(config: SessionConfig, container: Resolver): SessionStore {
     case 'database':
       // Its own connection, never the app's transaction: a session written inside one survives its rollback.
       return new DatabaseSessionStore(
-        async () => ({ db: container.make((await importDatabase()).Connections).infrastructure(config.connection, SESSION_INFRASTRUCTURE) }),
+        async () => {
+          const connections = container.make((await importDatabase()).Connections);
+          // Before the connection is opened: a driver the store has no SQL for gets none.
+          const { requireDriver } = await import('@marmeon/database/internal');
+          requireDriver(connections.options(config.connection).driver, DATABASE_SESSION_DRIVERS, SESSION_DATABASE_DRIVER);
+          return { db: connections.infrastructure(config.connection, SESSION_INFRASTRUCTURE) };
+        },
         lifetime,
         clock,
       );

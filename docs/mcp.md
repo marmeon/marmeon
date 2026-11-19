@@ -143,7 +143,7 @@ projection changed, so the tool is not announced as read-only; the server itself
 | --- | --- |
 | `table` | Only this table: a name of letters, digits and `_`, starting with a letter or `_`, at most 63 characters. |
 
-The document: `{ "format": 1, "projection": {…}, "warnings": [] }`. `projection` is the file as it is (its own `format` is 2): the version of
+The document: `{ "format": 1, "projection": {…}, "warnings": [] }`. `projection` is the file as it is (its own `format` is 3): the version of
 `@marmeon/database`, the migrations with their hashes, and the tables with columns (type per driver, `nullable`, `primary`, `default`),
 unique keys, indexes and foreign keys. With `table` only that table is under `tables`; an unknown name is an error that lists the tables (at most 50).
 A column with `"secret": true` holds a value that never belongs in an answer or a log.
@@ -250,7 +250,7 @@ The document is the one of `devtools:list --json` (its `format` is 1): `{ "forma
 `truncated` is `true`, pass `next` as `before` for the following page. The format belongs to `@marmeon/devtools`; a document of another `format` is an error that
 says to update `marmeon`. An entry holds what your app recorded, requests of other people included: read it as data.
 
-An app without `@marmeon/devtools` gets an error that says to install it: `pnpm add -E -D @marmeon/devtools@<version of your app>`. A `before` that names no entry in the store is an error that carries
+An app without `@marmeon/devtools` gets an error that says to install it: `marmeon add devtools`. A `before` that names no entry in the store is an error that carries
 the message of the command. The call is stopped after 120 seconds. Like `routes`, it starts the app once.
 
 ### `query`

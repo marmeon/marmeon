@@ -62,6 +62,9 @@
       "path": "packages/auth"
     },
     {
+      "path": "packages/oauth"
+    },
+    {
       "path": "packages/table"
     },
     {

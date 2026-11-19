@@ -3,6 +3,7 @@ import {
   Deferred,
   Head,
   Image,
+  Island,
   Link,
   useAction,
   usePendingSubmissions,
@@ -85,6 +86,8 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
           <em>{t('show.own')}</em> <Link route="auth.security">{t('show.settings')}</Link>
         </p>
       )}
+      {/* Connected accounts (modules/oauth): not on the security page, which asks for the password — an account without a password may not reach it. */}
+      {isOwnProfile && <Island route="oauth.accounts" />}
       {isOwnProfile && auth?.user && !auth.user.verified && (
         // A <div>, not a <p>: the link sends (a POST), so it renders a form — which a <p> cannot hold.
         <div role="note" className="paragraph">

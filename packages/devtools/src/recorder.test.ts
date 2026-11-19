@@ -289,6 +289,19 @@ describe('the gate (fail closed, development only)', () => {
 });
 
 describe('what the recorder keeps', () => {
+  it('records the value of `state` and `code` in the query as [redacted], in the query object and in the URL', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      await kernel.request('/people/7?state=abc123&page=2&code=c0de', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+      const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
+      expect(request.content.query).toEqual({ state: '[redacted]', page: '2', code: '[redacted]' });
+      expect(request.content.url).toBe('http://localhost/people/7?state=[redacted]&page=2&code=[redacted]');
+      expect(JSON.stringify(tester!.entries())).not.toMatch(/abc123|c0de/);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
   it('a request with its queries, jobs, log entries and events — one batch, tied by the request id', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
@@ -488,6 +501,19 @@ describe('what the recorder keeps', () => {
       fake.value.assertDispatched(PersonViewed);
       await tester!.settled();
       tester!.assertRecorded('event', (event) => event.name === 'people.viewed');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('browser reports: the value of `state` and `code` in the page query is [redacted], whatever its spelling', async () => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const publish = channels.event('browser.log');
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'A', page: '/people/7?state=abc123&page=2&%73tate=enc0ded&%63ode=c0de' });
+      await tester!.settled();
+      const entry = tester!.assertRecorded('browser', (content) => content.message === 'A');
+      expect(entry.content.page).toBe('/people/7?state=[redacted]&page=2&%73tate=[redacted]&%63ode=[redacted]');
     } finally {
       await app.shutdown();
     }

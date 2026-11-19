@@ -161,9 +161,13 @@ hashes, API tokens, JWTs, the `APP_KEY` form
 Words and path segments of 32 or more characters are masked when they look like a random token: mixed case, a digit and few
 separators — not a slug, a UUID or a name in camel case (a pagination cursor like `?cursor=eyJ…` shows as `[redacted]` too). So a foreign error message that quotes a secret is masked too. The limits: a
 hex secret without a key in front of it stays visible (a digest or a trace id is no secret), so do secrets under 32 characters
-without a known prefix, and standard base64 with `+` or `/` is masked only in pieces of 32 or more characters. In text, `code`
-counts as a name only in a query parameter (`?code=…`) or a JSON key (`"code":…`), and a private key in
-PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's list alone, for code that runs without an app: the
+without a known prefix, and standard base64 with `+` or `/` is masked only in pieces of 32 or more characters.
+
+`code` and `state` count as names in a query parameter. A `?`, `&`, `#`, `;` or `&amp;` in front of them makes them a query parameter, and the value runs to the next `&`, `#`, quote or whitespace. The error page, the devtools and the traces mask them in the query fields they record, too. This holds for every `?state=`, also an app's own (`/orders?state=open`): it shows as `[redacted]`. A JSON key `"code"` is masked, but a JSON key or a log field named `state` stays readable.
+
+Two limits. A `state` field in a form body (`response_mode=form_post`) stays readable: only the query is masked, and `state` is often an ordinary field there, such as a US state. A relative URL in a log field is not masked (see the note above: only keys are checked).
+
+A private key in PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's list alone, for code that runs without an app: the
 names and patterns your app adds need the app's `Redactor`.
 
 Every error entry of the framework passes the app's `Redactor` as text: the log line of a server error, server rendering,

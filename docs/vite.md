@@ -22,8 +22,11 @@ language files and its route manifest as virtual modules, and refuses server cod
 Vite and the plugin are development dependencies. Nothing of them runs on a production server:
 
 ```sh
-pnpm add -D vite@^8 @marmeon/vite@<version of your app> @vitejs/plugin-react
+pnpm add -D vite@^8 @vitejs/plugin-react
+pnpm marmeon add vite
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -D @marmeon/vite@<version of your app>` instead of the second line.
 
 Vite is a peer of the plugin, so the plugin runs inside your app's own Vite. The types of the virtual modules come from
 `@marmeon/vite/client` in `compilerOptions.types` of `tsconfig.json`, which a new app lists. The plugin also makes the app and the

@@ -8,10 +8,16 @@ export const LIVE_HINTS_TABLE = 'live_hints';
 /** The columns the backend reads and writes; readiness is red while the table lacks one. */
 export const LIVE_HINTS_COLUMNS = ['id', 'channel', 'message', 'created_at'];
 
+/** The database drivers the backend's SQL is written for: every caller that hands it a connection checks against this list. */
+export const DATABASE_LIVE_DRIVERS = ['sqlite', 'pgsql'] as const;
+
+/** What `LIVE_DRIVER=database` says of a connection on a driver the backend has no SQL for. */
+export const LIVE_DATABASE_DRIVER = { what: 'LIVE_DRIVER=database', instead: 'use LIVE_DRIVER=redis or memory' };
+
 /** A connection of @marmeon/database and its driver. */
 export interface DatabaseLiveConnection {
   readonly db: Connection<any>;
-  readonly driver: 'sqlite' | 'pgsql';
+  readonly driver: (typeof DATABASE_LIVE_DRIVERS)[number];
 }
 
 /** What the backend needs besides its connection. */
@@ -236,13 +242,22 @@ export class DatabaseLiveBackend implements LiveBackend {
   async #restarted(): Promise<boolean> {
     const { db, sql, driver } = await this.#use();
     // SQLite has the counter table only once some table counts with AUTOINCREMENT.
-    const counted = driver !== 'sqlite' || (await sql`select 1 as found from sqlite_master where name = 'sqlite_sequence'`.execute(db)).rows.length > 0;
-    const { rows } = !counted
-      ? { rows: [] as { seq: null }[] }
-      : driver === 'sqlite'
-        ? await sql<{ seq: number | string | null }>`select seq from sqlite_sequence where name = 'live_hints'`.execute(db)
-        : await sql<{ seq: number | string | null }>`select case when has_sequence_privilege(s, 'SELECT') then pg_sequence_last_value(s) end as seq
-            from (select pg_get_serial_sequence('live_hints', 'id')::regclass as s) as counter`.execute(db);
+    let rows: { seq: number | string | null }[];
+    switch (driver) {
+      case 'sqlite': {
+        const counted = (await sql`select 1 as found from sqlite_master where name = 'sqlite_sequence'`.execute(db)).rows.length > 0;
+        rows = counted ? (await sql<{ seq: number | string | null }>`select seq from sqlite_sequence where name = 'live_hints'`.execute(db)).rows : [];
+        break;
+      }
+      case 'pgsql':
+        rows = (
+          await sql<{ seq: number | string | null }>`select case when has_sequence_privilege(s, 'SELECT') then pg_sequence_last_value(s) end as seq
+            from (select pg_get_serial_sequence('live_hints', 'id')::regclass as s) as counter`.execute(db)
+        ).rows;
+        break;
+      default:
+        throw new Error(`The hints table has no counter on ${String(driver satisfies never)}.`);
+    }
     const last = rows[0]?.seq;
     if (last === null || last === undefined) {
       if (this.#cursor! > 0 && !this.#blindLogged) {

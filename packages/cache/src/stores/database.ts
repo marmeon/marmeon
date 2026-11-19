@@ -9,10 +9,13 @@ export const CACHE_LOCKS_TABLE = 'cache_locks';
 export const CACHE_COLUMNS = ['key', 'value', 'expiration'];
 export const CACHE_LOCKS_COLUMNS = ['key', 'owner', 'expiration'];
 
+/** The database drivers the store's SQL is written for: every caller that hands it a connection checks against this list. */
+export const DATABASE_STORE_DRIVERS = ['sqlite', 'pgsql'] as const;
+
 /** A connection of @marmeon/database, and which SQL it speaks. */
 export interface DatabaseStoreConnection {
   readonly db: Connection<any>;
-  readonly driver: 'sqlite' | 'pgsql';
+  readonly driver: (typeof DATABASE_STORE_DRIVERS)[number];
 }
 
 type Sql = (typeof import('@marmeon/database'))['sql'];
@@ -69,11 +72,17 @@ export class DatabaseStore implements CacheStore, LockStore {
     const now = this.#clock.now();
     // A live integer is counted on (keeping its expiry); anything else starts over at `by` with the new expiry. (SQLite gets
     // every JavaScript number as a REAL: `by` is cast, or 1 + 1 would be stored as '2.0'.)
-    const counting =
-      driver === 'pgsql'
-        ? sql`(cache.expiration is null or cache.expiration > ${now}) and cache.value ~ '^-?[0-9]{1,18}$'`
-        : sql`(cache.expiration is null or cache.expiration > ${now}) and cast(cast(cache.value as integer) as text) = cache.value`;
-    const sum = driver === 'pgsql' ? sql`(cast(cache.value as bigint) + ${by})::text` : sql`cast(cast(cache.value as integer) + cast(${by} as integer) as text)`;
+    const byDriver = {
+      pgsql: {
+        counting: sql`(cache.expiration is null or cache.expiration > ${now}) and cache.value ~ '^-?[0-9]{1,18}$'`,
+        sum: sql`(cast(cache.value as bigint) + ${by})::text`,
+      },
+      sqlite: {
+        counting: sql`(cache.expiration is null or cache.expiration > ${now}) and cast(cast(cache.value as integer) as text) = cache.value`,
+        sum: sql`cast(cast(cache.value as integer) + cast(${by} as integer) as text)`,
+      },
+    } satisfies Record<(typeof DATABASE_STORE_DRIVERS)[number], unknown>;
+    const { counting, sum } = byDriver[driver];
     const { rows } = await sql<{ value: string }>`insert into cache (key, value, expiration) values (${key}, ${String(by)}, ${expires})
       on conflict (key) do update set
         value = case when ${counting} then ${sum} else excluded.value end,
