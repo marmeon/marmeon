@@ -1,7 +1,6 @@
 import type { CommandInput } from 'marmeon';
 import { printable } from '@marmeon/core/internal';
 import { sql } from 'kysely';
-import { mysqlPending } from '../mysql-pending.ts';
 import { inspectionConnection } from '../migrator-connection.ts';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';
@@ -39,8 +38,8 @@ export class DbShowCommand {
         version = (await sql<{ v: string }>`select version() as v`.execute(db)).rows[0]?.v.split(' on ')[0] ?? 'PostgreSQL';
         break;
       case 'mysql':
-        // Reached only with a `Connections` built by hand: the provider refuses a MySQL connection, so an app never has one.
-        return mysqlPending('db:show');
+        version = `MySQL ${(await sql<{ v: string }>`select @@version as v`.execute(db)).rows[0]?.v}`;
+        break;
       default:
         return unknownDriver(settings);
     }
@@ -48,8 +47,10 @@ export class DbShowCommand {
     const found = await Promise.all(
       tables.map(async (table) => {
         // `sql.id` keeps a dot in a name; `selectFrom` would read it as a schema separator.
-        const { count } = (await sql<{ count: number }>`select count(*) as count from ${table.schema ? sql.id(table.schema, table.name) : sql.id(table.name)}`.execute(db)).rows[0]!;
-        return { name: table.name, schema: table.schema ?? null, columns: table.columns.length, rows: Number(count) };
+        // MySQL's introspector names the database as the schema: it is the connection's own, and no table of another one is listed.
+        const schema = settings.driver === 'mysql' ? undefined : table.schema;
+        const { count } = (await sql<{ count: number }>`select count(*) as count from ${schema ? sql.id(schema, table.name) : sql.id(table.name)}`.execute(db)).rows[0]!;
+        return { name: table.name, schema: schema ?? null, columns: table.columns.length, rows: Number(count) };
       }),
     );
     const described = describeConnection(settings);

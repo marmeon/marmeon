@@ -135,7 +135,8 @@ the pool replaces it and the log says so with a warning.
 ### MySQL
 
 MySQL cannot be selected yet: `DB_DRIVER` takes `sqlite` or `pgsql`, and a connection definition cannot return `mysql`. What is
-described here is what the framework's own tests run against.
+described here is what the framework's own tests run against. What Marmeon reads of a MySQL database, and which privileges the role needs,
+is under [the catalog of MySQL](#the-catalog-of-mysql); how migrations run on it is under [Migrations on MySQL](migrations.md#mysql).
 
 MySQL needs the `mysql2` driver in your app, as a dependency like `pg`:
 
@@ -366,9 +367,9 @@ The target shows the host, port and database, the user name, and of the query st
 `application_name`. The password, every other parameter (a key path, an `options` string) and the fragment never reach the output,
 whether the address came from `DB_URL`, from `DB_PASSWORD` or from a connection's `password` option.
 
-`--json` prints a [machine-readable document](console.md#machine-readable-output): `format`, `connection`, `driver` (`sqlite` or
-`pgsql`), `target` (as in the text, without the driver in front), `server`, `tables` (each with `name`, `schema` — `null` for
-SQLite — `columns` and `rows`) and `warnings`.
+`--json` prints a [machine-readable document](console.md#machine-readable-output): `format`, `connection`, `driver` (`sqlite`,
+`pgsql` or, for a test of the framework, `mysql`; see [the catalog of MySQL](#the-catalog-of-mysql)), `target` (as in the text, without the driver in front), `server`, `tables` (each with
+`name`, `schema` — `null` for SQLite and MySQL — `columns` and `rows`) and `warnings`.
 
 ## Querying a connection
 
@@ -481,7 +482,9 @@ lists the states: a password hash or a deleted row is never shown because a migr
 Marmeon refuses to guess. A connection that has tables but no record of migrations, which Marmeon's own `migrate` writes, is
 refused with error D1: without the migrations the app cannot tell which columns are secret or which rows are soft-deleted, and it never
 reads that as "none". That includes a database whose tables are made by another tool, a restore
-that lost the record, and a Postgres role without privileges on it.
+that lost the record, and a Postgres role without privileges on it. A MySQL role without privileges on `migrations` does not see the
+table at all: a managed connection then sees tables without a record and is refused (D1), and a connection with `managed: false` is not
+refused for the record it cannot see. See [the catalog of MySQL](#the-catalog-of-mysql).
 
 For your own database that Marmeon is to migrate from now on, do not use `managed: false`: run `marmeon migrate`, which writes the
 record of migrations and runs the migrations. Tables it did not make stay as they are and unknown to Marmeon: `migrate` names
@@ -516,6 +519,35 @@ declare module '@marmeon/database' {
 ```
 
 At run time the repository reads the key from the database's catalog. See [primary keys](queries.md#table-types).
+
+### The catalog of MySQL
+
+MySQL cannot be selected yet (see [MySQL](#mysql)); what follows is what the framework's own tests run against.
+
+Marmeon reads the tables of the database the connection's URL names from `information_schema`: columns, single-column foreign keys,
+unique indexes and the primary key. It does so on a connection with `managed: false`, and in the check after a migration. What it
+cannot read exactly it leaves out, as the other drivers do: a foreign key over several columns, a foreign key to a table of another
+database or to a column that is no unique key of its own, a primary key or unique index on a prefix of a column or on an expression (a prefix index compares only the first characters, and under a
+collation such as `utf8mb4_0900_ai_ci`, the default of MySQL 8, two values that `=` calls equal can have different prefixes: the index lets
+both in, and a lookup through it misses one; the collation of the column counts, not that of the connection), and views.
+
+The role must see every table. MySQL shows a role only the tables it has a privilege on, and a table it does not show does not exist
+as far as Marmeon can tell. That has three consequences:
+
+- A migration's check after it ran counts the table as missing and fails the migration (on MySQL the steps that ran stay: every
+  `create` and `alter` commits at once, so nothing is rolled back).
+- A foreign key to a table the role does not see, or to a column it does not see, gives no relation. Neither does a table of which the
+  role does not see every indexed column: its foreign keys are left out whole, because a key it sees one column of may be a longer one. A key
+  of several columns is never read as a key of one. Grant a privilege on the whole table, not on single columns, or the relations are missing.
+- On a connection with `managed: false`, a role that does not see `migrations` is not told that Marmeon migrates the database (error D1),
+  and no secret column is known. Give such a role `select` on every table of the database.
+
+`migrate:fresh` drops all tables with one `drop table`, with the foreign key checks on, and the views after them: the keys between the
+tables are no obstacle. A key from a table of another database is an obstacle: the server refuses (error 3730) and, on InnoDB, drops none
+of the tables, and the views stay too. Drop that table, or its key, first. Another storage engine may drop table by table. A table the role does
+not see is not dropped, and a view of another database that reads a dropped table stays and fails when it is read. A drop commits an open transaction on MySQL.
+
+`db:show` prints the server as `MySQL` and its version; its tables carry no `schema`.
 
 ## Readiness
 

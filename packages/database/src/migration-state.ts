@@ -96,7 +96,8 @@ export function appTables(columns: ReadonlyMap<string, readonly string[]>, ignor
 /**
  * A connection with `managed: false` is read from its catalog, without the migrations — which is right only for a database Marmeon
  * does not migrate. A record of migrations in the form Marmeon writes means it does, and the option would hide what the migrations say
- * (secret columns, soft deletes). A table `migrations` of any other form belongs to another tool and is left alone.
+ * (secret columns, soft deletes). A table `migrations` of any other form belongs to another tool and is left alone. On MySQL a role without
+ * privileges on `migrations` does not see it, and nothing refuses: see docs/database.md#the-catalog-of-mysql.
  */
 export function assertNotMigrated(columns: ReadonlyMap<string, readonly string[]>, connection: string): void {
   const recorded = columns.get(MIGRATIONS_TABLE);
