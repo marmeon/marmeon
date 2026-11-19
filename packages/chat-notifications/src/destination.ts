@@ -41,13 +41,25 @@ function matchesHost(host: string, pattern: string): boolean {
   return host.length > suffix.length && host.endsWith(suffix);
 }
 
-/** Scheme, credentials and port: what every webhook address must satisfy. */
+const CANONICAL = /^https:\/\/([a-z0-9.-]+)(?::443)?(\/[^\s"'<>\\]*)$/i;
+const WRITTEN = 'The webhook address must be written as https://host/path, without spaces, quotes, backslashes or a port other than 443.';
+
+/**
+ * What every webhook address must satisfy, as an allow-list: the address is written as `https://host/path` (host of letters,
+ * digits, dots and dashes, the port 443 at most, no space, quote or backslash), and the parser leaves host, path, query and fragment
+ * as written. Whatever the parser would rewrite (a dot segment, an encoded host, a missing slash, a tab) is refused, so the address
+ * a log or a redactor sees is the one the guard accepted. The problem names no path and no query.
+ */
 function basics(url: string): { readonly parsed: URL } | { readonly problem: string } {
-  const parsed = typeof url === 'string' ? parse(url) : undefined;
+  const match = typeof url === 'string' ? CANONICAL.exec(url) : null;
+  if (match === null) return { problem: WRITTEN };
+  const parsed = parse(url);
   if (parsed === undefined) return { problem: 'The webhook address is not an address.' };
-  if (parsed.protocol !== 'https:') return { problem: 'The webhook address must use https.' };
-  if (parsed.username !== '' || parsed.password !== '') return { problem: 'The webhook address must not carry credentials.' };
-  if (parsed.port !== '') return { problem: 'The webhook address must not use a port other than 443.' };
+  const written = (match[1] as string).toLowerCase();
+  const dotless = (host: string): string => (host.endsWith('.') ? host.slice(0, -1) : host);
+  if (parsed.protocol !== 'https:' || dotless(parsed.hostname) !== dotless(written) || parsed.pathname + parsed.search + parsed.hash !== match[2] || parsed.username !== '' || parsed.password !== '' || parsed.port !== '') {
+    return { problem: WRITTEN };
+  }
   return { parsed };
 }
 

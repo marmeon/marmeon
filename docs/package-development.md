@@ -111,6 +111,7 @@ reads them, and are known once that package is installed.
 | `mailDrivers` | `Record<string, MailDriverFactory>` | `@marmeon/mail` | [Drivers](drivers.md#bringing-a-driver) |
 | `fetchDrivers` | `Record<string, FetchDriverFactory>` | `@marmeon/fetch` | [Fetch transports](drivers.md#fetch-transports) |
 | `oauthProviders` | `Record<string, OAuthProviderFactory>` | `@marmeon/oauth` | [Social login](oauth.md#your-own-provider) |
+| `chatDrivers` | `Record<string, ChatDriverFactory>` | `@marmeon/chat-notifications` | [Chat drivers](drivers.md#chat-drivers) |
 
 ### Statics of other classes
 

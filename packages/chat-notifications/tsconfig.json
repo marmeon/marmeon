@@ -11,6 +11,15 @@
   "references": [
     {
       "path": "../core"
+    },
+    {
+      "path": "../fetch"
+    },
+    {
+      "path": "../queue"
+    },
+    {
+      "path": "../encryption"
     }
   ]
 }

@@ -156,16 +156,26 @@ function link(input: { label: string; url: string }, index: number): ChatLink | 
 }
 
 interface Budget {
+  /** How the value is called in a refusal: `"raw"`, or what a driver returned. */
+  readonly what: string;
+  /** What starts a refusal: `Chat message: ` for the message, nothing for what a driver returned. */
+  readonly prefix: string;
+  readonly maxNodes: number;
+  readonly maxBytes: number;
   nodes: number;
-  /** The size `raw` has as JSON, counted while it is walked. */
+  /** The size the value has as JSON, counted while it is walked. */
   bytes: number;
+}
+
+function refuse(budget: Budget, text: string): never {
+  throw new ChatError(budget.prefix + text);
 }
 
 function spend(budget: Budget, nodes: number, bytes: number): void {
   budget.nodes += nodes;
   budget.bytes += bytes;
-  if (budget.nodes > MAX_RAW_NODES) fail(`"raw" holds more than ${MAX_RAW_NODES} values.`);
-  if (budget.bytes > MAX_RAW_BYTES) fail(`"raw" is larger than ${MAX_RAW_BYTES / 1024} KB as JSON.`);
+  if (budget.nodes > budget.maxNodes) refuse(budget, `${budget.what} holds more than ${budget.maxNodes} values.`);
+  if (budget.bytes > budget.maxBytes) refuse(budget, `${budget.what} is larger than ${budget.maxBytes / 1024} KB as JSON.`);
 }
 
 /** The UTF-8 size of a string in its JSON form: quotes and escapes included. */
@@ -189,14 +199,14 @@ function json(value: unknown, depth: number, budget: Budget): ChatJson {
     return value;
   }
   if (typeof value === 'number') {
-    if (!Number.isFinite(value)) fail('"raw" holds a number that is not finite.');
+    if (!Number.isFinite(value)) refuse(budget, `${budget.what} holds a number that is not finite.`);
     spend(budget, 0, String(value).length);
     return value;
   }
-  if (typeof value !== 'object') return fail(`"raw" holds a value that is not JSON (${typeof value}).`);
-  if (depth >= MAX_RAW_DEPTH) return fail(`"raw" is nested deeper than ${MAX_RAW_DEPTH} levels.`);
+  if (typeof value !== 'object') return refuse(budget, `${budget.what} holds a value that is not JSON (${typeof value}).`);
+  if (depth >= MAX_RAW_DEPTH) return refuse(budget, `${budget.what} is nested deeper than ${MAX_RAW_DEPTH} levels.`);
   if (Array.isArray(value)) {
-    if (Object.getPrototypeOf(value) !== Array.prototype) return fail('"raw" holds an array that is not a plain one.');
+    if (Object.getPrototypeOf(value) !== Array.prototype) return refuse(budget, `${budget.what} holds an array that is not a plain one.`);
     spend(budget, 0, 2);
     const items: ChatJson[] = [];
     for (let index = 0; index < value.length; index += 1) {
@@ -206,19 +216,19 @@ function json(value: unknown, depth: number, budget: Budget): ChatJson {
     }
     return Object.freeze(items);
   }
-  if (!isPlain(value) || Object.getOwnPropertySymbols(value).length > 0) return fail('"raw" holds an object that is not a plain one.');
+  if (!isPlain(value) || Object.getOwnPropertySymbols(value).length > 0) return refuse(budget, `${budget.what} holds an object that is not a plain one.`);
   spend(budget, 0, 2);
   const entries = new Map<string, ChatJson>();
   for (const key of Object.keys(value)) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || !('value' in descriptor)) return fail('"raw" holds a getter.');
+    if (descriptor === undefined || !('value' in descriptor)) return refuse(budget, `${budget.what} holds a getter.`);
     // a property whose value is undefined is left out, as JSON.stringify does
     if (descriptor.value === undefined) {
       spend(budget, 1, 0);
       continue;
     }
     const name = key.toWellFormed();
-    if (entries.has(name)) return fail('"raw" holds two keys that are the same once normalized.');
+    if (entries.has(name)) return refuse(budget, `${budget.what} holds two keys that are the same once normalized.`);
     // the key, its colon, and the comma before it
     spend(budget, 0, jsonBytes(name) + 1 + (entries.size > 0 ? 1 : 0));
     entries.set(name, json(descriptor.value as unknown, depth + 1, budget));
@@ -263,8 +273,17 @@ export function normalizeMessage(input: unknown): { readonly to: ChatDestination
   if (title !== '') content.title = title;
   if (message.raw !== undefined) {
     if (typeof message.raw !== 'object' || message.raw === null || Array.isArray(message.raw)) fail('"raw" must be a plain object.');
-    const raw = json(message.raw, 0, { nodes: 0, bytes: 0 }) as Readonly<Record<string, ChatJson>>;
+    const raw = json(message.raw, 0, { what: '"raw"', prefix: 'Chat message: ', maxNodes: MAX_RAW_NODES, maxBytes: MAX_RAW_BYTES, nodes: 0, bytes: 0 }) as Readonly<Record<string, ChatJson>>;
     if (Object.keys(raw).length > 0) content.raw = raw;
   }
   return Object.freeze({ to, content: Object.freeze(content) });
+}
+
+/**
+ * A frozen JSON copy of what a driver returned, checked as `raw` is (plain objects, finite numbers, nothing that is not JSON),
+ * with twice the budget of `raw`: the request holds the neutral rendering besides it. Throws `ChatError` naming the driver.
+ * @internal
+ */
+export function checkedJson(value: unknown, driver: string): ChatJson {
+  return json(value, 0, { what: `The request of the chat driver "${driver}"`, prefix: '', maxNodes: 2 * MAX_RAW_NODES, maxBytes: 2 * MAX_RAW_BYTES, nodes: 0, bytes: 0 });
 }
