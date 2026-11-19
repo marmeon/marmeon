@@ -1,10 +1,12 @@
 import { tmpdir } from 'node:os';
 import { createApplication, env } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
+import { jsonArrayFrom as mysqlJsonArrayFrom } from 'kysely/helpers/mysql';
 import { jsonArrayFrom as pgJsonArrayFrom } from 'kysely/helpers/postgres';
 import { jsonArrayFrom as sqliteJsonArrayFrom } from 'kysely/helpers/sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, freshDatabase, silent, withMysql } from './__fixtures__/databases.ts';
+import { migratorConnection } from './migrator-connection.ts';
 import { Connections, Database, DatabaseConnectionError, DatabaseServiceProvider, defineConnection, type QueryEvent } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -135,6 +137,107 @@ describe.each(drivers)('a %s connection', (driver) => {
     expect(queries).toHaveLength(1);
     expect(queries[0]).toMatchObject({ connection: 'default', sql: expect.stringMatching(/^select/), parameters: [1] });
     expect(queries[0]!.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('logs failed queries with their error', async () => {
+    queries.length = 0;
+    await expect(sql`select * from missing_table`.execute(db)).rejects.toThrow();
+    expect(queries).toEqual([expect.objectContaining({ sql: 'select * from missing_table', error: expect.anything() })]);
+  });
+});
+
+// The cases of the loop above, on MySQL: it runs where the server is (MARMEON_TEST_MYSQL_URL, `pnpm test:mysql`). A MySQL connection is managed — what
+// reads its tables from the catalog is not there yet — so the tables are made through the migrator's own way to the connection.
+withMysql('a mysql connection', () => {
+  let connections: Connections;
+  let db: Kysely<TestTables>;
+  let close: () => Promise<void>;
+  const queries: QueryEvent[] = [];
+
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections('mysql'));
+    connections.onQuery((query) => queries.push(query));
+    db = connections.get<TestTables>();
+    const setup = migratorConnection(connections);
+    await setup.schema
+      .createTable('users')
+      .addColumn('id', 'bigint', (c) => c.primaryKey().autoIncrement())
+      .addColumn('name', 'text', (c) => c.notNull())
+      .addColumn('is_admin', 'boolean', (c) => c.notNull().defaultTo(false))
+      .addColumn('settings', 'json')
+      .addColumn('bio', 'text')
+      .addColumn('created_at', 'datetime(3)', (c) => c.notNull().defaultTo(sql`current_timestamp(3)`))
+      .execute();
+    await setup.schema
+      .createTable('posts')
+      .addColumn('id', 'bigint', (c) => c.primaryKey().autoIncrement())
+      .addColumn('user_id', 'bigint', (c) => c.notNull())
+      .addColumn('title', 'text', (c) => c.notNull())
+      .execute();
+  });
+  afterAll(() => close());
+
+  it('returns the same JavaScript types as the other drivers', async () => {
+    const at = new Date('2026-10-01T12:34:56.789Z');
+    await db.insertInto('users').values({ name: 'Ada', is_admin: true, settings: JSON.stringify({ theme: 'dark' }), bio: '[not json]', created_at: at as never }).execute();
+    await db.insertInto('users').values({ name: 'Alan', settings: null }).execute();
+    const users = await db.selectFrom('users').selectAll().orderBy('id').execute();
+    expect(users[0]).toEqual({ id: 1, name: 'Ada', is_admin: true, settings: { theme: 'dark' }, bio: '[not json]', created_at: '2026-10-01T12:34:56.789Z' });
+    expect(users[1]).toEqual({ id: 2, name: 'Alan', is_admin: false, settings: null, bio: null, created_at: expect.stringMatching(ISO_UTC) });
+  });
+
+  it('commits and rolls back transactions', async () => {
+    await db.transaction().execute((trx) => trx.insertInto('posts').values({ user_id: 1, title: 'Kept' }).execute());
+    await expect(
+      db.transaction().execute(async (trx) => {
+        await trx.insertInto('posts').values({ user_id: 1, title: 'Lost' }).execute();
+        throw new Error('rolled back');
+      }),
+    ).rejects.toThrow('rolled back');
+    expect(await db.selectFrom('posts').select('title').execute()).toEqual([{ title: 'Kept' }]);
+  });
+
+  it('isolates a connection in a transaction, where the code’s own transactions become savepoints', async () => {
+    queries.length = 0;
+    const isolation = await connections.isolate();
+    await db.insertInto('posts').values({ user_id: 1, title: 'Undone with the test' }).execute();
+    await expect(
+      db.transaction().execute(async (trx) => {
+        await trx.insertInto('posts').values({ user_id: 1, title: 'Undone by its own rollback' }).execute();
+        throw new Error('failed');
+      }),
+    ).rejects.toThrow('failed');
+    await db.transaction().execute((trx) => trx.insertInto('posts').values({ user_id: 1, title: 'Committed, then undone with the test' }).execute());
+    expect((await db.selectFrom('posts').select('title').orderBy('id').execute()).map((post) => post.title)).toEqual(['Kept', 'Undone with the test', 'Committed, then undone with the test']);
+    await isolation.rollback();
+
+    expect((await db.selectFrom('posts').select('title').execute()).map((post) => post.title)).toEqual(['Kept']);
+    expect(queries.filter((q) => /savepoint/i.test(q.sql)).map((q) => q.sql)).toEqual([
+      'savepoint marmeon_savepoint_1',
+      'rollback to savepoint marmeon_savepoint_1',
+      'savepoint marmeon_savepoint_1',
+      'release savepoint marmeon_savepoint_1',
+    ]);
+  });
+
+  it('takes the isolation level of a transaction', async () => {
+    await connections.transaction(async (trx) => {
+      await sql`select count(*) from users`.execute(trx); // the transaction starts in the engine with its first statement
+      const { rows } = await sql<{ level: string }>`select trx_isolation_level as level from information_schema.innodb_trx where trx_mysql_thread_id = connection_id()`.execute(trx);
+      expect(rows).toEqual([{ level: 'SERIALIZABLE' }]);
+    }, { isolationLevel: 'serializable' });
+  });
+
+  it('loads a JSON array of a subquery, parsed', async () => {
+    queries.length = 0;
+    const user = await db
+      .selectFrom('users')
+      .select((eb) => ['name', mysqlJsonArrayFrom(eb.selectFrom('posts').select(['posts.id', 'posts.title']).whereRef('posts.user_id', '=', 'users.id').orderBy('posts.id')).as('posts')])
+      .where('id', '=', 1)
+      .executeTakeFirstOrThrow();
+    expect(user.posts).toEqual([{ id: 1, title: 'Kept' }]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({ connection: 'default', sql: expect.stringMatching(/^select/), parameters: [1] });
   });
 
   it('logs failed queries with their error', async () => {

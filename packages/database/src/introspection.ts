@@ -124,7 +124,13 @@ export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{
             and c.relkind in ('r', 'p') and a.attnum > 0 and not a.attisdropped
           order by c.relname, a.attnum`);
   } else if (driver === 'mysql') {
-    return mysqlPending('Reading the columns of the database');
+    // Base tables of the connection's own database (`database()`): a view is left out, as on the other drivers. `column_type` is the
+    // declared type (`varchar(255)`, `decimal(10,2)`), lower-cased.
+    columnRows = await run<ColumnRow>(`select c.table_name as table_name, c.column_name as column_name, lower(c.column_type) as type, c.is_nullable = 'YES' as nullable
+          from information_schema.columns c
+            join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
+          where c.table_schema = database() and t.table_type = 'BASE TABLE'
+          order by c.table_name, c.ordinal_position`);
   } else {
     return unknownDriver(driver);
   }

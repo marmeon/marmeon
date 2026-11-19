@@ -132,6 +132,110 @@ Values come back as the same JavaScript types on both drivers, so code and tests
 An error message names the connection and where it points, with the password masked. When the server drops an idle connection,
 the pool replaces it and the log says so with a warning.
 
+### MySQL
+
+MySQL cannot be selected yet: `DB_DRIVER` takes `sqlite` or `pgsql`, and a connection definition cannot return `mysql`. What is
+described here is what the framework's own tests run against.
+
+MySQL needs the `mysql2` driver in your app, as a dependency like `pg`:
+
+```sh
+pnpm add mysql2@^3
+```
+
+Version 3.x from 3.24.6 on: the first query refuses any other and names the command.
+
+Marmeon supports MySQL 8.4 (the long-term-support release) and newer. MariaDB is not supported, and neither are TiDB and Vitess:
+they speak the protocol but are other databases. Every new connection reads the server's version and refuses one that is not
+supported with `D28`, and closes it:
+
+```text
+[marmeon:D28] The MySQL connection "default" was refused: the server is MariaDB; Marmeon supports MySQL 8.4 or newer, not MariaDB (server "11.4.2-MariaDB")
+```
+
+A server that reports a MySQL 8.4 version without naming itself, such as a proxy, cannot be told apart by name; the checks of the
+session below are what remain.
+
+The address is `mysql://user:secret@host:3306/app`. Its query string takes `ssl-mode` (`DISABLED`, `REQUIRED`, `VERIFY_CA` or
+`VERIFY_IDENTITY`), `ssl-ca`, `ssl-cert` and `ssl-key` (paths of files), `connect_timeout` (seconds, as on Postgres) and `socket`
+(the path of a Unix socket). Any other parameter makes the connection fail, so a URL cannot switch on `multipleStatements` or the
+client's flags; the message names the parameter only when it is an option of the driver. Without `ssl-mode` the connection is not
+encrypted. `REQUIRED` encrypts without verifying the server; `VERIFY_CA` checks the certificate against `ssl-ca` (or the system's
+authorities); `VERIFY_IDENTITY` checks that the certificate is made for the host name of the URL as well, so its host must be the
+server's name: an IP address fails the connection, since there is no name to check. `ssl-ca`, `ssl-cert` and `ssl-key` need a
+`ssl-mode` other than `DISABLED`: without one the connection fails with a message that names them. A file that cannot be read fails
+it with the error code, never the path.
+
+Every connection of the pool is set up before its first query, and read back:
+
+- The character set is `utf8mb4` and the collation `utf8mb4_0900_bin`, which is binary: `'A' = 'a'` is false, as on SQLite and
+  Postgres. The record of migrations is created in that collation, and a database you create yourself should be.
+- The time zone is UTC, so a `datetime` is read and written as UTC.
+- The `sql_mode` is `ONLY_FULL_GROUP_BY`, `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES`, `NO_ZERO_IN_DATE`, `NO_ZERO_DATE`,
+  `ERROR_FOR_DIVISION_BY_ZERO`, `NO_ENGINE_SUBSTITUTION`, `PIPES_AS_CONCAT` and `ANSI_QUOTES`: invalid values are errors instead
+  of being cut, `'a' || 'b'` is `'ab'` and `"x"` is a name, as in SQL on the other drivers. `NO_BACKSLASH_ESCAPES` is not part of
+  it, and a session that has it is refused: Kysely escapes a backslash in a literal and in a JSON path, which that mode would store
+  doubled.
+- A session that does not report these values, or does not autocommit, is refused with `D28`.
+
+The session is set up when a connection is opened and read back. A connection that goes back to the pool is reset with
+`COM_RESET_CONNECTION`, which the server answers with an open transaction rolled back and the session's variables, user variables,
+`lock tables` and `get_lock` locks, `sql_select_limit`, `foreign_key_checks` and prepared statements back at their defaults; then it is set up again, read in
+full, and only a connection that reads as Marmeon set it goes back. Any failure of these steps closes it. A reset does not change the
+database: one that a statement moved with `use` is closed instead of returned. The database a connection must return in is the one the
+server reported when it was opened, so a name written in another case in the URL is no problem. Each return costs three round trips: the
+reset, the set-up and the reading.
+
+A value never becomes part of a statement's text. A statement with parameters is prepared on the server (`COM_STMT_PREPARE`) and run
+with the values (`COM_STMT_EXECUTE`), so no `sql_mode`, client character set or version of the driver's formatter can make a value
+SQL. A statement without parameters goes over the text protocol, and the text protocol never formats a value. This has these
+consequences:
+
+- The server counts the placeholders with its own parser, in the session's mode. When its count is not the number of values, nothing
+  is run and the call throws a `TypeError`: `MySQL sees 1 placeholders in the statement and 2 parameters were given; a ? inside a
+  comment, a string or a "name" is not one.` A `?` inside a string, a comment, a `/*+ */` hint or (with `ANSI_QUOTES`) a `"name"`
+  is no placeholder; one inside `/*! … */` is, and it binds a value like any other.
+- MySQL cannot prepare some statements (`LOCK TABLES`, `BEGIN`, `SAVEPOINT`, `USE`, `XA`, `HANDLER`, `LOAD DATA`, `PREPARE`). They run
+  without parameters, as before. With one, MySQL answers `ER_UNSUPPORTED_PS`, and nothing is retried as text.
+- A connection holds at most 16 prepared statements; the least recently used is closed beyond that. The reset when the connection goes
+  back closes them all, so none is left between leases. The server's `max_prepared_stmt_count` (16382 by default) counts the statements of
+  all clients together, and a pool of many connections can reach it with a limit of 16 each.
+- Statement text that MySQL reads is still the one Kysely writes: names, JSON paths and `sql.lit()` / `sql.raw()` text. A change the app
+  makes to its own session inside a lease (`sql_mode`, `set names`) holds until the connection goes back and then affects only that
+  text, never a value. So an answer that says that the session has `NO_BACKSLASH_ESCAPES`, or names a client character set other than
+  `utf8mb4` (`set names latin1`, `set names gbk`; the server tells so with its session tracking, on by default), makes every later
+  statement of the lease fail with `D28`, with nothing sent, and the connection is closed; a lease in which an answer said so is not
+  given back either, so the next one is not refused. Only what an answer says counts. A routine that sets the mode and sets it back
+  stays unnoticed when the flag is gone from the answer of its call, and so does a failed statement that sent no OK packet: nothing
+  is affected but the text Kysely writes. The same holds for a server with `session_track_system_variables` emptied, which tells
+  nothing about `set names`. A routine that sets the mode only inside itself can leave the bit on in its answer and make the rest of
+  the lease fail, which fails closed. A value is a value in any case. Another time zone is not refused inside a lease; the connection
+  is reset when it goes back, and one that a `use` moved is replaced.
+- A statement prepared before a `use` keeps reading the database it was prepared in. When the server tells of the change of database
+  (Marmeon sets `session_track_schema = 1` on every connection), the statements of the lease are prepared anew; if a lease switches that
+  off, or a proxy keeps no session state, a statement text that was used before `use` still reads the old database in that lease.
+
+The way back of a released connection has the connect timeout as its limit, statements that still run before the reset included: a
+connection that does not answer by then is closed. A statement that you wait for has no limit of its own.
+
+A parameter is a string, a number, a `bigint`, a boolean, a `Date`, a `Uint8Array` or `null`, the same as on SQLite. Anything else
+throws a `TypeError` naming the parameter before the statement is sent: an object, an array (`JSON.stringify` a JSON value),
+`undefined`, a number that is not finite, an invalid `Date` and a `Date` outside the years 0 to 9999. A `bigint` is sent as a 64-bit
+integer, unsigned beyond 2^63 − 1; one outside −2^63 to 2^64 − 1 throws. A statement holds one SQL statement, and
+`LOAD DATA LOCAL INFILE` is switched off.
+
+Values come back as on the other drivers:
+
+- A `boolean` column (`tinyint(1)`) is read as a `boolean`.
+- A `bigint` column is read as a `number`; a value beyond `Number.MAX_SAFE_INTEGER` throws a `RangeError` once the whole result has
+  been read, and the connection goes on. Cast it to text to read it.
+- A `float` column is read with 6 significant digits, as MySQL's text protocol writes it (`1.1`, `1.23457` for 1.2345678, `16777200` for
+  2^24 + 1), the same from both protocols; use `double` for more. A `time` is read as text without
+  trailing zeros of its fraction (`12:00:00.25`).
+- A `datetime` or `timestamp` is read as an ISO-8601 string in UTC, such as `2026-10-01T12:00:00.000Z`. Write it as a `Date` or as
+  text without the `Z` (`2026-10-01 12:00:00.000`): MySQL refuses an insert of a literal with the `Z`.
+- A `date` is read as `YYYY-MM-DD`, a `decimal` as text (`'12.50'`), `json` parsed as `JSON.parse` does (an integer beyond 2^53 is a rounded number, as on the other drivers), and a `blob` as bytes.
+
 ## More connections
 
 Another database is a definition with a name. It reads its own variables, which are checked at the start like all

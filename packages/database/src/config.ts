@@ -5,8 +5,8 @@ import { UnsupportedDriverError, unknownDriver } from './supported-driver.ts';
 /**
  * Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. `pgsql`: a URL, the size of its
  * pool, and the size of the small pool its infrastructure (the cache, sessions — `connections.infrastructure()`)
- * opens on first use. `mysql`: named for the types only; `Connections` refuses it with D29 when it is built, and a connection definition
- * does not accept it. See `docs/database.md#configuration`.
+ * opens on first use. `mysql`: the same, for a `Connections` built with it; an app cannot select it yet — its connection definitions
+ * and the provider refuse it with D29. See `docs/database.md#configuration`.
  */
 export type ConnectionOptions =
   | { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean }
@@ -189,9 +189,13 @@ function cleanPath(url: URL): boolean {
 /** The schemes a server URL of each driver may have. */
 const URL_PROTOCOLS: Record<'pgsql' | 'mysql', readonly string[]> = { pgsql: ['postgres:', 'postgresql:'], mysql: ['mysql:'] };
 
-const SHOWN_PARAMETERS = new Set(['host', 'port', 'sslmode', 'application_name']);
+/** The query parameters of a URL that `describeConnection` keeps, per driver: where the server is and how it is reached, never a password or a key path. */
+const SHOWN_PARAMETERS: Record<'pgsql' | 'mysql', ReadonlySet<string>> = {
+  pgsql: new Set(['host', 'port', 'sslmode', 'application_name']),
+  mysql: new Set(['ssl-mode', 'socket']),
+};
 
-/** For messages and `db:show`: where a connection points — host, port and database, the user, the password masked, of the query string only `host`, `port`, `sslmode` and `application_name`. */
+/** For messages and `db:show`: where a connection points — host, port and database, the user, the password masked, of the query string only `host`, `port`, `sslmode` and `application_name` (MySQL: `ssl-mode` and `socket`). */
 export function describeConnection(options: ConnectionOptions): string {
   switch (options.driver) {
     case 'sqlite':
@@ -204,17 +208,25 @@ export function describeConnection(options: ConnectionOptions): string {
   }
 }
 
-/** The URL of a server-based connection for `describeConnection`, the password masked. */
+/**
+ * The URL of a server-based connection for `describeConnection`, the password masked. A URL that cannot be taken apart safely (a raw `?` or
+ * `#` in the password, any raw `@` after the first `?` or `#`: in a query value it must be written `%40`) is only described as `<driver> (invalid URL)`: it still connects.
+ */
 function describeUrl(driver: 'pgsql' | 'mysql', address: string): string {
   // A password with a raw `/` can leave no URL at all; the text is not quoted then (the parser's error carries it).
   const url = URL.parse(address);
   // Only a URL with an authority and the driver's own scheme is taken apart: `postgres:app:pw@h/db` is an opaque path with no host that
   // masking would not see into, and a DSN such as `user:pw@tcp(h)/db` parses as a scheme of its own.
   if (url === null || !hasServer(url) || !URL_PROTOCOLS[driver].includes(url.protocol)) return `${driver} (invalid URL)`;
+  // A raw `?` or `#` in the password ends the authority early (`mysql://app:12?socket=secret/part@db/app`): `app` is the host, `12` the port, and
+  // the rest of the password is a query string whose kept parameters would show it. The userinfo may have an `@` of its own (`app:foo@bar:12?socket=secret@db/app`
+  // is the password `foo@bar:12?socket=secret`), so any raw `@` after the first `?` or `#` makes the URL only describable as invalid.
+  const cut = address.search(/[?#]/);
+  if (cut !== -1 && address.slice(cut).includes('@')) return `${driver} (invalid URL)`;
   if (url.password) url.password = '***';
   // The query string may carry the password again (`?password=…`) or a key path: only the parameters that say where the
   // server is stay (a socket connection is `?host=/var/run/postgresql`).
-  for (const name of [...url.searchParams.keys()]) if (!SHOWN_PARAMETERS.has(name)) url.searchParams.delete(name);
+  for (const name of [...url.searchParams.keys()]) if (!SHOWN_PARAMETERS[driver].has(name)) url.searchParams.delete(name);
   url.hash = '';
   // A password with a raw `/` or `@` ends the userinfo early: what the parser took for the path still holds a rest of it.
   const masked = maskUrlPasswords(url.href);

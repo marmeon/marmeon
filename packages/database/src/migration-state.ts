@@ -1,7 +1,6 @@
 import { printable, withCode } from '@marmeon/core/internal';
-import type { ColumnDefinitionBuilder, Kysely } from 'kysely';
+import { sql, type ColumnDefinitionBuilder, type Kysely } from 'kysely';
 import { tableColumns, type CatalogQuery } from './introspection.ts';
-import { mysqlPending } from './mysql-pending.ts';
 import type { Driver } from './schema/blueprint.ts';
 import { unknownDriver } from './supported-driver.ts';
 
@@ -163,18 +162,20 @@ export async function createMigrationsTable(db: Kysely<any>, driver: Driver): Pr
       id = ['bigint', (c) => c.primaryKey().generatedByDefaultAsIdentity()];
       break;
     case 'mysql':
-      return mysqlPending('The record of migrations');
+      id = ['bigint', (c) => c.primaryKey().autoIncrement()];
+      break;
     default:
       return unknownDriver(driver);
   }
-  await db.schema
+  const table = db.schema
     .createTable(MIGRATIONS_TABLE)
     .addColumn('id', ...id)
     .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
     .addColumn('module', 'varchar(255)', (c) => c.notNull())
     .addColumn('batch', 'integer', (c) => c.notNull())
-    .addColumn('checksum', 'varchar(80)')
-    .execute();
+    .addColumn('checksum', 'varchar(80)');
+  // The table's own collation, binary like the session's: a name is the same name in any case it was written in.
+  await (driver === 'mysql' ? table.modifyEnd(sql`default character set utf8mb4 collate utf8mb4_0900_bin`) : table).execute();
 }
 
 /**

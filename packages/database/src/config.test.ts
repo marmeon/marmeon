@@ -87,8 +87,29 @@ describe('describeConnection: a URL that is not scheme://host/…', () => {
     if (expected) expect(text).toBe(expected);
   });
 
-  it('masks the password of a mysql URL like that of a Postgres one', () => {
-    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:hunter2x@db:3307/shop?password=x9&sslmode=required' })).toBe('mysql mysql://app:***@db:3307/shop?sslmode=required');
+  it('says nothing of a password that a raw ? cut into the host and a query string — whatever parameter it falls on', () => {
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:12?socket=secret/part@db/app' })).toBe('mysql (invalid URL)');
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:12?ssl-mode=secret@db/app' })).toBe('mysql (invalid URL)');
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres://app:12?host=secret/part@db/app' })).toBe('pgsql (invalid URL)');
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:12#frag@db/app' })).toBe('mysql (invalid URL)');
+  });
+
+  it('says nothing of a password that has an @ of its own and a raw ? after it', () => {
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:foo@bar:12?socket=secret@db/app' })).toBe('mysql (invalid URL)');
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres://app:foo@bar:12?host=secret@db/app' })).toBe('pgsql (invalid URL)');
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres://app:foo@bar:12?application_name=secret@db/app' })).toBe('pgsql (invalid URL)');
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:foo@bar:12#secret@db/app' })).toBe('mysql (invalid URL)');
+  });
+
+  it('keeps a socket path and a parameter with an encoded @ (%40), and calls a raw @ in a parameter invalid', () => {
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:pw@db/app?socket=%2Fhome%2Fme%40work%2Fmysqld.sock' })).toBe('mysql mysql://app:***@db/app?socket=%2Fhome%2Fme%40work%2Fmysqld.sock');
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres://app:pw@db/app?application_name=me%40work' })).toBe('pgsql postgres://app:***@db/app?application_name=me%40work');
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres://app:pw@db/app?application_name=me@work' })).toBe('pgsql (invalid URL)');
+  });
+
+  it('masks the password of a mysql URL like that of a Postgres one, and keeps only ssl-mode and socket of its query string', () => {
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:hunter2x@db:3307/shop?password=x9&sslmode=required&ssl-mode=VERIFY_CA&ssl-key=/keys/a.pem' })).toBe('mysql mysql://app:***@db:3307/shop?ssl-mode=VERIFY_CA');
+    expect(describeConnection({ driver: 'mysql', url: 'mysql://app:hunter2x@localhost/shop?socket=%2Fvar%2Frun%2Fmysqld%2Fmysqld.sock&connect_timeout=5' })).toBe('mysql mysql://app:***@localhost/shop?socket=%2Fvar%2Frun%2Fmysqld%2Fmysqld.sock');
   });
 });
 

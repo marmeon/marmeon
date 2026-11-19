@@ -14,6 +14,7 @@ import { Seeding } from './seeders.ts';
 import { Migrator } from './migrations/migrator.ts';
 import { databaseSolutions } from './solutions.ts';
 import { DatabaseHealthCheck } from './health.ts';
+import { refuseUnselectableMysql } from './mysql-pending.ts';
 import { SchemaRequirements } from './schema-requirements.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
@@ -79,6 +80,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
         seen.set(entry.definition.connection, entry);
         connections[entry.definition.connection] = c.make(entry.definition);
       }
+      for (const [name, options] of Object.entries(connections)) refuseUnselectableMysql(name, options);
       return new Connections({ connections, root: app.root, logger: c.make(Logger), app, now: () => c.make(Clock).now() });
     });
     container.singleton(Database, (c) => c.make(Connections).get());
