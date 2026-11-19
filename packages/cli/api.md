@@ -142,6 +142,9 @@ Types from other packages: none
 ## Commands
 
 ```ts
+// add
+marmeon add <package>... [--dry-run]
+--dry-run (boolean)
 // agents:install
 marmeon agents:install [--shared] [--no-mcp] [--check]
 --check (boolean)

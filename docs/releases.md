@@ -45,7 +45,7 @@ is [Upgrading to 1.0.0 from 0.4.0](../UPGRADING.md#upgrading-to-100-from-040).
 
 A release candidate, `x.y.z-rc.N`, is a preview of the release `x.y.z`. It comes under the npm dist-tag `next` and never moves `latest`,
 so an app only gets one when it asks: `pnpm add -E @marmeon/core@next`, and the same for every other framework package, all in the same version.
-To start an app from a candidate, run `pnpm create marmeon@next my-app`; on the day a candidate appears, [pnpm installs an older version](installation.md#the-first-day-after-a-release) unless you let the framework through. A package added later takes the version of the app (`pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
+To start an app from a candidate, run `pnpm create marmeon@next my-app`; on the day a candidate appears, [pnpm installs an older version](installation.md#the-first-day-after-a-release) unless you let the framework through. A package added later takes the version of the app (`marmeon add redis`, or `pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
 [`marmeon check`](check.md#the-packages-check) finds a package that is not.
 
 From the first candidate to its release, only bug fixes, documentation and internals change; the public API is the one the release

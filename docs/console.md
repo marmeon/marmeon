@@ -34,7 +34,8 @@ Set or rename these variables in the environment or in .env (see .env.example).
 ```
 
 The `make:*` generators of the framework itself (`make:module`, `make:controller` …), `build`, `discover`, `key:generate`,
-`make:lint-config` and `make:docker` work without booting, so they run before the app has a valid `.env`. The generators of
+`make:lint-config` and `make:docker` work without booting, so they run before the app has a valid `.env`. `add` installs without booting,
+but for a package with migrations it runs `publish`, which boots the app: that needs a valid `.env`. The generators of
 packages (`make:auth`, `publish`, `make:*-table`) boot the app. `route:types` and `make:command` register the app's providers without booting them, as the
 build does, and need no secret either.
 
@@ -165,6 +166,7 @@ start`, and `marmeon dev` refuses it.
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
 | `modules:list [--json]` | The packages, the modules with their providers, commands, jobs, notifications and seeders, and the listeners of each event, without booting the app. See [listing the modules](modules.md#listing-the-modules). |
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
+| `add <package>... [--dry-run]` | Installs framework packages at exactly the version of your app, runs `discover` and copies the migrations of a package that has some (`publish` boots the app, so that part needs a valid `.env`). `--dry-run` prints the commands and changes nothing. See [packages you add](packages.md#packages-you-add). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
 | `agents:sync [--check]` | Writes `AGENTS.md` and `CLAUDE.md`, or brings the block of marmeon in `AGENTS.md` up to the installed version. `--check` writes nothing and fails when the block is missing or out of date, for CI. See [coding agents](agents.md). |
 | `agents:install [--shared] [--no-mcp] [--check]` | Copies the skills of marmeon into `.claude/skills/` (`.agents/skills/` with `--shared`) and enters `marmeon mcp` in `.mcp.json`; run again, it updates them. Refuses links that lead out of the app or nowhere, and files that are not its own. `--check` writes nothing and fails when they are missing or out of date. See [coding agents](agents.md#skills-and-the-mcp-server). |
