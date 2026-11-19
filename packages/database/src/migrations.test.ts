@@ -186,6 +186,70 @@ describe.each(drivers)('migrations on %s', (driver) => {
     }
   });
 
+  it.each([
+    ['sqlite', "/* ' */ update migrations set name = 'changed'"],
+    ['sqlite', "/* it's */ update migrations set name = 'changed' /* don't */"],
+    ['sqlite', "-- it's\nupdate migrations set name = 'changed'"],
+    ['sqlite', 'with "--" as (select 1) update migrations set name = \'changed\''],
+    ['sqlite', 'with [it\'s] as (select 1) update migrations set name = \'changed\''],
+    ['pgsql', "/* ' */ update migrations set name = 'changed'"],
+    ['pgsql', 'with "--" as (select 1) update migrations set name = \'changed\''],
+    ['pgsql', "do $$ begin update migrations set name = 'changed'; end $$"],
+    ['pgsql', "select $$ ' $$; update migrations set name = 'changed'"],
+    ['pgsql', "/* outer /* inner */ ' */ update migrations set name = 'changed'"],
+    ['pgsql', "/* /* */ ' */ delete from migrations /* ' */"],
+    ['pgsql', '-- x\rdelete from migrations'],
+    ['pgsql', "with x as (select 1 \u00e9$$, ' $$ ') delete from migrations /* ' */"],
+    ['pgsql', `select $${'t'.repeat(300)}$ ' $${'t'.repeat(300)}$; delete from migrations; select '`],
+    ['pgsql', 'delete from U&"migr\\0061tions"'],
+    ['pgsql', 'delete from U&"migr!0061tions" /* /* */ */ uescape \'!\''],
+    ['pgsql', `select '"'; delete from migrations; -- "'`],
+    ['sqlite', "delete from 'migrations'"],
+    ['sqlite', "with x as (select $a(')) delete from migrations where $a(') is null"],
+    ['sqlite', "with x as (select @a(')) delete from migrations where @a(') is null"],
+    ['sqlite', "with x as (select $a(\u00a0'), 'a'' /* ' ) delete from migrations /* x */"],
+    ['sqlite', "with x as (select @a(\u3000'), 'a'' /* ' ) delete from migrations /* x */"],
+  ].filter(([only]) => only === driver))('keeps a data step that hides a write to the migrator tables from the guard from changing them: %s %s', async (only, statement) => {
+    expect(only).toBe(driver);
+    const own = await freshConnections(driver);
+    try {
+      (globalThis as { guardedStatement?: string }).guardedStatement = statement;
+      await expect(migrator(own.connections, { name: 'guard', migrations: fixtures('mysql-guard') }).migrate()).rejects.toThrow(/^\[marmeon:D4\]/);
+      expect((await own.connections.get<any>().selectFrom('migrations').select('name').execute()).map((row: { name: string }) => row.name)).toEqual(['2026_03_20_000000_create_ledger_table']);
+    } finally {
+      delete (globalThis as { guardedStatement?: string }).guardedStatement;
+      await own.close();
+    }
+  });
+
+  it.each(['cte', 'appended'] as const)('keeps a data step from reaching the migrator through the builder: %s', async (form) => {
+    const own = await freshConnections(driver);
+    try {
+      (globalThis as { guardedStatement?: unknown }).guardedStatement = (sqlTag: typeof sql, on: any) =>
+        form === 'cte'
+          ? on.with('gone', (d: any) => d.deleteFrom('migrations')).selectFrom('gone').selectAll().execute()
+          : on.selectNoFrom(sqlTag.lit(1).as('x')).modifyEnd(sqlTag.raw('; drop table ledger')).execute();
+      await expect(migrator(own.connections, { name: 'guard', migrations: fixtures('mysql-guard') }).migrate()).rejects.toThrow(/^\[marmeon:D4\]/);
+      expect((await own.connections.get<any>().selectFrom('migrations').select('name').execute()).map((row: { name: string }) => row.name)).toEqual(['2026_03_20_000000_create_ledger_table']);
+      expect((await own.connections.get<any>().selectFrom('ledger').select('amount').execute()).map((row: { amount: number }) => row.amount)).toEqual([10, 20]);
+    } finally {
+      delete (globalThis as { guardedStatement?: unknown }).guardedStatement;
+      await own.close();
+    }
+  });
+
+  it.runIf(driver === 'sqlite')('keeps a data step from deleting the migrator\'s record by naming the table with a literal', async () => {
+    const own = await freshConnections(driver);
+    try {
+      (globalThis as { guardedStatement?: () => ReturnType<typeof sql> }).guardedStatement = () => sql`delete from ${sql.lit('migrations')}`;
+      await expect(migrator(own.connections, { name: 'guard', migrations: fixtures('mysql-guard') }).migrate()).rejects.toThrow(/^\[marmeon:D4\]/);
+      expect((await own.connections.get<any>().selectFrom('migrations').select('name').execute()).map((row: { name: string }) => row.name)).toEqual(['2026_03_20_000000_create_ledger_table']);
+    } finally {
+      delete (globalThis as { guardedStatement?: unknown }).guardedStatement;
+      await own.close();
+    }
+  });
+
   it('undoes a failing migration completely and does not record it', async () => {
     const withBroken = migrator(connections, auth, broken);
     const sent: string[] = [];

@@ -48,7 +48,9 @@ function mysqlCode(text: string): string {
         code += text.slice(i + 1);
         break;
       }
-      code += ` ${text.slice(i + 1, close)} `;
+      // Only the words of the name: a `;` or a quote in it starts nothing. Straight after a single `@` they follow it, which is the user variable `@name`.
+      const named = (text.slice(i + 1, close).match(/[A-Za-z0-9_$]+/g) ?? []).join(' ');
+      code += /(?<!@)@$/.test(code) ? named : ` ${named} `;
       i = close + 1;
     } else if (char === '#') {
       const newline = text.indexOf('\n', i);
@@ -107,8 +109,8 @@ const COMMITS = new Set([
  * (`@@`, a scope, a dot, a comment, a quote that the scan took out) and with an assignment after it (`=`, `:=`; for `password` also `for` and `to`).
  * Other words of the statement, such as a name in an expression, do not match.
  */
-const SETS_AUTOCOMMIT = /(?<![\w$])(?<!(?<!@)@)autocommit\s*:?=/i;
-const SETS_PASSWORD = /(?<![\w$])(?<!(?<!@)@)password\s*(?::?=|for\b|to\b)/i;
+const SETS_AUTOCOMMIT = /(?<![\w$])(?<!(?<!@)@)autocommit[\s)]*:?=/i;
+const SETS_PASSWORD = /(?<![\w$])(?<!(?<!@)@)password[\s)]*(?::?=|for\b|to\b)/i;
 /** For a text that is not split (a `/*!` or `/*+` comment in it): the words anywhere count. */
 const LOOSE_AUTOCOMMIT = /(?<![\w$])(?<!(?<!@)@)autocommit/i;
 const LOOSE_PASSWORD = /(?<![\w$])(?<!(?<!@)@)password/i;
@@ -118,8 +120,8 @@ const LOOSE_PASSWORD = /(?<![\w$])(?<!(?<!@)@)password/i;
  * (split at `;` outside strings and comments) is one of {@link COMMITS}, `load index`, `set autocommit` or `set … password`, `commit` and `rollback` (a data step does not steer its transaction). A text with a `/*!` or `/*+`
  * comment cannot be split reliably: any of those words anywhere counts. Unclear text counts as committing.
  */
-export function mysqlCommits(text: string): boolean {
-  if (hasExecutableComment(text)) {
+export function mysqlCommits(text: string, unsplittable = false): boolean {
+  if (unsplittable || hasExecutableComment(text)) {
     const words = (text.match(WORD) ?? []).map((word) => word.toLowerCase());
     return words.some((word) => COMMITS.has(word)) || LOOSE_AUTOCOMMIT.test(text) || (words.includes('set') && (LOOSE_PASSWORD.test(text) || words.includes('role')));
   }

@@ -211,7 +211,7 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
     }
     case 'data': {
       // The migrator's tables are its to write, and a schema change here would be missing from the plan.
-      const guarded = async (on: Kysely<any>) => step.run(on.withPlugin(noMigratorWrites()).withPlugin(noSchemaChanges(driver)) as unknown as Connection<any>, { driver });
+      const guarded = async (on: Kysely<any>) => step.run(on.withPlugin(noMigratorWrites(driver)).withPlugin(noSchemaChanges(driver)) as unknown as Connection<any>, { driver });
       // MySQL's migration has no transaction around it (its DDL would end it): the rows of a data step are its own, committed or rolled back with it.
       if (driver === 'mysql' && !db.isTransaction) await db.transaction().execute(guarded);
       else await guarded(db);

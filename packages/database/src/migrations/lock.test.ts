@@ -376,7 +376,8 @@ describe.each(drivers)('a migration that loses the lock on %s', (driver) => {
 
   /** Takes the lock away from the run: SQLite loses its row, Postgres the connection that holds it. */
   const takeAway = async (db: any) => {
-    if (driver === 'sqlite') await sql`delete from ${sql.table(LOCK_TABLE)}`.execute(db);
+    // Without the plugins of the data step, which refuse raw SQL that names a table of the migrator.
+    if (driver === 'sqlite') await sql`delete from ${sql.table(LOCK_TABLE)}`.execute(db.withoutPlugins());
     else {
       await sql`select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'marmeon-migrate:%' and datname = current_database() and pid <> pg_backend_pid()`.execute(connections.get<any>());
       await pause(500);

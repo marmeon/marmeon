@@ -2,9 +2,10 @@ import { withCode } from '@marmeon/core/internal';
 import type { RawBuilder, RawNode } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { isMigratorTable } from '../migration-state.ts';
-import { lastSegment, rawText } from '../migrator-connection.ts';
+import { lastSegment, rawText, statementWords } from '../migrator-connection.ts';
 import { Blueprint, blueprintParts, closedPlan } from './blueprint.ts';
-import { hasExecutableComment, mysqlWords } from './mysql-words.ts';
+import { hasExecutableComment } from './mysql-words.ts';
+import type { Driver } from './blueprint.ts';
 import type { DataContext, PlanStep, RawStatements } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -47,11 +48,11 @@ export class Schema {
     this.#steps.push(step);
   }
 
-  #rawNames(name: string, everywhere = false): never {
+  #rawNames(name: string, everywhere?: 'comment' | 'string'): never {
     throw new SchemaError(
       withCode(
         'D4',
-        `The raw SQL names "${name}", a table of the migrator (as a table, column or alias${everywhere ? '; a statement with a /*! or /*+ comment is read with every word, those in strings and comments included' : ''}). Changing it would make it lose track of which migrations ran; choose another name. ` +
+        `The raw SQL names "${name}", a table of the migrator (as a table, column or alias${everywhere === 'comment' ? '; a statement with a /*! or /*+ comment is read with every word, those in strings and comments included' : everywhere === 'string' ? '; on SQLite the words of a string count too, because SQLite reads a string as a name where a name is expected' : ''}). Changing it would make it lose track of which migrations ran; choose another name. ` +
           'See docs/migrations.md#how-the-migrator-keeps-track.',
       ),
     );
@@ -74,10 +75,10 @@ export class Schema {
    * Refuses raw SQL that names a table of the migrator. Only a guard against mistakes: it reads the words of the statement, outside
    * its string literals, and does not parse it.
    */
-  #rawAllowed(text: string, mysql = false): void {
-    // MySQL lexes otherwise (executable comments, backslash escapes, `#` comments): the words of its statement are read by its own rules.
-    const words = mysql ? mysqlWords(text) : (text.replace(/'(?:[^']|'')*'/g, '').replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ').match(/[A-Za-z_][\w$]*/g) ?? []);
-    for (const word of words) if (isMigratorTable(word)) this.#rawNames(word, mysql && hasExecutableComment(text));
+  #rawAllowed(node: RawNode, driver: Driver): void {
+    // The text as the driver's compiler sends it, read with the driver's own lexing (strings, quoted names, comments, dollar quotes, executable comments).
+    const text = rawText(node, driver);
+    for (const word of statementWords(text, driver)) if (isMigratorTable(word)) this.#rawNames(word, driver === 'mysql' && hasExecutableComment(text) ? 'comment' : driver === 'sqlite' ? 'string' : undefined);
   }
 
   /** Runs the callback that describes a table, and closes the description: it is synchronous like `up()`. */
@@ -156,8 +157,10 @@ export class Schema {
   raw(statement: RawBuilder<unknown> | RawStatements): void {
     // A `RawBuilder` has `execute`; the per-driver form is a plain object.
     const statements: RawStatements = 'execute' in statement ? { sqlite: statement, pgsql: statement, mysql: statement } : statement;
-    for (const one of [statements.sqlite, statements.pgsql]) if (one) this.#rawAllowed(rawText(one.toOperationNode() as RawNode));
-    if (statements.mysql) this.#rawAllowed(rawText(statements.mysql.toOperationNode() as RawNode), true);
+    for (const driver of ['sqlite', 'pgsql', 'mysql'] as const) {
+      const one = statements[driver];
+      if (one) this.#rawAllowed(one.toOperationNode() as RawNode, driver);
+    }
     this.#add({ kind: 'raw', statements });
   }
 }

@@ -176,10 +176,10 @@ describes today. The second argument tells the driver, `'sqlite'`, `'pgsql'` or 
 
 A data step changes data only. A schema change in it, through the query builder (`db.schema.createTable(…)`) or as raw SQL that
 begins with `create`, `alter`, `drop` or `do`, stops with error D4: add it as a step of its own with `schema.create()`,
-`schema.alter()` or `schema.raw()`. So does a write to the migrator's own tables through the query builder.
+`schema.alter()` or `schema.raw()`. So does a write to the migrator's own tables through the query builder, wherever it stands in the query (a CTE, a subquery, an `insert … select`), and raw SQL appended to a query that changes the schema. Raw SQL that names `migrations` or `migration_lock` (also through `sql.id()`, `sql.table()` or an alias), alone or inside a write, stops with D4 as well, and so does a read of them in raw SQL: every word outside a string counts. The query builder may read them. The statement is read as it is sent: compiled by the connection's dialect, with names quoted and escaped, and (on Postgres) a name spelled with `U&"…"` escapes read as the name it is. A `U&"…"` name with a `UESCAPE` clause, or with an escape that cannot be read, counts as naming the migrator's tables.
 
-This is a guard against mistakes, not a sandbox. Raw SQL that writes to the migrator's tables, and a connection taken from `db` without its plugins or a query compiled by hand,
-are not looked into. Keep to the query
+This is a guard against mistakes, not a sandbox. A connection taken from `db` without its plugins or a query compiled by hand
+is not looked into, and a raw statement is read by its words, not parsed. Keep to the query
 builder in a data step.
 
 ### Raw SQL
@@ -197,7 +197,7 @@ with `null`: `migrate` refuses a plan whose step has none, before it runs the fi
 migration and the step. `mysql: undefined` counts as no statement: only `null` says nothing runs. MySQL does not run the statement of another driver by chance.
 
 A statement that names one of the migrator's tables stops with error D4 when the plan is built; that is a check of its words, not a
-parse. It reads a `mysql` statement the way MySQL does: a backslash escapes
+parse. It reads the words outside strings and comments with the lexing of each driver: a quote inside a comment or a quoted name starts no string, and on Postgres the text between `$$` or `$tag$` counts as words, because it may be code. SQLite reads a string as a name where a name is expected (`delete from 'migrations'`), so on SQLite a `'migrations'` in raw SQL is refused too; a value you bind (`${value}`) is not part of the text. It reads a `mysql` statement the way MySQL does: a backslash escapes
 a quote in a string, and a `#` starts a comment. A statement with a `/*! … */` or `/*+ … */` comment is read with every word, those in its strings and comments included, because the server may run or skip such a comment by its version. Otherwise Marmeon does not look into the statement, but it looks at the result: a statement that renames or drops a table or
 column the migrations know rolls the migration back with error D3 (not on MySQL, see [MySQL](#mysql)) ([what `migrate` checks](#what-migrate-checks-after-each-migration)). A table, view, column or index it creates has no owner, no secret mark
 and no timestamp or soft-delete marker, and Marmeon's picture of the schema (below) does not contain it: `selectAll()` of a table it

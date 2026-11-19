@@ -1,4 +1,4 @@
-import { AliasNode, DummyDriver, FunctionNode, IdentifierNode, Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, SelectionNode, SelectQueryNode, sql, TableNode } from 'kysely';
+import { AliasNode, DummyDriver, expressionBuilder, FunctionNode, IdentifierNode, Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, RawNode, SelectionNode, SelectQueryNode, sql, TableNode } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { introspect, tableColumns } from './introspection.ts';
 import { SchemaMetadata } from './metadata.ts';
@@ -10,8 +10,10 @@ import { MANY } from './placeholders.ts';
 import { RelationsPlugin } from './relations.ts';
 import { parameterLimit } from './repository.ts';
 import { Blueprint, blueprintParts, compileColumn, mysqlTypeOf, typeOf, type Driver } from './schema/blueprint.ts';
-import { noSchemaChanges } from './migrator-connection.ts';
+import { noSchemaChanges, rawText } from './migrator-connection.ts';
+import { mysqlCommits } from './schema/mysql-words.ts';
 import { executePlan, planOf } from './schema/plan.ts';
+import { Schema } from './schema/schema.ts';
 import { UnsupportedDriverError, unknownDriver } from './supported-driver.ts';
 
 // What has no MySQL form yet says so with D29 and names what it was asked for, for the `mysql` driver; the places that run on MySQL are below.
@@ -195,6 +197,197 @@ describe('the DDL MySQL gets', () => {
 
   it('refuses a driver it does not know when the guard is made', () => {
     expect(() => noSchemaChanges('oracle' as Driver)).toThrow(new UnsupportedDriverError(notKnown));
+  });
+
+  it('reads the names of a raw statement in a data step as names, and keeps a bound value out of it', async () => {
+    const outcome = (driver: 'mysql' | 'sqlite' | 'pgsql', statement: ReturnType<typeof sql>) => {
+      const { db, statements } = recorder();
+      return executePlan(db, driver, plan((schema) => schema.data((on) => statement.execute(on as never)))).then(
+        () => 'ran',
+        (error: Error) => (statements.length === 0 ? error.message.slice(0, 14) : 'sent'),
+      );
+    };
+    const refused = '[marmeon:D4] C';
+    expect(await outcome('mysql', sql`set ${sql.id('autocommit')} = 0`)).toBe(refused);
+    expect(await outcome('mysql', sql`set ${sql.ref('@@session.autocommit')} = 0`)).toBe(refused);
+    expect(await outcome('mysql', sql`set ${sql.table('autocommit')} = 0`)).toBe(refused);
+    expect(await outcome('mysql', sql`${sql.raw('commit')}`)).toBe(refused);
+    expect(await outcome('mysql', sql`set ${sql.join([sql.id('autocommit')])} = 0`)).toBe(refused);
+    expect(await outcome('mysql', sql`${recorder().db.schema.dropTable('t')}`)).toBe(refused);
+    expect(await outcome('sqlite', sql`create table ${sql.id('x')} (id int)`)).toBe(refused);
+    expect(await outcome('pgsql', sql`${sql.raw('create')} table ${sql.table('x')} (id int)`)).toBe(refused);
+    // A value is data, whatever it says.
+    expect(await outcome('mysql', sql`update t set a = ${'autocommit'}`)).toBe('ran');
+    expect(await outcome('mysql', sql`update t set a = ${sql.lit('commit')}`)).toBe('ran');
+    expect(await outcome('mysql', sql`select ${sql.id('autocommit')} from settings`)).toBe('ran');
+    // A part that is no plain name: where its text stands in the statement is not known, so every word counts.
+    // `@x` is a user variable, `@@x` a system variable: a name written after the `@` makes the same difference.
+    expect(await outcome('mysql', sql`set @${sql.id('autocommit')} = 0`)).toBe('ran');
+    expect(await outcome('mysql', sql`set @@${sql.id('autocommit')} = 0`)).toBe(refused);
+    expect(await outcome('mysql', sql`${expressionBuilder<any>()(sql.raw('set autocommit'), '=', sql.lit(0))}`)).toBe(refused);
+    expect(await outcome('sqlite', sql`${expressionBuilder<any>()(sql.raw('drop table x'), '=', sql.lit(0))}`)).toBe(refused);
+    expect(await outcome('mysql', sql`insert into t ${recorder().db.selectFrom('notes').select('id')}`)).toBe('ran');
+    // A fragment behind an empty parameter is part of the statement.
+    const hidden = RawNode.create(['', '', 'commit'], [RawNode.createWithSql('')]);
+    expect(rawText(hidden, 'mysql')).toContain('commit');
+    expect(mysqlCommits(rawText(hidden, 'mysql'))).toBe(true);
+    // Raw DML on a table of the migrator, which the builder's guard refuses too.
+    for (const driver of ['mysql', 'sqlite', 'pgsql'] as const) {
+      expect(await outcome(driver, sql`update ${sql.table('migrations')} set batch = 0`), driver).toBe(refused);
+      expect(await outcome(driver, sql`update ${sql.table('migrations').as('m')} set batch = 0`), driver).toBe(refused);
+    }
+    // A name that holds punctuation brings none of it into the text: no false statement, no comment, no way out of a quote.
+    expect(await outcome('mysql', sql`select ${sql.id('x;commit')} from settings`)).toBe('ran');
+    expect(await outcome('mysql', sql`select ${sql.id('a`; commit; --')} from settings`)).toBe('ran');
+    expect(await outcome('mysql', sql`set ${sql.id("x'; autocommit")} = 0`)).toBe(refused);
+    expect(await outcome('mysql', sql`${sql.id('--')} set ${sql.id('autocommit')} = 0`)).toBe(refused);
+  });
+
+  describe('raw SQL in a write of a data step, and values that only look like SQL', () => {
+    const inStep = (driver: 'mysql' | 'sqlite' | 'pgsql', work: (on: Kysely<any>) => PromiseLike<unknown>) => {
+      const { db, statements } = recorder();
+      return executePlan(db, driver, plan((schema) => schema.data((on) => work(on as never)))).then(
+        () => 'ran',
+        (error: Error) => (statements.length === 0 ? error.message : 'sent'),
+      );
+    };
+    const nested = recorder().db;
+
+    it.each(['mysql', 'sqlite', 'pgsql'] as const)('refuses raw SQL that names a table of the migrator inside a write, on %s', async (driver) => {
+      for (const work of [
+        (on: Kysely<any>) => on.updateTable(sql`migrations`.as('m')).set({ batch: 0 }).execute(),
+        (on: Kysely<any>) => on.deleteFrom(sql`migrations`.as('m')).execute(),
+        (on: Kysely<any>) => on.insertInto('notes').values({ a: sql`(select max(batch) from migrations)` }).execute(),
+      ]) {
+        expect(await inStep(driver, work)).toMatch(/^\[marmeon:D4\] Cannot read or write "migrations" in raw SQL of a schema\.data\(\) step/);
+      }
+    });
+
+    it.each(['mysql', 'sqlite', 'pgsql'] as const)('reads the raw SQL of every statement of a data step, a read with a write CTE too, on %s', async (driver) => {
+      const refused = /^\[marmeon:D4\] Cannot read or write "migrations" in raw SQL/;
+      expect(await inStep(driver, (on) => on.with('gone', () => sql`(delete from migrations returning id)`).selectFrom('gone').selectAll().execute())).toMatch(refused);
+      expect(await inStep(driver, (on) => on.selectFrom('notes').select(sql`(select max(batch) from migrations)`.as('b')).execute())).toMatch(refused);
+    });
+
+    it.each(['mysql', 'sqlite', 'pgsql'] as const)('reads a raw node once, with its whole text, on %s', async (driver) => {
+      // A word in a comment of the outer text is a comment, whatever part it came from.
+      expect(await inStep(driver, (on) => sql`select 1 /* ${sql.raw('migrations')} */`.execute(on)), driver).toBe('ran');
+      expect(await inStep(driver, (on) => on.selectFrom('notes').select(sql`1 /* ${sql.raw('migrations')} */`.as('x')).execute()), driver).toBe('ran');
+      // A string literal of the outer text is a string.
+      // (SQLite reads a string as a name where a name is expected, so its strings count: see the next test.)
+      if (driver === 'sqlite') expect(await inStep(driver, (on) => sql`select 'migrations' as a`.execute(on))).toMatch(/^\[marmeon:D4\].*on SQLite the words of a string too/);
+      else expect(await inStep(driver, (on) => sql`select 'migrations' as a`.execute(on)), driver).toBe('ran');
+      // Outside a comment or a string the word counts, from a fragment, a name or a nested query.
+      expect(await inStep(driver, (on) => sql`select 1 ${sql.raw('migrations')}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+      expect(await inStep(driver, (on) => sql`select 1 ${sql.id('migrations')}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+      expect(await inStep(driver, (on) => sql`select 1 ${nested.selectFrom('migrations').selectAll()}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+      expect(await inStep(driver, (on) => sql`select 1 ${nested.schema.dropTable('t')}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+    });
+
+    it('reads a literal written into the statement as the text it is, in a data step', async () => {
+      const refused = /^\[marmeon:D4\]/;
+      expect(await inStep('sqlite', (on) => sql`delete from ${sql.lit('migrations')}`.execute(on))).toMatch(refused);
+      expect(await inStep('sqlite', (on) => sql`delete from t where a = ${sql.lit("it's")} and b = ${sql.lit(3)}`.execute(on))).toBe('ran');
+      for (const driver of ['pgsql', 'mysql'] as const) expect(await inStep(driver, (on) => sql`delete from ${sql.lit('migrations')}`.execute(on)), driver).toBe('ran');
+      // In a nested query the literal is written as it is sent, too: a name on SQLite, a string elsewhere.
+      const query = (on: Kysely<any>) => sql`select 1 ${nested.selectFrom('t').selectAll().where('a', '=', sql.lit('migrations'))}`.execute(on);
+      expect(await inStep('sqlite', query)).toMatch(refused);
+      for (const driver of ['pgsql', 'mysql'] as const) expect(await inStep(driver, query), driver).toBe('ran');
+    });
+
+    it('writes a literal as the compiler of the driver does, so a backslash cannot hide a name', async () => {
+      // MySQL sends 'x\\' (the string ends); a text with a single backslash would keep the scanner inside the string up to the next quote, and hide the name between.
+      const form = (on: Kysely<any>) => sql`select ${sql.lit('x\\')}, migrations, 'y' from t`.execute(on);
+      for (const driver of ['mysql', 'sqlite', 'pgsql'] as const) expect(await inStep(driver, form), driver).toMatch(/^\[marmeon:D4\]/);
+      expect(rawText(sql`${sql.lit('x\\')}`.toOperationNode() as RawNode, 'mysql')).toBe("'x\\\\'");
+      expect(rawText(sql`${sql.lit('x\\')}`.toOperationNode() as RawNode, 'sqlite')).toBe("'x\\'");
+      expect(() => new Schema().raw({ mysql: sql`select ${sql.lit('x\\')}, migrations, 'y' from t` })).toThrow(/\[marmeon:D4\]/);
+    });
+
+    it('adds no space around a name, so the text keeps the comments and the dollar quotes that are sent', async () => {
+      const refused = /^\[marmeon:D4\]/;
+      // MySQL sends 1--`a`: a subtraction, so the statement after it runs. On the other drivers `--` is a comment in either text.
+      for (const driver of ['mysql', 'sqlite', 'pgsql'] as const) {
+        const form = (on: Kysely<any>) => sql`with x as (select 1--${sql.id('a')} from notes) delete from migrations`.execute(on);
+        // MySQL runs what follows `1--` (`1 - -`a``), so the statement is refused for naming `migrations`; on the others the rest of the line is a
+        // comment in the text that is sent too, and runs nothing.
+        if (driver === 'mysql') expect(await inStep(driver, form), driver).toMatch(refused);
+        else expect(await inStep(driver, form), driver).toBe('ran');
+      }
+      expect(rawText(sql`select 1--${sql.id('a')} from t`.toOperationNode() as RawNode, 'mysql')).toBe('select 1--`a` from t');
+      // A name that holds `$x$` opens no dollar quote on Postgres.
+      expect(await inStep('pgsql', (on) => sql`select ${sql.id('$x$')} from migrations`.execute(on))).toMatch(refused);
+      expect(await inStep('pgsql', (on) => sql`select ${sql.id('$x$')}, 'a' from notes where b = $$ ' $$ and c in (select 1 from migrations)`.execute(on))).toMatch(refused);
+      // Literals and raw fragments are written as they are: no space around them.
+      expect(rawText(sql`a${sql.lit('b')}c${sql.raw('d')}e`.toOperationNode() as RawNode, 'sqlite')).toBe("a'b'cde");
+    });
+
+    it.each(['mysql', 'sqlite', 'pgsql'] as const)('finds a write to the migrator wherever the builder puts it, and raw SQL appended to a query, on %s', async (driver) => {
+      const refused = /^\[marmeon:D4\]/;
+      // A write in a CTE, a subquery or an insert from a select.
+      expect(await inStep(driver, (on) => on.with('gone', (d) => d.deleteFrom('migrations')).selectFrom('gone').selectAll().execute())).toMatch(/^\[marmeon:D4\] Cannot write to "migrations"/);
+      expect(await inStep(driver, (on) => on.with('x', (d) => d.insertInto('migrations').values({ name: 'a', module: 'b', batch: 1, checksum: null })).selectFrom('x').selectAll().execute())).toMatch(refused);
+      expect(await inStep(driver, (on) => on.insertInto('notes').columns(['a']).expression((eb) => eb.selectFrom('migrations').select('name')).execute())).toMatch(refused);
+      // Raw SQL anywhere in a query reads the whole text that is sent.
+      expect(await inStep(driver, (on) => on.selectFrom('notes').select(sql<number>`(select count(*) from migrations)`.as('n')).execute())).toMatch(refused);
+      // Raw SQL put before or after a builder query (`modifyFront` stands after the `select` keyword: it takes a statement of its own after a `;`).
+      expect(await inStep(driver, (on) => on.selectNoFrom(sql.lit(1).as('x')).modifyEnd(sql.raw('; drop table notes')).execute())).toMatch(refused);
+      expect(await inStep(driver, (on) => on.selectNoFrom(sql.lit(1).as('x')).modifyFront(sql.raw('1; drop table notes; select')).execute())).toMatch(refused);
+      // A `commit` ends the step's transaction on MySQL; on the others only a change of the schema is looked for.
+      if (driver === 'mysql') expect(await inStep(driver, (on) => on.selectFrom('notes').select('id').modifyEnd(sql.raw('; commit')).execute())).toMatch(refused);
+      // A builder read of the migrator's table, and a write to an app table with a CTE, are allowed.
+      expect(await inStep(driver, (on) => on.selectFrom('migrations').selectAll().execute()), driver).toBe('ran');
+      expect(await inStep(driver, (on) => on.with('src', (d) => d.selectFrom('notes').select('id')).insertInto('t').values({ a: 1 }).execute()), driver).toBe('ran');
+      expect(await inStep(driver, (on) => on.selectNoFrom(sql.lit(1).as('x')).modifyEnd(sql.raw('for update')).execute()), driver).toBe('ran');
+    });
+
+    it('does not let a comment after a string with a backslash hide a statement that changes the schema, on Postgres', async () => {
+      const refused = /^\[marmeon:D4\]/;
+      expect(await inStep('pgsql', (on) => sql`select ${sql.lit('C:\\temp')}; /* cleanup */ drop table if exists zz_nothing`.execute(on))).toMatch(refused);
+      expect(await inStep('pgsql', (on) => sql.raw("select 'a\\d+';\n-- cleanup\ndrop table zz_nothing").execute(on))).toMatch(refused);
+      expect(await inStep('pgsql', (on) => sql`select ${sql.lit('C:\\temp')}; /* nothing */ select 1`.execute(on))).toBe('ran');
+    });
+
+    it('leaves a dollar quote whole when it looks for a statement that changes the schema', async () => {
+      expect(await inStep('pgsql', (on) => sql`insert into notes(body) values ($$example; drop table notes$$)`.execute(on))).toBe('ran');
+      expect(await inStep('pgsql', (on) => sql`do $$ begin drop table t; end $$`.execute(on))).toMatch(/^\[marmeon:D4\]/);
+      expect(await inStep('pgsql', (on) => sql`create function f() returns int as $$ select 1; $$ language sql`.execute(on))).toMatch(/^\[marmeon:D4\]/);
+    });
+
+    it('says what raw SQL may not do, and reads a statement whose parts are not plain with every word', async () => {
+      const read = await inStep('pgsql', (on) => sql`select * from migrations`.execute(on));
+      expect(read).toBe(
+        '[marmeon:D4] Cannot read or write "migrations" in raw SQL of a schema.data() step: the table belongs to the migrator, and changing it by hand would make it lose track of which migrations ran. Raw SQL is read by its words, and every word outside a string counts; use the query builder to read it. See docs/migrations.md#how-the-migrator-keeps-track.',
+      );
+      // The builder reads the table, which the guard allows.
+      expect(await inStep('sqlite', (on) => on.selectFrom('migrations').selectAll().execute())).toBe('ran');
+    });
+
+    it('refuses an expression that commits or changes the schema, on every driver, as the text it compiles to', async () => {
+      for (const driver of ['mysql', 'sqlite', 'pgsql'] as const) {
+        const text = await inStep(driver, (on) => sql`${expressionBuilder<any>()(sql.raw(driver === 'mysql' ? 'commit' : 'drop table x'), '=', sql.lit(0))}`.execute(on));
+        expect(text, driver).toMatch(/^\[marmeon:D4\]/);
+      }
+    });
+
+    it('reads the compiled text, in which a name is quoted and escaped as it is sent: a quote in a name hides nothing', async () => {
+      const refused = /^\[marmeon:D4\]/;
+      const form = (on: Kysely<any>) => sql`select '${sql.id("'; delete from migrations; -- ")}'`.execute(on);
+      for (const driver of ['pgsql', 'sqlite', 'mysql'] as const) expect(await inStep(driver, form), driver).toMatch(refused);
+      expect(rawText(sql`select '${sql.id("'; x")}'`.toOperationNode() as RawNode, 'pgsql')).toBe(`select '"'; x"'`);
+    });
+
+    it('does not read a bound value as SQL, and still finds a name in the same places', async () => {
+      for (const driver of ['mysql', 'sqlite', 'pgsql'] as const) {
+        // A value that looks like a node, and values that say `migrations` or `drop`: data.
+        expect(await inStep(driver, (on) => sql`insert into notes ${nested.insertInto('notes').values({ body: 'migrations' })}`.execute(on)), driver).toBe('ran');
+        expect(await inStep(driver, (on) => sql`select 1 ${nested.selectFrom('notes').selectAll().where('body', 'in', ['migrations', 'drop'])}`.execute(on)), driver).toBe('ran');
+        expect(await inStep(driver, (on) => sql`insert into notes values (${{ kind: 'DropTableNode' }})`.execute(on)), driver).toBe('ran');
+        expect(await inStep(driver, (on) => sql`select 1 ${nested.selectFrom('migrations').selectAll()}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+        expect(await inStep(driver, (on) => sql`select 1 ${nested.selectFrom('notes').selectAll().where('body', 'in', [sql`migrations`])}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+        expect(await inStep(driver, (on) => sql`${nested.schema.dropTable('t')}`.execute(on)), driver).toMatch(/^\[marmeon:D4\]/);
+      }
+    });
   });
 
   it('needs the driver to read a statement by its rules', () => {
