@@ -16,11 +16,17 @@ The sections follow the order of the work:
 - [Testing](#testing) runs the whole flow in an app test without a request leaving the process.
 - [The generated module](#the-generated-module) is the quick way: `marmeon make:oauth` writes the islands (sign-in, connected accounts and confirmation), the routes, the bridge to your users and the mails, and [placing the components](#placing-the-components) puts the buttons on a page.
 
-Install the package first, in the version of the app's other framework packages:
+Install the package first, in the version of the app's other framework packages. [`marmeon add`](packages.md#packages-you-add) does that and runs `discover`.
+It also copies the `social_accounts` migration that linked accounts need, so it boots the app: the `.env` must be valid.
 
 ```sh
-pnpm add -E @marmeon/oauth@<version of your app>
+pnpm marmeon add oauth
+pnpm marmeon migrate
 ```
+
+Where `marmeon add` refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E @marmeon/oauth@<version of your app>`, then `marmeon discover`.
+An app that only uses the client (the flow and the callback, with no linked accounts) installs it that way too, and needs no migration.
+Otherwise [copy the migration](#storing-tokens) yourself before `migrate`.
 
 A provider is a class that brings a name and the variables it reads:
 
@@ -813,12 +819,14 @@ to another user: creating a link for an account that exists is refused with `tak
 `provider-linked`. A provider ID is at most 255 characters, the limit of an OpenID Connect `sub`; the store throws a `TypeError` for a longer
 one or an empty one and never cuts it. Deleting a user deletes their rows.
 
-The migration of the table ships with the package, and `marmeon make:social-accounts-table` copies it into the `system` module of your app with a
-fresh timestamp, so it sorts after the migration that makes `users` (`--module=<name>` picks another module). Run `marmeon migrate` afterwards
-([the framework's tables](migrations.md#the-frameworks-tables)). For a package installed from the registry, `marmeon publish @marmeon/oauth` writes the same file
-([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)). `make:social-accounts-table` also works when the app links the package; `publish` opens an existing `system` module only for a package from the registry.
-`publish` also records the migration in `marmeon-stubs.json`, so `marmeon publish --check` reports a later change of it; `make:social-accounts-table` does not record, and an app with a registry install can run `publish` once to get the record (for a file it left as shipped). The table points at your `users` table, so write it into an app
-that has that table. An app that only uses the client (the flow and the callback, with no linked accounts) needs neither the table nor the migration.
+The migration of the table ships with the package. It goes into the `system` module of your app, with a fresh timestamp, so it sorts after the migration that makes `users`.
+A fresh `marmeon add oauth` copies it and records it in `marmeon-stubs.json`.
+`marmeon publish @marmeon/oauth` copies and records it too ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)).
+`marmeon make:social-accounts-table` copies it without a record, and also works when the app links the package.
+`publish` and `make:social-accounts-table` both skip a migration the app already has, so a second run writes nothing.
+`--module=<name>` picks another module. Run `marmeon migrate` afterwards ([the framework's tables](migrations.md#the-frameworks-tables)).
+The table points at your `users` table, so write it into an app that has that table.
+An app that only uses the client (the flow and the callback, with no linked accounts) needs neither the table nor the migration.
 
 ```sh
 pnpm marmeon make:social-accounts-table
@@ -876,13 +884,16 @@ passkey, or an account at a provider that is still active. A passkey removed at 
 [starter kit](starter-kit.md) of `marmeon make:auth`, which keeps the users, the sign-in page and the second factor.
 
 ```sh
-pnpm add -E @marmeon/oauth@<version of your app>
+pnpm marmeon add oauth fetch
 pnpm marmeon make:oauth
-pnpm marmeon make:social-accounts-table
 pnpm marmeon migrate
 ```
 
-It lists what the app lacks (`@marmeon/oauth` and `@marmeon/fetch` among it) and what to do next, and generates the route types when it can.
+[`marmeon add`](packages.md#packages-you-add) installs the packages at the version of the app and copies the migration of the `social_accounts` table, so it boots the app. Where it refuses
+(a workspace, a linked package and the other cases listed there), run `pnpm add -E @marmeon/oauth@<version of your app> @marmeon/fetch@<version of your app>` and `marmeon discover`, and
+copy the migration with `pnpm marmeon make:social-accounts-table` before `migrate`.
+
+`make:oauth` lists what the app lacks (`@marmeon/oauth` and `@marmeon/fetch` among it) and what to do next, and generates the route types when it can.
 `--adapter` names the UI adapter (`react`, the default), `--force` writes the module again over an existing one. Without `--force` an existing
 `modules/oauth` stops it before anything is written. It writes three places:
 
@@ -893,7 +904,7 @@ It lists what the app lacks (`@marmeon/oauth` and `@marmeon/fetch` among it) and
 It also runs `marmeon route:types`, which rewrites `bootstrap/routes.ts`, when the packages it needs are installed and the module is registered in `bootstrap/app.ts`; otherwise it asks you to run it.
 
 It adds nothing to your sign-in page or your settings pages: [placing the components](#placing-the-components) says how the buttons get there.
-It writes no migration either. Run `marmeon make:social-accounts-table` to copy the migration of the `social_accounts` table that the installed package ships (`marmeon publish @marmeon/oauth` writes the same file for a package from the registry and also records it), see [storing tokens](#storing-tokens).
+It writes no migration either. Run `marmeon make:social-accounts-table`, which skips the migration when a fresh `marmeon add oauth` copied it already, see [storing tokens](#storing-tokens).
 
 | File | What it holds |
 | --- | --- |

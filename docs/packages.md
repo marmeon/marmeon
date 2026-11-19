@@ -73,7 +73,7 @@ The command takes the short name (`redis`) or the full one (`@marmeon/redis`), a
 1. It installs the package with your package manager (pnpm or npm, by your lockfile) at exactly the version of your app, as a
    development dependency for `devtools`, `testing` and `vite`.
 2. It runs `marmeon discover`, so the app finds the package's provider.
-3. It copies the migrations of a package that ships some (`auth`, `cache`, `live`, `notifications`, `queue`, `session`, `storage`)
+3. It copies the migrations of a package that ships some (`auth`, `cache`, `live`, `notifications`, `oauth`, `queue`, `session`, `storage`)
    with `marmeon publish`. That boots the app, so it needs a `.env` the app boots with.
 4. It prints the next step: `marmeon migrate` after a publish, and the `marmeon docs` page of each package.
 

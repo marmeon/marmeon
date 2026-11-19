@@ -36,8 +36,13 @@ export const NEEDED = [
 /** What only the module's tests import — reported as dev dependencies. */
 export const NEEDED_FOR_TESTS = ['@marmeon/database', '@marmeon/testing', 'vitest'];
 
+const isFramework = (name: string) => name === 'marmeon' || name.startsWith('@marmeon/');
+
 /** The names for `pnpm add -E`: a framework package in the version of the app (they must all be one), anything else as it is. */
-const exact = (names: readonly string[]) => names.map((name) => (name === 'marmeon' || name.startsWith('@marmeon/') ? `${name}@<version of your app>` : name)).join(' ');
+const exact = (names: readonly string[]) => names.map((name) => (isFramework(name) ? `${name}@<version of your app>` : name)).join(' ');
+
+/** The names for `marmeon add`, which takes a framework package short (`@marmeon/redis` as `redis`). */
+const shortNames = (names: readonly string[]) => names.map((name) => (name.startsWith('@marmeon/') ? name.slice('@marmeon/'.length) : name)).join(' ');
 
 /** The name of a migration without its timestamp and extension: what the migrator knows it by, whatever timestamp a copy carries. */
 const MIGRATION_FILE = /^\d{4}_\d{2}_\d{2}_\d{6}_([a-z][a-z0-9_]*)\.(?:ts|js|mts|mjs)$/;
@@ -137,13 +142,23 @@ export class MakeOAuthCommand {
     // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
     const typed = runtime.length === 0 && registered.status !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
-    if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add -E ${exact(runtime)}`);
+    // `marmeon add` publishes the migrations of a package that has some, which boots the app: the manual command stays for where `add` refuses or the app does not boot yet.
+    // `@marmeon/oauth` can be among the missing: the command runs from the installed package, which the app's package.json need not list.
+    const runtimeFramework = runtime.filter(isFramework);
+    const runtimeOthers = runtime.filter((name) => !isFramework(name));
+    // The other libraries first: `marmeon add` may boot the app, which needs them.
+    if (runtimeOthers.length > 0) input.output.line(`Install its other libraries: pnpm add -E ${runtimeOthers.join(' ')}`);
+    if (runtimeFramework.length > 0) {
+      input.output.line(`Install what the module uses: marmeon add ${shortNames(runtimeFramework)} (if marmeon add refuses or the app does not boot yet: pnpm add -E ${exact(runtimeFramework)}, then marmeon discover)`);
+    }
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -E -D ${exact(forTests)}`);
     if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add -E ${exact(devOnly)}`);
     // The module's mail is a TSX view: the server compiles it with oxc-transform, `marmeon build` ahead of time. Not a framework package, so no exact version.
     if (!('oxc-transform' in installed(input.root))) input.output.line('And what compiles its mail view: pnpm add -D oxc-transform');
     if (!typed) input.output.line('Then: marmeon route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
-    input.output.line('Then: marmeon make:social-accounts-table, which copies the migration of the social_accounts table the installed package ships into modules/system/migrations, and marmeon migrate.');
+    input.output.line('Then: marmeon make:social-accounts-table. It copies the migration of the social_accounts table that the installed package ships into modules/system/migrations.');
+    input.output.line('A fresh marmeon add oauth copied it already, and the command then skips it.');
+    input.output.line('Then: marmeon migrate.');
     this.#passwordMigration(input, adapter);
     input.output.line('Place the buttons on your sign-in page with <Island route="oauth.sign-in" /> (a view of the module that owns that page): https://marmeon.com/docs/oauth#placing-the-components');
     input.output.line('Place the connected accounts on a page of your own with <Island route="oauth.accounts" />, and the buttons that confirm with a provider on your confirmation page with <Island route="oauth.confirm-options" />: https://marmeon.com/docs/oauth#placing-the-components');

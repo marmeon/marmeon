@@ -84,6 +84,7 @@ it(
     expect(generated.out).not.toMatch(/Install what|And what|Production needs/);
     expect(generated.out).not.toContain('make_users_password_optional');
     expect(generated.out).toContain('marmeon make:social-accounts-table');
+    expect(generated.out).toContain('A fresh marmeon add oauth copied it already, and the command then skips it.');
     // Only the module, its entry in the app, the record of what was written and the route types the generator regenerates changed or appeared.
     const after = snapshot(root);
     const touched = [...new Set([...before.keys(), ...after.keys()])].filter((path) => before.get(path) !== after.get(path)).sort();

@@ -5,8 +5,10 @@ Social login for Marmeon apps: OAuth 2.0 and OpenID Connect providers that you r
 ## Installation
 
 ```sh
-pnpm add -E @marmeon/oauth@<version of your app>
+pnpm marmeon add oauth
 ```
+
+Where `marmeon add` refuses, run `pnpm add -E @marmeon/oauth@<version of your app>`, then `marmeon discover`. The migration of the `social_accounts` table is covered in [storing tokens](https://marmeon.com/docs/oauth#storing-tokens).
 
 ## Registering a provider
 

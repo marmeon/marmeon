@@ -30,7 +30,7 @@ declare module '@marmeon/core' {
  * Registers `OAuthProviders`, built at the start from the providers that bring a name through `static oauthProviders` (a bad
  * name, a name twice, missing `oauthCredentials`, a definition that is wrong or an active provider without an `HttpClient`
  * stops the start), and `OAuth` for each request. Found by `marmeon discover`. The built-in providers (GitHub, Google, Microsoft,
- * GitLab and Discord) come through the same record, so their names are taken. Brings the commands `make:oauth`, which writes the sign-in module into the app, and `make:social-accounts-table`, which writes the migration of the `social_accounts` table (`marmeon publish` copies it too). See docs/oauth.md#the-built-in-providers and docs/oauth.md#the-generated-module.
+ * GitLab and Discord) come through the same record, so their names are taken. Brings the commands `make:oauth`, which writes the sign-in module into the app, and `make:social-accounts-table`, which writes the migration of the `social_accounts` table (`marmeon add oauth` and `marmeon publish` copy it too). See docs/oauth.md#the-built-in-providers and docs/oauth.md#the-generated-module.
  */
 export class OAuthServiceProvider implements ServiceProvider {
   static config = [

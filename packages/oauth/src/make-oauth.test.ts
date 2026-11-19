@@ -73,7 +73,7 @@ describe('make:oauth', () => {
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
     // The blank app lacks @marmeon/oauth, so the route types wait for the install.
     expect(spawned).toEqual([]);
-    expect(lines).toEqual(expect.arrayContaining([expect.stringMatching(/^Install what the module uses: pnpm add -E @marmeon\/oauth@<version of your app>/)]));
+    expect(lines).toContain('Install what the module uses: marmeon add oauth (if marmeon add refuses or the app does not boot yet: pnpm add -E @marmeon/oauth@<version of your app>, then marmeon discover)');
     // How the buttons get onto a page is told, not done: no insertion line for the sign-in or settings pages.
     expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('<Island route="oauth.sign-in" />')]));
     // The panel and the confirm buttons are placed the same way.
@@ -121,7 +121,12 @@ describe('make:oauth', () => {
     expect(Object.keys(filesOf(root)).filter((path) => path.includes('social_accounts'))).toEqual([]);
     const publish = lines.findIndex((line) => line.includes('marmeon make:social-accounts-table'));
     expect(publish).toBeGreaterThan(-1);
-    expect(lines[publish]).toContain('marmeon migrate');
+    // The command leads; a fresh `marmeon add oauth` copied the migration already, and the command then skips it.
+    expect(lines.slice(publish, publish + 3)).toEqual([
+      'Then: marmeon make:social-accounts-table. It copies the migration of the social_accounts table that the installed package ships into modules/system/migrations.',
+      'A fresh marmeon add oauth copied it already, and the command then skips it.',
+      'Then: marmeon migrate.',
+    ]);
     expect(lines.some((line) => line.includes('marmeon publish'))).toBe(false);
   });
 
@@ -316,6 +321,22 @@ describe('make:oauth', () => {
       expect(spawned).toEqual([['route:types']]);
       expect(lines.filter((line) => line.startsWith('Then: marmeon route:types'))).toEqual([]);
       expect(lines.filter((line) => line.startsWith('Install what the module uses'))).toEqual([]);
+    });
+
+    it('names the other libraries first, and several framework packages short with one fallback', async () => {
+      const root = blankApp();
+      packageJson(root, (pkg) => {
+        for (const name of ['mjml', '@marmeon/queue', 'marmeon']) {
+          delete pkg.dependencies[name];
+          delete pkg.devDependencies[name];
+        }
+      });
+      const { input, lines } = fakeInput(root);
+      expect(await new MakeOAuthCommand().handle(input)).toBe(0);
+      const libraries = lines.indexOf('Install its other libraries: pnpm add -E mjml');
+      const framework = lines.indexOf('Install what the module uses: marmeon add oauth queue marmeon (if marmeon add refuses or the app does not boot yet: pnpm add -E @marmeon/oauth@<version of your app> @marmeon/queue@<version of your app> marmeon@<version of your app>, then marmeon discover)');
+      expect(libraries).toBeGreaterThan(-1);
+      expect(framework).toBeGreaterThan(libraries);
     });
 
     it("reports what the module's tests use, and what the app has as a dev dependency but production needs", async () => {
