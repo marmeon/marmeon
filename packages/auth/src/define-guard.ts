@@ -30,6 +30,7 @@ import { twoFactorFor } from './two-factor/middleware.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import type { ChallengeError, SecondFactorInput, TwoFactor } from './two-factor/two-factor.ts';
 import { requireStoreTables } from './upgrades.ts';
+import { AUTH_STORE_DRIVERS } from './store-drivers.ts';
 import { assertSignInFinder, type IdOf, type UserProvider } from './user.ts';
 
 /**
@@ -685,6 +686,8 @@ export async function bootGuards(container: Container): Promise<void> {
   }
   if (!container.has(Connections)) return;
   const { SchemaRequirements } = await import('@marmeon/database');
+  const { requireDriver } = await import('@marmeon/database/internal');
+  requireDriver(container.make(Connections).options('default').driver, AUTH_STORE_DRIVERS, { what: 'The table of a guard' });
   const requirements = container.make(SchemaRequirements);
   for (const { guard } of settings) {
     requireStoreTables(requirements, { connection: 'default', tables: guard.tables });

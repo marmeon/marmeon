@@ -197,7 +197,7 @@ describe('events', () => {
     const start = createApplication({ root: tmpdir(), discover: false, listeners: [listen(OrderShipped, SendShippingMail)] }, { env: {} });
     await expect(start).rejects.toThrow(ConfigError);
     await expect(createApplication({ root: tmpdir(), discover: false, listeners: [listen(OrderShipped, SendShippingMail)] }, { env: {} })).rejects.toThrow(
-      'SendShippingMail is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue',
+      'SendShippingMail is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue (marmeon add queue; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/queue@<version of your app>), or remove static queue to run it at the dispatch.',
     );
   });
 

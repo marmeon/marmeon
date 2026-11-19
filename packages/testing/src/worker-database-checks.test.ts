@@ -1,4 +1,5 @@
 import type { Application } from '@marmeon/core';
+import { requireDriver } from '@marmeon/database/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { emptyWorkerDatabase, prepareWorkerDatabase, type WorkerDatabase } from './database.ts';
 
@@ -39,10 +40,30 @@ describe('emptyWorkerDatabase() on Postgres', () => {
       }
     }
     const app = { container: { make: () => new Connections() } } as unknown as Application;
-    const database = { Connections, sql, isMigratorTable: () => false, tableColumns } as never;
+    const database = { Connections, sql, isMigratorTable: () => false, tableColumns, requireDriver } as never;
     await expect(emptyWorkerDatabase(database, app, worker)).rejects.toThrow('the server answers for another one');
     expect(executed).toEqual(['select current_database() as name']);
     expect(tableColumns).not.toHaveBeenCalled();
+  });
+});
+
+describe('emptyWorkerDatabase() on a driver it has no SQL for', () => {
+  it('refuses with D29 before the connection is asked for a statement', async () => {
+    const executed: string[] = [];
+    class Connections {
+      options() {
+        return { driver: 'mysql', url: 'mysql://x@127.0.0.1/db' } as never;
+      }
+      get(): never {
+        executed.push('get');
+        throw new Error('a connection must not be taken');
+      }
+    }
+    const app = { container: { make: () => new Connections() } } as unknown as Application;
+    const sql = Object.assign(() => ({ execute: async () => (executed.push('sql'), { rows: [] }) }), { raw: () => ({ execute: async () => (executed.push('raw'), { rows: [] }) }) });
+    const database = { Connections, sql, isMigratorTable: () => false, tableColumns: vi.fn(), requireDriver } as never;
+    await expect(emptyWorkerDatabase(database, app, { key: 'mysql://x@127.0.0.1/db', env: {} })).rejects.toThrow(/\[marmeon:D29\] A test app with a database needs a sqlite or pgsql connection, not "mysql"; point the default connection at one\./);
+    expect(executed).toEqual([]);
   });
 });
 

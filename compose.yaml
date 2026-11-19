@@ -1,8 +1,9 @@
-# Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`, `pnpm test:redis` and `pnpm test:s3`.
+# Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`, `pnpm test:redis`, `pnpm test:s3` and `pnpm test:mysql`.
 # Own ports on purpose — 5432/3306 may belong to other projects on the same machine.
 # The ports are bound to 127.0.0.1 only, so clients use 127.0.0.1, never `localhost`: Node tries ::1 first, nothing listens there, and
 # a connect to a closed port inside the ephemeral source-port range (macOS: 49152–65535, which holds 55432) can connect to itself
 # (same source and destination port) and hang for good.
+# MySQL 8.4 (LTS) is on 53306 as root:secret, database marmeon: MARMEON_TEST_MYSQL_URL=mysql://root:secret@127.0.0.1:53306/marmeon.
 # An app reaches the Postgres here with DB_DRIVER=pgsql, DB_HOST=127.0.0.1, DB_PORT=55432, DB_DATABASE=marmeon,
 # DB_USERNAME=marmeon and DB_PASSWORD=secret (or DB_URL=postgres://marmeon:secret@127.0.0.1:55432/marmeon).
 name: marmeon
@@ -37,6 +38,22 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+
+  # MySQL 8.4 LTS for `pnpm test:mysql`; MariaDB is not supported. Test data is disposable: no volume, no binary log, no flush per commit (ci.yml starts the service without these flags).
+  mysql:
+    image: mysql:8.4
+    container_name: marmeon-mysql
+    ports:
+      - '127.0.0.1:53306:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: marmeon
+    command: ['mysqld', '--disable-log-bin', '--innodb-flush-log-at-trx-commit=0']
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-psecret']
+      interval: 2s
+      timeout: 2s
+      retries: 30
 
   # An S3-compatible store for the S3 disk (`pnpm test:s3`): SeaweedFS (Apache-2.0, maintained) — MinIO's community
   # edition is archived and its images are gone from Docker Hub; LocalStack's image needs an account token since 2026.03.

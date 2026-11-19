@@ -7,7 +7,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { RedisServiceProvider } from '@marmeon/redis';
 import { createHttpKernel } from '@marmeon/server';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Cache, StoreCache } from './cache.ts';
 import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 import { CacheConfig, cacheTablesConnection, CacheServiceProvider } from './index.ts';
@@ -38,6 +38,26 @@ function boot(env: Record<string, string>, providers: ServiceProviderClass[], co
   }, { env: { APP_KEY: generateKey(), ...env } });
 }
 
+/** Makes the named connection answer with a driver the packages have no SQL for, and records every connection taken from it. */
+function onMysql(connection: string): { taken: string[]; restore: () => void } {
+  const taken: string[] = [];
+  const options = Connections.prototype.options;
+  const spies = [
+    vi.spyOn(Connections.prototype, 'options').mockImplementation(function (this: Connections, name?: string) {
+      return (name ?? 'default') === connection ? ({ driver: 'mysql', url: 'mysql://x@127.0.0.1/db' } as never) : options.call(this, name);
+    }),
+    vi.spyOn(Connections.prototype, 'get').mockImplementation((name?: string) => {
+      taken.push(`get ${name ?? ''}`);
+      throw new Error('no connection may be taken');
+    }),
+    vi.spyOn(Connections.prototype, 'infrastructure').mockImplementation((name?: string) => {
+      taken.push(`infrastructure ${name ?? ''}`);
+      throw new Error('no connection may be taken');
+    }),
+  ];
+  return { taken, restore: () => spies.forEach((spy) => spy.mockRestore()) };
+}
+
 async function statuses(app: Awaited<ReturnType<typeof boot>>, count: number): Promise<number[]> {
   const kernel = createHttpKernel(app);
   return Promise.all(Array.from({ length: count }, async () => (await kernel.request('/api/login', { method: 'POST' })).status));
@@ -62,6 +82,43 @@ describe('CACHE_DRIVER', () => {
     await expect(boot({ CACHE_DRIVER: 'database', CACHE_CONNECTION: 'reporting', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
       /Database connection "reporting" is not configured/,
     );
+  });
+
+  it('database: refuses a connection on a driver the store has no SQL for (D29) before a connection is taken', async () => {
+    const mysql = onMysql('reporting');
+    try {
+      await expect(boot({ CACHE_DRIVER: 'database', CACHE_CONNECTION: 'reporting', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
+        /\[marmeon:D29\] CACHE_DRIVER=database needs a sqlite or pgsql connection, not "mysql"; use CACHE_DRIVER=redis, file or memory\./,
+      );
+      expect(mysql.taken).toEqual([]);
+    } finally {
+      mysql.restore();
+    }
+  });
+
+  it('database: refuses on first use when the connection changed driver after the start — before a connection is taken', async () => {
+    const app = await boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const mysql = onMysql('default');
+    try {
+      await expect(app.container.make(Cache).get('k')).rejects.toThrow(/\[marmeon:D29\] CACHE_DRIVER=database needs a sqlite or pgsql connection, not "mysql"/);
+      expect(mysql.taken).toEqual([]);
+    } finally {
+      mysql.restore();
+      await app.shutdown();
+    }
+  });
+
+  it('memory: starts and works on a connection of a driver the database store has no SQL for', async () => {
+    const mysql = onMysql('default');
+    try {
+      const app = await boot({ CACHE_DRIVER: 'memory', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+      await app.container.make(Cache).put('k', 'v', 60);
+      expect(await app.container.make(Cache).get('k')).toBe('v');
+      expect(mysql.taken).toEqual([]);
+      await app.shutdown();
+    } finally {
+      mysql.restore();
+    }
   });
 
   it('redis: names what is missing at startup', async () => {

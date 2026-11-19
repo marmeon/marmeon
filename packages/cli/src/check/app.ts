@@ -232,6 +232,8 @@ export interface AppChecksInput {
   readonly reports: Map<string, CheckReport>;
   /** Gets what happened outside any check: a rejection or an exception nobody handled. */
   readonly warnings: string[];
+  /** Whether a registered check may run: a rejected one is never called, and has no report. Default: all. */
+  readonly accept?: (check: AppCheckClass) => boolean;
 }
 
 /**
@@ -240,7 +242,7 @@ export interface AppChecksInput {
  * `boot` itself is not selected, so the run cannot pass without them). Every app is shut down, whatever a check did. A rejection or
  * an exception that nobody handles meanwhile is recorded, masked, on the check that was running, and does not end the process.
  */
-export async function runAppChecks({ root, build, selected, reports, warnings }: AppChecksInput): Promise<{ readonly unowned: number }> {
+export async function runAppChecks({ root, build, selected, reports, warnings, accept = () => true }: AppChecksInput): Promise<{ readonly unowned: number }> {
   const started = performance.now();
   const wants = (name: string) => selected.includes(name);
   let current: string | undefined;
@@ -277,7 +279,7 @@ export async function runAppChecks({ root, build, selected, reports, warnings }:
     } else {
       const registry = checkRegistryOf(build);
       try {
-        for (const Check of registry.all('build')) if (wants(Check.check)) await runOne(Check, build);
+        for (const Check of registry.all('build')) if (wants(Check.check) && accept(Check)) await runOne(Check, build);
       } finally {
         current = undefined;
         await quietly(build.shutdown());
@@ -290,7 +292,7 @@ export async function runAppChecks({ root, build, selected, reports, warnings }:
         else {
           run = active = loaded;
           if (wants('boot')) reports.set('boot', reportOf('boot', [], Math.round(performance.now() - started)));
-          for (const Check of registry.all('run')) if (wants(Check.check)) await runOne(Check, loaded);
+          for (const Check of registry.all('run')) if (wants(Check.check) && accept(Check)) await runOne(Check, loaded);
           if (wants('readiness')) {
             current = 'readiness';
             reports.set('readiness', await readinessCheck(loaded, root));

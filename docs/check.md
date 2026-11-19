@@ -92,7 +92,7 @@ Each check ends in one status:
 | `passed` | It ran and found nothing. |
 | `warning` | It found problems of the level warning only. |
 | `failed` | It found at least one error. |
-| `skipped` | It was not run, said in `reason`: no `tsconfig.json`, no `AGENTS.md`, oxlint is not installed (lint is the app's choice), or the app did not load ("the app did not load"). |
+| `skipped` | It was not run, said in `reason`: no `tsconfig.json`, no `AGENTS.md`, oxlint is not installed (lint is the app's choice), or the app did not load ("the app did not load"); for `marmeon doctor` also "no Node version to compare with" and "@marmeon/database is not installed". |
 | `error` | It could not run, said in `reason`: TypeScript is not installed, a tool crashed, a check of a package threw or took longer than its time limit (a minute unless the check says `static timeout`, in seconds), or the app did not load and `boot` was not selected. |
 
 ## Exit codes
@@ -101,7 +101,7 @@ Each check ends in one status:
 | --- | --- |
 | `0` | Every check that ran passed. Warnings are allowed, and so is a skipped check. |
 | `1` | At least one check found an error. |
-| `2` | `marmeon check` was called wrongly, for example `--only=bogus`. See the [console](console.md#exit-codes). |
+| `2` | `marmeon check` or `marmeon doctor` was called wrongly, for example `--only=bogus`. See the [console](console.md#exit-codes). |
 | `3` | At least one check could not run (status `error`), or something failed outside every check (an unhandled rejection after a check ran out of time, said in `warnings`), and none found an error. |
 
 A finding is more useful than a missing tool, so `1` wins over `3`.
@@ -450,3 +450,67 @@ Fix a finding with the command it shows; `-E` saves the version exactly, and `-D
 `devDependencies`. `marmeon dev` runs the same comparison at each start of the server, so after every restart, and warns without
 stopping, and a `K3` error of any command ends with it too, since a package that is read in another version is a usual reason for it. `marmeon start` does not look: the
 production server starts what CI has checked. Leave the check out with `--skip=packages`.
+
+## The environment: marmeon doctor
+
+`marmeon check` judges your code. `marmeon doctor` judges the machine: whether it can run the app. Run it on a new machine, after you
+upgrade the framework packages, and on a server after a deploy.
+
+```sh
+pnpm marmeon doctor
+```
+
+| Name | What it does | Needs |
+| --- | --- | --- |
+| `node` | Compares the Node that runs with the [rules below](#the-node-check). | nothing |
+| `packages` | The [packages check](#the-packages-check) of `marmeon check`. | nothing |
+| `boot` | Starts the app, so a `.env` that does not fit the schema and a missing `APP_KEY` fail here; the fix is `marmeon key:generate`. Same as [`boot`](#the-app-checks) of `check`. | the `.env` or the variables |
+| `route-types` | `bootstrap/routes.ts` is current and the routes pass the route checks. Same as [`route-types`](#the-app-checks) of `check`. | nothing |
+| `package-migrations` | The migrations of the packages you publish from are in the app. Same as [`package-migrations`](#the-app-checks). `skipped` as "@marmeon/database is not installed" when that package is not installed; when it is installed but its provider is not registered, the check is an `error`. | `@marmeon/database` |
+| `db-types` | `bootstrap/database.d.ts` is current. Same as [`db-types`](#the-app-checks). `skipped` when `@marmeon/database` is not installed; an `error` when it is installed and its provider is not registered. | `@marmeon/database` |
+| `migrations` | Each migration the database has not run is a problem, with the fix `marmeon migrate`, from [`marmeon migrate:status`](migrations.md#status). Each warning of that command (a changed file, a gone file, a connection it cannot tell) is a warning. [Details below](#the-migrations-check). | `@marmeon/database`, the database |
+| `readiness` | The [readiness checks](health.md#liveness-and-readiness) of the app and its packages. | the services of the app |
+
+The checks come in this order. `--only` and `--skip` take these names and no others: `--only=types` is a wrong call (exit `2`) that
+lists them. The checks that other packages, modules and your app add (`modules`, `throttle`, `hsts`, `guard-slots`, your own) are not
+run: the doctor checks come from the CLI and database providers. A check whose provider is not in the app's providers cannot run and
+is an `error` (exit `3`) that names the provider to add. The [status](#status), [exit codes](#exit-codes) and [JSON
+output](#json-output) are those of `check`. The app is loaded only when one of the last six checks is selected.
+
+When `NODE_ENV` is `development` or `test` and comes from `.env` alone, `marmeon start` refuses to run on this machine, and doctor
+checked the configuration of that environment (`development` or `test`); it says so in `warnings`.
+
+`readiness` touches the services the way `/up/ready` does: the cache check writes one key and removes it again, and the driver
+creates a SQLite file that is missing. Loading the app writes `.marmeon/manifest.json`, and `db-types` and `readiness` write
+`.marmeon/schema.json` when it is missing or out of date. Loading the app also runs the boot and shutdown of its providers with
+their usual side effects, such as the devtools pruning `storage/framework/devtools/`. Where `.marmeon/` cannot be written, the app
+is loaded without it and the checks still run. `migrations` runs `marmeon migrate:status` in a child process that starts your app once more and
+connects to the database like `readiness` does: it reads the record of migrations and writes none, and a SQLite file that is missing is created.
+
+### The migrations check
+
+`failed` means that a migration has not run. `migrations` is `skipped` in two cases:
+
+- "@marmeon/database is not installed": the app has the CLI provider, but `@marmeon/database` is not one of its packages.
+- "the app did not load": `boot` runs and failed.
+
+It is an `error` (exit `3`), never `failed`, when it could not decide:
+
+- the app did not load and `boot` does not run, or the packages of the app cannot be discovered;
+- the app has no `CliServiceProvider` of `marmeon`, or `migrate:status` is not registered or is not the command of
+  `@marmeon/database` (add the provider of `@marmeon/database`);
+- the command fails (for example because the database cannot be reached), cannot start, runs out of time (60 seconds), or prints
+  what this version does not read;
+- you interrupted doctor.
+
+### The node check
+
+`node` compares `process.versions.node` with `engines.node` of the installed `marmeon` package and with that of your `package.json`.
+It judges a single lower bound (`>=26`, `>=26.10` or `>=26.10.0`); below it, the check fails with the version that runs and the
+range that asks for more ([supported Node versions](releases.md#node)). A prerelease or nightly Node is judged on its three
+numbers. A source the check cannot judge is a warning that names it: a range of another form (`^26`, `>=20 <30`), a `package.json`
+that cannot be read, or a version file that holds neither a version nor an alias. When no source exists at all, the check is `skipped`.
+
+`.nvmrc`, else `.node-version`, is read (the first file that exists is the only one). Holding `26`, `v26`, `26.10` or `26.10.0`, it
+is compared on the parts it gives. A difference is a warning, because a server may run another patch on purpose. The aliases
+`lts/*`, `lts/<name>`, `lts/-1` (and other `lts/-<n>`), `node`, `latest` and `stable` are ignored.

@@ -70,7 +70,7 @@ async function importQueue() {
   try {
     return await import('@marmeon/queue');
   } catch {
-    throw new ScheduleError(withCode('Q5', 's.job() queues jobs — it needs @marmeon/queue in the app: pnpm add -E @marmeon/queue@<version of your app>'));
+    throw new ScheduleError(withCode('Q5', 's.job() queues jobs — it needs @marmeon/queue in the app: marmeon add queue (if the app does not boot yet: pnpm add -E @marmeon/queue@<version of your app>)'));
   }
 }
 
@@ -78,6 +78,7 @@ async function importCli() {
   try {
     return { ...(await import('marmeon')), ...(await import('marmeon/internal')) };
   } catch {
+    // Manual on purpose: the missing package is `marmeon` itself, so there is no `marmeon add` to run.
     throw new ScheduleError(withCode('Q5', 's.command() runs console commands — it needs marmeon in the app: pnpm add -E -D marmeon@<version of your app>'));
   }
 }

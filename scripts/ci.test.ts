@@ -43,6 +43,19 @@ describe('pnpm run ci', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
   });
 
+  it('runs test:mysql after the build against the mysql container, in a job of its own', () => {
+    expect(parts.find((part) => part.name === 'test:mysql')).toMatchObject({ command: ['pnpm', 'run', 'test:mysql'], services: ['mysql'], after: ['build'] });
+    const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+    const job = /^  mysql:\n([\s\S]*?)(?=^  \S|(?![\s\S]))/m.exec(workflow)?.[1] ?? '';
+    expect(job).toContain('name: test:mysql\n');
+    expect(job).toContain('image: mysql:8.4');
+    const url = new URL(new RegExp(`MARMEON_TEST_${'MYSQL_URL'}=(\\S+)`).exec(readFileSync(join(root, 'package.json'), 'utf8'))![1]!);
+    expect(job).toContain(`MYSQL_ROOT_PASSWORD: ${url.password}`);
+    expect(job).toContain(`MYSQL_DATABASE: ${url.pathname.slice(1)}`);
+    expect(job).toContain('- 127.0.0.1:53306:3306');
+    expect(job).toContain('pnpm run ci --only build,test:mysql --no-compose');
+  });
+
   it('runs zizmor last, as a job of its own in the workflow', () => {
     expect(parts.at(-1)).toMatchObject({ name: 'zizmor', command: ['pnpm', 'run', 'zizmor'] });
     expect(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')).toMatch(/^ {2}zizmor:\n(?: {4}#.*\n)* {4}name: zizmor\n/m);
@@ -1040,11 +1053,18 @@ describe('the driver rule', () => {
       'oxc-transform must be an optional peer of this package',
     ]);
     expect(checkDriverRule('core', { peerDependencies: { 'oxc-transform': '>=0.157.0 <1.0.0' }, peerDependenciesMeta: { 'oxc-transform': { optional: true } } })).toEqual([]);
-    expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0', kysely: '0.29.6' } })).toEqual([
+    expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0', kysely: '0.29.6' }, peerDependencies: { mysql2: '^3.24.6' }, peerDependenciesMeta: { mysql2: { optional: true } } })).toEqual([
       'pg must stay an optional peer, not a dependency — one of several drivers; every app would install it',
       'pg must be an optional peer of this package',
     ]);
-    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' } })).toEqual(['pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver']);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { mysql2: { optional: true } } })).toEqual([
+      'pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver',
+    ]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual(['mysql2 must be an optional peer of this package']);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6', mysql2: '^3.24.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([
+      'mysql2 must stay an optional peer, not a dependency — one of several drivers; every app would install it',
+      'mysql2 must be an optional peer of this package',
+    ]);
     // One API instance: the app's SDK registers on the API the framework reads — a second copy would be a second instance.
     expect(checkDriverRule('otel', { dependencies: { '@opentelemetry/api': '^1.9.0' }, peerDependencies: { '@opentelemetry/api': '^1.9.0' } })).toEqual([
       '@opentelemetry/api must stay a peer, not a dependency — the app and the framework share one instance; a dependency installs a second copy',
@@ -1060,10 +1080,10 @@ describe('the driver rule', () => {
   });
 
   it('refuses a range, a peer and a missing pin for an exact dependency', () => {
-    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([]);
-    expect(checkDriverRule('database', { dependencies: { kysely: '^0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
-    expect(checkDriverRule('database', { peerDependencies: { kysely: '0.29.6', pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
-    expect(checkDriverRule('database', { dependencies: {}, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '^0.29.6' }, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { peerDependencies: { kysely: '0.29.6', pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { dependencies: {}, peerDependencies: { pg: '^8.23.0', mysql2: '^3.24.6' }, peerDependenciesMeta: { pg: { optional: true }, mysql2: { optional: true } } })).toEqual([EXACT]);
   });
 
   it('holds the exact pin of the MCP SDK in the marmeon package, and refuses a range there', () => {

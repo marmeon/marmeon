@@ -7,6 +7,7 @@ import { ACCESS_TOKEN_COLUMNS, ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAcc
 import { factorSources, TwoFactorState } from './two-factor/state.ts';
 import { RECOVERY_CODE_COLUMNS, TWO_FACTOR_COLUMNS, TwoFactorStore } from './two-factor/store.ts';
 import { assertSignInFinder, UserProvider } from './user.ts';
+import { AUTH_STORE_DRIVERS } from './store-drivers.ts';
 
 /** Thrown by the `UserProvider` nothing replaced: authentication is not set up. */
 export class UserProviderNotBound extends Error {
@@ -84,14 +85,17 @@ export async function requireAuthTables(container: Container): Promise<void> {
   const passwordResets = bound(PasswordResetTokenStore);
   const signIns = bound(SignInStore);
   // The tables the bound stores were given, not the defaults: a store on other tables is waited for there.
-  requireStoreTables(requirements, {
-    connection: 'default',
-    tables: {
-      passwordResets: passwordResets instanceof DatabasePasswordResetTokens ? passwordResets.table : undefined,
-      emailChanges: bound(EmailChangeStore) instanceof DatabaseEmailChanges ? EMAIL_CHANGES_TABLE : undefined,
-      accessTokens: bound(AccessTokenStore) instanceof DatabaseAccessTokens ? ACCESS_TOKEN_TABLE : undefined,
-      signIns: signIns instanceof DatabaseSignIns ? signIns.table : undefined,
-      twoFactor: totp?.tables,
-    },
-  });
+  const tables: StoreTables = {
+    passwordResets: passwordResets instanceof DatabasePasswordResetTokens ? passwordResets.table : undefined,
+    emailChanges: bound(EmailChangeStore) instanceof DatabaseEmailChanges ? EMAIL_CHANGES_TABLE : undefined,
+    accessTokens: bound(AccessTokenStore) instanceof DatabaseAccessTokens ? ACCESS_TOKEN_TABLE : undefined,
+    signIns: signIns instanceof DatabaseSignIns ? signIns.table : undefined,
+    twoFactor: totp?.tables,
+  };
+  // Only where a store of ours keeps rows: an app whose stores are its own may sit on any driver.
+  if (Object.values(tables).some((table) => table !== undefined)) {
+    const { requireDriver } = await import('@marmeon/database/internal');
+    requireDriver(container.make(Connections).options('default').driver, AUTH_STORE_DRIVERS, { what: 'The database store of authentication' });
+  }
+  requireStoreTables(requirements, { connection: 'default', tables });
 }

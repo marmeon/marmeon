@@ -9,7 +9,7 @@ const DEFAULT_LIMIT = 20;
 /** The types of an entry, as `@marmeon/devtools` records them: kept here as literals, so the package is not needed to list the tools. */
 const ENTRY_TYPES = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command', 'browser'];
 
-const NOT_INSTALLED = 'The devtools are not installed: pnpm add -E -D @marmeon/devtools@<version of your app> (docs/devtools.md#introduction)';
+const NOT_INSTALLED = 'The devtools are not installed: marmeon add devtools (docs/devtools.md#introduction)';
 
 /** The entries the devtools recorded, as `marmeon devtools:list --json` prints them, passed on as the command's document. */
 export const DEVTOOLS_ENTRIES_TOOL: McpTool = {

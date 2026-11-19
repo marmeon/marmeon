@@ -59,7 +59,7 @@ note, the revision, whatever the listeners wrote, and the queued job.
 | `inTransaction()` | Whether the current code runs inside a transaction. Import it from `@marmeon/database`. |
 | `connections.inTransaction(name?)` | Whether it runs inside a transaction of that connection. |
 
-Postgres applies an isolation level. SQLite has one writer at a time and ignores it. Any other value, `'snapshot'` or `'read uncommitted'` for one, is a type error and throws a `TypeError` before the transaction begins. A transaction exists exactly as long as its
+Postgres and MySQL apply an isolation level. SQLite has one writer at a time and ignores it. Any other value, `'snapshot'` or `'read uncommitted'` for one, is a type error and throws a `TypeError` before the transaction begins. A transaction exists exactly as long as its
 callback runs. "Check, then insert" is not safe on Postgres at the default isolation level: two transactions can both pass the
 check. A rule such as "no two bookings overlap" belongs in a constraint, as the [bookings recipe](recipe-bookings.md) shows, with
 a row lock or `isolationLevel: 'serializable'` as the other ways; the latter makes Postgres abort one transaction, and running it
@@ -127,6 +127,47 @@ Two transactions were opened at the same time inside one transaction on "default
 ```
 
 A savepoint has no isolation level of its own, so `isolationLevel` on a nested `transaction()` throws as well.
+
+## On MySQL
+
+MySQL cannot be selected yet (see [MySQL](database.md#mysql)); this is how a transaction behaves on it. The server ends a transaction on its
+own in several cases, and Marmeon turns every case it can see into an error, so that no statement runs outside a transaction by accident:
+
+- **A deadlock rolls the whole transaction back**, not the statement. After the error, MySQL runs the next statement of your callback
+  outside any transaction, so it would commit on its own. Marmeon notes the error, sends none of the following statements, and fails each
+  of them, and the commit, with `TransactionError` (D24). Let the error leave the callback to roll back, and run the transaction again.
+  A savepoint you roll back is passed over without being sent, since the rollback of the outermost transaction still goes out and ends it.
+- **A lock wait timeout** (error 1205) and **a full lock table** (error 1206) are treated the same way. MySQL may keep the transaction
+  (`innodb_rollback_on_timeout` decides), and Marmeon cannot tell which it did, so it ends the transaction (D24): the rollback undoes
+  what is left.
+- **A schema change commits the transaction**, silently. The builder's (`schema.createTable()`, `alterTable()`, `dropTable()`,
+  `createIndex()`, `dropIndex()`, views and schemas) is refused inside `transaction()` and `isolate()` before it is sent, with `TransactionError`
+  (D30); a temporary table is allowed, MySQL does not commit for it. If the error leaves the callback, an earlier insert is rolled back
+  with the rest. Make the change outside the transaction. A schema change written as raw SQL inside a transaction runs, commits what came before it,
+  and ends the transaction for what follows: the statements after it and the commit throw D24.
+- **A statement that commits or rolls back by itself** does the same: `lock tables`, a `commit`, `begin`, `start transaction` or `rollback` of
+  your own, also with `and chain`, `work` or `release`. Marmeon reads this from the server's answer and, for these three, from the statement
+  (a version comment such as `/*!80000 begin */` is read as the server reads it: it runs on a server of that version or newer, and is skipped on an older one).
+  What an answer does not say (the rows of `analyze table`, a failed `create table`) is asked about before the next statement, with a statement
+  that does nothing (`do 0`); a plain `select`, `show` or `explain` leaves nothing to ask. `set autocommit = 1` does not end a transaction and is
+  not refused.
+- **A statement that fails keeps the transaction.** A duplicate key rolls back that statement only, and a savepoint around it, such as a nested
+  `transaction()`, keeps the outer transaction, as on SQLite. Postgres is the one that aborts it.
+- **Isolation level and access mode** are those of MySQL: `isolationLevel` sets the level of the next transaction (`'snapshot'` is a type error, as
+  elsewhere), and `db.transaction().setAccessMode('read only')` refuses a write with the server's error.
+- **A session that changes how a transaction ends is refused (D28).** Every connection is set to `completion_type = NO_CHAIN` and to report
+  changes of `autocommit`, `completion_type` and the character sets. When a statement of yours turns `autocommit` off, or sets `completion_type`
+  to anything but `NO_CHAIN`, the next statement is refused before it is sent, a commit included (nothing is committed), and the connection is
+  discarded. Should a commit or rollback of Marmeon still answer with a transaction left open, the error says that the commit or rollback ran.
+
+> [!WARNING]
+> Two cases stay unseen: a stored procedure that commits and starts a new transaction itself, and a `prepare s from 'commit and chain'`
+> followed by `execute s`. Marmeon sees a transaction as open there, and the statements after it run in the transaction the server began. What
+> ran before the commit stays committed, and a rollback of yours does not undo it. Keep `commit` and `begin` out of procedures that you call
+> inside `transaction()`.
+>
+> A lease that sets `session_track_system_variables = ''` itself blinds the watch over `autocommit` and `completion_type` for the rest of the
+> lease; then only the check after the commit is left.
 
 ## Returning an err
 

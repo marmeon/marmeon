@@ -13,6 +13,8 @@ import { MarmeonDriver, DatabaseConnectionError, multipleConnections, UncheckedD
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { onlyMigratorTables, registerInspection, registerMigrator } from './migrator-connection.ts';
 import { SchemaMetadata, type SchemaSource } from './metadata.ts';
+import { createMysqlDialect } from './mysql.ts';
+import { unknownDriver } from './supported-driver.ts';
 import { MigrationStateError } from './migration-state.ts';
 import { migrationFiles } from './migrations/files.ts';
 import { createPostgresDialect } from './postgres.ts';
@@ -61,6 +63,18 @@ export interface QueryEvent {
   readonly error?: unknown;
 }
 
+/** Refuses a connection whose driver cannot open one: a driver the types do not name (a connection built without `defineConnection`, or a cast, can carry one). MySQL is taken here; an app cannot select it (the provider refuses it). */
+function openable(options: ConnectionOptions): void {
+  switch (options.driver) {
+    case 'sqlite':
+    case 'pgsql':
+    case 'mysql':
+      return;
+    default:
+      return unknownDriver(options);
+  }
+}
+
 /** The app's database connections — opened on first use, closed on shutdown: `connections.get<ReportingTables>('reporting')`. */
 export class Connections {
   readonly #options: ReadonlyMap<string, ConnectionOptions>;
@@ -75,7 +89,7 @@ export class Connections {
   readonly #instances = new Map<string, Instance>();
   /** Infrastructure handles, per connection and user. */
   readonly #infrastructure = new Map<string, Connection<any>>();
-  /** Postgres: the infrastructure's own pool, per connection. */
+  /** Postgres and MySQL: the infrastructure's own pool, per connection. */
   readonly #pools = new Map<string, MarmeonDriver>();
   readonly #listeners = new Set<(query: QueryEvent) => void>();
   /** The schema a migrator of this process handed over: every connection, opened now or later, has it as its schema. */
@@ -84,6 +98,8 @@ export class Connections {
 
   /** @internal — the service provider builds it; an app gets it from the container. */
   constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application; now?: () => number }) {
+    // At boot, not at the first query: a definition made by hand can carry a driver the types do not name.
+    for (const connection of Object.values(options.connections)) openable(connection);
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });
@@ -147,7 +163,7 @@ export class Connections {
         main: main.driver,
         // Every connection of this app on the same SQLite file: a transaction of any of them holds the file.
         peers: () => [...this.#instances.values()].filter((other) => other === main || (main.file !== undefined && other.file === main.file)).map((other) => other.driver),
-        ...(options.driver === 'pgsql' ? { pool: () => this.#pool(name, options) } : {}),
+        ...(options.driver === 'pgsql' || options.driver === 'mysql' ? { pool: () => this.#pool(name, options) } : {}),
         ...(usage ? { usage } : {}),
       });
       const adapter = dialect.createAdapter();
@@ -257,7 +273,14 @@ export class Connections {
     this.#instances.clear();
     this.#infrastructure.clear();
     this.#pools.clear();
-    await Promise.all([...instances.map(({ db }) => db.destroy()), ...pools.map((pool) => pool.destroy())]);
+    // The driver itself too: the migrator's, the inspection's and the infrastructure's Kysely instances initialise it without the app's `db`, and then its own `destroy()` leaves the pool open.
+    await Promise.all([
+      ...instances.map(async ({ db, driver }) => {
+        await db.destroy();
+        await driver.destroy();
+      }),
+      ...pools.map((pool) => pool.destroy()),
+    ]);
   }
 
   #instance(name: string): Instance {
@@ -334,8 +357,8 @@ export class Connections {
     };
   }
 
-  /** Postgres: the infrastructure's own pool of a connection, created on first use (it connects on its first query). */
-  #pool(name: string, options: Extract<ConnectionOptions, { driver: 'pgsql' }>): MarmeonDriver {
+  /** Postgres and MySQL: the infrastructure's own pool of a connection, created on first use (it connects on its first query). */
+  #pool(name: string, options: Extract<ConnectionOptions, { driver: 'pgsql' | 'mysql' }>): MarmeonDriver {
     if (this.#destroyed) throw new Error(`The database connections are closed (the application shut down); cannot use "${name}".`);
     let pool = this.#pools.get(name);
     if (!pool) {
@@ -347,13 +370,27 @@ export class Connections {
   }
 
   #dialect(options: ConnectionOptions, name: string): Dialect {
-    if (options.driver === 'sqlite') return createSqliteDialect(this.#sqlitePath(options.database));
-    return createPostgresDialect({
-      url: options.url,
-      name,
-      poolMax: options.poolMax,
-      onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: this.#redactor.text(error.message) }),
-    });
+    // Written for every driver by name: a connection built without `defineConnection` (a JavaScript caller, a cast) with another driver gets no Postgres.
+    switch (options.driver) {
+      case 'sqlite':
+        return createSqliteDialect(this.#sqlitePath(options.database));
+      case 'pgsql':
+        return createPostgresDialect({
+          url: options.url,
+          name,
+          poolMax: options.poolMax,
+          onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: this.#redactor.text(error.message) }),
+        });
+      case 'mysql':
+        return createMysqlDialect({
+          url: options.url,
+          name,
+          poolMax: options.poolMax,
+          onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: this.#redactor.text(error.message) }),
+        });
+      default:
+        return unknownDriver(options);
+    }
   }
 
   /** @internal — the file of a SQLite connection as the app opens it; `undefined` for an in-memory database and for Postgres. */

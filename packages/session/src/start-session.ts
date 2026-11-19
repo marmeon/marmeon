@@ -137,7 +137,7 @@ export class StartSession {
     if (!blocking || !id || !SESSION_ID.test(id)) return undefined;
     const cache = await import('@marmeon/cache').catch(() => undefined);
     if (!cache || !this.#container.has(cache.Cache)) {
-      throw new Error(`Route ${ctx.route.path} uses block(): that needs the cache's atomic locks — install @marmeon/cache (pnpm add -E @marmeon/cache@<version of your app>).`);
+      throw new Error(`Route ${ctx.route.path} uses block(): that needs the cache's atomic locks — install @marmeon/cache (marmeon add cache; if the app does not boot yet: pnpm add -E @marmeon/cache@<version of your app>).`);
     }
     const lock = this.#container.make(cache.Cache).lock(`session:${sessionKey(id)}`, blocking.lockSeconds);
     const internal = await import('@marmeon/cache/internal');
