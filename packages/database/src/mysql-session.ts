@@ -1,7 +1,10 @@
 import type { EventEmitter } from 'node:events';
+import { TransactionError } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import type { MysqlPool, MysqlPoolConnection } from 'kysely';
 import { DatabaseConnectionError } from './driver.ts';
+import { leadingReadings, leadingWords } from './metadata.ts';
+import { controlOf, type Control } from './mysql-transaction-control.ts';
 import { mysqlServerProblem } from './mysql-server.ts';
 
 /**
@@ -26,12 +29,60 @@ export const MAX_PREPARED_STATEMENTS = 16;
 /** `serverStatus` bit of an OK packet: the session has `NO_BACKSLASH_ESCAPES`. */
 const STATUS_NO_BACKSLASH_ESCAPES = 0x200;
 
+/** `serverStatus` bit of an OK packet: a transaction is open (it is `SERVER_STATUS_IN_TRANS`; a `read only` one has it too). */
+const STATUS_IN_TRANS = 0x1;
+
+/** MySQL's errors for a transaction the server ended or may have ended: a deadlock rolls it back, a lock wait timeout (`innodb_rollback_on_timeout` decides) or a full lock table may. */
+const ERRNO_LOCK_WAIT_TIMEOUT = 1205;
+const ERRNO_LOCK_TABLE_FULL = 1206;
+const ERRNO_DEADLOCK = 1213;
+
+/** What ended a transaction, for the refusal of what follows it. `ended` is for a probe that found it gone, or could not ask. */
+type Lost = 'implicit commit' | 'rollback' | 'deadlock' | 'lock wait timeout' | 'lock table full' | 'ended';
+
+/** The statements that answer with rows and cannot end a transaction: nothing needs to be asked after them. */
+const READS: ReadonlySet<string> = new Set(['select', 'with', 'table', 'values', 'show', 'explain', 'describe', 'desc']);
+
+/**
+ * What an app's statement is, when it is one of the three that end or start a transaction by hand: `begin` and `start transaction` commit the one
+ * that is open, `commit` (with `work`, `and chain`, `release`) too, `rollback` (but not `rollback to`) rolls it back. Comments before it are skipped.
+ */
+function transactionStatement(sql: string, version: number | undefined): 'begin' | 'commit' | 'rollback' | 'rollback to' | undefined {
+  // Read as the server reads it: a version comment of a newer version is skipped. Where the version is not known, every way a server may read the statement
+  // counts: what stands first in any leading executable comment, and what stands first behind all of them, may each be the statement.
+  for (const words of version === undefined ? leadingReadings(sql, 3) : [leadingWords(sql, 3, version).words]) {
+    const [first, second, third] = words;
+    if (first === 'begin' || (first === 'start' && second === 'transaction')) return 'begin';
+    if (first === 'commit') return 'commit';
+    if (first === 'rollback') return second === 'to' || (second === 'work' && third === 'to') ? 'rollback to' : 'rollback';
+  }
+  return undefined;
+}
+
+/** Whether a statement may end a transaction without saying so in its answer: not one that only reads, and a comment that MySQL runs makes it unreadable. */
+function mayEndTransaction(sql: string, version: number | undefined): boolean {
+  const { words, executable } = leadingWords(sql, 1, version ?? 'code');
+  return executable || words[0] === undefined || !READS.has(words[0]);
+}
+
+/**
+ * The system variables whose changes the server reports in the answer of the statement that makes them (`stateChanges`): Marmeon sets the list itself, so
+ * that what the lease's checks read does not depend on the server's default. `autocommit` and `completion_type` decide how a transaction ends.
+ */
+export const TRACKED_VARIABLES = ['time_zone', 'autocommit', 'character_set_client', 'character_set_results', 'character_set_connection', 'completion_type'] as const;
+
+/** The transaction's end never chains into a new one: set on every session, and a lease that changes it is refused before the next statement (a commit) goes out. */
+const NO_CHAIN = 'NO_CHAIN';
+
 /** What a session is set up with: after the connection opens, and again after every `COM_RESET_CONNECTION`, which puts the server's defaults back. */
-const SET_SESSION = `set names utf8mb4 collate ${COLLATION}, session sql_mode = '${SQL_MODE}', time_zone = '+00:00', session_track_schema = 1`;
+const SET_SESSION =
+  `set names utf8mb4 collate ${COLLATION}, session sql_mode = '${SQL_MODE}', time_zone = '+00:00', session_track_schema = 1, ` +
+  `session_track_system_variables = '${TRACKED_VARIABLES.join(',')}', completion_type = '${NO_CHAIN}'`;
 const READ_VERSION = 'select @@version as version, @@version_comment as version_comment';
 const READ_SESSION =
   'select @@version as version, @@version_comment as version_comment, @@session.sql_mode as sql_mode, @@session.time_zone as time_zone, ' +
-  '@@collation_connection as collation, @@character_set_client as client, @@autocommit as autocommit, database() as db';
+  '@@collation_connection as collation, @@character_set_client as client, @@autocommit as autocommit, @@session.completion_type as completion_type, ' +
+  '@@session.session_track_system_variables as tracked, database() as db';
 
 export interface GuardedPoolOptions {
   /** The connection's name, for the message of a refusal (default `default`). */
@@ -81,7 +132,9 @@ interface StreamQuery {
  * the text protocol. The parameters are checked against the types SQLite accepts first. A connection goes back to the pool reset
  * (`COM_RESET_CONNECTION`), set up again and read in full. Inside a lease an answer that reports `NO_BACKSLASH_ESCAPES` or another client
  * character set than `utf8mb4` makes every later statement of the lease fail with D28, nothing sent: Kysely writes names and JSON paths
- * into the text. See `docs/database.md#mysql`.
+ * into the text; see `docs/database.md#mysql`. A transaction that MySQL ended (an implicit commit, a deadlock, a lock wait timeout) refuses every
+ * later statement and its commit with D24, nothing sent, until it is rolled back; after an answer that says nothing of the transaction (rows of a
+ * statement that is not a plain read, an error) the next statement asks first. See `docs/transactions.md#on-mysql`.
  *
  * Statements are not queued here: the pool is reached only through `Connections`, whose connections run one statement at a time
  * (`serialQueries`), and `mysql2` queues the reset of the way back behind the last statement.
@@ -118,9 +171,11 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
     if (prepared.has(raw)) return undefined;
     const query = (raw.query as unknown as Query).bind(raw);
     const run = (sql: string) => new Promise<unknown>((resolve, reject) => query(sql, [], (error, result) => (error ? reject(error) : resolve(result))));
+    let serverVersion: number | undefined;
     try {
       // The server first: MariaDB or MySQL 5.7 fail at the collation of the set-up, which must not hide as a connection error.
       const [server] = (await run(READ_VERSION)) as Record<string, unknown>[];
+      serverVersion = versionOf(server?.version);
       const unsupported = serverProblem(server);
       if (unsupported !== undefined) return refuse(raw, unsupported);
       await run(SET_SESSION);
@@ -133,7 +188,7 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
       raw.destroy();
       return error;
     }
-    guard(raw, query);
+    guard(raw, query, serverVersion);
     prepared.add(raw);
     return undefined;
   };
@@ -153,12 +208,18 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
    * of the lease: the text Kysely writes (names, JSON paths) would be read another way. On release the connection is reset, set up again
    * and read in full, and only then goes back. See `docs/database.md#mysql`.
    */
-  const guard = (raw: MysqlPoolConnection, query: Query) => {
+  const guard = (raw: MysqlPoolConnection, query: Query, version: number | undefined) => {
     const prepare = (raw as unknown as { prepare: (sql: string, callback: (error: unknown, statement: Statement) => void) => unknown }).prepare.bind(raw);
     /** Why the session of this lease is no longer the one Marmeon set, as an answer told: set once, never cleared. */
     let changed: string | undefined;
     /** The refusal every statement after it gets: the connection was destroyed with it. */
     let refusal: DatabaseConnectionError | undefined;
+    /** Whether the driver's `begin` ran and its `commit` or `rollback` has not: the lease is in a transaction of Marmeon's. */
+    let open = false;
+    /** Why MySQL ended that transaction, once an answer told. Everything but a `rollback` of the driver is refused until then. */
+    let lost: Lost | undefined;
+    /** Whether an answer left the transaction's state unknown (rows from a statement that is not a plain read, or an error): the next statement asks first. */
+    let unknown = false;
     /** The statements prepared in this lease: `mysql2` keeps them per text, and the server parsed each one against the database of that time. */
     const kept = new Set<string>();
     /**
@@ -192,6 +253,16 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
           return;
         }
         const variables = packet.stateChanges?.systemVariables ?? {};
+        // The driver's transactions are `begin` and `commit`: with autocommit off, the next statement would open one nobody tracks and commit never.
+        if ('autocommit' in variables && String(variables.autocommit).toUpperCase() === 'OFF') {
+          changed = "the session's autocommit is OFF, which the transactions of Marmeon are not written for";
+          return;
+        }
+        // A commit that chains a new transaction ends nothing: refused before the commit goes out, so that D28 is true (nothing was committed).
+        if ('completion_type' in variables && !['NO_CHAIN', '0'].includes(String(variables.completion_type).toUpperCase())) {
+          changed = `the session's completion_type is no longer ${NO_CHAIN} (now ${JSON.stringify(String(variables.completion_type))}), which the transactions of Marmeon are not written for`;
+          return;
+        }
         for (const variable of ['character_set_client', 'character_set_connection']) {
           if (variable in variables && variables[variable] !== 'utf8mb4') {
             changed = `the session's ${variable} is ${JSON.stringify(String(variables[variable]))}, not "utf8mb4"`;
@@ -204,6 +275,61 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
     const refused = (): DatabaseConnectionError | undefined => {
       if (refusal === undefined && changed !== undefined) refusal = refuse(raw, changed);
       return refusal;
+    };
+    /**
+     * What an answer tells of the transaction. The driver's `begin`, `commit` and `rollback` open and close the record. Any other OK packet
+     * without `SERVER_STATUS_IN_TRANS` while it is open means the server ended it (a schema change, a lock statement), and a `begin`, `commit` or
+     * `rollback` written by hand is known by its text (a `commit and chain` keeps IN_TRANS, and is a commit all the same). A deadlock, a lock wait
+     * timeout or a full lock table means it was rolled back, or may have been. An answer that has no status (rows of a statement that is not a plain
+     * read, an error) leaves it unknown: the next statement asks with `do 0` before it goes out. Returns why the lease is spoiled, when the driver's
+     * own `commit` or `rollback` left a transaction open (`completion_type` chains them).
+     */
+    const track = (sql: string, control: Control | undefined, error: unknown, result: unknown): string | undefined => {
+      if (error) {
+        if (open && lost === undefined) {
+          const cause = lostBy(error);
+          if (cause !== undefined) lost = cause;
+          else if (control === undefined) unknown = true;
+        }
+        return undefined;
+      }
+      const packets = okPackets(result);
+      const last = packets[packets.length - 1];
+      if (control === 'begin') open = true;
+      else if (control !== undefined) {
+        open = false;
+        lost = undefined;
+        // Defence only: the next `begin` answers with a status, which resets this anyway, and nothing asks while no transaction is open, so no test can tell the line from its absence.
+        unknown = false;
+        return last !== undefined && (last.serverStatus & STATUS_IN_TRANS) !== 0 ? "the commit or rollback of the transaction ran, but it left a transaction open (the session's completion_type chains them), which the transactions of Marmeon are not written for" : undefined;
+      }
+      if (!open || lost !== undefined) return undefined;
+      if (last !== undefined) unknown = false;
+      const text = control === undefined ? transactionStatement(sql, version) : undefined;
+      if (text === 'begin' || text === 'commit') lost = 'implicit commit';
+      else if (text === 'rollback') lost = 'rollback';
+      else if (last !== undefined) {
+        if ((last.serverStatus & STATUS_IN_TRANS) === 0) lost = 'implicit commit';
+      } else if (mayEndTransaction(sql, version)) unknown = true;
+      return undefined;
+    };
+    /** Asks the server whether the transaction is still open, with a statement that does nothing; what the answer says is taken as any answer. */
+    const probe = () =>
+      new Promise<void>((resolve) => {
+        unknown = false;
+        query('do 0', [], (error, result) => {
+          watch(result);
+          const last = error ? undefined : okPackets(result).at(-1);
+          if (error) lost ??= lostBy(error) ?? 'ended';
+          else if (last === undefined || (last.serverStatus & STATUS_IN_TRANS) === 0) lost ??= 'ended';
+          resolve();
+        });
+      });
+    const needsProbe = (control: Control | undefined) => control !== 'rollback' && open && lost === undefined && unknown;
+    /** The refusal for a statement of a transaction that MySQL ended, which nothing may follow but its rollback. */
+    const ended = (): TransactionError | undefined => {
+      if (lost === undefined) return undefined;
+      return new TransactionError(withCode('D24', endedTransaction(lost)));
     };
     const mismatch = (counted: number, given: number) =>
       new TypeError(`MySQL sees ${counted} placeholders in the statement and ${given} parameters were given; a ? inside a comment, a string or a "name" is not one.`);
@@ -218,9 +344,14 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
         }),
       );
     /** One statement with an answer to call back. */
-    const execute = (sql: string, values: unknown[], callback: Callback) => {
+    const execute = (sql: string, values: unknown[], control: Control | undefined, callback: Callback) => {
       const answer: Callback = (error, result) => {
         watch(result);
+        const spoiled = track(sql, control, error, result);
+        if (spoiled !== undefined) {
+          changed ??= spoiled;
+          return callback(refused(), undefined);
+        }
         const failure = error ? undefined : castFailure(result);
         if (failure) callback(failure, undefined);
         else callback(error, result);
@@ -239,29 +370,61 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
     };
     /** One statement as a stream of rows: sent when the first row is asked for. */
     async function* stream(sql: string, values: unknown[], streamOptions: unknown): AsyncGenerator<unknown> {
-      const stop = refused();
+      const stopped = refused();
+      if (stopped) throw stopped;
+      if (needsProbe(undefined)) await probe();
+      const stop = refused() ?? ended();
       if (stop) throw stop;
       const running = values.length === 0 ? (query(sql, []) as StreamQuery) : (await prepareFor(sql, values.length)).execute(values) as StreamQuery;
       // A statement without rows streams its OK packet as a 'result' that follows a 'fields' event without fields; a row follows one with
       // fields. That is how the two are told apart: no column of a select can look like a packet.
       let fields: unknown = [];
       running.on?.('fields', (columns) => void (fields = columns));
+      let answered = false;
       running.on?.('result', (row) => {
-        if (fields === undefined) watch(row);
+        if (fields === undefined) {
+          answered = true;
+          watch(row);
+          track(sql, undefined, undefined, row);
+        }
       });
-      for await (const row of running.stream(streamOptions)) {
-        // A destroyed stream is drained by `mysql2`'s command: the statements after it work.
-        const failure = castFailure([row]);
-        if (failure) throw failure;
-        yield row;
+      let completed = false;
+      try {
+        for await (const row of running.stream(streamOptions)) {
+          // A destroyed stream is drained by `mysql2`'s command: the statements after it work.
+          const failure = castFailure([row]);
+          if (failure) throw failure;
+          yield row;
+        }
+        completed = true;
+      } catch (error) {
+        completed = true;
+        track(sql, undefined, error, undefined);
+        throw error;
+      } finally {
+        // A stream left before its end (a `break`) says nothing of what the statement did, whatever it began with: the next statement asks.
+        if (!completed && open && lost === undefined) unknown = true;
       }
+      if (!answered) track(sql, undefined, undefined, undefined);
     }
     (raw as { query: Query }).query = (sql, parameters, callback) => {
       const values = bind(parameters as Parameters, options.integer);
       if (callback === undefined) return { stream: (streamOptions: unknown) => stream(sql, values, streamOptions) };
       const stop = refused();
-      if (stop) callback(stop, undefined);
-      else execute(sql, values, callback);
+      if (stop) return void callback(stop, undefined);
+      const control = controlOf(parameters);
+      const send = () => {
+        // The probe's answer is read like any other: it may have changed the session.
+        const changedNow = refused();
+        if (changedNow) return void callback(changedNow, undefined);
+        if (lost === undefined || control === 'rollback') return execute(sql, values, control, callback);
+        // The rest of the transaction is undone, or ended and then refused: a `rollback to` of a nested transaction passes, for the rollback that
+        // the outermost level still sends is what ends it (a lock wait timeout may have left it alive, and that rollback is then the one that undoes it).
+        if (control === undefined && transactionStatement(sql, version) === 'rollback to') callback(null, []);
+        else callback(ended(), undefined);
+      };
+      if (needsProbe(control)) void probe().then(send);
+      else send();
       return undefined;
     };
     (raw as unknown as EventEmitter).on('error', (error: Error) => {
@@ -272,6 +435,11 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
     const reset = () => new Promise<void>((resolve, reject) => (raw as unknown as { reset: (callback: (error: unknown) => void) => void }).reset((error) => (error ? reject(error) : resolve())));
     raw.release = () => {
       inUse.delete(raw);
+      // The reset of the way back ends a transaction the lease left open, and the next lease starts without one.
+      open = false;
+      lost = undefined;
+      // Defence only, as at the driver's commit: the next `begin` resets it, and no test can tell the line from its absence.
+      unknown = false;
       // The reset of the way back closes them on the server and in `mysql2`.
       kept.clear();
       // The way back has a limit, which also covers the last statement of the lease: `mysql2` queues the reset behind it, and a server that
@@ -383,6 +551,31 @@ export function guardedPool(pool: MysqlPool, options: GuardedPoolOptions): Mysql
   };
 }
 
+/** What ended the transaction, and what is left of it, for the refusal of every statement that follows. */
+function endedTransaction(lost: Lost): string {
+  const effect: Record<Lost, string> = {
+    'implicit commit':
+      'a statement committed it (a schema change, a lock statement, or a commit or begin written by hand): what ran before that statement is committed, and what would run now is not part of any transaction',
+    rollback: 'a rollback written by hand undid it: nothing of it is committed, and what would run now is not part of any transaction',
+    deadlock: 'MySQL rolled it back after a deadlock (error 1213): nothing of it is committed, and what would run now is not part of any transaction',
+    'lock wait timeout':
+      'a lock wait timed out (error 1205), after which MySQL may have rolled it back, depending on innodb_rollback_on_timeout: Marmeon cannot tell, so it ends the transaction',
+    'lock table full': "InnoDB's lock table was full (error 1206), after which MySQL may have rolled it back: Marmeon cannot tell, so it ends the transaction",
+    ended:
+      'it is no longer open: a statement or an error of the transaction ended it, committed or rolled back, and MySQL did not say which: what ran before is committed or undone, and what would run now is not part of any transaction',
+  };
+  return `This transaction was ended by MySQL: ${effect[lost]}. Statements and the commit are refused until it is rolled back; throw out of transaction() to roll back (and retry it on a deadlock).`;
+}
+
+/** The cause of a transaction lost by an error the server sent, from its error number. */
+function lostBy(error: unknown): Lost | undefined {
+  const errno = (error as { errno?: unknown } | null)?.errno;
+  if (errno === ERRNO_DEADLOCK) return 'deadlock';
+  if (errno === ERRNO_LOCK_WAIT_TIMEOUT) return 'lock wait timeout';
+  if (errno === ERRNO_LOCK_TABLE_FULL) return 'lock table full';
+  return undefined;
+}
+
 /** Why the session is not the one Marmeon asked for, or `undefined`. `row` is what {@link READ_SESSION} returned. */
 function sessionProblem(row: Record<string, unknown> | undefined, database?: string | null): string | undefined {
   if (row === undefined) return 'the server did not report its session';
@@ -399,6 +592,10 @@ function sessionProblem(row: Record<string, unknown> | undefined, database?: str
   if (text(row.collation) !== COLLATION) return `the session's collation is ${JSON.stringify(text(row.collation))}, not ${COLLATION}`;
   if (database !== undefined && (row.db ?? null) !== database) return `the session's database is ${JSON.stringify(row.db ?? null)}, not ${JSON.stringify(database)}`;
   if (Number(row.autocommit) !== 1) return 'the session does not autocommit, which the migrator and the pool rely on';
+  if (text(row.completion_type) !== NO_CHAIN) return `the session's completion_type is ${JSON.stringify(text(row.completion_type))}, not ${NO_CHAIN}: a commit would chain a new transaction`;
+  const tracked = new Set(text(row.tracked).split(',').map((name) => name.trim().toLowerCase()));
+  const missing = TRACKED_VARIABLES.filter((name) => !tracked.has(name));
+  if (missing.length > 0) return `the session does not report changes of ${missing.join(', ')} (session_track_system_variables), which the checks of a lease read`;
   return undefined;
 }
 
@@ -468,6 +665,12 @@ const isPacket = (value: unknown): value is OkPacket => typeof value === 'object
 function okPackets(result: unknown): OkPacket[] {
   if (isPacket(result)) return [result];
   return Array.isArray(result) && result.some((part) => Array.isArray(part)) ? result.filter(isPacket) : [];
+}
+
+/** The server's version as MySQL numbers it in a version comment, `major * 10000 + minor * 100 + patch`, or `undefined` when its string is of another form. */
+export function versionOf(version: unknown): number | undefined {
+  const match = typeof version === 'string' ? /^(\d+)\.(\d+)\.(\d+)/.exec(version) : null;
+  return match ? Number(match[1]) * 10000 + Number(match[2]) * 100 + Number(match[3]) : undefined;
 }
 
 /** Why the server is not a supported one, from its `@@version` and `@@version_comment`; its own string is quoted. */
