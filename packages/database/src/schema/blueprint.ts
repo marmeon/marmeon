@@ -607,7 +607,7 @@ export class Blueprint {
     this.#nullability(column, true);
   }
 
-  /** Changing a table only: takes a column out of use one release before it is dropped; runs no statement. On MySQL the later `dropColumn()` of a column with a foreign key fails (error 1829), see `docs/migrations.md#mysql`. See `docs/migrations.md#retiring-a-column`. */
+  /** Changing a table only: takes a column out of use one release before it is dropped; runs no statement. On MySQL the later `dropColumn()` of a column with a foreign key is refused before the migration runs (the server's errors 1828 and 1829), see `docs/migrations.md#what-mysql-refuses-before-a-migration-runs`. See `docs/migrations.md#retiring-a-column`. */
   retire(column: string): void {
     this.#open();
     this.#parts.retirements.push(column);

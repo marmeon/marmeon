@@ -66,15 +66,15 @@ describe.each([
   };
 
   it.each([
-    ['renaming a table with its indexes', 'Renaming a table with its indexes', () => executePlan(dummy, driver, [{ kind: 'rename', from: 'a', to: 'b', indexes: true }])],
     ['a relation inside a query', 'A relation inside a query (with())', relation(driver)],
   ])('refuses %s', async (_name, feature, call) => {
     await refuses(call, feature);
   });
 
-  // The record of migrations, the columns, the defaults, the lock, the catalog and emptying the database run on MySQL (below, and in mysql-catalog.test.ts); a driver nobody knows still has no form of them.
+  // The record of migrations, the columns, the defaults, the lock, the catalog, emptying the database and renaming a table with its indexes run on MySQL (below, and in mysql-catalog.test.ts); a driver nobody knows still has no form of them.
   if (driver !== mysql) {
     it.each([
+      ['renaming a table with its indexes', 'Renaming a table with its indexes', () => executePlan(dummy, driver, [{ kind: 'rename', from: 'a', to: 'b', indexes: true }])],
       ['a uuidv7 default', 'A uuidv7 default', () => ddl((t) => void t.uuid('c').useUuidv7(), driver)()],
       ['a current-time default', 'A current-time default', () => ddl((t) => void t.timestamp('c').useCurrent(), driver)()],
       ['the migration lock', 'The migration lock', () => MigrationLock.acquire(dummy, { driver })],
@@ -401,17 +401,6 @@ describe('the DDL MySQL gets', () => {
     for (const mysql of [undefined, ready ? sql`select 1` : undefined]) {
       await expect(executePlan(db, 'mysql', plan((schema) => schema.raw({ sqlite: sql`select 1`, mysql })))).rejects.toThrow(/^\[marmeon:D18\] The plan has a schema\.raw\(\) step \(step 1 of its plan\) with a statement for sqlite and none for MySQL/);
     }
-    expect(statements).toEqual([]);
-  });
-
-  it('refuses a rename with its indexes before it renames anything', async () => {
-    const { db, statements } = recorder();
-    await expect(
-      executePlan(db, 'mysql', plan((schema) => {
-        schema.create('first', (table) => table.id());
-        schema.rename('first', 'second', { indexes: true });
-      })),
-    ).rejects.toThrow('[marmeon:D29] Renaming a table with its indexes does not run on MySQL yet.');
     expect(statements).toEqual([]);
   });
 
