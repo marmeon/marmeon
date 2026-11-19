@@ -3,6 +3,78 @@
 This page lists every change between one version and the next that an app has to act on: how likely it is to affect your app, what to do, and the way back where there is one. The
 [release policy](docs/releases.md#what-a-version-promises) says what a version promises.
 
+## Upgrading to 1.2.0 from 1.1.0
+
+### Commands
+
+#### Low: A command of your own named add, doctor, upgrade or db:query needs another name
+
+*Likelihood of impact: low — apps, and packages they use, with a command of exactly one of these names, such as `db:query` in a module named `db`.*
+
+`marmeon` brings four new commands. `add` installs a framework package at the app's version, `doctor` checks that a machine can run the app, and `upgrade` moves every framework package to one version. `db:query` comes with `@marmeon/database` and runs one read-only query against a connection. A command of your own with one of these names now stops `marmeon build` and the start with K8, and the message names both classes. Rename yours, preferably into your module's group (`notes:doctor`), and change the scheduled tasks and scripts that call it by its old name. There is no way back: the names belong to the framework. See [writing commands](docs/console.md#writing-commands).
+
+#### Low: @marmeon/oauth brings the commands make:oauth and make:social-accounts-table
+
+*Likelihood of impact: low — apps that add `@marmeon/oauth` and have a command of their own named `make:oauth` or `make:social-accounts-table`.*
+
+Nothing changes until you add the package. Its provider registers `make:oauth`, which writes the sign-in module into the app, and `make:social-accounts-table`, which writes the migration of the `social_accounts` table. A command of your own with one of these names then stops `marmeon build` and the start with K8. Rename yours before you add the package. There is no way back. See [the generated module](docs/oauth.md#the-generated-module).
+
+### Pages, forms and policies
+
+#### Low: A policy's static guard names the guard whose users it judges
+
+*Likelihood of impact: low — policy classes with a static property named `guard`, also one they inherit.*
+
+`@marmeon/auth` now reads `static guard` on a policy class: it names the guard whose users the policy judges ([policies of a guard](docs/authorization.md#policies-of-a-guard)). Without the static, or with `undefined`, a policy judges your app's users as before. Any other value that is not a guard made by `defineGuard()` and registered, or a guard slot, fails with A8 the first time the gate asks the policy, before the policy runs. The compiler points at such a policy: it has no abilities, so `can()` and the gate's methods refuse its ability names. Rename the static. There is no way back.
+
+#### Low: Every page of the web group carries the prop _conflict
+
+*Likelihood of impact: low — tests that compare all props of a page, and pages that pass a prop named `_conflict`.*
+
+`ShareErrorsFromSession` of `@marmeon/session` shares `_conflict` on every page of the `web` group. It holds the conflict of a stale save that a form shows ([conflicts](docs/forms.md#conflicts)), and `null` when there is none. A test that compares a page's props as a whole now needs `_conflict: null`. A page's own prop named `_conflict` is a type error at `view()` and is dropped at run time: give it another name. There is no way back.
+
+#### Low: upload() refuses an option it does not know
+
+*Likelihood of impact: low — upload rules whose options come from a variable or from JavaScript and carry a key `upload()` does not take. TypeScript already refuses such a key in an object literal.*
+
+`upload()` takes `maxBytes`, `mime`, `text` and `dimensions`. Any other key now makes it throw a `TypeError` that names the key, where 1.1.0 ignored it. A misspelt `mimes` therefore no longer leaves every file type allowed without a word. Correct or remove the key. There is no way back. See [uploads](docs/validation.md#uploads).
+
+### Migrations
+
+#### Low: Raw SQL in a data step that names the migrator's tables stops with D4
+
+*Likelihood of impact: low — migrations whose `schema.data()` step names `migrations` or `migration_lock` in raw SQL, or appends raw SQL that changes the schema to a query.*
+
+A `schema.data()` step now reads each statement as it is sent. Raw SQL that names `migrations` or `migration_lock` stops the migration with D4, a read included; on SQLite a word inside a string counts too. So does a write to those tables through the query builder inside a CTE, a subquery or an `insert … select`, and raw SQL that changes the schema, appended to a query or nested in one. In 1.1.0 the guard did not look for the migrator's tables in raw SQL. A migration that ran stays recorded and does not run again in that database. It stops with D4 on every fresh database: in your tests, after `migrate:fresh` and in a new environment. Read the migrator's tables through the query builder, which may still do so, and move a schema change into a step of its own (`schema.alter()`, `schema.raw()`). There is no way back. See [changing the data](docs/migrations.md#changing-the-data).
+
+### Logs and coding agents
+
+#### Low: A query parameter named state is masked in logs, the error page, the devtools and traces
+
+*Likelihood of impact: low — apps with a query parameter of their own named `state` (`/orders?state=open`) whose value someone reads in the log, the error page, the devtools or traces.*
+
+An OAuth `state` ties a browser to a pending sign-in, so a reader of the log must not get it. The redactor now masks the value of every query parameter named `state`, like `code`, also your own: `/orders?state=open` shows as `/orders?state=[redacted]`. The error page, the devtools and traces that record query values mask it in their query fields too. Your routes read the parameter as before. If you need such a value in the log, log it as a field of its own: a log field named `state` stays readable. There is no way back: the masking has no setting. See [keeping secrets out of the log](docs/logging.md#keeping-secrets-out-of-the-log).
+
+#### Low: A coding agent can read rows of the development database through marmeon mcp
+
+*Likelihood of impact: low — apps whose coding agent uses the MCP server that `marmeon agents:install` sets up, and whose development database holds personal data.*
+
+`marmeon mcp` has a new tool, `query`: one read-only SQL query on a connection of the app, in development and test only ([the query tool](docs/mcp.md#query)). It is there as soon as the packages are upgraded. The server announces it as read-only, and it is meant to run without a question for each call. Secret columns and connections set to `managed: false` are refused, and string values are masked the way the log is. The other values reach the agent, and with them the provider that runs it. If that is not acceptable, deny the tool in the agent's permissions; for Claude Code, add `"mcp__marmeon__query"` to `permissions.deny` in `.claude/settings.json`.
+
+#### Low: marmeon check reports the AGENTS.md block and the installed skills as out of date
+
+*Likelihood of impact: low — apps that ran `marmeon agents:sync` or `marmeon agents:install`, and run `marmeon check` or the `--check` of those commands in CI.*
+
+The block of `AGENTS.md` and the skills `marmeon-debugging` and `marmeon-testing` now name the new tools of `marmeon mcp` and `tinker --sandbox`. Until you run `marmeon agents:sync` and `marmeon agents:install` and commit the result, `marmeon check` warns that they are out of date, and `agents:sync --check` and `agents:install --check` exit with 1. There is no way back. See [keeping the block current](docs/agents.md#keeping-the-block-current).
+
+### The start
+
+#### Low: A lang/marmeon folder that cannot be read stops the start
+
+*Likelihood of impact: low — servers on which the app's `lang/marmeon/` folder exists but the process may not read it.*
+
+The start reads your rewording of the framework's texts from `lang/marmeon/` ([the framework's texts](docs/localization.md#the-frameworks-texts)). A folder that is there but cannot be read now stops the start. 1.1.0 skipped it and showed the framework's own wording. A folder that is not there still means no rewording. Let the app's process read the folder, or remove it. There is no way back.
+
 ## Upgrading to 1.1.0 from 1.0.0
 
 ### Security hardening
