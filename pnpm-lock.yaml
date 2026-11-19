@@ -697,6 +697,15 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
 
+  packages/chat-notifications:
+    dependencies:
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+
   packages/cli:
     dependencies:
       '@marmeon/core':
