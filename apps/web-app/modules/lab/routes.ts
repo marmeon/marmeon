@@ -23,12 +23,13 @@ import { PingWebhookLabController, ShowWebhookPingLabController } from './contro
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
-// manifest) and answer 404 unless the lab is on.
+// manifest). `LabOnly` is the first middleware of every chain below (after `credentialPage()` where the path is a credential): a request
+// answers 404 unless the lab is on before the route's own limit counts, its binder looks a record up or a guest is sent to sign in. The global and the web group's middleware run first.
 export default defineRoutes((Route) => {
-  // Open to everyone, since the lab shows nothing of the app's records: the pages answer 404 unless the lab is on. A lab route added
-  // later decides for itself.
+  // Open to everyone, since the lab shows nothing of the app's records and the gate has answered 404 before unless the lab is on. A lab route
+  // added later decides for itself, and takes one of the chains below: a chain built on `group` without `LabOnly` skips the gate.
   const group = Route.prefix('/lab');
-  const lab = group.authorize(everyone);
+  const lab = group.middleware(LabOnly).authorize(everyone);
   lab.get('/streaming', ShowStreamingLabController);
   lab.get('/client-only', ShowClientOnlyLabController);
   lab.get('/browser-only', ShowBrowserOnlyLabController);
@@ -59,8 +60,9 @@ export default defineRoutes((Route) => {
   lab.bind('survey', Surveys, { public: true }).post('/surveys/:survey/questions', AddQuestionLabController);
   // A link that is used once: its path is the token, found by its hash (`hashLinkToken()`). Open to everyone and public by design — the
   // token is the key, and every wrong token gets the same 404. The GET only shows a page; the POST uses the link up.
-  // `credentialPage()` marks every answer of the routes that carry the token, errors and the 404 for a wrong token included.
-  const link = group.middleware(credentialPage());
+  // `credentialPage()` marks every answer of the routes that carry the token, errors, the 404 for a wrong token and the
+  // lab's 404 included: it runs before `LabOnly`.
+  const link = group.middleware(credentialPage()).middleware(LabOnly);
   link.authorize(everyone).middleware(throttle('lab.one-time-links')).post('/one-time-links', CreateOneTimeLinkLabController);
   link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/one-time-links/:link', OpenOneTimeLinkLabController);
   // The POST changes data, so the link itself is the decision: the binder found an unused link by its token, and the update that
@@ -74,16 +76,16 @@ export default defineRoutes((Route) => {
   // and its POST keep `same-origin`, so `back()` returns to the form after a failed validation.
   link.authorize(everyone).bind('link', OneTimeLinkRepository, { public: true }).get('/invitations/:link', ClaimInvitationLabController);
   // A public page that carries a token only sometimes: cacheable as it is, `no-store` and without a Referer once the address has `?invite=`.
-  group.middleware(credentialPage({ query: ['invite'] })).authorize(everyone).get('/announcement', ShowAnnouncementLabController);
-  const form = group.middleware(credentialPage({ referrer: 'same-origin' })).authorize(everyone);
+  group.middleware(credentialPage({ query: ['invite'] })).middleware(LabOnly).authorize(everyone).get('/announcement', ShowAnnouncementLabController);
+  const form = group.middleware(credentialPage({ referrer: 'same-origin' })).middleware(LabOnly).authorize(everyone);
   form.get('/invitation', ShowInvitationLabController);
   form.post('/invitation', StoreInvitationLabController);
   // An address an editor entered, called by the server: `HttpClient` refuses what is not public when it sends.
   lab.get('/webhook-ping', ShowWebhookPingLabController);
   lab.middleware(throttle('lab.webhook-ping')).post('/webhook-ping', PingWebhookLabController);
   // A chat notification: a signed-in user sends a message that the `chat` channel posts to the `ops` destination of `CHAT_WEBHOOKS`.
-  // The lab's 404 comes first, so a guest or a limit never shows the route when the lab is off. A confirmed address, as the other modules ask for.
-  const chat = lab.middleware(LabOnly).middleware(authenticate()).middleware(verified());
+  // `lab` has answered 404 first: when the lab is off, no guest is sent to sign in and the route's limit does not count. A confirmed address, as the other modules ask for.
+  const chat = lab.middleware(authenticate()).middleware(verified());
   chat.get('/chat', ShowChatLabController);
   chat.middleware(throttle('lab.chat')).post('/chat', SendChatLabController);
 });
