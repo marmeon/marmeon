@@ -1,8 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';
-import type { Generated, Kysely } from 'kysely';
+import { sql, type Generated, type Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, withMysql } from './__fixtures__/databases.ts';
+import { DatabaseConnectionError } from './driver.ts';
+import { migratorConnection } from './migrator-connection.ts';
 import { afterCommit, afterRollback, inTransaction, outsideTransaction, Repository, TransactionError, TransactionFinishedError, type Connections } from './index.ts';
 
 // The ambient transaction context: `connections.transaction(callback)` and everything awaited inside it.
@@ -730,5 +732,489 @@ it('types the callback and the result', () => {
     // @ts-expect-error — the options are an object: { connection: 'reporting' }
     await connections.transaction(async () => {}, 'reporting');
     return count;
+  });
+});
+
+// The cases on MySQL run where the server is (MARMEON_TEST_MYSQL_URL, `pnpm test:mysql`). A transaction that the server ended (a deadlock, a lock wait timeout, an implicit commit) refuses what follows, instead of letting it autocommit.
+withMysql('connections.transaction() on mysql', () => {
+  interface MysqlTables {
+    lockers: { id: number; v: number };
+    marks: { id: Generated<number>; name: string };
+  }
+  let connections: Connections;
+  let close: () => Promise<void>;
+  let db: Kysely<MysqlTables>;
+  const D24 = /^\[marmeon:D24\] This transaction was ended by MySQL: /;
+
+  /** What a refused or failed statement threw, or `undefined` when it went through. */
+  const thrown = (work: Promise<unknown>): Promise<unknown> => work.then(() => undefined, (error: unknown) => error);
+  const names = async () => (await db.selectFrom('marks').select('name').orderBy('name').execute()).map((row) => row.name);
+  /** The statements the session of `trx` has run of one kind (`Com_do` for `do 0`): the server counts them for the connection. */
+  const counted = async (trx: Kysely<any>, name: string) =>
+    Number((await sql.raw<{ Value: string }>(`show session status like '${name}'`).execute(trx)).rows[0]!.Value);
+
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections('mysql'));
+    db = connections.get<MysqlTables>();
+    const setup = migratorConnection(connections);
+    await setup.schema.createTable('lockers').addColumn('id', 'integer', (c) => c.primaryKey()).addColumn('v', 'integer', (c) => c.notNull()).execute();
+    await setup.schema.createTable('marks').addColumn('id', 'integer', (c) => c.primaryKey().autoIncrement()).addColumn('name', 'varchar(50)', (c) => c.notNull().unique()).execute();
+  });
+  afterAll(() => close());
+  beforeEach(async () => {
+    await db.deleteFrom('lockers').execute();
+    await db.deleteFrom('marks').execute();
+    await db.insertInto('lockers').values([{ id: 1, v: 0 }, { id: 2, v: 0 }]).execute();
+  });
+
+  /**
+   * Two transactions that lock the two rows in opposite order: the server ends one of them with a deadlock, and its callback catches the error and runs
+   * `afterwards`. `how` is the way the second update goes to the server: the builder (prepared, with parameters), raw text, or inside a nested `transaction()`.
+   */
+  async function deadlock(afterwards: (trx: Kysely<any>) => Promise<unknown>, how: 'prepared' | 'text' | 'nested' = 'prepared') {
+    let arrived = 0;
+    let release!: () => void;
+    const both = new Promise<void>((resolve) => (release = resolve));
+    // A hang is a failure and not a stuck suite: the lock wait would end after 50 seconds.
+    const timer = setTimeout(release, 5000);
+    const losers: string[] = [];
+    const cross = (trx: Kysely<any>, first: number, second: number) =>
+      how === 'text' ? sql.raw(`update lockers set v = ${first} where id = ${second}`).execute(trx) : trx.updateTable('lockers').set({ v: first }).where('id', '=', second).execute();
+    const run = (first: number, second: number, name: string) =>
+      connections.transaction(async (trx: Kysely<any>) => {
+        await trx.updateTable('lockers').set({ v: first }).where('id', '=', first).execute();
+        if (++arrived === 2) release();
+        await both;
+        try {
+          if (how === 'nested') await connections.transaction(async (inner: Kysely<any>) => void (await cross(inner, first, second)));
+          else await cross(trx, first, second);
+        } catch (error) {
+          expect((error as { errno?: number }).errno).toBe(1213);
+          losers.push(name);
+          // The code catches the error and goes on, as it may on SQLite: this is what must not autocommit.
+          await afterwards(trx);
+        }
+        return name;
+      });
+    try {
+      const outcomes = await within(Promise.allSettled([run(1, 2, 'first'), run(2, 1, 'second')]), 15_000);
+      return { losers, outcomes };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  it.each(['prepared', 'text', 'nested'] as const)('refuses the statement after a deadlock and the commit with D24, and nothing of the loser is committed (%s)', async (how) => {
+    const { losers, outcomes } = await deadlock(async (trx) => {
+      const refusal = await thrown(trx.insertInto('marks').values({ name: 'after the deadlock' }).execute());
+      expect(refusal).toBeInstanceOf(TransactionError);
+      expect((refusal as Error).message).toMatch(D24);
+      expect((refusal as Error).message).toContain('deadlock (error 1213)');
+    }, how);
+    expect(losers).toHaveLength(1);
+    const results = losers[0] === 'first' ? outcomes : [...outcomes].reverse();
+    // The loser's callback returned, and its commit was refused; the other one committed.
+    expect(results[0]).toMatchObject({ status: 'rejected', reason: expect.any(TransactionError) });
+    expect(((results[0] as PromiseRejectedResult).reason as Error).message).toMatch(D24);
+    expect(results[1]).toMatchObject({ status: 'fulfilled' });
+    expect(await names()).toEqual([]);
+    // The loser's first update was rolled back: only the winner's two rows changed.
+    const winner = losers[0] === 'first' ? 2 : 1;
+    expect(await db.selectFrom('lockers').select(['id', 'v']).orderBy('id').execute()).toEqual([{ id: 1, v: winner }, { id: 2, v: winner }]);
+  });
+
+  it('does not let a statement after a deadlock autocommit: a transaction of the next caller on the same connection starts clean', async () => {
+    await deadlock(async (trx) => void (await thrown(trx.insertInto('marks').values({ name: 'after the deadlock' }).execute())));
+    await connections.transaction(async (trx: Kysely<any>) => {
+      await trx.insertInto('marks').values({ name: 'next' }).execute();
+    });
+    expect(await names()).toEqual(['next']);
+  });
+
+  it('ends a transaction at a lock wait timeout (a real error 1205) the same way: the next statement and the commit are refused', async () => {
+    let held!: () => void;
+    const holding = new Promise<void>((resolve) => (held = resolve));
+    let done!: () => void;
+    const finished = new Promise<void>((resolve) => (done = resolve));
+    const timer = setTimeout(() => (held(), done()), 10_000);
+    const holder = connections.transaction(async (trx: Kysely<any>) => {
+      await trx.updateTable('lockers').set({ v: 5 }).where('id', '=', 1).execute();
+      held();
+      await finished;
+    });
+    await holding;
+    let after: unknown;
+    const commit = await thrown(
+      within(
+        connections.transaction(async (trx: Kysely<any>) => {
+          await sql`set session innodb_lock_wait_timeout = 1`.execute(trx);
+          const timeout = await thrown(trx.updateTable('lockers').set({ v: 6 }).where('id', '=', 1).execute());
+          expect((timeout as { errno?: number }).errno).toBe(1205);
+          after = await thrown(trx.insertInto('marks').values({ name: 'after the timeout' }).execute());
+        }),
+        8000,
+      ),
+    );
+    done();
+    clearTimeout(timer);
+    await holder;
+    expect((after as Error).message).toMatch(/a lock wait timed out \(error 1205\)/);
+    expect(commit).toBeInstanceOf(TransactionError);
+    expect(await names()).toEqual([]);
+    expect((await db.selectFrom('lockers').select('v').where('id', '=', 1).executeTakeFirstOrThrow()).v).toBe(5);
+  });
+
+  it('refuses what follows a raw schema change in a transaction, with D24 for the statement and the commit; what ran before it is committed', async () => {
+    let after: unknown;
+    const commit = await thrown(
+      connections.transaction(async (trx: Kysely<any>) => {
+        await trx.insertInto('marks').values({ name: 'before' }).execute();
+        await sql`create table t2 (id int)`.execute(trx);
+        after = await thrown(trx.insertInto('marks').values({ name: 'after' }).execute());
+      }),
+    );
+    expect(after).toBeInstanceOf(TransactionError);
+    expect((after as Error).message).toMatch(/^\[marmeon:D24\] This transaction was ended by MySQL: a statement committed it \(/);
+    expect(commit).toBeInstanceOf(TransactionError);
+    expect((commit as Error).message).toMatch(D24);
+    // The insert before the statement is committed by it; the one after it never ran.
+    expect(await names()).toEqual(['before']);
+    await sql`drop table t2`.execute(db);
+    // The connection is clean for the next transaction.
+    await connections.transaction(async (trx: Kysely<any>) => void (await trx.insertInto('marks').values({ name: 'next' }).execute()));
+    expect(await names()).toEqual(['before', 'next']);
+  });
+
+  it('refuses what follows a statement that commits, also one that is prepared (a call with a parameter)', async () => {
+    const setup = migratorConnection(connections);
+    await sql`create procedure commits_in(in x int) begin update lockers set v = x where id = 1; commit; end`.execute(setup);
+    await sql`create procedure keeps_in(in x int) begin select x as one; update lockers set v = x where id = 1; end`.execute(setup);
+    let after: unknown;
+    const commit = await thrown(
+      connections.transaction(async (trx: Kysely<any>) => {
+        await sql`call commits_in(${7})`.execute(trx);
+        after = await thrown(trx.insertInto('marks').values({ name: 'after the call' }).execute());
+      }),
+    );
+    expect(after).toBeInstanceOf(TransactionError);
+    expect(commit).toBeInstanceOf(TransactionError);
+    expect(await names()).toEqual([]);
+    // A call with a parameter that stays in the transaction is not an alarm, and commits with it.
+    await connections.transaction(async (trx: Kysely<any>) => {
+      await sql`call keeps_in(${8})`.execute(trx);
+      await trx.insertInto('marks').values({ name: 'after the second call' }).execute();
+    });
+    expect(await names()).toEqual(['after the second call']);
+    expect((await db.selectFrom('lockers').select('v').where('id', '=', 1).executeTakeFirstOrThrow()).v).toBe(8);
+  });
+
+  it('refuses a schema change of the builder in a transaction before it is sent, and the insert before it is rolled back', async () => {
+    const events: Array<{ sql: string; error?: unknown }> = [];
+    const stop = connections.onQuery((query) => events.push({ sql: query.sql, error: query.error }));
+    const error = await thrown(
+      connections.transaction(async (trx: Kysely<any>) => {
+        await trx.insertInto('marks').values({ name: 'before' }).execute();
+        await trx.schema.createTable('t3').addColumn('id', 'integer').execute();
+      }),
+    );
+    stop?.();
+    expect(error).toBeInstanceOf(TransactionError);
+    expect((error as Error).message).toMatch(/^\[marmeon:D30\] MySQL commits a transaction at a schema change/);
+    expect(await names()).toEqual([]);
+    // The log has the attempt, failed with the refusal: the server never saw a `create table`, and the table does not exist.
+    expect(events.filter((event) => event.sql.startsWith('create table'))).toEqual([{ sql: expect.stringMatching(/^create table `t3`/), error: expect.any(TransactionError) }]);
+    expect(await sql<{ n: number }>`select count(*) as n from information_schema.tables where table_schema = database() and table_name = 't3'`.execute(db).then((r) => Number(r.rows[0]!.n))).toBe(0);
+  });
+
+  it('lets a temporary table through, made and dropped, which MySQL does not commit for: the transaction stays open and rolls back', async () => {
+    const error = await thrown(
+      connections.transaction(async (trx: Kysely<any>) => {
+        await trx.insertInto('marks').values({ name: 'before' }).execute();
+        await trx.schema.createTable('scratch').temporary().addColumn('id', 'integer').execute();
+        await trx.insertInto('marks').values({ name: 'middle' }).execute();
+        await trx.schema.dropTable('scratch').temporary().execute();
+        await trx.insertInto('marks').values({ name: 'after' }).execute();
+        throw new Rollback();
+      }),
+    );
+    expect(error).toBeInstanceOf(Rollback);
+    expect(await names()).toEqual([]);
+  });
+
+  it('keeps the outer transaction when a savepoint of a caught duplicate-key error is rolled back, as on SQLite', async () => {
+    await connections.transaction(async (trx: Kysely<any>) => {
+      await trx.insertInto('marks').values({ name: 'taken' }).execute();
+      const error = await thrown(connections.transaction(async (inner: Kysely<any>) => void (await inner.insertInto('marks').values({ name: 'taken' }).execute())));
+      expect((error as { errno?: number }).errno).toBe(1062);
+      await trx.insertInto('marks').values({ name: 'after' }).execute();
+    });
+    expect(await names()).toEqual(['after', 'taken']);
+  });
+
+  it('runs a transaction at its isolation level, shown by what it locks, and refuses a write in a read only one', async () => {
+    // A serializable read takes a shared lock, so another connection cannot lock the row for update.
+    const nowait = (id: number) => connections.transaction((other: Kysely<any>) => sql`select id from lockers where id = ${id} for update nowait`.execute(other));
+    await connections.transaction(
+      async (trx: Kysely<any>) => {
+        await sql`select v from lockers where id = 1`.execute(trx);
+        const blocked = await thrown(outsideTransaction(() => nowait(1)));
+        expect((blocked as { errno?: number }).errno).toBe(3572);
+      },
+      { isolationLevel: 'serializable' },
+    );
+    // At the default level the same read takes no lock.
+    await connections.transaction(async (trx: Kysely<any>) => {
+      await sql`select v from lockers where id = 1`.execute(trx);
+      expect((await outsideTransaction(() => nowait(1))).rows).toEqual([{ id: 1 }]);
+    });
+    const error = await thrown(db.transaction().setAccessMode('read only').execute(async (trx) => void (await trx.insertInto('marks').values({ name: 'nope' }).execute())));
+    expect((error as { errno?: number }).errno).toBe(1792);
+    expect(await names()).toEqual([]);
+    // A read only transaction is a transaction: it can be committed, and its answers (IN_TRANS and read only) are not taken for an implicit commit.
+    expect(await db.transaction().setAccessMode('read only').execute((trx) => trx.selectFrom('lockers').select('id').orderBy('id').execute())).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('does not take `set autocommit = 1` for an end: the transaction stays open, and rolls back whole', async () => {
+    const error = await thrown(
+      connections.transaction(async (trx: Kysely<any>) => {
+        await trx.insertInto('marks').values({ name: 'before' }).execute();
+        await sql`set autocommit = 1`.execute(trx);
+        await trx.insertInto('marks').values({ name: 'after' }).execute();
+        throw new Rollback();
+      }),
+    );
+    expect(error).toBeInstanceOf(Rollback);
+    expect(await names()).toEqual([]);
+  });
+
+  it('isolates a test in a transaction: its rows are undone, and a schema change of the builder is refused instead of committing them', async () => {
+    const isolation = await connections.isolate();
+    await db.insertInto('marks').values({ name: 'of the test' }).execute();
+    const error = await thrown(db.schema.createTable('t4').addColumn('id', 'integer').execute());
+    expect(error).toBeInstanceOf(TransactionError);
+    expect((error as Error).message).toMatch(/^\[marmeon:D30\] /);
+    // The refusal sent nothing: the transaction is still the test's, and goes on.
+    await db.insertInto('marks').values({ name: 'second' }).execute();
+    await isolation.rollback();
+    expect(await names()).toEqual([]);
+  });
+
+  it('under isolate(), a raw schema change ends the test’s transaction: what follows is refused (D24), and the rollback still goes out', async () => {
+    const isolation = await connections.isolate();
+    await db.insertInto('marks').values({ name: 'of the test' }).execute();
+    await sql`create table t5 (id int)`.execute(db);
+    const refused = await thrown(db.insertInto('marks').values({ name: 'after' }).execute());
+    expect(refused).toBeInstanceOf(TransactionError);
+    expect((refused as Error).message).toMatch(D24);
+    await isolation.rollback();
+    await sql`drop table t5`.execute(db);
+    // The insert before the schema change was committed by it, the one after it never ran.
+    expect(await names()).toEqual(['of the test']);
+    await db.insertInto('marks').values({ name: 'works again' }).execute();
+  });
+
+  describe('after an answer without a status', () => {
+    beforeAll(async () => {
+      const setup = migratorConnection(connections);
+      await sql`create procedure p_fail() begin select 1 as one; signal sqlstate '45000' set message_text = 'only a signal'; end`.execute(setup);
+      await sql`create procedure commits_then_signals() begin update lockers set v = 3 where id = 1; commit; signal sqlstate '45000' set message_text = 'after the commit'; end`.execute(setup);
+    });
+
+    const afterwards = async (statement: (trx: Kysely<any>) => Promise<unknown>) => {
+      let seen: unknown;
+      let failure: unknown;
+      const commit = await thrown(
+        connections.transaction(async (trx: Kysely<any>) => {
+          failure = await thrown(statement(trx));
+          seen = await thrown(trx.insertInto('marks').values({ name: 'after' }).execute());
+        }),
+      );
+      return { failure, seen, commit };
+    };
+
+    it('asks the server first: rows of analyze table, a create table that failed, a drop of a missing table, a call that committed and then signalled', async () => {
+      for (const statement of [
+        (trx: Kysely<any>) => sql`analyze table lockers`.execute(trx),
+        (trx: Kysely<any>) => sql`create table lockers (id int)`.execute(trx),
+        (trx: Kysely<any>) => sql`drop table missing`.execute(trx),
+        (trx: Kysely<any>) => sql`alter table missing add column a int`.execute(trx),
+        (trx: Kysely<any>) => sql`call commits_then_signals()`.execute(trx),
+      ]) {
+        const { seen, commit } = await afterwards(statement);
+        expect(seen, statement.toString()).toBeInstanceOf(TransactionError);
+        expect((seen as Error).message).toMatch(D24);
+        expect(commit).toBeInstanceOf(TransactionError);
+        expect(await names()).toEqual([]);
+      }
+    });
+
+    it('asks before a stream too: a stream after a create table that failed is refused, and nothing leaks', async () => {
+      let streamed: unknown;
+      let failure: unknown;
+      const commit = await thrown(
+        connections.transaction(async (trx: Kysely<any>) => {
+          await trx.insertInto('marks').values({ name: 'before' }).execute();
+          failure = await thrown(sql`create table lockers (id int)`.execute(trx));
+          streamed = await thrown(
+            (async () => {
+              for await (const _row of trx.selectFrom('lockers').selectAll().stream()) void _row;
+            })(),
+          );
+        }),
+      );
+      expect((failure as { errno?: number }).errno).toBe(1050);
+      expect(streamed).toBeInstanceOf(TransactionError);
+      expect((streamed as Error).message).toMatch(D24);
+      expect(commit).toBeInstanceOf(TransactionError);
+      // The failed `create table` committed the insert before it, as a successful one does; the stream never ran.
+      expect(await names()).toEqual(['before']);
+    });
+
+    it('asks after a stream that was left before its end: the next statement is asked about first, and the transaction goes on', async () => {
+      await connections.transaction(async (trx: Kysely<any>) => {
+        const before = await counted(trx, 'Com_do');
+        for await (const _row of trx.selectFrom('lockers').selectAll().stream()) {
+          void _row;
+          break;
+        }
+        expect(await counted(trx, 'Com_do')).toBe(before + 1);
+        await trx.insertInto('marks').values({ name: 'after the break' }).execute();
+      });
+      expect(await names()).toEqual(['after the break']);
+    });
+
+    it('does not cry wolf for a call that only signals: the transaction goes on and commits', async () => {
+      const { failure, seen, commit } = await afterwards((trx) => sql`call p_fail()`.execute(trx));
+      expect(failure).toBeDefined();
+      expect(seen).toBeUndefined();
+      expect(commit).toBeUndefined();
+      expect(await names()).toEqual(['after']);
+    });
+
+    it('keeps the original error visible when a nested transaction fails with a statement that committed: nothing leaks, the outer commit is refused', async () => {
+      let inner: unknown;
+      let after: unknown;
+      const commit = await thrown(
+        connections.transaction(async (trx: Kysely<any>) => {
+          await trx.insertInto('marks').values({ name: 'before' }).execute();
+          inner = await thrown(connections.transaction((nested: Kysely<any>) => sql`create table lockers (id int)`.execute(nested)));
+          after = await thrown(trx.insertInto('marks').values({ name: 'after' }).execute());
+        }),
+      );
+      // The error of the statement, not "SAVEPOINT does not exist" from the rollback of the savepoint.
+      expect((inner as { errno?: number }).errno).toBe(1050);
+      expect(after).toBeInstanceOf(TransactionError);
+      expect(commit).toBeInstanceOf(TransactionError);
+      // The `create table` that failed committed the insert before it, as a successful one does.
+      expect(await names()).toEqual(['before']);
+    });
+
+    it('asks only after such an answer: a select in a transaction sends no question, a call that failed does', async () => {
+      await connections.transaction(async (trx: Kysely<any>) => {
+        const before = await counted(trx, 'Com_do');
+        await sql`select 1`.execute(trx);
+        await trx.selectFrom('lockers').selectAll().execute();
+        await trx.updateTable('lockers').set({ v: 1 }).where('id', '=', 1).execute();
+        expect(await counted(trx, 'Com_do')).toBe(before);
+        await thrown(sql`call p_fail()`.execute(trx));
+        // The reading itself is the statement that comes after, so the question went out before it.
+        expect(await counted(trx, 'Com_do')).toBe(before + 1);
+        expect(await counted(trx, 'Com_do')).toBe(before + 1);
+      });
+    });
+  });
+
+  describe('a version comment', () => {
+    it('is read against the version of the server: one of a newer version hides nothing that runs, so no commit is taken for one (a transaction that goes on)', async () => {
+      await connections.transaction(async (trx: Kysely<any>) => {
+        await trx.insertInto('marks').values({ name: 'before' }).execute();
+        await sql.raw('/*!99999 COMMIT */ SELECT 1').execute(trx);
+        await sql.raw('/*!80000 select 1 */').execute(trx);
+        await trx.insertInto('marks').values({ name: 'after' }).execute();
+      });
+      expect(await names()).toEqual(['after', 'before']);
+    });
+
+    it.each(['/*!80000 begin */', '/*!99999 x */ /*!80000 begin */', '/*!80000 commit and chain */', '/*!99999 /* a */ x */ begin'])('that runs a begin or commit ends the transaction for what follows: %s', async (statement) => {
+      let after: unknown;
+      const commit = await thrown(
+        connections.transaction(async (trx: Kysely<any>) => {
+          await sql.raw(statement).execute(trx);
+          after = await thrown(trx.insertInto('marks').values({ name: 'after' }).execute());
+        }),
+      );
+      expect(after).toBeInstanceOf(TransactionError);
+      expect(commit).toBeInstanceOf(TransactionError);
+      expect(await names()).toEqual([]);
+    });
+  });
+
+  describe('a session that changes how transactions end', () => {
+    it('refuses what follows a change of completion_type, the commit included, before anything is committed: another connection sees nothing', async () => {
+      let after: unknown;
+      const error = await thrown(
+        connections.transaction(async (trx: Kysely<any>) => {
+          await trx.insertInto('marks').values({ name: 'chained' }).execute();
+          await sql`set session completion_type = 1`.execute(trx);
+          after = await thrown(trx.insertInto('marks').values({ name: 'after' }).execute());
+        }),
+      );
+      expect(after).toBeInstanceOf(DatabaseConnectionError);
+      expect((after as Error).message).toMatch(/^\[marmeon:D28\] .*completion_type is no longer NO_CHAIN \(now "CHAIN"\)/);
+      expect(error).toBeInstanceOf(DatabaseConnectionError);
+      // The connection was discarded with its transaction: the commit never went out.
+      expect(await names()).toEqual([]);
+      await connections.transaction(async (trx: Kysely<any>) => void (await trx.insertInto('marks').values({ name: 'next' }).execute()));
+      expect(await names()).toEqual(['next']);
+    });
+
+    it('refuses everything after autocommit is turned off, and discards the connection', async () => {
+      // One connection for both statements: a lease ends at its release, and the next one starts from the reset.
+      const refused = await db.connection().execute(async (connection) => {
+        await sql`set autocommit = 0`.execute(connection);
+        return thrown(connection.selectFrom('lockers').selectAll().execute());
+      });
+      expect(refused).toBeInstanceOf(DatabaseConnectionError);
+      expect((refused as Error).message).toMatch(/autocommit is OFF/);
+      expect(await db.selectFrom('lockers').select('id').orderBy('id').execute()).toEqual([{ id: 1 }, { id: 2 }]);
+    });
+  });
+
+  describe('a stored procedure', () => {
+    beforeAll(async () => {
+      const setup = migratorConnection(connections);
+      await sql`create procedure keeps() begin select 1 as one; update lockers set v = 7 where id = 1; end`.execute(setup);
+      await sql`create procedure commits() begin update lockers set v = 8 where id = 1; commit; end`.execute(setup);
+      await sql`create procedure opens() begin start transaction; update lockers set v = 9 where id = 2; end`.execute(setup);
+    });
+
+    it('that stays in the transaction leaves it open: its answer says IN_TRANS', async () => {
+      await connections.transaction(async (trx: Kysely<any>) => {
+        await sql`call keeps()`.execute(trx);
+        await trx.insertInto('marks').values({ name: 'after the call' }).execute();
+        await sql`call keeps()`.execute(trx);
+        await trx.insertInto('marks').values({ name: 'after the second call' }).execute();
+      });
+      expect(await names()).toEqual(['after the call', 'after the second call']);
+    });
+
+    it('that commits ends the transaction for what follows, however its answer is read', async () => {
+      let after: unknown;
+      const commit = await thrown(
+        connections.transaction(async (trx: Kysely<any>) => {
+          await sql`call commits()`.execute(trx);
+          after = await thrown(trx.insertInto('marks').values({ name: 'after the call' }).execute());
+        }),
+      );
+      expect(after).toBeInstanceOf(TransactionError);
+      expect(commit).toBeInstanceOf(TransactionError);
+      expect(await names()).toEqual([]);
+    });
+
+    it('that begins a transaction of its own while none is open leaves no lock for the next transaction: the reset of the way back ended it', async () => {
+      await sql`call opens()`.execute(db);
+      // `nowait` fails at once on a row that another transaction still holds.
+      expect(await connections.transaction((trx: Kysely<any>) => sql`select id from lockers where id = 2 for update nowait`.execute(trx).then((result) => result.rows))).toEqual([{ id: 2 }]);
+    });
   });
 });

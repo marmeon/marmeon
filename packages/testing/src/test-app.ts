@@ -264,7 +264,7 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
 
   if (devtools && !application.container.has(devtools.Recorder)) {
     await application.shutdown();
-    throw new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json (pnpm add -E -D @marmeon/devtools@<version of your app>), so discovery finds its provider.");
+    throw new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json so discovery finds its provider (marmeon add devtools; if it is installed already: marmeon discover).");
   }
 
   let ssr: TestSsr | undefined;
@@ -512,7 +512,7 @@ async function importDevtools(): Promise<typeof import('@marmeon/devtools/intern
   try {
     return await import('@marmeon/devtools/internal');
   } catch (error) {
-    throw new Error('createTestApp(…, { devtools: true }) needs @marmeon/devtools (pnpm add -E -D @marmeon/devtools@<version of your app>).', { cause: error });
+    throw new Error('createTestApp(…, { devtools: true }) needs @marmeon/devtools (marmeon add devtools).', { cause: error });
   }
 }
 
@@ -559,6 +559,7 @@ async function importCli(): Promise<typeof import('marmeon') & typeof import('ma
   try {
     return { ...(await import('marmeon')), ...(await import('marmeon/internal')) };
   } catch (error) {
+    // Manual on purpose: the missing package is `marmeon` itself, so there is no `marmeon add` to run.
     throw new Error('app.command() needs marmeon in the app (pnpm add -E marmeon@<version of your app>).', { cause: error });
   }
 }

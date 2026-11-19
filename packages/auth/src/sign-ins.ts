@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, ContainerError, err, ok, type Result } from '@marmeon/core';
 import { Connections, secret, secretEquals, sql, type Generated, type Secret } from '@marmeon/database';
+import { storeDatabase } from './store-drivers.ts';
 import type { DeviceDescription } from './device.ts';
 import { assertTableName } from './table-names.ts';
 import type { AuthUserId } from './user.ts';
@@ -487,7 +488,7 @@ export class DatabaseSignIns extends SignInStore {
   }
 
   #db() {
-    return this.#connections.get<{ [SIGN_INS_TABLE]: SignInsTable }>();
+    return storeDatabase<{ [SIGN_INS_TABLE]: SignInsTable }>(this.#connections, 'The sign-in store');
   }
 }
 

@@ -1,10 +1,12 @@
 import type { CommandClass } from './command.ts';
+import { AddCommand } from './commands/add.ts';
 import { AgentsInstallCommand } from './commands/agents-install.ts';
 import { AgentsSyncCommand } from './commands/agents-sync.ts';
 import { BuildCommand } from './commands/build.ts';
 import { CheckCommand } from './commands/check.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { DocsCommand } from './commands/docs.ts';
+import { DoctorCommand } from './commands/doctor.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
@@ -34,6 +36,7 @@ import { RouteTypesCommand } from './commands/route-types.ts';
 import { SchemaProjectCommand } from './commands/schema-project.ts';
 import { ServeCommand } from './commands/serve.ts';
 import { TinkerCommand } from './commands/tinker.ts';
+import { UpgradeCommand } from './commands/upgrade.ts';
 
 /** The commands the CLI provides. */
 export const BUILT_IN: readonly CommandClass[] = [
@@ -44,8 +47,11 @@ export const BUILT_IN: readonly CommandClass[] = [
   ModulesListCommand,
   SchemaProjectCommand,
   DiscoverCommand,
+  AddCommand,
   BuildCommand,
   CheckCommand,
+  DoctorCommand,
+  UpgradeCommand,
   PackageBuildCommand,
   KeyGenerateCommand,
   AgentsSyncCommand,

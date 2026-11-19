@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Clock, err, ok, type Result } from '@marmeon/core';
 import { Connections, Repository, type Generated, type RowOf } from '@marmeon/database';
+import { storeDatabase } from '../store-drivers.ts';
 import { TwoFactorState, type SecondFactor } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
 import { assertTableName } from '../table-names.ts';
@@ -165,6 +166,9 @@ export class PasskeyStore extends TwoFactorState {
 
   /** @internal Stores a passkey; `duplicate` when the credential id is already registered (to any account). */
   async create(passkey: NewPasskey): Promise<Result<PasskeyRecord, { kind: 'duplicate' }>> {
+    // The driver first: a driver the stores have no SQL for is refused before the repository takes a connection. The
+    // repository keeps `Connections` (no `using(db)`), so its transaction goes through `Connections.transaction()` and its lock.
+    this.#db();
     const now = this.#now();
     // Stored exactly as given: it is the handle the authenticator got in the options (see `userHandle()`).
     const result = await new this.#rows(this.#connections).tryInsert({
@@ -244,8 +248,8 @@ export class PasskeyStore extends TwoFactorState {
    * the account's factors, not to this one); a refusal changes nothing.
    */
   async remove(userId: AuthUserId, id: number, { lastFactorAllowed }: { lastFactorAllowed: boolean }): Promise<Result<{ lastFactor: boolean }, { kind: 'not-found' } | { kind: 'last-factor' }>> {
+    const db = this.#db();
     return this.#connections.transaction(async () => {
-      const db = this.#db();
       await db.selectFrom(this.#passkeys).select('id').where('user_id', '=', userId).forUpdate().execute();
       const result = await db.deleteFrom(this.#passkeys).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
       if (result.numDeletedRows === 0n) return err({ kind: 'not-found' as const });
@@ -268,6 +272,6 @@ export class PasskeyStore extends TwoFactorState {
   }
 
   #db() {
-    return this.#connections.get<Tables>();
+    return storeDatabase<Tables>(this.#connections, 'The passkey store');
   }
 }

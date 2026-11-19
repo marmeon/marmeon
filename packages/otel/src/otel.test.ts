@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@marmeon/core';
-import { channels } from '@marmeon/core/diagnostics';
+import { messageBase, publishEnded } from '@marmeon/core/internal';
+import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Connections, Database, DatabaseServiceProvider, sql, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -146,6 +147,26 @@ async function spans(): Promise<ReadableSpan[]> {
 const dump = (span: ReadableSpan | undefined) => JSON.stringify(span && { name: span.name, attributes: span.attributes, events: span.events, status: span.status, links: span.links });
 const byName = (list: readonly ReadableSpan[], name: string) => list.find((span) => span.name === name);
 const parentOf = (span: ReadableSpan | undefined) => span?.parentSpanContext?.spanId;
+
+describe('@marmeon/otel: the system of a query', () => {
+  it.each([
+    ['sqlite', 'sqlite'],
+    ['pgsql', 'postgresql'],
+    // Pins the entry of the map: the fallback (the driver's own name) would give the same.
+    ['mysql', 'mysql'],
+  ])('a %s query is the %s system', async (driver, system) => {
+    const { app: booting } = boot();
+    await using app = await booting;
+    await spans();
+    trace.getTracer('probe').startActiveSpan('operation', (outer) => {
+      const message: DbQueryMessage = { ...messageBase(app), startedAt: performance.timeOrigin + performance.now(), connection: 'default', driver, sql: 'select 1', parameters: [], secret: false, durationMs: 1 };
+      publishEnded(channels.tracing('db.query'), message);
+      outer.end();
+    });
+    const query = (await spans()).find((span) => span.attributes['db.query.text'] === 'select 1');
+    expect(query?.attributes['db.system.name']).toBe(system);
+  });
+});
 
 describe('@marmeon/otel', () => {
   it('a request: a server span `GET /people/:person`, its query (without parameters), the dispatch — and the job, run by the worker, in the same trace', async () => {

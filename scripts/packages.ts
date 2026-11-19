@@ -90,7 +90,7 @@ export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, Driver
   mail: { nodemailer: 'dependency', mjml: 'optional peer' },
   storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
   // The builders' shape is public API and the secret guard is tested against one version: exact.
-  database: { pg: 'optional peer', kysely: 'exact dependency' },
+  database: { pg: 'optional peer', mysql2: 'optional peer', kysely: 'exact dependency' },
   // The protocol and the tool schemas of `marmeon mcp` are tested against one version; only `src/mcp/` loads it, and only that command.
   cli: { '@modelcontextprotocol/server': 'exact dependency' },
   otel: { '@opentelemetry/api': 'peer' },

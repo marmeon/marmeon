@@ -3,7 +3,8 @@ import { printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { Connections } from '../connections.ts';
 import { Migrator, UnknownSecretsError } from '../migrations/migrator.ts';
-import { readOnlyQuery } from '../read-only-query.ts';
+import { MYSQL_QUERY_REFUSAL, readOnlyQuery } from '../read-only-query.ts';
+import type { Driver } from '../schema/blueprint.ts';
 import { factsOf } from '../schema/projection.ts';
 
 /** The most SQL `--stdin` reads, in bytes. */
@@ -66,6 +67,7 @@ export class DbQueryCommand {
     try {
       const connection = this.#connections.options(name);
       driver = connection.driver;
+      if (connection.driver === 'mysql') return refuse(output, MYSQL_QUERY_REFUSAL);
       // No secret column is known on such a connection, so a caller that cannot vouch for its reader (the MCP tool) asks for it to be refused.
       if (connection.managed === false && options['managed-only'] === true) {
         return refuse(output, `Connection "${name}" is not managed by Marmeon's migrations, so its secret columns are unknown and it is not queried here. Run marmeon db:query in a terminal to read it.`);
@@ -108,7 +110,7 @@ export class DbQueryCommand {
    * count too (a pending migration that renames or drops a secret column has not changed the database yet), and so does every column
    * the database has that no migration describes: whether it is secret is not known, so it is treated as secret.
    */
-  async #secrets(name: string, driver: 'sqlite' | 'pgsql'): Promise<{ secrets: Map<string, Set<string>>; undescribed: Map<string, Set<string>>; withheld: Set<string> }> {
+  async #secrets(name: string, driver: Driver): Promise<{ secrets: Map<string, Set<string>>; undescribed: Map<string, Set<string>>; withheld: Set<string> }> {
     const secrets = new Map<string, Set<string>>();
     const add = (table: string, column: string) => {
       let columns = secrets.get(table);

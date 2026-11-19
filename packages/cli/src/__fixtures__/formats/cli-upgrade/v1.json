@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "dryRun": false,
+  "packageManager": "pnpm",
+  "from": "1.1.0",
+  "to": "1.2.0",
+  "breaking": false,
+  "packages": [
+    { "name": "@marmeon/core", "group": "dependencies", "from": "1.1.0", "to": "1.2.0" },
+    { "name": "@marmeon/database", "group": "dependencies", "from": "1.1.0", "to": "1.2.0" },
+    { "name": "marmeon", "group": "devDependencies", "from": "1.1.0", "to": "1.2.0" }
+  ],
+  "commands": [
+    ["pnpm", "add", "--save-exact", "--save-prod", "@marmeon/core@1.2.0", "@marmeon/database@1.2.0"],
+    ["pnpm", "add", "--save-exact", "--save-dev", "marmeon@1.2.0"]
+  ],
+  "guide": [
+    {
+      "version": "1.2.0",
+      "from": "1.1.0",
+      "anchor": "upgrading-to-120-from-110",
+      "entries": [
+        { "impact": "medium", "title": "Renamed thing", "anchor": "medium-renamed-thing" },
+        { "impact": "low", "title": "Small thing", "anchor": "low-small-thing" }
+      ]
+    }
+  ],
+  "generated": [
+    { "command": "route:types", "exitCode": 0 },
+    { "command": "db:types", "exitCode": 0 }
+  ],
+  "warnings": []
+}
