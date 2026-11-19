@@ -2,11 +2,11 @@ import { AccessTokenStore, Auth, authenticate, Hasher, PasswordHasher, TwoFactor
 import { defineModule, Logger, type LogContext } from '@marmeon/core';
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Connections } from '@marmeon/database';
-import { Database, secret } from '@marmeon/database';
+import { Database, secret, type Row } from '@marmeon/database';
 import { Mailer } from '@marmeon/mail';
 import { createHttpKernel } from '@marmeon/server';
 import { cookieNames } from '@marmeon/auth/testing';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, type TestApp, type TestResponse } from '@marmeon/testing';
 import { UserFactory } from './factories/UserFactory.ts';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -671,6 +671,44 @@ describe('password reset', () => {
     await resetWith(cookie, 'yet another password').assertInvalid<ResetPasswordController>({ password: INVALID });
   });
 
+  it('an account without a password is not signed in by any password, and a reset link gives it one', async () => {
+    const users = app.make(UserRepository);
+    const made = await users.register({ name: 'No Password', email: 'none@example.com', password: null, locale: 'en' });
+    if (!made.ok) throw new Error('the account was not made');
+    const none = made.value;
+    await users.markEmailVerified(none.id, new Date());
+    expect((await users.findForSignIn(none.email))?.passwordHash).toBeNull();
+
+    // Nothing signs it in: whatever is typed, the answer is the one a wrong password gets.
+    const ada = await app.factory(UserFactory).create();
+    const answer = (response: TestResponse) => ({ status: response.status, location: response.headers.get('location'), errors: response.session().errors });
+    const login = (email: string, password: string) => app.post('/login', { form: { email, password }, headers: { referer: 'http://localhost/login' } });
+    const wrong = answer(await login(ada.email, 'wrong').assertGuest());
+    for (const password of ['password', 'null', 'wrong', ' ']) expect(answer(await login(none.email, password).assertGuest()), password).toEqual(wrong);
+
+    // The reset link sets a password.
+    await ask(none.email).assertRedirect('/forgot-password');
+    await resetWith(await open()).assertRedirect('/login');
+    expect(await app.make(Hasher).verify('brand new password', (await storedHash(none.id)) as PasswordHash)).toBe(true);
+    await app.post('/login', { form: { email: none.email, password: 'brand new password' } }).assertAuthenticated(none);
+  });
+
+  it('asks a signed-in account without a password to confirm like a wrong password does, not with a server error', async () => {
+    const users = app.make(UserRepository);
+    const made = await users.register({ name: 'No Password', email: 'none@example.com', password: null, locale: 'en' });
+    if (!made.ok) throw new Error('the account was not made');
+    await users.markEmailVerified(made.value.id, new Date());
+    const ada = await app.factory(UserFactory).create();
+    const answer = (response: TestResponse) => ({ status: response.status, location: response.headers.get('location'), errors: response.session().errors });
+    const confirm = (user: User, password: string) => app.actingAs(user).post('/confirm-password', { form: { password }, headers: { referer: 'http://localhost/confirm-password' } });
+    const wrong = await confirm(ada, 'wrong');
+    const none = await confirm(made.value, 'password');
+    expect(wrong.status).toBeLessThan(500);
+    wrong.assertInvalid<ConfirmPasswordController>({ password: /^The password is incorrect/ });
+    none.assertInvalid<ConfirmPasswordController>({ password: /^The password is incorrect/ });
+    expect(answer(none)).toEqual(answer(wrong));
+  });
+
   it('resetting the password of an account with a second factor signs nobody in', async () => {
     let withFactor: unknown;
     await app.close(); // one database app per test
@@ -1127,6 +1165,25 @@ describe('passwords', () => {
     const hash = await storedHash(ada.id);
     expect(hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/); // .env.test
     expect(await app.make(Hasher).verify('password', hash)).toBe(true);
+  });
+
+  // A table made by the migrations from scratch: that the upgrade keeps the hashes of existing accounts is proven by the kit's own
+  // migration test (`password-optional-migration.test.ts` in the auth package).
+  it("a NULL password is stored in the migrated users table, and the hash stays out of Row<'users'>", async () => {
+    const db = app.make(Database);
+    const user = await app.factory(UserFactory).create();
+    // A hash is stored and read back …
+    expect(await storedHash(user.id)).toMatch(/^\$argon2id\$/);
+    // … and the column takes NULL.
+    await db.updateTable('users').set({ password: null }).where('id', '=', user.id).execute();
+    const row = await db.selectFrom('users').select((eb) => secret(eb, 'password')).where('id', '=', user.id).executeTakeFirstOrThrow();
+    expect(row.password).toBeNull();
+    // The hash is secret still: select-all never returns it, and `Row<'users'>` does not have it.
+    const all = await db.selectFrom('users').selectAll().where('id', '=', user.id).executeTakeFirstOrThrow();
+    expect(all).not.toHaveProperty('password');
+    const typed: Row<'users'> = all as Row<'users'>;
+    // @ts-expect-error — the hash is not part of a row of `users`: it is read with secret()
+    void typed.password;
   });
 });
 

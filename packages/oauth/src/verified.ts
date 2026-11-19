@@ -14,7 +14,7 @@ export interface VerifiedInfo {
 // covers cannot be changed afterwards through either.
 const verified = new WeakMap<object, VerifiedInfo>();
 
-/** Marks `user` as the result of a completed flow, freezes it and its tokens, and records its identity. */
+/** Marks `user` as the result of a completed flow, freezes it and its tokens, and records its identity. `emailVerified` is recorded as `true` only when it is exactly `true`. */
 export function markVerified(user: SocialUser, info: Pick<VerifiedInfo, 'intent' | 'flowUserId' | 'reauthenticatedAt'>): void {
   Object.freeze(user.tokens.scopes);
   Object.freeze(user.tokens);
@@ -25,7 +25,7 @@ export function markVerified(user: SocialUser, info: Pick<VerifiedInfo, 'intent'
       intent: info.intent,
       flowUserId: info.flowUserId,
       ...(info.reauthenticatedAt === undefined ? {} : { reauthenticatedAt: info.reauthenticatedAt }),
-      subject: Object.freeze({ provider: user.provider, id: user.id, email: user.email, emailVerified: user.emailVerified }),
+      subject: Object.freeze({ provider: user.provider, id: user.id, email: user.email, emailVerified: user.emailVerified === true }),
     }),
   );
 }

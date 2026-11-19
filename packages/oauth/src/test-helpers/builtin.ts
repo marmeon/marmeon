@@ -28,7 +28,7 @@ export function builtinContext(clock: () => ClockType, name: string, options: Pa
 export function builtinWith(factory: OAuthProviderFactory, name: string, options: BuiltinOptions, parts: Parts = {}) {
   let made: ReturnType<typeof oauthWith> | undefined;
   const definition = factory(builtinContext(() => made!.clock, name, options)) as OAuthProviderDefinition;
-  made = oauthWith({ ...parts, name, overrides: { ...parts.overrides, ...definition } });
+  made = oauthWith({ ...parts, name, overrides: { ...parts.overrides, ...definition }, builtFrom: definition });
   if (options.document !== undefined) made.http.respond(options.document.url, () => Response.json(options.document!.body));
   const session = made.session as FakeSession;
   /** Starts a flow of `intent`, wires the token endpoint to `response`, and gives the callback query. */

@@ -10,7 +10,7 @@ import { checkEndpoint, checkEndpoints, EndpointError } from './endpoints.ts';
 import { completeCallback, type OAuthCallback, type OAuthCallbackError } from './callback.ts';
 import { challengeOf, issueFlow, MAX_SCOPE_LENGTH, MAX_SCOPES } from './flow.ts';
 import { createOAuthHttp, OAuthHttpError } from './http.ts';
-import { NO_CONFIRM, OIDC, type OidcDefinition } from './oidc-marker.ts';
+import { isBuiltByOidc, isOidc } from './oidc-marker.ts';
 import type { OAuthProviders, ResolvedOAuthProvider } from './registry.ts';
 
 /** What `redirect()` takes besides the provider. See docs/oauth.md#the-flow-and-its-security. */
@@ -121,7 +121,7 @@ export class OAuth {
     const { definition, credentials } = provider;
     // Only the definition `oidc()` built can prove a fresh sign-in (by symbol identity, not by name or label). Anything else is
     // refused here, before a flow exists: there is no fallback to a weaker proof.
-    if (intent === 'confirm' && ((definition as Partial<OidcDefinition>)[OIDC] !== true || (definition as Partial<OidcDefinition>)[NO_CONFIRM] === true)) return err({ kind: 'reauthentication-unsupported' });
+    if (intent === 'confirm' && !isOidc(definition)) return err({ kind: 'reauthentication-unsupported' });
     const session = this.#checkSetup(provider);
     const redirectUri = this.#callbackOf(provider);
     const endpoints = await this.#endpointsOf(provider);
@@ -129,7 +129,7 @@ export class OAuth {
 
     // The flow keeps them: a token response without `scope` is taken to cover exactly these.
     // An OpenID Connect provider is always asked for `openid`, also when OAUTH_<NAME>_SCOPES leaves it out: without it there is no ID token.
-    const openid = (definition as Partial<OidcDefinition>)[OIDC] === true ? ['openid'] : [];
+    const openid = isBuiltByOidc(definition) ? ['openid'] : [];
     const asked = [...new Set([...openid, ...(credentials.scopes ?? definition.scopes), ...(scopes ?? [])])];
     if (asked.length > MAX_SCOPES) throw new TypeError(`OAuth.redirect() would ask for ${asked.length} scopes: at most ${MAX_SCOPES}, those of the provider and of options.scopes together.`);
     const flow = issueFlow(session, {

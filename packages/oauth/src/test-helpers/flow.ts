@@ -5,6 +5,7 @@ import { Session, SessionConfig } from '@marmeon/session';
 import type { OAuthConfig } from '../config.ts';
 import type { OAuthProviderDefinition } from '../definition.ts';
 import { OAuth } from '../oauth.ts';
+import { isBuiltByOidc, recordBuilt } from '../oidc-marker.ts';
 import { OAuthProviders, type ResolvedOAuthProvider } from '../registry.ts';
 import { definition } from './app.ts';
 
@@ -43,6 +44,8 @@ export type FakeSession = Session & { data: Map<string, unknown> };
 
 export interface Parts<S extends Session = FakeSession> {
   readonly overrides?: Partial<OAuthProviderDefinition>;
+  /** The definition `oidc()` built that `overrides` is a spread of: a spread copies the markers but not the membership, so the provider made here is recorded as built by `oidc()` when this was. */
+  readonly builtFrom?: object;
   readonly redirectUrl?: string;
   readonly scopes?: readonly string[];
   readonly appUrl?: string | undefined;
@@ -64,6 +67,7 @@ export function oauthWith<S extends Session = FakeSession>(parts: Parts<S> = {})
     definition: definition(parts.overrides),
     credentials: { clientId: 'client', clientSecret: 'secret', redirectUrl: parts.redirectUrl, scopes: parts.scopes, issuer: undefined, options: {} },
   };
+  if (parts.builtFrom !== undefined && isBuiltByOidc(parts.builtFrom)) recordBuilt(provider.definition);
   const session = (parts.session ?? fakeSession()) as S;
   const http = new HttpClientFake();
   const clock = new TestClock();

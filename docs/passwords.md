@@ -187,7 +187,9 @@ A successful reset:
 - with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, revokes every API token of the user, in the same transaction as the new hash,
 - when the address of the user was never confirmed (`email_verified_at` and `first_verified_at` are both `null`), also removes every
   passkey, the authenticator and the recovery codes, and revokes every API token whatever that setting says, in the same transaction.
-  The reset proves the mailbox, but whoever registered the address first may have attached a way in of their own. An account that was
+  The reset proves the mailbox, but whoever registered the address first may have attached a way in of their own. The provider accounts
+  linked with `@marmeon/oauth` go like the API tokens, in the same transaction, whenever `email_verified_at` is `null` or missing; each
+  removal is logged with the user's ID and the number of accounts, never an address ([Linking and unlinking](oauth.md#linking-and-unlinking)). An account that was
   confirmed once keeps its factors even when a change of address cleared `email_verified_at` since: a mistyped new address must not
   let its holder wipe the owner's factors. Its API tokens are revoked all the same, whatever the setting says: the confirmation may
   have been of an earlier address, whose holder created the tokens and then changed the address to one that is not theirs (with open

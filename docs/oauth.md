@@ -4,7 +4,16 @@
 
 `@marmeon/oauth` describes a service people can sign in with as a **provider** with a name. An app or a package registers providers by
 name, the app configures each one from environment variables, and a provider whose variables are not set does not exist for the app.
-This page covers registering and configuring providers, starting the flow, and completing it in [the callback](#the-callback); the rest follows as it is written.
+The sections follow the order of the work:
+
+- [Configuring a provider](#configuring-a-provider) and [your own provider](#your-own-provider) say how a provider is registered and which variables it reads.
+- [The built-in providers](#the-built-in-providers) lists the ones the package ships.
+- [OpenID Connect providers](#openid-connect-providers) cover providers that sign an ID token.
+- [The flow and its security](#the-flow-and-its-security) start a flow, and [the callback](#the-callback) completes it.
+- [Signing users in](#signing-users-in) turns the result into a signed-in user, and [linking and unlinking](#linking-and-unlinking) manage the accounts of a user.
+- [Confirming with a provider](#confirming-with-a-provider) lets a person prove who they are again, and [opening the confirmation window](#opening-the-confirmation-window) makes that count.
+- [Storing tokens](#storing-tokens) covers the `social_accounts` table and its migration, the service provider and its variables, and how tokens are kept.
+- [Testing](#testing) runs the whole flow in an app test without a request leaving the process.
 
 A provider is a class that brings a name and the variables it reads:
 
@@ -472,15 +481,181 @@ The browser returns from the provider with a request that starts on another site
 it, so the callback would find no session and no flow, and every sign-in would fail after the person had already signed in at the provider.
 `redirect()` throws an A10 error under `SESSION_SAME_SITE=strict` for that reason. Keep `lax` (the default), or `none` over `https`.
 
+## Signing users in
+
+Set up first: register the providers ([configuring a provider](#configuring-a-provider)), copy the migration of the `social_accounts` table
+([storing tokens](#storing-tokens)) and set the variables of each provider.
+
+`SocialAccounts` (from `@marmeon/oauth/accounts`) turns the result of a finished flow into a signed-in user. It takes only the
+`SocialUser` that `OAuth.callback()` returned, and only for the intent of the call: `signIn()` needs a flow that began as a sign-in and
+`link()` one that began as a link. Anything else, a copy of the object or the result of the other intent, throws a `TypeError`.
+Everything it decides on (provider, ID, address, whether the provider verified the address) it reads from what the flow recorded.
+
+The package never makes a user itself. The app says how users are found and made by binding `SocialUserProvider`. The class below follows
+the `UserRepository` of the starter kit. A user who registers with a provider has no password; see
+[Accounts without a password](authentication.md#accounts-without-a-password) for how the starter kit keeps such a user. Add this method to your `UserRepository`:
+
+```ts
+/** A new user from a provider: no password, and a confirmed address only when the provider vouched for it. */
+registerSocial(values: { name: string; email: string; locale: string; verifiedAt: Date | null }): Promise<Result<User, { kind: 'duplicate' }>> {
+  const { verifiedAt, ...rest } = values;
+  return this.tryInsert({ ...rest, password: null, session_key: randomBytes(32).toString('base64url'), email_verified_at: verifiedAt, first_verified_at: verifiedAt });
+}
+```
+
+```ts title="modules/auth/SocialUsers.ts"
+import { Clock } from '@marmeon/core';
+import type { SocialUser } from '@marmeon/oauth';
+import type { SocialUserProvider } from '@marmeon/oauth/accounts';
+import { UserRepository } from './UserRepository.ts';
+import type { User } from './users.ts';
+
+export class SocialUsers implements SocialUserProvider<User> {
+  readonly #users: UserRepository;
+  readonly #clock: Clock;
+
+  constructor(users: UserRepository, clock: Clock) {
+    this.#users = users;
+    this.#clock = clock;
+  }
+
+  async findByEmail(email: string) {
+    // The address is unvalidated data of the provider: normalize it as the app does for every address.
+    const user = await this.#users.findByEmail(email.trim().toLowerCase());
+    return user && { user, emailVerified: user.email_verified_at != null };
+  }
+
+  /** The same question the password reset asks of the column: is `email_verified_at` set? */
+  emailConfirmed(user: User): boolean {
+    return user.email_verified_at != null;
+  }
+
+  create(social: SocialUser & { readonly email: string }, { emailVerified }: { emailVerified: boolean }) {
+    // Store the address as confirmed only when `emailVerified` is true: the provider vouched for it, nobody else did.
+    return this.#users.registerSocial({
+      name: social.name ?? social.nickname ?? social.email,
+      email: social.email.trim().toLowerCase(),
+      locale: 'en',
+      verifiedAt: emailVerified ? new Date(this.#clock.now()) : null,
+    });
+  }
+}
+```
+
+```ts title="modules/auth/AuthServiceProvider.ts"
+import type { Container } from '@marmeon/core';
+import { SocialUserProvider } from '@marmeon/oauth/accounts';
+import { SocialUsers } from './SocialUsers.ts';
+
+export class AuthServiceProvider {
+  register(container: Container): void {
+    container.bind(SocialUserProvider, SocialUsers);
+  }
+}
+```
+
+`create` answers `err({ kind: 'duplicate' })` when another registration took the address first. The address it gets has no control
+characters and is at most 254 characters, but it is not checked as an address. Without a binding, the first call that needs a user
+(`signIn()` looking up an address, `link()` checking the user's address) throws an `OAuthSetupError` (A10) that says so; a sign-in with an
+account that is linked already needs no binding. A bound class that cannot be built fails with its own error.
+
+`signIn(social)` answers `Result<SocialSignIn, SocialSignInError>` and follows three rules, in this order:
+
+1. **A linked account signs in its owner.** The provider account is found by provider and provider ID, never by address. The owner is
+   signed in, or `two-factor-required` is answered when the account has a second factor, exactly as for a password. The time of the
+   sign-in, the address and the nickname are noted. If the account was unlinked in the meantime, or its user is gone, nobody is signed in
+   and the answer is `account-exists`. The link is looked up once more after the sign-in, in every rule: one that is gone or moved by
+   then (a password reset removes the links of an unconfirmed address) undoes the sign-in, a waiting second factor included, with the same answer. An account that is linked signs in whatever the provider says about the address.
+2. **A matching address links the account, only when nothing is left to doubt.** The provider has verified the address, the app has
+   confirmed it for the user it finds, and that user has no second factor (`TwoFactorState`). Then the account is linked,
+   `SocialAccountLinked` is dispatched and the user is signed in. In every other case the answer is `account-exists`, and
+   `providerVerified` says whether the provider vouched for the address. The link is written and the address is looked up again in one
+   transaction: when the user no longer has it, or no longer has it verified, the transaction is rolled back, nothing is dispatched and the
+   answer is `account-exists`. Nothing is linked: the person signs in the usual way and links
+   the provider account from their settings. A user with a second factor never signs in around it.
+3. **Otherwise a new user is made.** With `OAUTH_REGISTRATION=false` the answer is `registration-closed` and nothing is created.
+   The user and the link are written in one transaction. A provider account taken in the meantime undoes the user as well, and the answer is
+   `account-exists`.
+   The app's `Registered` event is dispatched in that transaction, after the link, as the registration of the app does.
+   `create` receives `emailVerified`; store the address as confirmed only when it is `true`.
+   The new user is signed in and the answer is `signed-in` with `created: true`.
+
+With private registration (`AUTH_PRIVATE_REGISTRATION`, on by default) an address the provider did not verify is refused with
+`email-unverified` before any address is looked up. Nothing is made or linked, and the answer is the same whether or not an account has
+the address, so it tells nobody which addresses are registered. The page tells the person to verify the address at the provider, or to sign
+in the usual way. With open registration (`AUTH_PRIVATE_REGISTRATION=false`) rule 3 applies to such an address as it is.
+
+The other kinds of refusal:
+
+- `signed-in`: somebody is signed in already. It is answered before any account is looked up.
+- `email-required`: the profile has no address and its account is not linked.
+- `invalid-account`: the provider's data cannot be stored. An ID that is empty, only white space, longer than 255 characters, not well
+  formed text or holds a control character, an address that is longer than 254 characters, not well formed text or has a control character
+  (a line break, say), and a nickname that is not well formed text or has a NUL are refused, never cut or repaired.
+
+### Linking and unlinking
+
+`link(social)` adds a provider account to the signed-in user, `unlink(provider)` removes one, and `list()` answers the user's accounts with
+the provider's label. Both changes need a recent confirmation of the user (`auth.passwordRecentlyConfirmed()`), which a password or a provider
+[opens](#opening-the-confirmation-window). The check is made inside
+`SocialAccounts`, not only by a middleware, and the answer `confirmation-required` tells the page to ask for the confirmation first: with a password, or with a provider that
+[opens the window](#opening-the-confirmation-window).
+`link()` throws a `TypeError` for the result of a flow that another user began: for `link()` that is a programming error. `confirm()` answers
+`not-linked` instead, because a returning tab shows it there too.
+
+`link()` answers `Result<SocialAccountSummary, SocialLinkError>`:
+
+- `signed-out`: nobody is signed in, or the session ended meanwhile.
+- `confirmation-required`: the confirmation is not recent.
+- `email-unconfirmed`: `SocialUserProvider.emailConfirmed()` did not answer `true` for the user. A password reset removes every linked account
+  of an account whose address is not confirmed (`email_verified_at` is `null` or missing) in the transaction of the reset, because
+  whoever registered the address first may have linked one. A link made before the address is confirmed would be one of those. The reset
+  reads the column, not `emailConfirmed()`, so the method must mean the same. Each removal is logged with the user's ID and the number
+  of accounts, never an address.
+- `invalid-account`: the provider's data cannot be stored, as above.
+- `taken`: the provider account belongs to another user. A provider account is never moved.
+- `provider-linked`: the user has an account at this provider already.
+
+The link is written under the same claim of the account as a new passkey: a session that ended meanwhile (another device changed the password, `AccountSessions.end()` ran, a password reset) links nothing, and the answer is `signed-out`. That holds for an account with a session key; an account without one cannot be locked, so its link can exist for a moment until the check after the commit takes it out again. `link()` throws when it runs inside a database transaction.
+
+Linking an account the user holds already adds nothing and dispatches no event, but it updates the address, the nickname, the time and the
+tokens, as a sign-in does.
+
+`unlink()` answers `Result<void, SocialUnlinkError>`. Besides `signed-out` and `confirmation-required`, it answers `not-found` when the
+user has no account at that provider, and `last-method` when it would be the last way in. The account goes only if the user still has
+a password, a passkey (`TwoFactorState` must know passkeys: without a bound source no passkey counts) or an account at a provider that is
+active. An account at a provider that is not active, or that the app no longer registers, is no way in. Nothing is deleted when the
+answer is `last-method`.
+
+The summary of each account carries `canConfirm`: `true` for an active [`oidc()`](#openid-connect-providers) provider, the only kind that can be
+offered for a [confirmation](#opening-the-confirmation-window); a provider that sends no `auth_time` still fails it. An account without a password
+confirms through a linked provider that can; an account that has only a
+GitHub or Discord login cannot confirm at all, and can link or unlink nothing until it has a password, which a reset link to its address gives it.
+
+`SocialAccountLinked` (user, provider, address, nickname) and `SocialAccountUnlinked` (user, provider) are dispatched after the change is
+stored, never for a refusal. Register a listener in a module, as [Registering listeners](events.md#registering-listeners) shows:
+
+```ts title="modules/auth/index.ts"
+import { defineModule, listen } from '@marmeon/core';
+import { SocialAccountLinked } from '@marmeon/oauth/accounts';
+import { NotifyAboutLinkedAccount } from './listeners/NotifyAboutLinkedAccount.ts';
+
+export default defineModule({
+  name: 'auth',
+  listeners: [listen(SocialAccountLinked, NotifyAboutLinkedAccount)],
+});
+```
+
 ## Confirming with a provider
 
 Some actions ask a signed-in person to prove who they are once more, such as deleting an account. `redirect()` with the intent `confirm` does that
 at the provider: the person has to sign in again there, and the package checks that they did.
 
 ```ts
-// `user` is the signed-in user, `account.providerId` the id of the account they linked at this provider.
-const redirect = await oauth.redirect('idp', { intent: 'confirm', userId: user.id, account: account.providerId });
+const result = await oauth.redirect('idp', { intent: 'confirm', userId: user.id, account: id }); // a Result: `result.value` is the address to send the browser to
 ```
+
+[Opening the confirmation window](#opening-the-confirmation-window) shows the whole controller, including where `id` comes from.
 
 `account` is the id of the account that was linked, the same id `callback()` hands back as `user.id`. A fresh sign-in at the provider with
 another account is refused (`invalid`), since it proves nothing about the account that is linked.
@@ -495,8 +670,97 @@ proof, such as asking again for the same session. Some providers leave `auth_tim
 The callback accepts a confirmation only when the ID token that passed the checks carries a numeric `auth_time` that is no earlier than the
 redirect minus 10 seconds (the drift between the clocks of the provider and of the server) and no later than now plus 60 seconds. A missing,
 non-numeric, old or future `auth_time` answers `not-reauthenticated`; `iat` never takes its place. A confirmation is spent like any flow: a second
-callback with the same state answers `no-flow`. Your app knows the person confirmed when `callback()` answers `ok` with `intent === 'confirm'`; act on that
-and on nothing else.
+callback with the same state answers `no-flow`. The callback proves only that the id the provider vouched for equals the `account` it was given. Your app knows the person confirmed when
+[`SocialAccounts.confirm()`](#opening-the-confirmation-window) answers `ok`; act on that and on nothing else.
+
+### Opening the confirmation window
+
+`SocialAccounts.confirm(social)` turns that answer into the confirmation window of the signed-in user: the same window a typed password opens, counted
+from the sign-in at the provider. It lasts `AUTH_PASSWORD_TIMEOUT_SECONDS` from then, so `link()`, `unlink()` and the guards that ask
+`auth.passwordRecentlyConfirmed()` accept it. It needs no password, so accounts that have none can use it.
+
+`accounts.accountId(provider)` answers the id of the signed-in user's account at a provider, which `redirect()` takes as `account`, so no id is
+typed by hand. It answers `undefined` when nothing is linked there:
+
+```ts title="modules/auth/controllers/StartConfirmationController.ts"
+import { Auth } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { OAuth } from '@marmeon/oauth';
+import { SocialAccounts } from '@marmeon/oauth/accounts';
+
+export class StartConfirmationController extends Controller {
+  readonly #auth: Auth;
+  readonly #oauth: OAuth;
+  readonly #accounts: SocialAccounts;
+
+  constructor(auth: Auth, oauth: OAuth, accounts: SocialAccounts) {
+    super();
+    this.#auth = auth;
+    this.#oauth = oauth;
+    this.#accounts = accounts;
+  }
+
+  async handle(ctx: HttpContext<{}, { provider: string }>) {
+    const userId = await this.#auth.id();
+    const account = await this.#accounts.accountId(ctx.params.provider);
+    if (userId === undefined || account === undefined) return this.back('/settings/accounts');
+    const result = await this.#oauth.redirect(ctx.params.provider, { intent: 'confirm', userId, account });
+    // `reauthentication-unsupported`, `unknown-provider` and `unavailable` are answered here: the page tries another way.
+    if (!result.ok) return this.back('/settings/accounts');
+    return this.redirect(result.value.href).status(303);
+  }
+}
+```
+
+The callback route (with `Route.block()`) completes the flow and opens the window:
+
+```ts title="modules/auth/controllers/ConfirmCallbackController.ts"
+import { Auth } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { OAuth } from '@marmeon/oauth';
+import { SocialAccounts } from '@marmeon/oauth/accounts';
+
+export class ConfirmCallbackController extends Controller {
+  readonly #auth: Auth;
+  readonly #oauth: OAuth;
+  readonly #accounts: SocialAccounts;
+
+  constructor(auth: Auth, oauth: OAuth, accounts: SocialAccounts) {
+    super();
+    this.#auth = auth;
+    this.#oauth = oauth;
+    this.#accounts = accounts;
+  }
+
+  async handle(ctx: HttpContext<{}, { provider: string }>) {
+    const userId = await this.#auth.id();
+    if (userId === undefined) return this.back('/login');
+    const params = new URL(ctx.request.url).searchParams;
+    const result = await this.#oauth.callback(ctx.params.provider, params, { userId });
+    if (!result.ok || result.value.intent !== 'confirm') return this.back('/settings/accounts');
+    const confirmed = await this.#accounts.confirm(result.value.user);
+    return this.redirect(confirmed.ok ? '/settings/accounts' : '/settings/accounts?confirm=failed');
+  }
+}
+```
+
+`confirm()` takes only the result of a flow that began as a confirmation, and checks again on its own side what it relies on: the flow was this
+user's, the provider account is linked to this user (looked up in the table, never read from the flow), and the sign-in at the provider
+is recent. It answers `Result<void, SocialConfirmError>`:
+
+- `signed-out`: nobody is signed in.
+- `not-reauthenticated`: the result carries no fresh sign-in at the provider.
+- `not-linked`: the flow was another user's, or the provider account is not linked to the signed-in user. Another user's account, one that is
+  not linked and one at another provider open nothing.
+- `expired`: a confirmation as recent or more recent is held already, the provider sign-in lies before this session's sign-in, the proof waited too long, or the request cannot write the session.
+
+Every answer of `confirm()`, a refusal too, spends the result: the person confirms again. A second `confirm()` with the same object throws a `TypeError`, as
+does a result that did not come from a confirmation flow. Another user's flow and an account that is not linked answer `not-linked`.
+`summary.canConfirm` tells a settings page which providers to offer. A refresh of the account that fails after the window is open is logged
+(the provider and a fixed reason) and the answer stays `ok`. No event is dispatched: the window is not a change of the account.
+
+`SocialAccountsServiceProvider` claims the re-authentication name `oauth` when it registers, and holds the capability to issue proofs. A second
+registration on the same container, a registration on a request's scope and one after the auth provider has booted stop with the code `A12` ([error codes](errors.md#server-error-codes)).
 
 ## Testing
 
@@ -532,3 +796,87 @@ address or with `claims: { hd }`, GitLab for gitlab.com, never Microsoft), and t
 OAuth 2.0 provider's own `profile()` and `mapUser()` do not run, and `emailVerified` is what the test says: an own provider that never vouches for an address does vouch in a test.
 
 The fake builds each provider through the checks of the start, so a definition the start refuses (A11) fails in `fakeOAuth()` too. The members are in the table under [social login](fakes.md#social-login).
+
+## Storing tokens
+
+`@marmeon/oauth/accounts` keeps the accounts people link in the `social_accounts` table. A row holds the provider, the provider's ID for the
+account, and the e-mail address and nickname the provider reported last. Two unique indexes carry the rules: one provider account belongs to
+one user (`provider`, `provider_id`), and one user links one account per provider (`user_id`, `provider`). A provider account is never moved
+to another user: creating a link for an account that exists is refused with `taken`, and a second account at one provider with
+`provider-linked`. A provider ID is at most 255 characters, the limit of an OpenID Connect `sub`; the store throws a `TypeError` for a longer
+one or an empty one and never cuts it. Deleting a user deletes their rows.
+
+Copy this migration into the module that owns your users. The table points at your `users` table:
+
+```ts title="modules/auth/migrations/2026_11_18_100000_create_social_accounts_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+// The accounts people sign in with at a provider. Two unique indexes carry the rules: (provider, provider_id) says one provider account
+// belongs to one user, and (user_id, provider) says one user links one account per provider. The tokens are secret columns, empty
+// unless OAUTH_STORE_TOKENS is on, and hold ciphertext only. The e-mail address and nickname are what the provider reported last, as text: a provider's length is no limit of ours, and neither is ever a key.
+export default defineMigration({
+  up: (schema) =>
+    schema.create('social_accounts', (table) => {
+      table.id();
+      table.foreignId('user_id').constrained('users').cascadeOnDelete();
+      table.string('provider', 32);
+      table.string('provider_id', 255);
+      table.text('email').nullable();
+      table.text('nickname').nullable();
+      table.text('access_token').nullable().secret();
+      table.text('refresh_token').nullable().secret();
+      table.timestamp('token_expires_at').nullable();
+      table.text('scopes').nullable();
+      table.timestamp('last_used_at').nullable();
+      table.timestamps();
+      table.unique(['provider', 'provider_id']);
+      table.unique(['user_id', 'provider']);
+    }),
+  down: (schema) => schema.drop('social_accounts'),
+});
+```
+
+Add the provider to the module that owns your users. It needs a database and an `APP_KEY` for the encryption of the tokens. Readiness stays red
+until the table has every column the store reads and the token columns are marked `.secret()`.
+
+```ts title="modules/auth/index.ts"
+import { defineModule } from '@marmeon/core';
+import { SocialAccountsServiceProvider } from '@marmeon/oauth/accounts';
+import { AuthServiceProvider } from './AuthServiceProvider.ts';
+
+export default defineModule({
+  name: 'auth',
+  providers: [AuthServiceProvider, SocialAccountsServiceProvider],
+  // …
+});
+```
+
+`SocialAccountsServiceProvider` registers `SocialAccountStore` and `SocialAccounts`, and reads two variables:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `OAUTH_REGISTRATION` | `true` | Whether a sign-in at a provider may create a new user. `false` answers `registration-closed`; accounts that are linked still sign in. |
+| `OAUTH_STORE_TOKENS` | `false` | Whether the access and refresh token of a provider are stored. |
+
+The tokens are **not stored** unless you turn `OAUTH_STORE_TOKENS` on: sign-in needs the provider's profile, not a token that outlives the
+request, and a token you never use is only a risk. When it is on, both tokens are encrypted with the app key before they are written, and the
+encryption context names the row (`social_accounts:<provider>:<provider_id>:access_token`), so a ciphertext copied into another row does not
+decrypt. The token columns are secret columns: a `select *` does not return them. Read them with `store.tokens(userId, provider)`, which
+decrypts, and which returns `undefined` while the variable is off. It throws a `DecryptError` for a token that does not decrypt: one moved to
+another row, or one sealed with a key that is no longer in `APP_KEY` or `APP_PREVIOUS_KEYS`, so keep an old key listed until the tokens
+sealed with it are replaced (they are, at the next sign-in of the account).
+
+A sign-in that sends no refresh token keeps the one stored, and seals it again with the current key, so the stored token follows a key
+rotation. A stored token that no key decrypts stays as it is until the provider sends a new one or the key is listed again, and the sign-in
+still succeeds. Turning the variable off again clears the tokens of an account the next time it
+signs in. To clear them all at once, run one statement:
+
+```sql
+UPDATE social_accounts SET access_token = NULL, refresh_token = NULL, token_expires_at = NULL, scopes = NULL;
+```
+
+`remove(userId, provider, otherMethod)` unlinks an account in one transaction that locks the user's rows. It resolves with the removed
+account, with `not-found` when the user has none at the provider, or with `last-method` (changing nothing) when `otherMethod` says no. It
+always asks `otherMethod(remaining)`, with the user's remaining accounts, so the caller decides what counts as a way in: a password, a
+passkey, or an account at a provider that is still active. A passkey removed at the same moment is outside that lock; the
+[password reset](passwords.md) remains the way back in.

@@ -40,7 +40,7 @@ export function contextOf(clock: () => ClockType, name = 'idp', issuer: string |
 export function oidcWith(options: OidcOptions = {}, parts: Parts = {}, document: Record<string, unknown> = discoveryDocument(), node = 'test') {
   let made: ReturnType<typeof oauthWith> | undefined;
   const definition = oidc({ issuer: ISSUER, ...options })(contextOf(() => made!.clock, 'idp', undefined, node)) as OAuthProviderDefinition;
-  made = oauthWith({ ...parts, overrides: { ...parts.overrides, ...definition } });
+  made = oauthWith({ ...parts, overrides: { ...parts.overrides, ...definition }, builtFrom: definition });
   made.http.respond(DISCOVERY_URL, () => Response.json(document));
   const session = made.session as FakeSession;
   /** Opens a flow, answers the token request with `response` (the ID token has the nonce of the flow unless it says one), and returns the callback query. */

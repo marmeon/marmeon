@@ -171,6 +171,7 @@ describe('a confirmation with a fresh sign-in at the provider', () => {
   it('a profile of the app that is not the checked ID token confirms nothing, whatever it says', async () => {
     const made = oidcWith();
     const forged = oauthWith({
+      builtFrom: made.definition,
       overrides: {
         ...made.definition,
         // The marker only: a profile of the app is no checked token, whatever it says.
@@ -191,6 +192,7 @@ describe('a confirmation with a fresh sign-in at the provider', () => {
     for (const auth_time of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
       const made = oidcWith();
       const forged = oauthWith({
+        builtFrom: made.definition,
         overrides: {
           ...made.definition,
           profile: async () => {

@@ -1,7 +1,7 @@
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 /**
- * Thrown at the start (A11) when a provider is registered wrongly, and at first use (A10) when the app cannot run a flow.
+ * Thrown at the start (A11) when a provider is registered wrongly, and at first use (A10) when the app cannot run a flow or sign anybody in.
  * See docs/oauth.md#starting-the-app and docs/oauth.md#the-flow-and-its-security.
  */
 export class OAuthSetupError extends Error {

@@ -203,7 +203,7 @@ describe('make:auth', () => {
       expect(await new MakeAuthCommand().handle(input)).toBe(0);
       expect(readFileSync(join(root, users), 'utf8')).toBe('// changed by the app\n');
       expect(lines).toContain('i modules/auth/migrations/0001_01_01_000000_create_users_table.ts differs from the template and was kept.');
-      expect(lines).toContain(`Kept 7 migrations in modules/auth/migrations: ${advice}`);
+      expect(lines).toContain(`Kept 8 migrations in modules/auth/migrations: ${advice}`);
     });
 
     it('writes a migration of the kit the app lacks', async () => {
@@ -214,7 +214,7 @@ describe('make:auth', () => {
       const { input, lines } = fakeInput(root, { force: true });
       expect(await new MakeAuthCommand().handle(input)).toBe(0);
       expect(readFileSync(join(root, missing), 'utf8')).toBe(readFileSync(join(STUBS, 'react', missing), 'utf8'));
-      expect(lines).toContain(`Kept 6 migrations in modules/auth/migrations: ${advice}`);
+      expect(lines).toContain(`Kept 7 migrations in modules/auth/migrations: ${advice}`);
     });
 
     it('keeps a migration under another timestamp or extension and writes no duplicate of it', async () => {
@@ -274,7 +274,7 @@ describe('make:auth', () => {
       expect(await new MakeAuthCommand().handle(input)).toBe(0);
       expect(lines).toContain('! modules/auth/migrations/0001_01_01_000000_create_users_table.ts is no regular file; it counts as the migration and was kept.');
       expect(lines).toContain('! modules/auth/migrations/0001_01_01_000002_create_password_reset_tokens_table.ts is no regular file; it counts as the migration and was kept.');
-      expect(readdirSync(dir)).toHaveLength(7);
+      expect(readdirSync(dir)).toHaveLength(8);
     });
 
     it('writes nothing when modules/auth/migrations is no real directory', async () => {
