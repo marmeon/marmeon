@@ -52,6 +52,7 @@ import type { FactoryDefinition, PendingFactory, RowOf, Tables } from '@marmeon/
 import { assertWorkerConnection, emptyWorkerDatabase, prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { TestMarkup } from './markup.ts';
 import { KeptCookies } from './kept-cookies.ts';
+import { importOptional } from './optional-peer.ts';
 import { PendingTestResponse } from './pending.ts';
 import { checkSsrServer, SSR_TEST_HEADER, TestSsr, type SsrServer } from './ssr.ts';
 import { TestResponse, type PageNameOf, type PageSource, type PropsOf } from './response.ts';
@@ -471,40 +472,25 @@ export interface SessionAccess {
 
 type DatabaseModule = typeof import('@marmeon/database') & typeof import('@marmeon/database/internal');
 
-/** @marmeon/database is an optional peer, like the session. */
+// The loaders below look for the package from this file's directory, which is where `import()` starts too.
+/** @marmeon/database is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importDatabase(): Promise<DatabaseModule | undefined> {
-  try {
-    return { ...(await import('@marmeon/database')), ...(await import('@marmeon/database/internal')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/database', async () => ({ ...(await import('@marmeon/database')), ...(await import('@marmeon/database/internal')) }));
 }
 
-/** @marmeon/mail is an optional peer, like the session. */
+/** @marmeon/mail is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importMail(): Promise<(typeof import('@marmeon/mail') & typeof import('@marmeon/mail/testing')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/mail')), ...(await import('@marmeon/mail/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/mail', async () => ({ ...(await import('@marmeon/mail')), ...(await import('@marmeon/mail/testing')) }));
 }
 
-/** @marmeon/fetch is an optional peer, like the session. */
+/** @marmeon/fetch is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importFetch(): Promise<(typeof import('@marmeon/fetch') & typeof import('@marmeon/fetch/testing')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/fetch')), ...(await import('@marmeon/fetch/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/fetch', async () => ({ ...(await import('@marmeon/fetch')), ...(await import('@marmeon/fetch/testing')) }));
 }
 
-/** @marmeon/queue is an optional peer, like the session. */
+/** @marmeon/queue is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importQueue(): Promise<(typeof import('@marmeon/queue') & typeof import('@marmeon/queue/testing')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/queue')), ...(await import('@marmeon/queue/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/queue', async () => ({ ...(await import('@marmeon/queue')), ...(await import('@marmeon/queue/testing')) }));
 }
 
 /** @marmeon/devtools is an optional peer (a dev dependency of the app) — needed only with `devtools: true`. */
@@ -516,42 +502,26 @@ async function importDevtools(): Promise<typeof import('@marmeon/devtools/intern
   }
 }
 
-/** @marmeon/storage is an optional peer, like the session. */
+/** @marmeon/storage is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importStorage(): Promise<(typeof import('@marmeon/storage') & typeof import('@marmeon/storage/testing')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/storage')), ...(await import('@marmeon/storage/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/storage', async () => ({ ...(await import('@marmeon/storage')), ...(await import('@marmeon/storage/testing')) }));
 }
 
 type LiveModule = typeof import('@marmeon/live') & typeof import('@marmeon/live/testing');
 
-/** @marmeon/live is an optional peer, like the session. */
+/** @marmeon/live is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importLive(): Promise<LiveModule | undefined> {
-  try {
-    return { ...(await import('@marmeon/live')), ...(await import('@marmeon/live/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/live', async () => ({ ...(await import('@marmeon/live')), ...(await import('@marmeon/live/testing')) }));
 }
 
-/** @marmeon/notifications is an optional peer, like the session. */
+/** @marmeon/notifications is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importNotifications(): Promise<(typeof import('@marmeon/notifications') & typeof import('@marmeon/notifications/testing')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/notifications')), ...(await import('@marmeon/notifications/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/notifications', async () => ({ ...(await import('@marmeon/notifications')), ...(await import('@marmeon/notifications/testing')) }));
 }
 
-/** @marmeon/scheduler is an optional peer, like the session. */
+/** @marmeon/scheduler is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importScheduler(): Promise<(typeof import('@marmeon/scheduler') & typeof import('@marmeon/scheduler/testing')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/scheduler')), ...(await import('@marmeon/scheduler/testing')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/scheduler', async () => ({ ...(await import('@marmeon/scheduler')), ...(await import('@marmeon/scheduler/testing')) }));
 }
 
 /** `marmeon` is an optional peer, like the session. */
@@ -578,22 +548,14 @@ function commandFlags(options: CommandRunOptions['options'] = {}): string[] {
   return flags;
 }
 
-/** @marmeon/auth is an optional peer, like the session. */
+/** @marmeon/auth is an optional peer: `undefined` only when it is not installed, any other load failure throws. */
 async function importAuth(): Promise<(typeof import('@marmeon/auth/testing') & typeof import('@marmeon/auth/internal')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/auth/testing')), ...(await import('@marmeon/auth/internal')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/auth', async () => ({ ...(await import('@marmeon/auth/testing')), ...(await import('@marmeon/auth/internal')) }));
 }
 
-/** @marmeon/session is an optional peer: only apps that use it have it installed. */
+/** @marmeon/session is an optional peer: only apps that use it have it installed. `undefined` only when it is not installed, any other load failure throws. */
 async function importSession(): Promise<(typeof import('@marmeon/session') & typeof import('@marmeon/session/internal')) | undefined> {
-  try {
-    return { ...(await import('@marmeon/session')), ...(await import('@marmeon/session/internal')) };
-  } catch {
-    return undefined;
-  }
+  return importOptional('@marmeon/session', async () => ({ ...(await import('@marmeon/session')), ...(await import('@marmeon/session/internal')) }));
 }
 
 async function sessionAccess(container: Container): Promise<SessionAccess | undefined> {
