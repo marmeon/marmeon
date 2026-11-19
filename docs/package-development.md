@@ -363,6 +363,9 @@ The type is `ProviderMigrations` from `@marmeon/database`. A package that has `@
 `satisfies ProviderMigrations` with an `import type`, or no annotation, so the type is checked while the package's `.d.ts` does
 not mention the database.
 
+Write `import type { X } from '…'`, not `import { type X } from '…'`: with `verbatimModuleSyntax` the second form still loads the
+module, and an app without the optional peer cannot load the package.
+
 Each file in the directory is named like a migration of an app, `<timestamp>_<name>.ts`, such as
 `2026_01_01_000000_create_request_log_table.ts`. The migrations are read in the order of their file names. The timestamp only orders
 the files within the package: `publish` gives a copy a new one in the app. The name without the timestamp (`create_request_log_table`)
@@ -903,3 +906,7 @@ app's version does not satisfy installs a second copy, whose `Router` and contai
 
 The framework's packages are coupled the same way: an optional peer dependency on another framework package, such as
 `@marmeon/redis` for a Redis cache, with a start that fails and names the package when the configuration needs it.
+A static value import of such a peer anywhere reachable from an entry stops the package from loading in an app that lacks it. The
+package loads the peer with `await import(…)` where it needs it and imports only types from it with `import type`. The peer counts
+as absent only when it does not resolve itself (`import.meta.resolve`); a missing dependency of an installed peer, or any other load
+error, stops the start.

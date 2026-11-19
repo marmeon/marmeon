@@ -55,6 +55,7 @@ describe('temporary uploads: what may wait unsent', () => {
 
   function uploads(limits: Partial<Limits> = {}, db: () => unknown = () => connections.get(), on: () => Disk = () => disk): TemporaryUploads {
     return new TemporaryUploads({
+      sql,
       db: db as never,
       disk: on,
       clock,

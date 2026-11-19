@@ -1,6 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Clock } from '@marmeon/core';
-import { sql, type Connection } from '@marmeon/database';
+import type { Connection, sql as Sql } from '@marmeon/database';
 import { HttpError, ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
@@ -60,6 +60,8 @@ export interface TargetRequest {
 }
 
 export interface UploadsOptions {
+  /** The `sql` tag of @marmeon/database — handed in by boot, because that package is an optional peer and must not load with storage. */
+  readonly sql: typeof Sql;
   /** The infrastructure connection of `temporary_uploads` — resolved on first use. */
   readonly db: () => Connection<Tables>;
   /** The private disk of temporary uploads. */
@@ -86,8 +88,6 @@ export const OPEN_UPLOAD_MIN_CHARGE = 64 * 1024;
 
 /** How often a target that lost a race for the last place tries again before it is turned away. */
 const SETTLE_ATTEMPTS = 5;
-
-const CHARGE = sql`case when size > ${OPEN_UPLOAD_MIN_CHARGE} then size else ${OPEN_UPLOAD_MIN_CHARGE} end`;
 
 /** What `keep()` writes before its scope into the route column: no route is named so, so a kept upload fits no field's token any more. */
 const STAGED_PREFIX = 'staged:';
@@ -143,9 +143,11 @@ export class StagedUploads {
  */
 export class TemporaryUploads {
   readonly #options: UploadsOptions;
+  readonly #charge: ReturnType<typeof Sql>;
 
   constructor(options: UploadsOptions) {
     this.#options = options;
+    this.#charge = options.sql`case when size > ${OPEN_UPLOAD_MIN_CHARGE} then size else ${OPEN_UPLOAD_MIN_CHARGE} end`;
   }
 
   get disk(): Disk {
@@ -333,6 +335,7 @@ export class TemporaryUploads {
   async #keep(id: string, session: string, scope: string, minutes: number, etag: string | undefined): Promise<boolean> {
     const now = this.#options.clock.now();
     const wanted = now + minutes * 60_000;
+    const { sql } = this.#options;
     const result = await this.#options
       .db()
       .updateTable(UPLOADS_TABLE)
@@ -402,16 +405,16 @@ export class TemporaryUploads {
     db: Connection<Tables>,
     row: { id: string; session: string; route: string; field: string; disk: string; name: string; maxBytes: number; size: number; charge: number; now: number },
   ): Promise<{ numAffectedRows: bigint }> {
-    const { maxOpen, maxOpenBytes, maxOpenTotalBytes } = this.#options;
+    const { maxOpen, maxOpenBytes, maxOpenTotalBytes, sql } = this.#options;
     const open = sql`consumed_at is null and expires_at > ${row.now}`;
-    const total = maxOpenTotalBytes === 0 ? sql`1 = 1` : sql`(select coalesce(sum(${CHARGE}), 0) from ${sql.table(UPLOADS_TABLE)} where ${open}) + ${row.charge} <= ${maxOpenTotalBytes}`;
+    const total = maxOpenTotalBytes === 0 ? sql`1 = 1` : sql`(select coalesce(sum(${this.#charge}), 0) from ${sql.table(UPLOADS_TABLE)} where ${open}) + ${row.charge} <= ${maxOpenTotalBytes}`;
     const result = await sql`
       insert into ${sql.table(UPLOADS_TABLE)}
         (id, session, route, field, disk, key, name, max_bytes, size, created_at, expires_at, started_at, uploaded_at, consumed_at)
       select ${row.id}, ${row.session}, ${row.route}, ${row.field}, ${row.disk}, ${row.id}, ${row.name}, cast(${row.maxBytes} as bigint),
         cast(${row.size} as bigint), cast(${row.now} as bigint), cast(${row.now + this.#options.lifetimeMilliseconds} as bigint), null, null, null
       where (select count(*) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) < ${maxOpen}
-        and (select coalesce(sum(${CHARGE}), 0) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) + ${row.charge} <= ${maxOpenBytes}
+        and (select coalesce(sum(${this.#charge}), 0) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) + ${row.charge} <= ${maxOpenBytes}
         and ${total}
     `.execute(db).catch((error: unknown) => {
       // The table is the app's to make: say which command makes it, not the driver's "no such table".
@@ -426,19 +429,20 @@ export class TemporaryUploads {
 
   /** Whether the open uploads of `session` (and of all) stand over a limit once `count` more files and `bytes` more bytes are added. */
   async #over(db: Connection<Tables>, session: string, count: number, bytes: number, now: number): Promise<'session' | 'total' | undefined> {
-    const { maxOpen, maxOpenBytes, maxOpenTotalBytes } = this.#options;
+    const { maxOpen, maxOpenBytes, maxOpenTotalBytes, sql } = this.#options;
     const open = sql`consumed_at is null and expires_at > ${now}`;
     const mine = await sql<{ files: number | string; bytes: number | string | null }>`
-      select count(*) as files, coalesce(sum(${CHARGE}), 0) as bytes from ${sql.table(UPLOADS_TABLE)} where session = ${session} and ${open}
+      select count(*) as files, coalesce(sum(${this.#charge}), 0) as bytes from ${sql.table(UPLOADS_TABLE)} where session = ${session} and ${open}
     `.execute(db);
     if (Number(mine.rows[0]!.files) + count > maxOpen || Number(mine.rows[0]!.bytes) + bytes > maxOpenBytes) return 'session';
     if (maxOpenTotalBytes === 0) return undefined;
-    const all = await sql<{ bytes: number | string | null }>`select coalesce(sum(${CHARGE}), 0) as bytes from ${sql.table(UPLOADS_TABLE)} where ${open}`.execute(db);
+    const all = await sql<{ bytes: number | string | null }>`select coalesce(sum(${this.#charge}), 0) as bytes from ${sql.table(UPLOADS_TABLE)} where ${open}`.execute(db);
     return Number(all.rows[0]!.bytes) + bytes > maxOpenTotalBytes ? 'total' : undefined;
   }
 
   /** The 429 of a target over a limit: `Retry-After` is when the first open upload that counts expires. */
   async #tooMany(db: Connection<Tables>, session: string, size: number, now: number): Promise<HttpError> {
+    const { sql } = this.#options;
     const over = (await this.#over(db, session, 1, size, now)) ?? 'total';
     const oldest = await sql<{ at: number | string | null }>`
       select min(expires_at) as at from ${sql.table(UPLOADS_TABLE)}
