@@ -192,6 +192,8 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   const storage = options.storage === 'real' ? undefined : await importStorage();
   let storageFake: StorageFake | undefined;
   const live = await importLive();
+  // Before the boot like the others: a loader throws for a broken install, and nothing is started yet that would need closing.
+  const scheduler = await importScheduler();
   let broadcast: BroadcastTester | undefined;
   const devtools = options.devtools ? await importDevtools() : undefined;
   let devtoolsTester: DevtoolsTester | undefined;
@@ -286,7 +288,6 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
     await application.shutdown();
     throw error;
   }
-  const scheduler = await importScheduler();
   // The error page's recorder, as the server's provider binds it in development — until the app closes.
   const recorder = options.debug && !application.container.has(DevRequestRecorder) ? (await importRequestRecorder()).createRequestRecorder(application) : undefined;
   if (recorder) application.container.instance(DevRequestRecorder, recorder);
