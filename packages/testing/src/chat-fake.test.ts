@@ -191,11 +191,13 @@ describe('importChat', () => {
     expect(modules?.ChatFake).toBe(ChatFake);
   });
 
+  // Relies on @marmeon/chat-notifications being resolvable in this workspace (importOptional's resolve check).
   it.each([
     ["Cannot find package '@marmeon/chat-notifications' imported from /app/node_modules/@marmeon/testing/dist/test-app.js"],
     ["Cannot find module '@marmeon/chat-notifications/testing' imported from /app/dist/import-chat.js"],
-  ])('is undefined when the package itself is not installed: %s', async (message) => {
-    await expect(importChat(() => Promise.reject(notFound(message)))).resolves.toBeUndefined();
+  ])('throws when the package is installed, whatever the message names: %s', async (message) => {
+    const error = notFound(message);
+    await expect(importChat(() => Promise.reject(error))).rejects.toBe(error);
   });
 
   it.each([
