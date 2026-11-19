@@ -7,11 +7,13 @@ exceptions, scheduled runs, live hints, events, commands and, in development, wh
 right of every page shows the requests of that page. Values that look like secrets, such as a password, a token or a link's
 signature, are masked before anything is written.
 
-A new app has them already. In another app, install the package as a dev dependency:
+A new app has them already. In another app, install the package as a dev dependency with [`marmeon add`](packages.md#introduction):
 
 ```sh
-pnpm add -E -D @marmeon/devtools@<version of your app>
+pnpm marmeon add devtools
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E -D @marmeon/devtools@<version of your app>`.
 
 Discovery registers it, and `marmeon dev` starts recording. Open http://localhost:3000/_marmeon/devtools while the app runs.
 

@@ -1,5 +1,6 @@
 import { Clock } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
+import { storeDatabase } from '../store-drivers.ts';
 import { assertTableName } from '../table-names.ts';
 import type { AuthUserId } from '../user.ts';
 import { TwoFactorState, type SecondFactor } from './state.ts';
@@ -126,9 +127,10 @@ export class TwoFactorStore extends TwoFactorState {
    * an account as having proven one.
    */
   async confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean> {
+    const db = this.#db();
     return this.#connections.transaction(async () => {
       const now = this.#now();
-      const result = await this.#db()
+      const result = await db
         .updateTable(this.#twoFactor)
         .set({ confirmed_at: now, last_used_step: step, secret: reencryptedSecret, updated_at: now })
         .where('user_id', '=', userId)
@@ -172,9 +174,10 @@ export class TwoFactorStore extends TwoFactorState {
 
   /** @internal Replaces every recovery code of the account (spent or not) with these hashes, in one transaction. */
   async replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
+    const db = this.#db();
     await this.#connections.transaction(async () => {
       // Two requests making new codes at once would interleave their deletes and inserts: the account's row is the lock.
-      await this.#db().selectFrom(this.#twoFactor).select('id').where('user_id', '=', userId).forUpdate().execute();
+      await db.selectFrom(this.#twoFactor).select('id').where('user_id', '=', userId).forUpdate().execute();
       await this.#replaceCodes(userId, codeHashes);
     });
   }
@@ -192,9 +195,10 @@ export class TwoFactorStore extends TwoFactorState {
 
   /** @internal Removes the authenticator; with `lastFactor` the recovery codes go in the same transaction (they belong to the account's factors, not to this one). */
   async removeTotp(userId: AuthUserId, { lastFactor }: { lastFactor: boolean }): Promise<void> {
+    const db = this.#db();
     await this.#connections.transaction(async () => {
-      await this.#db().deleteFrom(this.#twoFactor).where('user_id', '=', userId).execute();
-      if (lastFactor) await this.#db().deleteFrom(this.#recoveryCodes).where('user_id', '=', userId).execute();
+      await db.deleteFrom(this.#twoFactor).where('user_id', '=', userId).execute();
+      if (lastFactor) await db.deleteFrom(this.#recoveryCodes).where('user_id', '=', userId).execute();
     });
   }
 
@@ -219,6 +223,6 @@ export class TwoFactorStore extends TwoFactorState {
   }
 
   #db() {
-    return this.#connections.get<Tables>();
+    return storeDatabase<Tables>(this.#connections, 'The two-factor store');
   }
 }

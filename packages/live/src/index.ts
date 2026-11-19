@@ -10,7 +10,7 @@ import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { MakeLiveTableCommand } from './commands/make-live-table.ts';
 import { LiveConfig } from './config.ts';
-import { DatabaseLiveBackend, LIVE_HINTS_COLUMNS, LIVE_HINTS_TABLE } from './database.ts';
+import { DATABASE_LIVE_DRIVERS, DatabaseLiveBackend, LIVE_DATABASE_DRIVER, LIVE_HINTS_COLUMNS, LIVE_HINTS_TABLE } from './database.ts';
 import { LiveTableHealthCheck } from './table-check.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub } from './hub.ts';
@@ -33,7 +33,7 @@ declare module '@marmeon/core' {
 }
 
 const DATABASE_NEEDED =
-  'LIVE_DRIVER=database needs @marmeon/database and its provider (pnpm add -E @marmeon/database@<version of your app>; marmeon discover), and the live_hints table: marmeon make:live-table && marmeon migrate.';
+  'LIVE_DRIVER=database needs @marmeon/database and its provider (marmeon add database; if it is installed already: marmeon discover), and the live_hints table: marmeon make:live-table && marmeon migrate.';
 
 /** Live props need a piece the app does not have. */
 export class LiveSetupError extends Error {
@@ -175,14 +175,17 @@ export class LiveServiceProvider implements ServiceProvider {
         if (!database) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
         return new DatabaseLiveBackend(
           async () => {
+            const { requireDriver } = await import('@marmeon/database/internal');
             const connections = c.make(database.Connections);
-            return { db: connections.infrastructure(config.connection, LIVE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
+            // The driver first: a connection that cannot run the backend's SQL is never opened.
+            const driver = requireDriver(connections.options(config.connection).driver, DATABASE_LIVE_DRIVERS, LIVE_DATABASE_DRIVER);
+            return { db: connections.infrastructure(config.connection, LIVE_INFRASTRUCTURE), driver };
           },
           { pollMs: config.pollMs, logger: c.make(Logger).child({ channel: 'live' }), redactor: c.make(Redactor), clock: c.make(Clock) },
         );
       }
       const redis = this.#redis;
-      if (!redis) throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis (pnpm add -E @marmeon/redis@<version of your app>; marmeon discover).'));
+      if (!redis) throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis (marmeon add redis; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/redis@<version of your app>).'));
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.connection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
@@ -218,16 +221,17 @@ export class LiveServiceProvider implements ServiceProvider {
     if (config.driver === 'database') {
       this.#database = await importOptional(() => import('@marmeon/database'), '@marmeon/database');
       if (!this.#database || !container.has(this.#database.Connections)) throw new LiveSetupError(withCode('H7', DATABASE_NEEDED));
-      // An unknown connection name fails the start, with the known ones (D11). A missing table does not: /up/ready is red and
+      // An unknown connection name (D11) or a driver the backend has no SQL for (D29) fails the start. A missing table does not: /up/ready is red and
       // `marmeon check` says so, until `marmeon make:live-table && marmeon migrate`.
-      container.make(this.#database.Connections).options(config.connection);
+      const { requireDriver } = await import('@marmeon/database/internal');
+      requireDriver(container.make(this.#database.Connections).options(config.connection).driver, DATABASE_LIVE_DRIVERS, LIVE_DATABASE_DRIVER);
       container.make(this.#database.SchemaRequirements).require({ connection: config.connection, table: LIVE_HINTS_TABLE, columns: LIVE_HINTS_COLUMNS });
       container.make(HealthChecks).add([LiveTableHealthCheck]);
     }
     if (config.driver === 'redis') {
       this.#redis = await importOptional(() => import('@marmeon/redis'), '@marmeon/redis');
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
-        throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add -E @marmeon/redis@<version of your app>; marmeon discover).'));
+        throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis and its provider (marmeon add redis; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/redis@<version of your app>).'));
       }
       // An unknown connection name fails the start, with the known ones — and so does a client that cannot load (a broken
       // install), as for the cache, the sessions and the queue: not the first hint.

@@ -41,5 +41,6 @@ export { TransactionFrame, bindTransaction, errOfRollback, followsTransaction, l
 export { fillPlaceholders, PreferredLocale } from './translator.ts';
 export { marmeonInjection } from './vite.ts';
 export { recordStubSet, readStubManifest, STUB_MANIFEST, stubHash } from './stubs/manifest.ts';
+export { removeLeftovers } from './stubs/leftovers.ts';
 export { escapesRoot, unreadableGeneratedPath, unsafeGeneratedPath } from './paths.ts';
 export { refuseLeavingProject, writeGeneratedFile, writeProjectFile } from './project-file.ts';

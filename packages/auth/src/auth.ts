@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, durationToSeconds, err, EventDispatcher, Logger, ok, type Duration, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, ClientInfo } from '@marmeon/http';
@@ -8,6 +8,8 @@ import { Session, SessionConfig } from '@marmeon/session';
 import { sessionScope } from '@marmeon/session/internal';
 import { ANNOUNCE_ENDED, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
+import { APP_GUARD_NAMES } from './guard-names.ts';
+import { CONFIRM_REAUTHENTICATED, PROOF_MAX_AGE_MS, takeProof, type ReauthenticationProof } from './reauthentication.ts';
 import { SignInFailed, SignInLockedOut, SignedIn, MAX_USER_AGENT, SignedOut, PasswordChanged, RememberTokenReused, type SignInVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { RequestGuard } from './guard-stamp.ts';
@@ -33,12 +35,18 @@ export const READ_PENDING = Symbol('marmeon.auth.readPending');
 
 
 /**
- * Checks this session against the account, in the transaction of the caller (package-internal): `TwoFactor.confirm()` and
- * `Passkeys.register()` call it as the first step of the transaction that stores a new factor.
+ * Checks this session against the account, in the transaction of the caller. Shared with other packages through `@marmeon/auth/internal`:
+ * `TwoFactor.confirm()`, `Passkeys.register()` and `SocialAccounts.link()` call it as the first step of the transaction that stores what
+ * the caller adds to the account (a factor, a provider link). `false` refuses; the caller rolls back and runs `ACCOUNT_STILL_CLAIMED`.
  */
 export const CLAIM_ACCOUNT = Symbol('marmeon.auth.claimAccount');
 
-/** The check of `CLAIM_ACCOUNT` without the lock (package-internal): runs after every commit of a factor, and after a rollback that `CLAIM_ACCOUNT` asked for. */
+/**
+ * The check of `CLAIM_ACCOUNT` without the lock: runs after every commit of what the caller stored (an account without a session key
+ * cannot be locked), and after a rollback that `CLAIM_ACCOUNT` asked for. `false`: the session ended meanwhile and is signed out; the
+ * caller takes out what it stored. It assumes the caller's transaction was the outermost one. Shared through `@marmeon/auth/internal`
+ * as `CLAIM_ACCOUNT` is.
+ */
 export const ACCOUNT_STILL_CLAIMED = Symbol('marmeon.auth.accountStillClaimed');
 
 /** The session key of the account this request verified (package-internal): `string`, or `null` for an account without one. Throws without a verified sign-in. */
@@ -60,6 +68,9 @@ export const RECORD_PENDING_FAILURE = Symbol('marmeon.auth.recordPendingFailure'
 export const SIGN_IN_VERIFIED = Symbol('marmeon.auth.signInVerified');
 
 const DROP_EXPIRED = Symbol('marmeon.auth.dropExpired');
+
+/** Whether two account ids are the same, compared in constant time. */
+const sameId = (a: string, b: string): boolean => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 
 const SIGN_IN_VIA: readonly unknown[] = Object.keys({ attempt: true, app: true, remember: true, passkey: true } satisfies Record<SignInVia, true>);
 
@@ -443,6 +454,37 @@ export class Auth {
   }
 
   /**
+   * @internal Opens the confirmation window from a proof of re-authentication that `reauthenticator()` issued: the window opens for the
+   * time the user authenticated, not for now. A refusal opens no window and spends the proof (`user()` may restore a sign-in from the
+   * remember-me cookie). `true` means the window is open. Only the app's guard has it, and only for proofs issued on its own container.
+   */
+  async [CONFIRM_REAUTHENTICATED](proof: ReauthenticationProof): Promise<boolean> {
+    // The proof is spent first, whatever follows: a refused proof is not kept for another try. Only the record is read from here on.
+    const record = takeProof(proof, this.#guard.reauthenticationRoot());
+    if (record === undefined) return false;
+    if (this.#guard.names !== APP_GUARD_NAMES) return false;
+    const age = this.#clock.now() - record.issuedAt;
+    if (!(age >= 0 && age <= PROOF_MAX_AGE_MS)) return false;
+    if (!this.#session.started || this.#session.readOnly) return false;
+    const user = await this.user();
+    if (user === undefined || !sameId(String(idOf(user)), record.userId)) return false;
+    const at = Math.floor(record.at / 1000);
+    const signedInAt = this.#read('signedInAt');
+    const confirmedAt = this.#read('confirmedAt');
+    const now = this.#now();
+    // Stricter than `passwordRecentlyConfirmed()`: no skew before the sign-in, a confirmation counts only in the sign-in it happened in.
+    // And `true` must mean an open window: an authentication outside the timeout, or not later than the confirmation already held (a
+    // proof with an old time would otherwise close a window that is open), opens nothing.
+    if (!Number.isFinite(at) || typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || at < signedInAt || at > now + CLOCK_SKEW_SECONDS) return false;
+    if (!(now - at < this.#guard.settings.passwordTimeoutSeconds)) return false;
+    if (typeof confirmedAt === 'number' && Number.isFinite(confirmedAt) && at <= confirmedAt) return false;
+    // Invariant, as in `checkPassword()`: the new id comes before the window opens, so an id that leaked earlier does not ride into it.
+    this.#session.regenerate();
+    this.#write('confirmedAt', at);
+    return true;
+  }
+
+  /**
    * Whose password checks these are, for `takePasswordCheck()`: this sign-in's own key, and whether it began with a typed password.
    * A session without a key gets one now; on a read-only request it is counted under a hash of the session id, with the account's cap.
    * Throws without a started session: a password check needs a signed-in user.
@@ -460,7 +502,7 @@ export class Auth {
     return { session: key, typed: this.#read('typedPassword') === true };
   }
 
-  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
+  /** Whether a password was typed, a passkey proven (`passkeys.confirm()`, a passwordless sign-in) or a linked provider confirmed (see `docs/oauth.md#confirming-with-a-provider`) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
   passwordRecentlyConfirmed(within?: Duration): boolean {
     const seconds = within === undefined ? this.#guard.settings.passwordTimeoutSeconds : durationToSeconds(within);
     const at = this.#session.started ? this.#read('confirmedAt') : undefined;
@@ -587,11 +629,11 @@ export class Auth {
 
   /**
    * @internal
-   * Whether this session still fits the account, decided inside the transaction that stores a factor: `false` means it ended meanwhile
+   * Whether this session still fits the account, decided inside the transaction that stores what the caller adds (a factor, a provider link): `false` means it ended meanwhile
    * (`AccountSessions.end()`, a password change or a key rotation elsewhere) and the caller rolls back. It ends nothing itself — the
    * caller runs `ACCOUNT_STILL_CLAIMED` after the rollback, so that dropping the device's remember-me token is not rolled back too.
-   * Invariant: a factor stays only while the session still fits the account. With an account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
-   * transaction), so an ending cannot land between this check and the factor. A `null` key is never rotated and cannot be locked
+   * Invariant: what the caller stored stays only while the session still fits the account. With an account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
+   * transaction), so an ending cannot land between this check and what is stored. A `null` key is never rotated and cannot be locked
    * (a rotation would sign the other devices out). Every ending writes the account's row (the key, which every new password writes too, or the row itself), so a
    * fresh read sees each ending that committed before it.
    */

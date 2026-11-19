@@ -14,7 +14,7 @@ import { checkS3Sdk } from './drivers/s3.ts';
 import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
 import { UploadsConfig } from './uploads/config.ts';
 import { registerUploads, sessionScope, UPLOADS_PREFIX } from './uploads/http.ts';
-import { StagedUploads, TemporaryUploads, UPLOADS_COLUMNS, UPLOADS_TABLE } from './uploads/service.ts';
+import { StagedUploads, TemporaryUploads, UPLOAD_DRIVER_FEATURE, UPLOAD_DRIVERS, UPLOADS_COLUMNS, UPLOADS_TABLE } from './uploads/service.ts';
 import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './temporary.ts';
 import { encodeKey } from './keys.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -204,9 +204,14 @@ export class StorageServiceProvider implements ServiceProvider {
     if (database && encryption && container.has(database.Connections) && container.has(encryption.EncryptionConfig)) {
       const key = container.make(encryption.EncryptionConfig);
       const connections = container.make(database.Connections);
+      const { requireDriver } = await import('@marmeon/database/internal');
       this.#uploads = {
         // Infrastructure: never the app's transaction — a rollback after store() never makes a used token usable again.
-        db: () => connections.infrastructure(uploads.connection, UPLOADS_INFRASTRUCTURE),
+        // The driver is judged on first use, not at boot: an app that made no uploads table keeps any driver.
+        db: () => {
+          requireDriver(connections.options(uploads.connection).driver, UPLOAD_DRIVERS, UPLOAD_DRIVER_FEATURE);
+          return connections.infrastructure(uploads.connection, UPLOADS_INFRASTRUCTURE);
+        },
         keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
         receiveUrl: (id, expiresInSeconds) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn: expiresInSeconds }),
       };

@@ -11,6 +11,7 @@ import { DbQueryCommand } from './commands/db-query.ts';
 import { Connections } from './connections.ts';
 import { freshDatabase, drivers, silent, type TestDriver } from './__fixtures__/databases.ts';
 import { inspectionConnection } from './migrator-connection.ts';
+import { MYSQL_QUERY_REFUSAL, readOnlyQuery } from './read-only-query.ts';
 import { Migrator } from './migrations/migrator.ts';
 import type { ProjectedColumn, SchemaProjection } from './schema/projection.ts';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -19,7 +20,7 @@ function fixture(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(new URL(`./__fixtures__/formats/cli-db-query/${name}.json`, import.meta.url), 'utf8'));
 }
 
-const column = (name: string, secret = false): ProjectedColumn => ({ name, type: { sqlite: 'text', pgsql: 'text' }, nullable: true, primary: false, identity: false, default: null, secret });
+const column = (name: string, secret = false): ProjectedColumn => ({ name, type: { sqlite: 'text', pgsql: 'text', mysql: 'longtext' }, nullable: true, primary: false, identity: false, default: null, secret });
 const projection: SchemaProjection = {
   migrations: [],
   tables: new Map([['users', { name: 'users', module: 'app', columns: [column('id'), column('email'), column('password', true)], uniques: [], indexes: [], foreignKeys: [], markers: [] }]]),
@@ -518,6 +519,46 @@ describe('db:query on a connection that is not managed', () => {
     } finally {
       await connections.destroy();
     }
+  });
+});
+
+describe('db:query as a safeguard against a MySQL connection (the app does not boot with one, so the CLI never gets here)', () => {
+  const url = 'mysql://app:hunter2x@127.0.0.1/app';
+  const stub = () => {
+    const opened = vi.fn();
+    const connections = {
+      options: () => ({ driver: 'mysql', url }),
+      get: opened,
+      infrastructure: opened,
+      sqliteFile: () => undefined,
+    } as unknown as Connections;
+    const touched = vi.fn(async () => projection);
+    const untouched = { readProjection: touched, ranProjection: touched, undescribedColumns: touched } as unknown as Migrator;
+    return { connections, opened, touched, untouched };
+  };
+
+  it.each([[false], [true]])('safeguard: refuses with D29 and exit code 3 before a connection is opened or a migration is read (--json: %s)', async (json) => {
+    const { connections, opened, touched, untouched } = stub();
+
+    const { code, stdout, stderr } = await run(connections, ['select 1'], json ? { json } : {}, undefined, untouched);
+
+    expect(code).toBe(3);
+    expect(stdout).toBe('');
+    expect(stderr).toContain(`db:query refused: ${MYSQL_QUERY_REFUSAL}`);
+    expect(stderr).not.toContain('hunter2x');
+    // The MCP tool passes on a reason up to 300 characters, and its test holds this text: they change together.
+    expect(MYSQL_QUERY_REFUSAL).toBe('[marmeon:D29] db:query does not run on MySQL yet.');
+    expect(opened).not.toHaveBeenCalled();
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it('safeguard: is refused by the read-only query itself, which another caller may reach without the command', async () => {
+    const { connections, opened } = stub();
+
+    const result = await readOnlyQuery(connections, 'default', 'select 1', { limit: 10, secrets: new Map(), redact: (text) => text, timeoutMs: 1000 });
+
+    expect(result).toMatchObject({ ok: false, error: { kind: 'refused', message: expect.stringContaining('D29') } });
+    expect(opened).not.toHaveBeenCalled();
   });
 });
 

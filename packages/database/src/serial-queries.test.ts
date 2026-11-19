@@ -1,8 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { CompiledQuery, sql, type DatabaseConnection, type Driver, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { TransactionError } from '@marmeon/core';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { MarmeonDriver, serialQueries } from './driver.ts';
+import { controlOf } from './mysql-transaction-control.ts';
 import type { Connections } from './index.ts';
 
 // One query at a time per connection: a transaction's connection and a test's isolated one are shared by everything
@@ -106,6 +108,50 @@ describe('serialQueries()', () => {
     expect(hook).toHaveBeenCalledTimes(2); // its two chunks, each once
   });
 
+  it('asks the refuse hook on a query’s turn and fails it with the hook’s error, never reaching the connection — for a query and for a stream', async () => {
+    const log: string[] = [];
+    const inner = new CountingConnection(log);
+    const refusal = new Error('refused');
+    const connection = serialQueries(inner, { refuse: (query) => (query.sql.startsWith('no') ? refusal : undefined) });
+    const [refused, passed, refusedStream] = await Promise.allSettled([
+      connection.executeQuery(raw('no 1')),
+      connection.executeQuery(raw('yes')),
+      (async () => {
+        for await (const _chunk of connection.streamQuery(raw('no stream'), 1)) void _chunk;
+      })(),
+    ]);
+    expect(refused).toMatchObject({ status: 'rejected', reason: refusal });
+    expect(refusedStream).toMatchObject({ status: 'rejected', reason: refusal });
+    expect(passed.status).toBe('fulfilled');
+    // Only the query that was not refused reached the connection, and the turn went on after each refusal.
+    expect(log).toEqual(['start yes', 'end yes']);
+    for await (const _chunk of connection.streamQuery(raw('yes stream'), 1)) void _chunk;
+  });
+
+  it('asks the refuse hook when the query’s turn comes, so what an earlier query set is seen — also for queries sent without waiting', async () => {
+    const inner = new CountingConnection([]);
+    let armed = false;
+    const connection = serialQueries(inner, {
+      refuse: (query) => (armed && query.sql.startsWith('no') ? new Error('refused') : undefined),
+      passed: (query) => void (armed ||= query.sql === 'arm'),
+    });
+    // Nothing is awaited between them: the second asks only after the first ran.
+    const [arm, refused] = await Promise.allSettled([connection.executeQuery(raw('arm')), connection.executeQuery(raw('no query'))]);
+    expect(arm.status).toBe('fulfilled');
+    expect(refused).toMatchObject({ status: 'rejected', reason: { message: 'refused' } });
+    // The same for a stream, sent right behind a query that disarms.
+    const disarm = serialQueries(inner, {
+      refuse: () => (armed ? new Error('stream refused') : undefined),
+      passed: (query) => void (armed = query.sql === 'arm again'),
+    });
+    armed = false;
+    const streaming = (async () => {
+      for await (const _chunk of disarm.streamQuery(raw('no stream'), 1)) void _chunk;
+    })();
+    const [, refusedStream] = await Promise.allSettled([disarm.executeQuery(raw('arm again')), streaming]);
+    expect(refusedStream).toMatchObject({ status: 'rejected', reason: { message: 'stream refused' } });
+  });
+
   it('is the connection for everything else — methods bound to it (private fields), one wrapper per connection', async () => {
     const inner = new CountingConnection(['x']);
     const connection = serialQueries(inner) as DatabaseConnection & { release(): string };
@@ -150,6 +196,111 @@ describe('the MarmeonDriver hands out connections whose queries take turns', () 
     expect(second).not.toBe(inner);
     await Promise.all([second.executeQuery(raw('slow one')), second.executeQuery(raw('two'))]);
     expect(inner.most).toBe(1);
+  });
+});
+
+// MySQL commits a transaction at a schema change: the builder's, which Marmeon sees as a node, is refused inside one before it is sent.
+describe('on MySQL, the MarmeonDriver', () => {
+  const schemaChange = (text: string, kind = 'CreateTableNode', more: object = {}) => ({ ...raw(text), query: { kind, ...more } }) as unknown as CompiledQuery;
+  /** What reached the connection, with the mark of the driver's own transaction statements. */
+  function recording() {
+    const sent: Array<{ sql: string; control: unknown }> = [];
+    const inner = {
+      executeQuery: async (query: CompiledQuery) => {
+        sent.push({ sql: query.sql, control: controlOf(query.parameters) });
+        return { rows: [] };
+      },
+      streamQuery: async function* () {},
+    } as unknown as DatabaseConnection;
+    return { sent, inner };
+  }
+  const refusal = /^\[marmeon:D30\] MySQL commits a transaction at a schema change/;
+
+  it('refuses a schema change of the builder inside a transaction, before it is sent, and sends it outside of one', async () => {
+    const { sent, inner } = recording();
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: 'mysql', target: 'fake' });
+    const connection = await driver.acquireConnection();
+    await connection.executeQuery(schemaChange('create table before_it (id int)'));
+    await driver.beginTransaction(connection, {});
+    await expect(connection.executeQuery(schemaChange('create table inside (id int)'))).rejects.toThrow(refusal);
+    await expect(connection.executeQuery(schemaChange('create table inside (id int)'))).rejects.toBeInstanceOf(TransactionError);
+    await connection.executeQuery(raw('insert into t values (1)'));
+    // A savepoint of a nested transaction is no outside either.
+    await driver.beginTransaction(connection, {});
+    await expect(connection.executeQuery(schemaChange('create table nested (id int)'))).rejects.toThrow(refusal);
+    await driver.rollbackTransaction(connection);
+    await driver.commitTransaction(connection);
+    await connection.executeQuery(schemaChange('create table after_it (id int)'));
+    expect(sent.map((statement) => statement.sql)).toEqual(['create table before_it (id int)', 'begin', 'insert into t values (1)', 'savepoint marmeon_savepoint_1', 'rollback to savepoint marmeon_savepoint_1', 'commit', 'create table after_it (id int)']);
+  });
+
+  it('refuses every kind of schema change of the builder inside a transaction, and none outside; a temporary table is no schema change to MySQL', async () => {
+    const kinds = ['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode', 'CreateViewNode', 'DropViewNode', 'CreateSchemaNode', 'DropSchemaNode'];
+    const { sent, inner } = recording();
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: 'mysql', target: 'fake' });
+    const connection = await driver.acquireConnection();
+    for (const kind of kinds) await connection.executeQuery(schemaChange(`outside ${kind}`, kind));
+    await driver.beginTransaction(connection, {});
+    for (const kind of kinds) await expect(connection.executeQuery(schemaChange(`inside ${kind}`, kind)), kind).rejects.toThrow(refusal);
+    await connection.executeQuery(schemaChange('create temporary table scratch (id int)', 'CreateTableNode', { temporary: true }));
+    await connection.executeQuery(schemaChange('drop temporary table scratch', 'DropTableNode', { temporary: true }));
+    await connection.executeQuery(raw('insert into t values (1)'));
+    await driver.commitTransaction(connection);
+    expect(sent.map((statement) => statement.sql)).toEqual([
+      ...kinds.map((kind) => `outside ${kind}`),
+      'begin',
+      'create temporary table scratch (id int)',
+      'drop temporary table scratch',
+      'insert into t values (1)',
+      'commit',
+    ]);
+  });
+
+  it('refuses a schema change under isolate() too, where a test’s statements are in one transaction, and lets the rows of a test through', async () => {
+    const { sent, inner } = recording();
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: 'mysql', target: 'fake' });
+    const isolation = await driver.isolate();
+    const connection = await driver.acquireConnection();
+    await connection.executeQuery(raw('insert into t values (1)'));
+    await expect(connection.executeQuery(schemaChange('create table t2 (id int)'))).rejects.toThrow(refusal);
+    await isolation.rollback();
+    expect(sent.map((statement) => statement.sql)).toEqual(['begin', 'insert into t values (1)', 'rollback']);
+    expect(sent.map((statement) => statement.control)).toEqual(['begin', undefined, 'rollback']);
+  });
+
+  it('marks the rollback that ends a pinned isolation when the driver is destroyed with it open', async () => {
+    const { sent, inner } = recording();
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: 'mysql', target: 'fake' });
+    await driver.isolate();
+    await driver.destroy();
+    expect(sent.map((statement) => [statement.sql, statement.control])).toEqual([['begin', 'begin'], ['rollback', 'rollback']]);
+  });
+
+  it('lets the other drivers run a schema change of the builder inside a transaction: only MySQL commits at one', async () => {
+    for (const sqlDriver of ['pgsql', 'sqlite'] as const) {
+      const { sent, inner } = recording();
+      const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: sqlDriver, target: 'fake' });
+      const connection = await driver.acquireConnection();
+      await driver.beginTransaction(connection, {});
+      await connection.executeQuery(schemaChange('create table inside (id int)'));
+      await driver.commitTransaction(connection);
+      expect(sent.map((statement) => statement.sql), sqlDriver).toContain('create table inside (id int)');
+    }
+  });
+
+  it('marks the begin, commit and rollback of its own transactions, and nothing else; the other drivers get none', async () => {
+    for (const sqlDriver of ['mysql', 'pgsql'] as const) {
+      const { sent, inner } = recording();
+      const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: sqlDriver, target: 'fake' });
+      const connection = await driver.acquireConnection();
+      await driver.beginTransaction(connection, {});
+      await connection.executeQuery(raw('commit'));
+      await driver.commitTransaction(connection);
+      await driver.beginTransaction(connection, {});
+      await driver.rollbackTransaction(connection);
+      const marks = sent.map((statement) => statement.control);
+      expect(marks, sqlDriver).toEqual(sqlDriver === 'mysql' ? ['begin', undefined, 'commit', 'begin', 'rollback'] : [undefined, undefined, undefined, undefined, undefined]);
+    }
   });
 });
 

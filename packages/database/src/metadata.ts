@@ -463,3 +463,107 @@ function endOfQuoted(sql: string, start: number, quote: string): number {
     from = close + 2;
   }
 }
+
+/**
+ * The first `count` words of a statement, lower-cased, after whitespace and comments (`/* … *\/`, `-- …` with whitespace or a control character behind
+ * the dashes, `# …`). A word begins with a letter or an underscore, and digits and underscores inside it belong to it; it ends at the first other character
+ * (a parenthesis, a quote), where the reading stops; a statement that begins with a digit has no word. `/*!` and `/*!50000` open a comment that MySQL runs as code. With `executableComments`
+ * as `'code'` (the default) what is inside is read as code, with `'comment'` it is skipped like any comment, and with a number (the server's
+ * version as `major * 10000 + minor * 100 + patch`) it is read as that server reads it: a version comment of a newer version is skipped, the others
+ * run. `executable` says that one that runs came before the first word, and so did `/*+`, a hint. Without the version, which reading errs on the safe
+ * side depends on the caller: one that refuses a statement it takes for a `begin` wants all of them ({@link leadingReadings}).
+ */
+export function leadingWords(sql: string, count: number, executableComments: 'code' | 'comment' | number = 'code'): { words: string[]; executable: boolean } {
+  const words: string[] = [];
+  let executable = false;
+  let open = 0;
+  let i = 0;
+  const end = sql.length;
+  const toNewline = () => {
+    const newline = sql.indexOf('\n', i);
+    i = newline < 0 ? end : newline + 1;
+  };
+  while (i < end && words.length < count) {
+    const char = sql[i]!;
+    if (/\s/.test(char)) i++;
+    else if (char === '#') toNewline();
+    else if (char === '-' && sql[i + 1] === '-' && (i + 2 >= end || sql.charCodeAt(i + 2) <= 0x20)) toNewline();
+    else if (char === '/' && sql[i + 1] === '*') {
+      if (sql[i + 2] === '!' && typeof executableComments === 'number') {
+        // As MySQL reads it: six digits and whitespace, or else five digits, give the version the server must have; fewer digits run always, and
+        // the digits are code. A comment of a newer version is skipped like any other; `/*M!` (MariaDB) is a plain comment to MySQL.
+        const digits = /^\d*/.exec(sql.slice(i + 3, i + 10))![0];
+        const six = digits.length === 6 && /\s/.test(sql[i + 9] ?? '');
+        const length = six ? 6 : digits.length >= 5 ? 5 : 0;
+        if (length > 0 && Number(digits.slice(0, length)) > executableComments) {
+          // A skipped version comment may hold one level of `/* … */` (two are a syntax error to the server): its `*/` does not end the comment.
+          let from = i + 3;
+          let close = sql.indexOf('*/', from);
+          for (let nested = sql.indexOf('/*', from); close >= 0 && nested >= 0 && nested < close; nested = sql.indexOf('/*', from)) {
+            const inner = sql.indexOf('*/', nested + 2);
+            if (inner < 0) {
+              close = -1;
+              break;
+            }
+            from = inner + 2;
+            close = sql.indexOf('*/', from);
+          }
+          i = close < 0 ? end : close + 2;
+        } else {
+          executable = true;
+          open++;
+          i += 3 + length;
+        }
+      } else if (sql[i + 2] === '!' && executableComments === 'code') {
+        executable = true;
+        open++;
+        i += 3;
+        while (i < end && /\d/.test(sql[i]!)) i++;
+      } else {
+        if (sql[i + 2] === '+' || (sql[i + 2] === '!' && typeof executableComments !== 'number')) executable = true;
+        const close = sql.indexOf('*/', i + 2);
+        i = close < 0 ? end : close + 2;
+      }
+    } else if (char === '*' && sql[i + 1] === '/' && open > 0) {
+      open--;
+      i += 2;
+    } else if (/[A-Za-z_]/.test(char)) {
+      const start = i;
+      while (i < end && /\w/.test(sql[i]!)) i++;
+      words.push(sql.slice(start, i).toLowerCase());
+    } else break;
+  }
+  return { words, executable };
+}
+
+/**
+ * Every reading of the first `count` words of a statement that a server may give it, for a caller that must not miss a keyword: the words of
+ * {@link leadingWords} with executable comments read as code, and as comments, and for each leading executable comment (`/*!80000 begin *\/`) the words
+ * that stand first inside it, followed by what comes after the comment. A statement without such a comment has the one reading.
+ */
+export function leadingReadings(sql: string, count: number): string[][] {
+  const code = leadingWords(sql, count);
+  const readings = [code.words];
+  if (!code.executable) return readings;
+  readings.push(leadingWords(sql, count, 'comment').words);
+  const end = sql.length;
+  let i = 0;
+  while (i < end) {
+    const char = sql[i]!;
+    if (/\s/.test(char)) i++;
+    else if (char === '#' || (char === '-' && sql[i + 1] === '-' && (i + 2 >= end || sql.charCodeAt(i + 2) <= 0x20))) {
+      const newline = sql.indexOf('\n', i);
+      i = newline < 0 ? end : newline + 1;
+    } else if (char === '/' && sql[i + 1] === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      const after = close < 0 ? end : close + 2;
+      if (sql[i + 2] === '!') {
+        let start = i + 3;
+        while (start < end && /\d/.test(sql[start]!)) start++;
+        readings.push(leadingWords(`${sql.slice(start, close < 0 ? end : close)} ${sql.slice(after)}`, count).words);
+      }
+      i = after;
+    } else break;
+  }
+  return readings;
+}

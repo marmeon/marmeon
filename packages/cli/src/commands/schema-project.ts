@@ -38,7 +38,7 @@ export class SchemaProjectCommand {
     } catch {
       // Without the package nothing reads a schema, unless a module brings migrations: those must be projected.
       if (!this.#app.modules.some((module) => (module as { migrations?: unknown }).migrations)) return 0;
-      output.error('A module has migrations, but @marmeon/database is not installed in this app, so they cannot be projected: add @marmeon/database as a dependency of the app (pnpm add @marmeon/database).');
+      output.error('A module has migrations, but @marmeon/database is not installed in this app, so they cannot be projected: marmeon add database (if the app does not boot yet: pnpm add -E @marmeon/database@<version of your app>).');
       return 1;
     }
     const { projectApp } = (await import(pathToFileURL(path).href)) as DatabaseInternals;

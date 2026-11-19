@@ -2,7 +2,7 @@ import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import type { HealthCheck } from '@marmeon/core';
 import { LiveConfig } from './config.ts';
-import { LIVE_HINTS_TABLE } from './database.ts';
+import { DATABASE_LIVE_DRIVERS, LIVE_DATABASE_DRIVER, LIVE_HINTS_TABLE } from './database.ts';
 
 /**
  * Readiness: the `live_hints` table counts its ids the way the poller needs — `AUTOINCREMENT` on SQLite, an identity (or serial) column
@@ -24,18 +24,26 @@ export class LiveTableHealthCheck implements HealthCheck {
 
   async handle(): Promise<string> {
     const { Connections, sql } = await import('@marmeon/database');
+    const { requireDriver } = await import('@marmeon/database/internal');
     const connections = this.#app.container.make(Connections);
+    const driver = requireDriver(connections.options(this.#config.connection).driver, DATABASE_LIVE_DRIVERS, LIVE_DATABASE_DRIVER);
     const db = connections.get(this.#config.connection);
-    const { driver } = connections.options(this.#config.connection);
-    if (driver === 'sqlite') {
-      const { rows } = await sql<{ sql: string | null }>`select sql from sqlite_master where type = 'table' and name = ${LIVE_HINTS_TABLE}`.execute(db);
-      if (rows.length === 0) throw missing();
-      if (!/\bAUTOINCREMENT\b/i.test(rows[0]!.sql ?? '')) throw new Error(withCode('H7', unsafeIds('its id is not AUTOINCREMENT')));
-    } else {
-      const { rows } = await sql<{ is_identity: string; column_default: string | null }>`select is_identity, column_default from information_schema.columns
-        where table_schema = current_schema() and table_name = ${LIVE_HINTS_TABLE} and column_name = 'id'`.execute(db);
-      if (rows.length === 0) throw missing();
-      if (rows[0]!.is_identity !== 'YES' && !rows[0]!.column_default?.startsWith('nextval(')) throw new Error(withCode('H7', unsafeIds('its id is neither an identity nor a serial column')));
+    switch (driver) {
+      case 'sqlite': {
+        const { rows } = await sql<{ sql: string | null }>`select sql from sqlite_master where type = 'table' and name = ${LIVE_HINTS_TABLE}`.execute(db);
+        if (rows.length === 0) throw missing();
+        if (!/\bAUTOINCREMENT\b/i.test(rows[0]!.sql ?? '')) throw new Error(withCode('H7', unsafeIds('its id is not AUTOINCREMENT')));
+        break;
+      }
+      case 'pgsql': {
+        const { rows } = await sql<{ is_identity: string; column_default: string | null }>`select is_identity, column_default from information_schema.columns
+          where table_schema = current_schema() and table_name = ${LIVE_HINTS_TABLE} and column_name = 'id'`.execute(db);
+        if (rows.length === 0) throw missing();
+        if (rows[0]!.is_identity !== 'YES' && !rows[0]!.column_default?.startsWith('nextval(')) throw new Error(withCode('H7', unsafeIds('its id is neither an identity nor a serial column')));
+        break;
+      }
+      default:
+        throw new Error(`The hints table has no check on ${String(driver satisfies never)}.`);
     }
     return this.#config.connection;
   }

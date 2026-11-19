@@ -1,11 +1,10 @@
 import { hasPackage } from '../commands/schema-project.ts';
-import { runMarmeonJson } from '../spawn.ts';
+import { readMigrationStatus } from '../migration-status.ts';
 import { DATA_NOTICE, failure, type ToolDocument, type ToolFailure } from './result.ts';
 import type { McpTool, ToolContext } from './tools.ts';
 
 const DEFAULT_LIMIT = 200;
 const CHILD_TIMEOUT_MS = 120_000;
-const MAX_CHILD_STDOUT_BYTES = 16 * 1024 * 1024;
 
 const NO_DATABASE: ToolDocument = { format: 1, database: false, connections: [], migrations: [], total: 0, truncated: false, warnings: [] };
 
@@ -27,43 +26,12 @@ export const MIGRATIONS_TOOL: McpTool = {
   run: migrations,
 };
 
-interface Entry {
-  readonly name: string;
-  readonly module: string;
-  readonly connection: string | null;
-  readonly batch: number | null;
-  readonly status: 'ran' | 'pending';
-}
-
 async function migrations(input: Readonly<Record<string, unknown>>, { root, signal }: ToolContext): Promise<ToolDocument | ToolFailure> {
   if (!hasPackage(root)) return NO_DATABASE;
   // The command and its arguments are fixed: nothing of the input reaches the child, the filters apply to its document.
-  const run = await runMarmeonJson(root, ['migrate:status', '--json'], { timeoutMs: CHILD_TIMEOUT_MS, signal, maxStdoutBytes: MAX_CHILD_STDOUT_BYTES });
-  if (run.timedOut) return failure('The app did not answer in time: migrate:status was stopped after 120 seconds.');
-  if (signal.aborted) return failure('The call was cancelled; marmeon migrate:status was stopped.');
-  if (run.tooLarge) return failure('migrate:status printed more than 16 MiB; the result was dropped.');
-  if (run.code !== 0) {
-    return failure(`marmeon migrate:status failed: ${run.stderrTail.trim() || `it ended with code ${run.code}`}. Run it in a terminal to see the whole message.`);
-  }
-  if (run.document === undefined) return failure('marmeon migrate:status did not print one JSON document: something in the app writes to stdout directly.');
-  const document = run.document as { format?: unknown; migrations?: unknown; warnings?: unknown };
-  if (document.format !== 1 || !Array.isArray(document.migrations) || !Array.isArray(document.warnings)) {
-    return failure('marmeon migrate:status printed a document this version does not read — update marmeon.');
-  }
-  // Fields are copied one by one; an entry without `connection` (an older @marmeon/database) runs on an unknown one.
-  const all: Entry[] = [];
-  for (const raw of document.migrations as Record<string, unknown>[]) {
-    if (raw === null || typeof raw !== 'object' || typeof raw.name !== 'string' || typeof raw.module !== 'string' || (raw.status !== 'ran' && raw.status !== 'pending')) {
-      return failure('marmeon migrate:status printed a document this version does not read — update marmeon.');
-    }
-    all.push({
-      name: raw.name,
-      module: raw.module,
-      connection: typeof raw.connection === 'string' ? raw.connection : null,
-      batch: typeof raw.batch === 'number' ? raw.batch : null,
-      status: raw.status,
-    });
-  }
+  const read = await readMigrationStatus(root, { signal, timeoutMs: CHILD_TIMEOUT_MS });
+  if (!read.ok) return failure(read.reason);
+  const all = read.migrations;
 
   const counts = new Map<string | null, { ran: number; pending: number }>();
   for (const entry of all) {
@@ -85,6 +53,6 @@ async function migrations(input: Readonly<Record<string, unknown>>, { root, sign
     migrations: matching.slice(0, limit),
     total: matching.length,
     truncated: matching.length > limit,
-    warnings: (document.warnings as unknown[]).filter((warning): warning is string => typeof warning === 'string'),
+    warnings: read.warnings,
   };
 }

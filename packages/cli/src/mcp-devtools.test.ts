@@ -144,7 +144,7 @@ describe('devtools_entries in an app without the devtools', { timeout: 120_000 }
       await initialize(session);
       const result = await call(session, {});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe('The devtools are not installed: pnpm add -E -D @marmeon/devtools@<version of your app> (docs/devtools.md#introduction)');
+      expect(result.content[0].text).toBe('The devtools are not installed: marmeon add devtools (docs/devtools.md#introduction)');
     } finally {
       await session.close();
     }

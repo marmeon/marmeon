@@ -1,6 +1,8 @@
 import { err, type Result } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import type { ConnectionOptions } from './config.ts';
 import type { Connections } from './connections.ts';
+import { unknownDriverMessage } from './supported-driver.ts';
 import { queryReadOnlyPgsql } from './read-only-pgsql.ts';
 import { queryReadOnlySqlite } from './read-only-sqlite.ts';
 
@@ -33,6 +35,9 @@ export interface ReadOnlyQueryRefusal {
   readonly message: string;
 }
 
+/** The reason `db:query` gives for a MySQL connection. */
+export const MYSQL_QUERY_REFUSAL = withCode('D29', 'db:query does not run on MySQL yet.');
+
 /** Longest text a cell keeps. */
 export const MAX_CELL_LENGTH = 4096;
 
@@ -59,7 +64,16 @@ export async function readOnlyQuery(
   } catch (error) {
     return err({ kind: 'failed', message: error instanceof Error ? error.message : String(error) });
   }
-  return connection.driver === 'sqlite' ? queryReadOnlySqlite(file, sql, options) : queryReadOnlyPgsql(connection.url, sql, options);
+  switch (connection.driver) {
+    case 'sqlite':
+      return queryReadOnlySqlite(file, sql, options);
+    case 'pgsql':
+      return queryReadOnlyPgsql(connection.url, sql, options);
+    case 'mysql':
+      return err({ kind: 'refused', message: MYSQL_QUERY_REFUSAL });
+    default:
+      return err({ kind: 'refused', message: unknownDriverMessage((connection as { driver: unknown }).driver) });
+  }
 }
 
 /** A cell as JSON can carry it: text masked and cut, bytes by their size, big integers and dates as text. */

@@ -31,6 +31,12 @@ describe('the time of masking hostile input', () => {
       `${'pass'.repeat(50_000)}=x`,
       `${'otp'.repeat(60_000)}`,
       `${'recovery'.repeat(25_000)} x`,
+      '?state='.repeat(30_000),
+      `?state=${'&state='.repeat(30_000)}`,
+      '#code='.repeat(40_000),
+      ';state='.repeat(40_000),
+      '&amp;state='.repeat(25_000),
+      `?state=${'a,'.repeat(100_000)}`,
       `${'-----BEGIN PRIVATE KEY-----'.repeat(7_000)}`,
     ];
     for (const input of inputs) {

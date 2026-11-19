@@ -54,7 +54,7 @@ copy a secret into a command, a test or your answer. A column marked `"secret": 
   (`docs/devtools.md#browser-errors`, `docs/mcp.md#devtools_entries`).
 - The devtools record only while the app runs with `NODE_ENV=development`; a run with `NODE_ENV=test` or `production` leaves nothing
   (`docs/devtools.md#only-in-development`). Entries are masked, and `--search` finds the masked text.
-- Without `@marmeon/devtools` the tool answers with the install command (`pnpm add -E -D @marmeon/devtools@<version of your app>`).
+- Without `@marmeon/devtools` the tool answers with the install command (`marmeon add devtools`).
   That changes `package.json`: ask before you run it.
 - The rows, options and the `--json` document are in `docs/devtools.md#listing-the-entries`.
 

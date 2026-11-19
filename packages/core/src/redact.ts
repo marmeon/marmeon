@@ -82,8 +82,16 @@ const BARE_WORD = /(?<![\w/-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
 const URL_LIKE = /(?<![\w+.-])[a-z][\w+.-]*:\/\//i;
 // A private key in PEM form — to its end line, or to the end of the text when that is cut off.
 const PEM_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
-// `?code=…`, `&code=…` (an OAuth callback) and `"code":"…"` (a JSON body): `code` is no secret name in free text, only here.
-const CODE_PARAM = /([?&]code=)(?!\[redacted\])[^\s"'&,;}]+/gi;
+// `?code=…`, `&code=…`, `#code=…`, `;code=…` (an OAuth callback, in a query or a fragment; the `;` of an HTML `&amp;code=…` counts too) and `"code":"…"` (a JSON body):
+// `code` is no secret name in free text, only here. The value runs to what ends a parameter (`&`, `#`, a quote, whitespace) — a comma,
+// `;` or `}` is part of it, as the URL parser reads it: taking more of a sentence is the safe side. No lookahead for an already masked
+// value: `state=[redacted]abc` must not keep `abc`, and masking `[redacted]` again gives `[redacted]`.
+const CODE_PARAM = /([?&#;]code=)[^\s"'&#]+/gi;
+// `state=…` in the same places: it ties a browser to a pending sign-in (an OAuth callback or authorize URL), and a reader of the log
+// must not get it. Only as a query parameter — a JSON key or a log field named `state` is ordinary data.
+const STATE_PARAM = /([?&#;]state=)[^\s"'&#]+/gi;
+// The names whose value is masked in a query, beyond the sensitive keys: `code` and `state` (see `isSensitiveQueryName`).
+const QUERY_NAME = /^(?:code|state)$/i;
 const CODE_JSON = /("code"\s*:\s*)(?:"(?:[^"\\]|\\.)*"|\d+)/gi;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // What every pattern above (and an added name's `name=value`) needs to match at all: a separator (`:` `=`), a `$` (PHC),
@@ -150,6 +158,7 @@ function maskText(text: string): string {
   return text
     .replace(PEM_KEY, '[redacted]')
     .replace(CODE_PARAM, '$1[redacted]')
+    .replace(STATE_PARAM, '$1[redacted]')
     .replace(CODE_JSON, '$1"[redacted]"')
     .replace(URL_PASSWORD, '$1***@')
     .replace(PHC_HASH, '[redacted]')
@@ -330,6 +339,15 @@ export class Redactor {
     return REDACTED_KEYS.test(key) || CAMEL_OTP.test(key) || this.#keys.has(key.toLowerCase());
   }
 
+  /**
+   * @internal
+   * Whether the value of the query parameter `name` is never shown: a sensitive key ({@link isSensitive}), or `code` / `state` of
+   * an OAuth callback in any case. The one owner for every place that records a query by its parameters.
+   */
+  isSensitiveQueryName(name: string): boolean {
+    return this.isSensitive(name) || QUERY_NAME.test(name);
+  }
+
   /** {@link isSensitive} for the own field of an error: its `code` (`ECONNREFUSED`, `23505`) says what failed and stays. */
   #isSensitiveField(key: string, value: unknown): boolean {
     return !(key === 'code' && (typeof value === 'string' || typeof value === 'number')) && this.isSensitive(key);
@@ -356,6 +374,21 @@ export class Redactor {
     return out;
   }
 
+  /**
+   * A query string (without its `?`) masked as text: the core's patterns run with a `?` in front, so the first parameter counts as a
+   * parameter too; the app's names and patterns run on the text without it, as on any text.
+   * @internal
+   */
+  queryText(query: string): string {
+    try {
+      const masked = redactText(`?${query}`);
+      return this.#finish(masked.startsWith('?') ? masked.slice(1) : masked);
+    } catch (error) {
+      if (error instanceof RangeError) return REDACTED;
+      throw error;
+    }
+  }
+
   /** A value inside a log context (`depth`: the level of the object holding it). */
   #logValue(value: unknown, depth: number): unknown {
     // A URL-shaped string under a harmless key (`{ target: 'postgres://u:p@h/db?password=x' }`) is masked like text.
@@ -367,7 +400,8 @@ export class Redactor {
     if (Array.isArray(value) || value instanceof Set) return [...(value as Iterable<unknown>)].map((item) => this.#logValue(item, depth + 1));
     if (value instanceof Map) return this.#logObject(Object.fromEntries(value), depth + 1);
     // A URL is text with a query (`?token=…`) and a path (`/reset-password/<token>`): masked like text, never written as it is.
-    if (value instanceof URL || value instanceof URLSearchParams) return this.text(String(value));
+    if (value instanceof URL) return this.text(String(value));
+    if (value instanceof URLSearchParams) return this.queryText(String(value));
     // Dates, buffers and typed arrays: written as they are (their `toJSON`, or bytes).
     if (typeof (value as { toJSON?: unknown }).toJSON === 'function' || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return value;
     return this.#logObject(value as Record<string, unknown>, depth + 1);
@@ -408,6 +442,11 @@ export class Redactor {
     return masked;
   }
 
+  /** What the app adds to a text the core has masked: the added names' values and patterns' matches, cut at {@link MAX_ENTRY_BYTES}. */
+  #finish(masked: string): string {
+    return truncate(this.#appPatterns(this.#text ? masked.replace(this.#text, maskValue) : masked));
+  }
+
   /**
    * `text` without what looks like a secret ({@link redactText}, the added names' values and the added patterns' matches), cut at
    * {@link MAX_ENTRY_BYTES}.
@@ -415,8 +454,7 @@ export class Redactor {
   text(text: string): string {
     if (this.#patterns.length === 0 && text.length <= MAX_ENTRY_BYTES && !MAYBE_SECRET.test(text)) return text;
     try {
-      const masked = redactText(text);
-      return truncate(this.#appPatterns(this.#text ? masked.replace(this.#text, maskValue) : masked));
+      return this.#finish(redactText(text));
     } catch (error) {
       // As in `redactText`: the added names' pattern or an app's pattern may overflow on a huge value; nothing of it stays.
       if (error instanceof RangeError) return REDACTED;
@@ -434,7 +472,7 @@ export class Redactor {
     if (depth >= 8) return '[…]';
     if (value instanceof Date) return Number.isNaN(value.getTime()) ? 'Invalid Date' : value.toISOString();
     if (value instanceof URL) return this.url(value.href);
-    if (value instanceof URLSearchParams) return this.text(value.toString());
+    if (value instanceof URLSearchParams) return this.queryText(String(value));
     if (typeof Blob !== 'undefined' && value instanceof Blob) {
       const name = (value as { name?: unknown }).name;
       return `[${typeof name === 'string' ? `file ${this.text(name)}, ` : ''}${value.size} bytes${value.type ? `, ${value.type}` : ''}]`;

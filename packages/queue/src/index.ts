@@ -6,7 +6,7 @@ import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForg
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
 import { queueNameProblem } from './drivers/redis.ts';
-import { FAILED_JOBS_COLUMNS, FAILED_JOBS_TABLE, JOBS_COLUMNS, JOBS_TABLE } from './drivers/database.ts';
+import { DATABASE_QUEUE_DRIVERS, FAILED_DATABASE_DRIVER, FAILED_JOBS_COLUMNS, FAILED_JOBS_TABLE, JOBS_COLUMNS, JOBS_TABLE, QUEUE_DATABASE_DRIVER } from './drivers/database.ts';
 import { QueueHealthCheck } from './health.ts';
 import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
 import type { FailedJobStoreFactory, QueueDriverFactory } from './driver.ts';
@@ -142,8 +142,14 @@ export class QueueServiceProvider implements ServiceProvider {
       if (!app.container.has(database.Connections)) {
         throw new QueueSetupError(withCode('Q4', 'The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
-      // An unknown database connection name fails here, with the known ones.
+      // An unknown database connection name fails here, with the known ones; so does a driver the stores have no SQL for (D29),
+      // for the connections a store will really use (the failed-job store of a `sync` queue is judged on first use).
       for (const connection of databases) app.container.make(database.Connections).options(connection);
+      const { requireDriver } = await import('@marmeon/database/internal');
+      if (used.driver === 'database') requireDriver(app.container.make(database.Connections).options(used.connection).driver, DATABASE_QUEUE_DRIVERS, QUEUE_DATABASE_DRIVER);
+      if (config.failed.driver === 'database' && used.driver !== 'sync') {
+        requireDriver(app.container.make(database.Connections).options(config.failed.connection).driver, DATABASE_QUEUE_DRIVERS, FAILED_DATABASE_DRIVER);
+      }
       // /up/ready is red until the tables have the new names and every column the drivers write.
       const { SchemaRequirements } = await import('@marmeon/database');
       const requirements = app.container.make(SchemaRequirements);
