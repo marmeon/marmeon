@@ -4,6 +4,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+import { limitOf } from './limit-of.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
@@ -104,6 +105,38 @@ describe('a link that is used once', () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh' });
     await app.post('/lab/one-time-links', { json: {}, headers: json }).assertNotFound();
+  });
+
+  it('is a 404 unless the lab is on, past the limit too, and the 404 is marked as a credential page', async () => {
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh', env: { LAB_PAGES: 'false' } });
+    const limit = await limitOf(app, 'lab.one-time-links');
+    const token = 'a'.repeat(43);
+    const marked = (response: { headers: Headers }) => {
+      expect(response.headers.get('cache-control')).toBe('no-store, private');
+      expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    };
+    marked(await app.get(`/lab/one-time-links/${token}`, { headers: json }).assertNotFound());
+    for (let i = 0; i < limit + 3; i++) {
+      marked(await app.post('/lab/one-time-links', { json: {}, headers: json }).assertNotFound());
+      marked(await app.post(`/lab/one-time-links/${token}`, { json: {}, headers: json }).assertNotFound());
+    }
+  });
+
+  it('marks the lab-off 404 of the invitation, its token route and the announcement as a credential page', async () => {
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh', env: { LAB_PAGES: 'false' } });
+    const page = { headers: { accept: 'text/html' } };
+    const marked = (response: { headers: Headers }, referrer: string) => {
+      expect(response.headers.get('cache-control')).toBe('no-store, private');
+      expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+      expect(response.headers.get('referrer-policy')).toBe(referrer);
+    };
+    marked(await app.get('/lab/announcement?invite=x', page).assertNotFound(), 'no-referrer');
+    marked(await app.get(`/lab/invitations/${'a'.repeat(43)}`, page).assertNotFound(), 'no-referrer');
+    marked(await app.get('/lab/invitation', page).assertNotFound(), 'same-origin');
+    marked(await app.post('/lab/invitation', { json: { name: 'Ada' }, headers: json }).assertNotFound(), 'same-origin');
   });
 
   it('trades the token for session state in a new session id, and a failed form returns with its errors and input', async () => {

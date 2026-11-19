@@ -1,10 +1,13 @@
 import { Logger, type LogContext } from '@marmeon/core';
+import { Router } from '@marmeon/router';
 import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { LabConfig } from './config.ts';
+import { LabOnly } from './LabOnly.ts';
 import type { SendDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
+import { limitOf } from './limit-of.ts';
 
 /** Keeps what the app logs, to look for the SSR errors. */
 function recordingLogger(entries: { level: string; message: string; context: LogContext }[], bindings: LogContext = {}): Logger {
@@ -119,6 +122,19 @@ describe('the SSR lab', () => {
   });
 });
 
+describe('the lab gate', () => {
+  it('is in the middleware of every /lab route, behind nothing but credentialPage()', async () => {
+    await using app = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
+    const routes = app.container.make(Router).routes.filter((route) => route.path === '/lab' || route.path.startsWith('/lab/'));
+    expect(routes.length).toBeGreaterThan(20);
+    for (const route of routes) {
+      const at = route.middleware.indexOf(LabOnly);
+      const before = route.middleware.slice(0, Math.max(at, 0)).map((middleware) => (middleware as { name: string }).name);
+      expect({ route: `${route.methods.join('|')} ${route.path}`, gated: at >= 0, before: before.filter((name) => name !== 'credentialPage') }).toEqual({ route: `${route.methods.join('|')} ${route.path}`, gated: true, before: [] });
+    }
+  });
+});
+
 describe('the devtools lab', () => {
   it('a hydration mismatch on purpose (?mismatch=1): the server renders its own text — the browser renders another (React recovers)', async () => {
     const { app } = await lab();
@@ -135,5 +151,12 @@ describe('the devtools lab', () => {
     const { app } = await lab();
     await app.get('/lab/devtools', page).assertOk().assertServerRendered().assertDontSee('Client hooks');
     await app.post('/lab/devtools', { form: { name: 'x' }, headers: { referer: 'http://localhost/lab/devtools' } }).assertRedirect('/lab/devtools').assertInvalid<SendDevtoolsLabController>({ name: 'At least two characters.' });
+  });
+
+  it('is a 404 unless the lab is on, past the limit too: the route’s limit never counts a request the lab refuses', async () => {
+    await using off = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
+    await off.get('/lab/devtools', page).assertNotFound();
+    const limit = await limitOf(off, 'lab.devtools');
+    for (let i = 0; i < limit + 3; i++) await off.post('/lab/devtools', { form: { name: 'x' }, headers: { referer: 'http://localhost/lab/devtools' } }).assertNotFound();
   });
 });

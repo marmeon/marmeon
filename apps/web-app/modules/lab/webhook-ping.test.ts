@@ -2,6 +2,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { PingWebhookLabController } from './controllers/WebhookPingLabController.ts';
+import { limitOf } from './limit-of.ts';
 
 /** `/lab/webhook-ping`: an address an editor enters is called by the server, and the client decides at send time. */
 
@@ -57,6 +58,14 @@ describe('the webhook ping', () => {
   it('is a 404 unless the lab is on', async () => {
     await using off = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
     await off.post('/lab/webhook-ping', { json: { url: 'https://hooks.example.com/in' }, headers: json }).assertNotFound();
+    off.http.assertNothingSent();
+  });
+
+  it('is a 404 unless the lab is on, past the limit too: the route’s limit never counts a request the lab refuses', async () => {
+    await using off = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
+    await off.navigating().get('/lab/webhook-ping').assertNotFound();
+    const limit = await limitOf(off, 'lab.webhook-ping');
+    for (let i = 0; i < limit + 3; i++) await off.post('/lab/webhook-ping', { json: { url: 'https://hooks.example.com/in' }, headers: json }).assertNotFound();
     off.http.assertNothingSent();
   });
 });
