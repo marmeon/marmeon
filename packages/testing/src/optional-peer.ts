@@ -32,8 +32,9 @@ async function installed(name: string, from: string): Promise<boolean> {
   }
 }
 
-// Only "absent" is kept, never an error: `importAuth()` and the others run on every test request, and the probe and the walk cost
-// a few milliseconds for a package that is not there.
+// Only "absent" is kept, never an error: `importSession()` runs once per view (the TestApp constructor, through sessionAccess:
+// actingAs(), withHeaders(), …) and the other loaders once per createTestApp, and the probe and the walk cost a few
+// milliseconds for a package that is not there.
 const absent = new Set<string>();
 
 /**
