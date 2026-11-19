@@ -203,6 +203,9 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   const storage = options.storage === 'real' ? undefined : await importStorage();
   let storageFake: StorageFake | undefined;
   const live = await importLive();
+  // Loaded once, before the boot like the others: a request and `actingAs` use this result, so a broken install fails here
+  // and not after a request was handled.
+  const auth = await importAuth();
   // Before the boot like the others: a loader throws for a broken install, and nothing is started yet that would need closing.
   const scheduler = await importScheduler();
   let broadcast: BroadcastTester | undefined;
@@ -281,8 +284,10 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   });
 
   if (devtools && !application.container.has(devtools.Recorder)) {
-    await application.shutdown();
-    throw new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json so discovery finds its provider (marmeon add devtools; if it is installed already: marmeon discover).");
+    return failWith(
+      new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json so discovery finds its provider (marmeon add devtools; if it is installed already: marmeon discover)."),
+      () => application.shutdown(),
+    );
   }
 
   let ssr: TestSsr | undefined;
@@ -293,39 +298,47 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       ssr = await TestSsr.start(definition.root, { stream: options.ssr === 'stream', ...(options.ssrServer ? { server: options.ssrServer } : {}) });
     }
   } catch (error) {
-    await application.shutdown();
-    throw error;
+    return failWith(error, () => application.shutdown());
   }
   try {
     if (application.container.has(ServerServing)) await application.container.make(ServerServing).begin();
   } catch (error) {
-    await ssr?.close();
-    await application.shutdown();
-    throw error;
+    return failWith(error, async () => ssr?.close(), () => application.shutdown());
   }
-  // The error page's recorder, as the server's provider binds it in development — until the app closes.
-  const recorder = options.debug && !application.container.has(DevRequestRecorder) ? (await importRequestRecorder()).createRequestRecorder(application) : undefined;
-  if (recorder) application.container.instance(DevRequestRecorder, recorder);
-  const shared: Shared = {
-    kernel: createHttpKernel(application, { ...(ssr ? { renderer: ssr.renderer } : {}), ...(options.debug === undefined ? {} : { debug: options.debug }) }),
-    schedule: scheduler && application.container.has(scheduler.Scheduler) ? new scheduler.ScheduleTester(application.container.make(scheduler.Scheduler), clock) : undefined,
-    database,
-    mail: mailFake,
-    http: httpFake,
-    chat: chatFake,
-    queue: queueFake,
-    notifications: notificationFake,
-    storage: storageFake,
-    broadcast,
-    live,
-    events: eventFake!,
-    devtools: devtoolsTester,
-    clock,
-    ssr,
-    cleanups: [...(ssr ? [() => ssr.close()] : []), ...(recorder ? [async () => recorder.close()] : [])],
-    closing: undefined,
-  };
-  const app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });
+  let recorder: ReturnType<Awaited<ReturnType<typeof importRequestRecorder>>['createRequestRecorder']> | undefined;
+  let shared: Shared;
+  let app: TestApp;
+  // Everything from here to the database block can throw (a recorder that does not load, a kernel or a schedule that refuses the
+  // app): what runs by now is closed, and the original error wins over a failing close.
+  try {
+    // The error page's recorder, as the server's provider binds it in development — until the app closes.
+    recorder = options.debug && !application.container.has(DevRequestRecorder) ? (await importRequestRecorder()).createRequestRecorder(application) : undefined;
+    const made = recorder;
+    if (made) application.container.instance(DevRequestRecorder, made);
+    shared = {
+      kernel: createHttpKernel(application, { ...(ssr ? { renderer: ssr.renderer } : {}), ...(options.debug === undefined ? {} : { debug: options.debug }) }),
+      schedule: scheduler && application.container.has(scheduler.Scheduler) ? new scheduler.ScheduleTester(application.container.make(scheduler.Scheduler), clock) : undefined,
+      database,
+      mail: mailFake,
+      http: httpFake,
+      chat: chatFake,
+      queue: queueFake,
+      notifications: notificationFake,
+      storage: storageFake,
+      broadcast,
+      live,
+      auth,
+      events: eventFake!,
+      devtools: devtoolsTester,
+      clock,
+      ssr,
+      cleanups: [...(ssr ? [() => ssr.close()] : []), ...(made ? [async () => made.close()] : [])],
+      closing: undefined,
+    };
+    app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });
+  } catch (error) {
+    return failWith(error, async () => recorder?.close(), async () => ssr?.close(), () => application.shutdown());
+  }
   if (database && worker) {
     try {
       assertWorkerConnection(database, application, worker);
@@ -364,12 +377,20 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       if (watch.ended) throw lateApp();
       if (options.seed) await application.container.make(database.Seeding).run();
     } catch (error) {
-      await app.close();
-      throw error;
+      return failWith(error, () => app.close());
     }
   }
   await closeWhenTheTestEnds(app, watch);
   return app;
+}
+
+/**
+ * Closes what a failed createTestApp started, in order, then throws `error`: every close is tried, and one that fails too
+ * neither stops the next nor hides the cause.
+ */
+async function failWith(error: unknown, ...closes: (() => unknown)[]): Promise<never> {
+  for (const close of closes) await Promise.resolve().then(close).catch(() => undefined);
+  throw error;
 }
 
 /** The worker databases an isolated app has written to and not emptied again. */
@@ -439,6 +460,8 @@ interface Shared {
   /** What the app's Broadcaster sent — when it has @marmeon/live. */
   readonly broadcast: BroadcastTester | undefined;
   readonly live: LiveModule | undefined;
+  /** @marmeon/auth's test side, loaded once per app — `undefined` only when @marmeon/auth is not installed (a broken install throws in createTestApp). */
+  readonly auth: Awaited<ReturnType<typeof importAuth>>;
   /** Every dispatched event. */
   readonly events: EventFake;
   /** The app's `Clock`. */
@@ -844,11 +867,20 @@ export class TestApp {
   close(): Promise<void> {
     this.#shared.closing ??= (async () => {
       await this.#shared.kernel.settle();
-      try {
-        for (const cleanup of this.#shared.cleanups) await cleanup();
-      } finally {
-        await this.application.shutdown();
+      // Every cleanup runs, whatever an earlier one did (a rejecting SSR close must not skip the database's rollback): the first
+      // failure is thrown once the app is shut down.
+      let failed = false;
+      let failure: unknown;
+      for (const cleanup of this.#shared.cleanups) {
+        try {
+          await cleanup();
+        } catch (error) {
+          if (!failed) failure = error;
+          failed = true;
+        }
       }
+      await this.application.shutdown();
+      if (failed) throw failure;
     })();
     return this.#shared.closing;
   }
@@ -1198,7 +1230,7 @@ export class TestApp {
         return answer;
       })
       .then(async ({ res, sent }) => {
-        const auth = await importAuth();
+        const auth = this.#shared.auth;
         const response = await TestResponse.from(res, label, this.#crypto, await this.#session, async (page) =>
           render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
           sent,
@@ -1266,14 +1298,14 @@ export class TestApp {
     let data = started ? undefined : this.#defaults.session;
     const tokenHeader: Record<string, string> = {};
     if (this.#defaults.token) {
-      const auth = await importAuth();
+      const auth = this.#shared.auth;
       if (!auth) throw new Error("actingAs(…, { guard: 'api' }) needs @marmeon/auth in the app.");
       const { user, abilities } = this.#defaults.token;
       const token = await auth.authenticatedToken(this.application.container, user, abilities);
       tokenHeader.authorization = `Bearer ${token}`;
     }
     if (this.#defaults.user !== undefined && !started) {
-      const auth = await importAuth();
+      const auth = this.#shared.auth;
       if (!auth) throw new Error('actingAs() needs @marmeon/auth in the app.');
       const { guard } = this.#defaults;
       const signedIn = guard === undefined
