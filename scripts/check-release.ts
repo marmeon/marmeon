@@ -30,6 +30,18 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * listed entry must stand under its release.
  */
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {
+  '1.2.0': [
+    'low-a-command-of-your-own-named-add-doctor-upgrade-or-dbquery-needs-another-name',
+    'low-marmeonoauth-brings-the-commands-makeoauth-and-makesocial-accounts-table',
+    'low-a-policys-static-guard-names-the-guard-whose-users-it-judges',
+    'low-every-page-of-the-web-group-carries-the-prop-_conflict',
+    'low-upload-refuses-an-option-it-does-not-know',
+    'low-raw-sql-in-a-data-step-that-names-the-migrators-tables-stops-with-d4',
+    'low-a-query-parameter-named-state-is-masked-in-logs-the-error-page-the-devtools-and-traces',
+    'low-a-coding-agent-can-read-rows-of-the-development-database-through-marmeon-mcp',
+    'low-marmeon-check-reports-the-agentsmd-block-and-the-installed-skills-as-out-of-date',
+    'low-a-langmarmeon-folder-that-cannot-be-read-stops-the-start',
+  ],
   '1.1.0': ['low-a-passkey-with-an-rsa-key-under-2048-bits-or-an-unlisted-algorithm-no-longer-signs-in'],
   '1.0.0': [
     'high-before-you-upgrade',
