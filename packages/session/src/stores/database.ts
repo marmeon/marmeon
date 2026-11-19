@@ -14,6 +14,9 @@ export interface DatabaseSessionConnection {
 
 type Sql = (typeof import('@marmeon/database'))['sql'];
 
+/** The database drivers the store's SQL is written for: the provider checks the connection against this list before it opens it. */
+export const DATABASE_SESSION_DRIVERS = ['sqlite', 'pgsql'] as const;
+
 /**
  * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
  * session id (`id`), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's

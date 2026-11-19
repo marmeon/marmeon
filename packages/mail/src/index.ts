@@ -64,7 +64,7 @@ export class MailServiceProvider implements ServiceProvider {
     const queue: MailQueue = async (payload, options) => {
       const module = await importQueue();
       if (!module || !container.has(module.Queue)) {
-        throw new MailError('mailer.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or send the mail now: mailer.send().');
+        throw new MailError('mailer.queue() needs @marmeon/queue (marmeon add queue; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/queue@<version of your app>) — or send the mail now: mailer.send().');
       }
       return container.make(module.Queue).dispatch(SendQueuedMail, payload, options);
     };

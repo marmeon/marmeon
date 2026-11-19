@@ -1,6 +1,6 @@
 /**
- * Which test files need Postgres, Redis or S3, derived from the source (`vitest.config.ts` turns it into one Vitest project per
- * set of services; `pnpm test:pgsql`, `test:redis` and `test:s3` run the projects that include their service). Nothing is listed
+ * Which test files need Postgres, Redis, S3 or MySQL, derived from the source (`vitest.config.ts` turns it into one Vitest project per
+ * set of services; `pnpm test:pgsql`, `test:redis`, `test:s3` and `test:mysql` run the projects that include their service). Nothing is listed
  * by hand and no file is marked: the rules below read the file and the relative imports it reaches. Bare specifiers
  * (`@marmeon/*`, `node:*`, npm) are never followed.
  *
@@ -14,15 +14,16 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 
-export type Service = 'pgsql' | 'redis' | 's3';
+export type Service = 'pgsql' | 'redis' | 's3' | 'mysql';
 
-export const SERVICES: readonly Service[] = ['pgsql', 'redis', 's3'];
+export const SERVICES: readonly Service[] = ['pgsql', 'redis', 's3', 'mysql'];
 
 /** The variable whose presence switches a service's cases on (rule 1). */
 export const SERVICE_VARIABLES: Record<Service, string> = {
   pgsql: `MARMEON_TEST_${'PGSQL_URL'}`,
   redis: `MARMEON_TEST_${'REDIS_URL'}`,
   s3: `MARMEON_TEST_${'S3_ENDPOINT'}`,
+  mysql: `MARMEON_TEST_${'MYSQL_URL'}`,
 };
 
 const FIXTURE_ERROR = 'import fixtures relatively — the service selection cannot see through a package specifier';
@@ -100,7 +101,7 @@ function usesDatabase(directory: string, cache: Map<string, boolean>): boolean {
  *    the app's `.env`, so the app's own database is Postgres.
  * 4. A test or helper file starts a nested Vitest — its refresh tests inherit `DB_DRIVER`.
  *
- * Redis and S3: rule 1 with their variables.
+ * Redis, S3 and MySQL: rule 1 with their variables.
  *
  * Throws on a package specifier that names a `__fixtures__` directory: the closure cannot follow it, and a fixture left out
  * would drop its service from the selection.
@@ -237,7 +238,7 @@ export function groupByServices(selection: ReadonlyMap<string, ReadonlySet<Servi
  * The `test.env` of a project that was selected for `services`: values for every other service that fail loudly where a real run
  * would connect. The host names end in `.invalid`, which never resolves (RFC 6761), so no connection to a service is opened. A file that
  * needs a service the rules do not see turns `pnpm test` red with the host name in the error, instead of losing its Postgres,
- * Redis or S3 coverage unnoticed.
+ * Redis, S3 or MySQL coverage unnoticed.
  */
 export function tripwireEnv(services: ReadonlySet<Service>): Record<string, string> {
   const env: Record<string, string> = {};
@@ -247,11 +248,12 @@ export function tripwireEnv(services: ReadonlySet<Service>): Record<string, stri
   }
   if (!services.has('redis')) env[SERVICE_VARIABLES.redis] = 'redis://not-selected-for-test-redis.invalid:6379';
   if (!services.has('s3')) env[SERVICE_VARIABLES.s3] = 'http://not-selected-for-test-s3.invalid';
+  if (!services.has('mysql')) env[SERVICE_VARIABLES.mysql] = 'mysql://x@not-selected-for-test-mysql.invalid/marmeon';
   return env;
 }
 
 /**
- * The `test.env` of the `timing` project: SQLite, pinned against a `DB_DRIVER` in the shell, and the tripwires of all three services
+ * The `test.env` of the `timing` project: SQLite, pinned against a `DB_DRIVER` in the shell, and the tripwires of every service
  * (the Postgres one as the variable only — the web app's tests need the driver to stay SQLite).
  */
 export function timingEnv(): Record<string, string> {

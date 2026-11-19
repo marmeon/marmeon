@@ -3,6 +3,8 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { upgradeGuide } from '../packages/cli/src/framework/upgrade-guide.ts';
+import { parseVersion } from '../packages/cli/src/framework/versions.ts';
 import { frameworkPackages } from './packages.ts';
 import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkScorecardWorkflow, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, packagesNewSinceLastRelease, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
@@ -54,6 +56,16 @@ function expectProblems(problems: readonly string[], wanted: readonly string[]):
 }
 
 describe('checkUpgrading — before the first release', () => {
+  it('lists the anchors the CLI computes for the entries of the repository’s UPGRADING.md', () => {
+    const [low, high] = [parseVersion('0.0.0'), parseVersion('999.0.0')];
+    const sections = upgradeGuide(readFileSync(join(root, 'UPGRADING.md'), 'utf8'), low!, high!);
+    const listed = Object.keys(UPGRADING_ANCHORS);
+    expect(sections.map((section) => section.version.text).filter((version) => listed.includes(version)).sort()).toEqual(listed.sort());
+    for (const section of sections.filter((s) => listed.includes(s.version.text))) {
+      expect(section.entries.map((e) => e.anchor).sort(), section.version.text).toEqual([...UPGRADING_ANCHORS[section.version.text]!].sort());
+    }
+  });
+
   it('passes the repository’s UPGRADING.md', () => {
     const problems = checkUpgrading(root, UPGRADING_ANCHORS, frameworkPackages(root)[0]?.manifest.version);
     expect(problems, problems.join('\n')).toEqual([]);

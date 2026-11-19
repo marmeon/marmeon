@@ -15,16 +15,19 @@ import { CreateOneTimeLinkLabController, ShowAnnouncementLabController, OpenOneT
 import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
 import { CreateGuestLabController, EditGuestLabController, StoreGuestLabController, UpdateGuestLabController } from './controllers/GuestLabController.ts';
 import { LabOnly } from './LabOnly.ts';
+import { LocalOidcHost } from './LocalOidcHost.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { AddQuestionLabController, ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 import { Surveys } from './SurveyRepository.ts';
 import { SendChatLabController, ShowChatLabController } from './controllers/ChatLabController.ts';
 import { PingWebhookLabController, ShowWebhookPingLabController } from './controllers/WebhookPingLabController.ts';
+import { ShowLocalOidcAuthorizeController, ShowLocalOidcConfigurationController, StoreLocalOidcAuthorizeController } from './controllers/LocalOidcController.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
-// manifest). `LabOnly` is the first middleware of every chain below (after `credentialPage()` where the path is a credential): a request
-// answers 404 unless the lab is on before the route's own limit counts, its binder looks a record up or a guest is sent to sign in. The global and the web group's middleware run first.
+// manifest). `LabOnly` is the first middleware of every `/lab` chain below (after `credentialPage()` where the path is a credential): a
+// request answers 404 unless the lab is on before the route's own limit counts, its binder looks a record up or a guest is sent to sign in.
+// The global and the web group's middleware run first. The routes of the local provider (`/_dev/oidc`) follow their own rule, below.
 export default defineRoutes((Route) => {
   // Open to everyone, since the lab shows nothing of the app's records and the gate has answered 404 before unless the lab is on. A lab route
   // added later decides for itself, and takes one of the chains below: a chain built on `group` without `LabOnly` skips the gate.
@@ -88,4 +91,13 @@ export default defineRoutes((Route) => {
   const chat = lab.middleware(authenticate()).middleware(verified());
   chat.get('/chat', ShowChatLabController);
   chat.middleware(throttle('lab.chat')).post('/chat', SendChatLabController);
+
+  // The local OpenID Connect provider (`OAUTH_LOCAL_*`), whatever the lab says. `LocalOidcHost` answers only the app's own hosts (403 for another,
+  // so a rebound DNS name cannot use it) and `LocalOidc.provider()` is a 404 outside development and test; in production the form post is
+  // refused by the CSRF check first (419, or 403 from another site). Open to everyone: a sign-in starts here before anybody is signed in.
+  // Its token endpoint is in api-routes.ts.
+  const oidcRoutes = Route.prefix('/_dev/oidc').middleware(LocalOidcHost).authorize(everyone);
+  oidcRoutes.get('/.well-known/openid-configuration', ShowLocalOidcConfigurationController);
+  oidcRoutes.get('/authorize', ShowLocalOidcAuthorizeController);
+  oidcRoutes.post('/authorize', StoreLocalOidcAuthorizeController);
 });

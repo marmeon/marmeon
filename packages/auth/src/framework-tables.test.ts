@@ -122,7 +122,18 @@ describe('the framework tables of a new app and of the web app', () => {
       expect(web.tables.get(name), name).toBe(text);
     }
     expect([...fresh.relations.keys()]).toEqual(expect.arrayContaining(['users', 'sign_ins']));
-    for (const [name, text] of fresh.relations) expect(web.relations.get(name), `relations of ${name}`).toBe(text);
+    for (const [name, text] of fresh.relations) {
+      // The web app also has tables of its own that point at `users` (the linked provider accounts): its `users` has those relations besides these.
+      if (OWN_TO_WEB_APP.includes(name)) {
+        const freshLines = text.split('\n').filter((candidate) => candidate.trim() !== '');
+        const webLines = (web.relations.get(name) ?? '').split('\n').filter((candidate) => candidate.trim() !== '');
+        for (const line of freshLines) expect(webLines, `relations of ${name}: ${line.trim()}`).toContain(line);
+        // Exactly the linked provider accounts, so that a stray or lost relation of `users` in the web app does not pass unnoticed.
+        expect(webLines.filter((line) => !freshLines.includes(line)).map((line) => line.trim().split(':')[0]), `relations of ${name} beyond the kit's`).toEqual(['social_accounts']);
+        continue;
+      }
+      expect(web.relations.get(name), `relations of ${name}`).toBe(text);
+    }
   });
 
   // Two apps are migrated, one after the other, each with dozens of statements; on a busy machine that is well over the default 5 s.

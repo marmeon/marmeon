@@ -1,7 +1,10 @@
 import { spawn, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
+import { realpathSync } from 'node:fs';
+import { join, sep } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Redactor } from '@marmeon/core';
+import { runInGroup } from './framework/package-manager.ts';
 import { NO_INTERACTION_ENV } from './prompt.ts';
 
 /** The `marmeon` launcher of this package — `bin/marmeon.js`, next to `src/` and `dist/`. */
@@ -231,4 +234,40 @@ export function runMarmeonJson(
       finish();
     });
   });
+}
+
+/**
+ * The `marmeon` the app has installed, run as a new process: what `marmeon upgrade` starts after it replaced the packages. A class so that a test can replace it.
+ * It is not {@link LAUNCHER}: that file belongs to the version that is running, which an install has replaced or removed by now. The launcher is
+ * looked up at each call, as `bin/marmeon.js` of the package `<root>/node_modules/marmeon` really is, and it must lie inside that package.
+ * The child leads a process group of its own and never reads standard input, like `runMarmeonJson`; it asks nothing.
+ */
+export class InstalledMarmeon {
+  /** Resolves with the exit code of `marmeon <args>`. Rejects when the app has no installed `marmeon` or its launcher is not inside it, and when `signal` aborts (after the child's group is gone). */
+  async run(root: string, args: readonly string[], { stdout, signal }: { readonly stdout: 'inherit' | 'stderr'; readonly signal?: AbortSignal }): Promise<number> {
+    const launcher = installedLauncher(root);
+    const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...inherited } = process.env;
+    const { code } = await runInGroup('marmeon', process.execPath, [launcher, ...args], { ...inherited, [NO_INTERACTION_ENV]: '1' }, { cwd: root, interactive: false, stdout, ...(signal ? { signal } : {}) });
+    return code;
+  }
+}
+
+/** The real path of `bin/marmeon.js` of the `marmeon` package installed for the app at `root`; throws when there is none or the file lies outside the package (a link, a `bin` swapped for one elsewhere). */
+function installedLauncher(root: string): string {
+  let directory: string;
+  try {
+    directory = realpathSync.native(join(root, 'node_modules', 'marmeon'));
+    // `package.json` is the file that says this directory is the package: a link to another directory's would move "the package" there.
+    if (!realpathSync.native(join(directory, 'package.json')).startsWith(directory + sep)) throw new Error('outside');
+  } catch {
+    throw new Error('marmeon is not installed in this app (there is no node_modules/marmeon with a package.json of its own)');
+  }
+  let launcher: string;
+  try {
+    launcher = realpathSync.native(join(directory, 'bin', 'marmeon.js'));
+  } catch {
+    throw new Error('the installed marmeon has no bin/marmeon.js');
+  }
+  if (!launcher.startsWith(directory + sep)) throw new Error('the installed marmeon\'s bin/marmeon.js leads outside the package, so it is not run');
+  return launcher;
 }

@@ -47,6 +47,10 @@ export class AppGuardContext extends GuardContext {
     this.#container = container;
   }
 
+  override reauthenticationRoot(): object {
+    return this.#container;
+  }
+
   get settings(): AuthConfig {
     return this.#resolver.make(AuthConfig);
   }

@@ -23,10 +23,16 @@ export interface WorkerDatabase {
   readonly adminUrl?: string;
 }
 
+/** The database drivers a test app's own database is made, migrated and emptied on, and what the helpers say of another one. */
+const TEST_DATABASE_DRIVERS = ['sqlite', 'pgsql'] as const;
+const TEST_DATABASE_FEATURE = { what: 'A test app with a database', instead: 'point the default connection at one' };
+
 export async function workerDatabase(root: string, env: Env): Promise<WorkerDatabase> {
-  const { DatabaseConfig } = await import('@marmeon/database/internal');
+  const { DatabaseConfig, requireDriver } = await import('@marmeon/database/internal');
   const config = (await resolveConfig([DatabaseConfig], env)).get(DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
   const options = config.default;
+  // Before any directory or database is made: a driver this helper has no SQL for must not fall into the Postgres path below.
+  requireDriver(options.driver, TEST_DATABASE_DRIVERS, TEST_DATABASE_FEATURE);
   if (options.driver === 'sqlite') {
     // A file, not `:memory:`: an in-memory database lives only as long as its connection, and every test app has its own.
     // Inside the app, not the shared temporary directory: there, other users could predict the name and plant a file or link.
@@ -38,6 +44,10 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
     if (!cleaned.has(file)) removeStaleDatabases(dirname(file), file);
     return { key: file, env: { DB_DRIVER: 'sqlite', DB_DATABASE: file } };
   }
+  // `requireDriver` refused mysql above; the line keeps this branch exhaustive.
+  if (options.driver === 'mysql') throw new Error('A test app with a database has no worker database on the mysql driver.');
+  // Only Postgres is left: a driver added to the list above stops here until it has its own database.
+  if (options.driver !== 'pgsql') throw new Error(`A test app with a database has no worker database on the ${String(options satisfies never)} driver.`);
   const url = new URL(options.url);
   // Per app too (like the SQLite file): two apps' tests in one worker must not share a schema.
   // A run of the repository's own tests tags its databases with its checkout, so the teardown of another checkout's run leaves them alone.
@@ -70,8 +80,13 @@ export function prepareWorkerDatabase(database: DatabaseModule, app: Application
       const options = connections.options();
       if (options.driver === 'sqlite') {
         for (const suffix of ['', '-wal', '-shm']) rmSync(`${options.database}${suffix}`, { force: true });
-      } else {
+      } else if (options.driver === 'pgsql') {
         await recreatePostgresDatabase(database, app, options.url, worker.adminUrl!);
+      } else if (options.driver === 'mysql') {
+        // `workerDatabase` refused it before the app booted; the branch throws, not skips, if a caller got here without it.
+        throw new Error('A test app with a database cannot prepare its database on the mysql driver.');
+      } else {
+        throw new Error(`A test app with a database cannot prepare its database on the ${String(options satisfies never)} driver.`);
       }
       await app.container.make(database.Migrator).migrate();
     })();
@@ -82,20 +97,38 @@ export function prepareWorkerDatabase(database: DatabaseModule, app: Application
   return ready;
 }
 
-type EmptyingModule = DatabaseModule & Pick<typeof import('@marmeon/database/internal'), 'isMigratorTable' | 'tableColumns'>;
+type EmptyingModule = DatabaseModule & Pick<typeof import('@marmeon/database/internal'), 'isMigratorTable' | 'tableColumns' | 'requireDriver'>;
 
 /**
  * Throws unless the app's default connection is the worker's own database: an `override` or a variable that points the app elsewhere
  * must never get that database dropped, recreated or emptied. Checks what the options name; {@link emptyWorkerDatabase} asks the
- * server too, once the database exists.
+ * server too, once the database exists. Returns the driver, narrowed to the ones the helpers have SQL for.
  */
-export function assertWorkerConnection(database: DatabaseModule, app: Application, worker: WorkerDatabase): void {
+export function assertWorkerConnection(
+  database: DatabaseModule & Pick<typeof import('@marmeon/database/internal'), 'requireDriver'>,
+  app: Application,
+  worker: WorkerDatabase,
+): (typeof TEST_DATABASE_DRIVERS)[number] {
   const options = app.container.make(database.Connections).options();
-  const same =
-    options.driver === 'sqlite'
-      ? options.database === worker.key
-      : options.driver === 'pgsql' && new URL(options.url).host === new URL(worker.key).host && new URL(options.url).pathname === new URL(worker.key).pathname;
-  if (!same) throw new Error("A test app with a database must use the worker's own test database; its connection \"default\" names another one (an override of the database configuration?).");
+  // First: another driver is named, not mistaken for "another database".
+  const driver = database.requireDriver(options.driver, TEST_DATABASE_DRIVERS, TEST_DATABASE_FEATURE);
+  if (!sameDatabase(options, worker)) throw new Error("A test app with a database must use the worker's own test database; its connection \"default\" names another one (an override of the database configuration?).");
+  return driver;
+}
+
+/** Whether the connection is the worker's own database; another driver throws (fail closed), and adding one to the list fails to compile here. */
+function sameDatabase(options: ReturnType<InstanceType<DatabaseModule['Connections']>['options']>, worker: WorkerDatabase): boolean {
+  switch (options.driver) {
+    case 'sqlite':
+      return options.database === worker.key;
+    case 'pgsql':
+      return new URL(options.url).host === new URL(worker.key).host && new URL(options.url).pathname === new URL(worker.key).pathname;
+    case 'mysql':
+      // `assertWorkerConnection` refuses it through `requireDriver` first; this throws too, so a caller that skipped that is refused.
+      throw new Error('A test app with a database cannot compare its connection on the mysql driver.');
+    default:
+      throw new Error(`A test app with a database cannot compare its connection on the ${String(options satisfies never)} driver.`);
+  }
 }
 
 /**
@@ -107,11 +140,10 @@ export function assertWorkerConnection(database: DatabaseModule, app: Applicatio
  * another one. See docs/database-testing.md#testing-a-lock.
  */
 export async function emptyWorkerDatabase(database: EmptyingModule, app: Application, worker: WorkerDatabase): Promise<void> {
-  assertWorkerConnection(database, app, worker);
+  const driver = assertWorkerConnection(database, app, worker);
   const connections = app.container.make(database.Connections);
   const db = connections.get();
   const { sql, isMigratorTable, tableColumns } = database;
-  const driver = connections.options().driver === 'sqlite' ? 'sqlite' : 'pgsql';
   if (driver === 'pgsql') {
     const { rows } = await sql<{ name: string }>`select current_database() as name`.execute(db);
     if (rows[0]?.name !== decodeURI(new URL(worker.key).pathname.slice(1))) throw new Error("A test app with a database must use the worker's own test database; the server answers for another one.");
@@ -142,6 +174,8 @@ export async function emptyWorkerDatabase(database: EmptyingModule, app: Applica
     }
     return;
   }
+  // Only Postgres is left: a driver added to the list stops here until it has its own way to empty a database.
+  if (driver !== 'pgsql') throw new Error(`A test app with a database cannot empty its database on the ${String(driver satisfies never)} driver.`);
   if (names.length === 0) return;
   await connections.transaction(async (trx) => {
     // The tables as an unqualified name finds them (see `tableColumns`), with what the role may do to each.

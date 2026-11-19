@@ -46,6 +46,24 @@ numbers are in [the contribution guide](../../CONTRIBUTING.md#benchmarks).
 | Alan Turing  | alan@example.com  |
 | Grace Hopper | grace@example.com |
 
+## Social sign-in with a local provider
+
+`modules/oauth` is the module `marmeon make:oauth` generates ([social login](../../docs/oauth.md#the-generated-module)). The buttons sit on the
+sign-in page, the connected accounts on your own profile page (the security page asks for the password, which an account made at a provider
+may not have) and the confirm buttons on the confirmation page ([placing the components](../../docs/oauth.md#placing-the-components)).
+
+To try them without an account at GitHub or Google, `modules/lab` runs an OpenID Connect provider of its own under `/_dev/oidc`. It is off until
+you uncomment the three `OAUTH_LOCAL_*` lines of your `.env` (client ID, client secret and issuer); the sign-in page then shows "Continue with
+Local". The provider's page lets you answer as any name and address, with the address verified or not. Sign in again with the same address and
+you land in the same account; `prompt=login` (a confirmation sends it) always asks again.
+
+It exists in development and test only, and answers only `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL` (403 for any other host,
+against DNS rebinding). Outside development and test the pages, the discovery document and the token endpoint answer 404, and the form post of the
+page is refused by the CSRF check first (419 without the browser's word, 403 from another site). An app with all three variables set refuses to
+start when `NODE_ENV` is neither `development` nor `test`; without the issuer the provider is inactive. Its ID tokens are not signed, which the
+package accepts because it takes them only from the token response ([OpenID Connect providers](../../docs/oauth.md#openid-connect-providers)).
+`modules/lab/local-oidc.test.ts` tests each of its rules.
+
 ## Trying things out
 
 `pnpm exec marmeon tinker` opens a REPL with the booted app (helpers: `.ls`); `--sandbox` rolls everything back at the end:

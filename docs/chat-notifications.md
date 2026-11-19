@@ -49,12 +49,13 @@ CHAT_WEBHOOKS=ops=https://hooks.slack.com/services/…
 
 ## Installation
 
-Add the package in the version of your app's other framework packages, and let the app find its provider:
+Add the package with [`marmeon add`](packages.md#introduction), which installs it at the version of your app and lets the app find its provider:
 
 ```sh
-pnpm add -E @marmeon/chat-notifications@<version of your app>
-pnpm marmeon discover
+pnpm marmeon add chat-notifications
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E @marmeon/chat-notifications@<version of your app>`, then `marmeon discover`.
 
 The package brings `@marmeon/fetch`, which posts the requests. Queueing a message, and with it the `chat` channel of
 notifications, needs `@marmeon/queue` and `APP_KEY`. Without a queue you post with `send()`. The `chat` channel needs

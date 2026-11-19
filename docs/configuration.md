@@ -439,7 +439,7 @@ holds this table to the code. A feature's page explains its variables; the last 
 The names follow a few rules:
 
 - A variable starts with the prefix of its area (`APP_`, `AUTH_`, `HASH_`, `CACHE_`, `CHAT_`, `CSRF_`, `DB_`, `DEVTOOLS_`, `FETCH_`, `LIVE_`, `LOG_`,
-  `MAIL_`, `NOTIFICATIONS_`, `QUEUE_`, `REDIS_`, `SCHEDULE_`, `SERVER_`, `SESSION_`, `UPLOADS_`, `MARMEON_OTEL_`). Only `NODE_ENV`,
+  `MAIL_`, `NOTIFICATIONS_`, `OAUTH_`, `QUEUE_`, `REDIS_`, `SCHEDULE_`, `SERVER_`, `SESSION_`, `UPLOADS_`, `MARMEON_OTEL_`). Only `NODE_ENV`,
   `PORT` and `HOST` have none, because platforms set them, and the names of the OpenTelemetry specification stay as it writes them.
 - `<AREA>_DRIVER` picks the driver. `<AREA>_CONNECTION` names a connection of the database or of Redis, and nothing else.
 - A duration says its unit: `_MILLISECONDS`, `_SECONDS`, `_MINUTES`, `_HOURS` or `_DAYS`. A rate ends in `_PER_MINUTE` or
@@ -463,7 +463,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `APP_PREVIOUS_KEYS` | encryption | value | `[]` | [Encryption](encryption.md#the-application-key) |
 | `APP_SHUTDOWN_TIMEOUT_SECONDS` | core | duration | `10` | [Providers](providers.md#shutting-down) |
 | `APP_TIMEZONE` | i18n | value | optional | [Localization](localization.md#configuration) |
-| `APP_URL` | auth, devtools, mail, server, session | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
+| `APP_URL` | auth, devtools, mail, oauth, server, session | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | auth | value | `100` | [Authentication](authentication.md#configuration) |
 | `AUTH_DEVICE_COOKIE_DAYS` | auth | duration | `90` | [Authentication](authentication.md#configuration) |
 | `AUTH_EMAIL_CHANGE_MINUTES` | auth | duration | `60` | [Authentication](authentication.md#configuration) |
@@ -533,6 +533,30 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `MARMEON_OTEL_TRUST_TRACEPARENT` | otel | switch | `false` | [Observability](observability.md#configuration) |
 | `NODE_ENV` | chat-notifications, core, devtools, encryption, log, mail, scheduler, server, session | value | optional | [Configuration](configuration.md#the-environment-node_env) |
 | `NOTIFICATIONS_CONNECTION` | notifications | connection | `"default"` | [Notifications](notifications.md#the-notifications-table) |
+| `OAUTH_DISCORD_CLIENT_ID` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_DISCORD_CLIENT_SECRET` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_DISCORD_REDIRECT_URL` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_DISCORD_SCOPES` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITHUB_CLIENT_ID` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITHUB_CLIENT_SECRET` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITHUB_REDIRECT_URL` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITHUB_SCOPES` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITLAB_CLIENT_ID` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITLAB_CLIENT_SECRET` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITLAB_ISSUER` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITLAB_REDIRECT_URL` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GITLAB_SCOPES` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GOOGLE_CLIENT_ID` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GOOGLE_REDIRECT_URL` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_GOOGLE_SCOPES` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_MICROSOFT_CLIENT_ID` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_MICROSOFT_CLIENT_SECRET` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_MICROSOFT_REDIRECT_URL` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_MICROSOFT_SCOPES` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_MICROSOFT_TENANT` | oauth | value | optional | [Social login](oauth.md#configuring-a-provider) |
+| `OAUTH_REGISTRATION` | oauth | switch | `true` | [Social login](oauth.md#signing-users-in) |
+| `OAUTH_STORE_TOKENS` | oauth | switch | `false` | [Social login](oauth.md#storing-tokens) |
 | `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | otel | value | `[]` | [Observability](observability.md#redaction) |
 | `OTEL_SDK_DISABLED` | otel | switch | `"false"` | [Observability](observability.md#configuration) |
 | `PORT` | server | value | `3000` | [Configuration](configuration.md#the-variables-of-a-new-app) |

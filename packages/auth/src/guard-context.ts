@@ -78,6 +78,11 @@ export abstract class GuardContext {
   abstract accountSessions(): AccountSessions;
   abstract auth(): Auth;
 
+  /** The root container proofs of re-authentication must have been claimed on, for the app's guard; a package guard takes none. */
+  reauthenticationRoot(): object | undefined {
+    return undefined;
+  }
+
   // What every guard shares, answered here so a service built for a guard never has to be handed them one by one.
   abstract connections(): Connections;
   abstract events(): EventDispatcher;

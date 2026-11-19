@@ -7,13 +7,16 @@ by mail, in a list inside the app, live in their open tabs, and in a chat channe
 stable name, the schema of its data, the channels it takes and what it says on each. You send it to a recipient as data, a kind
 and an id, and a worker delivers it.
 
-A new app has the package and the table its database channel writes. Otherwise add both:
+A new app has the package and the table its database channel writes. Otherwise add both with [`marmeon add`](packages.md#introduction),
+which copies the table's migration too and so boots the app: the `.env` must be valid.
 
 ```sh
-pnpm add -E @marmeon/notifications@<version of your app>
-pnpm marmeon make:notifications-table
+pnpm marmeon add notifications
 pnpm marmeon migrate
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E @marmeon/notifications@<version of your app>`, then
+`marmeon discover` and `pnpm marmeon make:notifications-table` before `migrate`.
 
 A notification that tells a user about every sign-in with a password. Its mail class, `NewSignInMail`, and `describeBrowser()`,
 which names the browser of a user agent, are the app's own files:

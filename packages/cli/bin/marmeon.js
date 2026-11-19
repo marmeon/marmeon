@@ -126,8 +126,8 @@ async function runHere(args, launch) {
   await import('@marmeon/core/register');
   const { run } = await import('marmeon/main');
   process.exitCode = await run(args);
-  // `marmeon check` ran app code and checks of packages: one that left a timer or a socket open must not keep the report waiting.
-  if (args[0] === 'check') {
+  // `marmeon check` and `marmeon doctor` ran app code and checks of packages: one that left a timer or a socket open must not keep the report waiting.
+  if (args[0] === 'check' || args[0] === 'doctor') {
     process.stderr.write('', () => process.stdout.write('', () => process.exit()));
   }
   // A worker of `marmeon start --workers=N` that could not start (its app failed to boot): its channel to the primary would keep it

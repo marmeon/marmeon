@@ -11,7 +11,7 @@ import { guardDriver, verifyDriver } from './guarded.ts';
 import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 import { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 import { LimitLiveValidation, RateLimiter } from './rate-limiter.ts';
-import { CACHE_COLUMNS, CACHE_LOCKS_COLUMNS, CACHE_LOCKS_TABLE, CACHE_TABLE, DatabaseStore } from './stores/database.ts';
+import { CACHE_COLUMNS, CACHE_LOCKS_COLUMNS, CACHE_LOCKS_TABLE, CACHE_TABLE, DATABASE_STORE_DRIVERS, DatabaseStore } from './stores/database.ts';
 import { FileStore } from './stores/file.ts';
 import { MemoryStore } from './stores/memory.ts';
 import { RedisStore } from './stores/redis.ts';
@@ -70,8 +70,8 @@ export function cacheTablesConnection(container: Resolver): string {
   return config.driver === 'database' ? config.connection : 'default';
 }
 
-const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add -E @marmeon/database@<version of your app>');
-const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add -E @marmeon/redis@<version of your app>');
+const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'marmeon add database (or pnpm add -E @marmeon/database@<version of your app>)');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'marmeon add redis (or pnpm add -E @marmeon/redis@<version of your app>)');
 
 /** Registers the `Cache` (`CACHE_DRIVER`) and the `RateLimiter`, and `make:cache-table`. Found by `marmeon discover`. */
 export class CacheServiceProvider implements ServiceProvider {
@@ -140,7 +140,9 @@ export class CacheServiceProvider implements ServiceProvider {
       if (!app.container.has(database.Connections)) {
         throw new CacheSetupError(withCode('S1', 'CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
-      app.container.make(database.Connections).options(connection);
+      // An unknown connection name (D11) or a driver the store has no SQL for (D29) fails the start.
+      const { requireDriver } = await import('@marmeon/database/internal');
+      requireDriver(app.container.make(database.Connections).options(connection).driver, DATABASE_STORE_DRIVERS, CACHE_DATABASE_DRIVER);
       // /up/ready is red until the tables have the new names and every column the store writes.
       const { SchemaRequirements } = await import('@marmeon/database');
       const requirements = app.container.make(SchemaRequirements);
@@ -149,6 +151,9 @@ export class CacheServiceProvider implements ServiceProvider {
     }
   }
 }
+
+/** What `CACHE_DRIVER=database` says of a connection on a driver the store has no SQL for. */
+const CACHE_DATABASE_DRIVER = { what: 'CACHE_DRIVER=database', instead: 'use CACHE_DRIVER=redis, file or memory' };
 
 /** The driver of `CACHE_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
 function builtIn(config: CacheConfig, container: Resolver): CacheDriver {
@@ -161,9 +166,12 @@ function builtIn(config: CacheConfig, container: Resolver): CacheDriver {
       return both(
         new DatabaseStore(async () => {
           const { Connections } = await importDatabase();
+          const { requireDriver } = await import('@marmeon/database/internal');
           const connections = container.make(Connections);
           // Its own connection, never the app's transaction: a rate-limit hit or a lock survives a rollback.
-          return { db: connections.infrastructure(config.connection, CACHE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
+          // The driver first: a connection that cannot run the store's SQL is never opened.
+          const driver = requireDriver(connections.options(config.connection).driver, DATABASE_STORE_DRIVERS, CACHE_DATABASE_DRIVER);
+          return { db: connections.infrastructure(config.connection, CACHE_INFRASTRUCTURE), driver };
         }, clock),
       );
     case 'redis':

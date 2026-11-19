@@ -58,12 +58,10 @@ export function malformedCalls(text: string): string[] {
 }
 
 describe('the register of server error codes', () => {
-  // Each package's src/ only: a walk of `packages/` follows the workspace links of every node_modules, and each package a package
-  // depends on multiplies the paths.
-  const files = readdirSync(PACKAGES).flatMap((name) =>
-    existsSync(join(PACKAGES, name, 'src')) ? readdirSync(join(PACKAGES, name, 'src'), { recursive: true, encoding: 'utf8' }).map((file) => `${name}/src/${file}`) : [],
-  );
-  const sources = files
+  // Only each package's `src`: a recursive walk of `packages/` follows the workspace links in `node_modules`, which loop.
+  const sources = readdirSync(PACKAGES, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(PACKAGES, entry.name, 'src')))
+    .flatMap((entry) => readdirSync(join(PACKAGES, entry.name, 'src'), { recursive: true, encoding: 'utf8' }).map((file) => `${entry.name}/src/${file}`))
     .filter((file) => /^[^/]+\/src\/.*\.tsx?$/.test(file) && !/node_modules|\.test\.tsx?$|\.type-test\.ts$|__fixtures__|test-helpers|\/client\//.test(file))
     .map((file) => ({ file, text: withoutComments(readFileSync(join(PACKAGES, file), 'utf8')) }));
   const used = sources.flatMap(({ text }) =>
