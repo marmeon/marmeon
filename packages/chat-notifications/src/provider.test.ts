@@ -159,7 +159,7 @@ describe('ChatServiceProvider: custom drivers', () => {
     expect(refused.message).toBe('[marmeon:S10] The chat driver "mm" must return a ChatDriver: `hosts[0]` is refused: A host pattern is a lower-case DNS name of at least two labels, or `*.` and such a name.');
   });
 
-  it('treats a driver whose hosts getter throws like a driver that breaks its contract: check() answers, the factory runs once, the start stops with S10', async () => {
+  it('treats a driver whose hosts getter throws like a driver that breaks its contract: check() answers every time, the start stops with S10', async () => {
     let calls = 0;
     const factory: ChatDriverFactory = () => {
       calls += 1;
@@ -176,7 +176,7 @@ describe('ChatServiceProvider: custom drivers', () => {
     const message = 'The chat driver "mm" must return a ChatDriver: reading it failed.';
     expect(chat.check({ url: mattermostUrl, driver: 'mm' })).toBe(message);
     expect(chat.check({ url: mattermostUrl, driver: 'mm' })).toBe(message);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     const error = await rejection(boot({ env: { CHAT_DRIVER: 'mm' }, providers: [plugin('BrokenProvider', { mm: factory })] }));
     expect(error).toBeInstanceOf(ChatSetupError);
     expect(error.message).toBe(`[marmeon:S10] ${message}`);

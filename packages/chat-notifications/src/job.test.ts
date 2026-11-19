@@ -4,7 +4,7 @@ import type { JobContext } from '@marmeon/queue';
 import { describe, expect, it } from 'vitest';
 import type { ChatDriverFactory } from './driver.ts';
 import { SendQueuedChatMessage, queuedChatSchema, type QueuedChatPayload } from './job.ts';
-import { ChatDeliveryError, ChatError } from './errors.ts';
+import { ChatDeliveryError, ChatDriverError, ChatError } from './errors.ts';
 import { normalizeMessage } from './message.ts';
 import { ChatPoster } from './poster.ts';
 import { ChatTargets } from './targets.ts';
@@ -109,6 +109,25 @@ describe('SendQueuedChatMessage', () => {
       expect(run.calls.failed[0], reason).toMatchObject({ reason });
       expect(run.calls.released).toEqual([]);
     }
+  });
+
+  it('rethrows a driver that threw, so the job\'s tries apply: a factory that throws once is not a failed job, and the retry posts', async () => {
+    let calls = 0;
+    const mm: ChatDriverFactory = () => {
+      calls += 1;
+      if (calls === 1) throw new Error('not yet');
+      return { hosts: ['chat.example.com'], paths: ['/hooks/'], render: (message) => ({ json: { text: message.text } }) };
+    };
+    const { http, job } = setup('slack', {}, { mm });
+    http.respond(/./, reply(200));
+    const payload = { to: { url: 'https://chat.example.com/hooks/abc', driver: 'mm' }, content: content() };
+    const run = context();
+    await expect(job.handle(payload, run)).rejects.toBeInstanceOf(ChatDriverError);
+    expect(run.calls).toMatchObject({ released: [], failed: [] });
+    http.assertNothingSent();
+    await job.handle(payload, run);
+    http.assertSentCount(1);
+    expect(run.calls).toMatchObject({ released: [], failed: [] });
   });
 
   it('checks the address again at the accepting side: a crafted payload for another host is failed as refused, and no request is sent', async () => {

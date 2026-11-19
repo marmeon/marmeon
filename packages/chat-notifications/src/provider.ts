@@ -5,8 +5,8 @@ import { BUILT_IN_CHAT_DRIVERS, CHAT_LOG_WARNING, ChatConfig, parseWebhooks } fr
 import { checkWebhook } from './destination.ts';
 import type { ChatDriverFactory } from './driver.ts';
 import { ChatError, ChatSetupError } from './errors.ts';
-import { SendQueuedChatMessage } from './job.ts';
-import { ChatNotifier, WebhookChatNotifier, type ChatQueue } from './notifier.ts';
+import { SendQueuedChatMessage, type QueuedChatPayload } from './job.ts';
+import { ChatNotifier, WebhookChatNotifier, type ChatQueue, type QueueChatOptions } from './notifier.ts';
 import { ChatPoster } from './poster.ts';
 import { ChatTargets } from './targets.ts';
 
@@ -22,16 +22,30 @@ declare module '@marmeon/core' {
 }
 
 type QueueModule = typeof import('@marmeon/queue');
+type NotificationsModule = typeof import('@marmeon/notifications');
 
-/** @marmeon/queue is an optional peer: only `chat.queue()` needs it. `load` is the import, replaceable by a test. @internal */
-export async function importQueue(load: () => Promise<QueueModule> = () => import('@marmeon/queue')): Promise<QueueModule | undefined> {
+/**
+ * Imports an optional peer: `undefined` only when the package itself is missing (the importer's path may name it, and so may another
+ * missing package's error). `load` is the import, replaceable by a test.
+ */
+async function importOptional<T>(load: () => Promise<T>, name: string): Promise<T | undefined> {
   try {
     return await load();
   } catch (error) {
-    // only the package itself missing: the importer's path may name it, and so may another missing package's error
-    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && /Cannot find (?:package|module) '@marmeon\/queue'/.test(String((error as Error).message))) return undefined;
+    const missing = new RegExp(`Cannot find (?:package|module) '${name.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}'`);
+    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && missing.test(String((error as Error).message))) return undefined;
     throw error;
   }
+}
+
+/** @marmeon/queue is an optional peer: only `chat.queue()` needs it. `load` is the import, replaceable by a test. @internal */
+export function importQueue(load: () => Promise<QueueModule> = () => import('@marmeon/queue')): Promise<QueueModule | undefined> {
+  return importOptional(load, '@marmeon/queue');
+}
+
+/** @marmeon/notifications is an optional peer: only the `chat` channel needs it. `load` is the import, replaceable by a test. @internal */
+export function importNotifications(load: () => Promise<NotificationsModule> = () => import('@marmeon/notifications')): Promise<NotificationsModule | undefined> {
+  return importOptional(load, '@marmeon/notifications');
 }
 
 /**
@@ -80,14 +94,21 @@ export class ChatServiceProvider implements ServiceProvider {
         protected: config.protected,
       }),
     );
-    const queue: ChatQueue = async (payload, options) => {
+    const available = async (): Promise<QueueModule> => {
       const module = await importQueue();
       if (!module || !container.has(module.Queue)) {
         throw new ChatError('chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
       }
-      // `JobInput` of a payload that holds `ChatJson` is too deep for the compiler; the schema checks the payload at the dispatch.
-      return container.make(module.Queue).dispatch(SendQueuedChatMessage as never, payload as never, options);
+      return module;
     };
+    const queue: ChatQueue = Object.assign(
+      async (payload: QueuedChatPayload, options: QueueChatOptions) => {
+        const module = await available();
+        // `JobInput` of a payload that holds `ChatJson` is too deep for the compiler; the schema checks the payload at the dispatch.
+        return container.make(module.Queue).dispatch(SendQueuedChatMessage as never, payload as never, options);
+      },
+      { ready: async () => void (await available()) },
+    );
     container.singleton(ChatNotifier, (c) => new WebhookChatNotifier(c.make(ChatTargets), c.make(ChatPoster), queue));
     container.bind(SendQueuedChatMessage, (c) => new SendQueuedChatMessage(c.make(ChatPoster), c.make(ChatTargets)));
   }
@@ -132,6 +153,13 @@ export class ChatServiceProvider implements ServiceProvider {
     }
     const queue = await importQueue();
     if (queue && container.has(queue.JobRegistry)) container.make(queue.JobRegistry).add([SendQueuedChatMessage], '@marmeon/chat-notifications', { framework: true });
+    const notifications = await importNotifications();
+    if (notifications && container.has(notifications.NotificationChannels)) {
+      // loaded only now: the channel imports @marmeon/notifications, which an app without notifications does not have
+      const { ChatChannel } = await import('./notifications.ts');
+      // `scope.make`: the delivery's scope builds the notifier, so an override of `ChatNotifier` in that scope applies
+      container.make(notifications.NotificationChannels).add('chat', (scope) => new ChatChannel(scope.make(ChatNotifier), scope.make(Logger).child({ channel: 'chat' })));
+    }
     if (config.protected && config.driver === 'log') container.make(Logger).warn(CHAT_LOG_WARNING, { driver: 'log' });
   }
 }

@@ -10,3 +10,5 @@ export type { QueueChatOptions } from './notifier.ts';
 export { ChatServiceProvider } from './provider.ts';
 export { escapeDiscordMarkdown, escapeSlackText } from './escape.ts';
 export type { DiscordRaw, SlackRaw, TeamsRaw } from './raw.ts';
+// the `chat` channel of @marmeon/notifications (`NotificationChannelMap['chat']`): type-only, the provider loads the channel itself
+export type {} from './notifications.ts';
