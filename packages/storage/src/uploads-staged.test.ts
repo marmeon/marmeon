@@ -51,6 +51,7 @@ describe('an upload kept for later requests of its session', () => {
 
   const service = (limits: { maxOpen?: number } = {}, on: () => Disk = () => disk) =>
     new TemporaryUploads({
+      sql,
       db: (() => connections.get()) as never,
       disk: on,
       clock,
@@ -275,6 +276,7 @@ describe('a kept upload on S3', () => {
     const disk = new S3Disk({ name: 'uploads', options, visibility: 'private', clock, load: fake.load });
     vi.spyOn(disk, 'presignedPost').mockResolvedValue({ url: 'http://store-a.test/uploads', fields: {} });
     const uploads = new TemporaryUploads({
+      sql,
       db: (() => connections.get()) as never,
       disk: () => disk,
       clock,

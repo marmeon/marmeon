@@ -100,6 +100,25 @@ function storageOptions(container: Resolver): StorageOptions {
 }
 
 /**
+ * Loads the optional peer `name`: `undefined` only when the load fails with ERR_MODULE_NOT_FOUND and `name` itself does not
+ * resolve. Any other error, and a missing dependency of an installed peer, stops the boot. Known miss: a peer that resolves but
+ * whose own file is gone counts as installed, so the error is thrown.
+ */
+async function importOptional<T>(name: string, load: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await load();
+  } catch (error) {
+    if ((error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    try {
+      import.meta.resolve(name);
+    } catch (resolving) {
+      if ((resolving as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND') return undefined;
+    }
+    throw error;
+  }
+}
+
+/**
  * Registers `Storage` (the app's disks, built on first use), checks the configuration at startup (a private disk never
  * shares a directory with a public one), and — with @marmeon/http — signs temporary URLs with its `UrlSigner` and
  * serves public disks under their path (`/storage/…`) and temporary URLs under `/_marmeon/storage/…`, with safe headers.
@@ -199,13 +218,14 @@ export class StorageServiceProvider implements ServiceProvider {
     };
     registerStorageRoutes(http, container, options);
 
-    const database = await import('@marmeon/database').catch(() => undefined);
-    const encryption = await import('@marmeon/encryption').catch(() => undefined);
+    const database = await importOptional('@marmeon/database', () => import('@marmeon/database'));
+    const encryption = await importOptional('@marmeon/encryption', () => import('@marmeon/encryption'));
     if (database && encryption && container.has(database.Connections) && container.has(encryption.EncryptionConfig)) {
       const key = container.make(encryption.EncryptionConfig);
       const connections = container.make(database.Connections);
       const { requireDriver } = await import('@marmeon/database/internal');
       this.#uploads = {
+        sql: database.sql,
         // Infrastructure: never the app's transaction — a rollback after store() never makes a used token usable again.
         // The driver is judged on first use, not at boot: an app that made no uploads table keeps any driver.
         db: () => {

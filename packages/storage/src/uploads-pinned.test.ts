@@ -55,6 +55,7 @@ describe('an uploaded S3 object is pinned by its ETag from the check to the stor
 
   const service = (disk: Disk) =>
     new TemporaryUploads({
+      sql,
       db: (() => connections.get()) as never,
       disk: () => disk,
       clock,
