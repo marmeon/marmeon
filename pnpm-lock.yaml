@@ -975,6 +975,43 @@ importers:
         specifier: workspace:*
         version: link:../cli
 
+  packages/oauth:
+    dependencies:
+      '@marmeon/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+      '@marmeon/database':
+        specifier: workspace:*
+        version: link:../database
+      '@marmeon/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@marmeon/fetch':
+        specifier: workspace:*
+        version: link:../fetch
+      '@marmeon/session':
+        specifier: workspace:*
+        version: link:../session
+    devDependencies:
+      '@marmeon/cache':
+        specifier: workspace:*
+        version: link:../cache
+      '@marmeon/http':
+        specifier: workspace:*
+        version: link:../http
+      '@marmeon/server':
+        specifier: workspace:*
+        version: link:../server
+      '@marmeon/testing':
+        specifier: workspace:*
+        version: link:../testing
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
+
   packages/otel:
     dependencies:
       '@marmeon/core':
