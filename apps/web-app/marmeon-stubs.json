@@ -41,6 +41,124 @@
       "package": "@marmeon/notifications",
       "version": "1.1.0"
     },
+    "@marmeon/oauth:react/modules/oauth": {
+      "files": {
+        "modules/oauth/OAuthModuleServiceProvider.ts": {
+          "sha256": "sha256:cae95ca7e59279c87d6bf22e2edb13b3d2a863a9917ccf4db4e4d19c17710591",
+          "stub": "stubs/react/modules/oauth/OAuthModuleServiceProvider.ts"
+        },
+        "modules/oauth/SocialUsers.ts": {
+          "sha256": "sha256:da6a88c1e1dd99b69ac34b23c2aa44e80385eb69fb95b1559b0fbab36478947b",
+          "stub": "stubs/react/modules/oauth/SocialUsers.ts"
+        },
+        "modules/oauth/confirm.test.ts": {
+          "sha256": "sha256:86ec821f8c6c4a6d567362b435064cd8c7a90cc51c7504e05980f9880dd78a86",
+          "stub": "stubs/react/modules/oauth/confirm.test.ts"
+        },
+        "modules/oauth/connected-accounts.test.ts": {
+          "sha256": "sha256:22ed2b361bd79ef2bf618a712e96e47bf775a9d7626c841eee67f17daa4d5bd4",
+          "stub": "stubs/react/modules/oauth/connected-accounts.test.ts"
+        },
+        "modules/oauth/controllers/ConfirmWithProviderController.ts": {
+          "sha256": "sha256:283b17d0f8b15d608fbacf0dd3938a09935a51ada0d5762fdbd84e8e29c1595c",
+          "stub": "stubs/react/modules/oauth/controllers/ConfirmWithProviderController.ts"
+        },
+        "modules/oauth/controllers/LinkSocialAccountController.ts": {
+          "sha256": "sha256:306fd99ed18e4275631d5c294cbd7aab522ddb840d8edb805e98760ca170aea5",
+          "stub": "stubs/react/modules/oauth/controllers/LinkSocialAccountController.ts"
+        },
+        "modules/oauth/controllers/OAuthCallbackController.ts": {
+          "sha256": "sha256:e2767851a1eaf82ce54d67b257169743286be1bd6944bce0b0705bc56a4a74c0",
+          "stub": "stubs/react/modules/oauth/controllers/OAuthCallbackController.ts"
+        },
+        "modules/oauth/controllers/OAuthRedirectController.ts": {
+          "sha256": "sha256:8ff57b3a1ae33ae3dd602fc358b7c5112183d097959e94f9ceb6851910c03c2f",
+          "stub": "stubs/react/modules/oauth/controllers/OAuthRedirectController.ts"
+        },
+        "modules/oauth/controllers/ShowConfirmButtonsController.ts": {
+          "sha256": "sha256:643f843121a5676ae26aa05e89e20914a2059cb35809638558f7e1e4cae2295f",
+          "stub": "stubs/react/modules/oauth/controllers/ShowConfirmButtonsController.ts"
+        },
+        "modules/oauth/controllers/ShowConnectedAccountsController.ts": {
+          "sha256": "sha256:945e71f1e5862ae395213b0635de65cf588f7cd0f92b5effff2b05d39901a8a4",
+          "stub": "stubs/react/modules/oauth/controllers/ShowConnectedAccountsController.ts"
+        },
+        "modules/oauth/controllers/ShowSignInButtonsController.ts": {
+          "sha256": "sha256:250298e216244ff32d4e6b3dda838e6379f77130feaecb093ea4a167881a01c1",
+          "stub": "stubs/react/modules/oauth/controllers/ShowSignInButtonsController.ts"
+        },
+        "modules/oauth/controllers/UnlinkSocialAccountController.ts": {
+          "sha256": "sha256:c6810deb63bc8677746d476647ed4d07f60499bc18ae7e07bfa58928948d7b01",
+          "stub": "stubs/react/modules/oauth/controllers/UnlinkSocialAccountController.ts"
+        },
+        "modules/oauth/index.ts": {
+          "sha256": "sha256:cad6e87655349884b40fe306df8fcc9cbaa3ebcfa6e861ac687817ebf6c47f72",
+          "stub": "stubs/react/modules/oauth/index.ts"
+        },
+        "modules/oauth/jobs/SendSocialAccountExistsMailJob.ts": {
+          "sha256": "sha256:8ac64aa03f7a99a6da60db0b2730f38b4a2bc81ba6c5744d692b4fe9c9742686",
+          "stub": "stubs/react/modules/oauth/jobs/SendSocialAccountExistsMailJob.ts"
+        },
+        "modules/oauth/lang/de.ts": {
+          "sha256": "sha256:8d8b264974449538d35c07e07dd603bbccae582e443ca750a3546419102074f3",
+          "stub": "stubs/react/modules/oauth/lang/de.ts"
+        },
+        "modules/oauth/lang/en.ts": {
+          "sha256": "sha256:a4cc82cd789e2278a04db9bca26fc9609ffdfe9f3e01b5d30032e3be652ba41e",
+          "stub": "stubs/react/modules/oauth/lang/en.ts"
+        },
+        "modules/oauth/limits.ts": {
+          "sha256": "sha256:9b920e39d2b5c49851a93dca0f5dc11d3d4bbe440a594db31e9d8b085b59d1e3",
+          "stub": "stubs/react/modules/oauth/limits.ts"
+        },
+        "modules/oauth/listeners/NotifyAboutSocialAccountLinked.ts": {
+          "sha256": "sha256:bd7c431a10641b8416899a670b4f3f932f6c7c7463e63d65de335d4cb41df3cd",
+          "stub": "stubs/react/modules/oauth/listeners/NotifyAboutSocialAccountLinked.ts"
+        },
+        "modules/oauth/mail/SocialAccountExistsMail.ts": {
+          "sha256": "sha256:8d9653b65aeda675dd4c16aea2c2091be1916dc053510bf561d99f20df0c033d",
+          "stub": "stubs/react/modules/oauth/mail/SocialAccountExistsMail.ts"
+        },
+        "modules/oauth/mail/SocialAccountExistsView.tsx": {
+          "sha256": "sha256:f02b60a7dd06158a949e756ff30bf988ab479277f150cc09c0676b90d46b5c62",
+          "stub": "stubs/react/modules/oauth/mail/SocialAccountExistsView.tsx"
+        },
+        "modules/oauth/mail/SocialAccountLinkedMail.ts": {
+          "sha256": "sha256:370dd5880e3c1f37f91b99b6c30223d38765f0d1db098f63b5ff07df960e2359",
+          "stub": "stubs/react/modules/oauth/mail/SocialAccountLinkedMail.ts"
+        },
+        "modules/oauth/mail/SocialAccountLinkedView.tsx": {
+          "sha256": "sha256:49818b576c2362f72ac391b4d664b5f8e7ba4283387a4589c3dda0de326b8688",
+          "stub": "stubs/react/modules/oauth/mail/SocialAccountLinkedView.tsx"
+        },
+        "modules/oauth/routes.ts": {
+          "sha256": "sha256:bc2b6a212dada03c777206215e1bebfdf9bbac6b6d5d9bedde162798d2340835",
+          "stub": "stubs/react/modules/oauth/routes.ts"
+        },
+        "modules/oauth/sign-in.test.ts": {
+          "sha256": "sha256:6fd83d055e0b3e650015b1b961b77ef97f87df1ef15aa73beed8776445db6a85",
+          "stub": "stubs/react/modules/oauth/sign-in.test.ts"
+        },
+        "modules/oauth/targets.ts": {
+          "sha256": "sha256:969a5484832385d770edf632bbc0a0bdf68f4e499d507160c58075cedbbb5ba9",
+          "stub": "stubs/react/modules/oauth/targets.ts"
+        },
+        "modules/oauth/views/ConfirmButtons.tsx": {
+          "sha256": "sha256:058ba52df5ec430951f5234f29626acfeb00eb7371cedf8b7da9f65fad36ee0c",
+          "stub": "stubs/react/modules/oauth/views/ConfirmButtons.tsx"
+        },
+        "modules/oauth/views/ConnectedAccounts.tsx": {
+          "sha256": "sha256:e5214e9ce68256d704759f937b4b779d2e8782edd45815cc56d3e1836b00cb8a",
+          "stub": "stubs/react/modules/oauth/views/ConnectedAccounts.tsx"
+        },
+        "modules/oauth/views/SignInButtons.tsx": {
+          "sha256": "sha256:b9a8b49a6e9d51aac081aba5af126e827786bca619e6ef021557f3b76c286986",
+          "stub": "stubs/react/modules/oauth/views/SignInButtons.tsx"
+        }
+      },
+      "package": "@marmeon/oauth",
+      "version": "1.1.0"
+    },
     "@marmeon/queue:stubs/migrations": {
       "files": {
         "modules/system/migrations/2026_10_02_211222_create_jobs_table.ts": {

@@ -4,6 +4,7 @@ import { sql } from 'kysely';
 import { inspectionConnection } from '../migrator-connection.ts';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';
+import { unknownDriver } from '../supported-driver.ts';
 
 /**
  * Shows where a connection points, the server version and its tables. The target is `describeConnection`'s text and
@@ -28,16 +29,28 @@ export class DbShowCommand {
     // The database as it is, also while migrations are pending: that is when one wants to look. It counts rows and reads none.
     const db = inspectionConnection(this.#connections, name);
 
-    const version =
-      settings.driver === 'sqlite'
-        ? `SQLite ${(await sql<{ v: string }>`select sqlite_version() as v`.execute(db)).rows[0]?.v}`
-        : ((await sql<{ v: string }>`select version() as v`.execute(db)).rows[0]?.v.split(' on ')[0] ?? 'PostgreSQL');
+    let version: string;
+    switch (settings.driver) {
+      case 'sqlite':
+        version = `SQLite ${(await sql<{ v: string }>`select sqlite_version() as v`.execute(db)).rows[0]?.v}`;
+        break;
+      case 'pgsql':
+        version = (await sql<{ v: string }>`select version() as v`.execute(db)).rows[0]?.v.split(' on ')[0] ?? 'PostgreSQL';
+        break;
+      case 'mysql':
+        version = `MySQL ${(await sql<{ v: string }>`select @@version as v`.execute(db)).rows[0]?.v}`;
+        break;
+      default:
+        return unknownDriver(settings);
+    }
     const tables = await db.introspection.getTables();
     const found = await Promise.all(
       tables.map(async (table) => {
         // `sql.id` keeps a dot in a name; `selectFrom` would read it as a schema separator.
-        const { count } = (await sql<{ count: number }>`select count(*) as count from ${table.schema ? sql.id(table.schema, table.name) : sql.id(table.name)}`.execute(db)).rows[0]!;
-        return { name: table.name, schema: table.schema ?? null, columns: table.columns.length, rows: Number(count) };
+        // MySQL's introspector names the database as the schema: it is the connection's own, and no table of another one is listed.
+        const schema = settings.driver === 'mysql' ? undefined : table.schema;
+        const { count } = (await sql<{ count: number }>`select count(*) as count from ${schema ? sql.id(schema, table.name) : sql.id(table.name)}`.execute(db)).rows[0]!;
+        return { name: table.name, schema: schema ?? null, columns: table.columns.length, rows: Number(count) };
       }),
     );
     const described = describeConnection(settings);

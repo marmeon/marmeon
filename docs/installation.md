@@ -89,7 +89,7 @@ fills in for your app or that commands rewrite, namely `package.json`, `.env.exa
 
 The creator writes the setting that saves a package you add exactly, not as a range: `saveExact: true` in `pnpm-workspace.yaml` for
 pnpm, `save-exact=true` in `.npmrc` with `--npm`. Every `@marmeon/*` package must have the app's version, and a range would let
-`pnpm add @marmeon/redis` pick another (see [packages](packages.md)).
+`pnpm add @marmeon/redis` pick another. `marmeon add redis` installs the version of the app (see [packages](packages.md)).
 
 The creator also runs `marmeon agents:sync`, so an installed app has an `AGENTS.md` and a `CLAUDE.md` for coding agents, both in the
 first commit. With `--no-install` the command is one of the next steps. They are not in `marmeon-stubs.json`: the block in `AGENTS.md`

@@ -142,6 +142,9 @@ Types from other packages: none
 ## Commands
 
 ```ts
+// add
+marmeon add <package>... [--dry-run]
+--dry-run (boolean)
 // agents:install
 marmeon agents:install [--shared] [--no-mcp] [--check]
 --check (boolean)
@@ -164,6 +167,11 @@ marmeon discover
 marmeon docs [<page>] [--path] [--json]
 --json (boolean)
 --path (boolean)
+// doctor
+marmeon doctor [--only=<names>] [--skip=<names>] [--json]
+--json (boolean)
+--only (string)
+--skip (string)
 // key:generate
 marmeon key:generate [--show] [--force]
 --force (boolean)
@@ -288,6 +296,11 @@ marmeon tinker [--sandbox] [--execute "<code>"] [--no-history]
 --execute (string, short e)
 --no-history (boolean)
 --sandbox (boolean)
+// upgrade
+marmeon upgrade [--to=<version|tag>] [--dry-run] [--json]
+--dry-run (boolean)
+--json (boolean)
+--to (string)
 ```
 
 ## Hidden commands (not API)

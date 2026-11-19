@@ -46,6 +46,8 @@ import { hasPlaceholder, MANY, ONE, RELATION, RELATION_TARGET, SECRET, sourcesOf
 import { asked, guardSecrets, outputName, type Spelled } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
 import { isoTimestamp } from './iso-timestamp.ts';
+import { mysqlPending } from './mysql-pending.ts';
+import { unknownDriver } from './supported-driver.ts';
 
 /**
  * What a `with()` or `withRelation()` placeholder holds, besides the callback's query. `use` says what a relation of the chain
@@ -576,7 +578,19 @@ class RelationTransformer extends OperationNodeTransformer {
     const subquery = this.transformNode(node.arguments[0]!, queryId);
     const expression = { toOperationNode: () => subquery } as never;
     const many = node.func === MANY;
-    const json = this.#driver === 'sqlite' ? (many ? sqliteArray(expression) : sqliteObject(expression)) : many ? pgArray(expression) : pgObject(expression);
+    let json: { toOperationNode(): unknown };
+    switch (this.#driver) {
+      case 'sqlite':
+        json = many ? sqliteArray(expression) : sqliteObject(expression);
+        break;
+      case 'pgsql':
+        json = many ? pgArray(expression) : pgObject(expression);
+        break;
+      case 'mysql':
+        return mysqlPending('A relation inside a query (with())');
+      default:
+        return unknownDriver(this.#driver);
+    }
     return json.toOperationNode() as unknown as FunctionNode;
   }
 }

@@ -46,6 +46,16 @@ describe('the services a test file needs', () => {
     expect(servicesOf(files, 'packages/b/src/b.test.ts')).toEqual(['pgsql']);
   });
 
+  it('selects a file that reads the MySQL URL for mysql only — rules 2 to 4 stay Postgres\'s', () => {
+    const files = {
+      'packages/a/src/a.test.ts': "import { url } from './__fixtures__/url.ts';",
+      'packages/a/src/__fixtures__/url.ts': `export const url = process.env.${SERVICE_VARIABLES.mysql};`,
+      'packages/a/src/b.test.ts': `const app = { database: '${REFRESH}' };`,
+    };
+    expect(servicesOf(files, 'packages/a/src/a.test.ts')).toEqual(['mysql']);
+    expect(servicesOf(files, 'packages/a/src/b.test.ts')).toEqual(['pgsql']);
+  });
+
   it('follows import type, a dynamic import with a literal and an index file', () => {
     const files = {
       'packages/a/src/type.test.ts': "import type { X } from './__fixtures__/x.ts';",
@@ -181,18 +191,22 @@ describe('the projects', () => {
   it('pins the timing project to SQLite with the tripwires of every service', () => {
     const env = timingEnv();
     expect(env.DB_DRIVER).toBe('sqlite');
-    expect([SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].every((name) => env[name]?.includes('.invalid'))).toBe(true);
+    expect([SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3, SERVICE_VARIABLES.mysql].every((name) => env[name]?.includes('.invalid'))).toBe(true);
   });
 
   it('sets the tripwire for every service outside the set', () => {
     const plain = tripwireEnv(new Set());
-    expect(Object.keys(plain).sort()).toEqual(['DB_DRIVER', 'DB_URL', SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].sort());
+    expect(Object.keys(plain).sort()).toEqual(['DB_DRIVER', 'DB_URL', SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3, SERVICE_VARIABLES.mysql].sort());
     expect(Object.entries(plain).filter(([key]) => key !== 'DB_DRIVER').every(([, value]) => value.includes('.invalid'))).toBe(true);
 
     const pgsql = tripwireEnv(new Set<Service>(['pgsql']));
-    expect(Object.keys(pgsql).sort()).toEqual([SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].sort());
+    expect(Object.keys(pgsql).sort()).toEqual([SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3, SERVICE_VARIABLES.mysql].sort());
 
-    expect(Object.keys(tripwireEnv(new Set<Service>(['pgsql', 'redis'])))).toEqual([SERVICE_VARIABLES.s3]);
+    expect(Object.keys(tripwireEnv(new Set<Service>(['pgsql', 'redis'])))).toEqual([SERVICE_VARIABLES.s3, SERVICE_VARIABLES.mysql]);
+
+    const mysql = tripwireEnv(new Set<Service>(['mysql']));
+    expect(Object.keys(mysql).sort()).toEqual(['DB_DRIVER', 'DB_URL', SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].sort());
+    expect(plain[SERVICE_VARIABLES.mysql]).toBe('mysql://x@not-selected-for-test-mysql.invalid/marmeon');
   });
 });
 

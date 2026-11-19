@@ -40,6 +40,8 @@ export interface GuardParts {
   connections?: Connections;
   events?: EventDispatcher;
   clock?: Clock;
+  /** The root container proofs of re-authentication must have been claimed on. */
+  root?: object;
   logger?: Logger;
   endings?: SessionEndings;
   event?: (event: object) => object | undefined;
@@ -65,6 +67,10 @@ class TestGuardContext extends GuardContext {
     super();
     this.#parts = parts;
     this.names = parts.names ?? APP_GUARD_NAMES;
+  }
+
+  override reauthenticationRoot(): object | undefined {
+    return this.#parts.root;
   }
 
   get settings(): AuthConfig {

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, ContainerError, err, EventDispatcher, ok, type Result } from '@marmeon/core';
 import { Connections, secret, secretEquals, type Secret } from '@marmeon/database';
+import { storeDatabase } from './store-drivers.ts';
 import { PasswordReset } from './events.ts';
 import { assertHashable, Hasher } from './hashing.ts';
 import { dispatchForGuard, GuardContext } from './guard-context.ts';
@@ -142,7 +143,7 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
   }
 
   #db() {
-    return this.#connections.get<{ [PASSWORD_RESET_TABLE]: PasswordResetTokenTable }>();
+    return storeDatabase<{ [PASSWORD_RESET_TABLE]: PasswordResetTokenTable }>(this.#connections, 'The password-reset store');
   }
 }
 

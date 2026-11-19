@@ -1,15 +1,15 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { CommandArgumentsError, editDefinitionFile, importedBindings } from '@marmeon/core';
-import { escapesRoot, readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
+import { escapesRoot, readStubManifest, recordStubSet, removeLeftovers, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
+import { AUTH_STUBS } from './stub-files.ts';
 
 /**
  * The module templates, per UI adapter: `stubs/<adapter>/modules/auth`. One set: its registration and change of address are
  * private by default and say "taken" with `AUTH_PRIVATE_REGISTRATION=false` — decided at run time, not here.
  */
-export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
+export const STUBS = AUTH_STUBS;
 
 /**
  * What the generated module imports — reported when the app lacks it (the fixture test checks the list against every import
@@ -39,8 +39,13 @@ export const NEEDED = [
 /** What only the module's tests import — reported as dev dependencies. */
 export const NEEDED_FOR_TESTS = ['@marmeon/server', '@marmeon/testing', 'vitest'];
 
+const isFramework = (name: string) => name === 'marmeon' || name.startsWith('@marmeon/');
+
 /** The names for `pnpm add -E`: a framework package in the version of the app (they must all be one), anything else as it is. */
-const exact = (names: readonly string[]) => names.map((name) => (name === 'marmeon' || name.startsWith('@marmeon/') ? `${name}@<version of your app>` : name)).join(' ');
+const exact = (names: readonly string[]) => names.map((name) => (isFramework(name) ? `${name}@<version of your app>` : name)).join(' ');
+
+/** The names for `marmeon add`, which takes a framework package short (`@marmeon/redis` as `redis`). */
+const shortNames = (names: readonly string[]) => names.map((name) => (name.startsWith('@marmeon/') ? name.slice('@marmeon/'.length) : name)).join(' ');
 
 /**
  * `marmeon make:auth`: writes a complete auth module into the app — sign-in, registration, remember-me, password reset,
@@ -121,7 +126,7 @@ export class MakeAuthCommand {
       .map((entry) => relative(source, join(entry.parentPath, entry.name)).split(sep).join('/'))
       .filter((file) => !file.startsWith('migrations/'))
       .sort();
-    removeLeftovers(input.root, manifest.value?.sets[`@marmeon/auth:${adapter}/modules/auth`], copied.map((file) => `modules/auth/${file}`), input.output);
+    removeLeftovers(input.root, 'auth', manifest.value?.sets[`@marmeon/auth:${adapter}/modules/auth`], copied.map((file) => `modules/auth/${file}`), input.output);
     const recorded = recordStubSet(input.root, `@marmeon/auth:${adapter}/modules/auth`, {
       package: '@marmeon/auth',
       version,
@@ -153,14 +158,21 @@ export class MakeAuthCommand {
     // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
     const typed = runtime.length === 0 && registered.status !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
-    if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add -E ${exact(runtime)}`);
+    // `marmeon add` publishes the migrations of a package that has some, which boots the app: the manual command stays for an app that does not boot yet.
+    const runtimeFramework = runtime.filter(isFramework);
+    const runtimeOthers = runtime.filter((name) => !isFramework(name));
+    // The other libraries first: `marmeon add` may boot the app, which needs them.
+    if (runtimeOthers.length > 0) input.output.line(`Install its other libraries: pnpm add -E ${runtimeOthers.join(' ')}`);
+    if (runtimeFramework.length > 0) {
+      input.output.line(`Install what the module uses: marmeon add ${shortNames(runtimeFramework)} (if the app does not boot yet: pnpm add -E ${exact(runtimeFramework)})`);
+    }
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -E -D ${exact(forTests)}`);
     if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add -E ${exact(devOnly)}`);
     // The kit's mails are TSX views: the server compiles them with oxc-transform, `marmeon build` ahead of time. Not a framework package, so no exact version.
     if (!('oxc-transform' in installed(input.root))) input.output.line('And what compiles its mail views: pnpm add -D oxc-transform');
     if (!typed) input.output.line('Then: marmeon route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: marmeon migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
-    input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
+    input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (`marmeon add queue` copies its migration; otherwise marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
     input.output.line('Expired tokens are pruned at night by the scheduler (marmeon dev starts it; in production: marmeon schedule:work or schedule:run from cron).');
     input.output.line('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
     input.output.line('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
@@ -170,7 +182,7 @@ export class MakeAuthCommand {
       input.output.line('Lint: marmeon make:lint-config writes the app\'s preset (views import controllers only with import type).');
     }
     if (!('@marmeon/devtools' in installed(input.root))) {
-      input.output.line('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -E -D @marmeon/devtools@<version of your app>');
+      input.output.line('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): marmeon add devtools');
     }
     // The Content-Security-Policy belongs to the app's middleware too — named when bootstrap/app.ts has none.
     const bootstrap = join(input.root, 'bootstrap', 'app.ts');
@@ -189,56 +201,6 @@ function countFiles(directory: string): number {
     else if (entry.isFile() && /\.\w+$/.test(entry.name)) count += 1;
   }
   return count;
-}
-
-/**
- * Deletes the files an earlier kit wrote that this one no longer ships, when the app left them unchanged (the hash in
- * `marmeon-stubs.json` still matches); a changed one stays and is named. The manifest is a file of the repository, so a cloned
- * one can name any path: only regular files under `modules/auth/` (never `migrations/`), checked with `escapesRoot` and
- * `lstat` (which never follows a link), and only for the same hash, are removed. The real directory of the file must lie under
- * the module's real directory and outside its migrations, so a link to a directory inside the project reaches nothing else,
- * and a file the kit still ships (by real path, also in another case) is never removed.
- */
-function removeLeftovers(root: string, previous: { readonly version: string; readonly files: Readonly<Record<string, { readonly sha256: string }>> } | undefined, copied: readonly string[], output: CommandInput['output']): void {
-  if (previous === undefined) return;
-  // By real path, so a leftover that only differs in case from a shipped file (a case-insensitive file system) is that file.
-  const real = (path: string) => realpathSync.native(path);
-  const moduleReal = real(join(root, 'modules', 'auth'));
-  const migrationsAt = join(moduleReal, 'migrations');
-  const migrationsReal = lstatSync(migrationsAt, { throwIfNoEntry: false }) === undefined ? migrationsAt : real(migrationsAt);
-  const shipped = new Set(copied.map((file) => real(join(root, ...file.split('/')))));
-  const inside = (base: string, path: string) => path === base || path.startsWith(base + sep);
-  for (const [path, entry] of Object.entries(previous.files)) {
-    if (!path.startsWith('modules/auth/') || path.startsWith('modules/auth/migrations/')) continue;
-    const abs = join(root, ...path.split('/'));
-    if (escapesRoot(root, abs) !== undefined) {
-      output.warn(`Kept ${path}: it leads out of the project.`);
-      continue;
-    }
-    try {
-      const stat = lstatSync(abs, { throwIfNoEntry: false });
-      if (stat === undefined) continue;
-      if (!stat.isFile()) {
-        output.warn(`Kept ${path}: it is no regular file.`);
-        continue;
-      }
-      // A link on the way (to a directory inside the project) would reach files that are not the module's.
-      const parent = real(dirname(abs));
-      if (!inside(moduleReal, parent) || inside(migrationsReal, parent)) {
-        output.warn(`Kept ${path}: it does not lie in the module's own directories.`);
-        continue;
-      }
-      if (shipped.has(real(abs))) continue;
-      if (stubHash(readFileSync(abs)) === entry.sha256) {
-        rmSync(abs);
-        output.success(`Removed ${path}: the kit of ${previous.version} wrote it, this one no longer ships it, and it was unchanged.`);
-      } else {
-        output.warn(`Kept ${path}: the kit of ${previous.version} wrote it and this one no longer ships it, but it was changed. Delete it once nothing of yours imports it.`);
-      }
-    } catch (error) {
-      output.warn(`Kept ${path}: ${(error as NodeJS.ErrnoException).code ?? 'it could not be read'}.`);
-    }
-  }
 }
 
 /** The name of a migration without its timestamp and extension, so that the same name under a second timestamp

@@ -11,6 +11,7 @@ import { runMigration } from './migrations/run.ts';
 import { DatabaseServiceProvider } from './provider.ts';
 import { sql } from 'kysely';
 import { SchemaRequirements } from './schema-requirements.ts';
+import { freshConnections, silent as quiet, withMysql } from './__fixtures__/databases.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const root = tempDir('marmeon-db-health-');
@@ -47,6 +48,26 @@ describe('the database health check', () => {
     expect(report.ok).toBe(false);
     expect(report.checks[0]).toMatchObject({ name: 'database', status: 'failing' });
     expect((report.checks[0]!.error as Error).message).toMatch(/^The database connection "reporting" failed: /);
+  });
+});
+
+// On MySQL (MARMEON_TEST_MYSQL_URL, `pnpm test:mysql`): a pooled connection answers readiness, and one that cannot be reached is named.
+withMysql('the database health check on a mysql connection', () => {
+  it('answers `select 1` on the connection, and fails naming a connection that is unreachable', { timeout: 30_000 }, async () => {
+    const { connections, close } = await freshConnections('mysql');
+    try {
+      expect(await new DatabaseHealthCheck(connections, new SchemaRequirements()).handle()).toBe('default');
+      const url = new URL((connections.options() as { url: string }).url);
+      url.port = '1';
+      const down = new Connections({ connections: { default: { driver: 'mysql', url: url.href } }, root: '/', logger: quiet });
+      try {
+        await expect(new DatabaseHealthCheck(down, new SchemaRequirements()).handle()).rejects.toThrow(/The database connection "default" failed: .*ECONNREFUSED/);
+      } finally {
+        await down.destroy();
+      }
+    } finally {
+      await close();
+    }
   });
 });
 

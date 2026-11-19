@@ -82,7 +82,7 @@ describe('make:auth', () => {
     // The blank app has its lint preset, the devtools and a Content-Security-Policy: none is named.
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
-    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
+    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (`marmeon add queue` copies its migration; otherwise marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
     expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
   });
 
@@ -155,7 +155,7 @@ describe('make:auth', () => {
     const without = fakeInput(root);
     expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
     expect(without.lines).toContain("Lint: marmeon make:lint-config writes the app's preset (views import controllers only with import type).");
-    expect(without.lines).toContain('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -E -D @marmeon/devtools@<version of your app>');
+    expect(without.lines).toContain('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): marmeon add devtools');
     expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page).");
     writeFileSync(join(root, '.oxlintrc.json'), '{}\n');
     pkg.devDependencies['@marmeon/devtools'] = 'workspace:*';
@@ -203,7 +203,7 @@ describe('make:auth', () => {
       expect(await new MakeAuthCommand().handle(input)).toBe(0);
       expect(readFileSync(join(root, users), 'utf8')).toBe('// changed by the app\n');
       expect(lines).toContain('i modules/auth/migrations/0001_01_01_000000_create_users_table.ts differs from the template and was kept.');
-      expect(lines).toContain(`Kept 7 migrations in modules/auth/migrations: ${advice}`);
+      expect(lines).toContain(`Kept 8 migrations in modules/auth/migrations: ${advice}`);
     });
 
     it('writes a migration of the kit the app lacks', async () => {
@@ -214,7 +214,7 @@ describe('make:auth', () => {
       const { input, lines } = fakeInput(root, { force: true });
       expect(await new MakeAuthCommand().handle(input)).toBe(0);
       expect(readFileSync(join(root, missing), 'utf8')).toBe(readFileSync(join(STUBS, 'react', missing), 'utf8'));
-      expect(lines).toContain(`Kept 6 migrations in modules/auth/migrations: ${advice}`);
+      expect(lines).toContain(`Kept 7 migrations in modules/auth/migrations: ${advice}`);
     });
 
     it('keeps a migration under another timestamp or extension and writes no duplicate of it', async () => {
@@ -274,7 +274,7 @@ describe('make:auth', () => {
       expect(await new MakeAuthCommand().handle(input)).toBe(0);
       expect(lines).toContain('! modules/auth/migrations/0001_01_01_000000_create_users_table.ts is no regular file; it counts as the migration and was kept.');
       expect(lines).toContain('! modules/auth/migrations/0001_01_01_000002_create_password_reset_tokens_table.ts is no regular file; it counts as the migration and was kept.');
-      expect(readdirSync(dir)).toHaveLength(7);
+      expect(readdirSync(dir)).toHaveLength(8);
     });
 
     it('writes nothing when modules/auth/migrations is no real directory', async () => {
@@ -616,10 +616,35 @@ describe('make:auth', () => {
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const { input, lines, spawned } = fakeInput(root);
     expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines).toContain('Install what the module uses: pnpm add -E @marmeon/i18n@<version of your app>');
+    expect(lines).toContain('Install what the module uses: marmeon add i18n (if the app does not boot yet: pnpm add -E @marmeon/i18n@<version of your app>)');
     expect(lines).toContain('And what its tests use: pnpm add -E -D @marmeon/testing@<version of your app>');
     // Without the module's packages the route types would not load: not generated now.
     expect(spawned).toEqual([]);
+  });
+
+  it('names the other libraries before the framework packages, and only what is missing', async () => {
+    const root = blankApp();
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    for (const name of ['react', 'mjml', '@marmeon/i18n', '@marmeon/mail']) delete pkg.dependencies[name];
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const { input, lines } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    const others = 'Install its other libraries: pnpm add -E mjml react';
+    const framework = 'Install what the module uses: marmeon add i18n mail (if the app does not boot yet: pnpm add -E @marmeon/i18n@<version of your app> @marmeon/mail@<version of your app>)';
+    expect(lines).toContain(others);
+    expect(lines).toContain(framework);
+    expect(lines.indexOf(others)).toBeLessThan(lines.indexOf(framework));
+  });
+
+  it('names no framework install when only a library is missing', async () => {
+    const root = blankApp();
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    delete pkg.dependencies['react'];
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const { input, lines } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    expect(lines).toContain('Install its other libraries: pnpm add -E react');
+    expect(lines.filter((line) => line.startsWith('Install what the module uses'))).toEqual([]);
   });
 
   it('names what the module runs with in production but the app has as a dev dependency — marmeon', async () => {
