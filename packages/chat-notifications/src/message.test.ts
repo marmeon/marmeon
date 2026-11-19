@@ -185,7 +185,7 @@ describe('normalizeMessage: refusals', () => {
     expect(refusal({ to: 'ops', text: 'x', links: [{ label: '', url: 'https://example.com/' }] })).toContain('links[0].label');
   });
 
-  it('refuses a link that does not parse, is not http(s), carries credentials or is too long, naming the field and not the address', () => {
+  it('refuses a link that does not parse, is not http(s) or carries credentials, naming the field and not the address', () => {
     const cases: [string, string][] = [
       [secret, 'is not an address'],
       [`ftp://example.com/${secret}`, 'must use http or https'],
@@ -193,8 +193,6 @@ describe('normalizeMessage: refusals', () => {
       [`https://user:${secret}@example.com/`, 'must not carry credentials'],
       [`https://:${secret}@example.com/`, 'must not carry credentials'],
       [`https://${secret}@example.com/`, 'must not carry credentials'],
-      [`https://example.com/${'p'.repeat(2000)}${secret}`, 'must not be longer than 2000'],
-      [`https://example.com/${'é '.repeat(500)}${secret}`, 'must not be longer than 2000'],
     ];
     for (const [url, part] of cases) {
       const message = refusal({ to: 'ops', text: 'x', links: [{ label: 'l', url }] });
@@ -205,10 +203,22 @@ describe('normalizeMessage: refusals', () => {
     expect(ok.content.links[0]?.url).toBe('http://example.com/');
   });
 
+  it('leaves out a link whose address is longer than 2000 characters and keeps the others', () => {
+    const good = { label: 'good', url: 'https://example.com/ok' };
+    const { content } = normalizeMessage({ to: 'ops', text: 'x', links: [{ label: 'long', url: `https://example.com/${'p'.repeat(1981)}` }, good] });
+    expect(content.links).toEqual([{ label: 'good', url: 'https://example.com/ok' }]);
+    const spaced = normalizeMessage({ to: 'ops', text: 'x', links: [{ label: 'enc', url: `https://example.com/${'é '.repeat(500)}${secret}` }, good] });
+    expect(spaced.content.links).toHaveLength(1);
+    // a long input that parses to a short address is left out too: the input is bounded
+    const padded = normalizeMessage({ to: 'ops', text: 'x', links: [{ label: 'tabs', url: `https://example.com/ok${'\t'.repeat(2100)}` }, good] });
+    expect(padded.content.links).toEqual([{ label: 'good', url: 'https://example.com/ok' }]);
+    expect(JSON.stringify(spaced)).not.toContain(secret);
+  });
+
   it('measures the length of a link after percent-encoding', () => {
     const url = `https://example.com/${'é'.repeat(400)}`;
     expect(url.length).toBeLessThan(2000);
-    expect(refusal({ to: 'ops', text: 'x', links: [{ label: 'l', url }] })).toContain('links[0].url');
+    expect(normalizeMessage({ to: 'ops', text: 'x', links: [{ label: 'l', url }] }).content.links).toHaveLength(0);
     expect(normalizeMessage({ to: 'ops', text: 'x', links: [{ label: 'l', url: `https://example.com/${'a'.repeat(1980)}` }] }).content.links).toHaveLength(1);
   });
 
@@ -224,7 +234,6 @@ describe('normalizeMessage: refusals', () => {
       ['text', 'must be a plain object'],
       [{ slack: { at: new Date(0) } }, 'not a plain one'],
       [{ slack: { run: () => 1 } }, 'not JSON (function)'],
-      [{ slack: { gone: undefined } }, 'not JSON (undefined)'],
       [{ slack: new Map() }, 'not a plain one'],
       [{ slack: new (class Thing {})() }, 'not a plain one'],
       [{ slack: { n: Number.NaN } }, 'not finite'],
@@ -256,6 +265,33 @@ describe('normalizeMessage: refusals', () => {
 
   it('does not put a refused raw value into the message', () => {
     expect(refusal({ to: 'ops', text: 'x', raw: { slack: { [secret]: new Date(0) } } })).not.toContain('secret-value');
+  });
+});
+
+describe('normalizeMessage: undefined properties of raw', () => {
+  it('leaves out a property whose value is undefined, as JSON.stringify does', () => {
+    const { content } = normalizeMessage({ to: 'ops', text: 'x', raw: { discord: { content: undefined, embeds: [{ title: 't' }] } } });
+    const discord = content.raw?.discord as Record<string, unknown>;
+    expect(Object.keys(discord)).toEqual(['embeds']);
+    expect(JSON.parse(JSON.stringify(content))).toEqual(content);
+  });
+
+  it('drops raw when nothing is left of it', () => {
+    expect(normalizeMessage({ to: 'ops', text: 'x', raw: { slack: undefined } }).content.raw).toBeUndefined();
+    expect('raw' in normalizeMessage({ to: 'ops', text: 'x', raw: { slack: undefined } }).content).toBe(false);
+  });
+
+  it('still refuses a getter, even one that returns undefined, and an undefined list item', () => {
+    const getter = { get content(): undefined { return undefined; } };
+    expect(refusal({ to: 'ops', text: 'x', raw: { discord: getter } })).toContain('getter');
+    expect(refusal({ to: 'ops', text: 'x', raw: { discord: { embeds: [undefined] } } })).toContain('not JSON');
+  });
+
+  it('counts a skipped property against the node budget', () => {
+    const skipped = (count: number): unknown => ({ slack: Object.fromEntries(Array.from({ length: count }, (_, index) => [`k${index}`, undefined])) });
+    // the raw object and the slack object count 2
+    expect(normalizeMessage({ to: 'ops', text: 'x', raw: skipped(9997) }).content.raw).toBeDefined();
+    expect(refusal({ to: 'ops', text: 'x', raw: skipped(9999) })).toContain('more than 10000 values');
   });
 });
 

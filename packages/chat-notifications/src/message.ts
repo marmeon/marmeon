@@ -2,6 +2,7 @@ import * as v from 'valibot';
 import { NAME } from './destination.ts';
 import type { ChatJson } from './driver.ts';
 import { ChatError } from './errors.ts';
+import type { DiscordRaw, SlackRaw, TeamsRaw } from './raw.ts';
 
 /** Where a message goes: a named destination (`'ops'`: lower case letters, digits and hyphens) or a webhook address of its own, as a plain object, with the driver that formats for it. */
 export type ChatDestination = string | { readonly url: string; readonly driver?: string };
@@ -12,14 +13,22 @@ export interface ChatField {
   readonly value: string;
 }
 
-/** A labelled link: an `http` or `https` address without credentials, at most 2000 characters; the label is cut at 75. */
+/**
+ * A labelled link: an `http` or `https` address without credentials, the label cut at 75. A link whose address is longer than 2000
+ * characters is left out of the message, an address that is no address, not `http(s)` or with credentials throws `ChatError`: an app
+ * that builds links from user input validates them first.
+ */
 export interface ChatLink {
   readonly label: string;
   readonly url: string;
 }
 
 /** Raw formats by driver name; a driver package merges its own, as a type alias built from `ChatJson`. */
-export interface ChatRawFormats {}
+export interface ChatRawFormats {
+  readonly slack: SlackRaw;
+  readonly discord: DiscordRaw;
+  readonly teams: TeamsRaw;
+}
 
 /**
  * The `raw` of a message: the format of one driver per key. Without a declared format nothing is accepted. A format that is no
@@ -35,19 +44,20 @@ export type ChatRaw<Formats = ChatRawFormats> = [keyof Formats] extends [never]
 
 /**
  * A chat message: plain text, shown the same way by every driver. Lengths are counted in code points and cut with `…`: title
- * 150, text 2000, field label 50, field value 300, link label 75.
+ * 150, text 2000, field label 50, field value 300, link label 75. A driver may cut shorter to its provider's limit (escaped
+ * characters, UTF-16 units or bytes); a text is never refused for its length.
  */
 export interface ChatMessage {
   readonly to: ChatDestination;
   /** Plain text on one line; cut at 150 characters. */
   readonly title?: string;
-  /** Plain text, required. Cut at 2000 characters. */
+  /** Plain text, required. Cut at 2000 characters. Slack uses it as the notification's fallback text. On Discord an address in the text is not a link: put it in `links`. */
   readonly text: string;
   /** At most 10; more throws `ChatError`. */
   readonly fields?: readonly ChatField[];
   /** At most 5; more throws `ChatError`. */
   readonly links?: readonly ChatLink[];
-  /** The format of one driver, used instead of the neutral rendering when that driver sends. At most 10 000 values and 64 KB as JSON. */
+  /** The format of one driver, used instead of the neutral rendering when that driver sends (Slack keeps the neutral fallback text). At most 10 000 values and 64 KB as JSON; a property whose value is `undefined` is left out, as `JSON.stringify` does. */
   readonly raw?: ChatRaw;
 }
 
@@ -92,7 +102,12 @@ function pathOf(issue: v.BaseIssue<unknown>): string {
 /** Bidirectional control characters and control characters other than newline and tab are removed. */
 const STRIPPED = /[\p{Cc}\p{Bidi_Control}]/gu;
 
-function clean(text: string): string {
+/**
+ * `text` with lone surrogates replaced, line breaks unified to `\n` and bidirectional and control characters (other than newline
+ * and tab) removed: the clean-up of every neutral text, and of the data the escape helpers get.
+ * @internal
+ */
+export function clean(text: string): string {
   return text.toWellFormed().replace(/\r\n?/g, '\n').replace(STRIPPED, (char) => (char === '\n' || char === '\t' ? char : ''));
 }
 
@@ -124,7 +139,7 @@ function destination(to: unknown): ChatMessage['to'] {
   return Object.freeze({ url, driver });
 }
 
-function link(input: { label: string; url: string }, index: number): ChatLink {
+function link(input: { label: string; url: string }, index: number): ChatLink | undefined {
   const label = truncate(oneLine(input.label), CAPS.linkLabel);
   if (label === '') fail(`"links[${index}].label" must not be empty.`);
   let parsed: URL;
@@ -135,7 +150,8 @@ function link(input: { label: string; url: string }, index: number): ChatLink {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') fail(`"links[${index}].url" must use http or https.`);
   if (parsed.username !== '' || parsed.password !== '') fail(`"links[${index}].url" must not carry credentials.`);
-  if (input.url.length > MAX_URL || parsed.href.length > MAX_URL) fail(`"links[${index}].url" must not be longer than ${MAX_URL} characters.`);
+  // an address that is too long is data (a link built from a record): the link is left out, the message goes
+  if (input.url.length > MAX_URL || parsed.href.length > MAX_URL) return undefined;
   return Object.freeze({ label, url: parsed.href });
 }
 
@@ -196,6 +212,11 @@ function json(value: unknown, depth: number, budget: Budget): ChatJson {
   for (const key of Object.keys(value)) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || !('value' in descriptor)) return fail('"raw" holds a getter.');
+    // a property whose value is undefined is left out, as JSON.stringify does
+    if (descriptor.value === undefined) {
+      spend(budget, 1, 0);
+      continue;
+    }
     const name = key.toWellFormed();
     if (entries.has(name)) return fail('"raw" holds two keys that are the same once normalized.');
     // the key, its colon, and the comma before it
@@ -207,8 +228,8 @@ function json(value: unknown, depth: number, budget: Budget): ChatJson {
 
 /**
  * Checks a message and returns its destination and its content: bidirectional control characters and control characters other
- * than newline and tab are removed, lone surrogates replaced, texts cut to the caps, `raw` a frozen JSON copy. A shape that is wrong throws `ChatError` naming the field, never its value;
- * a text that is too long is cut.
+ * than newline and tab are removed, lone surrogates replaced, texts cut to the caps, `raw` a frozen JSON copy (without the properties whose value is `undefined`, and left out when nothing is left). A shape that is wrong throws `ChatError` naming the field, never its value;
+ * a text that is too long is cut, and a link whose address is longer than 2000 characters is left out.
  * @internal
  */
 export function normalizeMessage(input: unknown): { readonly to: ChatDestination; readonly content: ChatContent } {
@@ -237,12 +258,13 @@ export function normalizeMessage(input: unknown): { readonly to: ChatDestination
         return Object.freeze({ label, value: truncate(clean(field.value).trim(), CAPS.value) });
       }),
     ),
-    links: Object.freeze(links.map(link)),
+    links: Object.freeze(links.map(link).filter((item) => item !== undefined)),
   };
   if (title !== '') content.title = title;
   if (message.raw !== undefined) {
     if (typeof message.raw !== 'object' || message.raw === null || Array.isArray(message.raw)) fail('"raw" must be a plain object.');
-    content.raw = json(message.raw, 0, { nodes: 0, bytes: 0 }) as Readonly<Record<string, ChatJson>>;
+    const raw = json(message.raw, 0, { nodes: 0, bytes: 0 }) as Readonly<Record<string, ChatJson>>;
+    if (Object.keys(raw).length > 0) content.raw = raw;
   }
   return Object.freeze({ to, content: Object.freeze(content) });
 }
