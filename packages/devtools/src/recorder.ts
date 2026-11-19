@@ -279,7 +279,7 @@ export class Recorder {
     const url = new URL(message.url, 'http://localhost');
     const query: Record<string, string | string[]> = {};
     for (const key of new Set(url.searchParams.keys())) {
-      const values = url.searchParams.getAll(key).map((value) => (redactor.isSensitive(key) ? '[redacted]' : redactor.text(value)));
+      const values = url.searchParams.getAll(key).map((value) => (redactor.isSensitiveQueryName(key) ? '[redacted]' : redactor.text(value)));
       query[key] = values.length === 1 ? values[0]! : values;
     }
     const page = message.page;
@@ -626,7 +626,7 @@ export class Recorder {
       const name = part.slice(0, equals);
       let sensitive: boolean;
       try {
-        sensitive = this.#redactor.isSensitive(decodeURIComponent(name.replaceAll('+', ' ')));
+        sensitive = this.#redactor.isSensitiveQueryName(decodeURIComponent(name.replaceAll('+', ' ')));
       } catch {
         sensitive = true;
       }

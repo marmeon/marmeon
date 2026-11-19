@@ -350,6 +350,22 @@ describe('@marmeon/otel', () => {
     expect(query(valued?.attributes), dump(valued)).toBe('q=ada%40example.com&page=2&bare-ada%40example.com&token=[redacted]&q=second');
   });
 
+  it('masks the first parameter of the query, whether it is `state` or `code`, with MARMEON_OTEL_RECORD_QUERY_VALUES=true', async () => {
+    const { app: recording } = boot({ MARMEON_OTEL_RECORD_QUERY_VALUES: 'true' });
+    await using app = await recording;
+    await spans();
+    for (const [url, expected] of [
+      ['http://shop.test/people/7?state=abc123&page=2', 'state=[redacted]&page=2'],
+      ['http://shop.test/people/7?code=c0de&page=2', 'code=[redacted]&page=2'],
+      ['http://shop.test/people/7?page=2&state=abc123&code=c0de', 'page=2&state=[redacted]&code=[redacted]'],
+    ] as const) {
+      await createHttpKernel(app).request(url);
+      const [span] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
+      expect(String(span?.attributes['url.query']), dump(span)).toBe(expected);
+      expect(dump(span)).not.toMatch(/abc123|c0de/);
+    }
+  });
+
   it('names the deployment on every span it records: deployment.environment.name is APP_ENV (by default the one NODE_ENV goes with)', async () => {
     const { app: booting } = boot({ NODE_ENV: 'production', APP_ENV: 'staging' });
     await using app = await booting;
