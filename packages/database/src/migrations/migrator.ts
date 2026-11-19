@@ -12,7 +12,7 @@ import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
 import { assertRawFitsMysql, check, executePlan, planOf, type PlanStep } from '../schema/plan.ts';
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
-import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
+import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, tablesAtOf, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
 import { migrationChecksum } from './checksum.ts';
 import { dropAllTables } from './drop-all.ts';
@@ -154,6 +154,19 @@ export class UnknownSecretsError extends Error {
   override name = 'UnknownSecretsError';
 }
 
+/** `check()`, on MySQL with the migration named in its message (the code stays in front): it is run for the migrations of a run before the first of them, and the message must say which one it is about. It sees each step by itself: what depends on an earlier step of the same migration is held right before that migration's first statement. */
+function checkNamed(driver: Driver, plan: readonly PlanStep[], who: string): void {
+  // Only MySQL names the migration: the other drivers keep the message they had.
+  if (driver !== 'mysql') return check(driver, plan);
+  try {
+    check(driver, plan);
+  } catch (error) {
+    const parts = error instanceof SchemaError ? /^(\[marmeon:[A-Z]\d+\]) ([\s\S]*)$/.exec(error.message) : null;
+    if (!parts) throw error;
+    throw new SchemaError(`${parts[1]} ${who}: ${parts[2]}`, { cause: error });
+  }
+}
+
 /**
  * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps two tables for it, `migrations` (which
  * ran, in which batch) and, on SQLite, `migration_lock`; what the migrations say about the schema (secret columns, `timestamps()`,
@@ -293,9 +306,13 @@ export class Migrator {
       // names do, stops the run before the first migration. Computed, not read from `.marmeon/schema.json`: the run decides what the
       // database becomes, and the file is only a copy of that computation.
       assertOrder(planned, done, pending);
-      // MySQL runs no statement written for another driver: a raw step without one for it stops the run before the first migration.
+      // MySQL runs no statement written for another driver: a raw step without one for it stops the run before the first migration. So does
+      // what the plans alone show MySQL cannot do. What depends on the tables is held against the database right before each migration's first statement.
       for (const { file, connection, plan } of pending) {
-        if (this.#driver(connection) === 'mysql') assertRawFitsMysql(plan, `Migration ${file.name} (module "${file.module}")`);
+        if (this.#driver(connection) !== 'mysql') continue;
+        const who = `Migration ${file.name} (module "${file.module}")`;
+        assertRawFitsMysql(plan, who);
+        checkNamed('mysql', plan, who);
       }
       // And the database must be what the run starts from: an old mismatch is not the first migration's fault, and a table the run is
       // to create must not be there already (a database that is not this app's).
@@ -584,7 +601,7 @@ export class Migrator {
     const left = () => fold(planned.filter(({ file }) => remaining.has(file.name)));
     this.#connections.publish(left().projection);
     const db = this.#db();
-    // Every `down()` is found, planned and checked (what the driver cannot do) before the first one runs: a rollback that cannot go through undoes nothing.
+    // Every `down()` is found, planned and checked for what its plan alone shows the driver cannot do before the first one runs. What depends on the tables on MySQL is held against the database right before each `down()` runs, so a rollback of several migrations can stop between two: the ones rolled back are out of the record, and another call goes on.
     const targets: { row: (typeof rows)[number]; entry: Omit<Planned, 'checksum'> }[] = [];
     for (const row of rows) {
       const who = `Migration ${printable(row.name)} (module "${printable(row.module)}")`;
@@ -595,7 +612,7 @@ export class Migrator {
       const connection = this.#connectionOf(migration, file);
       const plan = planOf(migration, 'down', who);
       if (this.#driver(connection) === 'mysql') assertRawFitsMysql(plan, who);
-      check(this.#driver(connection), plan);
+      checkNamed(this.#driver(connection), plan, who);
       targets.push({ row, entry: { file, connection, plan } });
     }
     const runs: MigrationRun[] = [];
@@ -689,7 +706,7 @@ export class Migrator {
           }
         }
       : undefined;
-    await executePlan(trx, this.#driver(connection), plan, aroundData, listFrom && listCheckOf(listFrom, plan, file));
+    await executePlan(trx, this.#driver(connection), plan, aroundData, listFrom && listCheckOf(listFrom, plan, file), listFrom && tablesAtOf(listFrom, plan, file));
     await this.#verify(trx, connection, file, after);
   }
 

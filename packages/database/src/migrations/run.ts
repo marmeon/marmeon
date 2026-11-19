@@ -1,6 +1,6 @@
 import type { Connections } from '../connections.ts';
 import { executePlan, planOf } from '../schema/plan.ts';
-import { applyPlan, listCheckOf } from '../schema/projection.ts';
+import { applyPlan, listCheckOf, tablesAtOf } from '../schema/projection.ts';
 import type { Migration } from './migration.ts';
 
 /**
@@ -21,6 +21,6 @@ export async function runMigration(
   await connections
     .get(name)
     .transaction()
-    .execute((trx) => executePlan(trx, connections.options(name).driver, plan, undefined, listCheckOf(before, plan, file)));
+    .execute((trx) => executePlan(trx, connections.options(name).driver, plan, undefined, listCheckOf(before, plan, file), tablesAtOf(before, plan, file)));
   connections.publish({ ...applyPlan(before, plan, file), migrations: before.migrations });
 }

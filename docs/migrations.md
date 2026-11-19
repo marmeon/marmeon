@@ -168,7 +168,7 @@ schema.alter('notes', (table) => table.notNull('slug'));
 
 `table.notNull('slug')` makes an existing column NOT NULL, `table.nullable('slug')` lets it hold NULL again. A row that still has NULL in the
 column stops the migration with the database's error, and the migration is rolled back (not on MySQL, see [MySQL](#mysql)). SQLite changes no column in place, so `migrate`
-refuses a plan with either call on SQLite before running any step, with error D18; use the form with the default there.
+refuses a plan with either call on SQLite before running any step, with error D18; use the form with the default there. MySQL refuses both calls before the migration runs too (D18): its `ALTER TABLE` takes the whole column again, so use `schema.raw()` with a `modify column` statement ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 
 `db` is a Kysely connection inside the migration's transaction, so a step that throws rolls back the schema steps before it too (not on MySQL, see [MySQL](#mysql)): there `db` is a transaction of the step alone, and only its rows are undone.
 Its tables are typed loosely, because a migration runs against the schema of its own time, not the one `bootstrap/database.d.ts`
@@ -268,7 +268,7 @@ Run migrations with these commands. `Migrator` is the class behind them: its `st
 
 `migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` take `--wait=<seconds>` (default 60): how long to wait for another migration to end, see [one migration at a time](#one-migration-at-a-time).
 
-A rollback needs the file of every migration it undoes. One whose file is gone stops it before the first rollback, with an error that names the migration. Before the first rollback, `migrate:rollback` and `migrate:reset` also check the `down()` of every migration they undo for what the driver cannot do (such as a `notNull()` on SQLite), so a refused plan undoes nothing.
+A rollback needs the file of every migration it undoes. One whose file is gone stops it before the first rollback, with an error that names the migration. Before the first rollback, `migrate:rollback` and `migrate:reset` also check the `down()` of every migration they undo for what the driver cannot do (such as a `notNull()` on SQLite), so a refused plan undoes nothing (on MySQL what depends on the tables is checked right before each `down()`, see [what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 
 ### One migration at a time
 
@@ -328,17 +328,61 @@ a migration has no transaction around it and nothing to roll back: the steps tha
 - **A migration runs on one connection** of the pool, and the connection goes back when it ends, reset. A temporary table, a
   `@variable`, `foreign_key_checks` or `lock tables` that one migration sets is gone in the next. Write each migration so that it needs
   none of it from another.
-- **A raw step needs a `mysql` statement** (or `mysql: null`), see [raw SQL](#raw-sql). `migrate:rollback` and `migrate:reset` check the `mysql` statement of a raw step in every `down()` they are to run, before the first.
+- **A raw step needs a `mysql` statement** (or `mysql: null`), see [raw SQL](#raw-sql). `migrate:rollback` and `migrate:reset` check the `mysql` statement of a raw step, and what each step of a plan shows by itself MySQL cannot do, in every `down()` they are to run, before the first. What depends on the tables is checked against the database right before each `down()` runs, so a rollback of several migrations can stop between two: the ones rolled back are out of the record, and another call goes on ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 - **Tables are created in the binary collation** `utf8mb4_0900_bin`, which compares byte for byte: `'A'` and `'a'` are two values, in a
   unique index too, as on SQLite and Postgres.
 - **A foreign key is a constraint of the table.** MySQL drops a `REFERENCES` written on a column, so Marmeon writes the key as `constraint … foreign key …`.
-  `schema.alter()` with `dropColumn()` of a column that has a foreign key fails with the server's error 1829: Marmeon does not drop the key
-  first, so remove it with a `schema.raw()` step (`alter table … drop foreign key …`) before the column goes.
+  `schema.alter()` with `dropColumn()` of a column that has a foreign key is refused before the migration runs ([see below](#what-mysql-refuses-before-a-migration-runs)):
+  Marmeon does not drop the key first, so remove it with a `schema.raw()` step (`alter table … drop foreign key …`) before the column goes.
 - **A UUIDv7 column exists only when its table is created**, as on SQLite: MySQL refuses to add a column whose default is computed
   from the clock and random bytes. See [UUID keys](#uuid-keys).
 - **The default of a `text()` column that stays `longtext`, and of a `json()` column, is an expression**, written in parentheses, because
   MySQL takes no literal there (a `text()` in a key becomes a `varchar(768)` and keeps the literal).
   `useCurrent()` is `(utc_timestamp(3))`: the column holds UTC.
+
+#### What MySQL refuses before a migration runs
+
+MySQL commits each schema change as it runs it, so a migration that stops half way leaves its first half in place, and running it again fails on
+that. Marmeon therefore refuses what MySQL cannot do before a migration sends its first statement, with error D18 (D5 for a name that is too
+long). The database stays as it was. It checks in two steps:
+
+- What each step of a plan shows by itself is checked for every pending migration before the first one runs (for `migrate:rollback` and `migrate:reset`, for every `down()` before the first).
+- What depends on the tables, or on an earlier step of the same migration (an index on a column that step adds, say), is checked against the database as it is when that migration starts, right before its first statement, so what raw SQL did in an earlier migration counts. The migrations before it have run and are recorded, and running again starts at the one that was refused. A run or rollback of several migrations can therefore stop between two.
+
+What it refuses, and what to do instead:
+
+| The migration | MySQL | Instead |
+|---|---|---|
+| An index with `where` (a [partial index](#partial-indexes)) | MySQL has no partial indexes. | A plain index, or keep the rule in code. For a unique rule among some rows, add a generated column in raw SQL (`schema.raw()`) that is `NULL` for the other rows, and put the unique index on it. |
+| `table.notNull()` or `table.nullable()` in `schema.alter()` | MySQL's `ALTER TABLE` takes the whole column definition again. | `schema.raw()` with a `mysql` statement (`alter table … modify column …`), or a new column and the values copied in a `schema.data()` step. |
+| A `json()` or `binary()` column in an index, a unique column or a primary key | MySQL indexes no such column without a prefix length. | Index a `string()` column that holds what you look up. |
+| An index on a `text()` column of an earlier step or migration | The column is `longtext`, which no index covers. A `text()` column is `varchar(768)` only when the `create()` or `alter()` that adds it also indexes it. | Add a `string(name, length)` column, copy the values in a `schema.data()` step and index that one. |
+| An index wider than 3072 bytes | A `string()` or `uuid()` column of a table Marmeon creates counts four bytes a character (it creates every table in utf8mb4, whatever the default of the database is); a column that `alter()` adds counts the bytes of the character set that is the default of its table now, which raw SQL may have changed, and a table whose character set is not known is not held; `bigint` and `double` count 8, `integer` 4, `date` 3, `timestamp()` 7, `boolean` 1, and `decimal()` the bytes MySQL packs its digits into. A column the database has counts the bytes the catalog reports (a latin1 column one byte a character). A key of exactly 3072 bytes passes, one of 3073 is refused. A column of another type does not count, so the key may be wider than the message says. Two `text()` columns in one index are two `varchar(768)`. | Shorter `string()` columns, or fewer columns in the key. |
+| An index over more than 16 columns | MySQL takes 16 at most. | Fewer columns. |
+| A name of an index, a check, a foreign key, a table or a column over 64 characters | MySQL refuses it. Marmeon counts characters, not bytes. | A name of your own that fits: `table.index(columns, 'name')`; for the constraint of `oneOf()` or the key of `foreignId()`, a shorter table or column name (`check(name, …)` instead of `oneOf()`). |
+| `schema.rename(from, to, { indexes: true })` of a table with a foreign key or a check (also the one of `oneOf()`) whose name starts with `from_` | MySQL renames no foreign key or check. | `schema.rename(from, to)` without `indexes` (the constraints keep their names), or a new table and the rows copied. |
+| `schema.rename(from, to, { indexes: true })` that gives an index a name another index of the table has | MySQL does not tell upper and lower case apart in index names. | Drop the other index first, or rename the table without `indexes`. |
+| `dropColumn()` of a column that a foreign key holds, or that a foreign key of another table references | MySQL stops with error 1828 or 1829. | Drop the key in a `schema.raw()` step before it (`alter table … drop foreign key …`). |
+| `renameColumn()` of a column that a check starts with, that is, whose expression in the catalog begins with the column (also the check of `oneOf()`) | MySQL stops with error 3959. | `dropCheck()` in the same `alter()`, then rename the column, then add the check again in a later `alter()`. |
+| `schema.drop()` of a table that a foreign key of another table references | MySQL stops with error 3730 (not when `foreign_key_checks` is off). | Drop the other table first, or the key. |
+| `dropIndex()` of the last index that starts with the columns of a foreign key | MySQL stops with error 1553. It removes the index it made for the key itself as soon as another one starts with the same column. | Add an index that starts with the column first, in an earlier `alter()`. |
+
+`schema.rename(from, to, { indexes: true })` on MySQL renames the indexes whose names start with `from_` in the statement that renames the table, so they change together or not at all. It reads the indexes and the foreign keys and checks from the database, so those that raw SQL made count too, and it refuses a new name over 64 characters before it renames the table.
+
+`oneOf(column, values)` in `schema.alter()` works on MySQL: the old constraint is dropped and the new one added in one statement, so no row goes unchecked in between. `table.foreign()`, `table.check()` and `table.dropCheck()` work too.
+
+What depends on the tables is checked against what the database role sees in `information_schema` ([the catalog of MySQL](database.md#the-catalog-of-mysql)): a row that is seen refuses the migration, and where none is seen the server decides. After a `schema.raw()` step Marmeon cannot tell what changed: it checks none of the later steps of that migration against the database (also in the `alter()` of another table) and leaves them to the server. A table the same migration creates is checked for the types of its indexed columns only, and a rename with `indexes: true` is held again right before the rename.
+
+Not held before the migration runs, so the server refuses them with the earlier steps of the migration in place:
+
+- `dropColumn()` of a column that a `check()` names together with other columns (error 3959). A check that names only that column disappears with it on MySQL, and the description of the migrations keeps it.
+- `renameColumn()` of a column that a check names but whose expression does not begin with it.
+- `dropIndex()` of a unique index that a foreign key of another table references, and `dropIndex()` of the last index of a foreign key after an earlier `alter()` of the same table in the same migration.
+- `schema.drop()` of a table that a foreign key references, after a `schema.data()` step of the same migration: the step may have turned `foreign_key_checks` off for the session. A key of another table that points at a table that is not there does not count either.
+- Foreign keys and checks that an earlier step of the same migration creates. A rename with `indexes: true` after such a foreign key is refused right before the rename, with the earlier steps in place.
+- The constraints of a table that an earlier step of the same migration dropped a column of, and everything about a table that an earlier step renamed, apart from the types of its indexed columns. The index names of a rename count what earlier alters of the table dropped or made (not the indexes MySQL made for a foreign key once an index was made), but not after a `dropColumn()`.
+- A foreign key of a table that an earlier step of the same migration created, dropped or renamed, when a table or column it references is dropped.
+- A foreign key or a check that the role does not see, and an index on a column of a table the migrations and the role do not know.
 
 ### How the migrator keeps track
 
@@ -492,7 +536,7 @@ invisible to them. That makes a migration safe for them when it only adds:
 
   A whole table needs no `retire()`: stop using it in one release and drop it in the next.
 - **A new `NOT NULL` column** breaks the inserts of an old instance. Add it with a default, or nullable and make it `NOT NULL` with
-  `notNull()` only in the release after (Postgres only; SQLite refuses `notNull()` with D18, so use the default there).
+  `notNull()` only in the release after (Postgres only; SQLite and MySQL refuse `notNull()` with D18, so use the default there).
 - **A new secret column** is hidden from old instances, since they select only the columns they know. A query of theirs that names the
   column, or raw SQL, still reads it.
 
@@ -538,8 +582,8 @@ made, but the check after each migration still expects it in the database until 
 - **A retired column cannot be changed.** `renameColumn()`, `notNull()`, `nullable()` and an index on it stop with error D19; only
   `dropColumn()` works. Nor can a primary key, the column of `timestamps()` or `softDeletes()`, or a column another table's foreign
   key references be retired. A foreign key on a retired column and the relation it gave are no longer known; the constraint stays in
-  the database until the column is dropped. On MySQL that `dropColumn()` stops with error 1829 while the key exists: drop the
-  key first, see [MySQL](#mysql).
+  the database until the column is dropped. On MySQL that `dropColumn()` is refused while the key exists: drop the
+  key first, see [what MySQL refuses](#what-mysql-refuses-before-a-migration-runs).
 - **A fixed default in a unique index is refused.** A column with a `default(value)` or `useCurrent()` default that is in a unique
   index (its own `unique()` or a composite one) gets the same value from every insert of the new release (from those written at the
   same moment, for `useCurrent()`), so the second insert could fail, or a composite index could make the other columns unique on
@@ -552,7 +596,8 @@ made, but the check after each migration still expects it in the database until 
 - **A foreign key cannot point at a retired column**: `constrained(table, column)` on one stops with error D19.
 - **The column has to be nullable or have a default**, because the new release inserts without it and the database must accept
   that. A `NOT NULL` column without a default is refused with error D19 rather than left to fail on the first insert in production.
-  On Postgres make it nullable in an earlier migration with `table.nullable('column')`; on SQLite, which cannot change a column,
+  On Postgres make it nullable in an earlier migration with `table.nullable('column')`; on MySQL do the same with `schema.raw()` and a
+  `modify column` statement ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)); on SQLite, which cannot change a column,
   use the third way above.
 - **Retire in the release before the drop, not in the same one.** Marmeon cannot tell which instances still run: the drop has to wait
   until every instance of the release before the retirement is gone.
@@ -679,7 +724,7 @@ export default defineMigration({
 sets the column to `NULL`, and `restrictOnDelete()` refuses to delete the referenced row while this one points at it. Without any
 of them, the database's default applies and refuses the delete as well. The compiler only offers the three after
 `constrained()`, and `.nullable()` goes last, as in `uploaded_by_id` above. Both SQLite and Postgres enforce the reference. A column that exists already is tied with
-[`foreign()`](#a-reference-that-comes-later) in `alter()`, on Postgres.
+[`foreign()`](#a-reference-that-comes-later) in `alter()`, on Postgres and MySQL.
 
 Every foreign key also describes two relations, one for each table. The
 [relations from foreign keys](#relations-from-foreign-keys) section shows how they are named.
@@ -722,7 +767,7 @@ column's kind: `true` or `false` for a boolean column, a number for an integer c
 also works there, for a `bigInteger()` above 2^53), a string for a string column. Other column types take any value. The default name of a partial index is the same as that of one without a condition, so two
 indexes over the same columns need a name for one of them.
 
-Both drivers create the index with the condition. A partial unique index is unique among the matching rows only, so it identifies no row of
+SQLite and Postgres create the index with the condition; MySQL has no partial index and refuses it before the migration runs ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)). A partial unique index is unique among the matching rows only, so it identifies no row of
 the table: Marmeon does not count it as a [unique set](#what-the-migrations-describe), and a foreign key column that is unique for some rows
 only stays a `hasMany`. The condition is a structure and not a SQL string because the migrations need to know which columns it uses:
 Postgres drops an index when a column of its condition is dropped, and SQLite refuses to drop that column. The `where` of a partial index
@@ -753,7 +798,7 @@ row that does not fit stops the migration, which is rolled back (not on MySQL, s
 Moving a value from one `oneOf()` column into another whose list is shorter needs Kysely's `$castTo<'admin' | 'member'>()` (the target column's
 union) at that expression: the compiler cannot see the `where` that makes it true, and the check constraint still refuses a wrong value.
 
-`table.check(name, sql)` adds a named check constraint of your own, in `create()` and, on Postgres, in `alter()`. `sql` is the condition, in SQL both
+`table.check(name, sql)` adds a named check constraint of your own, in `create()` and, on Postgres and MySQL, in `alter()`. `sql` is the condition, in SQL both
 drivers accept; Marmeon does not look into it:
 
 ```ts
@@ -765,10 +810,10 @@ schema.create('events', (table) => {
 });
 ```
 
-`table.dropCheck(name)` drops a constraint by its name, in `alter()` and on Postgres; dropped checks run first. It also drops the constraint of a `oneOf()` list (see below to change a list instead).
+`table.dropCheck(name)` drops a constraint by its name, in `alter()` and on Postgres and MySQL; dropped checks run first. It also drops the constraint of a `oneOf()` list (see below to change a list instead).
 
 A check name is used once per table: `check()` with the name of another check, or of the constraint a `oneOf()` column makes, is error D19. A `check()` that mentions a column
-stops that column from being dropped on SQLite, and on Postgres `dropColumn()` drops the constraint without a word while Marmeon still describes it: drop the check first with `dropCheck()` on Postgres, and rebuild the table with raw SQL on SQLite.
+stops that column from being dropped on SQLite, and on Postgres `dropColumn()` drops the constraint without a word while Marmeon still describes it: drop the check first with `dropCheck()` on Postgres, and rebuild the table with raw SQL on SQLite. On MySQL a check that names only the dropped column goes with it, and Marmeon still describes it; one that names other columns too stops `dropColumn()` with the server's error 3959, which is not held before the migration runs ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)): drop that check first with `dropCheck()`.
 
 After `dropCheck()` the column is a plain `string` in `Row<…>` again. Marmeon does not read the condition that `check()` puts in its place, so cast the lines that read the column to the union only when that condition allows exactly the union.
 
@@ -925,12 +970,12 @@ export default defineMigration({
 | `table.renameColumn(from, to)` | Renames a column. |
 | `table.dropIndex(name)` | Drops an index by its name. |
 | `table.dropUnique(name)` | Drops a unique index by its name. |
-| `table.check(name, sql)` | Adds a named [check constraint](#check-constraints); in `alter()` on Postgres only, error D18 on SQLite. Works in `create()` too. |
-| `table.dropCheck(name)` | Drops a check constraint by its name. Postgres only, error D18 on SQLite. |
-| `table.oneOf(column, values)` | Replaces the [list of an existing column](#changing-the-list-of-a-column); `db:types` writes the new union. Postgres only, error D18 on SQLite. |
-| `table.foreign(column).constrained(table)` | Ties an existing column to a table, [after the fact](#a-reference-that-comes-later). Postgres only, error D18 on SQLite. |
-| `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite. |
-| `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite. |
+| `table.check(name, sql)` | Adds a named [check constraint](#check-constraints); in `alter()` on Postgres and MySQL, error D18 on SQLite. Works in `create()` too. |
+| `table.dropCheck(name)` | Drops a check constraint by its name. Postgres and MySQL, error D18 on SQLite. |
+| `table.oneOf(column, values)` | Replaces the [list of an existing column](#changing-the-list-of-a-column); `db:types` writes the new union. Postgres and MySQL, error D18 on SQLite. |
+| `table.foreign(column).constrained(table)` | Ties an existing column to a table, [after the fact](#a-reference-that-comes-later). Postgres and MySQL, error D18 on SQLite. |
+| `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite and MySQL. |
+| `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite and MySQL. |
 | `table.retire(column)` | Takes a column out of use, one release before it is dropped. Changes no statement; see [retiring a column](#retiring-a-column). |
 
 All but `check()` work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
@@ -945,7 +990,7 @@ A foreign key belongs to the migration that adds its column, and that migration 
 table. Order the migrations when you write them, as under [generating migrations](#generating-migrations), so that the referenced
 table comes first. That is only possible before the migrations have run.
 
-A column that has run as a plain `bigInteger()` and has to point at a table created later is tied to it on Postgres with `foreign()`:
+A column that has run as a plain `bigInteger()` and has to point at a table created later is tied to it on Postgres and MySQL with `foreign()`:
 
 ```ts title="modules/forms/migrations/2026_11_02_080000_tie_guest_categories_to_forms.ts"
 import { defineMigration } from '@marmeon/database';
@@ -1000,7 +1045,7 @@ schema.rename('invoices', 'bills', { indexes: true });
 
 Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
 sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
-yourself first, to a name of your choice. Without the option, `rename` changes the table's name only.
+yourself first, to a name of your choice. Without the option, `rename` changes the table's name only. MySQL renames the indexes only, and refuses a table whose foreign keys or checks start with the old name ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 The names of check constraints (`{table}_{column}_check` of `oneOf()`, and those of `check()`) follow on Postgres. SQLite keeps them as they were, so a later `dropCheck()` there is
 not possible in either case; Marmeon's description follows Postgres.
 

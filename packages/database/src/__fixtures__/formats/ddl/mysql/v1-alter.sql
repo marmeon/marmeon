@@ -1,0 +1,17 @@
+alter table `ddl_indexed` add column `d` varchar(255);
+alter table `ddl_indexed` add column `e` integer default 0 not null;
+alter table `ddl_indexed` add column `s` varchar(255);
+alter table `ddl_indexed` add column `deleted_at` datetime(3);
+alter table `ddl_indexed` add column `quoted` varchar(255) default 'it''s' not null;
+alter table `ddl_indexed` add column `off` boolean default false not null;
+alter table `ddl_indexed` add column `due` datetime(3) default '2026-01-02 03:04:05.678' not null;
+alter table `ddl_indexed` add column `ddl_category_id` bigint;
+alter table `ddl_indexed` add constraint `ddl_indexed_ddl_category_id_fkey` foreign key (`ddl_category_id`) references `ddl_categories` (`id`);
+create index `ddl_indexed_d_index` on `ddl_indexed` (`d`);
+create unique index `ddl_indexed_e_unique_name` on `ddl_indexed` (`e`);
+drop index `ddl_indexed_a_index` on `ddl_indexed`;
+drop index `ddl_indexed_named_ab` on `ddl_indexed`;
+alter table `ddl_indexed` rename column `b` to `bee`;
+alter table `ddl_keys` add constraint `ddl_keys_loose_id_fkey` foreign key (`loose_id`) references `ddl_people` (`id`) on delete cascade;
+drop index `ddl_indexed_d_index` on `ddl_indexed`;
+alter table `ddl_indexed` drop column `d`;

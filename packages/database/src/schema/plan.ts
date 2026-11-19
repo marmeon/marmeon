@@ -2,8 +2,9 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
-import { mysqlPending } from '../mysql-pending.ts';
 import { Blueprint, blueprintParts, compileColumn, foreignKeyName, mysqlForeignKeys, oneOfCondition, oneOfName, type Driver } from './blueprint.ts';
+import { checkMysqlPlan, checkMysqlState, fitsMysql, indexRenamesOf, mysqlStateTables, NO_STATE, readMysqlState, refuseNamedConstraints } from './mysql-checks.ts';
+import type { ProjectedTable } from './projection.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
 import { unknownDriver } from '../supported-driver.ts';
@@ -71,8 +72,16 @@ export async function executePlan(
   aroundData?: (index: number, run: () => Promise<void>) => Promise<void>,
   /** Names the constraint of a `oneOf(column, values)` change; a plan that has one cannot run without it. */
   listCheck?: ListCheck,
+  /** The tables the migrations know before each step. Used for the types of columns that an earlier step of the plan makes, which the database does not have yet; the columns that exist, and those dropped, come from the database. */
+  tablesAt?: TablesAt,
 ): Promise<void> {
   check(driver, steps);
+  if (driver === 'mysql') {
+    checkMysqlLists(steps, listCheck);
+    const tables = mysqlStateTables(steps);
+    // Nothing is read for a plan that needs nothing of the database (one that only creates tables, say).
+    checkMysqlState(steps, tables.length ? await readMysqlState(db, tables) : NO_STATE, tablesAt);
+  }
   for (const [index, step] of steps.entries()) {
     if (step.kind === 'data' && aroundData) await aroundData(index, () => run(db, driver, step));
     else await run(db, driver, step, listCheck && ((table, column) => listCheck(index, table, column)));
@@ -82,8 +91,15 @@ export async function executePlan(
 /** The constraint behind a column's `oneOf()` list after the step with this index, and whether the column had a list before it; undefined for a column the migrations do not know. */
 export type ListCheck = (index: number, table: string, column: string) => { readonly name: string; readonly had: boolean } | undefined;
 
-/** Postgres cuts an identifier at 63 bytes without a word. */
+/**
+ * The tables the migrations leave before the step with this index, or undefined when they cannot be told (a plan the projection does not
+ * hold: the check then skips what it needs them for, and the run says what is wrong where it is meant to).
+ */
+export type TablesAt = (index: number) => ReadonlyMap<string, ProjectedTable> | undefined;
+
+/** Postgres cuts an identifier at 63 bytes without a word; MySQL refuses one over 64 characters. */
 function fits(driver: Driver, name: string, what: string, hint = "Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead)."): void {
+  if (driver === 'mysql') return fitsMysql(name, what, hint);
   if (driver !== 'pgsql' || Buffer.byteLength(name) <= 63) return;
   throw new SchemaError(
     withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. ${hint}`),
@@ -108,12 +124,16 @@ export function assertRawFitsMysql(steps: readonly PlanStep[], who: string): voi
   }
 }
 
-/** What the plan cannot do on `driver`, refused before its first statement. `executePlan` calls it; a rollback calls it for every `down()` it is to run. */
+/**
+ * What each step of the plan shows by itself it cannot do on `driver` (not what depends on an earlier step of the same migration, such as an index on a column it adds), refused before its first statement; no database is asked. `executePlan` calls it; a
+ * rollback calls it for every `down()` it is to run, and a run on MySQL for every migration it is to run. What depends on the tables on MySQL is
+ * held in `executePlan`, against the database as it is when the migration starts.
+ */
 export function check(driver: Driver, steps: readonly PlanStep[]): void {
   if (driver === 'mysql') {
     assertRawFitsMysql(steps, 'The plan');
-    // Refused here, before the rename itself is committed: a rerun would stop at the table that is already renamed.
-    if (steps.some((step) => step.kind === 'rename' && step.indexes)) mysqlPending('Renaming a table with its indexes');
+    // MySQL commits every DDL statement as it runs, so what it refuses has to be found here: a plan that stops half way leaves the first half in place, and a rerun fails on it.
+    checkMysqlPlan(steps);
   }
   for (const step of steps) {
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
@@ -186,7 +206,15 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
     case 'drop':
       await (step.ifExists ? db.schema.dropTable(step.table).ifExists() : db.schema.dropTable(step.table)).execute();
       return;
-    case 'rename':
+    case 'rename': {
+      if (driver === 'mysql') {
+        // The indexes follow the table in the one statement that renames it: they change their names together, or none does. They are read, and
+        // their new names held, before it: a refusal then leaves the table as it was.
+        const renames = step.indexes ? await mysqlRenames(db, step.from, step.to) : [];
+        if (renames.length) await sql`alter table ${sql.table(step.from)} rename to ${sql.table(step.to)}, ${sql.join(renames.map(([from, to]) => sql`rename index ${sql.id(from)} to ${sql.id(to)}`))}`.execute(db);
+        else await db.schema.alterTable(step.from).renameTo(step.to).execute();
+        return;
+      }
       await db.schema.alterTable(step.from).renameTo(step.to).execute();
       if (step.indexes) {
         switch (driver) {
@@ -196,13 +224,12 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
           case 'pgsql':
             await renameNamesPgsql(db, driver, step.from, step.to);
             break;
-          case 'mysql':
-            return mysqlPending('Renaming a table with its indexes');
           default:
             return unknownDriver(driver);
         }
       }
       return;
+    }
     case 'raw': {
       // MySQL's `null` runs nothing, like a driver without a statement.
       const statement = step.statements[driver];
@@ -263,11 +290,8 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, list
   }
   for (const { column, values } of parts.oneOfChanges) {
     const found = listCheck?.(table, column);
-    if (!found) {
-      throw new SchemaError(withCode('D19', `schema.alter('${table}') gives "${column}" a list with oneOf(), but the migrations do not know which constraint holds it now. Run it through migrate, or name the constraint with dropCheck() and check().`));
-    }
-    // A column that gets its list in this very alter() has the constraint already.
-    const had = found.had || parts.columns.some((spec) => spec.name === column && spec.oneOf);
+    if (!found) throw unknownList(table, column);
+    const had = hadList(found, parts, column);
     if (!had) fits(driver, found.name, 'check constraint name');
     // One statement: no row is unchecked between the old list and the new one.
     const drop = had ? sql`drop constraint ${sql.id(found.name)}, ` : sql``;
@@ -276,6 +300,28 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, list
   for (const { name, sql: condition } of parts.checks) await db.schema.alterTable(table).addCheckConstraint(name, sql.raw(condition)).execute();
   await createIndexes(db, blueprint);
   for (const column of parts.drops) await db.schema.alterTable(table).dropColumn(column).execute();
+}
+
+function unknownList(table: string, column: string): SchemaError {
+  return new SchemaError(withCode('D19', `schema.alter('${table}') gives "${column}" a list with oneOf(), but the migrations do not know which constraint holds it now. Run it through migrate, or name the constraint with dropCheck() and check().`));
+}
+
+/** Whether the column has a list to replace: one from before, or one that this very alter() gives it with its column. */
+function hadList(found: { readonly had: boolean }, parts: ReturnType<typeof blueprintParts>, column: string): boolean {
+  return found.had || parts.columns.some((spec) => spec.name === column && spec.oneOf);
+}
+
+/** What `alter()` finds out about the lists of `oneOf()` while it runs, found out before the first statement of the plan: the migrations must know the constraint, and a new one needs a name MySQL takes. */
+function checkMysqlLists(steps: readonly PlanStep[], listCheck: ListCheck | undefined): void {
+  for (const [index, step] of steps.entries()) {
+    if (step.kind !== 'alter') continue;
+    const parts = blueprintParts(step.blueprint);
+    for (const { column } of parts.oneOfChanges) {
+      const found = listCheck?.(index, step.table, column);
+      if (!found) throw unknownList(step.table, column);
+      if (!hadList(found, parts, column)) fits('mysql', found.name, 'check constraint name');
+    }
+  }
 }
 
 async function createIndexes(db: Kysely<any>, blueprint: Blueprint): Promise<void> {
@@ -311,6 +357,17 @@ async function renameNamesPgsql(db: Kysely<any>, driver: Driver, from: string, t
     if (!constraints.includes(name)) await sql`alter index ${sql.id(name)} rename to ${sql.id(renamed(name))}`.execute(db);
   }
   for (const name of sequences) await sql`alter sequence ${sql.id(name)} rename to ${sql.id(renamed(name))}`.execute(db);
+}
+
+/**
+ * The indexes of `from` on MySQL that follow the table to `to`, as `[old, new]`, read from the server (which has the ones raw SQL made too).
+ * Refuses a table with a foreign key or check named after it first: MySQL renames neither.
+ */
+async function mysqlRenames(db: Kysely<any>, from: string, to: string): Promise<[string, string][]> {
+  const constraints = await sql<{ name: string }>`select constraint_name as name from information_schema.table_constraints where table_schema = database() and table_name = ${from} and constraint_type in ('CHECK', 'FOREIGN KEY')`.execute(db);
+  refuseNamedConstraints(from, to, constraints.rows.map((row) => row.name));
+  const indexes = await sql<{ name: string }>`select distinct index_name as name from information_schema.statistics where table_schema = database() and table_name = ${from} and index_name <> 'PRIMARY' order by index_name`.execute(db);
+  return indexRenamesOf(from, to, indexes.rows.map((row) => row.name));
 }
 
 /** SQLite renames no index: it drops each and creates it again under the new name, from the statement it was created with. */

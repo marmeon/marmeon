@@ -2,7 +2,7 @@ import { withCode } from '@marmeon/core/internal';
 import { byCodePoint, type ForeignKey, type Introspected, type SchemaMarker } from '../introspection.ts';
 import { loadMigration, type MigrationSource } from '../migrations/load.ts';
 import { blueprintParts, isStringType, mysqlTypeOf, oneOfName, type Blueprint, type ColumnSpec, type IndexCondition, type Driver, type TableMarker } from './blueprint.ts';
-import { planOf, type ListCheck, type PlanStep } from './plan.ts';
+import { planOf, type ListCheck, type PlanStep, type TablesAt } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
 // What the migrations say about the schema, computed from their plans alone: no database, nothing executed. The one place that knows
@@ -124,6 +124,32 @@ export function listCheckOf(before: SchemaProjection, steps: readonly PlanStep[]
     const dropped = step?.kind === 'alter' && blueprintParts(step.blueprint).dropChecks.includes(name);
     const had = !dropped && (applyPlan(before, steps.slice(0, index), file).tables.get(table)?.columns.some((c) => c.valuesCheck === name) ?? false);
     return { name, had };
+  };
+}
+
+/**
+ * For {@link executePlan}: the tables the migrations leave before the step with this index, from the schema the plan starts from; it gives the types of the
+ * columns that an earlier step of the plan makes, the rest comes from the database. Steps are
+ * applied as they are asked for, in the order of the plan; a plan the projection cannot hold gives no tables (undefined), for this step and the later ones.
+ */
+export function tablesAtOf(before: SchemaProjection, steps: readonly PlanStep[], file: Pick<MigrationSource, 'name' | 'module'>): TablesAt {
+  let projection = before;
+  let applied = 0;
+  let failed = false;
+  return (index) => {
+    if (failed) return undefined;
+    if (index < applied) [projection, applied] = [before, 0];
+    if (index > applied) {
+      try {
+        projection = applyPlan(projection, steps.slice(applied, index), file);
+      } catch (error) {
+        if (!(error instanceof SchemaError)) throw error;
+        failed = true;
+        return undefined;
+      }
+      applied = index;
+    }
+    return projection.tables;
   };
 }
 
