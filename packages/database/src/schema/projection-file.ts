@@ -20,7 +20,7 @@ export const PROJECTION_FILE = '.marmeon/schema.json';
  * new migrations write needs no bump: a file of another version is computed again anyway. Neither does an optional field whose
  * absence only makes a check refuse more, never less, such as `nullDefault`.
  */
-export const PROJECTION_FORMAT = 2;
+export const PROJECTION_FORMAT = 3;
 
 /** A migration file the projection was computed from: its name, module and the SHA-256 of its bytes. */
 export interface ProjectionSource {
@@ -88,6 +88,7 @@ function isTable(value: unknown, name: string): value is ProjectedTable {
         c.type !== null &&
         typeof (c.type as Record<string, unknown>).sqlite === 'string' &&
         typeof (c.type as Record<string, unknown>).pgsql === 'string' &&
+        typeof (c.type as Record<string, unknown>).mysql === 'string' &&
         typeof c.nullable === 'boolean' &&
         typeof c.primary === 'boolean' &&
         typeof c.identity === 'boolean' &&

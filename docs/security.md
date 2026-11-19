@@ -468,7 +468,8 @@ meantime ends with them too, because the address was not confirmed (see below); 
 
 The routes that add an authenticator app or a passkey sit behind `verified()` in every registration mode, so an account whose address
 nobody confirmed cannot attach a second factor of its own. And the password reset of such an account (`email_verified_at` and `first_verified_at` are `null`: the address was never confirmed)
-removes its passkeys, its authenticator, its recovery codes and every API token, whatever `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` says:
+removes its passkeys, its authenticator, its recovery codes and every API token, whatever `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` says, and with `@marmeon/oauth` the provider accounts linked to it
+(whenever `email_verified_at` is `null` or missing; see [Linking and unlinking](oauth.md#linking-and-unlinking)):
 the owner proved the mailbox with the link, and nothing the first registrant attached stays. The reset leaves the address unconfirmed;
 the owner confirms it with the link of the notice page. An account that was confirmed once and then changed to an address not confirmed
 yet keeps its factors in a reset, but loses its API tokens: whoever confirmed the earlier address may have created them and then

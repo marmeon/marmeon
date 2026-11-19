@@ -31,6 +31,7 @@
     "@marmeon/log": "workspace:*",
     "@marmeon/mail": "workspace:*",
     "@marmeon/notifications": "workspace:*",
+    "@marmeon/oauth": "workspace:*",
     "@marmeon/otel": "workspace:*",
     "@marmeon/queue": "workspace:*",
     "@marmeon/react": "workspace:*",

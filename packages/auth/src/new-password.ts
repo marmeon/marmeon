@@ -6,6 +6,7 @@ import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
 import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import { forgetResetLinks } from './password-reset.ts';
+import { passwordResetHooks } from './reset-hooks.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
 
@@ -100,6 +101,14 @@ export class NewPassword {
       }
       // A link mailed before the new password (to a mailbox a thief read) must not set another one.
       await forgetResetLinks(this.#guard.passwordResets(), stored?.user ?? user ?? {});
+      // What a package holds as a way in of its own goes in this transaction too: a hook that throws undoes the reset. Only the app's
+      // guard has hooks, and only a reset runs them (a change is made by the signed-in owner).
+      if (via === 'reset') {
+        // Unconfirmed when either view says so: the account as the reset found it, and as it reads back after the write (a provider whose write
+        // also confirms the address must not make the reset keep what the owner never had).
+        const emailConfirmed = isConfirmed(user) && (stored === undefined || isConfirmed(stored.user));
+        for (const hook of passwordResetHooks(this.#guard.reauthenticationRoot())) await hook({ userId: id, emailConfirmed });
+      }
       return revoked;
     };
     // The tokens go with every reset of an address nobody confirmed, also where `first_verified_at` keeps the factors: that mark may
@@ -163,6 +172,12 @@ export class NewPassword {
     this.#warnedUnknownVerification = true;
     this.#guard.logger().warn('The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
   }
+}
+
+/** Whether `email_verified_at` of `user` is set; a user that does not say counts as unconfirmed. */
+function isConfirmed(user: AuthUser | undefined): boolean {
+  const confirmed = (user as { email_verified_at?: unknown } | undefined)?.email_verified_at;
+  return confirmed !== null && confirmed !== undefined;
 }
 
 /** Whether the address of `user` never was confirmed — not once before a later change of address cleared `email_verified_at`. */

@@ -24,6 +24,7 @@ packages=(
   @marmeon/log
   @marmeon/mail
   @marmeon/notifications
+  @marmeon/oauth
   @marmeon/otel
   @marmeon/queue
   @marmeon/react

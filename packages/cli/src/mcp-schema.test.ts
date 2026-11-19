@@ -35,8 +35,8 @@ describe('schema in an app', { timeout: 120_000 }, () => {
     const result = await call(session, {});
     expect(result.isError).toBeUndefined();
     // The version of @marmeon/database changes with each release; the inner shape is that package's own fixture.
-    const { database: _version, ...stable } = stored('mcp-schema/v1.json').projection;
-    expect(result.structuredContent).toMatchObject({ ...stored('mcp-schema/v1.json'), projection: stable });
+    const { database: _version, ...stable } = stored('mcp-schema/v1-projection-3.json').projection;
+    expect(result.structuredContent).toMatchObject({ ...stored('mcp-schema/v1-projection-3.json'), projection: stable });
     expect(typeof result.structuredContent.projection.database).toBe('string');
     expect(Object.keys(result.structuredContent)[0]).toBe('format');
     expect(JSON.parse(result.content[0].text)).toEqual(result.structuredContent);
@@ -137,15 +137,20 @@ describe('schema when the file is not what the command wrote', () => {
   });
 
   it('reads the command with a fixed argument list and nothing from the input', async () => {
-    file({ format: 2, tables: {} });
+    file({ format: 3, tables: {} });
     await SCHEMA_TOOL.run({ table: 'x' }, context());
     expect(run).toHaveBeenCalledWith(root, ['schema:project'], expect.objectContaining({ timeoutMs: 120_000 }));
   });
 
+  it('refuses the file of the format an earlier marmeon wrote, which has no MySQL types', async () => {
+    file(stored('mcp-schema/v1.json').projection);
+    expect(await SCHEMA_TOOL.run({}, context())).toEqual({ failure: '.marmeon/schema.json has format 2; this marmeon reads 3 — update marmeon.' });
+  });
+
   it('refuses a file of another format without its content', async () => {
-    file({ format: 3, tables: { secret_table: {} } });
+    file({ format: 4, tables: { secret_table: {} } });
     const result = await SCHEMA_TOOL.run({}, context());
-    expect(result).toEqual({ failure: '.marmeon/schema.json has format 3; this marmeon reads 2 — update marmeon.' });
+    expect(result).toEqual({ failure: '.marmeon/schema.json has format 4; this marmeon reads 3 — update marmeon.' });
   });
 
   it.each([['no format', { tables: {} }], ['a text', 'nope'], ['null', 'null'], ['a list', '[]']])('refuses a file with %s', async (_name, value) => {
@@ -161,7 +166,7 @@ describe('schema when the file is not what the command wrote', () => {
 
   it('refuses a link to a file outside the app and returns nothing of it', async () => {
     const outside = join(realpathSync(tempDir('marmeon-mcp-schema-outside-')), 'schema.json');
-    writeFileSync(outside, JSON.stringify({ format: 2, tables: { stolen: {} } }));
+    writeFileSync(outside, JSON.stringify({ format: 3, tables: { stolen: {} } }));
     mkdirSync(join(root, '.marmeon'));
     symlinkSync(outside, join(root, '.marmeon/schema.json'));
     const result = await SCHEMA_TOOL.run({}, context());
@@ -171,7 +176,7 @@ describe('schema when the file is not what the command wrote', () => {
 
   it('refuses .marmeon as a link to a directory outside the app and returns nothing of it', async () => {
     const outside = realpathSync(tempDir('marmeon-mcp-schema-outside-'));
-    writeFileSync(join(outside, 'schema.json'), JSON.stringify({ format: 2, tables: { stolen: {} } }));
+    writeFileSync(join(outside, 'schema.json'), JSON.stringify({ format: 3, tables: { stolen: {} } }));
     symlinkSync(outside, join(root, '.marmeon'), 'dir');
     const result = await SCHEMA_TOOL.run({}, context());
     expect(result).toEqual({ failure: '.marmeon/schema.json is not a regular file inside the app, so it was not read.' });
@@ -185,11 +190,11 @@ describe('schema when the file is not what the command wrote', () => {
   it('does not echo a format that is no integer', async () => {
     file({ format: 'x'.repeat(5000), tables: {} });
     const result = await SCHEMA_TOOL.run({}, context());
-    expect(result).toEqual({ failure: '.marmeon/schema.json has format none; this marmeon reads 2 — update marmeon.' });
+    expect(result).toEqual({ failure: '.marmeon/schema.json has format none; this marmeon reads 3 — update marmeon.' });
   });
 
   const stale = () => {
-    file({ format: 2, tables: { stale_table: {} } });
+    file({ format: 3, tables: { stale_table: {} } });
   };
 
   it('does not return a stale file as current when the app has no @marmeon/database', async () => {
@@ -203,7 +208,7 @@ describe('schema when the file is not what the command wrote', () => {
   it('still refuses a link in place of the file when the package is absent', async () => {
     withoutPackage();
     const outside = join(realpathSync(tempDir('marmeon-mcp-schema-outside-')), 'schema.json');
-    writeFileSync(outside, JSON.stringify({ format: 2, tables: { stolen: {} } }));
+    writeFileSync(outside, JSON.stringify({ format: 3, tables: { stolen: {} } }));
     mkdirSync(join(root, '.marmeon'));
     symlinkSync(outside, join(root, '.marmeon/schema.json'));
     expect(await SCHEMA_TOOL.run({}, context())).toEqual({ failure: '.marmeon/schema.json is not a regular file inside the app, so it was not read.' });
@@ -222,7 +227,7 @@ describe('schema when the file is not what the command wrote', () => {
   });
 
   it('lists at most 50 tables when one is unknown', async () => {
-    file({ format: 2, tables: Object.fromEntries(Array.from({ length: 60 }, (_, index) => [`t${index}`, {}])) });
+    file({ format: 3, tables: Object.fromEntries(Array.from({ length: 60 }, (_, index) => [`t${index}`, {}])) });
     const result = (await SCHEMA_TOOL.run({ table: 'none' }, context())) as { failure: string };
     expect(result.failure).toContain('t49');
     expect(result.failure).not.toContain('t50,');

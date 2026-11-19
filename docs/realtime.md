@@ -7,11 +7,15 @@ arrived, an administrator removed a row. A page **follows a channel**, and when 
 **hint**. Every tab that follows the channel then reloads the props it named, through the page's own route, as a partial reload.
 A hint says *that* something changed, never *what*: the data always comes from the route, its middleware and its policies.
 
-A new app has the package. Otherwise add it in the version of the app's other framework packages:
+A new app has the package. Otherwise add it with [`marmeon add`](packages.md#introduction), in the version of the app's other framework packages:
 
 ```sh
-pnpm add -E @marmeon/live@<version of your app>
+pnpm marmeon add live
 ```
+
+`marmeon add` copies the package's migration too, which boots the app, so the `.env` must be valid. Then run `pnpm marmeon migrate`.
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run
+`pnpm add -E @marmeon/live@<version of your app>`, then `marmeon discover`, `marmeon publish @marmeon/live` and `marmeon migrate`.
 
 A page follows a channel with `.live()`:
 

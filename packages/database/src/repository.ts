@@ -2,6 +2,7 @@ import { err, ok, type Result } from '@marmeon/core';
 import { errOfRollback, rollBackOnErr, withCode } from '@marmeon/core/internal';
 import { HttpError, type RouteBinder, type RouteBindingContext, type RouteBindingWith } from '@marmeon/router';
 import { sql } from 'kysely';
+import type { Driver } from './schema/blueprint.ts';
 import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 import { Connections } from './connections.ts';
 import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
@@ -13,6 +14,7 @@ import { relationWriter, type RelationWriter, type WritableRelationName } from '
 import { metadataOf, nowOf, softDelete, softDeleteFilter } from './schema-resolver.ts';
 import type { ColumnKind, SchemaMetadata } from './metadata.ts';
 import type { PrimaryKeys, Tables } from './types.ts';
+import { unknownDriver } from './supported-driver.ts';
 
 /** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
 export class RecordNotFoundError extends HttpError {
@@ -57,6 +59,20 @@ export interface RepositoryStatics {
 
 /** A column `returning` may name: one of the row as it is read, so never a secret one. */
 type ReturnableColumn<Table> = keyof RowOf<Table> & string;
+
+/** @internal — bound parameters one statement takes: 65 535 on Postgres and MySQL, 32 766 on SQLite. Without Marmeon's plugins the driver is unknown: the smaller limit is right for all. */
+export function parameterLimit(driver: Driver | undefined): number {
+  switch (driver) {
+    case 'pgsql':
+    case 'mysql':
+      return 65_535;
+    case 'sqlite':
+    case undefined:
+      return 32_766;
+    default:
+      return unknownDriver(driver);
+  }
+}
 
 /** The driver's refusal of an `ON CONFLICT` target no unique index backs: Postgres `42P10`, SQLite's message. */
 function noMatchingIndex(error: unknown): boolean {
@@ -401,8 +417,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
         throw new TypeError(`${method}() writes the columns of the first row (${columns.join(', ')}) in every row — row ${index} has ${own.join(', ') || 'none'}.`);
       }
     });
-    // Without Marmeon's plugins the driver is unknown: the smaller limit is right for both.
-    const limit = metadataOf(this.#db)?.driver === 'pgsql' ? 65_535 : 32_766;
+    const limit = parameterLimit(metadataOf(this.#db)?.driver);
     if (on) {
       rows.forEach((row, index) => {
         const missing = on.find((column) => row[column] === null || row[column] === undefined);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
+import { Head, Island, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 import { conditionalAvailable, getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 
@@ -130,6 +130,8 @@ export default function Login({ appName, old, remember: rememberOffered }: Props
           {passkeyError && <small role="alert"> {passkeyError}</small>}
         </p>
       )}
+      {/* The buttons of the providers that are active (modules/oauth); none when none is configured. */}
+      <Island route="oauth.sign-in" />
       <p>
         <Link route="auth.password.request">{t('login.forgot')}</Link> · {t('login.new_here')} <Link route="auth.register">{t('login.register')}</Link>
       </p>

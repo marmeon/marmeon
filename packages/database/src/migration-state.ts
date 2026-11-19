@@ -1,7 +1,8 @@
 import { printable, withCode } from '@marmeon/core/internal';
-import type { Kysely } from 'kysely';
+import { sql, type ColumnDefinitionBuilder, type Kysely } from 'kysely';
 import { tableColumns, type CatalogQuery } from './introspection.ts';
 import type { Driver } from './schema/blueprint.ts';
+import { unknownDriver } from './supported-driver.ts';
 
 // Whether the database has the migrations the code knows. The schema itself comes from the migrations (the projection), so this is
 // the one thing a process still asks the database about its schema: which migrations ran. See `docs/migrations.md#how-the-migrator-keeps-track`.
@@ -95,7 +96,8 @@ export function appTables(columns: ReadonlyMap<string, readonly string[]>, ignor
 /**
  * A connection with `managed: false` is read from its catalog, without the migrations — which is right only for a database Marmeon
  * does not migrate. A record of migrations in the form Marmeon writes means it does, and the option would hide what the migrations say
- * (secret columns, soft deletes). A table `migrations` of any other form belongs to another tool and is left alone.
+ * (secret columns, soft deletes). A table `migrations` of any other form belongs to another tool and is left alone. On MySQL a role without
+ * privileges on `migrations` does not see it, and nothing refuses: see docs/database.md#the-catalog-of-mysql.
  */
 export function assertNotMigrated(columns: ReadonlyMap<string, readonly string[]>, connection: string): void {
   const recorded = columns.get(MIGRATIONS_TABLE);
@@ -152,15 +154,29 @@ export function assertLockReadable(columns: ReadonlyMap<string, readonly string[
 
 /** Creates the record of migrations — what the first `migrate` on a database does. */
 export async function createMigrationsTable(db: Kysely<any>, driver: Driver): Promise<void> {
-  const sqlite = driver === 'sqlite';
-  await db.schema
+  let id: ['integer' | 'bigint', (c: ColumnDefinitionBuilder) => ColumnDefinitionBuilder];
+  switch (driver) {
+    case 'sqlite':
+      id = ['integer', (c) => c.primaryKey().autoIncrement()];
+      break;
+    case 'pgsql':
+      id = ['bigint', (c) => c.primaryKey().generatedByDefaultAsIdentity()];
+      break;
+    case 'mysql':
+      id = ['bigint', (c) => c.primaryKey().autoIncrement()];
+      break;
+    default:
+      return unknownDriver(driver);
+  }
+  const table = db.schema
     .createTable(MIGRATIONS_TABLE)
-    .addColumn('id', sqlite ? 'integer' : 'bigint', (c) => (sqlite ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity()))
+    .addColumn('id', ...id)
     .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
     .addColumn('module', 'varchar(255)', (c) => c.notNull())
     .addColumn('batch', 'integer', (c) => c.notNull())
-    .addColumn('checksum', 'varchar(80)')
-    .execute();
+    .addColumn('checksum', 'varchar(80)');
+  // The table's own collation, binary like the session's: a name is the same name in any case it was written in.
+  await (driver === 'mysql' ? table.modifyEnd(sql`default character set utf8mb4 collate utf8mb4_0900_bin`) : table).execute();
 }
 
 /**

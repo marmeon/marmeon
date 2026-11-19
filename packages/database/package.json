@@ -82,10 +82,14 @@
   },
   "peerDependencies": {
     "marmeon": "workspace:*",
+    "mysql2": "^3.24.6",
     "pg": "^8.23.0"
   },
   "peerDependenciesMeta": {
     "marmeon": {
+      "optional": true
+    },
+    "mysql2": {
       "optional": true
     },
     "pg": {
@@ -95,6 +99,7 @@
   "devDependencies": {
     "marmeon": "workspace:*",
     "@types/pg": "^8.23.1",
+    "mysql2": "^3.24.6",
     "pg": "^8.23.1"
   }
 }

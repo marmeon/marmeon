@@ -43,6 +43,7 @@ export const PACKAGES: readonly PackageEntry[] = [
   { name: '@marmeon/chat-notifications', docs: 'chat-notifications', group: 'add', text: 'Slack, Discord and Teams messages through webhooks, with a fake for tests.' },
   { name: '@marmeon/redis', docs: 'redis', group: 'add', text: 'Redis connections for the cache, sessions, the queue and live updates.' },
   { name: '@marmeon/table', docs: 'tables', group: 'add', text: 'Server-driven data tables with sorting, filters, actions, CSV export.' },
+  { name: '@marmeon/oauth', docs: 'oauth', group: 'add', text: 'Social login with OAuth 2.0 and OpenID Connect providers, linked to your users.' },
   { name: '@marmeon/otel', docs: 'observability', group: 'add', text: 'OpenTelemetry traces.' },
   { name: '@marmeon/vite', docs: 'vite', group: 'tooling', text: 'The plugin that also keeps server code out of the browser.' },
   { name: '@marmeon/testing', docs: 'testing', group: 'tooling', text: 'createTestApp(), assertions, fakes.' },

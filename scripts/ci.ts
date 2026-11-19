@@ -8,7 +8,7 @@
  *   pnpm run ci --only test --shard 2/3  # a third of the test files (Vitest's --shard) — how ci.yml spreads a suite over runners
  *
  * The suites that need a database start only this repository's `compose.yaml` containers (`marmeon-*`, `docker compose up -d
- * --wait`), never another project's, and the Postgres and Redis suites run one after the other: they share their databases.
+ * --wait`), never another project's, and the Postgres, Redis and MySQL suites run one after the other: they share their databases.
  * A new check is one more entry in `parts`.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 /** A container of `compose.yaml` a part needs. */
-type Service = 'pgsql' | 'redis' | 's3';
+type Service = 'pgsql' | 'redis' | 's3' | 'mysql';
 
 interface Part {
   readonly name: string;
@@ -42,6 +42,7 @@ export const parts: readonly Part[] = [
   { name: 'test:pgsql', command: pnpm('test:pgsql'), shardable: true, services: ['pgsql'], after: ['build'] },
   { name: 'test:redis', command: pnpm('test:redis'), shardable: true, services: ['redis'], after: ['build'] },
   { name: 'test:s3', command: pnpm('test:s3'), shardable: true, services: ['s3'], after: ['build'] },
+  { name: 'test:mysql', command: pnpm('test:mysql'), services: ['mysql'], after: ['build'] },
   { name: 'size', command: pnpm('size'), after: ['build'] },
   { name: 'types:check', command: pnpm('types:check') },
   // The public surface of every package against its checked-in api.md (scripts/api.ts), read from the built declarations.

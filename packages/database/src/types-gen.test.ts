@@ -4,6 +4,8 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { typeGenerator } from './__fixtures__/databases.ts';
 import { emptyProjection, type ProjectedColumn, type ProjectedTable } from './schema/projection.ts';
+import { Migrator, type Connections } from './index.ts';
+import { TypeGenerator } from './types-gen/generator.ts';
 import { columnType, renderTypes, TYPES_FORMAT } from './types-gen/render.ts';
 
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -112,6 +114,24 @@ describe.each(drivers)('TypeGenerator on %s', (driver) => {
   it('stops on a change of a table raw SQL made, which the types could not show', async () => {
     const generator = typeGenerator({ root, modules: [{ name: 'misc', migrations: fixtures('raw-alter') }] } as unknown as Application, driver);
     await expect(generator.render()).rejects.toThrow('legacy');
+  });
+});
+
+describe('TypeGenerator on all three drivers', () => {
+  it('writes byte-identical types for sqlite, pgsql and mysql from the same migrations — the MySQL types of the blueprint included', async () => {
+    const root = workspaceTempDir('marmeon-types-');
+    const app = { root, modules } as unknown as Application;
+    const sources = await Promise.all(
+      (['sqlite', 'pgsql', 'mysql'] as const).map(async (driver) => {
+        const connections = { options: () => ({ driver }) } as unknown as Connections;
+        const { source, warnings } = await new TypeGenerator(app, connections, new Migrator(app, connections)).render();
+        expect(warnings, driver).toEqual([]);
+        return source;
+      }),
+    );
+    expect(sources[1]).toBe(sources[0]);
+    expect(sources[2]).toBe(sources[0]);
+    expect(sources[2]).toBe(EXPECTED);
   });
 });
 
@@ -280,7 +300,7 @@ describe.each(drivers)('UUIDv7 columns in db:types on %s', (driver) => {
 describe('renderTypes', () => {
   const column = (name: string, type = 'text', rest: Partial<ProjectedColumn> = {}): ProjectedColumn => ({
     name,
-    type: { sqlite: type, pgsql: type },
+    type: { sqlite: type, pgsql: type, mysql: type },
     nullable: false,
     primary: false,
     identity: false,
@@ -399,5 +419,14 @@ describe('renderTypes', () => {
       ['bool', 'boolean'], ['bytea', 'Uint8Array'], ['date', 'string'], ['uuid', 'string'],
     ] as const;
     for (const [dataType, expected] of pairs) expect([dataType, columnType(dataType, 'pgsql')]).toEqual([dataType, expected]);
+  });
+
+  it('maps the type names of a MySQL catalog onto the types that arrive', () => {
+    const pairs = [
+      ['longtext', 'string'], ['mediumtext', 'string'], ['tinytext', 'string'], ['char(36)', 'string'], ['varchar(768)', 'string'],
+      ['longblob', 'Uint8Array'], ['mediumblob', 'Uint8Array'], ['tinyblob', 'Uint8Array'], ['varbinary(16)', 'Uint8Array'], ['binary(16)', 'Uint8Array'],
+      ['tinyint', 'number'], ['bigint', 'number'], ['double', 'number'], ['datetime(3)', 'Timestamp'], ['numeric(8, 2)', 'Decimal'], ['json', 'JsonColumn'],
+    ] as const;
+    for (const [dataType, expected] of pairs) expect([dataType, columnType(dataType, 'mysql')]).toEqual([dataType, expected]);
   });
 });

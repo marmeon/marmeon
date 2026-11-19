@@ -10,10 +10,21 @@ export const FAILED_JOBS_TABLE = 'failed_jobs';
 export const JOBS_COLUMNS = ['id', 'queue', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'];
 export const FAILED_JOBS_COLUMNS = ['uuid', 'connection', 'queue', 'job', 'payload', 'exception', 'failed_at'];
 
+/** The database drivers the queue's and the failed-job store's SQL is written for: every caller that hands them a connection checks against this list. */
+export const DATABASE_QUEUE_DRIVERS = ['sqlite', 'pgsql'] as const;
+
+/** What `QUEUE_DRIVER=database` says of a connection on a driver the queue has no SQL for. */
+export const QUEUE_DATABASE_DRIVER = { what: 'QUEUE_DRIVER=database', instead: 'use QUEUE_DRIVER=redis or sync' };
+/** What `QUEUE_FAILED_DRIVER=database` says of a connection on a driver the store has no SQL for. */
+export const FAILED_DATABASE_DRIVER = {
+  what: 'QUEUE_FAILED_DRIVER=database',
+  instead: 'set QUEUE_FAILED_DRIVER=null, or QUEUE_FAILED_CONNECTION to a sqlite or pgsql connection',
+};
+
 /** A connection of @marmeon/database — or a transaction of one (`queue.using(trx)`). */
 export interface DatabaseQueueConnection {
   readonly db: Connection<any>;
-  readonly driver: 'sqlite' | 'pgsql';
+  readonly driver: (typeof DATABASE_QUEUE_DRIVERS)[number];
   /** Whether the current call chain runs inside a `transaction()` of this connection — `db` then writes into it. */
   readonly inTransaction?: () => boolean;
   /**
@@ -25,8 +36,7 @@ export interface DatabaseQueueConnection {
 }
 
 /** The most values one statement binds. */
-const SQLITE_PARAMETERS = 32_766;
-const PGSQL_PARAMETERS = 65_535;
+const PARAMETERS = { sqlite: 32_766, pgsql: 65_535 } satisfies Record<DatabaseQueueConnection['driver'], number>;
 
 type Sql = (typeof import('@marmeon/database'))['sql'];
 
@@ -40,6 +50,11 @@ async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { 
 /** The index the fair claim needs (`make:queue-table`'s migration creates it). */
 export const FAIR_CLAIM_INDEX = 'jobs_reserved_at_available_at_id_index';
 
+/** `for update skip locked` where the database has it: one entry per driver the queue runs on. */
+function skipLocked(sql: Sql, driver: DatabaseQueueConnection['driver']) {
+  return ({ pgsql: sql`for update skip locked`, sqlite: sql`` } satisfies Record<DatabaseQueueConnection['driver'], unknown>)[driver];
+}
+
 /**
  * The claim of `reserveAny`: one `UPDATE` whose row is the first of two subqueries — an expired claim (a worker died), else the
  * oldest due job — each `LIMIT 1` (`FOR UPDATE SKIP LOCKED` on Postgres), joined by `coalesce` (the second runs only when the
@@ -49,7 +64,7 @@ export const FAIR_CLAIM_INDEX = 'jobs_reserved_at_available_at_id_index';
  * `ORDER BY available_at, id` alone makes it sort again. Exported for the EXPLAIN test.
  */
 export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['driver'], { now, expired, except }: { now: number; expired: number; except: readonly string[] }) {
-  const lock = driver === 'pgsql' ? sql`for update skip locked` : sql``;
+  const lock = skipLocked(sql, driver);
   const others = except.length === 0 ? sql`` : sql`and queue not in (${sql.join(except)})`;
   return sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update jobs
       set reserved_at = cast(${now} as bigint), attempts = attempts + 1
@@ -114,7 +129,7 @@ export class DatabaseQueueDriver implements QueueDriver {
     const connection = await use(this.#connection, this.#cache);
     const now = this.#clock.now();
     // Four bound values per row; the attempts and the claim are literals.
-    const size = Math.floor((connection.driver === 'pgsql' ? PGSQL_PARAMETERS : SQLITE_PARAMETERS) / 4);
+    const size = Math.floor(PARAMETERS[connection.driver] / 4);
     const insert = async (db: Connection<any>) => {
       for (let at = 0; at < entries.length; at += size) {
         const rows = entries.slice(at, at + size).map(
@@ -146,7 +161,7 @@ export class DatabaseQueueDriver implements QueueDriver {
             select id from jobs
             where queue = ${queue} and ((reserved_at is null and available_at <= cast(${now} as bigint)) or reserved_at <= cast(${expired} as bigint))
             order by id
-            limit 1 ${driver === 'pgsql' ? sql`for update skip locked` : sql``}
+            limit 1 ${skipLocked(sql, driver)}
           )
           returning id, queue, payload, attempts`.execute(db);
       const row = rows[0];

@@ -28,7 +28,7 @@ interface MarmeonPluginApi {
   surfaces?: readonly { namespace: string; entry?: { client: string } }[];
 }
 
-const INSTALL = 'pnpm add -D vite@^8 @marmeon/vite@<version of your app>';
+const INSTALL = 'pnpm add -D vite@^8, then marmeon add vite (without marmeon add: pnpm add -D vite@^8 @marmeon/vite@<version of your app>)';
 
 /**
  * Imports the app's own Vite (resolved from `root`, not from the framework), which is an optional

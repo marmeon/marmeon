@@ -77,7 +77,7 @@ describe('a tinker session (in-process)', () => {
     expect(context.Mailer).toBe(Mailer); // names are their class or token
     expect(context.URL).toBe(URL); // … a name the context had stays
     expect(Object.getOwnPropertyDescriptor(context, 'db')?.get).toBeTypeOf('function'); // built on first use
-    expect(() => context.db).toThrow('db needs @marmeon/database (pnpm add -E @marmeon/database@<version of your app>; marmeon discover).');
+    expect(() => context.db).toThrow('db needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).');
     context.db = 'replaced'; // like any variable
     expect(context.db).toBe('replaced');
     await tinker.loadRepositories();
@@ -97,8 +97,17 @@ describe('a tinker session (in-process)', () => {
     expect(await run('1 + ')).toEqual([['(fallback)'], '1 + ']);
   });
 
-  it('refuses --sandbox without @marmeon/database', async () => {
-    await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @marmeon/database');
+  it.each([
+    ['repos', 'repos needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).'],
+    ['t', 't needs @marmeon/i18n (marmeon add i18n; if it is installed already: marmeon discover).'],
+  ])('names the install of the package the helper %s lacks', (helper, message) => {
+    const context: Record<string, unknown> = {};
+    new TinkerSession(app).attach(context);
+    expect(() => context[helper]).toThrow(message);
+  });
+
+  it('refuses --sandbox without @marmeon/database, and names the install', async () => {
+    await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).');
   });
 
   describe('the history file', () => {
@@ -137,5 +146,54 @@ describe('a tinker session (in-process)', () => {
       expect(await command.handle({ options: { execute: '1 + 1' }, output, root } as never)).toBe(0);
       expect(readFileSync(file, 'utf8')).toBe('before\n');
     });
+  });
+});
+
+describe('the database line of the tinker banner', () => {
+  const Connections = token<unknown>('Connections');
+  const banner = async (options: unknown) => {
+    const app = await createApplication({ root: tempDir('marmeon-tinker-banner-'), discover: false, modules: [] }, { env: {}, override: (container) => container.instance(Connections, { options: () => options }) });
+    return new TinkerSession(app).database();
+  };
+
+  it.each([
+    [{ driver: 'sqlite', database: 'storage/app.sqlite' }, 'sqlite (storage/app.sqlite)'],
+    [{ driver: 'pgsql', url: 'postgres://app:hunter2x@db:5433/shop' }, 'pgsql (db:5433/shop)'],
+    [{ driver: 'mysql', url: 'mysql://app:hunter2x@db:3307/shop' }, 'mysql (db:3307/shop)'],
+  ])('names the driver and where, never the password: %j', async (options, expected) => {
+    expect(await banner(options)).toBe(expected);
+  });
+
+  it.each([
+    ['pgsql', 'postgres:app:hunter2x@db/shop'],
+    ['pgsql', 'mysql://app:hunter2x@db/shop'],
+    ['mysql', 'mysql:app:hunter2x@db/shop'],
+    ['mysql', 'app:hunter2x@tcp(db)/shop'],
+    ['mysql', 'postgres://app:hunter2x@db/shop'],
+  ])('shows %s (invalid URL) for %s, with nothing of it', async (driver, url) => {
+    expect(await banner({ driver, url })).toBe(`${driver} (invalid URL)`);
+  });
+
+  it('shows the libpq socket form, which has no host', async () => {
+    expect(await banner({ driver: 'pgsql', url: 'postgresql:///app?host=/var/run/postgresql' })).toBe('pgsql (/app)');
+  });
+
+  it.each(['postgres:///app:hunter2x@h/db', 'postgres:///app@h/db?host=/tmp', 'postgres:///app?host=socket'])('refuses %s as no URL of a server', async (url) => {
+    expect(await banner({ driver: 'pgsql', url })).toBe('pgsql (invalid URL)');
+  });
+
+  it.each(['postgres:///app%3Ahunter2x%40h/db?host=/tmp', 'postgres:///app%3ahunter2x%40h/db?host=/tmp', 'postgres://us/er:hunter2x@db/shop', 'postgres://db/app:hunter2x', 'postgres://db/%E0%A4%A'])(
+    'refuses %s: the decoded path holds `@` or `:`, or does not decode',
+    async (url) => {
+      expect(await banner({ driver: 'pgsql', url })).toBe('pgsql (invalid URL)');
+    },
+  );
+
+  it('refuses a password with `@` in it, whose rest would land in the path the banner prints', async () => {
+    expect(await banner({ driver: 'pgsql', url: 'postgres://app:p@ss/w0rd@db/shop' })).toBe('pgsql (invalid URL)');
+  });
+
+  it('refuses a driver it does not know', async () => {
+    await expect(banner({ driver: 'oracle', url: 'oracle://h/db' })).rejects.toThrow(/^\[marmeon:D29\] The database driver "oracle" is not one Marmeon knows\.$/);
   });
 });

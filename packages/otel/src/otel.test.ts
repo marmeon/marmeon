@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@marmeon/core';
-import { channels } from '@marmeon/core/diagnostics';
+import { messageBase, publishEnded } from '@marmeon/core/internal';
+import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Connections, Database, DatabaseServiceProvider, sql, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -146,6 +147,26 @@ async function spans(): Promise<ReadableSpan[]> {
 const dump = (span: ReadableSpan | undefined) => JSON.stringify(span && { name: span.name, attributes: span.attributes, events: span.events, status: span.status, links: span.links });
 const byName = (list: readonly ReadableSpan[], name: string) => list.find((span) => span.name === name);
 const parentOf = (span: ReadableSpan | undefined) => span?.parentSpanContext?.spanId;
+
+describe('@marmeon/otel: the system of a query', () => {
+  it.each([
+    ['sqlite', 'sqlite'],
+    ['pgsql', 'postgresql'],
+    // Pins the entry of the map: the fallback (the driver's own name) would give the same.
+    ['mysql', 'mysql'],
+  ])('a %s query is the %s system', async (driver, system) => {
+    const { app: booting } = boot();
+    await using app = await booting;
+    await spans();
+    trace.getTracer('probe').startActiveSpan('operation', (outer) => {
+      const message: DbQueryMessage = { ...messageBase(app), startedAt: performance.timeOrigin + performance.now(), connection: 'default', driver, sql: 'select 1', parameters: [], secret: false, durationMs: 1 };
+      publishEnded(channels.tracing('db.query'), message);
+      outer.end();
+    });
+    const query = (await spans()).find((span) => span.attributes['db.query.text'] === 'select 1');
+    expect(query?.attributes['db.system.name']).toBe(system);
+  });
+});
 
 describe('@marmeon/otel', () => {
   it('a request: a server span `GET /people/:person`, its query (without parameters), the dispatch — and the job, run by the worker, in the same trace', async () => {
@@ -327,6 +348,22 @@ describe('@marmeon/otel', () => {
     await createHttpKernel(withValues).request(url);
     const [valued] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
     expect(query(valued?.attributes), dump(valued)).toBe('q=ada%40example.com&page=2&bare-ada%40example.com&token=[redacted]&q=second');
+  });
+
+  it('masks the first parameter of the query, whether it is `state` or `code`, with MARMEON_OTEL_RECORD_QUERY_VALUES=true', async () => {
+    const { app: recording } = boot({ MARMEON_OTEL_RECORD_QUERY_VALUES: 'true' });
+    await using app = await recording;
+    await spans();
+    for (const [url, expected] of [
+      ['http://shop.test/people/7?state=abc123&page=2', 'state=[redacted]&page=2'],
+      ['http://shop.test/people/7?code=c0de&page=2', 'code=[redacted]&page=2'],
+      ['http://shop.test/people/7?page=2&state=abc123&code=c0de', 'page=2&state=[redacted]&code=[redacted]'],
+    ] as const) {
+      await createHttpKernel(app).request(url);
+      const [span] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
+      expect(String(span?.attributes['url.query']), dump(span)).toBe(expected);
+      expect(dump(span)).not.toMatch(/abc123|c0de/);
+    }
   });
 
   it('names the deployment on every span it records: deployment.environment.name is APP_ENV (by default the one NODE_ENV goes with)', async () => {
