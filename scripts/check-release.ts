@@ -30,7 +30,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * listed entry must stand under its release.
  */
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {
-  '1.2.1': [
+  '1.2.2': [
     'low-a-command-of-your-own-named-add-doctor-upgrade-or-dbquery-needs-another-name',
     'low-marmeonoauth-brings-the-commands-makeoauth-and-makesocial-accounts-table',
     'low-a-policys-static-guard-names-the-guard-whose-users-it-judges',
