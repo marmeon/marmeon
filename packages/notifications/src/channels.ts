@@ -66,7 +66,7 @@ export class NotificationChannels {
   make(name: string, container: Resolver): NotificationChannel {
     const factory = this.#factories.get(name);
     if (!factory) {
-      const hint = name === 'mail' ? ' (the mail channel needs @marmeon/mail: pnpm add -E @marmeon/mail@<version of your app>; marmeon discover)' : '';
+      const hint = name === 'mail' ? ' (the mail channel needs @marmeon/mail: marmeon add mail; if it is installed already: marmeon discover)' : '';
       throw new NotificationError(`via() returned the channel "${name}", which this app does not have${hint}. Channels: ${this.names().join(', ') || 'none'}.`);
     }
     return factory(container);

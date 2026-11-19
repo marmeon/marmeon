@@ -13,14 +13,16 @@ import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controll
 import { CreateOneTimeLinkLabController, ShowAnnouncementLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
 import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
 import { CreateGuestLabController, EditGuestLabController, StoreGuestLabController, UpdateGuestLabController } from './controllers/GuestLabController.ts';
+import { LocalOidcHost } from './LocalOidcHost.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { AddQuestionLabController, ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 import { Surveys } from './SurveyRepository.ts';
 import { PingWebhookLabController, ShowWebhookPingLabController } from './controllers/WebhookPingLabController.ts';
+import { ShowLocalOidcAuthorizeController, ShowLocalOidcConfigurationController, StoreLocalOidcAuthorizeController } from './controllers/LocalOidcController.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
-// manifest) and answer 404 unless the lab is on.
+// manifest). The `/lab` pages answer 404 unless the lab is on; the routes of the local provider (`/_dev/oidc`) follow their own rule, below.
 export default defineRoutes((Route) => {
   // Open to everyone, since the lab shows nothing of the app's records: the pages answer 404 unless the lab is on. A lab route added
   // later decides for itself.
@@ -78,4 +80,13 @@ export default defineRoutes((Route) => {
   // An address an editor entered, called by the server: `HttpClient` refuses what is not public when it sends.
   lab.get('/webhook-ping', ShowWebhookPingLabController);
   lab.middleware(throttle('lab.webhook-ping')).post('/webhook-ping', PingWebhookLabController);
+
+  // The local OpenID Connect provider (`OAUTH_LOCAL_*`), whatever the lab says. `LocalOidcHost` answers only the app's own hosts (403 for another,
+  // so a rebound DNS name cannot use it) and `LocalOidc.provider()` is a 404 outside development and test; in production the form post is
+  // refused by the CSRF check first (419, or 403 from another site). Open to everyone: a sign-in starts here before anybody is signed in.
+  // Its token endpoint is in api-routes.ts.
+  const oidcRoutes = Route.prefix('/_dev/oidc').middleware(LocalOidcHost).authorize(everyone);
+  oidcRoutes.get('/.well-known/openid-configuration', ShowLocalOidcConfigurationController);
+  oidcRoutes.get('/authorize', ShowLocalOidcAuthorizeController);
+  oidcRoutes.post('/authorize', StoreLocalOidcAuthorizeController);
 });

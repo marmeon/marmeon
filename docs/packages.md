@@ -7,8 +7,10 @@ you need what they bring. Each installed package registers itself through [disco
 single command, in the version your app already has:
 
 ```sh
-pnpm add -E @marmeon/redis@<version of your app>
+pnpm marmeon add redis
 ```
+
+Without `marmeon add` (yarn, bun, a workspace), install it yourself: `pnpm add -E @marmeon/redis@<version of your app>`.
 
 Every package has the same version as every other: upgrade them together. Each pins the others exactly, so one in another version
 (`pnpm add @marmeon/redis` takes `latest`, which an app on a release candidate is not) brings a second copy of `@marmeon/core`, and the package
@@ -57,7 +59,38 @@ As dev dependencies, a new app has three more:
 | --- | --- | --- |
 | `@marmeon/redis` | Redis connections for the cache, sessions, the queue and live updates. | [Redis](redis.md) |
 | `@marmeon/table` | Data tables driven by the server: columns, sorting, filters, actions and CSV export. | [Data tables](tables.md) |
+| `@marmeon/oauth` | Social login: OAuth 2.0 and OpenID Connect providers you register by name, linked accounts and `make:oauth`. | [Social login](oauth.md) |
 | `@marmeon/otel` | OpenTelemetry traces of requests, queries, jobs and mails. | [Observability](observability.md) |
+
+Add one with `marmeon add`, which installs it at the version of your app:
+
+```sh
+pnpm marmeon add redis
+```
+
+The command takes the short name (`redis`) or the full one (`@marmeon/redis`), and no version. It does four things:
+
+1. It installs the package with your package manager (pnpm or npm, by your lockfile) at exactly the version of your app, as a
+   development dependency for `devtools`, `testing` and `vite`.
+2. It runs `marmeon discover`, so the app finds the package's provider.
+3. It copies the migrations of a package that ships some (`auth`, `cache`, `live`, `notifications`, `oauth`, `queue`, `session`, `storage`)
+   with `marmeon publish`. That boots the app, so it needs a `.env` the app boots with.
+4. It prints the next step: `marmeon migrate` after a publish, and the `marmeon docs` page of each package.
+
+`marmeon add redis --dry-run` prints the commands and changes nothing. If the install fails or you press Ctrl-C, `package.json` and
+the lockfile are put back as they were; run `pnpm install` to bring `node_modules` back. A pnpm that stops because a dependency's
+build script is not approved (`ERR_PNPM_IGNORED_BUILDS`) needs `pnpm approve-builds` first.
+
+Once the install has finished, its files stay as it left them, even when a later step fails: when the package manager installed another
+version than your app's (a release the package manager holds back for its first day, for example), or when `discover` or `publish`
+fails. The command then says what to run.
+
+`marmeon add` refuses when it cannot be sure of the result: your framework packages are not all in one version, one comes from a
+workspace, a path or a patch rather than the registry, the package is listed only under `peerDependencies`, the app is part
+of a workspace, it has no lockfile or one of another package manager, `package.json` cannot be read, or anything else the command
+names. It then says what to change. With yarn or bun, or in a workspace, install the package yourself at the version of your
+app (`pnpm add -E @marmeon/redis@<version of your app>`) and run `marmeon discover`, and `marmeon publish <package>` for a package
+with migrations.
 
 A package that needs a library of its own names the exact install command when the library is missing. The
 [deployment](deployment.md#drivers-what-an-app-installs) page lists them.

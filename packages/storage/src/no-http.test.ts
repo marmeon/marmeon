@@ -18,6 +18,9 @@ describe('storage without @marmeon/http installed', () => {
     const disk = app.container.make(Storage).disk('local');
     await disk.put('a.txt', 'hi');
     expect(await disk.text('a.txt')).toBe('hi');
-    await expect(disk.temporaryUrl('a.txt', { expiresIn: 60 })).rejects.toThrow('needs @marmeon/http');
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: 60 })).rejects.toMatchObject({
+      message:
+        '[marmeon:S2] temporaryUrl() on the disk "local" needs @marmeon/http — its UrlSigner signs the URL and its router serves it (marmeon add http; if it is installed already: marmeon discover).',
+    });
   });
 });

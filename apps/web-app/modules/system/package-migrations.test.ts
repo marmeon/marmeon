@@ -20,15 +20,16 @@ it('has every migration of the packages it uses', async () => {
   expect(run.code).toBe(0);
 });
 
-// Each of the seven packages that ship tables is found by its provider and has every migration in the app.
-it.each(['@marmeon/auth', '@marmeon/cache', '@marmeon/live', '@marmeon/notifications', '@marmeon/queue', '@marmeon/session', '@marmeon/storage'])('has every migration of %s', async (name) => {
+// Each of the eight packages that ship tables is found by its provider and has every migration in the app.
+it.each(['@marmeon/auth', '@marmeon/cache', '@marmeon/live', '@marmeon/notifications', '@marmeon/oauth', '@marmeon/queue', '@marmeon/session', '@marmeon/storage'])('has every migration of %s', async (name) => {
   const run = await app.command('publish', { args: [name], options: { check: true } });
   expect(run.lines).toEqual([`✓ Every migration of ${name} is in your app`]);
   expect(run.code).toBe(0);
 });
 
 // `marmeon-stubs.json` is what `publish` records, and what a later release of a package is compared with: for each of the seven packages
-// it holds every migration of the package that the app has, with the hash of the package's file now.
+// it holds every migration of the package that the app has, with the hash of the package's file now. oauth is not listed: its migration came
+// from `make:social-accounts-table`, which records nothing in marmeon-stubs.json, so there is no migration set of @marmeon/oauth to compare.
 it.each(['auth', 'cache', 'live', 'notifications', 'queue', 'session', 'storage'])('records every migration of @marmeon/%s in marmeon-stubs.json', (directory) => {
   const appRoot = fileURLToPath(new URL('../..', import.meta.url));
   const manifest = JSON.parse(readFileSync(join(appRoot, 'marmeon-stubs.json'), 'utf8')) as { sets: Record<string, { files: Record<string, { stub: string; sha256: string }> }> };
@@ -48,7 +49,7 @@ it.each(['auth', 'cache', 'live', 'notifications', 'queue', 'session', 'storage'
 // its only migration: the web app ran an older form of it and upgraded it with a migration of its own, and a migration that ran is never
 // rewritten. packages/auth/src/framework-tables.test.ts proves that upgraded table equals the package's, so auth is not listed here.
 const UPGRADE_HISTORY = ['create_sign_ins_table.ts'];
-it.each(['cache', 'live', 'notifications', 'queue', 'session', 'storage'])('has the migrations of @marmeon/%s as the package ships them', (directory) => {
+it.each(['cache', 'live', 'notifications', 'oauth', 'queue', 'session', 'storage'])('has the migrations of @marmeon/%s as the package ships them', (directory) => {
   const appRoot = fileURLToPath(new URL('../..', import.meta.url));
   const stubs = fileURLToPath(new URL(`../../../../packages/${directory}/stubs/migrations/`, import.meta.url));
   const appFiles = readdirSync(join(appRoot, 'modules'), { recursive: true, encoding: 'utf8' }).filter((path) => path.endsWith('.ts'));
@@ -70,10 +71,11 @@ const MAKE_COMMANDS = [
   ['@marmeon/storage', 'storage', 'make:uploads-table'],
   ['@marmeon/auth', 'auth', 'make:sign-ins-table'],
   ['@marmeon/live', 'live', 'make:live-table'],
+  ['@marmeon/oauth', 'oauth', 'make:social-accounts-table'],
 ] as const;
 
 // A make:*-table command is publish for its own package: both write the same files, into the same module (only the packages of
-// the workspace are all here, so the comparison of the seven lives in this app).
+// the workspace are all here, so the comparison of the eight lives in this app).
 it.each(MAKE_COMMANDS)('%s: its make command writes the same bytes as publish, to the same path', async (name, directory, command) => {
   const appRoot = (): string => {
     const root = tempDir('marmeon-make-or-publish-');
@@ -109,14 +111,14 @@ it.each(MAKE_COMMANDS.map(([name, , command]) => [name, command] as const))('has
   expect(run.code).toBe(0);
 });
 
-// The seven packages declare their directory on their provider. The reader that assigns a declaration to a package is tested in the
+// The eight packages declare their directory on their provider. The reader that assigns a declaration to a package is tested in the
 // database package; this app shows what the framework's providers declare: always `stubs/migrations`, into `system`.
 it('has every provider that declares migrations be one of the framework\'s, from stubs/migrations into system', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
   // The back office package is a fixture the app publishes from into a module of its own (`back-office/back-office-package.test.ts`), not one of the framework's.
   const declared = app.application.providers.flatMap((Provider) => (Provider.migrations !== undefined && Provider.name !== 'BackOfficeServiceProvider' ? [{ provider: Provider.name, ...Provider.migrations }] : []));
   expect(declared.map((entry) => entry.provider).sort()).toEqual(
-    ['AuthServiceProvider', 'CacheServiceProvider', 'LiveServiceProvider', 'NotificationServiceProvider', 'QueueServiceProvider', 'SessionServiceProvider', 'StorageServiceProvider'],
+    ['AuthServiceProvider', 'CacheServiceProvider', 'LiveServiceProvider', 'NotificationServiceProvider', 'OAuthServiceProvider', 'QueueServiceProvider', 'SessionServiceProvider', 'StorageServiceProvider'],
   );
   const claimed: string[] = [];
   for (const [name] of MAKE_COMMANDS) {

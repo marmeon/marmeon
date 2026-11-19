@@ -1,9 +1,14 @@
 import type { Clock } from '@marmeon/core';
 import { cursorPaginate, sql, type Connections, type CursorEncrypter, type CursorPaginated } from '@marmeon/database';
+import { requireDriver } from '@marmeon/database/internal';
 import type { AnyRecipient } from './notification.ts';
 
 /** The table `marmeon make:notifications-table` creates (the app owns the migration; this package types it itself). */
 export const NOTIFICATIONS_TABLE = 'notifications';
+/** The database drivers the store's SQL is written for. */
+export const NOTIFICATION_STORE_DRIVERS = ['sqlite', 'pgsql'] as const;
+/** What the database channel says of a connection on a driver the store has no SQL for. */
+export const NOTIFICATION_STORE_FEATURE = { what: 'The database channel of notifications' };
 /** The columns the store reads and writes; readiness is red while the table lacks one. */
 export const NOTIFICATIONS_COLUMNS = ['id', 'recipient_type', 'recipient_id', 'type', 'data', 'read_at', 'created_at'];
 
@@ -189,6 +194,8 @@ export class NotificationStore {
   }
 
   #db() {
+    // Before the connection is opened: a driver the store has no SQL for gets none.
+    requireDriver(this.#connections.options(this.#connection).driver, NOTIFICATION_STORE_DRIVERS, NOTIFICATION_STORE_FEATURE);
     return this.#connections.get<Tables>(this.#connection);
   }
 }

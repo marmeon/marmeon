@@ -78,7 +78,7 @@ describe('make:mail', () => {
       const root = app(manifest);
       const { code, lines } = run(root, ['NoteShared']);
       expect(code).toBe(1);
-      expect(lines).toEqual(['✗ A mail is sent by the Mailer of @marmeon/mail: pnpm add -E @marmeon/mail@<version of your app>']);
+      expect(lines).toEqual(['✗ A mail is sent by the Mailer of @marmeon/mail: marmeon add mail']);
       expect(existsSync(join(root, 'modules/notes/mail'))).toBe(false);
     }
   });
@@ -87,7 +87,7 @@ describe('make:mail', () => {
     const root = app(JSON.stringify({ dependencies: { '@marmeon/mail': 'workspace:*' } }));
     const { code, lines } = run(root, ['NoteShared']);
     expect(code).toBe(1);
-    expect(lines).toEqual(['✗ A mail speaks the language of its recipient with the Translators of @marmeon/i18n: pnpm add -E @marmeon/i18n@<version of your app>']);
+    expect(lines).toEqual(['✗ A mail speaks the language of its recipient with the Translators of @marmeon/i18n: marmeon add i18n']);
     expect(existsSync(join(root, 'modules/notes/mail'))).toBe(false);
   });
 

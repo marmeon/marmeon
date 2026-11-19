@@ -604,12 +604,78 @@ describe('the secret names the logging page promises', () => {
   });
 
   it('masks `code` in text only as a query parameter or a JSON key, and a private key in PEM form entirely', () => {
-    expect(redactText('GET /cb?state=s&code=999111&x=1')).toBe('GET /cb?state=s&code=[redacted]&x=1');
+    expect(redactText('GET /cb?state=s&code=999111&x=1')).toBe('GET /cb?state=[redacted]&code=[redacted]&x=1');
     expect(redactText('body {"code":"999111","n":1} and {"code": 42}')).toBe('body {"code":"[redacted]","n":1} and {"code": "[redacted]"}');
     expect(redactText('the postcode=1234 and status code stay')).toBe('the postcode=1234 and status code stay');
     const pem = 'before -----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\nabc123\n-----END RSA PRIVATE KEY----- after';
     expect(redactText(pem)).toBe('before [redacted] after');
     expect(redactText('cut -----BEGIN PRIVATE KEY-----\nMIIEvQIBADAN')).toBe('cut [redacted]');
+  });
+
+  it('masks state= in a query string, alone and after other parameters', () => {
+    expect(redactText('GET /cb?state=abc123')).toBe('GET /cb?state=[redacted]');
+    expect(redactText('GET /authorize?client_id=x&state=abc123&scope=a')).toBe('GET /authorize?client_id=x&state=[redacted]&scope=a');
+    expect(redactText('GET /cb?STATE=abc123')).toBe('GET /cb?STATE=[redacted]');
+  });
+
+  it('masks state= in a Referer and a Location header', () => {
+    const shown = new Redactor().headers({ referer: 'http://localhost/cb?code=c&state=abc123', location: 'https://idp.example/authorize?client_id=x&state=abc123' });
+    expect(shown.referer).toBe('http://localhost/cb?code=[redacted]&state=[redacted]');
+    expect(shown.location).toBe('https://idp.example/authorize?client_id=x&state=[redacted]');
+    expect(new Redactor().url('/cb?state=abc123&page=2')).toBe('/cb?state=[redacted]&page=2');
+  });
+
+  it('keeps a JSON key or a log field named state readable', () => {
+    expect(redactText('{"state":"open","n":1}')).toBe('{"state":"open","n":1}');
+    expect(redactText('state=open')).toBe('state=open');
+    expect(new Redactor().log({ state: 'open' })).toEqual({ state: 'open' });
+  });
+
+  it('does not mask a parameter that only ends in state (?prestate=…), and masks the state next to it', () => {
+    expect(redactText('GET /x?prestate=open&poststate=a')).toBe('GET /x?prestate=open&poststate=a');
+    expect(redactText('GET /x?x=1&prestate=a&state=b')).toBe('GET /x?x=1&prestate=a&state=[redacted]');
+  });
+
+  it('masks state= and code= after # and ;, and so after the ; of an HTML &amp;', () => {
+    expect(redactText('GET /cb#state=abc123&code=c0de')).toBe('GET /cb#state=[redacted]&code=[redacted]');
+    expect(redactText('GET /cb?x=1;state=abc123;code=c0de')).toBe('GET /cb?x=1;state=[redacted]');
+    expect(redactText('<a href="/cb?x=1&amp;state=abc123&amp;code=c0de">')).toBe('<a href="/cb?x=1&amp;state=[redacted]&amp;code=[redacted]">');
+  });
+
+  it('masks a value to the end of the parameter: a comma, a semicolon and a brace belong to it', () => {
+    expect(redactText('GET /cb?state=abc,def;ghi}jkl&x=1')).toBe('GET /cb?state=[redacted]&x=1');
+    expect(redactText('GET /cb?code=abc,def;ghi}jkl&x=1')).toBe('GET /cb?code=[redacted]&x=1');
+    expect(redactText('GET /cb?state=[redacted]tail')).toBe('GET /cb?state=[redacted]');
+  });
+
+  it('masks the first parameter of a URLSearchParams, as a log field and as a value', () => {
+    const redactor = new Redactor();
+    expect(redactor.log({ params: new URLSearchParams('state=abc123&page=2') })).toEqual({ params: 'state=[redacted]&page=2' });
+    expect(redactor.log({ params: new URLSearchParams('code=c0de&page=2') })).toEqual({ params: 'code=[redacted]&page=2' });
+    expect(redactor.value(new URLSearchParams('state=abc123&page=2'))).toBe('state=[redacted]&page=2');
+    expect(redactor.value(new URLSearchParams('code=c0de&page=2'))).toBe('code=[redacted]&page=2');
+  });
+
+  it('lets a pattern of the app that is anchored to the start match the first parameter of a query', () => {
+    const redactor = new Redactor({ patterns: [/^email=[^&]+/] });
+    const params = new URLSearchParams('email=ada@example.com&page=2');
+    expect(redactor.value(params)).toBe('[redacted]&page=2');
+    expect(redactor.log({ params })).toEqual({ params: '[redacted]&page=2' });
+    expect(redactor.queryText('email=ada%40example.com&page=2')).toBe('[redacted]&page=2');
+    expect(redactor.queryText('state=abc123&page=2')).toBe('state=[redacted]&page=2');
+  });
+
+  it('masks state= in a URL under a harmless log field, and in a Referer by its route pattern', () => {
+    const redactor = new Redactor();
+    expect(redactor.log({ target: 'https://idp.example/cb?state=abc123' })).toEqual({ target: 'https://idp.example/cb?state=[redacted]' });
+    expect(redactor.headers({ referer: 'http://localhost/cb?state=abc123&page=2' }, { referer: '/cb' }).referer).toBe('http://localhost/cb?state=[redacted]&page=2');
+  });
+
+  it('names code and state, in any case, as sensitive query names beside the sensitive keys', () => {
+    const redactor = new Redactor();
+    for (const name of ['state', 'STATE', 'code', 'Code', 'token']) expect(redactor.isSensitiveQueryName(name)).toBe(true);
+    for (const name of ['prestate', 'states', 'page']) expect(redactor.isSensitiveQueryName(name)).toBe(false);
+    expect(redactor.isSensitive('state')).toBe(false);
   });
 
   it('keeps the own code of an error in the text of a stored error although `"code"` is masked in text', () => {

@@ -258,7 +258,7 @@ export async function buildReport({ error, status, request, requestId, app, reda
       method: request.method,
       url: redactor.url(url.href, routePath ?? route?.path),
       headers: redactor.headers(request.headers, { referer: refererRoutePath }),
-      query: redactor.value(query),
+      query: Object.fromEntries(Object.entries(query).map(([key, value]) => [key, redactor.isSensitiveQueryName(key) ? '[redacted]' : redactor.value(value)])),
       body: redactor.value(parsedBody),
     },
     route: route && { ...route, params: redactor.value(route.params) },

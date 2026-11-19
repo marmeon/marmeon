@@ -1,9 +1,14 @@
 import { sql, type ColumnDefinitionBuilder, type CreateTableBuilder, type Expression, type RawBuilder } from 'kysely';
+import { unknownDriver } from '../supported-driver.ts';
+
+/** MySQL cannot index a `longtext` column without a prefix length: `text()` in a key is a `varchar` of this length (utf8mb4, 3072 bytes). */
+const MYSQL_TEXT = 'longtext' as DataTypeExpression;
+const MYSQL_KEYED_TEXT = 'varchar(768)' as DataTypeExpression;
 
 /** What Kysely accepts as a column type (the type itself is not exported). */
 type DataTypeExpression = Parameters<CreateTableBuilder<string, never>['addColumn']>[1];
 
-export type Driver = 'sqlite' | 'pgsql';
+export type Driver = 'sqlite' | 'pgsql' | 'mysql';
 
 type OnDelete = 'cascade' | 'set null' | 'restrict' | 'no action';
 
@@ -161,6 +166,15 @@ export const UUIDV7_SQLITE =
  */
 export const UUIDV7_PGSQL =
   "(encode(set_bit(set_bit(overlay(uuid_send(gen_random_uuid()) placing substring(int8send(floor(extract(epoch from clock_timestamp()) * 1000)::bigint) from 3) from 1 for 6), 52, 1), 53, 1), 'hex')::uuid)";
+
+/**
+ * The MySQL default of a UUIDv7 column, an expression default with the same layout: the time in milliseconds (`unix_timestamp` of the
+ * statement's `now(3)`, in the session's UTC), version `7`, variant `8`..`b` and random bits, in the lower-case form `8-4-4-4-12`.
+ * See `docs/migrations.md#uuid-keys`.
+ */
+export const UUIDV7_MYSQL =
+  "(lower(concat(substr(lpad(hex(cast(unix_timestamp(now(3)) * 1000 as unsigned)), 12, '0'), 1, 8), '-', substr(lpad(hex(cast(unix_timestamp(now(3)) * 1000 as unsigned)), 12, '0'), 9, 4)," +
+  " '-7', substr(hex(random_bytes(2)), 2), '-', substr('89ab', 1 + (ord(random_bytes(1)) & 3), 1), substr(hex(random_bytes(2)), 2), '-', hex(random_bytes(6)))))";
 
 /** A `uuid` column; `useUuidv7()` has the database generate a time-ordered UUID when an insert gives none. */
 export class UuidColumn<T> extends Column<T> {
@@ -361,7 +375,8 @@ export function blueprintParts(blueprint: Blueprint): BlueprintParts {
 }
 
 /**
- * Describes a table's columns, indexes and foreign keys, and compiles them for SQLite or Postgres.
+ * Describes a table's columns, indexes and foreign keys, and compiles them for SQLite or Postgres. It names the MySQL type of each column too
+ * (for the projection); the DDL of MySQL is not written yet.
  * The declared types are chosen so the type generator (and the SQLite adapter) recognize them:
  * `boolean`, `json`, `datetime`/`timestamptz` stay recognizable on both drivers.
  */
@@ -396,48 +411,48 @@ export class Blueprint {
 
   /** Auto-incrementing big integer primary key. */
   id(name = 'id'): Column<number> {
-    return new Column<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint' }, { primary: true, identity: true }));
+    return new Column<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint', mysql: 'bigint' }, { primary: true, identity: true }));
   }
 
   string(name: string, length = 255): Column<string> {
-    return this.#add(name, { sqlite: `varchar(${length})` as DataTypeExpression, pgsql: `varchar(${length})` as DataTypeExpression });
+    return this.#add(name, { sqlite: `varchar(${length})` as DataTypeExpression, pgsql: `varchar(${length})` as DataTypeExpression, mysql: `varchar(${length})` as DataTypeExpression });
   }
 
   text(name: string): Column<string> {
-    return this.#add(name, { sqlite: 'text', pgsql: 'text' });
+    return this.#add(name, { sqlite: 'text', pgsql: 'text', mysql: MYSQL_TEXT });
   }
 
   integer(name: string): Column<number> {
-    return this.#add(name, { sqlite: 'integer', pgsql: 'integer' });
+    return this.#add(name, { sqlite: 'integer', pgsql: 'integer', mysql: 'integer' });
   }
 
   /** Read back as `number` (values beyond 2^53 throw instead of rounding). */
   bigInteger(name: string): Column<number> {
-    return this.#add(name, { sqlite: 'integer', pgsql: 'bigint' });
+    return this.#add(name, { sqlite: 'integer', pgsql: 'bigint', mysql: 'bigint' });
   }
 
   float(name: string): Column<number> {
-    return this.#add(name, { sqlite: 'real', pgsql: 'double precision' });
+    return this.#add(name, { sqlite: 'real', pgsql: 'double precision', mysql: 'double' as DataTypeExpression });
   }
 
   /** Exact decimal — read back as a `string`, so no precision is lost. */
   decimal(name: string, precision = 8, scale = 2): Column<string> {
     const type = `numeric(${precision}, ${scale})` as DataTypeExpression;
-    return this.#add(name, { sqlite: type, pgsql: type });
+    return this.#add(name, { sqlite: type, pgsql: type, mysql: type });
   }
 
   boolean(name: string): Column<boolean> {
-    return this.#add(name, { sqlite: 'boolean', pgsql: 'boolean' });
+    return this.#add(name, { sqlite: 'boolean', pgsql: 'boolean', mysql: 'boolean' });
   }
 
   /** JSON (`jsonb` on Postgres). Defaults are given as values: `.default({})`. */
   json(name: string): Column<unknown> {
-    return this.#add(name, { sqlite: 'json', pgsql: 'jsonb' });
+    return this.#add(name, { sqlite: 'json', pgsql: 'jsonb', mysql: 'json' });
   }
 
   /** Values are 36-character strings; `useUuidv7()` lets the database generate them. */
   uuid(name: string): UuidColumn<string> {
-    return new UuidColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
+    return new UuidColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression, mysql: 'char(36)' as DataTypeExpression }));
   }
 
   /** A UUIDv7 primary key made by the database: shorthand for `uuid(name).primary().useUuidv7()`. */
@@ -446,17 +461,17 @@ export class Blueprint {
   }
 
   binary(name: string): Column<Uint8Array> {
-    return this.#add(name, { sqlite: 'blob', pgsql: 'bytea' });
+    return this.#add(name, { sqlite: 'blob', pgsql: 'bytea', mysql: 'longblob' as DataTypeExpression });
   }
 
   /** A calendar date, read back as `YYYY-MM-DD`. */
   date(name: string): Column<string> {
-    return this.#add(name, { sqlite: 'date', pgsql: 'date' });
+    return this.#add(name, { sqlite: 'date', pgsql: 'date', mysql: 'date' });
   }
 
   /** A point in time with millisecond precision, read back as an ISO-8601 string in UTC. */
   timestamp(name: string): TimestampColumn<string | Date> {
-    return new TimestampColumn<string | Date>(this.#spec(name, { sqlite: 'datetime', pgsql: 'timestamptz(3)' }));
+    return new TimestampColumn<string | Date>(this.#spec(name, { sqlite: 'datetime', pgsql: 'timestamptz(3)', mysql: 'datetime(3)' as DataTypeExpression }));
   }
 
   /**
@@ -490,17 +505,17 @@ export class Blueprint {
 
   /** A big integer that references another table: `table.foreignId('user_id').constrained().cascadeOnDelete()`. */
   foreignId(name: string): ForeignIdColumn<number> {
-    return new ForeignIdColumn<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint' }));
+    return new ForeignIdColumn<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint', mysql: 'bigint' }));
   }
 
   /** A UUID that references another table: `table.foreignUuid('user_id').constrained().cascadeOnDelete()`. */
   foreignUuid(name: string): ForeignIdColumn<string> {
-    return new ForeignIdColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
+    return new ForeignIdColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression, mysql: 'char(36)' as DataTypeExpression }));
   }
 
   /**
    * Changing a table only, on Postgres only: ties an existing column to another table — `table.foreign('form_id').constrained('forms').nullOnDelete()` —
-   * so it gets the constraint `{table}_{column}_fkey` and `db:types` the relation. A row that has no match fails the migration, which is rolled back:
+   * so it gets the constraint `{table}_{column}_fkey` and `db:types` the relation. A row that has no match fails the migration, which is rolled back (not on MySQL, see `docs/migrations.md#mysql`):
    * clean the column first with `schema.data()`. SQLite adds no constraint in place: `migrate` refuses the plan. In `create()` use
    * `foreignId(…).constrained()`. See `docs/migrations.md#a-reference-that-comes-later`.
    */
@@ -515,7 +530,7 @@ export class Blueprint {
   /**
    * Changing a table only, on Postgres only: replaces the list an existing `string()` or `text()` column is held to, in one statement — the constraint of the
    * column is dropped and made again under its own name — and `db:types` writes the new union. A column that has no list gets one. The values follow the rules of
-   * `Column.oneOf()`. A row that holds a value the new list lacks fails the migration, which is rolled back: rewrite those rows first with `schema.data()`. SQLite
+   * `Column.oneOf()`. A row that holds a value the new list lacks fails the migration, which is rolled back (not on MySQL, see `docs/migrations.md#mysql`): rewrite those rows first with `schema.data()`. SQLite
    * changes no constraint in place: `migrate` refuses the plan. In `create()` use `table.string(…).oneOf(…)`. See `docs/migrations.md#check-constraints`.
    */
   oneOf(column: string, values: readonly string[]): void {
@@ -581,7 +596,7 @@ export class Blueprint {
 
   /**
    * Changing a table only: makes an existing column NOT NULL — after a `schema.data()` step has filled it. A NULL left in it stops the
-   * migration, which is rolled back. Postgres only: `migrate` refuses the plan on SQLite. See `docs/migrations.md#changing-the-data`.
+   * migration, which is rolled back (not on MySQL, see `docs/migrations.md#mysql`). Postgres only: `migrate` refuses the plan on SQLite. See `docs/migrations.md#changing-the-data`.
    */
   notNull(column: string): void {
     this.#nullability(column, false);
@@ -592,7 +607,7 @@ export class Blueprint {
     this.#nullability(column, true);
   }
 
-  /** Changing a table only: takes a column out of use one release before it is dropped; runs no statement. See `docs/migrations.md#retiring-a-column`. */
+  /** Changing a table only: takes a column out of use one release before it is dropped; runs no statement. On MySQL the later `dropColumn()` of a column with a foreign key fails (error 1829), see `docs/migrations.md#mysql`. See `docs/migrations.md#retiring-a-column`. */
   retire(column: string): void {
     this.#open();
     this.#parts.retirements.push(column);
@@ -660,24 +675,74 @@ export class Blueprint {
   }
 }
 
+/**
+ * The type of a column on MySQL. It is the declared one, except that a `text()` column in the primary key, a unique index or an index of
+ * the same blueprint is a `varchar(768)`: MySQL indexes no `longtext` in full. The compile and the projection both read it here.
+ */
+export function mysqlTypeOf(spec: ColumnSpec, blueprint: Blueprint): DataTypeExpression {
+  if (spec.type.mysql !== MYSQL_TEXT) return spec.type.mysql;
+  const keyed = spec.primary || spec.unique || blueprintParts(blueprint).indexes.some((index) => index.columns.includes(spec.name));
+  return keyed ? MYSQL_KEYED_TEXT : MYSQL_TEXT;
+}
+
+/** The type of a column for `driver` as the DDL of `blueprint` writes it. */
+export function typeOf(spec: ColumnSpec, driver: Driver, blueprint: Blueprint): DataTypeExpression {
+  switch (driver) {
+    case 'sqlite':
+      return spec.type.sqlite;
+    case 'pgsql':
+      return spec.type.pgsql;
+    case 'mysql':
+      return mysqlTypeOf(spec, blueprint);
+    default:
+      return unknownDriver(driver);
+  }
+}
+
+/** The names MySQL has for types that Kysely does not list: these exact words, never a type that arrives from elsewhere, are written into the statement as they are. */
+const MYSQL_ONLY_TYPES: ReadonlySet<unknown> = new Set(['longtext', 'longblob', 'double']);
+
+/** The type as Kysely writes it, which checks it: only the three MySQL names it does not know go in raw. */
+function writable(type: DataTypeExpression): DataTypeExpression {
+  return MYSQL_ONLY_TYPES.has(type) ? sql.raw(type as string) : type;
+}
+
 /** Applies a column's modifiers to Kysely's column builder for `driver`. */
-export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpression, (column: ColumnDefinitionBuilder) => ColumnDefinitionBuilder] {
+export function compileColumn(spec: ColumnSpec, driver: Driver, blueprint: Blueprint): [DataTypeExpression, (column: ColumnDefinitionBuilder) => ColumnDefinitionBuilder] {
   return [
-    spec.type[driver],
+    writable(typeOf(spec, driver, blueprint)),
     (column) => {
       let c = column;
       if (spec.primary) c = c.primaryKey();
-      if (spec.identity) c = driver === 'sqlite' ? c.autoIncrement() : c.generatedByDefaultAsIdentity();
+      if (spec.identity) {
+        switch (driver) {
+          case 'sqlite':
+          case 'mysql':
+            c = c.autoIncrement();
+            break;
+          case 'pgsql':
+            c = c.generatedByDefaultAsIdentity();
+            break;
+          default:
+            return unknownDriver(driver);
+        }
+      }
       if (!spec.nullable && !spec.primary) c = c.notNull();
-      if (spec.default) c = c.defaultTo(defaultOf(spec.default, driver));
+      if (spec.default) c = c.defaultTo(defaultOf(spec.default, driver, typeOf(spec, driver, blueprint)));
       if (spec.oneOf) c = c.modifyEnd(oneOfCheck(spec));
-      if (spec.references) {
+      // MySQL reads a column's own REFERENCES and drops it: it takes the key as a constraint of the table (`mysqlForeignKeys`).
+      if (spec.references && driver !== 'mysql') {
         c = c.references(`${spec.references.table}.${spec.references.column}`);
         if (spec.references.onDelete) c = c.onDelete(spec.references.onDelete);
       }
       return c;
     },
   ];
+}
+
+/** The foreign keys of a table that MySQL needs as constraints of their own: the ones its columns state, as `[name, column, references]`. */
+export function mysqlForeignKeys(specs: readonly ColumnSpec[], table: string): [name: string, column: string, references: ReferenceSpec][] {
+  return specs.flatMap((spec): [string, string, ReferenceSpec][] => (spec.references ? [[foreignKeyName(table, spec.name), spec.name, spec.references]] : []));
 }
 
 /** The name of the constraint `oneOf()` makes. */
@@ -693,19 +758,48 @@ function oneOfCheck(spec: ColumnSpec): RawBuilder<unknown> {
   return sql`constraint ${sql.id(oneOfName(spec.table, spec.name))} ${oneOfCondition(spec.name, spec.oneOf!)}`;
 }
 
-function defaultOf(value: NonNullable<ColumnSpec['default']>, driver: Driver): unknown {
+/** `type` is the type the column is created with: MySQL takes no literal default for a `longtext` or `json` column, only an expression in parentheses. */
+function defaultOf(value: NonNullable<ColumnSpec['default']>, driver: Driver, type: DataTypeExpression): unknown {
   if ('now' in value) return now(driver);
-  if ('uuidv7' in value) return sql.raw(driver === 'sqlite' ? UUIDV7_SQLITE : UUIDV7_PGSQL);
-  return literal(value.value);
+  if ('uuidv7' in value) {
+    switch (driver) {
+      case 'sqlite':
+        return sql.raw(UUIDV7_SQLITE);
+      case 'pgsql':
+        return sql.raw(UUIDV7_PGSQL);
+      case 'mysql':
+        return sql.raw(UUIDV7_MYSQL);
+      default:
+        return unknownDriver(driver);
+    }
+  }
+  const given = literal(value.value, driver);
+  if (driver !== 'mysql' || !MYSQL_EXPRESSION_ONLY.has(String(type))) return given;
+  return type === MYSQL_JSON ? sql`(cast(${sql.lit(given)} as json))` : sql`(${sql.lit(given)})`;
 }
+
+const MYSQL_JSON = 'json' as DataTypeExpression;
+/** The types MySQL gives no literal default (it would be ER_BLOB_CANT_HAVE_DEFAULT). */
+const MYSQL_EXPRESSION_ONLY: ReadonlySet<string> = new Set([String(MYSQL_TEXT), String(MYSQL_JSON)]);
 
 export function now(driver: Driver): Expression<string> {
-  // SQLite stores what the adapter reads back from Postgres: ISO-8601 in UTC, milliseconds.
-  return driver === 'sqlite' ? sql<string>`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` : sql<string>`now()`;
+  switch (driver) {
+    // SQLite stores what the adapter reads back from Postgres: ISO-8601 in UTC, milliseconds.
+    case 'sqlite':
+      return sql<string>`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
+    case 'pgsql':
+      return sql<string>`now()`;
+    // `datetime(3)` holds UTC, as the session's time zone is +00:00; a function in a default needs the parentheses of an expression.
+    case 'mysql':
+      return sql<string>`(utc_timestamp(3))`;
+    default:
+      return unknownDriver(driver);
+  }
 }
 
-function literal(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
+function literal(value: unknown, driver: Driver): unknown {
+  // MySQL reads no `Z` in a datetime literal.
+  if (value instanceof Date) return driver === 'mysql' ? value.toISOString().slice(0, 23).replace('T', ' ') : value.toISOString();
   if (value !== null && typeof value === 'object') return JSON.stringify(value);
   return value;
 }

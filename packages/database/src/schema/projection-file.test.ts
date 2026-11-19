@@ -113,6 +113,51 @@ describe('the schema projection file', () => {
     expect(readProjection(root, files)).toEqual(projection);
   });
 
+  it('writes format 3, with the MySQL type of every column', async () => {
+    forgetProjections();
+    const { root, files } = app(create('users'));
+
+    await loadProjection(root, files);
+
+    const written = JSON.parse(readFileSync(join(root, PROJECTION_FILE), 'utf8')) as { format: number; tables: Record<string, { columns: { name: string; type: Record<string, string> }[] }> };
+    expect(written.format).toBe(3);
+    expect(written.tables.users!.columns.map((column) => [column.name, column.type.mysql])).toEqual([
+      ['id', 'bigint'],
+      ['name', 'varchar(255)'],
+    ]);
+  });
+
+  // The file is the real one the current code wrote (its version, its sources), so only the change under test can make it stale.
+  it.each([
+    [
+      'a format 3 file without the MySQL types',
+      (file: { format: number; tables: Record<string, { columns: { type: Record<string, string> }[] }> }) => {
+        for (const table of Object.values(file.tables)) for (const column of table.columns) delete column.type.mysql;
+      },
+    ],
+    [
+      'a format 2 file that has them',
+      (file: { format: number }) => {
+        file.format = 2;
+      },
+    ],
+  ])('computes the projection again for %s, and writes format 3 over it', async (_, change) => {
+    forgetProjections();
+    const { root, files } = app(create('users'));
+    await loadProjection(root, files);
+    forgetProjections();
+    const path = join(root, PROJECTION_FILE);
+    const file = JSON.parse(readFileSync(path, 'utf8'));
+    change(file);
+    writeFileSync(path, JSON.stringify(file));
+    const project = vi.fn(async () => projecting('users'));
+
+    await loadProjection(root, files, { project });
+
+    expect(project).toHaveBeenCalledTimes(1);
+    expect((JSON.parse(readFileSync(path, 'utf8')) as { format: number }).format).toBe(3);
+  });
+
   it('uses a file that fits the migrations without importing one of them', async () => {
     forgetProjections();
     const { root, files } = app(create('users'));
@@ -219,6 +264,7 @@ describe('the schema projection file', () => {
 
   it.each([
     ['a column type that is not text', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], type: { sqlite: 1, pgsql: 'bigint' } }] } } })],
+    ['a column without a MySQL type', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], type: { sqlite: 'integer', pgsql: 'bigint' } }] } } })],
     ['an unknown default', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], default: 'random' }] } } })],
     ['a null default flag on a column without a value default', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], nullDefault: true }] } } })],
     ['a retired flag that is not a boolean', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], retired: 'yes' }] } } })],
@@ -226,19 +272,19 @@ describe('the schema projection file', () => {
     ['a pivot flag that is not false', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, pivot: true } } })],
     ['an unknown onDelete', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, foreignKeys: [{ column: 'id', references: 'x', referenced: 'id', onDelete: 'explode' }] } } })],
   ])('does not accept a file with %s', (_, change) => {
-    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
+    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v3.json', import.meta.url), 'utf8')) as Record<string, any>;
     expect(parseProjectionFile(JSON.stringify(file))).toBeDefined();
     expect(parseProjectionFile(JSON.stringify(change(file)))).toBeUndefined();
   });
 
   it('reads a table that says notPivot()', () => {
-    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
+    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v3.json', import.meta.url), 'utf8')) as Record<string, any>;
     file.tables.users.pivot = false;
     expect(parseProjectionFile(JSON.stringify(file))?.tables.users?.pivot).toBe(false);
   });
 
   it('reads the condition of a partial index and refuses a malformed one', () => {
-    const text = readFileSync(new URL('../__fixtures__/formats/schema-projection/v2-partial-index.json', import.meta.url), 'utf8');
+    const text = readFileSync(new URL('../__fixtures__/formats/schema-projection/v3-partial-index.json', import.meta.url), 'utf8');
     const file = JSON.parse(text) as Record<string, any>;
     const read = parseProjectionFile(text);
     expect(read?.tables.users?.indexes.map((index) => index.where)).toEqual([undefined, { deleted_at: null }, { legacy: { not: null }, created_at: 'live', id: 3, secret: true }]);
@@ -256,7 +302,7 @@ describe('the schema projection file', () => {
   });
 
   it('reads a list and a check, refuses a malformed one, and reads the file of an app without any as before', () => {
-    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
+    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v3.json', import.meta.url), 'utf8')) as Record<string, any>;
     expect(parseProjectionFile(JSON.stringify(file))).toBeDefined();
     const column = { ...file.tables.users.columns[0], values: ['a', 'b'], valuesCheck: 'users_id_check' };
     const withList = { ...file, tables: { users: { ...file.tables.users, columns: [column], checks: [{ name: 'c', sql: 'true' }] } } };
@@ -287,7 +333,7 @@ describe('the schema projection file', () => {
   });
 
   it.each([
-    ['another format', (file: Record<string, unknown>) => ({ ...file, format: 3 })],
+    ['another format', (file: Record<string, unknown>) => ({ ...file, format: PROJECTION_FORMAT + 1 })],
     ['another version of the package', (file: Record<string, unknown>) => ({ ...file, database: '0.0.0-other' })],
     ['a table that is not one', (file: Record<string, unknown>) => ({ ...file, tables: { users: { name: 'users' } } })],
   ])('computes it again for a file of %s', async (_, change) => {

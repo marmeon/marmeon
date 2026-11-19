@@ -5,6 +5,7 @@ import { SecondFactorPasskeys } from '../two-factor/state.ts';
 import { PasskeyConfig } from './config.ts';
 import { Passkeys } from './passkeys.ts';
 import { PASSKEY_COLUMNS, PASSKEYS_TABLE, PasskeyStore } from './store.ts';
+import { AUTH_STORE_DRIVERS } from '../store-drivers.ts';
 
 /**
  * Switches passkeys on: registers `PasskeyStore` and `Passkeys` and lets `TwoFactor.challenge({ passkey })` accept a passkey. Add it to
@@ -27,6 +28,8 @@ export class PasskeyServiceProvider implements ServiceProvider {
     if (!app.container.has(Connections)) return;
     // /up/ready is red until the table has the new name and every column the store uses.
     const { SchemaRequirements } = await import('@marmeon/database');
+    const { requireDriver } = await import('@marmeon/database/internal');
+    requireDriver(app.container.make(Connections).options('default').driver, AUTH_STORE_DRIVERS, { what: 'The passkeys table' });
     app.container.make(SchemaRequirements).require({ connection: 'default', table: PASSKEYS_TABLE, columns: PASSKEY_COLUMNS, secrets: [] });
   }
 }

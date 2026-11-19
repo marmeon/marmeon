@@ -28,8 +28,12 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.query().selectAll().where('email', '=', email).executeTakeFirst();
   }
 
-  /** A new user — or `duplicate` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
-  register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<Result<User, { kind: 'duplicate' }>> {
+  /**
+   * A new user — or `duplicate` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check).
+   * `password: null` makes an account without a password: no password signs it in, and a reset link gives it one
+   * (docs/authentication.md#accounts-without-a-password).
+   */
+  register(values: { name: string; email: string; password: PasswordHash | null; locale: string }): Promise<Result<User, { kind: 'duplicate' }>> {
     // A key from the start: an account whose key is NULL has no row to lock when a factor is added (docs/authentication.md#the-user-type-and-where-users-come-from).
     return this.tryInsert({ ...values, session_key: randomBytes(32).toString('base64url') });
   }
@@ -163,6 +167,6 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
       .executeTakeFirst();
     if (!row) return undefined;
     const { password, session_key: sessionKey, ...user } = row;
-    return { user, passwordHash: password as PasswordHash, sessionKey: sessionKey as string | null };
+    return { user, passwordHash: password as PasswordHash | null, sessionKey: sessionKey as string | null };
   }
 }

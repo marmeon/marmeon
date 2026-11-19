@@ -320,7 +320,8 @@ A boolean is allowed (`true`, `false`, `1`, `0`, in any case). Any other value s
 off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`. The routes that add an authenticator app or a passkey
 demand a confirmed address in either mode, as does creating an API token, and the settings pages say so with a link to send the mail
 again. The owner's password reset revokes the API tokens of an account whose address is not confirmed, and removes its factors too when the
-address was never confirmed. Set
+address was never confirmed. With `@marmeon/oauth` it also removes the provider accounts linked to such an account
+([Linking and unlinking](oauth.md#linking-and-unlinking)). Set
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` as well for the other accounts, as the
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
 

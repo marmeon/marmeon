@@ -38,7 +38,7 @@ const KNOWN_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT'
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
 const OPERATION = /^\s*(?:\(\s*)?(select|insert|update|delete|with|create|drop|alter|truncate|begin|commit|rollback|savepoint|release|pragma|explain)\b/i;
 const TARGET = /\b(?:from|into|update|table(?: if (?:not )?exists)?)\s+(?:"([^"]+)"|`([^`]+)`|([\w.]+))/gi;
-const DB_SYSTEMS: Readonly<Record<string, string>> = { sqlite: 'sqlite', pgsql: 'postgresql' };
+const DB_SYSTEMS: Readonly<Record<string, string>> = { sqlite: 'sqlite', pgsql: 'postgresql', mysql: 'mysql' };
 const MESSAGING_SYSTEM = 'marmeon';
 
 /** The W3C `traceparent` of a span's context (`00-<trace id>-<span id>-<flags>`). */
@@ -140,7 +140,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             'http.route': request.routePath,
             'http.response.status_code': status,
             'url.path': redactedPath(request.path, request.routePath, redactor),
-            'url.query': url && url.search.length > 1 ? redactor.text(recordQueryValues ? url.search.slice(1) : queryKeys(url.search)) : undefined,
+            'url.query': url && url.search.length > 1 ? (recordQueryValues ? redactor.queryText(url.search.slice(1)) : redactor.text(queryKeys(url.search))) : undefined,
             'marmeon.route.name': request.route,
             'marmeon.controller': request.controller,
           }),

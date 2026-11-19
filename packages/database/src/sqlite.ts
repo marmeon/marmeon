@@ -29,7 +29,7 @@ export function createSqliteDialect(path: string): SqliteDialect {
 
 const ROW_LOCKS = new Set(['ForUpdate', 'ForNoKeyUpdate', 'ForShare', 'ForKeyShare', 'NoWait', 'SkipLocked']);
 
-class RowLockFreeCompiler extends SqliteQueryCompiler {
+export class RowLockFreeCompiler extends SqliteQueryCompiler {
   protected override visitSelectQuery(node: SelectQueryNode): void {
     const modifiers = node.endModifiers?.filter((modifier) => modifier.modifier === undefined || !ROW_LOCKS.has(modifier.modifier));
     super.visitSelectQuery(modifiers?.length === node.endModifiers?.length ? node : { ...node, endModifiers: modifiers });
