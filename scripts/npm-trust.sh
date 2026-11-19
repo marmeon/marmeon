@@ -10,6 +10,7 @@ set -euo pipefail
 packages=(
   @marmeon/auth
   @marmeon/cache
+  @marmeon/chat-notifications
   marmeon
   @marmeon/core
   create-marmeon

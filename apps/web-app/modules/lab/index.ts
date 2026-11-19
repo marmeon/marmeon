@@ -2,6 +2,7 @@ import { defineModule } from '@marmeon/core';
 import { LabConfig } from './config.ts';
 import apiRoutes from './api-routes.ts';
 import { LabServiceProvider } from './LabServiceProvider.ts';
+import { LabChatNotification } from './notifications.ts';
 import { LocalOidcServiceProvider } from './LocalOidcServiceProvider.ts';
 import routes from './routes.ts';
 
@@ -14,6 +15,8 @@ export default defineModule({
   config: [LabConfig],
   migrations: new URL('./migrations/', import.meta.url),
   providers: [LabServiceProvider, LocalOidcServiceProvider],
+  // The lab's chat notification (a worker finds it by name).
+  notifications: [LabChatNotification],
   routes,
   apiRoutes,
 });

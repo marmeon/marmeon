@@ -4,7 +4,7 @@ import type { ChatJson } from './driver.ts';
 import { ChatAddressError, ChatError } from './errors.ts';
 import type { DiscordRaw, SlackRaw, TeamsRaw } from './raw.ts';
 
-/** Where a message goes: a named destination (`'ops'`: lower case letters, digits and hyphens) or a webhook address of its own, as a plain object, with the driver that formats for it. `driver` comes from code or a validated list, never from a recipient's raw input: a name nobody brought fails the delivery of a notification at once. */
+/** Where a message goes: a named destination (`'ops'`: lowercase letters, digits and dashes, starting with a letter) or a webhook address of its own, as a plain object, with the driver that formats for it. `driver` comes from code or a validated list, never from a recipient's raw input: a name nobody brought fails the delivery of a notification at once. See `docs/chat-notifications.md#destinations`. */
 export type ChatDestination = string | { readonly url: string; readonly driver?: string };
 
 /** A label and a value shown as a pair. The label is cut at 50 characters and must not be empty, the value is cut at 300. */
@@ -45,7 +45,7 @@ export type ChatRaw<Formats = ChatRawFormats> = [keyof Formats] extends [never]
 /**
  * A chat message: plain text, shown the same way by every driver. Lengths are counted in code points and cut with `…`: title
  * 150, text 2000, field label 50, field value 300, link label 75. A driver may cut shorter to its provider's limit (escaped
- * characters, UTF-16 units or bytes); a text is never refused for its length.
+ * characters, UTF-16 units or bytes); a text is never refused for its length. See `docs/chat-notifications.md#writing-a-message`.
  */
 export interface ChatMessage {
   readonly to: ChatDestination;
@@ -128,13 +128,13 @@ function isPlain(value: object): boolean {
 
 function destination(to: unknown): { readonly to: ChatMessage['to']; readonly addressError?: ChatAddressError } {
   if (typeof to === 'string') {
-    if (!NAME.test(to)) fail('"to" must be a destination name (lower case letters, digits and hyphens) or a plain object { url, driver? }.');
+    if (!NAME.test(to)) fail('"to" must be a destination name (lowercase letters, digits and dashes, starting with a letter) or a plain object { url, driver? }.');
     return { to };
   }
   if (typeof to !== 'object' || to === null || Array.isArray(to) || !isPlain(to)) fail('"to" must be a destination name or a plain object { url, driver? }.');
   const { url, driver } = to as { url?: unknown; driver?: unknown };
   if (typeof url !== 'string') fail(`"to.url" must be a string of 1 to ${MAX_URL} characters.`);
-  if (driver !== undefined && (typeof driver !== 'string' || !NAME.test(driver))) fail('"to.driver" must be a driver name (lower case letters, digits and hyphens).');
+  if (driver !== undefined && (typeof driver !== 'string' || !NAME.test(driver))) fail('"to.driver" must be a driver name (lowercase letters, digits and dashes, starting with a letter).');
   // a string that is empty or too long is data a recipient entered, not a mistake of the code: the notification channel skips it, so it
   // is reported last, after every check of the code
   const addressError = url === '' || url.length > MAX_URL ? new ChatAddressError(`Chat message: "to.url" must be a string of 1 to ${MAX_URL} characters.`) : undefined;

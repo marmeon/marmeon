@@ -3,7 +3,7 @@
 ## Introduction
 
 A notification tells a user that something happened: a sign-in from a new browser, a note shared with them. It may reach them
-by mail, in a list inside the app, and live in their open tabs. `@marmeon/notifications` makes each notification a class: a
+by mail, in a list inside the app, live in their open tabs, and in a chat channel of your team. `@marmeon/notifications` makes each notification a class: a
 stable name, the schema of its data, the channels it takes and what it says on each. You send it to a recipient as data, a kind
 and an id, and a worker delivers it.
 
@@ -98,7 +98,7 @@ export class NoteSharedNotification implements Notification<'user'> {
 - **`static schema`** describes the data a notification is sent with, as JSON: ids, not records. The data is checked when it is
   sent and again before it is delivered.
 - **`via(recipient, data)`** returns the channels for this recipient, and may be `async`.
-- **A method per channel**: `toDatabase()` for `database` and `toMail()` for `mail`.
+- **A method per channel**: `toDatabase()` for `database`, `toMail()` for `mail` and `toChat()` for `chat`.
 - **`static database`** checks what the database channel stores. Only the fields it describes are kept.
 - **`static queue`** picks the queue, `connection`, `delay`, `tries` and `backoff` of the notification's job. A `backoff` is seconds or a duration, or a list of them: `[10, { minutes: 1 }]`. Its mail goes to
   the same queue and connection, with the mail's own retries. Without `tries` the job tries three times, 10 seconds and then a
@@ -229,6 +229,44 @@ With `@marmeon/live` installed, `via()` may return `'live'`. Once the delivery c
 on `notificationsChannel(recipient)`, and what follows that channel, such as a bell, reloads. A hint from a worker reaches the
 web servers with `LIVE_DRIVER=database` or `LIVE_DRIVER=redis`, not with `memory`. The [real-time updates](realtime.md#sending-hints) page explains hints.
 
+### The chat channel
+
+With `@marmeon/chat-notifications` installed, `via()` may return `'chat'`, and `toChat(recipient, data, t)` returns a message for
+Slack, Discord or Microsoft Teams. `to` is a named destination from `CHAT_WEBHOOKS`, or the recipient's own webhook address:
+
+```ts title="modules/orders/notifications/LargeOrderNotification.ts"
+import type { ChatMessage } from '@marmeon/chat-notifications';
+import type { Notification, NotificationData } from '@marmeon/notifications';
+import { rules as r } from '@marmeon/validation';
+
+export class LargeOrderNotification implements Notification<'user'> {
+  static readonly notification = 'orders.large';
+  static readonly schema = r.object({ number: r.string(), total: r.string() });
+
+  via() {
+    return ['chat'] as const;
+  }
+
+  toChat(_user: unknown, data: NotificationData<typeof LargeOrderNotification>): ChatMessage {
+    return {
+      to: 'ops',
+      title: 'Large order',
+      text: `Order ${data.number} is over the limit.`,
+      fields: [{ label: 'Total', value: data.total }],
+    };
+  }
+}
+```
+
+`toChat()` gets the recipient's record, the data and a translator in the recipient's language, like `toMail()`.
+
+The message is queued on the notification's queue, as the job `marmeon.chat`, and a worker posts it. With a database queue on the
+connection of the notification it commits with the delivery. A webhook that is down retries the chat message alone, never the
+notification's other channels. A recipient's own address that its driver refuses, including an empty or over-long one, skips the
+chat message with one warning that names the host, and the delivery's other channels commit. A mistake in your code or
+configuration, such as a name `CHAT_WEBHOOKS` does not list, an unknown driver, a malformed message or a missing queue, fails the
+delivery at once. The [chat notifications](chat-notifications.md) page covers the message, the destinations and the providers.
+
 ### A channel of your own
 
 A channel is a class with `deliver(delivery)`. Add its name to `NotificationChannelMap`, with what a notification needs for it,
@@ -357,4 +395,4 @@ it('notifies the person a note is shared with', async () => {
 ```
 
 `assertSentTimes`, `assertNotSent` and `assertNothingSent` check the rest. `createTestApp(app, { notifications: 'real' })` keeps the
-real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md#notifications) page covers every fake.
+real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md#notifications) page covers every fake. A message of the `chat` channel is recorded on `app.chat`, as [fakes](fakes.md#chat) shows.

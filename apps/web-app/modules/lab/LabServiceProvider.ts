@@ -16,5 +16,7 @@ export class LabServiceProvider implements ServiceProvider {
     app.container.make(RateLimiter).for('lab.devtools', (ctx) => Limit.perMinute(30).by(clientKey(ctx.ip)));
     app.container.make(RateLimiter).for('lab.one-time-links', (ctx) => Limit.perMinute(30).by(clientKey(ctx.ip)));
     app.container.make(RateLimiter).for('lab.webhook-ping', (ctx) => Limit.perMinute(30).by(clientKey(ctx.ip)));
+    // A post to a team's channel: ten a minute per signed-in user.
+    app.container.make(RateLimiter).for('lab.chat', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
   }
 }

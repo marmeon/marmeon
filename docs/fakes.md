@@ -11,6 +11,7 @@ default, as soon as the app has the package:
 | `app.mail` | The `Mailer`. Records mails instead of sending them. | `mail: 'real'` |
 | `app.queue` | The `Queue`. Records jobs, and `work()` runs them. | `queue: 'real'` |
 | `app.notifications` | `Notifications`. Records notifications, and `deliver()` delivers them. | `notifications: 'real'` |
+| `app.chat` | The `ChatNotifier`. Records chat messages instead of posting them. | `chat: 'real'` |
 | `app.http` | The `HttpClient`. Answers outgoing requests from replies you register, and refuses private addresses as the real client does. | `http: 'real'` |
 | `app.storage` | `Storage`. Every disk lives in memory. | `storage: 'real'` |
 | `app.events` | Nothing. Records every event; listeners still run unless you hold them back. | `events: 'real'`, the default |
@@ -25,8 +26,8 @@ A getter whose package the app lacks, or whose fake the test turned off, says so
 app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: 'real' })).
 ```
 
-A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, storage, HTTP client and schedule fakes (`MailFake`,
-`QueueFake`, `NotificationFake`, `StorageFake`, `HttpClientFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
+A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, chat, storage, HTTP client and schedule fakes (`MailFake`,
+`QueueFake`, `NotificationFake`, `ChatFake`, `StorageFake`, `HttpClientFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
 variable with them: `import type { QueueFake } from '@marmeon/queue/testing'`. The same holds for `BroadcastTester` and `LiveStreamReader` (`@marmeon/live/testing`) and for `DevtoolsTester` (`import type { DevtoolsTester } from '@marmeon/devtools/testing'`). A `*Tester` drives or reads the real
 service: `ScheduleTester`, `BroadcastTester` and `DevtoolsTester`. `createTestApp()` makes every fake: a test does not construct
 `MailFake` itself, its constructor is not part of the API.
@@ -208,9 +209,57 @@ it('notifies the person a note is shared with, once', async () => {
 
 A recipient is `{ type, id }`. `sent(Notification, recipient, match)` returns the records. The fake records `send()` and
 `sendNow()` alike. `deliver()` delivers each recorded notification once, oldest first, as a worker would: the database channel
-writes its row and the mail channel queues its mail on the mail fake. It resolves with each notification's id and outcome. Inside
+writes its row and the mail channel queues its mail on the mail fake, and the [chat channel](#chat) records its message on `app.chat`. It resolves with each notification's id and outcome. Inside
 a transaction a notification is recorded with the commit. With `notifications: 'real'`, `send()` queues a job, and
 `app.queue.work()` delivers it. The [notifications](notifications.md) page covers notifications.
+
+## Chat
+
+The chat fake of `@marmeon/chat-notifications` checks a message as the real notifier does: a destination `CHAT_WEBHOOKS` does not
+list, an address the driver refuses and a bad message fail the test. It then records the message and posts nothing. A test uses a
+made-up address in the driver's shape, because nothing is posted. `queue()` needs the queue services of the app, like the real one, and a test app that has them
+records the message without queueing a job. A notification that goes through the `chat` channel reaches the fake when `deliver()` delivers it:
+
+```ts title="modules/orders/payment-alert.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+import { PaymentFailedNotification } from './notifications/PaymentFailedNotification.ts';
+
+it('tells the ops channel about a declined payment', async () => {
+  const app = await createTestApp(application, {
+    database: 'refresh',
+    env: { CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: 'ops=https://hooks.slack.com/services/test-ops' },
+  });
+  const buyer = await app.factory(UserFactory).create();
+  await app.notifications.send({ type: 'user', id: buyer.id }, PaymentFailedNotification, { order: 'o-1' });
+  await app.notifications.deliver();
+
+  app.chat.assertQueued({ to: 'ops', title: 'Payment failed' }).assertQueuedCount(1);
+});
+```
+
+| Assertion | Passes when |
+| --- | --- |
+| `assertQueued(match)`, `assertQueuedCount(n)`, `assertNothingQueued()` | A message was queued that matches, exactly `n` were, or none was. |
+| `assertSent(match)`, `assertSentCount(n)`, `assertNothingSent()` | The same for the messages `send()` posted. |
+
+A match is an object with a `to`, a `title` or a `text`, or a function of the recorded message; without one, any message
+matches. A destination is compared as it is sent, so `{ url, driver: undefined }` equals `{ url }`.
+
+`queued` and `sent` return the records, each with `to`, `content`, `options` and `inTransaction`, which says whether the call was made
+inside a transaction.
+
+A message queued inside a transaction is recorded when the transaction commits, and never after a rollback.
+
+`failNext(error, times)` makes the next `send()` calls throw, a `ChatDeliveryError` of the reason `unavailable` by default. It does not
+touch `queue()`, because the failure of a queued message belongs to its job.
+
+A failed assertion names a destination by its name or host, never by its address.
+
+With `chat: 'real'` the configured driver posts and `app.chat` throws. `app.http` answers the request the driver makes, and
+`app.queue.work()` runs a queued message. The [chat notifications](chat-notifications.md#testing) page covers the package.
 
 ## Storage
 

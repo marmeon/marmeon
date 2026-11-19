@@ -1,0 +1,22 @@
+{
+  "to": {
+    "url": "https://discord.com/api/webhooks/1/test",
+    "driver": "discord"
+  },
+  "content": {
+    "title": "Payment failed",
+    "text": "Order o-1 was declined.",
+    "fields": [
+      {
+        "label": "Order",
+        "value": "o-1"
+      }
+    ],
+    "links": [
+      {
+        "label": "Open the order",
+        "url": "https://example.com/orders/o-1"
+      }
+    ]
+  }
+}

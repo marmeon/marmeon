@@ -40,6 +40,7 @@ export const PACKAGES: readonly PackageEntry[] = [
   { name: '@marmeon/live', docs: 'realtime', group: 'app', text: 'Pages reload their data when the server hints a change.' },
   { name: '@marmeon/notifications', docs: 'notifications', group: 'app', text: 'Mail, database and live notifications.' },
   { name: '@marmeon/fetch', docs: 'http-client', group: 'app', text: 'Outgoing requests that refuse private addresses, with a fake for tests.' },
+  { name: '@marmeon/chat-notifications', docs: 'chat-notifications', group: 'add', text: 'Slack, Discord and Teams messages through webhooks, with a fake for tests.' },
   { name: '@marmeon/redis', docs: 'redis', group: 'add', text: 'Redis connections for the cache, sessions, the queue and live updates.' },
   { name: '@marmeon/table', docs: 'tables', group: 'add', text: 'Server-driven data tables with sorting, filters, actions, CSV export.' },
   { name: '@marmeon/oauth', docs: 'oauth', group: 'add', text: 'Social login with OAuth 2.0 and OpenID Connect providers, linked to your users.' },

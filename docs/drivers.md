@@ -325,7 +325,7 @@ The transport is built at the start, so a factory that throws, or returns someth
 A chat driver formats one message for the webhook of a chat provider. It is a `ChatDriverFactory`: it gets the `name` it was registered
 under, the `container` and a `logger` of the `chat` channel, and returns an object with `hosts`, `paths` and `render`.
 `CHAT_DRIVER` selects it for the named destinations of `CHAT_WEBHOOKS`, and a destination of its own selects it with
-`{ url, driver: 'mattermost' }`. The built-in drivers are `slack`, `discord` and `teams`. `log`, the default, is not a driver but a sink:
+`{ url, driver: 'mattermost' }`. The built-in drivers are `slack`, `discord` and `teams`; the [chat notifications](chat-notifications.md) page covers them and the messages. `log`, the default, is not a driver but a sink:
 it sends nothing and writes where a message would go to the log.
 
 ```ts title="src/MattermostServiceProvider.ts"

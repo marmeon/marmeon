@@ -62,7 +62,7 @@ pnpm marmeon add fetch
 
 Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E @marmeon/fetch@<version of your app>`.
 
-The package registers itself: the `HttpClient` is in the container, and a controller or a job asks for it in its constructor.
+The package registers itself: the `HttpClient` is in the container, and a controller or a job asks for it in its constructor. The [chat notifications](chat-notifications.md) post their webhooks through it, so a webhook address is checked like any other.
 
 ## Sending a request
 

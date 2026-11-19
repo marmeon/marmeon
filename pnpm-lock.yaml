@@ -332,6 +332,9 @@ importers:
       '@marmeon/cache':
         specifier: workspace:*
         version: link:../../packages/cache
+      '@marmeon/chat-notifications':
+        specifier: workspace:*
+        version: link:../../packages/chat-notifications
       '@marmeon/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1361,6 +1364,9 @@ importers:
       '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
+      '@marmeon/chat-notifications':
+        specifier: workspace:*
+        version: link:../chat-notifications
       '@marmeon/database':
         specifier: workspace:*
         version: link:../database

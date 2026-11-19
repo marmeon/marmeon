@@ -125,9 +125,11 @@ describe('no provider SDK', () => {
   });
 
   it('declares no dependency outside @marmeon/* and valibot', () => {
-    const manifest = JSON.parse(readFileSync(PACKAGE, 'utf8')) as Record<string, Record<string, string> | undefined>;
-    for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies']) {
-      for (const name of Object.keys(manifest[section] ?? {})) {
+    const manifest = JSON.parse(readFileSync(PACKAGE, 'utf8')) as Record<string, Record<string, string> | string[] | undefined>;
+    for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies', 'bundleDependencies', 'bundledDependencies']) {
+      const listed = manifest[section] ?? {};
+      // the bundled lists are arrays of names, the others objects keyed by name
+      for (const name of Array.isArray(listed) ? listed : Object.keys(listed)) {
         expect(name === 'valibot' || name.startsWith('@marmeon/'), `${section}: ${name}`).toBe(true);
       }
     }

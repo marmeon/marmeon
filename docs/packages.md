@@ -59,6 +59,7 @@ As dev dependencies, a new app has three more:
 | --- | --- | --- |
 | `@marmeon/redis` | Redis connections for the cache, sessions, the queue and live updates. | [Redis](redis.md) |
 | `@marmeon/table` | Data tables driven by the server: columns, sorting, filters, actions and CSV export. | [Data tables](tables.md) |
+| `@marmeon/chat-notifications` | Chat messages to Slack, Discord and Teams through incoming webhooks, now or queued, with a fake for tests. | [Chat notifications](chat-notifications.md) |
 | `@marmeon/oauth` | Social login: OAuth 2.0 and OpenID Connect providers you register by name, linked accounts and `make:oauth`. | [Social login](oauth.md) |
 | `@marmeon/otel` | OpenTelemetry traces of requests, queries, jobs and mails. | [Observability](observability.md) |
 

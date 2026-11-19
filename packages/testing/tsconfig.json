@@ -40,6 +40,9 @@
       "path": "../fetch"
     },
     {
+      "path": "../chat-notifications"
+    },
+    {
       "path": "../queue"
     },
     {

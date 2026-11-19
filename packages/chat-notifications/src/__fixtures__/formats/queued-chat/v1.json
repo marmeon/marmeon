@@ -1,0 +1,21 @@
+{
+  "to": {
+    "name": "ops"
+  },
+  "content": {
+    "title": "Deploy done",
+    "text": "Version 1.4.2 is live.",
+    "fields": [
+      {
+        "label": "Region",
+        "value": "eu-west"
+      }
+    ],
+    "links": [
+      {
+        "label": "Release notes",
+        "url": "https://example.com/releases/1.4.2"
+      }
+    ]
+  }
+}

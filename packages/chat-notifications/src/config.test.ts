@@ -32,7 +32,7 @@ describe('parseWebhooks', () => {
   it('refuses a malformed entry by its position, without its value', () => {
     const error = refusal([`ops=${slack}`, slack, `alerts=${slack}`]);
     expect(error.message).toBe(
-      '[marmeon:S10] CHAT_WEBHOOKS: entry 2 is not name=https://… — a name of lowercase letters, digits and dashes, "=", then the address; entries are split at commas.',
+      '[marmeon:S10] CHAT_WEBHOOKS: entry 2 is not name=https://… — a name of lowercase letters, digits and dashes, starting with a letter, "=", then the address; entries are split at commas.',
     );
     expect(error.message).not.toContain(secret);
   });
@@ -42,6 +42,8 @@ describe('parseWebhooks', () => {
     expect(refusal(['=https://x.example/y']).message).toContain('entry 1 is not name=');
     expect(refusal([`Ops=${slack}`]).message).toContain('entry 1 is not name=');
     expect(refusal([`1ops=${slack}`]).message).toContain('entry 1 is not name=');
+    expect(refusal([`-ops=${slack}`]).message).toContain('entry 1 is not name=');
+    expect(refusal([`_ops=${slack}`]).message).toContain('entry 1 is not name=');
     expect(refusal([`ops=${slack}`, '']).message).toContain('entry 2 is not name=');
   });
 
@@ -76,7 +78,7 @@ describe('ChatConfig', () => {
   it('refuses a driver name that is not a name', async () => {
     const error = (await load({ CHAT_DRIVER: 'Slack' }).then(() => undefined, (caught: unknown) => caught)) as Error;
     expect(error.message).toBe(
-      '[marmeon:K6] Invalid configuration — the application cannot start:\n  • chat: CHAT_DRIVER — must be a driver name: lowercase letters, digits and dashes\nSet or rename these variables in the environment or in .env (see .env.example).',
+      '[marmeon:K6] Invalid configuration — the application cannot start:\n  • chat: CHAT_DRIVER — must be a driver name: lowercase letters, digits and dashes, starting with a letter\nSet or rename these variables in the environment or in .env (see .env.example).',
     );
   });
 });

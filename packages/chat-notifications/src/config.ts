@@ -6,6 +6,7 @@ import { ChatSetupError } from './errors.ts';
 /** The drivers the package ships; `log` is a sink that sends nothing, the others are webhook formats. A provider can bring more (`static chatDrivers`). */
 export const BUILT_IN_CHAT_DRIVERS = ['log', 'slack', 'discord', 'teams'] as const;
 
+/** The environment of chat messages; see `docs/chat-notifications.md#configuration`. */
 export const ChatConfig = defineConfig('chat', {
   env: env({
     /**
@@ -13,7 +14,7 @@ export const ChatConfig = defineConfig('chat', {
      * brings. The format of the named destinations of `CHAT_WEBHOOKS` and of every address that names no driver of its own. A
      * name nobody brought stops the start.
      */
-    CHAT_DRIVER: env.string().regex(NAME, 'must be a driver name: lowercase letters, digits and dashes').default('log'),
+    CHAT_DRIVER: env.string().regex(NAME, 'must be a driver name: lowercase letters, digits and dashes, starting with a letter').default('log'),
     /**
      * Named destinations as `name=address` entries, comma-separated: `ops=https://…,alerts=https://…`. A webhook address is a
      * secret: whoever has it can post to the channel. It never appears in a log line or an error message.
@@ -49,7 +50,7 @@ export function parseWebhooks(entries: readonly string[]): ReadonlyMap<string, s
     const match = ENTRY.exec(entry);
     if (match === null) {
       throw new ChatSetupError(
-        withCode('S10', `CHAT_WEBHOOKS: entry ${index + 1} is not name=https://… — a name of lowercase letters, digits and dashes, "=", then the address; entries are split at commas.`),
+        withCode('S10', `CHAT_WEBHOOKS: entry ${index + 1} is not name=https://… — a name of lowercase letters, digits and dashes, starting with a letter, "=", then the address; entries are split at commas.`),
       );
     }
     const [, name, address] = match as unknown as [string, string, string];

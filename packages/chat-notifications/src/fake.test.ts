@@ -324,6 +324,16 @@ describe('ChatFake: matching', () => {
     expect(failure(() => chat.assertSent('ops' as never))).toBeInstanceOf(TypeError);
   });
 
+  it('never echoes a key that is not a name: an address used as a key leaves no part of its path in the error', async () => {
+    const chat = await sendOne();
+    const address = `${slackUrl}`;
+    const error = failure(() => chat.assertSent({ [address]: 'x' } as never));
+    expect(error).toBeInstanceOf(TypeError);
+    expect(error.message).toContain('an unknown key');
+    expect(error.message).not.toContain(slackSecret.slice(0, 6));
+    expect(error.message).not.toContain('hooks.slack.com');
+  });
+
   it('counts a function only when it returns true', async () => {
     const chat = await sendOne();
     expect(failure(() => chat.assertSent((async () => true) as never))).toBeInstanceOf(AssertionError);

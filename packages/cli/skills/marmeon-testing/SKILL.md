@@ -99,9 +99,9 @@ it('lets the author edit a note and refuses anyone else', async () => {
 
 ## Fakes
 
-Four fakes are on by default as soon as the app has the package: `app.mail`, `app.queue`, `app.notifications` and `app.storage`
-(`docs/fakes.md`). Those services never send, queue for real or write to disk.
-Nothing else is replaced: your own HTTP client or another provider SDK still reaches the real service, so replace it in the test with
+Six fakes are on by default as soon as the app has the package: `app.mail`, `app.queue`, `app.notifications`, `app.chat`,
+`app.http` and `app.storage` (`docs/fakes.md`). Those services never send, post, request, queue for real or write to disk.
+Nothing else is replaced: an HTTP client other than the `HttpClient` of `@marmeon/fetch`, or another provider SDK, still reaches the real service, so replace it in the test with
 `override` (`docs/testing.md#replacing-services`), and a Postgres test still needs its database server.
 `app.events` is not a fake: it records every event, and the listeners still run. `app.schedule` runs the real schedule on the test's
 clock and needs `@marmeon/scheduler`.

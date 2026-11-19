@@ -34,7 +34,8 @@ const KEYS = ['to', 'title', 'text'];
 function given(match: Exclude<ChatMatch, (...args: never[]) => unknown>): { readonly to?: ChatDestination; readonly title?: string; readonly text?: string } {
   if (typeof match !== 'object' || match === null || Array.isArray(match)) throw new TypeError('A chat match is an object { to?, title?, text? } or a function.');
   for (const key of Object.keys(match)) {
-    if (!KEYS.includes(key)) throw new TypeError(`A chat match has no key "${key.length > 40 ? `${key.slice(0, 40)}…` : key}": use to, title or text, or a function.`);
+    // a key can be an address (a mistake that puts data where a name belongs): only a name that looks like one is echoed
+    if (!KEYS.includes(key)) throw new TypeError(`A chat match has ${/^[A-Za-z_$][\w$]{0,39}$/.test(key) ? `no key "${key}"` : 'an unknown key'}: use to, title or text, or a function.`);
   }
   const { to, title, text } = match;
   return {
@@ -99,8 +100,7 @@ function inOpenTransaction(): boolean {
 }
 
 /**
- * Records chat messages instead of posting them.
- * Build it with `new ChatFake(app.container)`.
+ * Records chat messages instead of posting them: `app.chat` of a test app. See `docs/fakes.md#chat`.
  * It checks every message as the real notifier does.
  * A destination `CHAT_WEBHOOKS` does not list, an address its driver refuses and a bad message fail the test.
  * `queue()` also refuses a bad delay and an app without the queue services, with the errors of the real queue.
@@ -115,7 +115,7 @@ export class ChatFake implements ChatNotifier {
   readonly #messages: RecordedChatMessage[] = [];
   readonly #failures: Error[] = [];
 
-  /** `container`: the container of an app with the `ChatServiceProvider` (and the queue services for `queue()`). */
+  /** @internal Built by `createTestApp()`: `container` is the container of an app with the `ChatServiceProvider` (and the queue services for `queue()`). */
   constructor(container: Container) {
     this.#container = container;
     this.#targets = container.make(ChatTargets);
@@ -135,7 +135,7 @@ export class ChatFake implements ChatNotifier {
     const { to, content } = await checkQueued(this.#targets, message, async () => {
       const module = await importQueue();
       if (!module || !this.#container.has(module.Queue)) {
-        throw new ChatError('chat.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or post now: chat.send().');
+        throw new ChatError('chat.queue() needs @marmeon/queue (marmeon add queue; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/queue@<version of your app>) — or post now: chat.send().');
       }
     });
     const module = (await importQueue())!;

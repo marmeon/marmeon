@@ -34,6 +34,7 @@ import {
   type PageObject,
 } from '@marmeon/http/protocol';
 import { createHttpKernel, type HttpKernel } from '@marmeon/server';
+import { importChat } from './import-chat.ts';
 import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/internal';
 import { AssertionError } from 'node:assert';
 import { isIP } from 'node:net';
@@ -41,6 +42,7 @@ import { stripVTControlCharacters } from 'node:util';
 import type { ActingAsGuard, ActingAsProofs } from '@marmeon/auth/testing';
 import type { AuthUser } from '@marmeon/auth';
 import type { HttpClientFake } from '@marmeon/fetch/testing';
+import type { ChatFake } from '@marmeon/chat-notifications/testing';
 import type { MailFake } from '@marmeon/mail/testing';
 import type { NotificationFake } from '@marmeon/notifications/testing';
 import type { BroadcastTester, LiveStreamReader } from '@marmeon/live/testing';
@@ -89,6 +91,13 @@ export interface TestAppOptions {
    * `'real'` keeps the configured transport. Needs @marmeon/fetch.
    */
   http?: 'fake' | 'real';
+  /**
+   * Chat messages are recorded, never posted (default `'fake'`): the `ChatNotifier` is a `ChatFake`, available as `app.chat` —
+   * `app.chat.assertQueued({ to: 'ops' })`. It checks messages as the real notifier does, and `queue()` needs the queue services
+   * of the app like the real one. `'real'` keeps the configured driver (`CHAT_DRIVER`). Needs @marmeon/chat-notifications.
+   * See `docs/fakes.md#chat`.
+   */
+  chat?: 'fake' | 'real';
   /**
    * Jobs are recorded, not queued (default `'fake'`): the `Queue` is a `QueueFake`, available as `app.queue` —
    * `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`, and `await app.queue.work()` runs them for real in the
@@ -184,6 +193,8 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   let mailFake: MailFake | undefined;
   const fetch = options.http === 'real' ? undefined : await importFetch();
   let httpFake: HttpClientFake | undefined;
+  const chat = options.chat === 'real' ? undefined : await importChat();
+  let chatFake: ChatFake | undefined;
   const queue = options.queue === 'real' ? undefined : await importQueue();
   let queueFake: QueueFake | undefined;
   const notifications = options.notifications === 'real' ? undefined : await importNotifications();
@@ -236,6 +247,10 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       if (fetch && container.has(fetch.HttpClient)) {
         httpFake = new fetch.HttpClientFake(container.make(fetch.FetchConfig).allowedAddresses);
         container.instance(fetch.HttpClient, httpFake);
+      }
+      if (chat && container.has(chat.ChatNotifier)) {
+        chatFake = new chat.ChatFake(container);
+        container.instance(chat.ChatNotifier, chatFake);
       }
       if (queue && container.has(queue.Queue)) {
         queueFake = new queue.QueueFake(container);
@@ -295,6 +310,7 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
     database,
     mail: mailFake,
     http: httpFake,
+    chat: chatFake,
     queue: queueFake,
     notifications: notificationFake,
     storage: storageFake,
@@ -408,6 +424,8 @@ interface Shared {
   readonly mail: MailFake | undefined;
   /** The fake client for outgoing requests, unless the app has no @marmeon/fetch or the test chose `http: 'real'`. */
   readonly http: HttpClientFake | undefined;
+  /** The fake chat notifier, unless the app has no @marmeon/chat-notifications or the test chose `chat: 'real'`. */
+  readonly chat: ChatFake | undefined;
   /** The recording queue, unless the app has no queue or the test chose `queue: 'real'`. */
   readonly queue: QueueFake | undefined;
   /** The recording notifications, unless the app has none or the test chose `notifications: 'real'`. */
@@ -726,6 +744,15 @@ export class TestApp {
   get http(): HttpClientFake {
     if (!this.#shared.http) throw new Error("app.http needs @marmeon/fetch in the app (and not createTestApp(…, { http: 'real' })).");
     return this.#shared.http;
+  }
+
+  /**
+   * The chat messages the app sent or queued — recorded, never posted: `app.chat.assertQueued({ to: 'ops' })`.
+   * Needs @marmeon/chat-notifications in the app. See `docs/fakes.md#chat`.
+   */
+  get chat(): ChatFake {
+    if (!this.#shared.chat) throw new Error("app.chat needs @marmeon/chat-notifications in the app (and not createTestApp(…, { chat: 'real' })).");
+    return this.#shared.chat;
   }
 
   /**

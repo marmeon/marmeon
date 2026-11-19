@@ -273,6 +273,7 @@ declare module '@marmeon/http/page' {
     'dashboard/Show': true;
     'help/Show': true;
     'lab/BrowserOnly': true;
+    'lab/Chat': true;
     'lab/ClientOnly': true;
     'lab/Devtools': true;
     'lab/Errors': true;

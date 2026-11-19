@@ -119,6 +119,7 @@ export default defineDocs({
         { slug: 'localization', label: 'Localization' },
         { slug: 'mail', label: 'Mail' },
         { slug: 'notifications', label: 'Notifications' },
+        { slug: 'chat-notifications', label: 'Chat Notifications' },
         { slug: 'queues', label: 'Queues' },
         { slug: 'rate-limiting', label: 'Rate Limiting' },
         { slug: 'realtime', label: 'Real-time Updates' },
