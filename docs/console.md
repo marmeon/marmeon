@@ -117,6 +117,7 @@ pnpm marmeon route:list --json
 | `modules:list --json` | [Listing the modules](modules.md#listing-the-modules) |
 | `devtools:list --json` | [Listing the entries](devtools.md#listing-the-entries) |
 | `docs --json` | [Reading the documentation](#reading-the-documentation) |
+| `upgrade --json` | [How to upgrade](releases.md#how-to-upgrade) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
 
 A command of your own, or of a package, prints its document with `output.json({ format: 1, … })` and declares
@@ -160,6 +161,7 @@ start`, and `marmeon dev` refuses it.
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
 | `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint, the scan for imports of framework internals and the checks of the app (route and database types, boot, readiness), and exits with a code a script can read. See [checking an app](check.md). |
 | `doctor [--only=<names>] [--skip=<names>] [--json]` | Checks that this machine can run the app: Node, the versions of the packages, the configuration and `APP_KEY`, the generated files, the migrations that have not run and the services, with the report and exit codes of `check`. See [the environment](check.md#the-environment-marmeon-doctor). |
+| `upgrade [--to=<version\|tag>] [--dry-run] [--json]` | Moves every `marmeon` and `@marmeon/*` package of the app to one version (`latest`, or `--to`), prints the entries of the upgrade guide between the two versions, and runs `route:types`, and `db:types` when the app has `@marmeon/database`. `--dry-run` only prints the plan. See [how to upgrade](releases.md#how-to-upgrade). |
 | `serve [--workers=N]` | The command behind `dev` and `start`; hidden from `marmeon list`, but its name and options are API. Run `marmeon start` rather than it. |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action, with `(island)` after an island's controller. See [listing routes](routing.md#listing-routes). |

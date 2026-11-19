@@ -36,6 +36,7 @@ import { RouteTypesCommand } from './commands/route-types.ts';
 import { SchemaProjectCommand } from './commands/schema-project.ts';
 import { ServeCommand } from './commands/serve.ts';
 import { TinkerCommand } from './commands/tinker.ts';
+import { UpgradeCommand } from './commands/upgrade.ts';
 
 /** The commands the CLI provides. */
 export const BUILT_IN: readonly CommandClass[] = [
@@ -50,6 +51,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   BuildCommand,
   CheckCommand,
   DoctorCommand,
+  UpgradeCommand,
   PackageBuildCommand,
   KeyGenerateCommand,
   AgentsSyncCommand,

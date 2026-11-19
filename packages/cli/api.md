@@ -296,6 +296,11 @@ marmeon tinker [--sandbox] [--execute "<code>"] [--no-history]
 --execute (string, short e)
 --no-history (boolean)
 --sandbox (boolean)
+// upgrade
+marmeon upgrade [--to=<version|tag>] [--dry-run] [--json]
+--dry-run (boolean)
+--json (boolean)
+--to (string)
 ```
 
 ## Hidden commands (not API)
