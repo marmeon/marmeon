@@ -3,7 +3,7 @@
 This page lists every change between one version and the next that an app has to act on: how likely it is to affect your app, what to do, and the way back where there is one. The
 [release policy](docs/releases.md#what-a-version-promises) says what a version promises.
 
-## Upgrading to 1.2.0 from 1.1.0
+## Upgrading to 1.2.1 from 1.1.0
 
 ### Commands
 

@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/fetch",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Outgoing HTTP requests for Marmeon apps that refuse addresses that are not public, with redirects, limits and a fake for tests.",
   "keywords": [
     "marmeon",
