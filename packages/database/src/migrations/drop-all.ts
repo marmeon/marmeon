@@ -40,8 +40,8 @@ async function dropSqlite(db: Kysely<any>, tables: { name: string; isView: boole
  * the keys between them (a parent before its child, a table to itself, two tables to each other) are no obstacle. A key from a table of
  * another database is an obstacle: the server refuses (error 3730) and, on InnoDB, drops none of them, so the other database has to let
  * go first. Other engines drop table by table. The views go after the tables, so that a refusal leaves them standing too. Both lists come
- * from `information_schema`, not from `getTables()`, which leaves out a view whose table is gone. Works on a transaction too, but a
- * drop commits it on MySQL. `sql.id` keeps a dot in a name.
+ * from `information_schema`, not from `getTables()`, which leaves out a view whose table is gone. Inside `transaction()` the drop commits
+ * the transaction on MySQL, so the transaction fails with D24 (see `docs/transactions.md#on-mysql`). `sql.id` keeps a dot in a name.
  */
 async function dropMysql(db: Kysely<any>): Promise<void> {
   const found = await sql<{ name: string; kind: string }>`select table_name as name, table_type as kind from information_schema.tables

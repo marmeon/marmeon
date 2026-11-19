@@ -299,12 +299,12 @@ withMysql('the catalog of MySQL', () => {
       }
     });
 
-    it('works inside a transaction, which a drop commits', async () => {
+    it('inside a transaction, drops the tables and fails the transaction with D24: the drop committed it', async () => {
       const { connections, close } = await freshConnections('mysql', { record: false });
       const db = migratorConnection(connections);
       try {
         await sql`create table owners (id int primary key)`.execute(db);
-        await db.transaction().execute((trx) => dropAllTables(trx, 'mysql'));
+        await expect(db.transaction().execute((trx) => dropAllTables(trx, 'mysql'))).rejects.toThrow('[marmeon:D24]');
         expect(await tablesOf(connections)).toEqual([]);
       } finally {
         await close();

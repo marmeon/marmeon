@@ -136,7 +136,7 @@ the pool replaces it and the log says so with a warning.
 
 MySQL cannot be selected yet: `DB_DRIVER` takes `sqlite` or `pgsql`, and a connection definition cannot return `mysql`. What is
 described here is what the framework's own tests run against. What Marmeon reads of a MySQL database, and which privileges the role needs,
-is under [the catalog of MySQL](#the-catalog-of-mysql).
+is under [the catalog of MySQL](#the-catalog-of-mysql); how migrations run on it is under [Migrations on MySQL](migrations.md#mysql).
 
 MySQL needs the `mysql2` driver in your app, as a dependency like `pg`:
 
