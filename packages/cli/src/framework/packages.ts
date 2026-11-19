@@ -16,6 +16,7 @@ export const FRAMEWORK_PACKAGES: ReadonlyMap<string, FrameworkPackage> = new Map
   ['marmeon', { dev: false, migrations: false, docs: 'installation' }],
   ['@marmeon/auth', { dev: false, migrations: true, docs: 'authentication' }],
   ['@marmeon/cache', { dev: false, migrations: true, docs: 'cache' }],
+  ['@marmeon/chat-notifications', { dev: false, migrations: false, docs: 'chat-notifications' }],
   ['@marmeon/core', { dev: false, migrations: false, docs: 'container' }],
   ['@marmeon/database', { dev: false, migrations: false, docs: 'database' }],
   ['@marmeon/devtools', { dev: true, migrations: false, docs: 'devtools' }],
