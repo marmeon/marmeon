@@ -158,9 +158,12 @@ auto-instrumentation.
 ### Installation
 
 ```sh
-pnpm add -E @marmeon/otel@<version of your app> @opentelemetry/api@^1.9.0
+pnpm marmeon add otel
+pnpm add @opentelemetry/api@^1.9.0
 pnpm add @opentelemetry/sdk-trace @opentelemetry/context-async-hooks @opentelemetry/core @opentelemetry/resources @opentelemetry/exporter-trace-otlp-http
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), install the package yourself: `pnpm add -E @marmeon/otel@<version of your app>`.
 
 The API is a peer of `@marmeon/otel`, never a dependency of its own: your SDK registers its tracer provider on the API, and the
 framework must read that same copy. Install the SDK as dependencies, not dev dependencies: it runs in production, and a production

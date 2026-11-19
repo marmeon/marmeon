@@ -142,8 +142,8 @@ export function sessionTableConnection(container: Resolver): string {
   return config.driver === 'database' ? config.connection : 'default';
 }
 
-const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add -E @marmeon/database@<version of your app>');
-const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add -E @marmeon/redis@<version of your app>');
+const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'marmeon add database (or pnpm add -E @marmeon/database@<version of your app>)');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'marmeon add redis (or pnpm add -E @marmeon/redis@<version of your app>)');
 
 /** What `SESSION_DRIVER=database` says of a connection on a driver the store has no SQL for. */
 const SESSION_DATABASE_DRIVER = { what: 'SESSION_DRIVER=database', instead: 'use SESSION_DRIVER=redis, file or memory' };

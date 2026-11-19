@@ -77,7 +77,7 @@ describe('a tinker session (in-process)', () => {
     expect(context.Mailer).toBe(Mailer); // names are their class or token
     expect(context.URL).toBe(URL); // … a name the context had stays
     expect(Object.getOwnPropertyDescriptor(context, 'db')?.get).toBeTypeOf('function'); // built on first use
-    expect(() => context.db).toThrow('db needs @marmeon/database (pnpm add -E @marmeon/database@<version of your app>; marmeon discover).');
+    expect(() => context.db).toThrow('db needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).');
     context.db = 'replaced'; // like any variable
     expect(context.db).toBe('replaced');
     await tinker.loadRepositories();
@@ -97,8 +97,17 @@ describe('a tinker session (in-process)', () => {
     expect(await run('1 + ')).toEqual([['(fallback)'], '1 + ']);
   });
 
-  it('refuses --sandbox without @marmeon/database', async () => {
-    await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @marmeon/database');
+  it.each([
+    ['repos', 'repos needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).'],
+    ['t', 't needs @marmeon/i18n (marmeon add i18n; if it is installed already: marmeon discover).'],
+  ])('names the install of the package the helper %s lacks', (helper, message) => {
+    const context: Record<string, unknown> = {};
+    new TinkerSession(app).attach(context);
+    expect(() => context[helper]).toThrow(message);
+  });
+
+  it('refuses --sandbox without @marmeon/database, and names the install', async () => {
+    await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).');
   });
 
   describe('the history file', () => {

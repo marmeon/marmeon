@@ -33,7 +33,7 @@ declare module '@marmeon/core' {
 }
 
 const DATABASE_NEEDED =
-  'LIVE_DRIVER=database needs @marmeon/database and its provider (pnpm add -E @marmeon/database@<version of your app>; marmeon discover), and the live_hints table: marmeon make:live-table && marmeon migrate.';
+  'LIVE_DRIVER=database needs @marmeon/database and its provider (marmeon add database; if it is installed already: marmeon discover), and the live_hints table: marmeon make:live-table && marmeon migrate.';
 
 /** Live props need a piece the app does not have. */
 export class LiveSetupError extends Error {
@@ -185,7 +185,7 @@ export class LiveServiceProvider implements ServiceProvider {
         );
       }
       const redis = this.#redis;
-      if (!redis) throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis (pnpm add -E @marmeon/redis@<version of your app>; marmeon discover).'));
+      if (!redis) throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis (marmeon add redis; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/redis@<version of your app>).'));
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.connection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
@@ -231,7 +231,7 @@ export class LiveServiceProvider implements ServiceProvider {
     if (config.driver === 'redis') {
       this.#redis = await importOptional(() => import('@marmeon/redis'), '@marmeon/redis');
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
-        throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add -E @marmeon/redis@<version of your app>; marmeon discover).'));
+        throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis and its provider (marmeon add redis; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/redis@<version of your app>).'));
       }
       // An unknown connection name fails the start, with the known ones — and so does a client that cannot load (a broken
       // install), as for the cache, the sessions and the queue: not the first hint.

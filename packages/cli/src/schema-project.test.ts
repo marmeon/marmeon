@@ -70,7 +70,7 @@ describe('marmeon schema:project (the schema projection of the migrations)', { t
     const dir = appWithoutDatabase(true);
     const { code, stderr } = marmeon(dir, ['schema:project']);
     expect(code).toBe(1);
-    expect(stderr).toContain('add @marmeon/database as a dependency of the app');
+    expect(stderr).toContain('marmeon add database (if the app does not boot yet: pnpm add -E @marmeon/database@<version of your app>)');
   });
 
   it('always computes the schema again: a file with altered tables and matching hashes is written over', () => {

@@ -54,11 +54,13 @@ every `FetchError` and write the `reason` to the log: `refused` against `network
 
 ## Installation
 
-A new app has `@marmeon/fetch`. Otherwise add it in the version of the app's other framework packages:
+A new app has `@marmeon/fetch`. Otherwise add it with [`marmeon add`](packages.md#introduction), in the version of the app's other framework packages:
 
 ```sh
-pnpm add -E @marmeon/fetch@<version of your app>
+pnpm marmeon add fetch
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E @marmeon/fetch@<version of your app>`.
 
 The package registers itself: the `HttpClient` is in the container, and a controller or a job asks for it in its constructor.
 

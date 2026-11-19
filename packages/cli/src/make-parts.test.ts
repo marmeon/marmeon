@@ -71,7 +71,7 @@ describe.each(generators)('%s', (Command, name, record, file) => {
       const { code, lines } = run(Command, root, [record]);
       expect(code).toBe(1);
       expect(lines).toHaveLength(1);
-      expect(lines[0]).toMatch(/^✗ .* @marmeon\/[a-z]+: pnpm add -E @marmeon\/[a-z]+@<version of your app>$/);
+      expect(lines[0]).toMatch(/^✗ .* @marmeon\/([a-z]+): marmeon add \1 \(if the app does not boot yet: pnpm add -E @marmeon\/\1@<version of your app>\)$/);
       expect(existsSync(join(root, file))).toBe(false);
     }
   });
@@ -172,7 +172,7 @@ describe('make:table', () => {
       const dependencies = Object.fromEntries(['@marmeon/table', '@marmeon/auth', '@marmeon/database'].filter((name) => name !== missing).map((name) => [name, '*']));
       const root = app(JSON.stringify({ dependencies }));
       const { code, lines } = run(MakeTableCommand, root, ['Invoice']);
-      expect([code, lines[0]]).toEqual([1, expect.stringContaining(`${missing}: pnpm add -E ${missing}@<version of your app>`)]);
+      expect([code, lines[0]]).toEqual([1, expect.stringContaining(`${missing}: marmeon add ${missing.replace('@marmeon/', '')} (if the app does not boot yet: pnpm add -E ${missing}@<version of your app>)`)]);
     }
   });
 });
