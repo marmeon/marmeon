@@ -108,7 +108,7 @@ describe('the landing page', () => {
     const pairs = [...stats.matchAll(/<dt>([^<]*)<\/dt><dd>(\d+)<\/dd>/g)].map(([, label, value]) => [label, Number(value)]);
     expect(pairs).toEqual([
       ['packages, released as one version', PACKAGES.length],
-      ['typos the compiler catches, from the migration to the form error', CHAIN.length],
+      ['layers where a typo is a compile error, from the migration to the form error', CHAIN.length],
       ['fakes that come with createTestApp()', FAKES.length],
       ['MCP tools your coding agent can call', AGENT_TOOLS.length],
     ]);
