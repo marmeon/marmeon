@@ -134,7 +134,7 @@ own:
 | `vitest.config.ts` | The tests: `modules/**/*.test.ts`. |
 | `.oxlintrc.json` | The lint preset. It keeps views from importing server code by value. |
 | `AGENTS.md`, `CLAUDE.md` | The guide a coding agent reads at the start of a session. `marmeon agents:sync` keeps a block of `AGENTS.md` current; the rest is yours. `CLAUDE.md` imports `AGENTS.md`. See [coding agents](agents.md). |
-| `marmeon-stubs.json` | Where the files that `create-marmeon` and `marmeon make:auth` copied came from: the package, its version and a hash per file. Written by the framework, committed with the app. See [the auth module](starter-kit.md#what-the-auth-module-holds). |
+| `marmeon-stubs.json` | Where the files that `create-marmeon`, `marmeon make:auth` and `marmeon publish` copied came from: the package, its version and a hash per file. `publish` records the migrations of a package in it, so a later release that changes one is noticed. Written by the framework, committed with the app. See [the auth module](starter-kit.md#what-the-auth-module-holds). |
 
 ### Generated folders
 

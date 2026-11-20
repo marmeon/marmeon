@@ -86,6 +86,7 @@ its database and its fakes, so you can keep one per user:
 | `withSession(data)` | A session that holds `data` before the request. |
 | `actingAs(user)` | A session signed in as `user`, as a sign-in leaves it. |
 | `actingAs(user, { guard: 'api', abilities })` | A real API token of `user` in the `Authorization` header. |
+| `actingAs(user, { guard: OfficeGuard })` | A session signed in as a user of a [guard of a package](authentication.md#testing-as-a-guard-of-a-package), and in nothing of the app's. |
 
 `expectingJson()` changes what a failure looks like: a guest gets `401` instead of a redirect to the sign-in page, and invalid
 input a `422` with the errors instead of a redirect back.
@@ -318,6 +319,7 @@ not compile. The [pages](pages.md#flash-messages) page explains flash messages.
 | `assertSessionMissing(key)` | The session lacks `key`, or the request kept no session at all. |
 | `assertAuthenticated(user)` | The session is signed in, as `user` when given, compared by id. |
 | `assertGuest()` | The session is not signed in. |
+| `assertAuthenticated(user, { guard })`, `assertGuest({ guard })` | The same for a [guard of a package](authentication.md#testing-as-a-guard-of-a-package): the app's assertions do not see its users. |
 
 These read the session the response's cookie points to. When the response sets
 no session cookie at all, such as on a route outside the `web` group, `assertSessionHas()`, `assertAuthenticated()` and

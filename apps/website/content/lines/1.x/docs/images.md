@@ -144,17 +144,27 @@ await this.#users.update(user.id, { avatar_path: path, avatar_width: size?.width
 ```
 
 `dimensions()` of a [`TemporaryUpload`](storage.md#uploads) reads the header of a PNG, JPEG, GIF, WebP or AVIF, without a decoder, and
-turns the size the way a browser shows it (an EXIF orientation of a JPEG, a rotation of an AVIF). It returns `undefined` for a file
-that is no image or whose header is cut off or damaged. Call it before `store()`, which moves the file; after it, `dimensions()` throws. A page with a stored size
+turns the size the way a browser shows it (an EXIF orientation of a JPEG, PNG or WebP, a rotation of an AVIF). It returns `undefined`
+for a file that is no image or whose header is cut off or damaged. For a GIF it is the larger of the logical screen and the right and
+bottom edge of any frame, and `undefined` when the end of the file lies past the first 256 KB. An EXIF block that cannot be read, a JPEG whose scan starts past the first
+256 KB, and a WebP whose EXIF chunk lies behind its image data past the first 256 KB give `undefined` too. The size of an AVIF is the one its container states: it is good for reserving space, not for a limit,
+because a decoder need not follow it, and an animated AVIF gives `undefined`. Call it before `store()`, which moves the file; after it, `dimensions()` throws. A page with a stored size
 passes it on as an `ImageSource`; without one, give `<Image>` a frame of fixed size and `object-fit` so the picture does not move
 the text around it.
 
 ### Limiting the size in pixels
 
-The `upload()` rule limits bytes and types, not pixels. A small file can hold a picture of 30 000 by 30 000 pixels, which a
-browser needs gigabytes to decode. The controller reads `dimensions()` and refuses what is too large. It calls `discard()` before
-it refuses, or the file waits on the private disk until `uploads:prune` removes it. It refuses a file whose header cannot be read,
-`undefined`, too: the rule has checked the type, so an image without a readable size is damaged.
+A small file can hold a picture of 30 000 by 30 000 pixels, which a browser needs gigabytes to decode. Give the `upload()` rule
+`dimensions`. A file whose header states more is refused at its field. That happens before the controller runs and before any code
+decodes the file ([validation](validation.md#uploads)):
+
+```ts
+upload({ maxBytes: 5_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'], dimensions: { maxWidth: 8000, maxHeight: 8000 } })
+```
+
+When the limit depends on something the rule cannot know, the controller reads `dimensions()` and refuses what is too large. It
+calls `discard()` before it refuses, or the file waits on the private disk until `uploads:prune` removes it. It refuses a file whose
+header cannot be read, `undefined`, too: the rule has checked the type, so an image without a readable size is damaged. Leave `image/avif` out of that rule's `mime` here too, since the first bytes of an AVIF do not reliably show the size a decoder decodes ([uploads in validation](validation.md#uploads) says why).
 
 ```ts title="modules/media/controllers/StoreImageController.ts"
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';

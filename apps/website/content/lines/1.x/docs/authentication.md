@@ -177,7 +177,7 @@ The package brings four middleware for the routes of the `web` group:
 | `authenticate()` | A signed-in user, as `ctx.user`. | A browser goes to the login page, a JSON client gets 401. |
 | `guest(home)` or `guest({ homeRoute })` | Guests. For the login and registration pages. | A redirect to the path `home`, `/` by default, or to the named route `homeRoute` (no path parameters). |
 | `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
-| `confirmedPassword()` | A user who typed the password or proved a passkey within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
+| `confirmedPassword()` | A user who confirmed within 15 minutes by default (typed the password, proved a passkey, or [confirmed with a linked provider](oauth.md#confirming-with-a-provider)) ([how long](#how-long-a-sign-in-lasts)). After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
 | `confirmedSecondFactor({ verify })` | A user whose account has no second factor, or whose session proved one within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `confirmedPassword()`, on routes that change factors, the e-mail address or API tokens. | A browser goes to `verify`, a JSON client gets 403. See [changing the factors](two-factor-authentication.md#changing-the-factors). |
 | `twoFactor({ setup, verify, maxAge? })` | A user whose session proved a second factor. After `authenticate()`; never installed by the framework. | A browser goes to `setup` or `verify`, a JSON client gets 403. See [requiring it](two-factor-authentication.md#requiring-it). |
 
@@ -186,7 +186,10 @@ The package brings four middleware for the routes of the `web` group:
 
 A guest whom `authenticate()` turns away goes to the route named `auth.login`, or the one `authenticate({ loginRoute })` names.
 For a `GET` visit, the page they wanted is kept in the session, and `this.redirect().intended()` after the sign-in brings them
-back there. A prefetch and a request that only reads are not remembered. A client that expects JSON gets
+back there. Each guard keeps its own page. `intended()` follows the page of the guard that completed a sign-in, a password confirmation or a second factor in this request (a restore from the remember-me cookie does not count); if none did,
+the page of the guard whose `authenticate()` or `guest()` stands on the route, and on a route with neither, the app's. A request
+in which two guards completed one follows none. Give the sign-in routes of a [package's guard](#guards-of-a-package) the guard's `guest()`, as the
+back office does. A prefetch and a request that only reads are not remembered. A client that expects JSON gets
 `401 {"message":"Unauthenticated."}` instead of the redirect.
 
 #### Sending a guest from an open page to sign in and back
@@ -478,7 +481,7 @@ Every lifetime of a sign-in is listed here. The list of [sign-ins](#sign-ins) le
 | `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
 | `twoFactor()` `maxAge` | 24 hours | The proof of a [second factor](two-factor-authentication.md#requiring-it); then the user is asked for it again. | AAL2 holds only on routes behind `twoFactor()`. |
 | A change of factors | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
-| `AUTH_PASSWORD_TIMEOUT_SECONDS` | 15 minutes | The password or passkey confirmation of [sudo mode](#sudo-mode). | The password or a passkey; only a passkey also counts as a second factor. |
+| `AUTH_PASSWORD_TIMEOUT_SECONDS` | 15 minutes | The confirmation of [sudo mode](#sudo-mode): a password, a passkey or [a linked provider](oauth.md#confirming-with-a-provider). | A password, a passkey or a provider; only a passkey also counts as a second factor. |
 
 `SESSION_LIFETIME_MINUTES` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
 is the longest a sign-in lasts, however active the user is: a session signed in by password or passkey ends that many hours
@@ -553,7 +556,7 @@ persist the fingerprint and hand it back from `consume()` (kept over every rotat
 ## Sudo mode
 
 Some pages ask for a confirmation again even though the user is signed in, such as the page with the API tokens.
-`confirmedPassword()` lets a user through who typed the password, or proved a [passkey](passkeys.md#confirming-sudo-mode) with user
+`confirmedPassword()` lets a user through who confirmed: typed the password, [confirmed with a linked provider](oauth.md#confirming-with-a-provider), or proved a [passkey](passkeys.md#confirming-sudo-mode) with user
 verification, within the last `AUTH_PASSWORD_TIMEOUT_SECONDS`, 15 minutes by default:
 
 ```ts title="modules/auth/routes.ts"
@@ -584,7 +587,7 @@ Everyone else goes to `auth.password.confirm`, and after the confirmation back t
 time, a [`Duration`](time.md#spans-of-time) (`{ minutes: 5 }`; a number is seconds). The resolved `AuthConfig` carries the
 variables as `passwordTimeoutSeconds`, `resetMinutes`, `resetThrottleSeconds` and `emailChangeThrottleSeconds`; the unit is in the name.
 
-In your own code, `auth.passwordRecentlyConfirmed(within?)` answers the same question for the current session: `true` when a password or a passkey was confirmed inside the sign-in and within `within`, a [`Duration`](time.md#spans-of-time) (default `AUTH_PASSWORD_TIMEOUT_SECONDS`). A session with no usable confirmation time is `false`, never `true`.
+In your own code, `auth.passwordRecentlyConfirmed(within?)` answers the same question for the current session: `true` when a password, a passkey or a [linked provider](oauth.md#confirming-with-a-provider) confirmed inside the sign-in and within `within`, a [`Duration`](time.md#spans-of-time) (default `AUTH_PASSWORD_TIMEOUT_SECONDS`). A session with no usable confirmation time is `false`, never `true`.
 
 The confirmation page posts the password to `auth.checkPassword(password)`, which checks it and notes the time. A right password also
 gives the session a new id (its data stays, and so do the counts of the password checks): a session id that leaked before the
@@ -599,6 +602,8 @@ counts as a fresh confirmation, since the passkey was proven just now. `attempt(
 second factor, dated when the password was typed, not when the factor was proven); `signIn()` does not, since nobody proved anything, and it forgets a
 confirmation noted before: the new sign-in starts outside sudo mode, even over the session of the same account, and proving a
 second factor afterwards does not change that. A confirmation counts only inside the sign-in it was given for.
+
+A linked provider can confirm in place of the password: see [confirming with a provider](oauth.md#confirming-with-a-provider).
 
 A confirmation is enough to reach a page, but not for every action. What lets whoever holds the session stay in the account after the
 owner has recovered it asks for the **current password in the same form**, whatever confirmed sudo mode, such as: changing the e-mail
@@ -635,7 +640,7 @@ next request, every other sign-in of the user is deleted and this device's remem
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
 hash, and the log says how many. A new password also deletes the account's password-reset link, so a link mailed before it cannot set another one.
 
-`updatePassword()` does not check the current password itself, but it throws without a recent confirmation, a password or a passkey
+`updatePassword()` does not check the current password itself, but it throws without a recent confirmation (a password, a passkey or a provider)
 (`passwordRecentlyConfirmed()`, as `endSignIn()` does): a stolen session cookie behind a route with only `authenticate()` cannot
 take the account over by choosing a password. The controller checks the current password first, as the starter kit's does, with
 `checkPassword()`, which is that confirmation; a route behind [`confirmedPassword()`](#sudo-mode) has it already, as long as the confirmation is within `AUTH_PASSWORD_TIMEOUT_SECONDS` (`updatePassword()` checks that window, not a longer `maxAge` of the middleware):
@@ -797,6 +802,25 @@ devices writes a key.
 A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` (a reset also when the address is
 not confirmed, see [resetting the password](passwords.md#resetting-the-password)), and "sign out other devices" never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains when to turn it on.
+
+## Accounts without a password
+
+The starter kit's `users.password` may hold `NULL`, and `UserRepository.register()` takes `password: null`. Such an account has no password to
+check: `Credentials.passwordHash` is `null`. `auth.attempt()` answers as it does for a wrong password or an unknown address, whatever is typed:
+the same failure, the same padded time and `SignInFailed`. Only a sign-in your app adds can open the account. A passkey or an authenticator app
+needs a password first (see [passkeys](passkeys.md)). Every check of the password fails for such an account until it has one:
+`confirmedPassword()`, [changing the password](#changing-the-password), the API tokens page and the rest. The [reset link](passwords.md#resetting-the-password)
+sets the first password. It is mailed and used up as for any account, and the hash is written through `updatePasswordHash()`.
+
+A new app has the migration `make_users_password_optional`. An app made before it takes the file from the installed package,
+`node_modules/@marmeon/auth/stubs/react/modules/auth/migrations/0001_01_01_000008_make_users_password_optional.ts`, into the `migrations` folder of the
+module that owns `users`, under a name with the date of the day (`2026_11_18_120000_make_users_password_optional.ts`), then runs `marmeon migrate` and `marmeon db:types`.
+Rename it before you run `marmeon migrate`: `marmeon make:auth --force` writes the file under its own name when the app has no migration of that name, and `migrate` refuses it as soon as
+later migrations have changed `users`. Once it has a dated name, `make:auth` keeps it and leaves it alone.
+
+SQLite changes no column in place, so the migration adds a nullable `password_optional` column, copies the hashes, drops `password` and renames the new
+column. The column stays `.secret()`: select-all results and `Row<'users'>` never hold the hash, and `secret(eb, 'password')` reads it as `string | null`.
+The migration cannot be undone, and `down()` says so by doing nothing: a rollback leaves the column nullable.
 
 ## Changing the address
 
@@ -1127,7 +1151,7 @@ The list leaves out a sign-in whose session is over: one that has been idle long
 
 `auth.endSignIn(id)` signs the user out of one of them. It returns a `Result`: `missing` for an id that is unknown, malformed or
 another user's (the same answer for all three), and `current` for the browser that asks, which signs out with `signOut()`. The route
-must be behind [`confirmedPassword()`](#sudo-mode): without a recent confirmation (a password or a passkey) `endSignIn()` throws, because a stolen session
+must be behind [`confirmedPassword()`](#sudo-mode): without a recent confirmation (a password, a passkey or a provider) `endSignIn()` throws, because a stolen session
 cookie must not be able to sign its owner out everywhere else. An account with neither a password nor a passkey cannot end a
 sign-in yet.
 
@@ -1218,8 +1242,462 @@ it('signs the other browser out', async () => {
 });
 ```
 
-To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
+To test the controller itself, confirm the password in the test first (the session needs a recent confirmation: a password, a passkey or a provider); `POST /confirm-password`
 does that in the starter kit.
+
+## When to use a second guard
+
+A second guard is a second set of people. It has a table of users, sign-ins, a sudo window, limits and events of its own, and an id that means nobody of the app ([guards of a package](#guards-of-a-package)). Define one when:
+
+- **The people differ, and so do their trust and their lifecycle.** The editors of a website and the customers of its portal, or the staff of a back office and the customers of a shop: nobody is both, they are invited and removed by different people, and one group must never be mistaken for the other.
+- **The security rules differ.** The editors need a second factor, may not sign up on their own, have no public password reset or have shorter sessions, and the customers' rules stay as they are.
+- **The package has to work without the app's users.** A package that ships its own back office cannot ask an app for a table of users it may not have.
+
+Do not define one for the same people in two roles. A person who is a customer and an editor is one account of the app with roles, decided by [policies](authorization.md#policies-of-a-guard) on `ctx.user`; a second guard would make that person two accounts with two passwords and two sets of sign-ins.
+
+A package can offer both ways and let the app choose at boot: its own guard for apps that have no such users, and the app's users for apps that do ([using the app's users instead](#using-the-apps-users-instead)). The back office of the web app shows this case, a website with a customer portal: the customers are the app's users, and the editors are the back office's own ([a package with users of its own](package-users.md#introduction)).
+
+## Guards of a package
+
+A package whose users are not the app's users, such as a back office with its own staff table, defines a guard of its own. The
+guard signs its users in and out, asks for the password again before a sensitive action, lists and ends their sign-ins, sends
+password reset links and ends every session of one of them. It reads its own table of users and keeps its own sign-in rows,
+so an account of the app with the same id is a different person to it.
+
+```ts title="office/src/guard.ts"
+import { defineGuard, type GuardAccountSessions, type GuardAuth, type GuardPasswordBroker } from '@marmeon/auth';
+import { OfficeUsers } from './OfficeUsers.ts';
+import type { OfficeUser } from './OfficeUser.ts';
+
+export const OfficeGuard = defineGuard('office', {
+  users: OfficeUsers,
+  tablePrefix: 'office_',
+  settings: { sessionMaxHours: 8, rememberDays: 0 },
+});
+
+// A type alias and a constant of the same name: a controller takes `auth: OfficeAuth`, and the container finds the guard's service.
+export type OfficeAuth = GuardAuth<OfficeUser>;
+export const OfficeAuth = OfficeGuard.Auth;
+export type OfficeAccountSessions = GuardAccountSessions<OfficeUser>;
+export const OfficeAccountSessions = OfficeGuard.AccountSessions;
+export type OfficePasswordBroker = GuardPasswordBroker<OfficeUser>;
+export const OfficePasswordBroker = OfficeGuard.PasswordBroker;
+```
+
+The package registers the guard in the `register()` of its service provider with `OfficeGuard.register(container)`. The order of
+the providers does not matter. Register the guard there and nowhere later: a guard registered after the auth provider has booted (for
+instance in a later provider's `boot()`) would miss the boot checks of its settings, tables, sign-in finder, remember-me cookie and
+route limits, so it is error [A8](errors.md#server-error-codes). `users` is a class that implements [`UserProvider`](#the-user-type-and-where-users-come-from) on a
+table of the package's own; the container builds it, so it may take the connection or the hasher as constructor parameters. A
+controller of the package takes the guard's services and calls these methods on them, as it does on `Auth`, `AccountSessions` and
+`PasswordBroker`: `attempt()`, `signIn()`, `signOut()`, `user()`, `checkPassword()`, `signIns()`, `endSignIn()`, `updatePassword()`,
+`createToken()`, `reset()` and `end()`. The types name the guard's user instead of the app's.
+
+The guard's name is lower case letters, digits and single hyphens, starts with a letter and has at most 32 characters. `web`,
+`api`, `app`, `auth` and `marmeon` are taken. The table prefix has lower case letters, digits and underscores, starts with a letter
+and ends with an underscore. A guard that should have an authenticator app and recovery codes takes `twoFactor: TwoFactor` (from `@marmeon/auth/two-factor`), and `settings.twoFactorIssuer`
+sets the name an authenticator app shows for it; [two-factor authentication](two-factor-authentication.md#for-a-guard-of-a-package) has the tables and the middleware.
+A name or prefix that is invalid, a name or prefix that two guards share, or a `users` that is not a
+class stops the start with error [A8](errors.md#server-error-codes).
+
+### What is separate and what is shared
+
+Everything that holds an identity or a count carries the guard's name, so the same id in two tables never reads, resets or ends
+the other's session, cookie or counter. The app guard keeps the names it always had.
+
+| What | App guard | Guard `office` |
+|---|---|---|
+| Session keys | `_auth_id`, `_auth_password`, … | `_auth:office:id`, `_auth:office:password`, … |
+| Fingerprint of a session and a remember-me token | derived for the app | derived for `office` |
+| Remember-me and device cookie | `marmeon_remember`, `marmeon_device` | `marmeon_remember.office`, `marmeon_device.office.device` (with `__Host-` over HTTPS) |
+| Counts of password sign-ins and checks | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` … on the account's id | the same limits, counted under the guard's name |
+| Live streams of an account | the scope of the id | the scope of the guard and the id |
+| The page a guest wanted (`redirect().intended()`) | `_intended_url` | `_auth:office:intended` |
+| Tables | `sign_ins`, `password_reset_tokens` | `office_sign_ins`, `office_password_reset_tokens` |
+| Events | the `auth.*` events | the guard's own classes, `OfficeGuard.events.SignedIn` and the rest (the queueable ones named `office.auth.*`): a listener of the app never hears a sign-in of the guard |
+
+What stays shared is the browser's session cookie, the CSRF token, the `Hasher` and `APP_KEY`. A guard also reads the
+`AUTH_*` limits the app set, and `settings` overrides them for the guard alone, each within the limits of the variable it replaces:
+`rememberDays` (0 to 30), `sessionMaxHours` (1 to 720), `passwordTimeoutSeconds`, `loginAttemptsPerMinute` (1 to 60),
+`accountSignInsPerDay` (10 to 100000), `deviceCookieDays` (0 to 365), `resetMinutes` (1 to 1440) and `resetThrottleSeconds`. Give
+`settings` a function when a value comes from the configuration: it receives the container and runs when the guard is first used
+and at boot. A setting outside its limits, or one that does not exist, stops the start with A8.
+
+### Signing out
+
+`signOut()` of any guard ends the browser's session, so the browser is signed out of every guard. So does every other end of a guard's sign-in that the guard notices: an ended sign-in row, `AccountSessions.end()`, a new password, a passkey that looks copied, `sessionMaxHours` running out. The user of another guard in that browser is signed out with it; the same user in another browser is not. The remember-me cookie is the
+one exception: the guard's own `signOut()` deletes it, and no other guard's does. Someone who chose "Keep me signed in" for the
+back office is signed in there again after signing out of the app, until they sign out of the back office itself.
+
+### Events of a guard
+
+The guard's services dispatch events of classes the guard owns, `OfficeGuard.events.<Name>`, one for each event of the [events table](#events) that a guard raises:
+`SignedIn`, `SignedOut`, `SignInFailed`, `SignInLockedOut`, `PasswordChanged`, `PasswordReset`, `RememberTokenReused`, the five two-factor events
+and the four passkey events. `Registered` and `EmailChanged` are not among them, since your own code raises the first and a guard has no change of address, and neither is
+`EverySessionEnded`, since no guard ends every session of every account. The classes have the fields and getters of the app's, and the type of an instance says which of the two it is: a listener
+written for the app's `SignedIn` does not compile for `OfficeGuard.events.SignedIn`. The queueable ones are named after the guard (`office.auth.signed-in`, `back-office.auth.signed-in`) and
+their payload carries `guard`, the guard's name, next to the fields of the app's. A package that offers [a slot](#events-of-a-guard-slot) lets you hear the guard's events and the app's through one class.
+
+The app registers a listener of a guard's event in a module, the way it registers any listener, with the guard's class in place of the app's:
+
+```ts title="modules/office-mail/index.ts"
+import { defineModule, listen } from '@marmeon/core';
+import { OfficeGuard } from '@acme/marmeon-office';
+import { MailOfficeSignIn } from './listeners/MailOfficeSignIn.ts';
+
+export default defineModule({ name: 'office-mail', listeners: [listen(OfficeGuard.events.SignedIn, MailOfficeSignIn)] });
+```
+
+A queued listener (`static queue`) is registered the same way, and only this way: a package's provider has no `listeners` static, and a listener it adds to the `EventRegistry` in `boot()` can be missed by the queue, depending on the order of the providers.
+The package exports `OfficeGuard` for the app to import, as above, and says in its own documentation which events an app may listen to.
+
+The classes do not extend the app's, and an event of the guard is never an instance of one of them. A listener of `SignedIn` hears the app's sign-ins and none of the guard's.
+A listener of `OfficeGuard.events.SignedIn` hears the guard's and none of the app's. The same id in the guard's table and the app's is two accounts, so a listener of the app that mailed the
+user of that id would mail the wrong person.
+
+To react to the sign-ins of both, register a listener for each class. The listener gets the event or, when it is queued, the payload, and the class or the payload's `guard` tells which guard it came from.
+A queued listener of a guard's event is a class of its own that reads the guard's stores (`OfficeGuard.PasswordBroker` and the like, never the app's `UserProvider`), because the `userId` it gets belongs to the guard's table.
+The types keep the two apart: a queued listener written for the app's payload does not compile on the guard's class, and the other way round.
+
+Locking an account, ending the sessions of a copied passkey and the sign-in limits work in the guard's services whether anything listens or not, and the other tabs' live streams are closed when a new
+password is set even if a listener of `PasswordChanged` throws.
+
+### The tables
+
+The package ships the migrations for its tables like any package table (see [package development](package-development.md#tables)),
+and the app takes them over with `marmeon publish`. A guard needs two tables. Their names are the prefix and the name below,
+and `/up/ready` is red until each has every column, naming the migration that is missing.
+
+| Table | Columns |
+|---|---|
+| `office_sign_ins` | `id`, `user_id`, `user_agent`, `remember_selector`, `remember_until`, `remember_validator_hash`, `remember_previous_validator_hash`, `remember_rotated_at`, `remember_created_at`, `remember_fingerprint`, `signed_in_at`, `last_seen_at`, `created_at`, `updated_at` |
+| `office_password_reset_tokens` | `email`, `token_hash`, `created_at` |
+
+The selector, both validators and the token hash are `secret()` columns, as in the app's tables (see [the tables of the
+stores](#the-tables-of-the-stores)). The columns are those of `sign_ins` and `password_reset_tokens`, which the starter kit's
+migrations create. Copy a migration into the package's stubs under the guard's table names and never change it afterwards.
+
+### Protecting the routes
+
+The guard has its own middleware for the routes of the package. Each takes the named route of the guard's own page, because the
+app's defaults (`auth.login`, `auth.password.confirm`) are pages of the app:
+
+```ts title="office/src/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { Login } from './controllers/Login.ts';
+import { RemoveStaff } from './controllers/RemoveStaff.ts';
+import { ShowHome } from './controllers/ShowHome.ts';
+import { ShowLogin } from './controllers/ShowLogin.ts';
+import { OfficeGuard } from './guard.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone).get('/office/login', ShowLogin).name('office.login');
+  Route.authorize(everyone)
+    .middleware(OfficeGuard.guest({ homeRoute: 'office.home' }))
+    .middleware(OfficeGuard.throttle('login'))
+    .post('/office/login', Login);
+
+  const staff = Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }));
+  staff.get('/office', ShowHome).name('office.home');
+  staff.middleware(OfficeGuard.confirmedPassword({ confirmRoute: 'office.confirm' })).delete('/office/staff/:staff', RemoveStaff);
+});
+```
+
+- `OfficeGuard.authenticate({ loginRoute })` lets only the guard's signed-in users pass, like [`authenticate()`](#protecting-routes) does for
+  the app's: guests get 401 (JSON clients) or are sent to the login page and brought back afterwards. `ctx.user` is the guard's user. Someone
+  who is signed in to the app only is a guest here.
+- `OfficeGuard.guest({ homeRoute })` is for the login page: the guard's signed-in users are sent home, the app's are guests.
+- `OfficeGuard.confirmedPassword({ confirmRoute, maxAge })` asks the guard's users for their password again, with the guard's own window
+  (`passwordTimeoutSeconds`). A confirmation of the app opens nothing here, and the guard's opens nothing in the app.
+- `OfficeGuard.throttle(name)` is `throttle()` of the limit of an auth route, counted for the guard alone: the names are those of
+  [the limits of the auth routes](#the-limits-of-the-auth-routes) without `auth.` (`'login'`, `'password-reset-link'`, …), and
+  `OfficeGuard.throttle('login')` uses the limiter `auth.office.login`. The guard's limiters are defined at boot with the same limits as
+  the app's; define one of that name yourself to replace it. Because the limiter's name is part of every counter's key, user 1 of the guard
+  and user 1 of the app never share a count.
+
+The middleware that names a guard sets whose route this is: `authenticate()` for `web`, `authenticate('api')` for `api`,
+`OfficeGuard.authenticate()` for `office`. The app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` stamp `web` when nothing has stamped yet, so a guard's `authenticate()` after them fails too. Every middleware that acts for a guard checks it, and a route that mixes two
+guards fails with error [A9](errors.md#server-error-codes) (a 500 whose log line names both guards):
+
+- the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` and `verified()` on a route of a package guard (`verified()` also refuses a user of a package guard when an app built it by hand);
+- the guard's `confirmedPassword()` on a route of the app, or on one where its own `authenticate()` has not run before it;
+- a guard's `authenticate()` or `guest()`, the app's included, that another middleware calls after a policy of another guard decided on the request;
+- the app's `confirmedPassword()`, `twoFactor()`, `confirmedSecondFactor()` or `verified()` after a policy of a package guard decided on a public route.
+
+The guard of a route is known before its first middleware runs, global middleware included: the router reads it from the route's whole
+list (global, group, route), where `authenticate()`, `authenticate('api')`, `OfficeGuard.authenticate()` and `OfficeGuard.guest()` name it.
+The app's `guest()` and the middleware that only needs a guard (`confirmedPassword()`, `twoFactor()`, `verified()`) name none. A route whose list
+names two guards that cannot share it (`OfficeGuard.guest()` and the app's `authenticate()`, say; two `authenticate()` add `user` twice and stop the start as well) stops the start with A9 (`marmeon check` reports it too); the app's session and token guard
+may share one. So the sudo window or the second factor of an app user can never open a route of the back office, and the other way round.
+A route has one guard: put the routes of a package guard in a group of their own.
+
+A policy of the app on a route of a package guard answers no, never yes. A global middleware that takes the no and goes on (`allows()`,
+a projection) therefore leaves the login page of a package working; one that awaits `authorize()` ends the request with a 403 before the
+login controller runs. Neither is what you want:
+[put it on the app's routes](authorization.md#middleware-that-asks-a-policy). A package decides its own routes with policies of its guard, `can(PagePolicy, 'edit', …)`, see
+[policies of a guard](authorization.md#policies-of-a-guard).
+
+> [!NOTE]
+> The check sees middleware and the gate, nothing else. A controller of the package that takes the app's `Auth`, `EmailVerification` or
+> `EmailChange` acts for the app's user, and nothing can tell that from a controller that means to. Take the guard's services there.
+
+### Whose route a request is on
+
+`auth.ownsRoute()` tells whether the route of the request belongs to the users of that `Auth`. Ask it where something is only for one
+guard's users, such as the shared props of the app:
+
+| Route | The app's `Auth` | A package guard's `Auth` |
+|---|---|---|
+| `authenticate()`, `guest()` or `authenticate('api')` of the app | `true` | `false` |
+| `OfficeGuard.authenticate()` or `OfficeGuard.guest()` | `false` | `true` for `OfficeGuard.Auth`, `false` for any other |
+| No middleware names a guard (a public page) | `true` | `false` |
+
+A guard slot's `Auth` answers like the `Auth` of the guard the slot is bound to.
+
+The answer rests on [the guard the router finds in the route's list](#protecting-the-routes), known before the first middleware runs. A
+guard's middleware that another middleware calls inside its own `handle()` names its guard only when it runs, so until then the answer is the
+route list's: name the guard's middleware in the route's list, and ask again in a lazy shared prop, which runs at render, after every
+middleware, as the starter's `ShareAuthProps` does. A `once()` prop is not one of them: the browser keeps it as delivered, so share nothing there that must not reach the users of another guard:
+
+```ts
+handle(_ctx: HttpContext, next: Next<{}>) {
+  // Users of a package's guard see nothing of the app's.
+  if (!this.#auth.ownsRoute()) return next();
+  this.#shared.share('auth', async () => {
+    const user = this.#auth.ownsRoute() ? await this.#auth.user() : undefined;
+    return { user: user ? { name: user.name } : null };
+  });
+  return next();
+}
+```
+
+A page of a package that carries none of its guard's middleware has no guard, so the app's `Auth` calls it the app's. Put the guard's
+`guest()` or `authenticate()` on every page of the package. A page that serves guests and signed-in users alike can carry neither, and a
+route judged only by a policy of the package has no guard either: the app counts both as its own. `ownsRoute()` cannot tell such a page from the app's, so the app keeps its own check for its path where it must not share its props, and the page's controller takes the guard's `Auth`.
+
+### Using the app's users instead
+
+A package can run in two modes. In the first it serves users of its own: a page editor that ships its staff table and defines a guard
+for it, made like `OfficeGuard` above (the `EditorGuard` below is that, with an `EditorUser` and an `EditorConfig` of the package's own).
+In the second it serves the app's users, for an app that already has people who may edit pages. The package writes its policies,
+controllers and routes once and lets the app choose the mode at boot, with a guard slot:
+
+```ts title="editor/src/slot.ts"
+import { defineGuardSlot } from '@marmeon/auth';
+import type { EditorUser } from './EditorUser.ts';
+
+export const EditorSlot = defineGuardSlot<EditorUser>('editor');
+```
+
+`EditorUser` is the least the package needs of a user, such as `{ id: number; name: string }`. The slot's name names no session key,
+cookie or table, and two packages may use the same name, but it is also the `slot` of a queued payload and a part of the names of the slot's queued events
+(`slot.editor.auth.signed-in`): two slots of one name collide when both have a queued listener of the same event ([events of a guard slot](#events-of-a-guard-slot)). The package binds the slot once, in the `register()`
+or `boot()` of its service provider, to a guard of its own or to `'web'`, the app's users. The container is the app's, never a
+request's scope:
+
+```ts title="editor/src/EditorServiceProvider.ts"
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { EditorConfig } from './config.ts';
+import { EditorGuard } from './guard.ts';
+import { EditorSlot } from './slot.ts';
+
+export class EditorServiceProvider implements ServiceProvider {
+  static config = [EditorConfig];
+
+  register(container: Container): void {
+    EditorGuard.register(container);
+    EditorSlot.bind(container, container.make(EditorConfig).ownUsers ? EditorGuard : 'web');
+  }
+}
+```
+
+Everything else names the slot and follows the binding:
+
+- A policy names the slot with `static guard = EditorSlot` and judges the bound mode's users: the editors' table in the first mode,
+  the signed-in app user (or the API token's user on a route behind `authenticate('api')`) in the second. Its abilities take an `EditorUser`.
+  [Policies of a guard](authorization.md#policies-of-a-guard) has the two rules that say which policy may decide on which route.
+- A controller takes `EditorSlot.Auth`: the guard's `Auth` in the first mode, the app's `Auth` in the second, typed with `EditorUser`.
+- `EditorSlot.authenticate()`, `guest()` and `confirmedPassword()` hand each request to the middleware of the bound guard, with the same
+  options as the guard's own. `authenticate()` and `guest()` name the route's guard before the first middleware runs: the guard's name in
+  the first mode, `web` in the second. A middleware of another guard on such a route is error [A9](errors.md#server-error-codes) at the start.
+- The routes you name stay required options, because the package knows the names of its routes: `loginRoute`, `homeRoute`,
+  `confirmRoute`, and `setup` and `verify` for the two-factor middleware. In the second mode they name the app's pages, or pages of the
+  package in front of the app's sign-in.
+
+```ts title="editor/src/routes.ts"
+import { can } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { UpdatePage } from './controllers/UpdatePage.ts';
+import { PagePolicy } from './policies/PagePolicy.ts';
+import { PageRepository } from './PageRepository.ts';
+import { EditorSlot } from './slot.ts';
+
+export default defineRoutes((Route) => {
+  const editors = Route.middleware(EditorSlot.authenticate({ loginRoute: 'editor.login' }));
+  editors.bind('page', PageRepository).authorize(can(PagePolicy, 'edit', 'page')).put('/pages/:page', UpdatePage);
+});
+```
+
+```ts title="editor/src/policies/PagePolicy.ts"
+import type { EditorUser } from '../EditorUser.ts';
+import type { Page } from '../Page.ts';
+import { EditorSlot } from '../slot.ts';
+
+export class PagePolicy {
+  static readonly guard = EditorSlot;
+
+  edit(user: EditorUser, page: Page) {
+    return page.editorId === user.id;
+  }
+}
+```
+
+A package that wants two-factor authentication defines its slot with `defineGuardSlot<EditorUser>('editor', { twoFactor: true })`. Only that
+slot has `twoFactor()` and `confirmedSecondFactor()`, and it can be bound to `'web'` or to a guard defined with `twoFactor` only: the
+types refuse another guard, and `bind()` throws error A8 for one that slips through.
+
+Keep the slot's user type small. `bind()` checks at compile time that a guard's users have everything `EditorUser` has, but it cannot check
+`'web'`: the app's user may lack a field the package reads. Put rights the app decides, such as roles, behind a service the app binds, and
+let the package ask that service for the id of the `EditorUser`.
+
+The two modes are two sets of accounts with their own ids. An installation that has data does not switch from one mode to the other, and
+package code never hands a row of its own table to `EditorSlot.Auth.signIn()`: in the second mode that signs the id in as an app user.
+Own login pages belong to the first mode only; a package in the second mode sends people to the app's sign-in.
+
+The modes differ in one place. In the first, `EditorSlot.confirmedPassword()` needs the guard's `authenticate()` before it and refuses
+with error A9 otherwise. In the second it is the app's `confirmedPassword()`, whose prerequisites stand without `authenticate()` on purpose.
+Used before `authenticate()`, it finds no sign-in time to count from, so the request fails with 423 or a redirect.
+
+A slot forwards `authenticate()`, `guest()` and `confirmedPassword()`, and with `twoFactor: true` also `twoFactor()` and
+`confirmedSecondFactor()`, and nothing else. `throttle()`, `PasswordBroker` and `AccountSessions` stay with the guard: a package that
+runs in both modes takes them from the guard in the first mode and from the app in the second.
+
+A slot nobody bound has no default. The gate, `EditorSlot.Auth` and the slot's middleware all refuse it with error
+[A8](errors.md#server-error-codes), and so does a slot bound to a guard that no provider registered: the boot stops on a binding made by the time the auth provider boots. A provider may bind later, in its own `boot()`, but it registers the guard in its `register()`: a guard registered after the auth provider has booted is error A8 too. A late binding to a guard nobody registered is not refused at that point: `EditorSlot.Auth` and the gate check the guard each time they are used (A8), and the start does for routes that use the slot's middleware. A route that uses a slot
+nobody bound stops the start with A8, and the start runs after every provider has booted.
+[`marmeon check`](check.md#the-app-checks) registers the app without booting it, so it cannot know a slot a provider binds in `boot()`: it leaves
+out a slot that is not bound yet, or bound to a guard nobody has registered yet, and still reports everything else in the route's list. The start also asks the bound
+guard for each slot middleware on a route, so options it refuses are error A8 at the start and never a 500 per request. A slot that no route uses and
+nothing resolves is noticed at its first use only, except a slot that has listeners: the start refuses it with A8, as `marmeon check` reports it ([events of a guard slot](#events-of-a-guard-slot)).
+
+### Events of a guard slot
+
+A slot has the events of a guard too: `EditorSlot.events.<Name>`, one class for each event [a guard raises](#events-of-a-guard). They follow the binding, so you list one listener
+for both modes, in the app's module, as for a guard. The package exports `EditorSlot` for you to import, and says in its own documentation which events you may listen to:
+
+```ts title="modules/editor-audit/index.ts"
+import { defineModule, listen } from '@marmeon/core';
+import { EditorSlot } from '@acme/marmeon-editor';
+import { RecordEditorSignIn } from './listeners/RecordEditorSignIn.ts';
+
+export default defineModule({ name: 'editor-audit', listeners: [listen(EditorSlot.events.SignedIn, RecordEditorSignIn)] });
+```
+
+The classes exist as soon as the package defines the slot, so a module can list them whatever the order of the providers, and a queued listener is registered the usual way. The queued ones are named
+after the slot, `slot.editor.auth.signed-in`, and the slot's name is the `slot` of their payload. What the slot hears is read when an event is dispatched, from the binding the package made by then.
+The target's own event comes first (the app's `SignedIn`, or `OfficeGuard.events.SignedIn`), then the slot's, once for each slot bound to that target, in the order the slots were bound. The slot's event
+is extra and never replaces the target's, and a listener of the target that throws stops the dispatch before the slot's event, as for any event.
+
+A slot nobody bound gets no event and never falls back to the app's users, so a listener of its events would stay silent. A slot with listeners must always be bound, to `'web'` or to a guard some provider registered: a listener is not tied to a route, so the start asks for it after every provider has booted and refuses it with [A8](errors.md#server-error-codes), naming the slot and the listeners. [`marmeon check`](check.md#the-app-checks) reports the same finding.
+
+The event carries `guard`, the mode it happened in: `'web'` for the app's users, otherwise the bound guard's name. A queued listener gets `guard` and `slot` in its payload next to the fields
+of the app's. The two modes are two sets of accounts, so record `(guard, userId)` together and never `userId` alone: the same id in the guard's table and the app's is two accounts. A queued listener reads the users of
+the mode its payload's `guard` names. The payload keeps the `guard` it was queued with, so a job that was queued before the installation switched modes still names its old mode (an installation that has data
+does not switch, see [using the app's users instead](#using-the-apps-users-instead)). The types keep the app's, a guard's and a slot's classes apart: a listener written for one of them does not compile on
+another's, and that holds for queued listeners too. They do not tell two slots apart, nor two guards whose users have the same shape; the classes differ at run time.
+
+When the slot is bound to `'web'`, its events cover every app user, customers included: a sign-in carries the address and the browser. Listing a slot listener is your choice, so when you want editors only, filter what it does through the
+package's access service (the one that tells whether an id is an editor). A slot nobody bound dispatches nothing, and never falls back to the app's users. Two slots of one name that both have a queued listener of
+the same event share its queue name, which stops the start with error [Q4](errors.md#server-error-codes).
+
+A slot has the guard's set: `SignedIn`, `SignedOut`, `SignInFailed`, `SignInLockedOut`, `PasswordChanged`, `PasswordReset`, `RememberTokenReused`, the five two-factor events
+and the four passkey events. The constructor of a slot's class takes the mode first (`new EditorSlot.events.SignedOut('web', user)`), which is for tests, and throws a `TypeError` for a mode that is neither `'web'` nor a guard's name.
+
+### Operator commands for a guard of a package
+
+`auth:end-sessions` and `auth:reset-two-factor` act on the app's users, unless `--guard` names a guard:
+
+```sh
+marmeon auth:end-sessions ada@example.com --guard=office --force
+marmeon auth:reset-two-factor ada@example.com --guard=office --force
+```
+
+With `--guard=office` the guard's `UserProvider` finds the account, and everything happens in the guard's tables. The account of the app with the
+same address stays as it was. `--guard=web` is the app's own guard, the same as no option. The commands take one identifier and one `--guard`: a
+second argument (a guard's name typed without `--guard=`) or a second `--guard` is refused. A name that no registered guard has, in any other spelling
+or case, is refused with exit code 1 and the list of names, and nothing is changed. No command falls back to the app.
+
+The commands find the guards when they run, so an app whose only users belong to a guard needs no `UserProvider` of its own for them.
+`auth:end-sessions --guard=office` leaves out what a guard does not have, the API tokens.
+`auth:reset-two-factor --guard=office` removes the authenticator, the passkeys and the recovery codes of the guard together, and dispatches the guard's own
+`TwoFactorDisabled` (`OfficeGuard.events.TwoFactorDisabled`, `via: 'operator'`), never the app's: a listener of the app would act on the app's user of the same id.
+
+`auth:prune-tokens` takes the guards along. Without the option it prunes the app and then every guard, each with its own tables, and prints a line for
+each guard. A guard's reset links and sign-ins are judged by the guard's settings, except for the idle time, which is the session's and shared with the
+app. An app whose only users belong to package guards, so that it has no `UserProvider` of its own, is skipped, and the output says so. `--guard=web` prunes the app alone and `--guard=office` the guard alone.
+
+`auth:end-all-sessions` is the app's command. `--guard=web` is accepted, and a package guard is refused, since a guard has no `endEveryone()` yet.
+
+### Testing as a guard of a package
+
+`actingAs()` takes the guard in its `guard` option and signs the user in to that guard alone:
+
+```ts
+const app = await createTestApp(application, { database: 'refresh' });
+// `ada` is a user of the guard, found in the guard's own table.
+await app.actingAs(ada, { guard: OfficeGuard }).get('/office').assertOk();
+await app.actingAs(ada, { guard: OfficeGuard }).get('/account').assertRedirect('/login');
+```
+
+The session holds the guard's keys and nothing of the app's, so the routes of the app see nobody, and an app user with the same id does not
+open the guard's routes. Without `guard`, `actingAs()` signs in the app's user, and a user of the guard needs the option. The user must exist in
+the guard's own table, or the request fails. A guard that no provider registered, and a value that is not a guard, fail the request too.
+The user's type has to be the guard's user type, which the compiler checks. A later session `actingAs()` on a view replaces the earlier session sign-in, so one view
+signs in to one guard; a token set with `{ guard: 'api' }` stays beside it.
+
+A guard defined with `twoFactor` counts an account that has a factor in the guard's tables as having proven it, as the app's `actingAs()` does. An account without a factor has no
+proof: `confirmedSecondFactor()` lets it through and `twoFactor()` sends it to set one up. `twoFactorAt` and `confirmedAt` date what the session proved, in the app's time, so that a test can
+reach the middleware that asks for them. `confirmedAt` is when the password was last confirmed, which `confirmedPassword()` and the methods that
+start a factor read, and the sign-in is dated with it. A `confirmedAt` older than the session's lifetime, or more than a minute later than now, opens no window. Both take a `Date`:
+
+```ts
+const now = new Date(app.clock.now());
+const stale = new Date(now.getTime() - 3_600_000);
+await app.actingAs(ada, { guard: OfficeGuard, confirmedAt: now }).get('/office/security').assertOk();
+await app.actingAs(ada, { guard: OfficeGuard, twoFactorAt: stale }).get('/office/factors').assertRedirect('/office/verify');
+```
+
+A guard slot works the same way: `actingAs(user, { guard: EditorSlot })` signs in as a user of the guard the package bound the slot to, or of the
+app when it bound `'web'`. A slot nobody bound fails the request, and `cookieNames()`, with error [A8](errors.md#server-error-codes).
+
+A guard has its own session keys, so the app's `assertAuthenticated()` and `assertGuest()` read the app's sign-in only: after a guard's sign-out,
+`assertGuest()` without options passes whether or not the guard's user is still signed in. Name the guard in the assertion:
+
+```ts
+await app.actingAs(ada, { guard: OfficeGuard }).post('/office/logout').assertGuest({ guard: OfficeGuard });
+await app.actingAs(ada, { guard: OfficeGuard }).get('/office').assertAuthenticated(ada, { guard: OfficeGuard });
+```
+
+A slot works there too, and a `guard` that is `undefined` throws instead of asking about the app.
+
+`authenticatedSession(container, user, guard)` and `cookieNames(app, guard)` from `@marmeon/auth/testing` take the guard the same way. `cookieNames()`
+names the guard's remember-me cookie; the session cookie is the one every guard shares.
+
+### What a package guard does not have
+
+A guard has no API tokens, no change of address and no e-mail confirmation, and its streams are not part of the live package's
+audience. Two-factor authentication is there when the guard is defined with `twoFactor` ([for a guard of a package](two-factor-authentication.md#for-a-guard-of-a-package)); passkeys are there when it is defined with `passkeys` as well ([for a guard of a package](passkeys.md#for-a-guard-of-a-package)). A service that ends a guard's sessions
+(`end()`) never touches the app's `sessions` rows, tokens or links: it ends the guard's own sign-ins, replaces the account's
+session key and tells the live streams of the guard's account. Ending the sessions of every account of a guard
+(`endEveryone()`) is not available yet: the guard's `AccountSessions` has no such method, and calling it anyway throws.
+
+Two things stay with you. The framework cannot see whether the `UserProvider` of a package reads a table of its own, so a
+provider that reads the app's table gives up every guarantee above. And it does not compare the stores of your own with the guard's
+table names.
+
+> [!WARNING]
+> The app's `Auth`, `EmailVerification` and `EmailChange` still act for the app's users when a controller of the package asks for them.
+> A controller of the package takes the guard's services and nothing else.
 
 ## What your app implements
 
@@ -1267,6 +1745,8 @@ updateEverySessionKey(key: string) {
   return credentialWriter(this.db, { table: this.table }).updateEverySessionKey(key);
 }
 ```
+
+A `UserProvider` of a [guard of a package](#guards-of-a-package) has its own user type. Name it and pass the package's table: `credentialWriter<OfficeUser>(this.db, { table: this.table })`. The ids it takes and the `sampleId` it returns are then that user's ids. Naming the user type without a table does not compile.
 
 Pass the repository's own connection (`this.db`): it follows an enclosing transaction, which keeps a new password, its session key and
 the revoked tokens in one unit. A fix to the statements reaches you with an update of `@marmeon/auth`; the copy in your repository does
@@ -1400,7 +1880,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 
 ## Events
 
-`@marmeon/auth` dispatches these events through the app's event dispatcher:
+`@marmeon/auth` dispatches these events through the app's event dispatcher. A [guard of a package](#events-of-a-guard) dispatches classes of its own instead, so `listen(SignedIn, …)` does not hear its sign-ins.
 
 | Event | When | Fields |
 | --- | --- | --- |
@@ -1462,7 +1942,7 @@ listeners.
 | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | `5` | Password sign-ins a minute for one identifier from one client: 1 to 60. See [limits](#limits-on-password-sign-ins). |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | `100` | Password sign-ins a day for one account, from all clients: 10 to 100000. |
 | `AUTH_DEVICE_COOKIE_DAYS` | `90` | Days the device cookie lasts that a password sign-in or a completed reset hands the browser: 0 to 365, `0` turns it off. |
-| `AUTH_PASSWORD_TIMEOUT_SECONDS` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`: 1 or more. |
+| `AUTH_PASSWORD_TIMEOUT_SECONDS` | `900` | Seconds a confirmation (a typed password, a proven passkey or a provider) counts for `confirmedPassword()`: 1 or more. |
 | `AUTH_RESET_MINUTES` | `60` | Minutes a password reset link works: 1 to 1440. See [password reset](passwords.md#configuration). |
 | `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another reset link goes to the same address: 0 or more, `0` turns the pause off. |
 | `AUTH_EMAIL_CHANGE_MINUTES` | `60` | Minutes the link of a change of address works: 5 to 1440. See [changing the address](#changing-the-address). |

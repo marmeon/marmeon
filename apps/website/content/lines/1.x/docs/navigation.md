@@ -485,6 +485,24 @@ The tab loads that address as a whole document. A visit follows the rules above:
 postpone it. An action, a live validation or an upload cannot be postponed, because what it sends cannot be answered. Whatever
 the user typed into a form there and had not sent is lost.
 
+### A visit into another entry
+
+A [package with an entry of its own](pages.md#their-document) renders its pages in a document of its own, with the code of that
+entry only. A tab that runs in one document cannot show a page of another, so a visit across the border loads the page fully:
+the server answers `409` with `x-marmeon-location` and `x-marmeon-reload: entry`, and the browser loads that address as a whole
+document. That load cannot be postponed and nothing on the page is asked first, unlike [a new version](#a-new-version-of-the-app).
+
+The server knows which document the tab runs in from `x-marmeon-entry`, which the client sends with every request once its
+document is a package entry's (`PageObject.entry` names it); none means the app's. That works whether or not the asset version
+is checked. The answer comes before any prop of the page is computed, and it carries none: the location is the path and query of the
+request, never an address a proxy forwarded to, and no cache keeps it. It applies to every method, but a write has already run its
+controller when the controller returns the page, and the browser then loads the same URL with GET. A write route whose answer would be a
+page of another entry should redirect to it instead; in development the server logs a warning when that happens. The error page and the
+layers' backdrop belong to no entry: a visit that fails shows its error in the document the tab runs in. A page that is a layer follows the same rule, and a layer opened by its URL over a base of another
+entry shows alone over the neutral surface, in the layer's own document. An island of another entry answers `404`, and none of its props runs.
+
+An app without package entries sends no `x-marmeon-entry`, adds nothing to `Vary`, and never answers `409` for an entry.
+
 ### The headers of the protocol
 
 The client core sends and reads these; an app needs them for a test, a proxy or a cache rule, and a client of another kind speaks
@@ -494,6 +512,7 @@ them. Their names and meanings are public API. `@marmeon/http/protocol` exports 
 |---|---|---|---|
 | `PAGE_HEADER` | `x-marmeon` | every request of the client core | The protocol version the client speaks (`PROTOCOL_VERSION`); the server answers with the page object as JSON. |
 | `VERSION_HEADER` | `x-marmeon-version` | every request of the client core that has a build version (not in development) | The asset version the client was built with; a mismatch answers `409`. |
+| `ENTRY_HEADER` | `x-marmeon-entry` | every request of a client whose document is a package entry's | The package entry the client runs in; a page of another document answers `409` (`entry`). Absent: the app's. |
 | `PARTIAL_COMPONENT_HEADER` | `x-marmeon-partial-component` | a partial reload | The component the client shows; only for that component does the server leave props out. |
 | `PARTIAL_DATA_HEADER` | `x-marmeon-partial-data` | a partial reload | The props to send, comma-separated (`only`); `always()` props come anyway. |
 | `PARTIAL_EXCEPT_HEADER` | `x-marmeon-partial-except` | a partial reload | The props to leave out, comma-separated (`except`). |
@@ -508,12 +527,18 @@ them. Their names and meanings are public API. `@marmeon/http/protocol` exports 
 | `VALIDATED_HEADER` | `x-marmeon-validated` | the `204` and `422` of a live validation | The fields that were checked, so a client tells the answer from a proxy's. |
 | `UPLOAD_HEADER` | `x-marmeon-upload` | an upload's requests | The request asks for an upload target, or is the one that receives the file (with the token's id). |
 | `FLASH_HEADER` | `x-marmeon-flash` | the answer to an action | The flash messages the action delivers, as URI-encoded JSON. |
-| `FLASH_WAITING_HEADER` | `x-marmeon-flash-waiting` | the answer to a prefetch | Flash messages are waiting for the page the user is shown; the client asks the server instead of showing the prefetched page. |
+| `FLASH_WAITING_HEADER` | `x-marmeon-flash-waiting` | the answer to a prefetch | Flash messages, or what a refused form was sent back with, are waiting for the page the user is shown; the client asks the server instead of showing the prefetched page. |
 | `LAYER_CLOSE_HEADER` | `x-marmeon-layer-close` | the answer to a layer's request | `true`: the JSON body says how many layers close and what reloads beneath them. |
 | `LOCATION_HEADER` | `x-marmeon-location` | a `409` | The address the client loads as a whole document. |
 | `DOCUMENT_HEADER` (internal) | `x-marmeon-document` | every request of a tab with tab sync (the default) | A random id of the tab's document: flash messages its request causes go only to it, and tab sync names it. |
 | `CONNECTION_HEADER` (internal) | `x-marmeon-connection` | every request of a tab that follows live hints | The id of the tab's document, so the server leaves that connection out of the hints its own request causes. |
-| `RELOAD_HEADER` | `x-marmeon-reload` | a `409` with a location | `version`: a new build, which the client may postpone; anything else is a document change nothing can stop. |
+| `SUBMIT_HEADER` (internal) | `x-marmeon-submit` | a form's submit (`useForm`, `<Form>`) and the redirect it follows | A fresh id per submit: what a refused form is sent back with (its errors, input or conflict) waits for the page request that carries the same id, not for a poll, a partial reload or another tab. |
+| `CONFLICT_HEADER` | `x-marmeon-conflict` | the `409` of `conflict(…)` | `1`: the JSON body is `{ message, current }` and the `409` is no document change. Never sent with a location. |
+| `RELOAD_HEADER` | `x-marmeon-reload` | a `409` with a location | `version`: a new build, which the client may postpone; `entry`: the page belongs to another package entry's document; anything else is a document change nothing can stop. |
+
+A `409` is a document change only with `x-marmeon-location`, and the client checks that header first. `x-marmeon-conflict: 1` marks the
+other kind: a controller's `conflict(…)`, with a JSON body, which an action reports as a result and no page follows. The server
+never sends both headers; signing out drops the conflict header. A `409` with neither, such as `abort(409)`, is an exception.
 
 [Protocol headers](responses.md#protocol-headers) says which of them belong in `Vary`.
 

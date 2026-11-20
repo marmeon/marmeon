@@ -547,9 +547,22 @@ running twice. Make the effect idempotent in itself: set a state instead of addi
 sender's API instead of trusting the payload. Nothing that is dangerous to do twice, such as a refund or a mail to a customer,
 should hang on a payload of this scheme alone.
 
+## Sending to an address an editor entered
+
+The recipe receives webhooks. Sending one to an address an editor typed in is the opposite case, and the address is the danger:
+`http://169.254.169.254/` or `http://localhost/` would reach your own network from the inside. Send with `HttpClient` of
+`@marmeon/fetch`, which refuses addresses that are not public, a name that resolves to one and a redirect that leads to one:
+`http.fetch(ctx.body.url, { method: 'POST', json: { event: 'invoice.paid' }, timeout: 5 })`.
+
+The validation rule `r.string().url()` checks only the form of the address. The check that counts is the one at send time: a check
+at validation time leaves a gap between the time of the check and the time of use, since the name may resolve elsewhere a second
+later or the server may redirect. Catch the `FetchError` and show its `reason` as an error of the field only to a trusted, signed-in editor; a form that anyone can reach answers one message for every failure and logs the reason, since `refused` against `network` tells a stranger what your server can reach. A test answers the request with
+`app.http.respond()` and sees a refused address as the real client would. The [HTTP client](http-client.md) page has the rest.
+
 ## Where to go next
 
 - [Webhooks](webhooks.md) for the three formats, rotating a secret and what a `401` means.
+- [HTTP client](http-client.md) for sending a request to an address that someone else named.
 - [Transactions](transactions.md) for what joins a transaction and returning an `err`.
 - [Queues](queues.md#inside-a-transaction) for jobs dispatched in a transaction.
 - [Rate limiting](rate-limiting.md) for limiters and their keys.

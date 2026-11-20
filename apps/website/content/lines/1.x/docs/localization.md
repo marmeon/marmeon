@@ -99,6 +99,58 @@ any file of yours. A file that is already there stays as it is (the command says
 refused, and so is a `lang/marmeon` that is not a real directory. The files are recorded in `marmeon-stubs.json`. Without a package the command lists
 what is published and, at a terminal, asks. `--check` is for migrations only: the language files you published are yours.
 
+### Texts of a package
+
+A package that declares a `namespace` and `lang` in its `package.json` ships texts of its own (see [Pages of a package](package-development.md#pages-of-a-package)).
+They load with the app's, under the package's namespace: a package with the namespace `status` and `lang/en.js` gives `status.title`
+and so on, in every locale the package has a file for. The package's English file declares its keys in `Translations` itself, as a
+module's does, so `t('title')` of `useTranslation('status')` is typed without anything in the app.
+
+The app rewords them key by key in `lang/<namespace>/<locale>.ts`, as `lang/marmeon/<locale>.ts` rewords the framework's. Name only the texts to
+change; every other text stays the package's:
+
+```ts title="lang/status/en.ts"
+import type { MessageOverrides } from '@marmeon/i18n/messages';
+import type en from '@acme/status-board/lang/en';
+
+export default {
+  title: 'Health',
+} satisfies MessageOverrides<typeof en>;
+```
+
+`satisfies MessageOverrides<typeof en>` rejects a key the package does not have, and most texts that leave out a placeholder. The type check of
+placeholders is approximate (`{names}` passes where the package has `{name}`); the check when the app starts, below, is the exact one.
+
+- A locale the package has: the file is checked when the app starts against the package's English texts, or, when it has no
+  English one, its keys against all of the package's files and its placeholders against the file of that locale (a key that file lacks keeps the app's placeholders).
+  A key the package does not have, or a text that leaves out a placeholder of the package's, stops the start with `S6`; a syntax error is `S5`.
+- A locale the package lacks (`lang/status/fr.ts` for a package with English and German): the file is a translation of its own, and keys it leaves out fall back like any
+  message, to `APP_FALLBACK_LOCALE`. The start checks that every key exists in one of the package's files (`S6` otherwise), not the placeholders;
+  `satisfies Messages<typeof en>` asks for every key and every placeholder of the English texts, which is stricter than the start.
+- A file for a locale outside `APP_LOCALES` is skipped, and so is a file whose name is no language tag. A folder `lang/<x>/` for a namespace no package has texts for is ignored.
+
+A package's namespace and a module of the app cannot both hold texts: if `modules/status/lang/` and a package with the namespace `status` and `lang` both
+have files, the start fails with `S7`. Rename the module, and reword the package's texts in `lang/status/` instead. A module with a package's
+namespace and a package that ships no texts is no conflict.
+
+### In the browser
+
+The browser gets a package's texts through a virtual module, merged the way the server merges them: the package's file with the app's
+`lang/<namespace>/<locale>.ts` laid over it key by key, so a key the locale's file has shows the same text on both sides (a key it leaves
+out falls back on the server only, see below). Where they go depends on the package:
+
+- A package **with an entry** (see [Pages of a package](package-development.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
+  loads that module. A page of the app, and any other entry, never loads them, so texts meant for an admin area stay out of the public bundle.
+  The entry hands them to the loader: `createMessageLoader(lang)` with `import lang from 'virtual:marmeon/lang/status'`. A namespace that no package declares with an entry is a build error.
+- A package **without an entry**: its texts are part of the app's `virtual:marmeon/lang`, next to the app's own.
+
+Both modules key their files `modules/<namespace>/lang/<locale>.ts`, so a loader for several modules takes the spread of them:
+`createMessageLoader({ ...appLang, ...statusLang })`. The browser reads the texts under the browser's conditions, so a package's `lang` subpath needs a target for them (the one the server uses
+does, as long as it names no `node`-only file). The package's client entry, views and `lang` are resolved the same way; only its server entry may have a target for the server alone.
+A package with an entry but no `lang` has no `virtual:marmeon/lang/<namespace>`.
+Like every language file, the loader reads one file of a namespace per locale: a text a locale's file leaves out is not
+filled in from the fallback locale in the browser, so a translation of a package's texts should name every key.
+
 ## Messages
 
 A message is text with placeholders, in a subset of ICU's message format. It is parsed once and formatted with `Intl`:
@@ -340,6 +392,53 @@ never guesses: its `locale` is required, because a mail for Ada is in Ada's lang
 
 The tab-sync epoch follows the visitor's *preferred* locale (session, account, browser), not the URL's. Moving from `/de/about` to
 `/en/about` changes nothing for the other tabs, which would otherwise discard everything and load again.
+
+#### Translated paths
+
+`alternates` assumes the page has the same parameters in every language, which fits `/de/about` and `/en/about`. A page whose
+path differs per language (`/de/help/erste-schritte`, `/en/help/getting-started`) names its versions itself, with
+`PageAlternates` of `@marmeon/http`, resolved in the controller. `replace()` takes the parameters of the answering route by
+language; the framework builds each path from the route's pattern, appends the query, and refuses anything the route would not
+answer:
+
+```ts
+export class ShowHelpPageController extends Controller {
+  readonly #pages: HelpPages;
+  readonly #alternates: PageAlternates;
+
+  constructor(pages: HelpPages, alternates: PageAlternates) {
+    super();
+    this.#pages = pages;
+    this.#alternates = alternates;
+  }
+
+  handle(ctx: HttpContext<{}, { locale: string; path: string }>) {
+    const page = this.#pages.find(ctx.params.locale, ctx.params.path) ?? abort(404);
+    this.#alternates.replace({
+      en: { path: page.paths.en },
+      de: { path: page.paths.de },
+      'x-default': { locale: 'en', path: page.paths.en },
+    });
+    return this.view('help/Show', { page });
+  }
+}
+```
+
+The page object's `alternates` and the page's `hreflang` links, the language switcher included, follow. A language without an entry
+has no version, and `none()` says the page exists in this language only. Both throw a `TypeError` for a key that is not a
+supported locale or `x-default`, for parameters the route does not match, and when called on a page that is not localized: a
+mistake in the code or the data, not in the request. The call replaces what the framework derived, so name every version, the
+page itself among them.
+
+- **`x-default`.** The address without a locale keeps the path it was given and redirects to the visitor's language, so for a
+  German visitor `/help/getting-started` leads to `/de/help/getting-started`, a 404. Give `x-default` a `locale` and it names
+  that language's page instead. Without `locale` it is the address without a locale, which suits pages with one path in every
+  language.
+- **Another language's path.** The same redirect lets a visitor arrive on a slug of another language. The controller looks the
+  path up in the other languages and redirects: `this.redirect().route('help.page', { locale, path }).status(301)`, to the page's
+  path in the language of the address.
+- **The sitemap.** An entry of a localized route that names its `locale` in `params` is that language's `<url>` alone, with
+  the `alternates` it writes; see [the sitemap](seo.md#sitemap-and-robotstxt).
 
 #### Caches
 
