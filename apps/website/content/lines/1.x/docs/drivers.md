@@ -39,6 +39,8 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 | `diskDrivers` | [File storage](storage.md#disk-drivers) | `driver` of a disk in `defineStorage()` |
 | `cacheDrivers` | [Cache](cache.md#cache-drivers) | `CACHE_DRIVER` |
 | `mailDrivers` | [Mail transports](#mail-transports) | `MAIL_DRIVER` |
+| `fetchDrivers` | [Fetch transports](#fetch-transports) | `FETCH_DRIVER` |
+| `chatDrivers` | [Chat drivers](#chat-drivers) | `CHAT_DRIVER`, or `driver` of a destination |
 
 A driver reads its own settings through a configuration of its own, which its provider lists in `static config`
 ([package development](package-development.md#configuration)). The factory resolves what it needs from the `container` it is given.
@@ -278,3 +280,105 @@ same transport in the worker.
 A transport a package brings is responsible for its own route to the provider. The framework's `MAIL_SECURE` and `MAIL_REQUIRE_TLS`
 apply to `smtp` only: a transport of your own sends over TLS, checks the certificate of the provider and keeps its credentials out
 of the messages it throws and logs. Read your own settings from a configuration of your own, listed in `static config`.
+
+## Fetch transports
+
+A fetch transport sends one outgoing request for `HttpClient` and implements `FetchTransport`. It is a `FetchDriverFactory`: it gets the
+`name` it was registered under, the `container` and a `logger` of the `fetch` channel, and returns the transport.
+`FETCH_DRIVER` selects it by name, like the built-in `direct`:
+
+```ts title="src/EgressServiceProvider.ts"
+import type { FetchDriverFactory } from '@marmeon/fetch';
+import { EgressConfig } from './EgressConfig.ts';
+import { EgressTransport } from './EgressTransport.ts';
+
+const egress: FetchDriverFactory = ({ container }) => new EgressTransport(container.make(EgressConfig));
+
+export class EgressServiceProvider {
+  static config = [EgressConfig];
+  static fetchDrivers = { egress };
+}
+```
+
+```sh title=".env"
+FETCH_DRIVER=egress
+```
+
+`send(request, context)` resolves with `{ status, headers, body }`: the status, the `Headers` and the body as a stream of bytes, as
+the server sent them. It follows no redirect. The `context` holds `isPublic(address)`, the `timeouts` for connecting and for the
+response headers, and the `signal` that ends the request at any stage, the reading of the body included. A transport throws a `FetchError` and nothing else, also for the body stream.
+
+A transport resolves the host and connects itself, and it refuses an address for which `context.isPublic` answers `false`.
+The `direct` transport checks every address a name resolves to and connects only to a checked one. A transport that hands the connection to an egress
+proxy hands that check to the proxy, and has to say so in its own documentation.
+
+The client still decides what no transport should: it refuses a host written as an IP address that is not public, a scheme other than `http` and `https`, credentials in
+the address and a redirect from `https` to `http`, at every hop of a redirect, and it follows redirects itself, so every hop is a new `send()`.
+`FETCH_ALLOWED_ADDRESSES` lists address ranges that may be reached although they are not public, comma-separated, as CIDR ranges
+without host names: `FETCH_ALLOWED_ADDRESSES=10.20.0.0/16,fd00::/8`. An entry that is not a range stops the start.
+
+The transport is built at the start, so a factory that throws, or returns something without a `send()`, stops the start. A
+`FETCH_DRIVER` nobody brought stops it too, with the names there are. A transport may have a `close()`: the framework calls it at shutdown.
+
+## Chat drivers
+
+A chat driver formats one message for the webhook of a chat provider. It is a `ChatDriverFactory`: it gets the `name` it was registered
+under, the `container` and a `logger` of the `chat` channel, and returns an object with `hosts`, `paths` and `render`.
+`CHAT_DRIVER` selects it for the named destinations of `CHAT_WEBHOOKS`, and a destination of its own selects it with
+`{ url, driver: 'mattermost' }`. The built-in drivers are `slack`, `discord` and `teams`; the [chat notifications](chat-notifications.md) page covers them and the messages. `log`, the default, is not a driver but a sink:
+it sends nothing and writes where a message would go to the log.
+
+```ts title="src/MattermostServiceProvider.ts"
+import type { ChatDriverFactory } from '@marmeon/chat-notifications';
+
+const mattermost: ChatDriverFactory = () => ({
+  hosts: ['chat.example.com'],
+  paths: ['/hooks/'],
+  render: (content) => ({ json: { text: content.text } }),
+});
+
+export class MattermostServiceProvider {
+  static chatDrivers = { mattermost };
+}
+```
+
+```sh title=".env"
+CHAT_DRIVER=mattermost
+CHAT_WEBHOOKS=ops=https://chat.example.com/hooks/abc123
+```
+
+A driver declares where its webhooks live, and the framework enforces it. `hosts` lists exact host names (`chat.example.com`) or every
+subdomain of one (`*.example.com`, never the bare name). `paths` lists the path prefixes of the addresses (`/hooks/`). The framework
+checks every address against both before every request, also in the worker that posts a queued message, so a driver cannot forget
+the check. It refuses an address that is not https, that carries credentials or a port other than 443, or that is an IP address. The
+request goes through the `HttpClient` of [`@marmeon/fetch`](http-client.md), which refuses addresses that are not public and follows
+no redirect.
+
+`render(content, raw)` returns `{ json, search? }`. `content` is the neutral message, already cleaned and cut: `title`, `text`,
+`fields` and `links`. `raw` is what the message holds under the name of your driver, or `undefined`. Its shape is not checked (it is JSON of a
+bounded size), so a driver validates it and throws a `ChatError` for a shape it refuses. `json` must be JSON, without functions or
+class instances, with at most 20 000 values, 128 KB as JSON and 64 levels of nesting; more is a `ChatError` on `send()` and a refusal
+at `queue()`. `search`
+adds query parameters to the address.
+
+A message can carry a format of its own for your driver. Declare it as a type alias of JSON values (an interface does not
+compile) and merge it into `ChatRawFormats`:
+
+```ts title="src/chat.d.ts"
+export type MattermostRaw = { readonly attachments: readonly { readonly text: string }[] };
+
+declare module '@marmeon/chat-notifications' {
+  interface ChatRawFormats {
+    readonly mattermost: MattermostRaw;
+  }
+}
+```
+
+A message whose `raw` has a key that names no driver is refused when you call `send()` or `queue()`. So is a raw format that the
+driver of the destination refuses.
+
+The start stops with [`S10`](errors.md#server-error-codes) when the `FetchServiceProvider` is missing, when `CHAT_DRIVER` names a driver
+nobody brought, when an entry of `CHAT_WEBHOOKS` is not `name=address` or repeats a name, when the driver it
+selects is built wrongly (it has no `render()`, an empty `hosts` or `paths`, or a host or prefix the check refuses, such as an IP
+address, a port or a bare `*`), or when an entry of `CHAT_WEBHOOKS` is an address that driver does not accept (`log` has no list to check against). A driver that no
+`CHAT_DRIVER` selects is built when a destination first names it, and fails there.

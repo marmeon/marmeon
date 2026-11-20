@@ -74,7 +74,9 @@ asks the migrator for the projection uses the file only if every migration file 
 itself. See [What the migrations describe](migrations.md#what-the-migrations-describe).
 
 Only `dist/client/assets/` is public. `dist/client/.vite/manifest.json` lists the source path of every page: the server reads it
-at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`.
+at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`. An app that installs a package with
+an entry of its own gets two more files: `dist/client/.vite/marmeon-entries.json` beside the manifest, and `dist/server/ssr-<namespace>.js` for
+each such package beside `ssr.js`. Ship them with the rest of `dist/`; see [packages with an entry](vite.md#packages-with-an-entry).
 
 `--no-typecheck` skips the type check. The build needs no `.env` and no key: it loads the app without booting it, so no secret
 can end up in `dist/`. The [configuration](configuration.md#configuration-and-the-build) page explains what that means for a
@@ -236,7 +238,7 @@ A new app needs nothing more for SQLite, files, the database queue and the log m
 
 | For | Install |
 | --- | --- |
-| Redis for the cache, sessions, the queue or live updates | `pnpm add -E @marmeon/redis@<version of your app>`. It brings the `redis` client. |
+| Redis for the cache, sessions, the queue or live updates | `pnpm marmeon add redis`, or `pnpm add -E @marmeon/redis@<version of your app>` without `marmeon add`. It brings the `redis` client. |
 | SMTP, `MAIL_DRIVER=smtp` | Nothing: `@marmeon/mail` brings `nodemailer`. |
 | Postgres, `DB_DRIVER=pgsql` | `pnpm add pg@^8` |
 | An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` |
@@ -540,7 +542,7 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
    - Let the queue run empty: `marmeon queue:work --stop-when-empty`, then `marmeon queue:size` shows 0 for every queue, delayed jobs
      included. Look at `marmeon queue:failed`, and retry or give up what is in it.
    - Tell your users that they sign in again, and pick a quiet hour.
-2. **In development.** Run `marmeon db:types` and `marmeon route:types`, and commit what they write. An app from 0.3 has no automatic way to the tables of the starter kit and to `sign_ins`; see the [upgrade guide](../UPGRADING.md). With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
+2. **In development.** `marmeon upgrade` runs `route:types`, and `db:types` when the app has `@marmeon/database`, for you; with a manual upgrade, run `marmeon db:types` and `marmeon route:types`. Commit what they write. An app from 0.3 has no automatic way to the tables of the starter kit and to `sign_ins`; see the [upgrade guide](../UPGRADING.md). With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
    own that never ran `marmeon migrate` keeps them: `migrate` writes its record of migrations and runs the migrations, and the
    tables it did not make stay unknown to Marmeon, unguarded ([how the app knows its schema](migrations.md#how-the-app-knows-its-schema)).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job
@@ -632,5 +634,6 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - More than one instance or `--workers`: shared drivers for sessions, cache, queue, live updates and files, and Postgres instead
   of SQLite.
 - `storage/` on a volume.
+- `marmeon doctor` on the server after each deploy: it checks Node, the packages, the configuration, the generated files, the migrations that have not run and the services ([the command](check.md#the-environment-marmeon-doctor)).
 
 The [security](security.md#your-checklist) page has the rest of the list.

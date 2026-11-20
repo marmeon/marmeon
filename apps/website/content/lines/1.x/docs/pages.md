@@ -326,6 +326,42 @@ The browser loads only the files of the page's locale, before the page renders. 
 server and the browser render the same text. The [localization](localization.md) page covers language files and switching the
 language.
 
+## Pages of a package
+
+A package that declares a `namespace` and `views` in its `package.json` brings pages of its own. A page's name is the namespace, `::`
+and the view's path below the package's `views` folder: `dist/views/entries/Edit.js` of the package with the namespace `status` is
+`status::entries/Edit`. The package declares what it ships, and
+[Pages of a package](package-development.md#pages-of-a-package) shows how.
+
+The package's own controllers render them, from the routes the package registers:
+
+```ts title="src/entries/edit-controller.ts (in the package)"
+return this.view('status::entries/Edit', { entry });
+```
+
+The page takes its props from that controller with `PageProps<EditEntryController>`, as an app page does. The app adapts a package's
+pages through the package's own options, not by rendering them from its controllers: there only the name would be checked, not the
+props.
+
+- **Type:** `marmeon route:types` lists every view of every installed package that declares a namespace in `interface Views`, so a
+  name with no file behind it is a compile error, as for the app's own pages. The app's `bootstrap/routes.ts` is generated from
+  `package.json` files and folders alone; no code of a package runs.
+- **Resolution:** `resolveModulePages()` takes a key of exactly the form `<namespace>::<view>` as the page's name. The keys of the
+  app's own pages begin with `/` and keep their names. An app file whose path holds `::` is still no page.
+
+### Their document
+
+A package with an `entry` renders its pages in a document of its own, not in the app's `index.html`. The document follows the page's name:
+a name without `::` is the app's; `status::…` of a package with an entry is that entry's; a namespace without an entry is an error. In an app with a package
+entry, such a page fails with `H16` (status 500), not the app's document: a typo never shows an area's page in the public one.
+
+The server writes the entry's document itself: the standard template, the entry's script (with the response's nonce), and the
+stylesheets and preloads of what that entry loads, and nothing of the app's entry. The package brings no HTML. The document carries a [strict policy](csp.md#policies-of-a-package-area) unless the route group or the app sets one. Each document has its
+own [asset version](navigation.md#a-new-version-of-the-app); with `SERVER_ASSET_VERSION` set it is that value for the app and
+`<value>+<namespace>` for a package. A client with the version of any current document is not stale. A visit from one document to a page of another loads the page fully, see
+[a visit into another entry](navigation.md#a-visit-into-another-entry). The build
+[lists the entries](vite.md#packages-with-an-entry); an app without a package entry renders exactly as before.
+
 ## Server rendering
 
 Every page renders on the server first. The response streams: the page's frame goes out at once, and parts that wait for data

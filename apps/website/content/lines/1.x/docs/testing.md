@@ -4,8 +4,8 @@
 
 A feature test boots your real application and sends requests through its real HTTP kernel: the middleware, the session, the
 controller and the page all run as they do for a browser, without a server and without a port. `@marmeon/testing` builds that test
-app, gives it a fresh database for every test that asks for one, puts fakes in place of mail, the queue, notifications and
-storage, and adds assertions for pages, redirects, validation and flash messages. The tests run under
+app, gives it a fresh database for every test that asks for one, puts fakes in place of mail, the queue, notifications, chat
+messages, outgoing requests and storage, and adds assertions for pages, redirects, validation and flash messages. The tests run under
 [Vitest](https://vitest.dev).
 
 ```ts title="modules/notes/notes.test.ts"
@@ -168,7 +168,7 @@ does not pass `devtools: true`, also in one that runs as development. The
 
 `marmeon make:test checkout --module=shop --path=/shop` writes `modules/shop/checkout.test.ts`: a test with this setup that expects `/shop` to answer 200. It fails until the route does, so change it to what you test. It needs `@marmeon/testing` and `vitest` in the app.
 
-A fake is put in place only when the app has its package. `seed: true` without a `database` stops the test:
+A fake is put in place only when the app has its package. An installed package that does not load (a missing dependency, a version that does not match the other Marmeon packages) stops the test with its error instead of running without the fake. `seed: true` without a `database` stops the test:
 
 ```text
 createTestApp(…, { seed: true }) seeds a test database: add database: 'refresh' or database: 'isolated'.
@@ -398,6 +398,6 @@ calls it right after `goto()`.
 
 - [HTTP tests](http-tests.md): requests, sessions, signing in and every assertion.
 - [Database testing](database-testing.md): the refreshed database, factories and database assertions.
-- [Fakes](fakes.md): mail, the queue, notifications, storage, events, live hints and the schedule.
+- [Fakes](fakes.md): mail, the queue, notifications, chat messages, outgoing requests, storage, events, live hints and the schedule.
 - [Time](time.md): moving the app's clock.
 - [Testing pages](testing-pages.md): pages, islands, layers and server rendering.

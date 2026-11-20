@@ -174,6 +174,42 @@ Route.get('/notes/archive/:year/:month?', (ctx) => ({ year: ctx.params.year, mon
 
 `/notes/archive/2026` and `/notes/archive/2026/10` both reach this route.
 
+### The rest of the path
+
+`:name*` as the last parameter takes the whole rest of the path as one value: nothing, one segment or many.
+
+```ts
+Route.get('/help/:path*', ShowHelpPageController).name('help.page');
+```
+
+`/help` reaches the controller with `ctx.params.path` set to `''`, `/help/accounts/passkeys` with `'accounts/passkeys'`, and
+`/help/caf%C3%A9` with `'café'`. The type is `string`; a request to the route always has one. A parameter before it fills exactly
+one segment, so `/:locale/help/:path*` counts `:locale` as one. A constraint that spans a `/` there (`/plus/:a{.+}/:path*`) would
+overlap the rest, so a request where it took more than one segment ends in a 404.
+
+The router reads the value itself, from the path as it came in, one segment at a time, and ignores what the server's own
+matching made of it. A path that cannot be a path of your site ends in a 404 before the `web` group and the controller run,
+never in a redirect:
+
+- an empty segment (`//example.com/x`, `/help//a`);
+- a segment that is `.` or `..`;
+- a segment that holds, once decoded, a `/` (`%2F`), a `\` (`%5C`) or a control character (`%00`, `%0A`);
+- a percent escape that is broken (`%ZZ`).
+
+So `'/' + ctx.params.path` is always a path of your site: safe to compare or to use as a cache key. It is decoded, so do not glue it into a link (`a?b` would turn `b` into a query): build links with `route()` or `router.url()`, which encode each segment.
+
+One path has a canonical form: the rest followed by a single `/`. `GET` and `HEAD` requests to `/help/a/` get a `301` to
+`/help/a` with their query kept; any other method gets a 404. No route path of the framework ends in `/`, so the form without
+it is the one a page is known by.
+
+`:name*` takes no constraint and no `?`, and nothing may follow it. The app stops at start-up with
+[H13](errors.md#server-error-codes) for `/a/:x*/b`, `/a/:x*{[a-z]+}` and `/a/:x*?`.
+
+A link to the route takes the rest as a string, and it may be left out: `route('help.page', { path: 'accounts/passkeys' })`
+gives `/help/accounts/passkeys`, `route('help.page')` gives `/help`. Each segment is encoded on its own and the `/` between
+them stays. A value the server would refuse (`'a//b'`, `'/a'`, `'..'`, `'a\\b'`, or a `/` in a parameter before the rest) throws when the link is built, so a link is never
+one the route answers with a 404. Leave out the leading `/` of the value.
+
 ### Parameter names
 
 A parameter name is made of letters, digits and `_`, and starts with a letter or `_`: `:user_id`, not `:user-id`. The name is the
@@ -205,12 +241,17 @@ ends in a 404.
 A constraint with alternatives, such as `/notes/:note{new|edit}`, matches as a whole: `/notes/edit` reaches the route,
 `/notes/editor` and `/notes/xedit` do not.
 
+A constraint that allows a `/`, such as `/files/:path{.+}`, gives one value with the `/` in it, and a link to it encodes the
+`/` as `%2F`. For a path of nested segments take [`:path*`](#the-rest-of-the-path): it is checked and decoded segment by
+segment, and a link keeps the `/` between them.
+
 A constraint runs to the brace that closes it, so it may hold braces of its own: `/archive/:year{[0-9]{4}}` takes four digits.
 Links, the browser, the sitemap and the server read a path this way alike.
 
 ### Route order
 
-When two routes match the same path, the one registered first answers. Register fixed paths before the parameters that would
+When two routes match the same path, the one registered first answers. A [fallback](#the-fallback-route) is the exception: it always
+comes last, wherever its module sits. Register fixed paths before the parameters that would
 also match them:
 
 ```ts title="modules/notes/routes.ts"
@@ -230,6 +271,18 @@ export default defineRoutes((Root) => {
 
 In the other order, `/notes/drafts` would reach `ShowNoteController` with `drafts` as the note. A trailing slash makes a
 different path: `/notes/` does not match `/notes`.
+
+Two routes with the same method and path can never both answer: the first one registered takes every request, and the second
+never does. `marmeon check` warns about it (`route-types`, [H15](errors.md#server-error-codes)) and so does the development
+server at start, naming both routes and where each was registered. Parameter names do not make a difference (`/notes/:id` and
+`/notes/:note` are one path), their constraints do (`/notes/:id{[0-9]+}` is another). A route that takes
+[the rest of the path](#the-rest-of-the-path) (`/docs/:page*`) also holds every path below its own: a later `/docs`, `/docs/intro` or
+`/docs/a/b` is never reached. `any()` counts for each method it lists and `HEAD` counts as `GET`; when
+a later route lists more methods than the earlier one, the warning names the methods that never reach it (`for GET`), and the
+route still answers the others — change those methods or the path of one of the two. A [localized](#routes-under-a-locale) route
+also holds its address without a locale. The check compares each route's own path form: it does not expand optional parameters,
+so `/a/:x?` against a later `/a` is not reported, and a localized route is compared with other localized routes only. It is a
+warning only: the app starts and the first route keeps answering.
 
 ## Named routes
 
@@ -582,6 +635,8 @@ server limits the segment to the locales of the app, in the spelling the app giv
 Call `localized()` first. The locale is the first segment of the path, so it throws a `TypeError` after `prefix()`, a second
 time, and inside `load({ prefix })`.
 
+A localized [fallback route](#under-a-locale) answers every path below `/:locale` that no route takes.
+
 The same page without the locale, `/about`, answers every `GET` and `HEAD` request with a `302` to the visitor's preferred
 language, such as `/de/about`. The route builds the target from its own pattern and the parameters that matched, and the query
 string stays as it came. The response carries `Cache-Control: private, no-store` and `Vary: accept-language, cookie`, because
@@ -933,6 +988,146 @@ A second request waits up to 10 seconds for the first one, then answers `423`. `
 times. Each is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ seconds: 5 }`. The lock needs the cache's atomic locks. The [session](session.md#requests-that-must-not-overlap) page explains when a
 route needs it.
 
+## The fallback route
+
+`Route.fallback()` answers every `GET` path that no route, package or framework path takes. It is for pages that live in data
+rather than in code, such as a help center or a blog whose pages come from the database. The app mounts it in its own routes file,
+at the root or under a prefix; a package exports the controller and says to mount it, nothing more:
+
+```ts title="modules/help/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ShowHelpPageController } from './controllers/ShowHelpPageController.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone).prefix('/help').name('help.').fallback(ShowHelpPageController).name('page').sitemap();
+});
+```
+
+The rest of the path reaches the controller as `ctx.params.path`, exactly as for [`:path*`](#the-rest-of-the-path): `/help` gives
+`''`, `/help/accounts/passkeys` gives `'accounts/passkeys'`. Its rules apply unchanged, so a path with an empty segment, an
+encoded slash or a control character ends in a 404 before the `web` group and the controller run, and a trailing slash is a 301
+to the path without it. The controller looks the path up and calls `abort(404)` when it has no such page.
+
+A fallback is a route like any other: it needs [`authorize`](authorization.md#every-route-decides), takes `middleware()` and
+`name()` from its registrar, and may carry `.sitemap()` when its controller has a `sitemap()` method. It answers `GET` and `HEAD`
+only, takes a `query` schema but no body, and lives in the `web` group. A prefix with a parameter
+(`Route.prefix('/:tenant').fallback()`) is refused at start with [H15](errors.md#server-error-codes); the one parameter a
+prefix may have is the locale of [`Route.localized()`](#under-a-locale).
+
+### Which request reaches it
+
+The server registers every fallback after all other routes: the routes of every module, the routes a package adds while booting,
+the sitemap and the addresses without a locale of [localized](#routes-under-a-locale) routes (those of a localized fallback sit among the fallbacks). The order the modules load in does
+not matter, so a route in a later module still beats a fallback in an earlier one. Of two fallbacks, the one under the longer
+prefix is asked first, so `/help` takes `/help/a` and the fallback at the root takes `/helpx`.
+
+These paths never reach a fallback:
+
+- `/_marmeon/…`, which belongs to [the framework](#the-frameworks-paths);
+- `/assets` and `/assets/…`: a file of the build that is missing is a plain 404, not a page a cache would keep. The guard exists
+  only when the app has a fallback; without one, a wildcard route of yours still sees these paths;
+- `/sitemap.xml` and `/robots.txt` once a route is [in the sitemap](#routes-in-the-sitemap). Without one, a fallback at the root
+  answers `/robots.txt`, which is useful when it writes the file itself;
+- the files of a public [storage disk](storage.md), whose routes load while the app boots and so come first. A file the disk
+  does not have is the disk's 404. Only paths under the disk's prefix are the disk's, and the prefix is case-sensitive: `/storage`
+  itself and `/STORAGE/a.txt` reach the fallback;
+- every method but `GET` and `HEAD`.
+
+### Under a locale
+
+An app with several languages mounts the fallback under `Route.localized()`, so the pages of each language have their own URL:
+
+```ts title="modules/help/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ShowHelpPageController } from './controllers/ShowHelpPageController.ts';
+
+export default defineRoutes((Route) => {
+  Route.localized().authorize(everyone).prefix('/help').name('help.').fallback(ShowHelpPageController).name('page').sitemap();
+});
+```
+
+This is one route, `/:locale/help/:path*`, limited to the locales of the app like any [localized route](#routes-under-a-locale).
+The controller gets `ctx.params.locale`, one of the supported locales, and `ctx.params.path` relative to the prefix after the
+locale: `/de/help` gives `''` and `/en/help/accounts/passkeys` gives `'accounts/passkeys'`. `SetLocale` has already set the
+language of the request, and a link built with `<Link route="help.page" params={{ path: 'accounts/passkeys' }}>` takes the
+locale of the current screen. Every rule of the path (empty segments, encoded slashes, the trailing slash) applies as above.
+
+The address without a locale, `/help/accounts/passkeys`, answers as it does for every localized route: a `302` to the
+visitor's preferred language, `/de/help/accounts/passkeys`, with `Cache-Control: private, no-store` and
+`Vary: accept-language, cookie`. It is part of the fallback, so it is asked after every other route. The server builds the
+target from the pattern and the path it has already checked, one encoded segment at a time, never from the request path:
+`//evil.example/x`, `/a//b` and `/a%2Fb` are a 404 before any redirect, and a trailing slash is a `301` first. Because the
+redirect keeps the path, an unknown page takes two hops to a 404: `/help/no-such-page` leads to `/de/help/no-such-page`, and
+the controller answers 404 there.
+
+- **Translated paths.** The redirect keeps the path as it came. When the pages have another path per language
+  (`/de/help/erste-schritte`, `/en/help/getting-started`), `/help/getting-started` leads a German visitor to
+  `/de/help/getting-started`, which is a 404. The controller can recognise the other language's path and
+  redirect to the page in the visitor's language. The automatic language versions (the `hreflang` links of the page and of the
+  sitemap) assume the same path in every language, so with translated paths the controller names them itself with
+  `PageAlternates.replace()` and the sitemap's entries carry their own `locale` and `alternates`; give `x-default` a `locale`.
+  See [Translated paths](localization.md#translated-paths).
+- **One fallback fits each prefix, with or without a locale.** The localized fallback also takes the address without a locale,
+  so a fallback that is not localized on the same prefix (`/help` and `Route.localized().prefix('/help')`) stops the app at start
+  with [H15](errors.md#server-error-codes), naming both places, in whatever order they load. Different prefixes sit side by side:
+  a fallback at the root without a locale and a localized one under `/blog`, or a localized one at the root and `/legacy`
+  without. The one under the longer prefix is asked first, and at equal length the one without a locale.
+- **A prefix may not be a locale of the app.** `Route.localized().prefix('/en').fallback()` would have the address without a
+  locale `/en/…`, which sits where the English pages are, so the app stops at start with [H9](errors.md#server-error-codes). A
+  prefix under `/_marmeon` or `/assets` is refused with H15.
+- **A fallback without a locale does not answer a locale.** A fallback at the root that is not localized takes `/de/unknown` as
+  the path `'de/unknown'`. An app with pages per language mounts the localized one instead.
+- **It claims nothing.** Like any fallback, the localized one and its address without a locale are not asked by
+  [`claimedBy()`](#asking-whether-a-path-is-taken); check a slug with its locale, `/de/help/${slug}`.
+
+### What to keep in mind
+
+- **Every unknown URL reaches the controller.** Crawlers and scanners ask for `/wp-login.php` and `/.env`, and each such
+  request runs the `web` group and your lookup. Keep the controller cheap, one query on an indexed column, and put
+  [`throttle()`](rate-limiting.md) in front of the fallback when it is open to everyone. A path the rules above refuse never gets
+  that far. A visitor with a session cookie costs one read of the session store, as on every page.
+- **A typo in the path of an app route leads to the fallback.** `/dashbord` is no longer a 404 of the router: the controller
+  answers it, so its own 404 is the page of an unknown URL, and an app that shows a page for the fallback must show a 404 for a
+  path it does not know.
+- **A removed route frees its path.** The page that lived at `/help/contact` now belongs to the fallback, and a page of the same
+  name in the database starts to answer there. Check a name before saving it with [`claimedBy()`](#asking-whether-a-path-is-taken).
+- **One fallback fits each prefix.** A second one for the same prefix, a route with the form of the fallback (`/help/:x*` next to
+  `Route.prefix('/help').fallback()`) and a route that takes the rest of the path from a shorter prefix (`/:page*` before a fallback
+  at `/help`) stop the app at start with [H15](errors.md#server-error-codes); the message names both places. A parameter counts as a rest of the path
+  only when its constraint is written as one of the forms that take any value: `.*`, `.+`, `[\s\S]*`, `[\s\S]+`, `[^]*`
+  or `[^]+`, each also inside one `(?:…)` (`/:page{.+}`, `/help/:x{.*}`). Any other constraint leaves the fallback the paths it
+  does not match, so `/:slug{[a-z0-9-]+/[a-z0-9-]+}`, `/help/:p{a/.*}` and `/:page{[^!]+}` start fine; a pattern that takes any
+  value in another spelling hides the fallback without a message. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
+  everything below its prefix, so it covers a fallback, localized or not, that sits there. A fallback also has to be in the `web` group: a package that loads routes
+  while booting loads its fallback with `{ group: 'web' }`. A fallback under `/assets` or `/_marmeon` stops the app at start too, since the server answers those paths with a 404 first.
+
+### Asking whether a path is taken
+
+`router.claimedBy(path)` says who already answers a path, so a page's name can be refused before it is saved. It takes the
+decoded path with its leading `/`, the form of `'/' + ctx.params.path`, and returns `undefined` for a free path:
+
+```ts
+const claim = router.claimedBy(`/help/${slug}`);
+if (claim) throw new Error(claim.by === 'route' ? `${slug} is the address of ${claim.route.path}` : `${slug} is taken`);
+```
+
+| `by` | The path is |
+| --- | --- |
+| `'route'` | answered by a `GET` route of the app or a package (`claim.route`), the address without a locale of a [localized](#routes-under-a-locale) route included. A route that answers only `POST` or another method takes nothing, and neither does a fallback. |
+| `'framework'` | `reason: 'reserved'` (`/_marmeon`), `'assets'` (`/assets`), `'sitemap'` (`/sitemap.xml` and `/robots.txt` while a route carries `.sitemap()`) or `'health'` (`/up` and `/up/ready`, or where `SERVER_HEALTH_PATH` moved them; free when it is `off`). |
+| `'invalid'` | one no fallback would ever get: an empty or dot segment, a trailing `/`, a `\`, a control character or a path that does not begin with `/`. Treat it as taken. |
+
+A localized route answers one path per locale of the app: with `de` and `en`, `/de/about` and `/en/about` are taken and `/fr/about` is
+not. Where the server has not told the router (the command line), every first segment counts as a locale and the default health paths count, so the answer errs towards taken. A route a
+package adds in `boot()` is only seen once it has booted, so ask after the app started.
+
+### Moving from a wildcard route
+
+A route such as `Route.get('/:page{.+}', …)` answers whichever module loaded first and takes `/assets/…`. Change it to
+`Route.fallback(…)` at the root and read `ctx.params.path` instead of `page`. The value is the decoded path without a leading
+`/`, and `/` gives `''`. Keep a `{.+}` route where it is wanted as one value, such as a slug that may hold `/` and is built
+with `route()` (which writes the `/` as `%2F` for it).
+
 ## When no route matches
 
 A request that matches no route still passes the global middleware, so it gets the security headers like any other response. It
@@ -946,7 +1141,8 @@ The answer speaks `APP_LOCALE`, not the visitor's language: no route matched, so
 that reads `Accept-Language` belongs to the `web` group. A route of the `web` group answers in the visitor's language.
 To answer an unknown URL in another language, change `APP_LOCALE`.
 
-There is no fallback route. A controller answers 404 itself with `abort(404)`, and a binding does when it finds nothing. The
+To answer such a request with a page of your own, mount a [fallback route](#the-fallback-route). Without one, a controller
+answers 404 itself with `abort(404)`, and a binding does when it finds nothing. The
 [error handling](errors.md#your-own-error-page) page shows how to change the error page.
 
 ## The framework's paths
@@ -955,7 +1151,7 @@ Every path under `/_marmeon/` belongs to the framework. `/_marmeon/session` (how
 is always there. The packages add theirs: `/_marmeon/live` with `@marmeon/live`, `/_marmeon/uploads` and `/_marmeon/storage`
 with `@marmeon/storage` (uploads only once configured); in development there are also `/_marmeon/devtools` and
 `/_marmeon/mail`. These paths take precedence over a wildcard or parameter route of your app, such as `/:page{.+}`, and a path under the prefix that no framework route answers ends in a 404 before any route, controller or
-middleware group of your app runs (only the global middleware does), whatever the case of its letters and with its letters percent-encoded (`%5F`). A wildcard of your app that answered such a path before now gets a 404 there. A route of your app or of a package that lies under that prefix, whether you write
+middleware group of your app runs (only the global middleware does), whatever the case of its letters and with its letters percent-encoded (`%5F`). A wildcard of your app that answered such a path before now gets a 404 there. A [fallback](#the-fallback-route) never gets such a path, and `/assets/…` neither. A route of your app or of a package that lies under that prefix, whether you write
 the path out or build it with a `prefix`, would inherit the framework's special treatment or take a path the framework may need. So the app does not
 start: the error names the method and the path. Give your routes a prefix of your own, such as `/_playground` below.
 
@@ -1031,7 +1227,7 @@ pnpm marmeon route:list
 
 It shows each route's method, path, name, group, the middleware in the order it runs, who may call it, and the controller, or
 `Closure`. A controller that answers an [island's](deferred-props.md#the-islands-route) request, one that calls `this.island()` or `island()` imported from `@marmeon/http` (not re-exported through a module of the app),
-carries `(island)` after its name; a closure never does. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
+carries `(island)` after its name; a closure never does. A [fallback](#the-fallback-route) carries `(fallback)` and is listed after every other route, the longest prefix first, the order the server registers them in. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
 for a policy (the parameter it asks about in brackets, `(…)` for a function, none for an ability without a resource), and
 `check` for a function of your own. `none` marks a route that does not say who may call it; `framework` marks the framework's
 own routes, which guard themselves. A route that binds a record with `{ public: true }` names the parameter after its checks:
@@ -1039,9 +1235,9 @@ own routes, which guard themselves. A route that binds a record with `{ public: 
 framework's own routes, so it also answers which middleware a request really passes.
 
 `--json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format`, `routes` (each with
-`methods`, `path`, `name`, `group`, `middleware`, `access`, `publicBindings`, `action` and `island`; `access` is a list of checks, or
+`methods`, `path`, `name`, `group`, `middleware`, `access`, `publicBindings`, `action`, `island` and `fallback`; `access` is a list of checks, or
 `"framework"` or `"none"`; `publicBindings` lists the parameters bound with `{ public: true }`, `[]` for none; `island` is `true` for a route whose controller
-calls `this.island()` or `island()` imported from `@marmeon/http`, see [the island's route](deferred-props.md#the-islands-route)) and `warnings`.
+calls `this.island()` or `island()` imported from `@marmeon/http`, see [the island's route](deferred-props.md#the-islands-route); `fallback` is `true` for a route made by `Route.fallback()`) and `warnings`.
 
 ## Testing
 

@@ -468,7 +468,8 @@ meantime ends with them too, because the address was not confirmed (see below); 
 
 The routes that add an authenticator app or a passkey sit behind `verified()` in every registration mode, so an account whose address
 nobody confirmed cannot attach a second factor of its own. And the password reset of such an account (`email_verified_at` and `first_verified_at` are `null`: the address was never confirmed)
-removes its passkeys, its authenticator, its recovery codes and every API token, whatever `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` says:
+removes its passkeys, its authenticator, its recovery codes and every API token, whatever `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` says, and with `@marmeon/oauth` the provider accounts linked to it
+(whenever `email_verified_at` is `null` or missing; see [Linking and unlinking](oauth.md#linking-and-unlinking)):
 the owner proved the mailbox with the link, and nothing the first registrant attached stays. The reset leaves the address unconfirmed;
 the owner confirms it with the link of the notice page. An account that was confirmed once and then changed to an address not confirmed
 yet keeps its factors in a reset, but loses its API tokens: whoever confirmed the earlier address may have created them and then
@@ -534,6 +535,20 @@ process, so limit connections at the proxy as well. The [real-time updates](real
 sign-in whenever it opens, and ending an account's sign-ins (a new password, `AccountSessions`, an ended sign-in) closes its open
 streams at once; a stream also closes after `LIVE_MAX_STREAM_SECONDS` (15 minutes) and is checked again.
 
+## Requests your server sends
+
+An address that a user or an editor enters, a webhook URL or an avatar, decides where your server connects. Send it with
+`HttpClient` of `@marmeon/fetch` and not with a bare `fetch()`: the client refuses loopback, private and link-local addresses (the
+cloud metadata address included), for a name too, checks every redirect and limits time and size. No environment allows a private
+range by itself; `FETCH_ALLOWED_ADDRESSES` lists the ranges you reach on purpose. The check that counts runs when the request is
+sent, not when the form is validated. The [HTTP client](http-client.md) page explains it.
+
+A chat webhook is such an address and a credential as well: whoever has it can post to the channel. `@marmeon/chat-notifications`
+accepts only the hosts and paths of the provider's driver, over https, and never logs an address. A queued message travels
+encrypted, and the content a message carries is shown as plain text, so a user's data cannot ping a channel or inject a link. Keep a
+recipient's own webhook address in a column marked `.secret()`, which `selectAll()` leaves out and a query reads with
+`secret()`, and take only addresses that `chat.check()` accepts. See [chat notifications](chat-notifications.md#untrusted-content).
+
 ## Logs and recordings
 
 The log masks the values of keys that look like secrets, such as `password`, `token`, `cookie` or `authorization`, in nested
@@ -578,6 +593,8 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   with them. The `auth.*` limiters sit on the starter kit's routes; put the matching `throttle('auth.…')` on your own route
   ([what the package decides](authentication.md#what-the-package-decides)). The registration is the app's: its answer for a taken address,
   its mail limits and its pruning of unconfirmed accounts are the starter kit's code, or yours.
+- A request to an address from a user or an editor goes through `HttpClient`, not a bare `fetch()`
+  ([requests your server sends](#requests-your-server-sends)).
 - No `sql.raw()` or `sql.lit()` with a value from a request: `marmeon check` reports each one that is not a literal
   ([raw SQL](check.md#raw-sql)).
 - No `dangerouslySetInnerHTML` or `innerHTML` with a value from a request: show it as text. `marmeon check` reports each one

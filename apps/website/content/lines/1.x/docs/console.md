@@ -34,7 +34,8 @@ Set or rename these variables in the environment or in .env (see .env.example).
 ```
 
 The `make:*` generators of the framework itself (`make:module`, `make:controller` …), `build`, `discover`, `key:generate`,
-`make:lint-config` and `make:docker` work without booting, so they run before the app has a valid `.env`. The generators of
+`make:lint-config` and `make:docker` work without booting, so they run before the app has a valid `.env`. `add` installs without booting,
+but for a package with migrations it runs `publish`, which boots the app: that needs a valid `.env`. The generators of
 packages (`make:auth`, `publish`, `make:*-table`) boot the app. `route:types` and `make:command` register the app's providers without booting them, as the
 build does, and need no secret either.
 
@@ -67,7 +68,7 @@ When the app fails to load, the message ends with the place in the app where it 
 
 What `marmeon` prints about a failed command or a failed start, including the hints on how to fix it, is masked with the app's [redactor](logging.md#patterns-of-your-own) (the core's lists and the `redact` additions of the app), as the messages of `marmeon check` are. Its control characters are written out, and the lines after the first of a command's error are indented. Three cases mask with the core's lists alone: an app whose definition cannot be read, a wrong option to a built-in command (found before the app starts; those messages quote no values), and the error of a built-in that does not start the app (`make:*`, `key:generate`, `build`). `marmeon` does not read the app's definition only to mask these.
 
-[`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
+[`marmeon check` and `marmeon doctor`](check.md#exit-codes) add a `3` for a check that could not run.
 
 A command that ends with an error (exit code 1 because it threw) is also handed to the app's [error reporters](errors.md#reporting)
 (`source` `command`), with the command's name and never its arguments, which can carry secrets. A wrong call (2), a cancelled question
@@ -77,7 +78,7 @@ When the reader of a pipe stops early, as in `marmeon docs | head -5`, the comma
 
 A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked
 up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`docs`](#reading-the-documentation) ends with 2 for an unknown page or options that do not go together, [`tinker`](#running-code-from-a-script) ends with
-130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafterseconds) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, exits with 2 as well: it throws a `CommandArgumentsError`, and `marmeon` prints its message and exits with 2. The state of the app or of the machine is a failure (1), whatever the arguments:
+130 on a signal, [`db:query`](database.md#querying-a-connection) with 3 when it refuses the query (a write, a secret column, or a record of migrations that cannot say which columns are secret), and [`queue:work`](queues.md#timeouts-and-retryafterseconds) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, exits with 2 as well: it throws a `CommandArgumentsError`, and `marmeon` prints its message and exits with 2. The state of the app or of the machine is a failure (1), whatever the arguments:
 
 | Wrong call (2) | Failure (1) |
 |---|---|
@@ -108,12 +109,15 @@ pnpm marmeon route:list --json
 | --- | --- |
 | `route:list --json` | [Listing routes](routing.md#listing-routes) |
 | `check --json` | [Checking an app](check.md#json-output) |
+| `doctor --json` | [The environment](check.md#the-environment-marmeon-doctor) |
 | `schedule:list --json` | [Running the scheduler](scheduling.md#running-the-scheduler) |
 | `db:show --json` | [Inspecting a connection](database.md#inspecting-a-connection) |
+| `db:query --json` | [Querying a connection](database.md#querying-a-connection) |
 | `migrate:status --json` | [Status](migrations.md#status) |
 | `modules:list --json` | [Listing the modules](modules.md#listing-the-modules) |
 | `devtools:list --json` | [Listing the entries](devtools.md#listing-the-entries) |
 | `docs --json` | [Reading the documentation](#reading-the-documentation) |
+| `upgrade --json` | [How to upgrade](releases.md#how-to-upgrade) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
 
 A command of your own, or of a package, prints its document with `output.json({ format: 1, … })` and declares
@@ -156,12 +160,15 @@ start`, and `marmeon dev` refuses it.
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
 | `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint, the scan for imports of framework internals and the checks of the app (route and database types, boot, readiness), and exits with a code a script can read. See [checking an app](check.md). |
+| `doctor [--only=<names>] [--skip=<names>] [--json]` | Checks that this machine can run the app: Node, the versions of the packages, the configuration and `APP_KEY`, the generated files, the migrations that have not run and the services, with the report and exit codes of `check`. See [the environment](check.md#the-environment-marmeon-doctor). |
+| `upgrade [--to=<version\|tag>] [--dry-run] [--json]` | Moves every `marmeon` and `@marmeon/*` package of the app to one version (`latest`, or `--to`), prints the entries of the upgrade guide between the two versions, and runs `route:types`, and `db:types` when the app has `@marmeon/database`. `--dry-run` only prints the plan. See [how to upgrade](releases.md#how-to-upgrade). |
 | `serve [--workers=N]` | The command behind `dev` and `start`; hidden from `marmeon list`, but its name and options are API. Run `marmeon start` rather than it. |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action, with `(island)` after an island's controller. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
 | `modules:list [--json]` | The packages, the modules with their providers, commands, jobs, notifications and seeders, and the listeners of each event, without booting the app. See [listing the modules](modules.md#listing-the-modules). |
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
+| `add <package>... [--dry-run]` | Installs framework packages at exactly the version of your app, runs `discover` and copies the migrations of a package that has some (`publish` boots the app, so that part needs a valid `.env`). `--dry-run` prints the commands and changes nothing. See [packages you add](packages.md#packages-you-add). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
 | `agents:sync [--check]` | Writes `AGENTS.md` and `CLAUDE.md`, or brings the block of marmeon in `AGENTS.md` up to the installed version. `--check` writes nothing and fails when the block is missing or out of date, for CI. See [coding agents](agents.md). |
 | `agents:install [--shared] [--no-mcp] [--check]` | Copies the skills of marmeon into `.claude/skills/` (`.agents/skills/` with `--shared`) and enters `marmeon mcp` in `.mcp.json`; run again, it updates them. Refuses links that lead out of the app or nowhere, and files that are not its own. `--check` writes nothing and fails when they are missing or out of date. See [coding agents](agents.md#skills-and-the-mcp-server). |
@@ -222,8 +229,9 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:factory <Name> --module=<m> [--table=<t>]` | `modules/<m>/factories/<Name>Factory.ts`: a `defineFactory` of the table, with a note on `sequence` and `now()`. Registers nothing: a factory is imported where a test or seeder uses it. Needs `@marmeon/database`. See [defining factories](seeding.md#defining-factories). |
 | `make:table <Name> --module=<m> [--table=<t>]` | `modules/<m>/tables/<Name>Table.ts`: a `defineTable` of the table, typed with the module's `Database`, with its key, an `id` column and `authorize: () => false`, so nobody sees it until you say who may. Registers nothing: the page's route attaches `<Name>Table.endpoints()`. Needs `@marmeon/table`, `@marmeon/auth` and `@marmeon/database`. See [data tables](tables.md#generating-a-table). |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
-| `publish [<package>] [--module=<m>] [--only=migrations,lang] [--check] [--force]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there. Without a package it lists them and, at a terminal, asks which to publish. `--check` writes nothing and ends with exit code 1 when something is missing. `--only=lang` copies the framework's texts of `@marmeon/i18n` into `lang/marmeon/`, and `--force` replaces files that are there. See [migrations](migrations.md#publishing-the-migrations-of-a-package) and [the framework's texts](localization.md#the-frameworks-texts). |
+| `publish [<package>] [--module=<m>] [--only=migrations,lang] [--check] [--accept] [--force]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there, and records them in `marmeon-stubs.json`. Without a package it lists them and, at a terminal, asks which to publish. `--check` writes nothing and ends with exit code 1 when something is missing, when a migration changed in the package since you published it (`D27`), or, once a direct dependency declares migrations, when `marmeon-stubs.json` cannot be read. Without a package, `publish` ends with exit code 1 on a changed migration instead of saying "Nothing to publish". `--accept` takes one package, writes no migration and records the package's current files for the migrations your app has. `--only=lang` copies the framework's texts of `@marmeon/i18n` into `lang/marmeon/`, and `--force` replaces files that are there. See [migrations](migrations.md#publishing-the-migrations-of-a-package) and [the framework's texts](localization.md#the-frameworks-texts). |
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses: `publish` for `@marmeon/auth`. See [sign-ins](authentication.md#sign-ins). |
+| `make:social-accounts-table [--module=<m>]` | The migration of the `social_accounts` table that the linked provider accounts use: `publish` for `@marmeon/oauth`, which `marmeon add oauth` runs. `make:social-accounts-table` also works when the app links the package. Both skip a migration the app has. `publish` opens an existing `system` module only for a package from the registry. `publish` records the migration in `marmeon-stubs.json`; `make:social-accounts-table` does not. See [social login](oauth.md#storing-tokens). |
 | `make:cache-table`, `make:session-table`, `make:queue-table`, `make:notifications-table`, `make:uploads-table`, `make:live-table` `[--module=<m>]` | The migrations of the database drivers' tables, each `publish` for its own package: writes what your app lacks, and ends with exit code 0 and "Nothing to publish" when it has it all. See [the framework's tables](migrations.md#the-frameworks-tables). |
 
 A generator never writes through a link that leads out of the project, and neither do `route:types` and `db:types` with `bootstrap/routes.ts` and `bootstrap/database.d.ts`: they stop with an error and write nothing. A link or hard link at either of those two files is refused too, even inside the project: replace it with a regular file. When a file it would create is a link to nothing, it refuses. With `--force`, it refuses to overwrite a generated file that is a link or has other hard links. Adding a module to `bootstrap/app.ts` edits that file where it really lies, as long as that is inside the project.
@@ -242,7 +250,7 @@ The installed packages add their commands when the app boots:
 
 | Package | Commands |
 | --- | --- |
-| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `publish`, `db:seed`, `db:show`, `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations) and [seeding](seeding.md#running-seeders). |
+| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `publish`, `db:seed`, `db:show`, `db:query` (`NODE_ENV` development and test only), `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations) and [seeding](seeding.md#running-seeders). |
 | `@marmeon/queue` | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table`. See [queues](queues.md). |
 | `@marmeon/scheduler` | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test`. See [task scheduling](scheduling.md#running-the-scheduler). |
 | `@marmeon/cache` | `cache:prune`, `cache:clear`, `make:cache-table`. See [cache](cache.md#expired-entries-and-clearing). |
@@ -250,7 +258,8 @@ The installed packages add their commands when the app boots:
 | `@marmeon/storage` | `uploads:prune`, `make:uploads-table`. See [file storage](storage.md#the-uploads-table). |
 | `@marmeon/live` | `make:live-table`. See [real-time updates](realtime.md#the-database-driver). |
 | `@marmeon/notifications` | `notifications:prune`, `make:notifications-table`. See [notifications](notifications.md#the-notifications-table). |
-| `@marmeon/auth` | `make:auth`, `make:sign-ins-table`, `auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]` (signs every account out and revokes API and reset tokens, see [ending every session of every account](authentication.md#ending-every-session-of-every-account)), `auth:prune-tokens` (also deletes the sign-ins that are over, see [sign-ins](authentication.md#pruning-sign-ins)), `auth:end-sessions <identifier> --force [--keep-api-tokens]` (see [ending every session of a user](authentication.md#ending-every-session-of-a-user)) and `auth:reset-two-factor <identifier> --force` (see [operator reset](two-factor-authentication.md#operator-reset)). The module `make:auth` writes adds `auth:prune-unverified`. See [starter kit](starter-kit.md). |
+| `@marmeon/auth` | `make:auth`, `make:sign-ins-table`, `auth:end-all-sessions --force [--guard=web] [--keep-api-tokens] [--keep-reset-tokens]` (signs every account out and revokes API and reset tokens, see [ending every session of every account](authentication.md#ending-every-session-of-every-account)), `auth:prune-tokens [--guard=<name>]` (also deletes the sign-ins that are over, see [sign-ins](authentication.md#pruning-sign-ins)), `auth:end-sessions <identifier> --force [--guard=<name>] [--keep-api-tokens]` (see [ending every session of a user](authentication.md#ending-every-session-of-a-user)) and `auth:reset-two-factor <identifier> --force [--guard=<name>]` (see [operator reset](two-factor-authentication.md#operator-reset)). `--guard` names a package's guard, see [operator commands for a guard](authentication.md#operator-commands-for-a-guard-of-a-package). The module `make:auth` writes adds `auth:prune-unverified`. See [starter kit](starter-kit.md). |
+| `@marmeon/oauth` | `make:oauth`, `make:social-accounts-table`. See [social login](oauth.md#the-generated-module) and [storing tokens](oauth.md#storing-tokens). |
 | `@marmeon/devtools` | `devtools:clear`, `devtools:list`, `devtools:prune`. See [devtools](devtools.md). |
 
 ## Writing commands

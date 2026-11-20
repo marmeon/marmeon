@@ -34,6 +34,10 @@ the same arguments: `this.redirect().route('notes.show', { note: id })`.
   string.
 - **The query** is the third argument: `{ tab: 'history', page: 2 }` becomes `?tab=history&page=2`. `null` and `undefined` are
   left out, and a list repeats its key: `{ tag: ['a', 'b'] }` becomes `?tag=a&tag=b`.
+- **The rest of the path** (`/help/:path*`) takes a string such as `'accounts/passkeys'`: each segment is percent-encoded and the
+  `/` between them stays, so the link is `/help/accounts/passkeys`. An empty value adds nothing. An empty segment (`'a//b'`), a
+  leading or trailing `/`, a dot segment, a `\` and a control character throw, with the route's name in the message: the server
+  answers such a path with a 404, so no link is built for it. See [the rest of the path](routing.md#the-rest-of-the-path).
 - **An optional parameter** that you leave out leaves its segment out of the path.
 
 Everything is checked against `bootstrap/routes.ts`, which `marmeon route:types` writes. A wrong name is a compile error with a

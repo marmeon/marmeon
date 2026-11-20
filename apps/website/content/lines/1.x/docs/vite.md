@@ -22,8 +22,11 @@ language files and its route manifest as virtual modules, and refuses server cod
 Vite and the plugin are development dependencies. Nothing of them runs on a production server:
 
 ```sh
-pnpm add -D vite@^8 @marmeon/vite@<version of your app> @vitejs/plugin-react
+pnpm add -D vite@^8 @vitejs/plugin-react
+pnpm marmeon add vite
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -D @marmeon/vite@<version of your app>` instead of the second line.
 
 Vite is a peer of the plugin, so the plugin runs inside your app's own Vite. The types of the virtual modules come from
 `@marmeon/vite/client` in `compilerOptions.types` of `tsconfig.json`, which a new app lists. The plugin also makes the app and the
@@ -80,6 +83,22 @@ In production, each document also names the scripts its page needs, so the brows
 after `index` has run: the page's chunk, the chunks it imports and the one for tab sync, as `<link rel="modulepreload">` tags, and the page's stylesheets as `<link rel="stylesheet">` tags.
 The server reads them from `dist/client/.vite/manifest.json` when it starts. Without that file the documents preload nothing; a
 file that is no Vite manifest stops the start. Nothing is preloaded in development, and the manifest is never served.
+
+### Packages with an entry
+
+When an installed package declares a `namespace` and an `entry` (see [packages with pages or components](#packages-with-pages-or-components)),
+`marmeon build` still runs one client build and one server build, and each entry is an input of it: `index.html` for the app, the package's
+client entry for the package, and `dist/server/ssr-<namespace>.js` next to `ssr.js`. Without such a package nothing changes: the same inputs,
+the same chunks, the same file names.
+
+A document loads only code its own entry imports, through any import. A module only the package's entry reaches never lands in a chunk the
+app's first page loads, and the other way round, and the stylesheets stay separate. A module that several entries import lies in a chunk
+shared by exactly those entries, named by a hash of them: React and other npm packages in `vendor-shared-*`, the framework and your code
+in `shared-*`. With more entries, each combination of them has chunks of its own. A page of the app that imports a module of the package
+loads just that module.
+
+The build also writes `dist/client/.vite/marmeon-entries.json` (format `1`): `entries` gives each namespace the key of its client entry
+in `manifest.json`, `pages` each `<namespace>::<view>` the key of its page. Like the manifest, it is read by the server and never served.
 
 ### The base
 
@@ -152,12 +171,14 @@ needs nothing, and it works in development the same way. It exists once `fonts` 
 
 ## Virtual modules
 
-The plugin serves four modules that your entries import:
+The plugin serves these modules for your entries to import:
 
 | Module | What it exports | Used by |
 | --- | --- | --- |
 | `virtual:marmeon/pages` | Every page, each loaded on its own, keyed by its path | `resolveModulePages(pages)` |
 | `virtual:marmeon/lang` | Every language file, each loaded on its own | `createMessageLoader(lang)` of `@marmeon/i18n/messages` |
+| `virtual:marmeon/lang/<namespace>` | The language files of one package with an entry, with the app's `lang/<namespace>/` laid over them, each loaded on its own; the app's `virtual:marmeon/lang` holds none of them ([texts of a package](localization.md#in-the-browser)) | the package's entry, `createMessageLoader(lang)` |
+| `virtual:marmeon/pages/<namespace>` | The pages of one [package with pages](#packages-with-pages-or-components), keyed `<namespace>::<view>`, each loaded on its own | `resolveModulePages(pages)` |
 | `virtual:marmeon/routes` | `routes`: the named routes the browser knows | `createMarmeonApp({ routes })`, `createSsrRenderer(…, { routes })` |
 | `virtual:marmeon/fonts.css` | The stylesheet of the fallback fonts, once `fonts` has an entry | the client entry, `import 'virtual:marmeon/fonts.css'` ([fonts](#fonts)) |
 
@@ -171,6 +192,32 @@ export const resolvePage = resolveModulePages(pages);
 Vite keeps them current when you add or remove a page or a language file. The browser loads only the language files of the page's
 locale. The route manifest holds only the routes your client code names. The [URL
 generation](urls.md#which-routes-the-browser-knows) page explains which those are.
+
+## Packages with pages or components
+
+A package that declares a `namespace` in the `"marmeon"` field of its `package.json` is user interface: the plugin has the app's
+Vite compile it like the app's own source, in development, in `marmeon build` and in server rendering, so every plugin of the app
+sees its modules. For each such package the plugin
+
+- adds the package to `ssr.noExternal`, so server rendering bundles it and a stylesheet it imports does not reach Node;
+- adds it to `optimizeDeps.exclude` and its client entry to `optimizeDeps.entries`, so the dev server serves its modules through
+  the plugin chain instead of pre-bundling them;
+- lets the dev server serve its folder (`server.fs.allow`: added to your own list, or, when you set none, to the workspace the app lies in; `server.fs.deny` stays);
+- collects the route names its code writes out (`<Link route>`, `useRoute()`), so they reach the browser's route manifest like
+  the app's own. Only declared packages count: the code of any other package in `node_modules` stays out. A package ships compiled JSX, so the build also reads the compiled form
+  `jsx(Link, { route: 'status.index' })` (`jsx`, `jsxs` and `jsxDEV` from `react/jsx-runtime` or `react/jsx-dev-runtime`, and
+  `createElement` from `react`), with the component imported from `@marmeon/react` and the props written as an object literal. This needs ES module output:
+  props built by a helper (`Object.assign`, `_objectSpread`) or CommonJS `require` calls are not read, and their route names are missing.
+
+Nothing is scanned: the plugin acts on the packages the app's dependencies declare, resolved from `package.json` alone. A package
+with a client entry also gets `virtual:marmeon/pages/<namespace>`, the same as `virtual:marmeon/pages` for the pages the package
+lists under `views`, keyed `<namespace>::<view>` (`status::entries/Edit`). A namespace no package declares, or a package without
+pages, is an error when the module is imported. The plugin checks each file again when it builds the module, so a file that has
+turned into a link out of the package is refused.
+
+Put the files that run in the browser (the client entry, the views, the components) under the package's `browser` globs, and ship
+them as compiled ESM with finished CSS: the app's Tailwind sees no directive inside it. A package nested in another is found
+through the app's dependency list, so a transitive package counts as well.
 
 ## Options
 
