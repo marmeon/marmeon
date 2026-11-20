@@ -95,7 +95,7 @@ export function HeroSection({ chain, packages, stack }: HeroProps) {
         </div>
       </div>
       <div className="landing-inner">
-        <StatsStrip packages={packages.length} typos={chain.length} fakes={FAKES.length} tools={AGENT_TOOLS.length} />
+        <StatsStrip packages={packages.length} layers={chain.length} fakes={FAKES.length} tools={AGENT_TOOLS.length} />
       </div>
     </section>
   );
