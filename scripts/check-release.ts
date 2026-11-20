@@ -29,6 +29,15 @@ export const PACKAGE_NAME_PATTERN = '^(marmeon|create-marmeon|@marmeon/[a-z0-9-]
 export const PACKAGE_NAME = new RegExp(PACKAGE_NAME_PATTERN);
 
 /**
+ * What a published package's `publishConfig` may hold: npm copies every key of it into its own options before the token exchange
+ * (`registry`, `https-proxy`, `@scope:registry` …), so the stage job refuses a tarball that carries anything else. `pnpm pack` moves
+ * `publishConfig.exports` to the top level, so a packed manifest holds these keys only.
+ */
+export const PUBLISH_CONFIG: Readonly<Record<string, string | boolean>> = { access: 'public', provenance: true };
+/** The jq program of the stage job that reads a manifest: `<name> <true|false>`, true when `publishConfig` is missing or within {@link PUBLISH_CONFIG}. */
+const PUBLISH_CONFIG_JQ = `[.name, (has("publishConfig") | not) or (.publishConfig | type == "object" and (to_entries | all(${Object.entries(PUBLISH_CONFIG).map(([key, value]) => `.key == ${JSON.stringify(key)} and .value == ${JSON.stringify(value)}`).join(' or ')})))] | join(" ")`;
+
+/**
  * What the stage job's trust check may say with `npm`, besides the audience `npm:registry.npmjs.org` and the exchange path
  * `/-/npm/v1/oidc/token/exchange/package/`: this hint of its error line (what a maintainer runs, then what to click).
  */
@@ -220,6 +229,19 @@ export const CHANGESETS_UNTIL = '0.1.2';
 /** The name of every framework package fits what the stage job's trust check accepts: else the run stops after the build. */
 export function checkPackageNames(packages: readonly FrameworkPackage[]): string[] {
   return packages.filter((pkg) => !PACKAGE_NAME.test(pkg.name)).map((pkg) => `${pkg.name}: not a name the stage job accepts (${PACKAGE_NAME_PATTERN}) — it would stop the release run after the build; rename the package or widen PACKAGE_NAME_PATTERN in scripts/check-release.ts and the stage step together`);
+}
+
+/** The `publishConfig` of every framework package (as `pnpm pack` leaves it, without `exports`) is within {@link PUBLISH_CONFIG}: else the stage job refuses the tarball. */
+export function checkPublishConfig(packages: readonly FrameworkPackage[]): string[] {
+  const problems: string[] = [];
+  for (const pkg of packages) {
+    const config = (pkg.manifest as Record<string, unknown>).publishConfig;
+    if (config === undefined) continue;
+    const packed = typeof config === 'object' && config !== null && !Array.isArray(config) ? Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'exports')) : config;
+    const within = typeof packed === 'object' && packed !== null && !Array.isArray(packed) && Object.entries(packed).every(([key, value]) => Object.hasOwn(PUBLISH_CONFIG, key) && PUBLISH_CONFIG[key] === value);
+    if (!within) problems.push(`${pkg.name}: publishConfig holds more than ${JSON.stringify(PUBLISH_CONFIG)} (besides exports) — npm copies every key into its options, so the stage job refuses the tarball; keep other settings out of the manifest`);
+  }
+  return problems;
 }
 
 /** The dependency fields in which a published package names another one only as `workspace:*`. */
@@ -575,8 +597,17 @@ export function checkWorkflow(repository: string): string[] {
         'failures=0',
         'while read -r _ name; do',
         `test "\${name%-"$VERSION".tgz}" != "$name" || { echo "::error::$name is not a tarball of version $VERSION"; exit 1; }`,
-        `package=$(tar -xzOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r .name) || package=`,
+        // Defence in depth: refuse the tarball shapes known to make tar and npm read different manifests (a second package.json under another spelling, a tar that reads past zero blocks so that a second package.json behind one is seen, entries that are not plain files).
+        `members=$(tar -tizf "$TARBALLS/$name" < /dev/null 2> /dev/null) || members=`,
+        `kinds=$(tar -tvizf "$TARBALLS/$name" < /dev/null 2> /dev/null | cut -c1) || kinds=`,
+        `if ! { [[ -n "$members" && -n "$kinds" && "$(grep -cxF package/package.json <<< "$members")" == 1 ]] && ! grep -qvE '^package/' <<< "$members" && ! grep -qE '//|(^|/)\\.\\.?(/|$)' <<< "$members" && ! grep -qvx -- - <<< "$kinds"; }; then`,
+        `echo "::error::$name is not a tarball the stage job accepts; this attempt staged nothing"`,
+        'exit 1',
+        'fi',
+        `info=$(tar -xizOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r '${PUBLISH_CONFIG_JQ}') || info=`,
+        'package=${info% *}',
         `[[ "$package" =~ ${PACKAGE_NAME_PATTERN} ]] || { echo "::error::$name holds a package name that is not one of ours"; exit 1; }`,
+        `[[ "\${info##* }" == true ]] || { echo "::error::$package has a publishConfig the stage job does not accept; this attempt staged nothing"; exit 1; }`,
         // The credentials go through stdin (-H @-), never onto a command line.
         `token=$(curl -q --proto '=https' -sS --max-time 10 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r '.value // empty') || token=`,
         'status=no-id-token',
@@ -599,7 +630,8 @@ export function checkWorkflow(repository: string): string[] {
         `test "$SECONDS" -lt 300 || { echo "::error::the trust check took $SECONDS seconds; this attempt staged nothing: Re-run failed jobs"; exit 1; }`,
         'while read -r _ name; do',
         'test "${name%-"$VERSION".tgz}" != "$name"',
-        'npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null',
+        // Flags win over the manifest's publishConfig: they pin the registry (--scope: an unscoped package takes its registry from the scope too), the proxies, strict-ssl and cafile; a `ca` from a manifest can only make TLS fail, so it is not pinned.
+        'npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null < /dev/null',
         'done < "$TARBALLS/SHA512SUMS"',
       ];
       if (stage !== undefined && linesOf(stage).join('\n') !== wanted.join('\n')) {
@@ -1368,6 +1400,7 @@ export function check(repository: string = root): string[] {
   return [
     ...checkVersion(repository, packages),
     ...checkPackageNames(packages),
+    ...checkPublishConfig(packages),
     ...checkChangelogs(repository, packages),
     ...checkWorkflow(repository),
     ...checkCiWorkflow(repository),

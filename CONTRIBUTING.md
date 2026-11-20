@@ -595,7 +595,7 @@ and the dist-tag (a release candidate: `main` only, above npm's `latest`). Then 
 `SHA512SUMS` as its output. The second job (`stage`, `id-token: write`, the only job in the `npm-release` environment) checks out nothing, installs nothing and runs no script
 of the repository or of a dependency, so the code that runs in the first job never meets the OIDC token. It downloads the artifact, checks `SHA512SUMS` against the output and every tarball
 against `SHA512SUMS`. Then it asks npm, for every package whose tarball `SHA512SUMS` names, whether the package trusts this workflow. It makes the token exchange that
-`npm stage publish` makes, with a fresh ID token per package. If one package does not answer with success, the job stops before it stages anything. Only then it stages the tarballs with `npm stage publish` (trusted publishing, OIDC,
+`npm stage publish` makes, with a fresh ID token per package. It first refuses a tarball whose `publishConfig` holds anything but `access: "public"` and `provenance: true`: npm copies every `publishConfig` key into its options, a registry or a proxy among them. As defence in depth it refuses the tarball shapes it knows to be read differently by `tar` and by npm: entries that are not plain files below `package/`, and more than one `package/package.json`. `npm stage publish` gets the registry (`--scope=@marmeon` also covers the unscoped packages), the proxies, `strict-ssl` and `cafile` as flags, which win over `publishConfig`, so a manifest cannot move where npm sends the token or the tarball. A `ca` from a manifest can only make TLS fail. If one package does not answer with success, the job stops before it stages anything. Only then it stages the tarballs with `npm stage publish` (trusted publishing, OIDC,
 no token in the repository; provenance) and prints `SHA512SUMS`. The hashes show that the staged files are the ones the first job
 packed, not that the first job packed what the release commit builds — step 3 closes that gap. The third job (`release`,
 `contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
@@ -694,7 +694,7 @@ and the rules of `main` — so that no branch from an unreviewed commit satisfie
     package it names. Revoke the package's old configuration first, as in the trust setup above (`npm trust list`, `npm trust revoke`);
     `scripts/npm-trust.sh` is no help here, it stops at the first package that already has one. Then use **"Re-run failed jobs"**.
   - *"could not ask the registry"* (any other answer, or none) or *"the trust check took … seconds"*: use **"Re-run failed jobs"**.
-  - *"is not a tarball of version"* or *"a package name that is not one of ours"*: the `build` job packed a tarball the stage job does not accept.
+  - *"is not a tarball of version"*, *"a package name that is not one of ours"*, *"a publishConfig the stage job does not accept"* or *"is not a tarball the stage job accepts"*: the `build` job packed a tarball the stage job does not accept.
     Do not re-run; look into the run and the package list, merge the fix through a pull request and start a new release.
 
   A re-run keeps the `build` job's tarballs and outputs, so the version stays. The artifact is kept for a day: after that, start the

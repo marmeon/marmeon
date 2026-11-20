@@ -20,7 +20,9 @@
 #        job's output `sums`; the tarballs and SHA512SUMS are uploaded as the artifact `tarballs` (kept for a day).
 #   stage    (environment: npm-release, id-token: write, contents: read) — installs nothing, checks out nothing, runs no script of the repository
 #     4. Downloads the artifact, checks SHA512SUMS against the output `sums` and the tarballs against SHA512SUMS, checks that
-#        every package trusts this workflow (the token exchange of npm; nothing is staged unless all pass), then
+#        every package trusts this workflow (the token exchange of npm; nothing is staged unless all pass; a tarball whose publishConfig
+#        holds more than access and provenance is refused, and so are the tarball shapes the check knows to be read differently by
+#        tar and npm), then
 #        `npm stage publish` of exactly the tarballs SHA512SUMS names, with the dist-tag (OIDC, no token anywhere; provenance from
 #        this workflow). Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
 #        authentication (npm stage approve). The trusted-publisher configuration of every package allows staging only
@@ -153,8 +155,21 @@ jobs:
           failures=0
           while read -r _ name; do
             test "${name%-"$VERSION".tgz}" != "$name" || { echo "::error::$name is not a tarball of version $VERSION"; exit 1; }
-            package=$(tar -xzOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r .name) || package=
+            # Defence in depth: refuse the tarball shapes known to make tar and npm read different manifests (a second package.json
+            # under another spelling, a tar that reads past zero blocks so that a second package.json behind one is seen, entries that are not plain files). The flags of the staging below
+            # pin the registry whatever the manifest holds.
+            members=$(tar -tizf "$TARBALLS/$name" < /dev/null 2> /dev/null) || members=
+            kinds=$(tar -tvizf "$TARBALLS/$name" < /dev/null 2> /dev/null | cut -c1) || kinds=
+            if ! { [[ -n "$members" && -n "$kinds" && "$(grep -cxF package/package.json <<< "$members")" == 1 ]] && ! grep -qvE '^package/' <<< "$members" && ! grep -qE '//|(^|/)\.\.?(/|$)' <<< "$members" && ! grep -qvx -- - <<< "$kinds"; }; then
+              echo "::error::$name is not a tarball the stage job accepts; this attempt staged nothing"
+              exit 1
+            fi
+            # One pass over the manifest: the name, and whether publishConfig holds nothing but what the packages carry. npm copies every
+            # publishConfig key into its options (a registry, a proxy): a tarball that carries more is refused before it meets the token.
+            info=$(tar -xizOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r '[.name, (has("publishConfig") | not) or (.publishConfig | type == "object" and (to_entries | all(.key == "access" and .value == "public" or .key == "provenance" and .value == true)))] | join(" ")') || info=
+            package=${info% *}
             [[ "$package" =~ ^(marmeon|create-marmeon|@marmeon/[a-z0-9-]+)$ ]] || { echo "::error::$name holds a package name that is not one of ours"; exit 1; }
+            [[ "${info##* }" == true ]] || { echo "::error::$package has a publishConfig the stage job does not accept; this attempt staged nothing"; exit 1; }
             # The credentials go through stdin (-H @-), never onto a command line.
             token=$(curl -q --proto '=https' -sS --max-time 10 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r '.value // empty') || token=
             status=no-id-token
@@ -177,7 +192,9 @@ jobs:
           test "$SECONDS" -lt 300 || { echo "::error::the trust check took $SECONDS seconds; this attempt staged nothing: Re-run failed jobs"; exit 1; }
           while read -r _ name; do
             test "${name%-"$VERSION".tgz}" != "$name"
-            npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null
+            # Flags win over the manifest's publishConfig: they pin the registry (--scope: an unscoped package takes its registry from
+            # the scope too), the proxies, strict-ssl and cafile, so a manifest cannot move where npm sends the token and the tarball.
+            npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null < /dev/null
           done < "$TARBALLS/SHA512SUMS"
 
   release:
