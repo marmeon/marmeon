@@ -681,13 +681,19 @@ and the rules of `main` — so that no branch from an unreviewed commit satisfie
   `pnpm release:prepare` again (any merge moves the release base), merge that release pull request and start the workflow again.
 - **A hash check of the `stage` job is red** (before its first `npm stage publish`; the log says which line failed): nothing was
   staged, but the artifact is not what the `build` job hashed — do not re-run, look into the run, and start a new one.
-- **The trust check of the `stage` job is red:** the "stage the tarballs" step is the same step, so read its log first. Nothing was
-  staged only when the log ends with the trust check's `::error::` lines and shows no output of `npm stage publish` at all: no
-  `npm notice` lines of a tarball, no `+ …` line, no npm error. Anything else falls under the bullet on a partly staged run below.
+- ***"SHA512SUMS has a line that is not a hash and a tarball name"*** or ***"the build job's hash of SHA512SUMS is not a SHA-512
+  hash"***: nothing was staged. The file matched the `build` job's hash, or the hash itself came out wrong, so the `build` job
+  wrote it that way: do not re-run, look into the `build` job (`scripts/release-pack.ts` and the dependencies it ran), and start
+  a new release after the fix.
+- **The trust check of the `stage` job is red:** the "stage the tarballs" step is the same step, so read its log first. The step's
+  messages speak for this attempt only. Nothing was staged only when this attempt's log ends with the trust check's `::error::`
+  lines, and neither it nor an earlier attempt of the run (the attempt selector of the run page) shows output of `npm stage
+  publish`: no `npm notice` lines of a tarball, no `+ …` line, no npm error. Anything else falls under the bullet on a partly
+  staged run below.
   - *"has no working trusted publisher"* (npm answered 401, 403 or 404): run the `npm trust github` line the log prints for each
     package it names. Revoke the package's old configuration first, as in the trust setup above (`npm trust list`, `npm trust revoke`);
     `scripts/npm-trust.sh` is no help here, it stops at the first package that already has one. Then use **"Re-run failed jobs"**.
-  - *"could not ask the registry"* (any other answer, or none): use **"Re-run failed jobs"**.
+  - *"could not ask the registry"* (any other answer, or none) or *"the trust check took … seconds"*: use **"Re-run failed jobs"**.
   - *"is not a tarball of version"* or *"a package name that is not one of ours"*: the `build` job packed a tarball the stage job does not accept.
     Do not re-run; look into the run and the package list, merge the fix through a pull request and start a new release.
 

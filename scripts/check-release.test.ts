@@ -863,7 +863,7 @@ describe('checkWorkflow — the release run', () => {
       const hashCheck = '          printf \'%s  SHA512SUMS\\n\' "$SUMS" | sha512sum --check --strict -\n';
       expect(problemsOf(without.replace(hashCheck, `${check}${hashCheck}`))).toContain(wanted);
       expect(problemsOf(mutated(lastLine, '', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated(' --max-time 30 -X POST', ' --max-time 30 -x http://proxy.example -X POST', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' --max-time 10 -X POST', ' --max-time 10 -x http://proxy.example -X POST', 'stage'))).toContain(wanted);
       expect(problemsOf(mutated(' -X POST -H @-', ' -X POST -H "Authorization: Bearer $token"', 'stage'))).toContain(wanted);
     });
 
@@ -990,8 +990,16 @@ describe('checkWorkflow — the release run', () => {
       idBody?: string;
       /** The body of the exchange answer (default: a JSON object with a token). */
       answer?: string;
-      /** A tarball without package/package.json is added first. */
+      /** The first tarball has no package/package.json. */
       noManifest?: boolean;
+      /** The first tarball is stored under this file name (the manifest inside is the package's). */
+      fileName?: string;
+      /** SHA512SUMS as written by sha512sum, changed (its hash is the one the step is given). */
+      rewriteSums?: (sums: string) => string;
+      /** Appended to the hash the step gets as `$SUMS`. */
+      sumsSuffix?: string;
+      /** The value `$SECONDS` has when the script starts: a slow job. */
+      seconds?: number;
     }
 
     /** Runs the step's script on tarballs of the packages; a package `[name, version]` has a tarball named after that version. */
@@ -1008,11 +1016,11 @@ describe('checkWorkflow — the release run', () => {
         mkdirSync(join(source, 'package'), { recursive: true });
         if (options.noManifest && index === 0) writeFileSync(join(source, 'package/README.md'), 'no manifest');
         else writeFileSync(join(source, 'package/package.json'), JSON.stringify({ name, version }));
-        const tarball = `${name.replaceAll('@', '').replaceAll('/', '-')}-${version}.tgz`;
+        const tarball = options.fileName !== undefined && index === 0 ? options.fileName : `${name.replaceAll('@', '').replaceAll('/', '-').toLowerCase()}-${version}.tgz`;
         expect(spawnSync('tar', ['-czf', join(tarballs, tarball), '-C', source, 'package']).status).toBe(0);
         names.push(tarball);
       }
-      const sums = spawnSync('sha512sum', names, { cwd: tarballs, encoding: 'utf8' }).stdout;
+      const sums = (options.rewriteSums ?? ((text: string) => text))(spawnSync('sha512sum', names, { cwd: tarballs, encoding: 'utf8' }).stdout);
       writeFileSync(join(tarballs, 'SHA512SUMS'), sums);
       const log = join(directory, 'calls.log');
       writeFileSync(log, '');
@@ -1026,11 +1034,12 @@ describe('checkWorkflow — the release run', () => {
           LOG: log,
           FAIL: (options.fail ?? []).join(' '),
           NO_ID_TOKEN: options.noIdToken ? 'yes' : '',
+          ...(options.seconds === undefined ? {} : { SECONDS: String(options.seconds) }),
           ID_BODY: options.idBody ?? '',
           EXCHANGE_ANSWER: options.answer ?? '',
           RUNNER_TEMP: directory,
           TARBALLS: tarballs,
-          SUMS: spawnSync('sha512sum', { input: sums, encoding: 'utf8' }).stdout.split(' ')[0]!,
+          SUMS: spawnSync('sha512sum', { input: sums, encoding: 'utf8' }).stdout.split(' ')[0]! + (options.sumsSuffix ?? ''),
           VERSION: '1.0.0',
           DIST_TAG: 'latest',
           ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.actions.example/token?api=1',
@@ -1117,21 +1126,74 @@ describe('checkWorkflow — the release run', () => {
       for (const answer of ['{}', 'not json', '{"token":""}', '{"token":5}', '[]', '"x"', '{"other":"npm_fake-exchange-body"}']) {
         const { result, calls } = stage(['marmeon'], { answer });
         expect(result.status, answer).not.toBe(0);
-        expect(errorsOf(result.stdout), answer).toEqual([expect.stringContaining(`${ASK} (exchange: 200-without-token); nothing was staged: Re-run failed jobs`)]);
+        expect(errorsOf(result.stdout), answer).toEqual([expect.stringContaining(`${ASK} (exchange: 200-without-token); this attempt staged nothing: Re-run failed jobs`)]);
         expect(staged(calls), answer).toEqual([]);
         expect(`${result.stdout}${result.stderr}`, answer).not.toContain(EXCHANGE_BODY);
       }
     });
 
-    it.skipIf(!hasTools)('prints neither the exchange body nor the ID token outside its mask', () => {
-      for (const fail of [[], ['marmeon=404']]) {
-        const { result } = stage(['marmeon', '@marmeon/alpha'], { fail });
+    it.skipIf(!hasTools)('prints neither the exchange body nor the ID token, in no line of stdout or stderr', () => {
+      for (const options of [{}, { fail: ['marmeon=404'] }, { fail: ['marmeon=exit'] }, { answer: '{}' }]) {
+        const { result } = stage(['marmeon', '@marmeon/alpha'], options);
         const output = `${result.stdout}\n${result.stderr}`;
-        expect(output).not.toContain(EXCHANGE_BODY);
-        const masks = output.split('\n').filter((line) => line.includes(IDENTITY));
-        expect(masks.length).toBeGreaterThan(0);
-        for (const line of masks) expect(line).toBe(`::add-mask::${IDENTITY}`);
+        expect(output, JSON.stringify(options)).not.toContain(EXCHANGE_BODY);
+        expect(output, JSON.stringify(options)).not.toContain(IDENTITY);
+        expect(output, JSON.stringify(options)).not.toContain('add-mask');
       }
+    });
+
+    it.skipIf(!hasTools)('refuses a file name that could switch off the runner’s commands, before any command prints it', () => {
+      for (const fileName of ['##[stop-commands]tok-marmeon-1.0.0.tgz', 'MARMEON-1.0.0.tgz', 'marmeon 1.0.0.tgz', 'marmeon-1.0.0.tar']) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { fileName });
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(result.status, fileName).not.toBe(0);
+        expect(errorsOf(result.stdout), fileName).toEqual(['::error::SHA512SUMS has a line that is not a hash and a tarball name']);
+        expect(output, fileName).not.toContain(fileName);
+        expect(output, fileName).not.toContain('stop-commands');
+        expect(output, fileName).not.toContain(IDENTITY);
+        expect(calls, fileName).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a hash of SHA512SUMS that is more than a hash, before anything is printed or called', () => {
+      for (const suffix of ['  ##[stop-commands]tok', '  ::error::forged']) {
+        const { result, calls } = stage(['marmeon'], { sumsSuffix: suffix });
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(result.status, suffix).not.toBe(0);
+        expect(errorsOf(result.stdout), suffix).toEqual(["::error::the build job's hash of SHA512SUMS is not a SHA-512 hash; this attempt staged nothing"]);
+        expect(output, suffix).not.toContain('stop-commands');
+        expect(output, suffix).not.toContain('forged');
+        expect(calls, suffix).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a SHA512SUMS line that is not a full lower-case hash, two spaces and a tarball name', () => {
+      const rewrites: Array<(sums: string) => string> = [
+        (sums) => sums.replace(/^[0-9a-f]/, ''),
+        (sums) => sums.replace('  ', ' '),
+        (sums) => sums.replace(/^[0-9a-f]/, () => 'A'),
+        (sums) => `${sums}\n`,
+        (sums) => sums.replace('.tgz', '.tgz '),
+      ];
+      for (const [index, rewriteSums] of rewrites.entries()) {
+        const { result, calls } = stage(['marmeon'], { rewriteSums });
+        expect(result.status, String(index)).not.toBe(0);
+        expect(errorsOf(result.stdout), String(index)).toEqual(['::error::SHA512SUMS has a line that is not a hash and a tarball name']);
+        expect(calls, String(index)).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('stops after a slow trust check, before the first stage, and keeps quiet about the files', () => {
+      for (const seconds of [300, 1000]) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { seconds });
+        expect(result.status, String(seconds)).not.toBe(0);
+        expect(errorsOf(result.stdout)[0], String(seconds)).toMatch(/^::error::the trust check took \d+ seconds; this attempt staged nothing: Re-run failed jobs$/);
+        expect(exchanges(calls), String(seconds)).toHaveLength(2);
+        expect(staged(calls), String(seconds)).toEqual([]);
+      }
+      const inTime = stage(['marmeon', '@marmeon/alpha'], { seconds: 200 });
+      expect(inTime.result.status, inTime.result.stderr).toBe(0);
+      expect(staged(inTime.calls)).toHaveLength(2);
     });
 
     it.skipIf(!hasTools)('says the trust is missing for 401, 403 and 404 and passes every 2xx', () => {
@@ -1159,7 +1221,7 @@ describe('checkWorkflow — the release run', () => {
         const { result, calls } = stage(['marmeon'], options);
         expect(result.status, label).not.toBe(0);
         const errors = errorsOf(result.stdout);
-        expect(errors, label).toEqual([expect.stringContaining(`${ASK} (exchange: ${status}); nothing was staged: Re-run failed jobs`)]);
+        expect(errors, label).toEqual([expect.stringContaining(`${ASK} (exchange: ${status}); this attempt staged nothing: Re-run failed jobs`)]);
         expect(errors[0], label).not.toContain('npm trust');
         expect(staged(calls), label).toEqual([]);
         if (status === 'no-id-token') expect(exchanges(calls), label).toEqual([]);

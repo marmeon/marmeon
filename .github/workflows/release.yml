@@ -132,10 +132,14 @@ jobs:
           NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/no-globalconfig
         run: |
           set -o pipefail
+          # The build job's output: anything but a bare hash would reach the log through the hash check's own messages.
+          [[ "$SUMS" =~ ^[0-9a-f]{128}$ ]] || { echo "::error::the build job's hash of SHA512SUMS is not a SHA-512 hash; this attempt staged nothing"; exit 1; }
           if [[ "$VERSION" == *-rc.* ]]; then [[ "$DIST_TAG" == next ]] || { echo "::error::a release candidate goes out under next only"; exit 1; }; else [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\.[0-9]+)?)?$ ]] || { echo "::error::a release goes out under latest or latest-<line>, never next"; exit 1; }; fi
           mkdir "$RUNNER_TEMP/empty"
           cd "$TARBALLS"
           printf '%s  SHA512SUMS\n' "$SUMS" | sha512sum --check --strict -
+          # SHA512SUMS is the build job's file: before a command prints a name from it, every line must be a hash and a plain tarball name.
+          ! grep -qvxE '[0-9a-f]{128}  [a-z0-9.-]+\.tgz' SHA512SUMS || { echo "::error::SHA512SUMS has a line that is not a hash and a tarball name"; exit 1; }
           sha512sum --check --strict SHA512SUMS
           # The artifact holds SHA512SUMS and the files it names, nothing else (no dotfile, no directory): npm would read a .npmrc.
           expected=$( { echo ./SHA512SUMS; awk '{ print "./" $2 }' SHA512SUMS; } | sort )
@@ -149,27 +153,28 @@ jobs:
           failures=0
           while read -r _ name; do
             test "${name%-"$VERSION".tgz}" != "$name" || { echo "::error::$name is not a tarball of version $VERSION"; exit 1; }
-            package=$(tar -xzOf "$TARBALLS/$name" package/package.json < /dev/null | jq -r .name) || package=
+            package=$(tar -xzOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r .name) || package=
             [[ "$package" =~ ^(marmeon|create-marmeon|@marmeon/[a-z0-9-]+)$ ]] || { echo "::error::$name holds a package name that is not one of ours"; exit 1; }
             # The credentials go through stdin (-H @-), never onto a command line.
-            token=$(curl -q --proto '=https' -sS --max-time 30 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r '.value // empty') || token=
+            token=$(curl -q --proto '=https' -sS --max-time 10 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r '.value // empty') || token=
             status=no-id-token
             if [[ -n "$token" ]]; then
-              echo "::add-mask::$token"
               # npm counts a 2xx without a token in the body as a failure. The body goes straight into jq: of the token only "there is one" comes out, never a shell variable or a file.
-              exchange=$(curl -q --proto '=https' -sS --max-time 30 -X POST -H @- -o - -w '\n%{http_code}' "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${package/\//%2F}" <<< "Authorization: Bearer $token" | jq -Rrs '(split("\n") | last) as $code | .[:length - ($code | length) - 1] as $body | "\($code) \($body | try (fromjson | (.token | type == "string" and length > 0)) catch false)"') || exchange='failed false'
+              exchange=$(curl -q --proto '=https' -sS --max-time 10 -X POST -H @- -o - -w '\n%{http_code}' "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${package/\//%2F}" <<< "Authorization: Bearer $token" | jq -Rrs '(split("\n") | last) as $code | .[:length - ($code | length) - 1] as $body | "\($code) \($body | try (fromjson | (.token | type == "string" and length > 0)) catch false)"') || exchange='failed false'
               status=${exchange% *}
               [[ "$status" =~ ^2[0-9][0-9]$ && "${exchange#* }" != true ]] && status="$status-without-token"
             fi
             [[ "$status" =~ ^2[0-9][0-9]$ ]] && continue
             failures=$((failures + 1))
             if [[ "$status" =~ ^(401|403|404)$ ]]; then
-              echo "::error::$package has no working trusted publisher for the environment npm-release (exchange: $status); nothing was staged: run npm trust github $package --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish, then Re-run failed jobs"
+              echo "::error::$package has no working trusted publisher for the environment npm-release (exchange: $status); this attempt staged nothing: run npm trust github $package --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish, then Re-run failed jobs"
             else
-              echo "::error::$package: could not ask the registry (exchange: $status); nothing was staged: Re-run failed jobs"
+              echo "::error::$package: could not ask the registry (exchange: $status); this attempt staged nothing: Re-run failed jobs"
             fi
           done < "$TARBALLS/SHA512SUMS"
           test "$failures" = 0 || exit 1
+          # Up to 60 requests of 10 seconds at most: the staging keeps the time the job has left.
+          test "$SECONDS" -lt 300 || { echo "::error::the trust check took $SECONDS seconds; this attempt staged nothing: Re-run failed jobs"; exit 1; }
           while read -r _ name; do
             test "${name%-"$VERSION".tgz}" != "$name"
             npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null
