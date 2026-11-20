@@ -19,7 +19,8 @@
 #     3. scripts/release-pack.ts: `pnpm pack` of every package, and SHA512SUMS naming each tarball. The hash of SHA512SUMS is the
 #        job's output `sums`; the tarballs and SHA512SUMS are uploaded as the artifact `tarballs` (kept for a day).
 #   stage    (environment: npm-release, id-token: write, contents: read) — installs nothing, checks out nothing, runs no script of the repository
-#     4. Downloads the artifact, checks SHA512SUMS against the output `sums` and the tarballs against SHA512SUMS, then
+#     4. Downloads the artifact, checks SHA512SUMS against the output `sums` and the tarballs against SHA512SUMS, checks that
+#        every package trusts this workflow (the token exchange of npm; nothing is staged unless all pass), then
 #        `npm stage publish` of exactly the tarballs SHA512SUMS names, with the dist-tag (OIDC, no token anywhere; provenance from
 #        this workflow). Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
 #        authentication (npm stage approve). The trusted-publisher configuration of every package allows staging only
@@ -33,7 +34,7 @@
 #
 # scripts/check-release.ts (a part of `pnpm run ci`) checks this file as a review aid, not as a barrier: dispatch only, the
 # guard first and nothing switching away from the release commit after it, id-token only in the job that stages — which has no
-# checkout, no pnpm and runs nothing but the hash checks and `npm stage publish`, and is the only job in `environment: npm-release` —
+# checkout, no pnpm and runs nothing but the hash checks, the trust check and `npm stage publish`, and is the only job in `environment: npm-release` —
 # the write token only in the release job's last
 # two steps, every action pinned by full SHA, no npm publish, no token, no cache, a GitHub Release only as a draft, no expression
 # inside a script.
@@ -143,6 +144,32 @@ jobs:
           cat SHA512SUMS
           # npm runs in an empty directory, so it finds no project npmrc; the tarballs are named by absolute path.
           cd "$RUNNER_TEMP/empty"
+          # Every package must trust this workflow before the first one is staged: a package without trust stops npm halfway, and a
+          # staged version can never be staged again. The same token exchange as npm's own; its answer (an npm token) is discarded.
+          failures=0
+          while read -r _ name; do
+            test "${name%-"$VERSION".tgz}" != "$name" || { echo "::error::$name is not a tarball of version $VERSION"; exit 1; }
+            package=$(tar -xzOf "$TARBALLS/$name" package/package.json < /dev/null | jq -r .name) || package=
+            [[ "$package" =~ ^(marmeon|create-marmeon|@marmeon/[a-z0-9-]+)$ ]] || { echo "::error::$name holds a package name that is not one of ours"; exit 1; }
+            # The credentials go through stdin (-H @-), never onto a command line.
+            token=$(curl -q --proto '=https' -sS --max-time 30 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r '.value // empty') || token=
+            status=no-id-token
+            if [[ -n "$token" ]]; then
+              echo "::add-mask::$token"
+              # npm counts a 2xx without a token in the body as a failure. The body goes straight into jq: of the token only "there is one" comes out, never a shell variable or a file.
+              exchange=$(curl -q --proto '=https' -sS --max-time 30 -X POST -H @- -o - -w '\n%{http_code}' "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${package/\//%2F}" <<< "Authorization: Bearer $token" | jq -Rrs '(split("\n") | last) as $code | .[:length - ($code | length) - 1] as $body | "\($code) \($body | try (fromjson | (.token | type == "string" and length > 0)) catch false)"') || exchange='failed false'
+              status=${exchange% *}
+              [[ "$status" =~ ^2[0-9][0-9]$ && "${exchange#* }" != true ]] && status="$status-without-token"
+            fi
+            [[ "$status" =~ ^2[0-9][0-9]$ ]] && continue
+            failures=$((failures + 1))
+            if [[ "$status" =~ ^(401|403|404)$ ]]; then
+              echo "::error::$package has no working trusted publisher for the environment npm-release (exchange: $status); nothing was staged: run npm trust github $package --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish, then Re-run failed jobs"
+            else
+              echo "::error::$package: could not ask the registry (exchange: $status); nothing was staged: Re-run failed jobs"
+            fi
+          done < "$TARBALLS/SHA512SUMS"
+          test "$failures" = 0 || exit 1
           while read -r _ name; do
             test "${name%-"$VERSION".tgz}" != "$name"
             npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null
