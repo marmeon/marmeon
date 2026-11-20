@@ -192,20 +192,25 @@ jobs:
           # Up to 60 requests of 10 seconds at most: the staging keeps the time the job has left.
           test "$SECONDS" -lt 300 || { echo "::error::the trust check took $SECONDS seconds; this attempt staged nothing: Re-run failed jobs"; exit 1; }
           # npm's --json puts an error's code on stdout and exits 1; npm itself never retries this POST. A transient error (the registry
-          # is busy or the network drops) is tried again, at most 3 times; a 409 means the registry holds this version already (an
-          # earlier attempt of this run uploaded it, or it was rejected or staged by someone else: pnpm release:verify tells before the
-          # approval); any other code stops the job.
+          # is busy or the network drops) is tried again, at most 3 times; a 409 means the registry holds this version already. It is
+          # skipped only where this run can have uploaded it: after an error of the same tarball that leaves the POST uncertain (a timeout,
+          # a reset, a 5xx: the answer may have been lost; not a 429, ENEEDAUTH or a refused connection) or in a re-run (GITHUB_RUN_ATTEMPT above 1, an earlier attempt may have staged it; pnpm release:verify tells before the approval).
+          # On the first try of a first attempt it cannot be this run's upload: the job stops, and with it the tag. Any other code stops
+          # the job.
           # Time: no attempt starts after 780 seconds. The packument read and the POST of one attempt take 310 seconds at most with a
           # fetch timeout of 60 (3 tries of 60 with waits of 10 and 60, then one POST of 60): 780 + 310 = 1090 seconds, plus 2 minutes for
           # the download and the setup, of the job's 25 minutes. The fetch timeout does not bound npm's ID-token request or the
           # signing (the token exchange is one POST of 60 seconds at most): if they overrun, the job limit cancels the job (CONTRIBUTING.md
           # routes that to a re-run).
+          run_attempt=${GITHUB_RUN_ATTEMPT:-1}
+          [[ "$run_attempt" =~ ^[0-9]{1,6}$ ]] || run_attempt=1
           delays=(15 45)
           skipped=0
           while read -r _ name; do
             test "${name%-"$VERSION".tgz}" != "$name"
             package=$(tar -xizOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r .name)
             attempt=1
+            uncertain=0
             while true; do
               test "$SECONDS" -lt 780 || { echo "::error::$package ran out of time; this attempt may have staged packages: Re-run failed jobs"; exit 1; }
               code=unreadable
@@ -222,12 +227,18 @@ jobs:
               status=
               if [[ "$code" =~ ^E([0-9]{3})$ ]]; then status=${BASH_REMATCH[1]}; fi
               if [[ "$status" == 409 ]]; then
-                echo "::warning::$package@$VERSION was staged before (the registry answered 409); skipped, pnpm release:verify shows whether it is this run's tarball"
-                skipped=$((skipped + 1))
-                break
+                if [[ "$uncertain" == 1 || "$run_attempt" -gt 1 ]]; then
+                  echo "::warning::$package@$VERSION was staged before (the registry answered 409); skipped, pnpm release:verify shows whether it is this run's tarball"
+                  skipped=$((skipped + 1))
+                  break
+                fi
+                echo "::error::$package@$VERSION is on the registry already: it was staged or rejected before this run, so it is not this run's upload; this run tags nothing, but do not re-run: a re-run skips it and tags v$VERSION; look at what is staged (CONTRIBUTING.md, When a run fails)"
+                exit 1
               fi
               [[ "$status" =~ ^(429|500|502|503|504)$ || "$code" =~ ^(ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EPIPE|ERR_SOCKET_TIMEOUT|ECONNECTIONTIMEOUT|EIDLETIMEOUT|ERESPONSETIMEOUT|ETRANSFERTIMEOUT|FETCH_ERROR|ENEEDAUTH)$ ]] || { echo "::error::$package is not confirmed as staged: the registry answered $code; this attempt may have staged packages"; exit 1; }
               test "$attempt" -lt 3 || { echo "::error::$package is not confirmed as staged after 3 attempts: the registry answered $code; this attempt may have staged packages: Re-run failed jobs"; exit 1; }
+              # The POST may have been processed (so a 409 after it is this run's own upload) only after these: not after a refusal, a missing login or no connection.
+              if [[ "$status" =~ ^(500|502|503|504)$ || "$code" =~ ^(ETIMEDOUT|ECONNRESET|EPIPE|ERR_SOCKET_TIMEOUT|ECONNECTIONTIMEOUT|EIDLETIMEOUT|ERESPONSETIMEOUT|ETRANSFERTIMEOUT|FETCH_ERROR)$ ]]; then uncertain=1; fi
               sleep "${delays[attempt - 1]}"
               attempt=$((attempt + 1))
             done

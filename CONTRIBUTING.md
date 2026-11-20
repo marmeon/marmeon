@@ -596,7 +596,7 @@ and the dist-tag (a release candidate: `main` only, above npm's `latest`). Then 
 of the repository or of a dependency, so the code that runs in the first job never meets the OIDC token. It downloads the artifact, checks `SHA512SUMS` against the output and every tarball
 against `SHA512SUMS`. Then it asks npm, for every package whose tarball `SHA512SUMS` names, whether the package trusts this workflow. It makes the token exchange that
 `npm stage publish` makes, with a fresh ID token per package. It first refuses a tarball whose `publishConfig` holds anything but `access: "public"` and `provenance: true`: npm copies every `publishConfig` key into its options, a registry or a proxy among them. As defence in depth it refuses the tarball shapes it knows to be read differently by `tar` and by npm: entries that are not plain files below `package/`, and more than one `package/package.json`. `npm stage publish` gets the registry (`--scope=@marmeon` also covers the unscoped packages), the proxies, `strict-ssl` and `cafile` as flags, which win over `publishConfig`, so a manifest cannot move where npm sends the token or the tarball. A `ca` from a manifest can only make TLS fail. If one package does not answer with success, the job stops before it stages anything. Only then it stages the tarballs with `npm stage publish` (trusted publishing, OIDC,
-no token in the repository; provenance) and prints `SHA512SUMS`. The step tries a transient registry error again, skips a version the registry already holds (409) with a warning, and `pnpm release:verify` must pass before the approval. The hashes show that the staged files are the ones the first job
+no token in the repository; provenance) and prints `SHA512SUMS`. The step tries a transient registry error again, skips a version the registry already holds (409) with a warning in a re-run (on the first attempt, a 409 on a tarball's first try stops the job; so does one after an error that left the upload unprocessed, such as a 429, `ENEEDAUTH` or a refused connection), and `pnpm release:verify` must pass before the approval. The hashes show that the staged files are the ones the first job
 packed, not that the first job packed what the release commit builds — step 3 closes that gap. The third job (`release`,
 `contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
 release, none per package) and drafts the GitHub Release with the version's changelog section as its notes (a prerelease for a release candidate).
@@ -705,7 +705,7 @@ and the rules of `main` — so that no branch from an unreviewed commit satisfie
   - *"is not confirmed as staged after 3 attempts"* (the registry answered 429, 500, 502, 503, 504, `ENEEDAUTH` or a connection error or timeout
     each time), *"ran out of time"*, or the job was cancelled by its time limit (the log ends without an `::error::`): use
     **"Re-run failed jobs"**, and **do not reject anything before it**. A rejected version answers 409 too, so the re-run would skip
-    it and `pnpm release:verify` would then fail. The re-run stages every tarball again; one that an earlier attempt staged prints a
+    it and `pnpm release:verify` would then fail. The re-run stages every tarball again; on a re-run a 409 is skipped (on the first attempt, one on a tarball's first try stops the job, and a 409 after a timeout, a reset connection, `FETCH_ERROR` or a 5xx answer of the same tarball is skipped), so one that an earlier attempt staged prints a
     `::warning::` ("was staged before", the registry answered 409) and is skipped, and a closing `::notice::` counts them. The job then
     ends green, so the `release` job tags `v<version>` and drafts the release before you verify: run `pnpm release:verify <commit>`
     as always. If it reports a rebuilt package that is not staged or a hash that differs, do not approve: reject everything staged,
@@ -714,7 +714,7 @@ and the rules of `main` — so that no branch from an unreviewed commit satisfie
     after the release commit (`internal` ones are not in the notes): merge the fix, or another such pull request, first. Its label
     decides the next version (a `feature` gives the next minor); a candidate uses `--rc`. The tag `v<version>` and that version's changelog section
     stay; the tag is protected.
-  - Any other stop (a 401, 403 or 404, an unknown or unreadable code): never re-run it. Reject whatever was staged on npmjs.com, then
+  - *"is on the registry already"* (a 409 in a first attempt that cannot be this run's own upload), a 401, 403 or 404, an unknown or unreadable code: never re-run it. A version the registry already holds cannot be this run's upload and this run tags nothing, but a re-run would skip the 409 and tag. Reject whatever was staged on npmjs.com, then
     run `pnpm release:prepare --replace` (a candidate: `--rc --replace`). It takes the
     untagged version the packages carry as rejected, removes its CHANGELOG sections and prepares the one after it (the next patch,
     or what the labels ask for if higher; a candidate: the next number) with the notes since the last tag. Merge that release pull
