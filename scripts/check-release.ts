@@ -3,7 +3,7 @@
  * published packages (and `workspace:*` between them), their changelogs (the top section is the version, the same in every package
  * after 0.1.2), `.github/workflows/release.yml` (read-only by default; the build job packs and hashes the tarballs after
  * `pack:check` without an OIDC token; `id-token: write` only in the job that stages them, which checks out and installs nothing and
- * verifies the hashes and every package's trusted publisher before `npm stage publish`; never `npm publish`, a plain `pnpm publish` or an npm token; a
+ * verifies the hashes and every package's trusted publisher before `npm stage publish`, which skips a version the registry answers 409 for and tries a transient error again; never `npm publish`, a plain `pnpm publish` or an npm token; a
  * GitHub Release only as a draft, and the draft is there; the dist-tag and the prerelease flag come from the release guard's outputs alone, a candidate is staged as `next` only), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
@@ -42,6 +42,9 @@ const PUBLISH_CONFIG_JQ = `[.name, (has("publishConfig") | not) or (.publishConf
  * `/-/npm/v1/oidc/token/exchange/package/`: this hint of its error line (what a maintainer runs, then what to click).
  */
 const TRUST_HINT = 'for the environment npm-release (exchange: $status); this attempt staged nothing: run npm trust github $package --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish, then Re-run failed jobs';
+
+/** The text of the skip warning and the notice of the staging loop, which the scan for `pnpm` ignores. */
+const VERIFY_HINT = 'pnpm release:verify';
 
 /**
  * The entries UPGRADING.md must keep, by release — the version of its section (`## Upgrading to 0.2.0 from 0.1.0` → `'0.2.0'`) to
@@ -550,6 +553,9 @@ export function checkWorkflow(repository: string): string[] {
     }
     if (stages) {
       if (!/runs-on:\s*ubuntu-latest/.test(body)) problems.push(`${where}: the job "${name}" must run on a GitHub-hosted runner (ubuntu-latest) — trusted publishing needs one`);
+      if (!/^ {4}timeout-minutes:\s*25\s*$/m.test(body)) {
+        problems.push(`${where}: the job "${name}" has "timeout-minutes: 25" — no attempt starts after 780 seconds and one takes 310 at most (3 tries of 60 and 2 waits of 10 and 60 for the packument, 60 for the POST): 780 + 310 s and 2 minutes of setup fit in 25 minutes with room for the signing`);
+      }
       // The OIDC token meets no code of the repository or of its dependencies: nothing is checked out, installed or built here.
       if (steps.some(checkoutOf)) problems.push(`${where}: the job "${name}" checks out the repository — it holds the OIDC token and stages the build job's tarballs, nothing else`);
       for (const step of steps) {
@@ -559,7 +565,7 @@ export function checkWorkflow(repository: string): string[] {
         }
         for (const script of runScripts(step)) {
           // The trust check names npm in exactly these places (the audience, the exchange path, the hint of its error); nothing else may.
-          const forbidden = joined(script).replace(/^\s*#.*$/gm, '').split('npm:registry.npmjs.org').join('').split('/-/npm/v1/oidc/token/exchange/package/').join('').split(TRUST_HINT).join('');
+          const forbidden = joined(script).replace(/^\s*#.*$/gm, '').split('npm:registry.npmjs.org').join('').split('/-/npm/v1/oidc/token/exchange/package/').join('').split(TRUST_HINT).join('').split(VERIFY_HINT).join('');
           if (/(?<![\w./$-])(?:pnpm|npx|yarn|corepack|bun|deno|node|git)\b|\bnpm\b(?!\s+stage\s+publish\b)/.test(forbidden)) {
             problems.push(`${where}: the job "${name}" runs "${script.trim().split('\n')[0]}" — it holds the OIDC token: no pnpm, node, git or install, only the hash checks, the trust check and npm stage publish`);
           }
@@ -628,11 +634,47 @@ export function checkWorkflow(repository: string): string[] {
         `test "$failures" = 0 || exit 1`,
         // Up to 60 requests of 10 seconds at most: the staging keeps the time the job has left.
         `test "$SECONDS" -lt 300 || { echo "::error::the trust check took $SECONDS seconds; this attempt staged nothing: Re-run failed jobs"; exit 1; }`,
+        // npm's --json prints an error's code on stdout; a transient one is tried again 3 times in all, a 409 is skipped only after an uncertain error of the same tarball or in a re-run, every other code stops. No attempt starts after 780 seconds; one takes 310 at most with the fetch timeout of 60, inside the job's 25 minutes.
+        'run_attempt=${GITHUB_RUN_ATTEMPT:-1}',
+        '[[ "$run_attempt" =~ ^[0-9]{1,6}$ ]] || run_attempt=1',
+        'delays=(15 45)',
+        'skipped=0',
         'while read -r _ name; do',
         'test "${name%-"$VERSION".tgz}" != "$name"',
+        'package=$(tar -xizOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r .name)',
+        'attempt=1',
+        'uncertain=0',
+        'while true; do',
+        `test "$SECONDS" -lt 780 || { echo "::error::$package ran out of time; this attempt may have staged packages: Re-run failed jobs"; exit 1; }`,
+        'code=unreadable',
         // Flags win over the manifest's publishConfig: they pin the registry (--scope: an unscoped package takes its registry from the scope too), the proxies, strict-ssl and cafile; a `ca` from a manifest can only make TLS fail, so it is not pinned.
-        'npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null < /dev/null',
+        'if out=$(npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null --fetch-timeout=60000 --json < /dev/null); then',
+        `id=$(jq -r --arg package "$package" '.[$package].stageId | strings' <<< "$out" 2> /dev/null) || id=`,
+        'if [[ "$id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then echo "+ $package@$VERSION (staged with id $id)"; break; fi',
+        'else',
+        `code=$(jq -r '.error.code | strings' <<< "$out" 2> /dev/null) || code=unreadable`,
+        '[[ "$code" =~ ^[A-Z][A-Z0-9_]{1,30}$ ]] || code=unreadable',
+        'fi',
+        'status=',
+        'if [[ "$code" =~ ^E([0-9]{3})$ ]]; then status=${BASH_REMATCH[1]}; fi',
+        'if [[ "$status" == 409 ]]; then',
+        'if [[ "$uncertain" == 1 || "$run_attempt" -gt 1 ]]; then',
+        `echo "::warning::$package@$VERSION was staged before (the registry answered 409); skipped, ${VERIFY_HINT} shows whether it is this run's tarball"`,
+        'skipped=$((skipped + 1))',
+        'break',
+        'fi',
+        `echo "::error::$package@$VERSION is on the registry already: it was staged or rejected before this run, so it is not this run's upload; this run tags nothing, but do not re-run: a re-run skips it and tags v$VERSION; look at what is staged (CONTRIBUTING.md, When a run fails)"`,
+        'exit 1',
+        'fi',
+        `[[ "$status" =~ ^(429|500|502|503|504)$ || "$code" =~ ^(ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EPIPE|ERR_SOCKET_TIMEOUT|ECONNECTIONTIMEOUT|EIDLETIMEOUT|ERESPONSETIMEOUT|ETRANSFERTIMEOUT|FETCH_ERROR|ENEEDAUTH)$ ]] || { echo "::error::$package is not confirmed as staged: the registry answered $code; this attempt may have staged packages"; exit 1; }`,
+        `test "$attempt" -lt 3 || { echo "::error::$package is not confirmed as staged after 3 attempts: the registry answered $code; this attempt may have staged packages: Re-run failed jobs"; exit 1; }`,
+        // The POST may have been processed (so a 409 after it is this run's own upload) only after these: not after a refusal, a missing login or no connection.
+        'if [[ "$status" =~ ^(500|502|503|504)$ || "$code" =~ ^(ETIMEDOUT|ECONNRESET|EPIPE|ERR_SOCKET_TIMEOUT|ECONNECTIONTIMEOUT|EIDLETIMEOUT|ERESPONSETIMEOUT|ETRANSFERTIMEOUT|FETCH_ERROR)$ ]]; then uncertain=1; fi',
+        'sleep "${delays[attempt - 1]}"',
+        'attempt=$((attempt + 1))',
+        'done',
         'done < "$TARBALLS/SHA512SUMS"',
+        `test "$skipped" = 0 || echo "::notice::$skipped package(s) were staged before this attempt and skipped: ${VERIFY_HINT} must pass before you approve"`,
       ];
       if (stage !== undefined && linesOf(stage).join('\n') !== wanted.join('\n')) {
         problems.push(`${where}: the job "${name}" stages with exactly ${wanted.map((line) => `\`${line}\``).join(', ')} — the hash of SHA512SUMS and of every tarball and the trusted publisher of every package are checked before the first npm stage publish, and only the files SHA512SUMS names are staged with the build job's dist-tag`);
