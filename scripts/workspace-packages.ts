@@ -805,6 +805,8 @@ export async function checkWorkspacePackages(smoke: WorkspaceApp, installFlags: 
     } catch (error) {
       named = (error as Error).message;
     }
+    // the named import is wrong on purpose: gone before `marmeon build` type checks the app
+    for (const file of ['named.ts', 'tsconfig.probe.json', 'tsconfig.named.json']) rmSync(join(app, 'modules/smoke', file), { force: true });
     const codes = [...named.matchAll(/error (TS\d+)/g)].map((match) => match[1]);
     if (codes.join() !== 'TS2305') throw new SmokeError(`a named import of virtual:marmeon/test-packages should be exactly one TS2305, tsc said:\n${named}`);
   };
