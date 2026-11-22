@@ -113,6 +113,11 @@ describe('the core solutions', () => {
       const [solution] = await solutions.find(error);
       expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'docs/package-development.md#building-and-publishing' });
       expect(solution?.text).toContain('node_modules/shipped/index.ts');
+      expect(solution?.text).toContain('A copy of the package under node_modules');
+      for (const cause of ['published with a TypeScript entry', 'pack with pnpm', 'copied with its workspace manifest', 'still has an @marmeon/source export']) {
+        expect(solution?.text).toContain(cause);
+      }
+      expect(solution?.text).not.toContain("outside the framework's monorepo");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
