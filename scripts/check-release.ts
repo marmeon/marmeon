@@ -3,7 +3,7 @@
  * published packages (and `workspace:*` between them), their changelogs (the top section is the version, the same in every package
  * after 0.1.2), `.github/workflows/release.yml` (read-only by default; the build job packs and hashes the tarballs after
  * `pack:check` without an OIDC token; `id-token: write` only in the job that stages them, which checks out and installs nothing and
- * verifies the hashes before `npm stage publish`; never `npm publish`, a plain `pnpm publish` or an npm token; a
+ * verifies the hashes and every package's trusted publisher before `npm stage publish`; never `npm publish`, a plain `pnpm publish` or an npm token; a
  * GitHub Release only as a draft, and the draft is there; the dist-tag and the prerelease flag come from the release guard's outputs alone, a candidate is staged as `next` only), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
@@ -20,6 +20,28 @@ import { trustScript, TRUST_SCRIPT, ENVIRONMENT } from './npm-trust.ts';
 import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseReleasedPackages, parseVersion, RELEASE_CONFIG, RELEASED_PACKAGES, releaseConfigCurrent, releaseOf, releaseSection, upgradesFrom } from './release-rules.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+
+/**
+ * The names a published package may have, as the stage job's trust check tests them (a bash pattern) and as `checkPackageNames`
+ * holds every framework package to: a name outside it would stop the release run, after the build job.
+ */
+export const PACKAGE_NAME_PATTERN = '^(marmeon|create-marmeon|@marmeon/[a-z0-9-]+)$';
+export const PACKAGE_NAME = new RegExp(PACKAGE_NAME_PATTERN);
+
+/**
+ * What a published package's `publishConfig` may hold: npm copies every key of it into its own options before the token exchange
+ * (`registry`, `https-proxy`, `@scope:registry` …), so the stage job refuses a tarball that carries anything else. `pnpm pack` moves
+ * `publishConfig.exports` to the top level, so a packed manifest holds these keys only.
+ */
+export const PUBLISH_CONFIG: Readonly<Record<string, string | boolean>> = { access: 'public', provenance: true };
+/** The jq program of the stage job that reads a manifest: `<name> <true|false>`, true when `publishConfig` is missing or within {@link PUBLISH_CONFIG}. */
+const PUBLISH_CONFIG_JQ = `[.name, (has("publishConfig") | not) or (.publishConfig | type == "object" and (to_entries | all(${Object.entries(PUBLISH_CONFIG).map(([key, value]) => `.key == ${JSON.stringify(key)} and .value == ${JSON.stringify(value)}`).join(' or ')})))] | join(" ")`;
+
+/**
+ * What the stage job's trust check may say with `npm`, besides the audience `npm:registry.npmjs.org` and the exchange path
+ * `/-/npm/v1/oidc/token/exchange/package/`: this hint of its error line (what a maintainer runs, then what to click).
+ */
+const TRUST_HINT = 'for the environment npm-release (exchange: $status); this attempt staged nothing: run npm trust github $package --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish, then Re-run failed jobs';
 
 /**
  * The entries UPGRADING.md must keep, by release — the version of its section (`## Upgrading to 0.2.0 from 0.1.0` → `'0.2.0'`) to
@@ -203,6 +225,24 @@ export function slug(heading: string): string {
 
 /** Up to this version the changelog sections were written per package and differ; from the next version on every package has the same one. */
 export const CHANGESETS_UNTIL = '0.1.2';
+
+/** The name of every framework package fits what the stage job's trust check accepts: else the run stops after the build. */
+export function checkPackageNames(packages: readonly FrameworkPackage[]): string[] {
+  return packages.filter((pkg) => !PACKAGE_NAME.test(pkg.name)).map((pkg) => `${pkg.name}: not a name the stage job accepts (${PACKAGE_NAME_PATTERN}) — it would stop the release run after the build; rename the package or widen PACKAGE_NAME_PATTERN in scripts/check-release.ts and the stage step together`);
+}
+
+/** The `publishConfig` of every framework package (as `pnpm pack` leaves it, without `exports`) is within {@link PUBLISH_CONFIG}: else the stage job refuses the tarball. */
+export function checkPublishConfig(packages: readonly FrameworkPackage[]): string[] {
+  const problems: string[] = [];
+  for (const pkg of packages) {
+    const config = (pkg.manifest as Record<string, unknown>).publishConfig;
+    if (config === undefined) continue;
+    const packed = typeof config === 'object' && config !== null && !Array.isArray(config) ? Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'exports')) : config;
+    const within = typeof packed === 'object' && packed !== null && !Array.isArray(packed) && Object.entries(packed).every(([key, value]) => Object.hasOwn(PUBLISH_CONFIG, key) && PUBLISH_CONFIG[key] === value);
+    if (!within) problems.push(`${pkg.name}: publishConfig holds more than ${JSON.stringify(PUBLISH_CONFIG)} (besides exports) — npm copies every key into its options, so the stage job refuses the tarball; keep other settings out of the manifest`);
+  }
+  return problems;
+}
 
 /** The dependency fields in which a published package names another one only as `workspace:*`. */
 const DEPENDENCY_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
@@ -518,8 +558,10 @@ export function checkWorkflow(repository: string): string[] {
           problems.push(`${where}: the job "${name}" uses ${action} — besides the download of the artifact only actions/setup-node: this job holds the OIDC token`);
         }
         for (const script of runScripts(step)) {
-          if (/(?<![\w./$-])(?:pnpm|npx|yarn|corepack|bun|deno|node|git)\b|\bnpm\b(?!\s+stage\s+publish\b)/.test(joined(script).replace(/^\s*#.*$/gm, ''))) {
-            problems.push(`${where}: the job "${name}" runs "${script.trim().split('\n')[0]}" — it holds the OIDC token: no pnpm, node, git or install, only the hash checks and npm stage publish`);
+          // The trust check names npm in exactly these places (the audience, the exchange path, the hint of its error); nothing else may.
+          const forbidden = joined(script).replace(/^\s*#.*$/gm, '').split('npm:registry.npmjs.org').join('').split('/-/npm/v1/oidc/token/exchange/package/').join('').split(TRUST_HINT).join('');
+          if (/(?<![\w./$-])(?:pnpm|npx|yarn|corepack|bun|deno|node|git)\b|\bnpm\b(?!\s+stage\s+publish\b)/.test(forbidden)) {
+            problems.push(`${where}: the job "${name}" runs "${script.trim().split('\n')[0]}" — it holds the OIDC token: no pnpm, node, git or install, only the hash checks, the trust check and npm stage publish`);
           }
         }
       }
@@ -535,11 +577,15 @@ export function checkWorkflow(repository: string): string[] {
       }
       const wanted = [
         'set -o pipefail',
+        // The build job's output: anything but a bare hash would reach the log through the hash check's own messages.
+        `[[ "$SUMS" =~ ^[0-9a-f]{128}$ ]] || { echo "::error::the build job's hash of SHA512SUMS is not a SHA-512 hash; this attempt staged nothing"; exit 1; }`,
         // A candidate is staged under `next` and nothing else; every other version under `latest` or `latest-<line>`, never `next`.
         'if [[ "$VERSION" == *-rc.* ]]; then [[ "$DIST_TAG" == next ]] || { echo "::error::a release candidate goes out under next only"; exit 1; }; else [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]] || { echo "::error::a release goes out under latest or latest-<line>, never next"; exit 1; }; fi',
         'mkdir "$RUNNER_TEMP/empty"',
         'cd "$TARBALLS"',
         "printf '%s  SHA512SUMS\\n' \"$SUMS\" | sha512sum --check --strict -",
+        // SHA512SUMS is the build job's file: before a command prints a name from it, every line must be a hash and a plain tarball name.
+        `! grep -qvxE '[0-9a-f]{128}  [a-z0-9.-]+\\.tgz' SHA512SUMS || { echo "::error::SHA512SUMS has a line that is not a hash and a tarball name"; exit 1; }`,
         'sha512sum --check --strict SHA512SUMS',
         // Nothing but SHA512SUMS and the files it names, dotfiles and directories included: npm would read a planted .npmrc.
         "expected=$( { echo ./SHA512SUMS; awk '{ print \"./\" $2 }' SHA512SUMS; } | sort )",
@@ -547,13 +593,49 @@ export function checkWorkflow(repository: string): string[] {
         'test "$expected" = "$found"',
         'cat SHA512SUMS',
         'cd "$RUNNER_TEMP/empty"',
+        // Every package must trust this workflow before the first one is staged: the token exchange of npm, one fresh ID token each; its answer is discarded.
+        'failures=0',
+        'while read -r _ name; do',
+        `test "\${name%-"$VERSION".tgz}" != "$name" || { echo "::error::$name is not a tarball of version $VERSION"; exit 1; }`,
+        // Defence in depth: refuse the tarball shapes known to make tar and npm read different manifests (a second package.json under another spelling, a tar that reads past zero blocks so that a second package.json behind one is seen, entries that are not plain files).
+        `members=$(tar -tizf "$TARBALLS/$name" < /dev/null 2> /dev/null) || members=`,
+        `kinds=$(tar -tvizf "$TARBALLS/$name" < /dev/null 2> /dev/null | cut -c1) || kinds=`,
+        `if ! { [[ -n "$members" && -n "$kinds" && "$(grep -cxF package/package.json <<< "$members")" == 1 ]] && ! grep -qvE '^package/' <<< "$members" && ! grep -qE '//|(^|/)\\.\\.?(/|$)' <<< "$members" && ! grep -qvx -- - <<< "$kinds"; }; then`,
+        `echo "::error::$name is not a tarball the stage job accepts; this attempt staged nothing"`,
+        'exit 1',
+        'fi',
+        `info=$(tar -xizOf "$TARBALLS/$name" package/package.json < /dev/null 2> /dev/null | jq -r '${PUBLISH_CONFIG_JQ}') || info=`,
+        'package=${info% *}',
+        `[[ "$package" =~ ${PACKAGE_NAME_PATTERN} ]] || { echo "::error::$name holds a package name that is not one of ours"; exit 1; }`,
+        `[[ "\${info##* }" == true ]] || { echo "::error::$package has a publishConfig the stage job does not accept; this attempt staged nothing"; exit 1; }`,
+        // The credentials go through stdin (-H @-), never onto a command line.
+        `token=$(curl -q --proto '=https' -sS --max-time 10 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r '.value // empty') || token=`,
+        'status=no-id-token',
+        `if [[ -n "$token" ]]; then`,
+        // npm counts a 2xx without a token in the body as a failure. The body goes straight into jq: of the token only "there is one" comes out, never a shell variable or a file.
+        `exchange=$(curl -q --proto '=https' -sS --max-time 10 -X POST -H @- -o - -w '\\n%{http_code}' "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/\${package/\\//%2F}" <<< "Authorization: Bearer $token" | jq -Rrs '(split("\\n") | last) as $code | .[:length - ($code | length) - 1] as $body | "\\($code) \\($body | try (fromjson | (.token | type == "string" and length > 0)) catch false)"') || exchange='failed false'`,
+        'status=${exchange% *}',
+        `[[ "$status" =~ ^2[0-9][0-9]$ && "\${exchange#* }" != true ]] && status="$status-without-token"`,
+        'fi',
+        `[[ "$status" =~ ^2[0-9][0-9]$ ]] && continue`,
+        'failures=$((failures + 1))',
+        `if [[ "$status" =~ ^(401|403|404)$ ]]; then`,
+        `echo "::error::$package has no working trusted publisher for the environment npm-release (exchange: $status); this attempt staged nothing: run npm trust github $package --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish, then Re-run failed jobs"`,
+        'else',
+        `echo "::error::$package: could not ask the registry (exchange: $status); this attempt staged nothing: Re-run failed jobs"`,
+        'fi',
+        `done < "$TARBALLS/SHA512SUMS"`,
+        `test "$failures" = 0 || exit 1`,
+        // Up to 60 requests of 10 seconds at most: the staging keeps the time the job has left.
+        `test "$SECONDS" -lt 300 || { echo "::error::the trust check took $SECONDS seconds; this attempt staged nothing: Re-run failed jobs"; exit 1; }`,
         'while read -r _ name; do',
         'test "${name%-"$VERSION".tgz}" != "$name"',
-        'npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null',
+        // Flags win over the manifest's publishConfig: they pin the registry (--scope: an unscoped package takes its registry from the scope too), the proxies, strict-ssl and cafile; a `ca` from a manifest can only make TLS fail, so it is not pinned.
+        'npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null < /dev/null',
         'done < "$TARBALLS/SHA512SUMS"',
       ];
       if (stage !== undefined && linesOf(stage).join('\n') !== wanted.join('\n')) {
-        problems.push(`${where}: the job "${name}" stages with exactly ${wanted.map((line) => `\`${line}\``).join(', ')} — the hash of SHA512SUMS and of every tarball is checked before the first npm stage publish, and only the files SHA512SUMS names are staged with the build job's dist-tag`);
+        problems.push(`${where}: the job "${name}" stages with exactly ${wanted.map((line) => `\`${line}\``).join(', ')} — the hash of SHA512SUMS and of every tarball and the trusted publisher of every package are checked before the first npm stage publish, and only the files SHA512SUMS names are staged with the build job's dist-tag`);
       }
       if (stage !== undefined && (!env(stage, 'SUMS', needs('sums')) || !env(stage, 'VERSION', needs('version')) || !env(stage, 'DIST_TAG', needs('dist-tag')) || !/^\s*TARBALLS:\s*\$\{\{\s*runner\.temp\s*\}\}\/tarballs\s*$/m.test(stage))) {
         problems.push(`${where}: the job "${name}" takes SUMS, VERSION and DIST_TAG of the staging from the build job's outputs (${needs('sums')}, .version, .dist-tag)`);
@@ -1317,6 +1399,8 @@ export function check(repository: string = root): string[] {
   const packages = frameworkPackages(repository);
   return [
     ...checkVersion(repository, packages),
+    ...checkPackageNames(packages),
+    ...checkPublishConfig(packages),
     ...checkChangelogs(repository, packages),
     ...checkWorkflow(repository),
     ...checkCiWorkflow(repository),

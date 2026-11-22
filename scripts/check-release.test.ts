@@ -1,12 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { upgradeGuide } from '../packages/cli/src/framework/upgrade-guide.ts';
 import { parseVersion } from '../packages/cli/src/framework/versions.ts';
 import { frameworkPackages } from './packages.ts';
-import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkScorecardWorkflow, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, packagesNewSinceLastRelease, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkPackageNames, checkPublishConfig, checkChangelogs, checkCodeqlWorkflow, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkScorecardWorkflow, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, packagesNewSinceLastRelease, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -299,6 +299,44 @@ describe('checkVersion', () => {
   });
 });
 
+describe('checkPackageNames — the names the stage job accepts', () => {
+  const problemsOf = (directory: string) => checkPackageNames(frameworkPackages(directory));
+
+  it('passes the repository and the unscoped names', () => {
+    expectProblems(checkPackageNames(frameworkPackages(root)), []);
+    expectProblems(problemsOf(repositoryOfPackages('0.1.2', { 'packages/cli/package.json': manifest('marmeon', '0.1.2'), 'packages/create/package.json': manifest('create-marmeon', '0.1.2') })), []);
+  });
+
+  it('refuses a published package the stage job would stop at, and ignores a private one', () => {
+    for (const name of ['@marmeon/Upper', '@marmeon/with_underscore', '@marmeon/a/b', '@other/x', 'marmeon-extra']) {
+      const directory = repositoryOfPackages('0.1.2', { 'packages/odd/package.json': manifest(name, '0.1.2') });
+      expect(problemsOf(directory).join('\n'), name).toContain(`${name}: not a name the stage job accepts`);
+    }
+    expectProblems(problemsOf(repositoryOfPackages('0.1.2', { 'packages/odd/package.json': manifest('Odd Name', '0.1.2', { private: true }) })), []);
+  });
+});
+
+describe('checkPublishConfig — the manifests the stage job accepts', () => {
+  const problemsOf = (config: unknown) => checkPublishConfig(frameworkPackages(repositoryOfPackages('0.1.2', { 'packages/odd/package.json': manifest('@marmeon/odd', '0.1.2', config === undefined ? {} : { publishConfig: config }) })));
+
+  it('passes the repository, and the source shape with exports', () => {
+    expectProblems(checkPublishConfig(frameworkPackages(root)), []);
+    expectProblems(problemsOf({ access: 'public', provenance: true, exports: { '.': './dist/index.js' } }), []);
+    expectProblems(problemsOf(undefined), []);
+  });
+
+  it('refuses an extra key, another value and a publishConfig that is no object', () => {
+    for (const config of [{ access: 'public', provenance: true, registry: 'https://registry.example' }, { 'https-proxy': 'x' }, { access: 'restricted' }, { provenance: false }, 'x', null, []]) {
+      expect(problemsOf(config).join('\n'), JSON.stringify(config)).toContain('@marmeon/odd: publishConfig holds more than');
+    }
+  });
+
+  it('runs inside check()', () => {
+    const directory = repositoryOfPackages('0.1.2', { 'packages/odd/package.json': manifest('@marmeon/odd', '0.1.2', { publishConfig: { registry: 'https://registry.example' } }) });
+    expect(check(directory).join('\n')).toContain('@marmeon/odd: publishConfig holds more than');
+  });
+});
+
 describe('checkChangelogs', () => {
   const problemsOf = (directory: string) => checkChangelogs(directory, frameworkPackages(directory));
   const same = (version: string, body = '- A change by @max in https://example.test/pull/1') => ({
@@ -379,7 +417,60 @@ describe('check', () => {
     });
     expect(check(directory)).toContain('0.2.0 is a breaking release — UPGRADING.md needs its section "## Upgrading to 0.2.0 from <a 0.1.x version>"');
   });
+
+  it('holds every published package to the names the stage job accepts', () => {
+    const directory = repositoryOfPackages('0.1.2', { 'packages/odd/package.json': manifest('@marmeon/Upper', '0.1.2') });
+    expect(check(directory).join('\n')).toContain('@marmeon/Upper: not a name the stage job accepts');
+  });
 });
+
+/** Builds the crafted tarballs of the stage job's tests: `make.py <directory>` writes `<case>.tgz` files. */
+const CRAFT_PYTHON = `
+import gzip, io, json, sys, tarfile
+out = sys.argv[1]
+GOOD = json.dumps({"name": "marmeon", "version": "1.0.0"}).encode()
+EVIL = json.dumps({"name": "marmeon", "version": "1.0.0", "publishConfig": {"registry": "https://evil.example/"}}).encode()
+def add(tar, name, data, **attributes):
+    info = tarfile.TarInfo(name)
+    info.size = len(data)
+    for key, value in attributes.items():
+        setattr(info, key, value)
+    tar.addfile(info, io.BytesIO(data))
+def build(extra, format=tarfile.GNU_FORMAT):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode='w', format=format) as tar:
+        add(tar, 'package/package.json', GOOD)
+        extra(tar)
+    return buffer.getvalue()
+def pax(tar):
+    info = tarfile.TarInfo('package/README.md')
+    info.size = 1
+    info.pax_headers = {'path': 'x/package.json'}
+    tar.addfile(info, io.BytesIO(b'x'))
+cases = {
+    'plain': lambda tar: add(tar, 'package/index.js', b'x'),
+    'other-dir': lambda tar: add(tar, 'x/package.json', EVIL),
+    'upper': lambda tar: add(tar, 'PACKAGE/package.json', EVIL),
+    'dot': lambda tar: add(tar, './package.json', EVIL),
+    'long': lambda tar: add(tar, 'x' * 120 + '/package.json', EVIL),
+    'twice': lambda tar: add(tar, 'package/package.json', EVIL),
+    'doubleslash': lambda tar: add(tar, 'package//package.json', EVIL),
+    'dotdot': lambda tar: add(tar, 'package/../x/package.json', EVIL),
+    'symlink': lambda tar: add(tar, 'package/link', b'', type=tarfile.SYMTYPE, linkname='/etc/passwd'),
+}
+for name, extra in cases.items():
+    open(out + '/' + name + '.tgz', 'wb').write(gzip.compress(build(extra)))
+open(out + '/pax.tgz', 'wb').write(gzip.compress(build(pax, tarfile.PAX_FORMAT)))
+# A zero block ends the archive for GNU tar (without -i); node-tar reads on.
+first = io.BytesIO()
+with tarfile.open(fileobj=first, mode='w', format=tarfile.GNU_FORMAT) as tar:
+    add(tar, 'package/package.json', GOOD)
+    end = tar.offset
+second = io.BytesIO()
+with tarfile.open(fileobj=second, mode='w', format=tarfile.GNU_FORMAT) as tar:
+    add(tar, 'x/package.json', EVIL)
+open(out + '/zeroblock.tgz', 'wb').write(gzip.compress(first.getvalue()[:end] + b'\\0' * 512 + second.getvalue()))
+`;
 
 describe('checkWorkflow — the release run', () => {
   const real = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
@@ -829,6 +920,37 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated('          cat SHA512SUMS\n', '', 'stage'))).toContain(wanted);
     });
 
+    it('wants the trust check of every package after the hash checks and before the first npm stage publish', () => {
+      const start = real.indexOf('          # Every package must trust this workflow');
+      const lastLine = '          test "$failures" = 0 || exit 1\n';
+      const end = real.indexOf(lastLine) + lastLine.length;
+      expect(start).toBeGreaterThan(0);
+      const check = real.slice(start, end);
+      const without = mutated(check, '', 'stage');
+      expect(problemsOf(without)).toContain('trusted publisher of every package are checked before the first npm stage publish');
+      expect(problemsOf(without.replace('          done < "$TARBALLS/SHA512SUMS"\n', `          done < "$TARBALLS/SHA512SUMS"\n${check}`))).toContain(wanted);
+      const hashCheck = '          printf \'%s  SHA512SUMS\\n\' "$SUMS" | sha512sum --check --strict -\n';
+      expect(problemsOf(without.replace(hashCheck, `${check}${hashCheck}`))).toContain(wanted);
+      expect(problemsOf(mutated(lastLine, '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' --max-time 10 -X POST', ' --max-time 10 -x http://proxy.example -X POST', 'stage'))).toContain(wanted);
+      for (const flag of [' --registry=https://registry.npmjs.org/', ' --@marmeon:registry=https://registry.npmjs.org/', ' --scope=@marmeon', ' --strict-ssl=true', ' --proxy=null', ' --https-proxy=null', ' --cafile=null']) {
+        expect(problemsOf(mutated(flag, '', 'stage')), flag).toContain(wanted);
+      }
+      expect(problemsOf(mutated('tar -tizf', 'tar -tzf', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('tar -xizOf', 'tar -xzOf', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated("| cut -c1) || kinds=\n", ") || kinds=\n", 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' -X POST -H @-', ' -X POST -H "Authorization: Bearer $token"', 'stage'))).toContain(wanted);
+    });
+
+    it('refuses every other npm call, also inside the trust check', () => {
+      const cat = '          cat SHA512SUMS\n';
+      for (const line of ['npm view marmeon version', 'npm whoami', 'npm trust list marmeon', 'echo npm:registry.npmjs.org.evil | npm ping']) {
+        const problems = problemsOf(mutated(cat, `${cat}          ${line}\n`, 'stage'));
+        expect(problems, line).toContain(wanted);
+        expect(problems, line).toContain('it holds the OIDC token: no pnpm, node, git or install');
+      }
+    });
+
     it('refuses any file in the artifact besides SHA512SUMS and the tarballs it names — npm would read a planted .npmrc', () => {
       for (const line of ['          expected=', '          found=', '          test "$expected" = "$found"']) {
         const start = real.indexOf(line);
@@ -902,6 +1024,368 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated('VERSION: ${{ needs.build.outputs.version }}', 'VERSION: 1.0.0', 'stage'))).toContain(takes);
       expect(problemsOf(mutated('DIST_TAG: ${{ needs.build.outputs.dist-tag }}', 'DIST_TAG: latest', 'stage'))).toContain(takes);
       expect(problemsOf(mutated('TARBALLS: ${{ runner.temp }}/tarballs', 'TARBALLS: /tmp', 'stage'))).toContain(takes);
+    });
+  });
+
+  describe('the shipped trust check of the staging job', () => {
+    const script = runScripts(real.slice(cutStage, cut)).at(-1)!;
+    const systemTar = spawnSync('which', ['tar'], { encoding: 'utf8' }).stdout.trim();
+    const gnuTar = spawnSync('tar', ['--version'], { encoding: 'utf8' }).stdout.includes('GNU tar');
+    const hasTools = ['jq', 'tar', 'sha512sum'].every((tool) => spawnSync(tool, ['--version']).status === 0);
+    const IDENTITY = 'fake-github-id-token';
+    const EXCHANGE_BODY = 'npm_fake-exchange-body';
+
+    /**
+     * A stand-in for curl that answers like GitHub's token endpoint and npm's exchange, and logs every call. A header sent with
+     * `-H @-` is read from stdin and logged apart from the arguments. `FAIL` lists `<escaped name>=<code>` (`exit` = curl fails).
+     */
+    const curlStandIn = [
+      '#!/bin/bash',
+      'echo "curl $*" >> "$LOG"',
+      'out=; stdin=; for ((i = 1; i <= $#; i++)); do if [[ "${!i}" == -o ]]; then j=$((i + 1)); out=${!j}; fi; if [[ "${!i}" == @- ]]; then stdin=1; fi; done',
+      '[[ -n "$stdin" ]] && echo "stdin $(cat)" >> "$LOG"',
+      'url=${!#}',
+      'case "$url" in',
+      `  *audience=npm:registry.npmjs.org) [[ -n "$NO_ID_TOKEN" ]] && exit 22; if [[ -n "$ID_BODY" ]]; then echo "$ID_BODY"; else echo '{"value":"${IDENTITY}"}'; fi ;;`,
+      '  */oidc/token/exchange/package/*)',
+      '    code=200; for entry in $FAIL; do [[ "$url" == */package/"${entry%%=*}" ]] && code=${entry#*=}; done',
+      '    [[ "$code" == exit ]] && exit 7',
+      `    body=\${EXCHANGE_ANSWER:-'{"token":"${EXCHANGE_BODY}"}'}`,
+      '    if [[ -n "$out" && "$out" != - ]]; then echo "$body" > "$out"; else echo "$body"; fi',
+      '    printf \'\\n%s\' "$code" ;;',
+      '  *) exit 22 ;;',
+      'esac',
+      '',
+    ].join('\n');
+
+    interface Options {
+      /** `<escaped name>=<code>`: the exchange answers `<code>` (`exit`: curl fails) instead of 200. */
+      fail?: string[];
+      /** The ID-token request fails (curl exits non-zero). */
+      noIdToken?: boolean;
+      /** The ID-token request answers this with exit 0. */
+      idBody?: string;
+      /** The body of the exchange answer (default: a JSON object with a token). */
+      answer?: string;
+      /** The first tarball is this file (named marmeon-1.0.0.tgz), whatever the manifest says. */
+      rawTarball?: string;
+      /** The first tarball has no package/package.json. */
+      noManifest?: boolean;
+      /** The text of the first tarball's package/package.json instead of the manifest. */
+      manifestText?: string;
+      /** The first tarball is stored under this file name (the manifest inside is the package's). */
+      fileName?: string;
+      /** SHA512SUMS as written by sha512sum, changed (its hash is the one the step is given). */
+      rewriteSums?: (sums: string) => string;
+      /** The `publishConfig` of the first tarball's manifest (absent when undefined). */
+      publishConfig?: unknown;
+      /** Appended to the hash the step gets as `$SUMS`. */
+      sumsSuffix?: string;
+      /** The value `$SECONDS` has when the script starts: a slow job. */
+      seconds?: number;
+    }
+
+    /** Runs the step's script on tarballs of the packages; a package `[name, version]` has a tarball named after that version. */
+    function stage(packages: Array<string | [string, string]>, options: Options = {}) {
+      const directory = tempDir('marmeon-stage-trust-');
+      const tarballs = join(directory, 'tarballs');
+      const bin = join(directory, 'bin');
+      mkdirSync(tarballs);
+      mkdirSync(bin);
+      const names: string[] = [];
+      for (const [index, entry] of packages.entries()) {
+        const [name, version] = typeof entry === 'string' ? [entry, '1.0.0'] : entry;
+        const source = join(directory, `source-${index}`);
+        mkdirSync(join(source, 'package'), { recursive: true });
+        if (options.noManifest && index === 0) writeFileSync(join(source, 'package/README.md'), 'no manifest');
+        if (options.manifestText !== undefined && index === 0) writeFileSync(join(source, 'package/package.json'), options.manifestText);
+        else if (!(options.noManifest && index === 0)) writeFileSync(join(source, 'package/package.json'), JSON.stringify({ name, version, ...(index === 0 && options.publishConfig !== undefined ? { publishConfig: options.publishConfig } : {}) }));
+        const tarball = options.fileName !== undefined && index === 0 ? options.fileName : `${name.replaceAll('@', '').replaceAll('/', '-').toLowerCase()}-${version}.tgz`;
+        if (options.rawTarball !== undefined && index === 0) copyFileSync(options.rawTarball, join(tarballs, tarball));
+        else expect(spawnSync('tar', ['-czf', join(tarballs, tarball), '-C', source, options.noManifest && index === 0 ? 'package/README.md' : 'package/package.json']).status).toBe(0);
+        names.push(tarball);
+      }
+      const sums = (options.rewriteSums ?? ((text: string) => text))(spawnSync('sha512sum', names, { cwd: tarballs, encoding: 'utf8' }).stdout);
+      writeFileSync(join(tarballs, 'SHA512SUMS'), sums);
+      const log = join(directory, 'calls.log');
+      writeFileSync(log, '');
+      writeFileSync(join(bin, 'curl'), curlStandIn, { mode: 0o755 });
+      if (!gnuTar) {
+        // bsdtar has no -i: the stand-in drops it, so a macOS run exercises the step with the same listing and extraction.
+        writeFileSync(join(bin, 'tar'), `#!/bin/bash\nargs=("$@")\ncase "$1" in -tizf) args[0]=-tzf ;; -tvizf) args[0]=-tvzf ;; -xizOf) args[0]=-xzOf ;; esac\nexec ${systemTar} "\${args[@]}"\n`, { mode: 0o755 });
+      }
+      writeFileSync(join(bin, 'npm'), '#!/bin/bash\necho "npm $*" >> "$LOG"\n', { mode: 0o755 });
+      const result = spawnSync('bash', ['-e', '-c', script], {
+        cwd: directory,
+        encoding: 'utf8',
+        env: {
+          PATH: `${bin}:${process.env.PATH}`,
+          LOG: log,
+          FAIL: (options.fail ?? []).join(' '),
+          NO_ID_TOKEN: options.noIdToken ? 'yes' : '',
+          ...(options.seconds === undefined ? {} : { SECONDS: String(options.seconds) }),
+          ID_BODY: options.idBody ?? '',
+          EXCHANGE_ANSWER: options.answer ?? '',
+          RUNNER_TEMP: directory,
+          TARBALLS: tarballs,
+          SUMS: spawnSync('sha512sum', { input: sums, encoding: 'utf8' }).stdout.split(' ')[0]! + (options.sumsSuffix ?? ''),
+          VERSION: '1.0.0',
+          DIST_TAG: 'latest',
+          ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.actions.example/token?api=1',
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fake-request-token',
+        },
+      });
+      const calls = readFileSync(log, 'utf8').split('\n').filter((line) => line !== '');
+      return { result, calls, names, tarballs };
+    }
+    const exchanges = (calls: string[]) => calls.filter((call) => call.startsWith('curl ') && call.includes('/oidc/token/exchange/'));
+    const staged = (calls: string[]) => calls.filter((call) => call.startsWith('npm '));
+    const errorsOf = (stdout: string) => stdout.split('\n').filter((line) => line.startsWith('::error::'));
+    const TRUST = 'has no working trusted publisher';
+    const ASK = 'could not ask the registry';
+
+    it.skipIf(!hasTools)('stages nothing when packages have no trust, and names every one without it', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha', '@marmeon/beta'], { fail: ['@marmeon%2Falpha=404', '@marmeon%2Fbeta=404'] });
+      expect(result.status).not.toBe(0);
+      const errors = errorsOf(result.stdout);
+      expect(errors).toHaveLength(2);
+      expect(errors[0]).toContain('@marmeon/alpha');
+      expect(errors[0]).toContain('(exchange: 404)');
+      expect(errors[0]).toContain('npm trust github @marmeon/alpha --repository marmeon/marmeon --file release.yml --environment npm-release --allow-stage-publish');
+      expect(errors[1]).toContain('@marmeon/beta');
+      expect(exchanges(calls)).toHaveLength(3);
+      expect(staged(calls)).toEqual([]);
+    });
+
+    it.skipIf(!hasTools)('stages every tarball once, in order, when every exchange answers 2xx, each with its own ID token request', () => {
+      const { result, calls, names, tarballs } = stage(['marmeon', '@marmeon/alpha']);
+      expect(result.status, result.stderr).toBe(0);
+      expect(staged(calls)).toEqual(names.map((name) => `npm stage publish ${tarballs}/${name} --provenance --access public --tag=latest --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null`));
+      expect(calls.filter((call) => call.includes('audience=npm:registry.npmjs.org'))).toHaveLength(2);
+      expect(exchanges(calls)).toEqual([
+        expect.stringContaining('https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/marmeon'),
+        expect.stringContaining('https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@marmeon%2Falpha'),
+      ]);
+      for (const call of calls.filter((line) => line.startsWith('curl '))) expect(call).toMatch(/^curl -q --proto =https -sS /);
+      expect(calls).toContain('stdin Authorization: Bearer fake-request-token');
+      expect(calls).toContain(`stdin Authorization: Bearer ${IDENTITY}`);
+    });
+
+    it.skipIf(!hasTools)('keeps both credentials off every command line', () => {
+      const { calls } = stage(['marmeon', '@marmeon/alpha'], { fail: ['marmeon=404'] });
+      const arguments_ = calls.filter((call) => call.startsWith('curl '));
+      expect(arguments_.length).toBeGreaterThan(0);
+      for (const call of arguments_) {
+        expect(call).not.toContain('Bearer');
+        expect(call).not.toContain(IDENTITY);
+        expect(call).not.toContain('fake-request-token');
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a tarball whose name is not ours, first or last, and stages nothing', () => {
+      for (const name of ['evil', '@other/pkg', '@marmeon/UPPER', 'marmeon/../x']) {
+        const first = stage([name, 'marmeon']);
+        expect(first.result.status, name).not.toBe(0);
+        expect(first.result.stdout, name).toContain('::error::');
+        expect(exchanges(first.calls), name).toEqual([]);
+        expect(staged(first.calls), name).toEqual([]);
+        const last = stage(['marmeon', name]);
+        expect(last.result.status, name).not.toBe(0);
+        expect(last.result.stdout, name).toContain('is not one of ours');
+        expect(staged(last.calls), name).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a tarball of another version before anything is staged, also the second one', () => {
+      const { result, calls } = stage(['marmeon', ['@marmeon/alpha', '2.0.0']]);
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toContain('::error::marmeon-alpha-2.0.0.tgz is not a tarball of version 1.0.0');
+      expect(staged(calls)).toEqual([]);
+    });
+
+    it.skipIf(!hasTools)('refuses a tarball without package/package.json, and a manifest without a name, and stages nothing', () => {
+      const missing = stage(['marmeon', '@marmeon/alpha'], { noManifest: true });
+      expect(missing.result.status).not.toBe(0);
+      expect(errorsOf(missing.result.stdout)).toEqual(['::error::marmeon-1.0.0.tgz is not a tarball the stage job accepts; this attempt staged nothing']);
+      for (const manifestText of ['not json', '{"version":"1.0.0"}', '{"name":{"a":1}}', '[]']) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { manifestText });
+        expect(result.status, manifestText).not.toBe(0);
+        expect(errorsOf(result.stdout), manifestText).toEqual(['::error::marmeon-1.0.0.tgz holds a package name that is not one of ours']);
+        expect(exchanges(calls), manifestText).toEqual([]);
+        expect(staged(calls), manifestText).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('counts a 2xx whose body has no token as a failed exchange, and never prints a token', () => {
+      for (const answer of ['{}', 'not json', '{"token":""}', '{"token":5}', '[]', '"x"', '{"other":"npm_fake-exchange-body"}']) {
+        const { result, calls } = stage(['marmeon'], { answer });
+        expect(result.status, answer).not.toBe(0);
+        expect(errorsOf(result.stdout), answer).toEqual([expect.stringContaining(`${ASK} (exchange: 200-without-token); this attempt staged nothing: Re-run failed jobs`)]);
+        expect(staged(calls), answer).toEqual([]);
+        expect(`${result.stdout}${result.stderr}`, answer).not.toContain(EXCHANGE_BODY);
+      }
+    });
+
+    it.skipIf(!hasTools)('prints neither the exchange body nor the ID token, in no line of stdout or stderr', () => {
+      for (const options of [{}, { fail: ['marmeon=404'] }, { fail: ['marmeon=exit'] }, { answer: '{}' }]) {
+        const { result } = stage(['marmeon', '@marmeon/alpha'], options);
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(output, JSON.stringify(options)).not.toContain(EXCHANGE_BODY);
+        expect(output, JSON.stringify(options)).not.toContain(IDENTITY);
+        expect(output, JSON.stringify(options)).not.toContain('add-mask');
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a file name that could switch off the runner’s commands, before any command prints it', () => {
+      for (const fileName of ['##[stop-commands]tok-marmeon-1.0.0.tgz', 'MARMEON-1.0.0.tgz', 'marmeon 1.0.0.tgz', 'marmeon-1.0.0.tar']) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { fileName });
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(result.status, fileName).not.toBe(0);
+        expect(errorsOf(result.stdout), fileName).toEqual(['::error::SHA512SUMS has a line that is not a hash and a tarball name']);
+        expect(output, fileName).not.toContain(fileName);
+        expect(output, fileName).not.toContain('stop-commands');
+        expect(output, fileName).not.toContain(IDENTITY);
+        expect(calls, fileName).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a hash of SHA512SUMS that is more than a hash, before anything is printed or called', () => {
+      for (const suffix of ['  ##[stop-commands]tok', '  ::error::forged']) {
+        const { result, calls } = stage(['marmeon'], { sumsSuffix: suffix });
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(result.status, suffix).not.toBe(0);
+        expect(errorsOf(result.stdout), suffix).toEqual(["::error::the build job's hash of SHA512SUMS is not a SHA-512 hash; this attempt staged nothing"]);
+        expect(output, suffix).not.toContain('stop-commands');
+        expect(output, suffix).not.toContain('forged');
+        expect(calls, suffix).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('refuses a publishConfig that carries more than access and provenance, before any exchange', () => {
+      const bad: unknown[] = [
+        { registry: 'https://registry.example' },
+        { 'https-proxy': 'http://proxy.example' },
+        { 'strict-ssl': false },
+        { '@marmeon:registry': 'https://registry.example' },
+        { '//host/:_authToken': 'x' },
+        { 'fetch-retries': 9 },
+        { access: 'restricted' },
+        { provenance: false },
+        { access: 'public', provenance: true, registry: 'https://registry.example' },
+        { access: 'public', provenance: true, exports: {} },
+        { access: ['public'] },
+        'registry=https://registry.example',
+        null,
+        [],
+        5,
+      ];
+      for (const publishConfig of bad) {
+        const label = JSON.stringify(publishConfig);
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { publishConfig });
+        expect(result.status, label).not.toBe(0);
+        expect(errorsOf(result.stdout), label).toEqual(['::error::marmeon has a publishConfig the stage job does not accept; this attempt staged nothing']);
+        expect(calls, label).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('lets the publishConfig of a packed package pass: access and provenance, either alone, or none', () => {
+      for (const publishConfig of [{ access: 'public', provenance: true }, { access: 'public' }, { provenance: true }, {}, undefined]) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { publishConfig });
+        expect(result.status, JSON.stringify(publishConfig) + result.stdout).toBe(0);
+        expect(staged(calls)).toHaveLength(2);
+      }
+    });
+
+    /** Writes the tarballs of the attacks and the real shape into a directory (Python's tarfile writes what GNU tar and node-tar read differently). */
+    const crafted = (() => {
+      const hasPython = spawnSync('python3', ['--version']).status === 0;
+      const directory = hasPython ? tempDir('marmeon-stage-craft-') : '';
+      if (hasPython) {
+        writeFileSync(join(directory, 'make.py'), CRAFT_PYTHON);
+        expect(spawnSync('python3', ['-I', join(directory, 'make.py'), directory], { encoding: 'utf8' }).status).toBe(0);
+      }
+      return { hasPython, file: (name: string) => join(directory, `${name}.tgz`) };
+    })();
+
+    it.skipIf(!hasTools || !crafted.hasPython)('refuses a tarball npm could read another manifest from, before any exchange', () => {
+      const attacks = ['other-dir', 'upper', 'dot', 'long', 'pax', 'twice', 'doubleslash', 'dotdot', 'symlink', ...(gnuTar ? ['zeroblock'] : [])];
+      for (const attack of attacks) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { rawTarball: crafted.file(attack) });
+        expect(result.status, attack).not.toBe(0);
+        expect(errorsOf(result.stdout), attack).toEqual(['::error::marmeon-1.0.0.tgz is not a tarball the stage job accepts; this attempt staged nothing']);
+        expect(calls, attack).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools || !crafted.hasPython)('accepts a tarball of the real shape: plain files below package/, one package/package.json', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { rawTarball: crafted.file('plain') });
+      expect(result.status, result.stdout).toBe(0);
+      expect(staged(calls)).toHaveLength(2);
+    });
+
+    it.skipIf(!hasTools)('refuses a SHA512SUMS line that is not a full lower-case hash, two spaces and a tarball name', () => {
+      const rewrites: Array<(sums: string) => string> = [
+        (sums) => sums.replace(/^[0-9a-f]/, ''),
+        (sums) => sums.replace('  ', ' '),
+        (sums) => sums.replace(/^[0-9a-f]/, () => 'A'),
+        (sums) => `${sums}\n`,
+        (sums) => sums.replace('.tgz', '.tgz '),
+      ];
+      for (const [index, rewriteSums] of rewrites.entries()) {
+        const { result, calls } = stage(['marmeon'], { rewriteSums });
+        expect(result.status, String(index)).not.toBe(0);
+        expect(errorsOf(result.stdout), String(index)).toEqual(['::error::SHA512SUMS has a line that is not a hash and a tarball name']);
+        expect(calls, String(index)).toEqual([]);
+      }
+    });
+
+    it.skipIf(!hasTools)('stops after a slow trust check, before the first stage, and keeps quiet about the files', () => {
+      for (const seconds of [300, 1000]) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { seconds });
+        expect(result.status, String(seconds)).not.toBe(0);
+        expect(errorsOf(result.stdout)[0], String(seconds)).toMatch(/^::error::the trust check took \d+ seconds; this attempt staged nothing: Re-run failed jobs$/);
+        expect(exchanges(calls), String(seconds)).toHaveLength(2);
+        expect(staged(calls), String(seconds)).toEqual([]);
+      }
+      const inTime = stage(['marmeon', '@marmeon/alpha'], { seconds: 200 });
+      expect(inTime.result.status, inTime.result.stderr).toBe(0);
+      expect(staged(inTime.calls)).toHaveLength(2);
+    });
+
+    it.skipIf(!hasTools)('says the trust is missing for 401, 403 and 404 and passes every 2xx', () => {
+      for (const code of ['401', '403', '404']) {
+        const { result, calls } = stage(['marmeon'], { fail: [`marmeon=${code}`] });
+        expect(result.status, code).not.toBe(0);
+        expect(errorsOf(result.stdout), code).toEqual([expect.stringContaining(`${TRUST} for the environment npm-release (exchange: ${code})`)]);
+        expect(staged(calls), code).toEqual([]);
+      }
+      const created = stage(['marmeon'], { fail: ['marmeon=201'] });
+      expect(created.result.status).toBe(0);
+      expect(staged(created.calls)).toHaveLength(1);
+    });
+
+    it.skipIf(!hasTools)('says it could not ask npm — without the trust hint — for 302, 429, 503, a failing curl and a missing ID token', () => {
+      const cases: Array<[string, Options, string]> = [
+        ['302', { fail: ['marmeon=302'] }, '302'],
+        ['429', { fail: ['marmeon=429'] }, '429'],
+        ['503', { fail: ['marmeon=503'] }, '503'],
+        ['curl exits non-zero', { fail: ['marmeon=exit'] }, 'failed'],
+        ['the ID-token request fails', { noIdToken: true }, 'no-id-token'],
+        ['the ID-token answer has no value', { idBody: '{"message":"x"}' }, 'no-id-token'],
+      ];
+      for (const [label, options, status] of cases) {
+        const { result, calls } = stage(['marmeon'], options);
+        expect(result.status, label).not.toBe(0);
+        const errors = errorsOf(result.stdout);
+        expect(errors, label).toEqual([expect.stringContaining(`${ASK} (exchange: ${status}); this attempt staged nothing: Re-run failed jobs`)]);
+        expect(errors[0], label).not.toContain('npm trust');
+        expect(staged(calls), label).toEqual([]);
+        if (status === 'no-id-token') expect(exchanges(calls), label).toEqual([]);
+      }
+    });
+
+    it.skipIf(hasTools)('needs jq, tar and sha512sum to run the shipped script', () => {
+      expect.fail('jq, tar or sha512sum is not installed: the trust check was not run');
     });
   });
 
