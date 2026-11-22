@@ -88,7 +88,7 @@ fails. The command then says what to run.
 
 `marmeon add` refuses when it cannot be sure of the result: your framework packages are not all in one version, one comes from a
 workspace, a path or a patch rather than the registry, the package is listed only under `peerDependencies`, the app is part
-of a workspace, it has no lockfile or one of another package manager, `package.json` cannot be read, or anything else the command
+of a workspace or holds one, it has no lockfile or one of another package manager, `package.json` cannot be read, or anything else the command
 names. It then says what to change. With yarn or bun, or in a workspace, install the package yourself at the version of your
 app (`pnpm add -E @marmeon/redis@<version of your app>`) and run `marmeon discover`, and `marmeon publish <package>` for a package
 with migrations.

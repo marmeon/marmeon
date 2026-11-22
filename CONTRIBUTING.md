@@ -835,8 +835,11 @@ has three entry points that only the framework imports:
 
 ### The source condition and the manifests
 
-Inside this repository the packages resolve to their TypeScript sources through the `@marmeon/source` condition; a published
-package does not carry it (`publishConfig.exports`). `marmeon` runs a command in its own process and starts Node a second time
+The `@marmeon/source` condition is public: an app uses it for a package of its own workspace, and its name and meaning are API
+([what is public API](docs/releases.md#what-is-public-api)). The app sets `NODE_OPTIONS=--conditions=@marmeon/source` itself
+([a package in your app's workspace](docs/package-development.md#a-package-in-your-apps-workspace)); the installed CLI never does that for an app.
+Inside this repository the packages resolve to their TypeScript sources through the same condition, and the launcher adds it from its
+own location. A published package does not carry it (`publishConfig.exports`). `marmeon` runs a command in its own process and starts Node a second time
 only for what a running process cannot switch on: `node --watch` for `marmeon dev`, and the source condition when the CLI runs
 inside this repository — a `pnpm-workspace.yaml` above it lists its directory among `packages`. Never for `marmeon start`, which
 serves the packages' `dist/` here too. A copy of the CLI under `node_modules` (what `pnpm deploy` leaves) runs its `dist/` like a
@@ -1121,9 +1124,11 @@ shortened, never deleted.
 
 The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/website/docs.config.ts` lists
 them. They are the only source, written in English for people who build apps. **A change to a public API, an environment
-default or a command changes its docs page in the same commit.** No check compiles the examples, except those of the recipes and
-of "Your First App", which `pnpm test` and `pnpm pack:smoke` check against an app; for every other page that commit is where they
-stay true. Comments in the code follow [Comments](#comments).
+default or a command changes its docs page in the same commit.** No check compiles the examples, except those of the recipes, of
+"Your First App" and of the section "A package in your app's workspace" of `docs/package-development.md`, which `pnpm test` and
+`pnpm pack:smoke` check against an app; for every other page that commit is where they stay true. That section's heading, the titles
+of its code blocks and its `sh` block are tied to `scripts/workspace-package-smoke.ts`: the smoke writes the files from the blocks and
+runs the commands, so a rename there fails the smoke and `scripts/workspace-package-smoke.test.ts`. Comments in the code follow [Comments](#comments).
 `pnpm website:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
 other page.
 

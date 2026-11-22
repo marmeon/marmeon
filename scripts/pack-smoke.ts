@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm and `--agents`, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), a package in the app's workspace (docs/package-development.md, run from its source and from its dist/), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -21,6 +21,7 @@ import { checkDemo, sampleNotes } from './notes-demo.ts';
 import { packAll, type PackedPackage } from './packages.ts';
 import { checkLanding } from './landing.ts';
 import { checkRecipes } from './recipes.ts';
+import { checkWorkspacePackage } from './workspace-package-smoke.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
@@ -270,12 +271,21 @@ function smtpServer(): Promise<{ port: number; received: { envelope: string[]; d
   });
 }
 
+/** A long-running command that `Smoke.launch` started: its output so far, whether it ended, and how to end it. */
+export interface Launched {
+  readonly pid: number;
+  output(): string;
+  hasExited(): boolean;
+  /** SIGTERM to its process group, then waits up to 10 s for the command to exit, then SIGKILL to the group (also when the command exited and children are left). */
+  stop(): Promise<void>;
+}
+
 interface Step {
   readonly name: string;
   readonly ms: number;
 }
 
-class Smoke {
+export class Smoke {
   readonly steps: Step[] = [];
   readonly env = cleanEnvironment();
   readonly #children = new Set<ChildProcess>();
@@ -412,6 +422,27 @@ class Smoke {
       if (child.exitCode === null && child.signalCode === null) this.#stop(child, 'SIGKILL');
       this.#children.delete(child);
     }
+  }
+
+  /** A command of the app that keeps running (`pnpm marmeon dev`): in a process group of its own, which `stopAll()` ends too when a run is interrupted. */
+  launch(command: string, args: string[], env: NodeJS.ProcessEnv = {}): Launched {
+    const child = spawn(command, args, { cwd: this.app, env: { ...this.env, ...env }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    this.#children.add(child);
+    let output = '';
+    child.stdout!.on('data', (chunk) => (output += chunk));
+    child.stderr!.on('data', (chunk) => (output += chunk));
+    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    return {
+      pid: child.pid!,
+      output: () => output,
+      hasExited: () => child.exitCode !== null || child.signalCode !== null,
+      stop: async () => {
+        this.#stop(child);
+        await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
+        this.#stop(child, 'SIGKILL');
+        this.#children.delete(child);
+      },
+    };
   }
 
   /** `marmeon start` that must not come up: its exit code and output (SIGKILL after 30 s — then it did come up). */
@@ -856,6 +887,8 @@ async function main(): Promise<number> {
     await pnpmApp.step('recipes (examples/recipes/*): overlays, blocks in the app, test, typecheck, lint, check, docs', () => checkRecipes(pnpmApp, 'pnpm'));
     // The landing page's code (examples/landing) on the same app, after the recipes: every snippet word for word in a file that type checks, and each typo of the chain with the compiler's error.
     await pnpmApp.step('landing snippets (examples/landing): overlay, every snippet in the app, test, typecheck, lint, every typo of the chain fails with its error', () => checkLanding(pnpmApp, 'pnpm'));
+    // A package in the app's workspace (docs/package-development.md): its source with the variable, its dist/ without — the app as found afterwards.
+    await pnpmApp.step('a package in the app\'s workspace: dev, migrate and check run its source without dist/, build and start its dist/; each fails without the variable', () => checkWorkspacePackage(pnpmApp, pnpmFlags));
     // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
     // A mail view, built with oxc-transform (a dev dependency here, as in an image's build stage) and started without it.
     await pnpmApp.step('marmeon build with a mail view (oxc-transform as a dev dependency) → .marmeon/mail-views.json', () => {
