@@ -23,10 +23,10 @@ export abstract class JobEvent {
   }
 }
 
-/** A job was queued — after the commit, when it was dispatched inside a transaction (never for one you began yourself); also the next job of a chain. */
+/** A job was queued — after the commit, when it was dispatched inside a transaction (never for one you began yourself); also the next job of a chain on a worker's connection. */
 export class JobQueued extends JobEvent {
   readonly #event = true;
-  /** Seconds before it may run. */
+  /** Seconds before it may run, as asked; the `sync` connection ignores it. */
   readonly delaySeconds: number;
 
   /** @internal Built by the worker and the queue. */

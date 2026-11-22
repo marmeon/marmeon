@@ -12,7 +12,7 @@ export interface QueueChatOptions {
   readonly queue?: string;
   /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
-  /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
+  /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). The `sync` queue connection posts without the delay and logs a warning, one for all queued chat messages. */
   readonly delay?: Duration;
 }
 

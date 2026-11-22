@@ -100,6 +100,35 @@ describe('mailer.queue()', () => {
     expect(sent!.html).toContain('plain-reset-token-123');
   });
 
+  it('on the sync queue connection sends each mail without its delay and warns once for all of them', async () => {
+    const transport = new FlakyTransport();
+    transport.down = false;
+    const warned: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, error() {}, warn: (message) => void warned.push(message), child: () => logger };
+    const application = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider],
+    }, {
+      env: { APP_KEY: KEY, NODE_ENV: 'test', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' },
+      override: (c) => {
+        c.instance(Clock, new TestClock());
+        c.instance(MailTransport, transport);
+        c.instance(Logger, logger);
+      },
+    });
+    try {
+      const mailer = application.container.make(Mailer);
+      await mailer.queue(new ResetMail('https://app.test/one'), { delay: 30 });
+      await mailer.queue(new ResetMail('https://app.test/two'), { delay: 60 });
+      expect(transport.sent).toHaveLength(2);
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain('marmeon.mail');
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('retries a transport that fails (10 s, 1 min, 5 min, 5 min) and keeps the job, still encrypted, in the failed jobs after its five tries', async () => {
     const transport = new FlakyTransport();
     const application = await app({}, transport);

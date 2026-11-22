@@ -11,7 +11,7 @@ import { toJson, validate } from './validate.ts';
 
 /** When a notification is delivered (`send` only). */
 export interface SendOptions {
-  /** Deliver no earlier than this — seconds, or a duration (`{ minutes: 5 }`). Default: the notification's `static queue.delay`. */
+  /** Deliver no earlier than this — seconds, or a duration (`{ minutes: 5 }`). Default: the notification's `static queue.delay`. The `sync` queue connection delivers without the delay and logs a warning, once per notification. */
   readonly delay?: Duration;
 }
 

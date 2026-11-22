@@ -1,22 +1,24 @@
 import { Writable } from 'node:stream';
 import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, currentLogContext, ErrorReports, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
+import { Clock, createApplication, currentLogContext, ErrorReports, EventDispatcher, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
-import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { createPinoLogger } from '@marmeon/log';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
-import { checkTimeouts } from './connections.ts';
+import { checkTimeouts, QueueConnections } from './connections.ts';
 import type { JobRecord, QueueDriver } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { parseMember } from './drivers/redis.ts';
 import { QueueFake } from './fake.ts';
 import type { JobEvent } from './events.ts';
 import { JobFailed, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
+import { QueueManager, RECORD_OPTIONS } from './queue.ts';
 import { JobRegistry, QueueSetupError } from './registry.ts';
 import { cipherContext, JobPayloadError, JobRunner, nextInChain, parseRecord, RECORD_READERS } from './runner.ts';
 import { JobStuckError, Worker } from './worker.ts';
@@ -233,13 +235,13 @@ class StopJob {
 const allJobs = [WelcomeJob, FinalJob, OneTryJob, StopJob, FlakyJob, ChoosyJob, PoliteSlowJob, RudeSlowJob, ResetLinkJob, LeakyJob];
 
 /** A real app: database (SQLite in memory, migrated), queue, encryption — the jobs in one module. */
-async function app(options: { env?: Record<string, string>; modules?: ModuleDefinition[]; clock?: TestClock; logger?: Logger } = {}): Promise<Application & { seen: Seen; clock: TestClock }> {
+async function app(options: { env?: Record<string, string>; modules?: ModuleDefinition[]; clock?: TestClock; logger?: Logger; cache?: boolean } = {}): Promise<Application & { seen: Seen; clock: TestClock }> {
   const clock = options.clock ?? new TestClock();
   const seen = new Seen();
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
+    providers: [DatabaseServiceProvider, EncryptionServiceProvider, ...(options.cache ? [CacheServiceProvider] : []), QueueServiceProvider],
     modules: options.modules ?? [{ name: 'test', jobs: allJobs }],
   }, {
     env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...options.env },
@@ -1536,5 +1538,351 @@ describe('the version of the job record', () => {
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
     expect(await failed.all()).toEqual([]);
     expect(application.seen.entries).toEqual([]);
+  });
+});
+
+describe('a delay on the sync connection', () => {
+  type Line = { level: string; message: string; context: Record<string, unknown> };
+  /** A logger that keeps every line with the bindings of its child. */
+  function recording(onWarn?: (message: string) => void) {
+    const lines: Line[] = [];
+    const make = (bindings: Record<string, unknown>): Logger => {
+      const write = (level: string) => (message: string, context?: Record<string, unknown>) => {
+        if (level === 'warn') onWarn?.(message);
+        lines.push({ level, message, context: { ...bindings, ...context } });
+      };
+      return { debug: write('debug'), info: write('info'), warn: write('warn'), error: write('error'), child: (more) => make({ ...bindings, ...more }) };
+    };
+    return { lines, logger: make({}) };
+  }
+  const warnings = (lines: Line[]) => lines.filter((line) => line.level === 'warn');
+  const said = (job: string, seconds: number, label?: string, connection = 'sync') =>
+    `The sync queue connection "${connection}" runs ${label === undefined ? job : `${job} (${label})`} at its dispatch, or at the commit inside a transaction, and ignores its delay of ${seconds}s. Queue it on a worker's connection (database or redis) to delay it.`;
+
+  class DelayedEvent {
+    static readonly event = 'test.delayed-event';
+    static readonly schema = v.object({ note: v.string() });
+    readonly #event = true;
+    readonly note = 'n';
+  }
+  class DelayedListener {
+    static readonly listener = 'test.delayed-listener';
+    static readonly queue = { delay: 45 };
+    readonly #seen: Seen;
+    constructor(seen: Seen) {
+      this.#seen = seen;
+    }
+    handle(): void {
+      this.#seen.queued.push('listener ran');
+    }
+  }
+  class SecondListener {
+    static readonly listener = 'test.second-listener';
+    static readonly queue = { delay: 10 };
+    readonly #seen: Seen;
+    constructor(seen: Seen) {
+      this.#seen = seen;
+    }
+    handle(): void {
+      this.#seen.queued.push('second ran');
+    }
+  }
+  class DelayRecorder {
+    readonly #seen: Seen;
+    constructor(seen: Seen) {
+      this.#seen = seen;
+    }
+    handle(event: JobQueued): void {
+      this.#seen.queued.push(`queued with ${event.delaySeconds}`);
+    }
+  }
+  /** Dispatches from inside a running job, through a function the test sets. */
+  class NestingJob {
+    static readonly job = 'test.nesting';
+    static readonly schema = v.object({});
+    static inner: (() => Promise<unknown>) | undefined;
+    async handle(): Promise<void> {
+      await NestingJob.inner!();
+    }
+  }
+  const listening = [{ name: 'test', jobs: allJobs, listeners: [listen(DelayedEvent, DelayedListener), listen(DelayedEvent, SecondListener)] }];
+
+  it('is said once per connection and job: the job runs at once, and the whole line names the connection, the job and the seconds of a duration', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    const queue = application.container.make(Queue);
+    await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: { minutes: 5 } });
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 1 } }]);
+    expect(warnings(lines).map((line) => line.message)).toEqual([said('test.welcome', 300)]);
+    expect(warnings(lines)[0]!.context).toEqual({ dispatched: 'test.welcome' });
+    await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 30 });
+    await queue.dispatch(WelcomeJob, { userId: 3 }, { delay: 1 });
+    expect(application.seen.entries).toHaveLength(3);
+    expect(warnings(lines)).toHaveLength(1);
+    await expect(queue.dispatch(FinalJob, { how: 'fail' }, { delay: 5 })).rejects.toThrow('test.final failed: no way');
+    expect(warnings(lines).map((line) => line.message)).toEqual([said('test.welcome', 300), said('test.final', 5)]);
+  });
+
+  it('is not said for no delay, a zero delay, the database connection or the fake — and each of those still dispatches', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    const queue = application.container.make(Queue);
+    await queue.dispatch(WelcomeJob, { userId: 1 });
+    await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 0 });
+    await queue.dispatch(WelcomeJob, { userId: 3 }, { delay: { minutes: 0 } });
+    expect(application.seen.entries).toHaveLength(3);
+    await queue.dispatch(WelcomeJob, { userId: 4 }, { delay: 30, connection: 'database' });
+    expect(await queue.size('default', { connection: 'database' })).toBe(1);
+    expect(application.seen.entries).toHaveLength(3);
+    const fake = new QueueFake(application.container);
+    await fake.dispatch(WelcomeJob, { userId: 5 }, { delay: 30 });
+    expect(fake.pending()).toHaveLength(1);
+    expect(warnings(lines)).toEqual([]);
+  });
+
+  it('is said for a named sync connection while the default is a worker connection, and not for the default one', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ logger });
+    const queue = application.container.make(Queue);
+    await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    expect(warnings(lines)).toEqual([]);
+    await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 30, connection: 'sync' });
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 2 } }]);
+    expect(warnings(lines).map((line) => line.message)).toEqual([said('test.welcome', 30)]);
+  });
+
+  it('is said once for each sync connection of a job', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    const container = application.container;
+    const connections = container.make(QueueConnections);
+    const manager = new QueueManager({
+      connection: (name) => (name === 'sync' || name === 'audit' ? { driver: 'sync', queue: 'default' } : connections.find(name)),
+      connectionNames: () => ['sync', 'audit'],
+      default: 'sync',
+      registry: container.make(JobRegistry),
+      driver: (name) => connections.driver(name),
+      runner: () => connections.runner(),
+      cipher: () => connections.cipher(),
+      clock: container.make(Clock),
+      logger,
+    });
+    await manager.dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    await manager.dispatch(WelcomeJob, { userId: 2 }, { delay: 30, connection: 'audit' });
+    await manager.dispatch(WelcomeJob, { userId: 3 }, { delay: 30, connection: 'audit' });
+    expect(application.seen.entries).toHaveLength(3);
+    expect(warnings(lines).map((line) => line.message)).toEqual([said('test.welcome', 30), said('test.welcome', 30, undefined, 'audit')]);
+  });
+
+  it('is said for each job name of a bulk, and for the head of a chain, and the job that fails is the dispatch error', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    const queue = application.container.make(Queue);
+    await expect(queue.bulk([[WelcomeJob, { userId: 1 }], [WelcomeJob, { userId: 2 }], [FinalJob, { how: 'fail' }]], { delay: 10 })).rejects.toThrow('test.final failed: no way');
+    expect(application.seen.entries).toHaveLength(2);
+    expect(warnings(lines).map((line) => line.context.dispatched)).toEqual(['test.welcome', 'test.final']);
+    await queue.chain([[FlakyJob, { failUntil: 0 }], [WelcomeJob, { userId: 3 }]], { delay: 20 });
+    expect(application.seen.entries).toHaveLength(4);
+    expect(warnings(lines).map((line) => line.context.dispatched)).toEqual(['test.welcome', 'test.final', 'test.flaky']);
+  });
+
+  it('is said for a unique job, and its key is never in a line', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger, cache: true });
+    const queue = application.container.make(Queue);
+    await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 30, unique: 'k-4711' });
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 1 } }]);
+    expect(warnings(lines)).toHaveLength(1);
+    expect(JSON.stringify(lines)).not.toContain('k-4711');
+  });
+
+  it('is said for a queued listener, named by event and listener, once for each listener', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger, modules: listening });
+    const events = () => application.container.createScope().make(EventDispatcher);
+    await events().dispatch(new DelayedEvent());
+    expect(application.seen.queued).toEqual(['listener ran', 'second ran']);
+    expect(warnings(lines).map((line) => line.message)).toEqual([
+      said('marmeon.listener', 45, 'test.delayed-event/test.delayed-listener'),
+      said('marmeon.listener', 10, 'test.delayed-event/test.second-listener'),
+    ]);
+    await events().dispatch(new DelayedEvent());
+    expect(application.seen.queued).toHaveLength(4);
+    expect(warnings(lines)).toHaveLength(2);
+  });
+
+  it('is said inside a transaction although it rolls back, and then a second dispatch is silent; using(trx) shares what was said', async () => {
+    class Rollback extends Error {}
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    const queue = application.container.make(Queue);
+    const connections = application.container.make(Connections);
+    await expect(
+      connections.transaction(async (trx) => {
+        await queue.using(trx).dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+        throw new Rollback();
+      }),
+    ).rejects.toBeInstanceOf(Rollback);
+    expect(application.seen.entries).toEqual([]);
+    expect(warnings(lines).map((line) => line.message)).toEqual([said('test.welcome', 30)]);
+    await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 30 });
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 2 } }]);
+    expect(warnings(lines)).toHaveLength(1);
+    await connections.transaction(async (trx) => {
+      await queue.using(trx).dispatch(WelcomeJob, { userId: 3 }, { delay: 30 });
+    });
+    expect(application.seen.entries).toHaveLength(2);
+    expect(warnings(lines)).toHaveLength(1);
+  });
+
+  it('says nothing for a dispatch that is refused: a transaction you began yourself, or one that finished — and the next real dispatch warns', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    const queue = application.container.make(Queue);
+    const connections = application.container.make(Connections);
+    await expect(connections.get().transaction().execute((trx) => queue.using(trx).dispatch(WelcomeJob, { userId: 1 }, { delay: 30 }))).rejects.toThrow(/sync queue cannot run a job for a transaction you began yourself/);
+    let late!: Promise<unknown>;
+    let finished!: () => void;
+    await connections.transaction(async () => {
+      const gate = new Promise<void>((resolve) => (finished = resolve));
+      late = gate.then(() => queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 30 }));
+    });
+    finished();
+    await expect(late).rejects.toBeInstanceOf(TransactionFinishedError);
+    expect(application.seen.entries).toEqual([]);
+    expect(warnings(lines)).toEqual([]);
+    await queue.dispatch(WelcomeJob, { userId: 3 }, { delay: 30 });
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 3 } }]);
+    expect(warnings(lines)).toHaveLength(1);
+  });
+
+  it('is said once per app: two apps in one process do not share what was said', async () => {
+    const first = recording();
+    const second = recording();
+    await using one = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: first.logger });
+    await using two = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: second.logger });
+    await one.container.make(Queue).dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    await two.container.make(Queue).dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    expect(warnings(first.lines)).toHaveLength(1);
+    expect(warnings(second.lines)).toHaveLength(1);
+    expect(one.seen.entries).toHaveLength(1);
+    expect(two.seen.entries).toHaveLength(1);
+  });
+
+  it('is said in production too', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync', NODE_ENV: 'production', APP_KEY: `base64:${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64')}` }, logger });
+    await application.container.make(Queue).dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    expect(application.seen.entries).toHaveLength(1);
+    expect(warnings(lines)).toHaveLength(1);
+  });
+
+  it('still tells JobQueued the delay as asked', async () => {
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobQueued, DelayRecorder)] }] });
+    await application.container.make(Queue).dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    expect(application.seen.entries).toHaveLength(1);
+    expect(application.seen.queued).toEqual(['queued with 30']);
+  });
+
+  it('never holds the payload', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    await application.container.make(Queue).dispatch(WelcomeJob, { userId: 987654321 }, { delay: 30 });
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 987654321 } }]);
+    expect(warnings(lines)).toHaveLength(1);
+    expect(JSON.stringify(lines)).not.toContain('987654321');
+  });
+
+  it('keeps the job and jobId of the job that dispatches, and adds the job it dispatches as dispatched', async () => {
+    const lines: Record<string, unknown>[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(JSON.parse(String(chunk)));
+        done();
+      },
+    });
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: createPinoLogger({ level: 'info', format: 'json' }, { destination: stream }), modules: [{ name: 'test', jobs: [...allJobs, NestingJob] }] });
+    const queue = application.container.make(Queue);
+    NestingJob.inner = () => queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    await queue.dispatch(NestingJob, {});
+    expect(application.seen.entries).toHaveLength(1);
+    const line = lines.find((entry) => String(entry.msg).startsWith('The sync queue connection'));
+    expect(line).toMatchObject({ job: 'test.nesting', jobId: expect.any(String), dispatched: 'test.welcome' });
+  });
+
+  it('leaves the dispatch as it was when the logger throws, and the job error is still the one the job threw', async () => {
+    const broken: Logger = {
+      debug() {},
+      info() {},
+      error() {},
+      warn() {
+        throw new Error('disk full');
+      },
+      child: () => broken,
+    };
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: broken });
+    const queue = application.container.make(Queue);
+    const id = await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    expect(typeof id).toBe('string');
+    expect(application.seen.entries).toMatchObject([{ payload: { userId: 1 } }]);
+    await expect(queue.dispatch(FlakyJob, { failUntil: 2 }, { delay: 30 })).rejects.toThrow(/SMTP said no/);
+  });
+
+  it('asks a bulk logger that throws for the first name again for the second', async () => {
+    const warned: string[] = [];
+    const { logger } = recording((message) => {
+      warned.push(message);
+      if (message.includes('test.welcome')) throw new Error('disk full');
+    });
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger });
+    await application.container.make(Queue).bulk([[WelcomeJob, { userId: 1 }], [FlakyJob, { failUntil: 0 }]], { delay: 10 });
+    expect(application.seen.entries).toHaveLength(2);
+    expect(warned).toEqual([said('test.welcome', 10), said('test.flaky', 10)]);
+  });
+
+  it('asks a logger that always throws once for each key, also when it dispatches again from inside', async () => {
+    let calls = 0;
+    const nested: Promise<unknown>[] = [];
+    let queue!: Queue;
+    const broken: Logger = {
+      debug() {},
+      info() {},
+      error() {},
+      warn() {
+        calls += 1;
+        // Bounded: a guard that is missing ends this run red, not hanging.
+        if (calls < 5) nested.push(queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 30 }));
+        throw new Error('disk full');
+      },
+      child: () => broken,
+    };
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: broken });
+    queue = application.container.make(Queue);
+    await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 30 });
+    while (nested.length > 0) await nested.shift();
+    await queue.dispatch(WelcomeJob, { userId: 3 }, { delay: 30 });
+    expect(calls).toBe(1);
+    expect(application.seen.entries.map((entry) => (entry.payload as { userId: number }).userId)).toEqual([1, 2, 3]);
+  });
+
+  it('never stores the label in a job record, and a label that is no string cannot fail a dispatch', async () => {
+    const { lines, logger } = recording();
+    await using application = await app({ env: { QUEUE_DRIVER: 'database' }, logger, modules: listening });
+    await application.container.createScope().make(EventDispatcher).dispatch(new DelayedEvent());
+    const rows = (await sql<{ payload: string }>`select payload from jobs`.execute(application.container.make(Connections).get())).rows;
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(Object.keys(JSON.parse(row.payload))).not.toContain('label');
+      expect(row.payload).not.toContain('delayed-listener');
+    }
+    expect(warnings(lines)).toEqual([]);
+
+    const sync = recording();
+    await using other = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: sync.logger });
+    const queue = other.container.make(Queue);
+    await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 30, [RECORD_OPTIONS]: { label: 42 } } as never);
+    await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 31, [RECORD_OPTIONS]: { label: { toString: () => 'x' } } } as never);
+    expect(other.seen.entries).toHaveLength(2);
+    expect(warnings(sync.lines).map((line) => line.message)).toEqual([said('test.welcome', 30)]);
   });
 });

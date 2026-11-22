@@ -26,7 +26,7 @@ export interface JobContext {
   readonly signal: AbortSignal;
   /** Ends the job without retrying and without a failed entry — e.g. its record is gone: `return job.discard('user no longer exists')`. */
   discard(reason?: string): void;
-  /** Puts the job back, to run again after `delay` (seconds or a duration; default: now). The attempt counts. */
+  /** Puts the job back, to run again after `delay` (seconds or a duration; default: now). The attempt counts. On the `sync` connection nothing runs a job again: `release()` still returns, and the job fails with a `QueueError` once `handle()` returns. Write `return job.release()` to stop there. */
   release(delay?: Duration): void;
   /** Fails the job now — no more attempts, it goes to the failed jobs. */
   fail(reason: string | Error): void;
@@ -34,7 +34,7 @@ export interface JobContext {
    * Runs `fn` — a side effect that must not repeat, like sending a mail — unless it already ran for `key`: after it
    * succeeds, a marker for `key` goes into the app's cache (kept for `options.for`, seconds or a duration; default a day). Resolves true when `fn`
    * ran now, false when it was skipped. The marker is written after `fn`, so a worker that dies between the two runs `fn`
-   * again: repeats get rare, not impossible. Needs @marmeon/cache. See `docs/queues.md#at-least-once`.
+   * again: repeats get rare, not impossible. Needs @marmeon/cache. On `sync` a busy key fails the job with a `JobOnceBusyError`. See `docs/queues.md#at-least-once`.
    */
   once(key: string, fn: () => unknown, options?: { readonly for?: Duration }): Promise<boolean>;
 }
@@ -138,7 +138,7 @@ export type PendingJob<J extends JobClass = JobClass> = readonly [job: J, payloa
 
 /** Where and when a job is queued. */
 export interface DispatchOptions {
-  /** Run no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
+  /** Run no earlier than this — seconds, or a duration (`{ minutes: 5 }`). The `sync` connection runs the job without the delay and logs a warning, once per app, connection and job. */
   readonly delay?: Duration;
   /** The queue (default: the connection's, usually `default`). A worker without `--queue` takes every queue; `--queue=mail,default` takes only these, in this order. */
   readonly queue?: string;

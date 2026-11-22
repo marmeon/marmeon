@@ -462,6 +462,41 @@ describe('without a queue in the app', () => {
   });
 });
 
+describe('a delay on the sync queue connection', () => {
+  const delayed = (name: string, seconds: number) =>
+    class {
+      static readonly notification = name;
+      static readonly schema = v.object({ code: v.string() });
+      static readonly database = v.object({ code: v.string() });
+      static readonly queue = { connection: 'sync', delay: seconds };
+      via() {
+        return ['database'] as const;
+      }
+      toDatabase(data: { code: string }) {
+        return { code: data.code };
+      }
+    };
+  const First = delayed('shop.first-delayed', 30);
+  const Second = delayed('shop.second-delayed', 60);
+
+  it('warns once per notification, names it, and still delivers every one', async () => {
+    const warned: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, error() {}, warn: (message) => void warned.push(message), child: () => logger };
+    const application = await app(drivers[0]!, { queue: 'database', logger, notifications: [First, Second] as never });
+    const notifications = application.container.make(Notifications);
+    await notifications.send(ada, First as never, { code: 'a' } as never);
+    await notifications.send(alan, First as never, { code: 'b' } as never);
+    await notifications.send(ada, Second as never, { code: 'c' } as never);
+    await notifications.send(alan, Second as never, { code: 'd' } as never);
+    expect((await rows(application)).map((row) => (row.data as { code: string }).code).sort()).toEqual(['a', 'b', 'c', 'd']);
+    expect(warned).toHaveLength(2);
+    expect(warned[0]).toContain('shop.first-delayed');
+    expect(warned[0]).toContain('30s');
+    expect(warned[1]).toContain('shop.second-delayed');
+    expect(warned[1]).toContain('60s');
+  });
+});
+
 describe('the payload of marmeon.notification as the queue keeps it', () => {
   it('reads every fixture of the format', async () => {
     const directory = new URL('./__fixtures__/formats/queued-notification/', import.meta.url);
