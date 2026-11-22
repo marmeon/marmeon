@@ -464,13 +464,15 @@ The projection says which tables and columns the database has now. After every m
   type a table of another tool with `withTables<…>()` ([queries](queries.md)). Tables of an extension (PostGIS's `spatial_ref_sys`), SQLite's
   own and the leftovers of 0.3 are not named.
 
-Before a migration runs on Postgres, `migrate` also checks the table and column names the migration leaves. Postgres cuts a name at 63 bytes
-of the database's encoding without a word. In UTF-8, 32 two-byte letters are 64 bytes. A name over 63 bytes of UTF-8 that the database would
-cut is refused with error D5, and the migration is not run. A long name that one plan creates and then renames or drops again is not refused,
-because only the schema a migration leaves is checked. Postgres still cuts it, so it must differ from every other name in its first 63 bytes:
-a `dropIfExists()` of such a name drops the table that has those 63 bytes. The check does not look at a table name with a dot
-(its columns are checked), nor at a `down()`: for those, only the comparison above applies. Names in raw SQL and in `data()` steps
-are not checked either. Starting the app never checks names. Test your migrations on Postgres.
+Postgres cuts a table or column name at 63 bytes of the database's encoding without a word. A migration that leaves such a name usually
+ends in error D3, and the message names a name over 63 bytes of UTF-8 as the possible cause (not a table name with a dot): use a shorter
+name. Creating a table, or a column in the same table, or renaming one, to a name that is cut to one already taken ends in Postgres's own
+error instead. The comparison before a run does not name this cause.
+
+The check compares only the names a migration leaves. A longer name that is gone by the end of the migration is not reported, and Postgres
+still cuts it in every statement: `drop()`, `dropIfExists()` and `dropColumn()` with such a name act on the table or column that has those
+first 63 bytes, and so does a query of a `data()` step. Use names of at most 63 bytes for temporary tables and columns too. Names in
+`schema.raw()` and in `data()` steps are not checked, so test your migrations on Postgres.
 
 A migration is also refused, before any migration of the run has started, when the order it runs in gives another schema than the order
 of the names. Every other process (the build, the types, the projection file, a second app server) replays the migrations by name, but
