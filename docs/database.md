@@ -109,8 +109,6 @@ Postgres needs the `pg` driver in your app:
 pnpm add pg@^8
 ```
 
-If a package of your workspace uses Marmeon too, give it the same `pg` version as the app, or pnpm installs the framework twice: [One copy of a framework package](package-development.md#one-copy-of-a-framework-package).
-
 Install it as a dependency, not a dev dependency. Without it, the first query fails and names the command. With
 `DB_URL=postgres://app:secret@db:5432/app`, the message reads:
 
@@ -119,6 +117,8 @@ Install it as a dependency, not a dev dependency. Without it, the first query fa
 ```
 
 A connection of your own names itself instead: `The Postgres connection "reporting" needs the "pg" package, …`.
+
+Give every package of your workspace that uses `@marmeon/database` the same `pg` version as the app. Otherwise pnpm installs `@marmeon/database` twice, see [One copy of a framework package](package-development.md#one-copy-of-a-framework-package).
 
 The app does not connect to Postgres when it starts, so a command that sends no query works without a running server. The first
 query connects, and a deployment's `marmeon migrate --force` is that first query, so it finds a missing driver or a wrong address
