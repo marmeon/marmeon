@@ -26,14 +26,16 @@ export const withMysql = (name: string, body: () => void): void => void describe
 export const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
 /** A fresh database per suite: SQLite in memory, or a new Postgres or MySQL database dropped by `drop()`. */
-export async function freshDatabase(driver: 'sqlite' | 'pgsql' | 'mysql', { managed = true }: { managed?: boolean } = {}): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
+export async function freshDatabase(driver: 'sqlite' | 'pgsql' | 'mysql', { managed = true, encoding }: { managed?: boolean; encoding?: 'LATIN1' } = {}): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
   // `managed: false` for a test that builds its tables itself instead of migrating them: no record of migrations, and none is asked for.
   const unmanaged = managed ? {} : { managed: false };
   if (driver === 'sqlite') return { options: { driver: 'sqlite', database: ':memory:', ...unmanaged }, drop: async () => {} };
   const name = `marmeon_test_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   if (driver === 'mysql') return freshMysqlDatabase(name, unmanaged);
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
-  await sql`create database ${sql.id(name)}`.execute(admin.get());
+  // `encoding`: a database that is not UTF-8 (`template0` and locale C are what another encoding needs).
+  if (encoding) await sql`create database ${sql.id(name)} encoding ${sql.lit(encoding)} template template0 lc_collate 'C' lc_ctype 'C'`.execute(admin.get());
+  else await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);
   url.pathname = `/${name}`;
   return {
@@ -82,7 +84,7 @@ export async function createLegacyTables(db: Kysely<any>): Promise<void> {
 /** A `Connections` on a fresh database; `close()` destroys it and drops the database. */
 export async function freshConnections(
   driver: 'sqlite' | 'pgsql' | 'mysql',
-  options: { managed?: boolean; record?: boolean; now?: () => number } = {},
+  options: { managed?: boolean; record?: boolean; now?: () => number; encoding?: 'LATIN1' } = {},
 ): Promise<{ connections: Connections; close: () => Promise<void> }> {
   const fresh = await freshDatabase(driver, options);
   const connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent, ...(options.now ? { now: options.now } : {}) });

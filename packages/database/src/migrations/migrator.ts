@@ -328,6 +328,7 @@ export class Migrator {
         await this.#held?.heartbeat();
         const started = performance.now();
         const after = fold([entry], state);
+        if (this.#driver(connection) === 'pgsql') await this.#assertNamesFit(connection, file, after);
         // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL).
         if (connection === 'default' && this.#driver() !== 'mysql') {
           await db.transaction().execute(async (trx) => {
@@ -708,6 +709,37 @@ export class Migrator {
       : undefined;
     await executePlan(trx, this.#driver(connection), plan, aroundData, listFrom && listCheckOf(listFrom, plan, file), listFrom && tablesAtOf(listFrom, plan, file));
     await this.#verify(trx, connection, file, after);
+  }
+
+  /**
+   * On Postgres, before the migration's transaction opens: refuses a table or column name over 63 bytes of UTF-8 in the schema the
+   * migration leaves, where the server would cut it at 63 bytes of the database's encoding. Such a migration can never succeed: the catalog
+   * cannot hold that name, and `#verify` compares exactly these names after every `up()`. Any other cut name is left to `#verify`, and so is
+   * a table name with a dot (two identifiers; its columns are asked). A name that lives inside one plan is not in that schema, so it is not
+   * refused. The server is asked, since the encoding is its own. Security invariant: never inside the transaction, where the query would
+   * take its snapshot (a backfill after a raw lock would miss rows without an error) and refuse the migration's own `set transaction`.
+   */
+  async #assertNamesFit(connection: string, file: MigrationFile, { projection, connections }: Folded): Promise<void> {
+    const suspects: { what: string; name: string; shown: string }[] = [];
+    for (const table of projection.tables.values()) {
+      if (connections.get(table.name) !== connection) continue;
+      if (!table.name.includes('.') && Buffer.byteLength(table.name) > 63) suspects.push({ what: 'table', name: table.name, shown: table.name });
+      for (const column of table.columns) if (Buffer.byteLength(column.name) > 63) suspects.push({ what: 'column', name: column.name, shown: `${table.name}.${column.name}` });
+    }
+    if (suspects.length === 0) return;
+    const names = suspects.map((suspect) => suspect.name);
+    // The ordinal of every name the server would change, as `name` (the type of an identifier) cuts it.
+    const { rows } = await sql<{ i: number }>`select u.i::pg_catalog.int4 as i
+      from pg_catalog.unnest(${names}::pg_catalog.text[]) with ordinality as u(n, i)
+      where u.n::pg_catalog.name::pg_catalog.text operator(pg_catalog.<>) u.n`.execute(this.#books(connection));
+    if (rows.length === 0) return;
+    const first = suspects[Math.min(...rows.map((row) => row.i)) - 1]!;
+    throw new SchemaError(
+      withCode(
+        'D5',
+        `Migration ${printable(file.name)} (module "${printable(file.module)}") leaves the ${first.what} ${printable(first.shown)}: Postgres would cut that name at 63 bytes of the database's encoding. Use a shorter name. The migration was not run.`,
+      ),
+    );
   }
 
   /**

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshConnections, freshDatabase, silent, withMysql } from './__fixtures__/databases.ts';
+import { appOf, drivers, freshConnections, freshDatabase, silent, withMysql } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
 import { projectMigrations } from './schema/projection.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
@@ -642,4 +642,358 @@ describe('migration files', () => {
     writeFileSync(join(dir, 'README.md'), '');
     expect(app([{ name: 'x', migrations: dir.slice(root.length + 1) }]).files()).toEqual([]);
   });
+});
+
+// Postgres cuts an identifier at 63 bytes without a word, and the migrations' schema keeps the whole name: a migration that leaves such a
+// name ends in a mismatch with the catalog. Only the state a migration leaves counts; a long name that lives inside one plan works.
+describe.each(drivers)('names Postgres would cut (%s)', (driver) => {
+  const root = workspaceTempDir('marmeon-long-names-');
+  const kysely = import.meta.resolve('kysely');
+  const long = (n: number, char = 'c') => char.repeat(n);
+  const stamp = '2026_02_01_000000';
+  const source = (body: string, down = '') => `import { sql } from '${kysely}';\nexport default {\n  up: (schema: any) => {\n${body}\n  },\n  down: (schema: any) => {\n${down}\n  },\n};\n`;
+  const moduleOf = (files: Record<string, string>, name = 'cut'): ModuleDefinition => {
+    const dir = mkdtempSync(join(root, 'm-'));
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, `${name}.ts`), text);
+    return { name, migrations: dir };
+  };
+  const recorded = async (connections: Connections) => (await sql<{ name: string }>`select name from migrations order by id`.execute(connections.get<any>())).rows.map((row) => row.name);
+  const tablesOf = async (connections: Connections) => (await connections.get<any>().introspection.getTables()).map((t) => t.name).filter((name) => name !== LOCK_TABLE).sort();
+
+  /** Runs `body` on a database of its own. */
+  const withDatabase = async (body: (own: Awaited<ReturnType<typeof freshConnections>>) => Promise<void>, encoding?: 'LATIN1') => {
+    const own = await freshConnections(driver, { encoding });
+    try {
+      await body(own);
+    } finally {
+      await own.close();
+    }
+  };
+
+  const refused = (name: string, what: string, files: Record<string, string>, message: RegExp, before: string[] = [], tablesBefore: string[] = []) =>
+    it.runIf(driver === 'pgsql')(name, async () => {
+      await withDatabase(async ({ connections }) => {
+        const error = await migrator(connections, moduleOf(files)).migrate().then(() => undefined, (caught: unknown) => caught);
+        expect(error, what).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(message);
+        expect(await recorded(connections)).toEqual(before);
+        expect(await tablesOf(connections)).toEqual(['migrations', ...tablesBefore].sort());
+      });
+    });
+
+  const create = (table: string, column: string) => `    schema.create(${JSON.stringify(table)}, (table: any) => { table.string(${JSON.stringify(column)}); });`;
+
+  refused(
+    'refuses a column of 64 bytes, names it, and runs nothing',
+    'column',
+    { [`${stamp}_create_cut_column`]: source(create('items', long(64))) },
+    /^\[marmeon:D5\] Migration 2026_02_01_000000_create_cut_column \(module "cut"\) leaves the column items\.c{64}: Postgres would cut that name at 63 bytes of the database's encoding\. Use a shorter name\. The migration was not run\.$/,
+  );
+
+  refused(
+    'refuses a column of 32 two-byte characters: bytes are counted, not characters',
+    'multibyte',
+    { [`${stamp}_create_cut_bytes`]: source(create('items', long(32, 'é'))) },
+    /^\[marmeon:D5\] Migration 2026_02_01_000000_create_cut_bytes \(module "cut"\) leaves the column items\.é{32}: Postgres would cut/,
+  );
+
+  refused(
+    'refuses a table of 64 bytes',
+    'table',
+    { [`${stamp}_create_cut_table`]: source(create(long(64, 't'), 'a')) },
+    /^\[marmeon:D5\] Migration 2026_02_01_000000_create_cut_table \(module "cut"\) leaves the table t{64}: Postgres would cut /,
+  );
+
+  refused(
+    'refuses a column renamed to a name of 64 bytes, and keeps the migration before it',
+    'rename column',
+    {
+      [`${stamp}_create_items_table`]: source(create('items', 'old')),
+      '2026_02_02_000000_rename_cut_column': source(`    schema.alter('items', (table: any) => { table.renameColumn('old', '${long(64)}'); });`),
+    },
+    /^\[marmeon:D5\] Migration 2026_02_02_000000_rename_cut_column \(module "cut"\) leaves the column items\.c{64}: Postgres would cut /,
+    [`${stamp}_create_items_table`],
+    ['items'],
+  );
+
+  refused(
+    'refuses a table renamed to a name of 64 bytes, and keeps the migration before it',
+    'rename table',
+    {
+      [`${stamp}_create_items_table`]: source(create('items', 'a')),
+      '2026_02_02_000000_rename_cut_table': source(`    schema.rename('items', '${long(64, 't')}');`),
+    },
+    /^\[marmeon:D5\] Migration 2026_02_02_000000_rename_cut_table \(module "cut"\) leaves the table t{64}: Postgres would cut /,
+    [`${stamp}_create_items_table`],
+    ['items'],
+  );
+
+  refused(
+    'refuses two names that cut alike, naming the first',
+    'alike',
+    { [`${stamp}_create_cut_alike`]: source(`    schema.create('items', (table: any) => { table.string('${long(63)}a'); table.string('${long(63)}b'); });`) },
+    /^\[marmeon:D5\] Migration 2026_02_01_000000_create_cut_alike \(module "cut"\) leaves the column items\.c{63}a: Postgres would cut /,
+  );
+
+  // What stays green: a long name that does not outlive its plan, and the exact limit.
+  const migrates = (name: string, files: Record<string, string>, then: (own: Awaited<ReturnType<typeof freshConnections>>, run: Migrator) => Promise<void>, only: 'pgsql' | 'sqlite' | undefined = undefined) =>
+    it.runIf(only === undefined || only === driver)(name, async () => {
+      await withDatabase(async (own) => {
+        const run = migrator(own.connections, moduleOf(files));
+        await then(own, run);
+      });
+    });
+
+  migrates(
+    'runs a migration that creates a column of 70 bytes and renames it short in the same plan',
+    {
+      [`${stamp}_create_local_column`]: source(`${create('items', long(70))}\n    schema.alter('items', (table: any) => { table.renameColumn('${long(70)}', 'short'); });`),
+    },
+    async (own, run) => {
+      expect((await run.migrate()).map((ran) => ran.name)).toEqual([`${stamp}_create_local_column`]);
+      expect((await own.connections.get<any>().introspection.getTables()).find((table) => table.name === 'items')!.columns.map((column) => column.name)).toEqual(['short']);
+    },
+  );
+
+  migrates(
+    'runs a migration that creates a table of 70 bytes and renames it short in the same plan',
+    {
+      [`${stamp}_create_local_table`]: source(`${create(long(70, 't'), 'a')}\n    schema.rename('${long(70, 't')}', 'items');`),
+    },
+    async (own, run) => {
+      await run.migrate();
+      expect(await tablesOf(own.connections)).toEqual(['items', 'migrations']);
+    },
+  );
+
+  migrates(
+    'runs a migration that creates a scratch table of 70 bytes and drops it',
+    {
+      [`${stamp}_create_scratch`]: source(`${create('items', 'a')}\n${create(long(70, 's'), 'a')}\n    schema.drop('${long(70, 's')}');`),
+    },
+    async (own, run) => {
+      await run.migrate();
+      expect(await tablesOf(own.connections)).toEqual(['items', 'migrations']);
+    },
+  );
+
+  migrates(
+    'rolls back a migration whose down() creates a scratch table of 70 bytes and drops it',
+    {
+      [`${stamp}_create_scratch_down`]: source(create('items', 'a'), `${create(long(70, 's'), 'a')}\n    schema.drop('${long(70, 's')}');\n    schema.drop('items');`),
+    },
+    async (own, run) => {
+      await run.migrate();
+      expect((await run.rollback()).map((ran) => ran.name)).toEqual([`${stamp}_create_scratch_down`]);
+      expect(await tablesOf(own.connections)).toEqual(['migrations']);
+      expect(await recorded(own.connections)).toEqual([]);
+    },
+  );
+
+  migrates(
+    'runs a migration whose table and column names are exactly 63 bytes',
+    {
+      [`${stamp}_create_limit`]: source(create(long(63, 't'), long(63))),
+    },
+    async (own, run) => {
+      await run.migrate();
+      expect(await recorded(own.connections)).toEqual([`${stamp}_create_limit`]);
+      expect(await own.connections.get<any>().selectFrom(long(63, 't')).select(long(63)).execute()).toEqual([]);
+    },
+  );
+
+  migrates(
+    'runs, queries and rolls back a table and a column of 70 bytes on SQLite',
+    {
+      [`${stamp}_create_long_sqlite`]: source(create(long(70, 't'), long(70)), `    schema.drop('${long(70, 't')}');`),
+    },
+    async (own, run) => {
+      await run.migrate();
+      expect(await run.migrate()).toEqual([]); // nothing pending: the long names of the record are not looked at
+      expect(await own.connections.get<any>().selectFrom(long(70, 't')).select(long(70)).execute()).toEqual([]);
+      expect((await run.rollback()).map((ran) => ran.name)).toEqual([`${stamp}_create_long_sqlite`]);
+      expect(await tablesOf(own.connections)).toEqual(['migrations']);
+    },
+    'sqlite',
+  );
+
+  it.runIf(driver === 'pgsql')('still gives D3 for raw SQL that renames a table to a name Postgres cuts', async () => {
+    await withDatabase(async ({ connections }) => {
+      const files = {
+        [`${stamp}_raw_cut`]: source(`${create('items', 'a')}\n    schema.raw(sql.raw('alter table items rename to ${long(64, 't')}'));`),
+      };
+      await expect(migrator(connections, moduleOf(files)).migrate()).rejects.toThrow(/^\[marmeon:D3\] Migration 2026_02_01_000000_raw_cut \(module "cut"\) left the database without the table items/);
+      expect(await recorded(connections)).toEqual([]);
+    });
+  });
+
+  // A database in LATIN1: a letter of two bytes in UTF-8 is one byte there, so the server cuts nothing the JavaScript byte count would refuse.
+  const accented = long(32, 'é');
+  const history = {
+    [`${stamp}_create_accented`]: source(create(accented, accented), `    schema.drop(${JSON.stringify(accented)});`),
+  };
+  const second = (body = `    schema.create('other', (table: any) => { table.string('a'); });`) => ({ [`2026_02_03_000000_create_other`]: source(body, `    schema.drop('other');`) });
+
+  it.runIf(driver === 'pgsql')('keeps a table and column of 32 two-byte letters on a LATIN1 database: it migrates, runs the next migration, rolls it back and an app boots on it', async () => {
+    const fresh = await freshDatabase('pgsql', { encoding: 'LATIN1' });
+    const migrating = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
+    let booted: Connections | undefined;
+    try {
+      const first = moduleOf(history);
+      expect((await migrator(migrating, first).migrate()).length).toBe(1);
+      const both = [first, moduleOf(second(), 'later')] as const;
+      expect((await migrator(migrating, ...both).migrate()).map((ran) => ran.name)).toEqual(['2026_02_03_000000_create_other']);
+      expect((await migrator(migrating, ...both).rollback({ steps: 1 })).map((ran) => ran.name)).toEqual(['2026_02_03_000000_create_other']);
+      // A process of its own, which takes its schema from the migrations and migrates nothing.
+      booted = new Connections({ connections: { default: fresh.options }, root, logger: silent, app: appOf([first], root) });
+      expect(await booted.get<any>().selectFrom(accented).select(accented).execute()).toEqual([]);
+    } finally {
+      await booted?.destroy();
+      await migrating.destroy();
+      await fresh.drop();
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('refuses 64 ASCII letters on a LATIN1 database', async () => {
+    await withDatabase(async ({ connections }) => {
+      await expect(migrator(connections, moduleOf({ [`${stamp}_create_cut_column`]: source(create('items', long(64))) })).migrate()).rejects.toThrow(/^\[marmeon:D5\] .*leaves the column items\.c{64}: Postgres would cut/);
+    }, 'LATIN1');
+  });
+
+  it.runIf(driver === 'pgsql')('leaves the migration its own set transaction: the check asks outside the transaction', async () => {
+    await withDatabase(async ({ connections }) => {
+      const first = moduleOf(history);
+      await migrator(connections, first).migrate();
+      const next = moduleOf(second(`    schema.raw(sql.raw('set transaction isolation level serializable'));\n    schema.create('other', (table: any) => { table.string('a'); });`), 'later');
+      expect((await migrator(connections, first, next).migrate()).map((ran) => ran.name)).toEqual(['2026_02_03_000000_create_other']);
+    }, 'LATIN1');
+  });
+
+  it.runIf(driver === 'pgsql')('backfills a row committed while the migration waits for its lock: the check takes no snapshot in the transaction', { timeout: 30_000 }, async () => {
+    const fresh = await freshDatabase('pgsql', { encoding: 'LATIN1' });
+    const url = fresh.options.driver === 'pgsql' ? fresh.options.url : '';
+    // Every session of the app starts in repeatable read, where the snapshot is the one of the first statement that is not a lock.
+    const repeatable = `${url}?options=${encodeURIComponent('-c default_transaction_isolation=repeatable\\ read')}`;
+    const app = new Connections({ connections: { default: { driver: 'pgsql', url: repeatable, poolMax: 3 } }, root: '/', logger: silent });
+    const other = new Connections({ connections: { default: { ...fresh.options } }, root: '/', logger: silent });
+    try {
+      const items = moduleOf({
+        [`${stamp}_create_accented`]: source(`${create(accented, accented)}\n    schema.create('items', (table: any) => { table.string('name'); table.boolean('done').default(false); });`),
+      });
+      await migrator(app, items).migrate();
+      const backfill = moduleOf({
+        '2026_02_03_000000_backfill': source(
+          `    schema.raw(sql.raw('lock table items in share row exclusive mode'));\n    schema.data(async (db: any) => { await sql.raw('update items set done = true').execute(db); });`,
+        ),
+      }, 'later');
+      const db = other.get<any>();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let locked!: () => void;
+      const held = new Promise<void>((resolve) => (locked = resolve));
+      const holder = db.transaction().execute(async (trx: any) => {
+        await sql.raw('lock table items in access exclusive mode').execute(trx);
+        locked();
+        await gate;
+        await sql.raw("insert into items (name) values ('late')").execute(trx);
+      });
+      await held;
+      const running = migrator(app, items, backfill).migrate();
+      // A failure of the run settles at once, instead of leaving the wait below to its deadline.
+      const settled = running.then(() => undefined, (caught: unknown) => caught);
+      let seen = false;
+      try {
+        const deadline = Date.now() + 15_000;
+        while (!seen && Date.now() < deadline) {
+          const waiting = await sql<{ n: number }>`select count(*)::int as n from pg_locks where not granted and database = (select oid from pg_database where datname = current_database())`.execute(db);
+          seen = waiting.rows[0]!.n > 0;
+          if (!seen) await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      } finally {
+        release();
+        await holder.catch(() => undefined);
+      }
+      expect(await settled).toBeUndefined();
+      expect(seen, 'the migration waited for the lock').toBe(true);
+      expect((await sql<{ name: string; done: boolean }>`select name, done from items`.execute(db)).rows).toEqual([{ name: 'late', done: true }]);
+    } finally {
+      await app.destroy();
+      await other.destroy();
+      await fresh.drop();
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('runs nothing before the refusal: a sequence the first step would advance stays unused', async () => {
+    await withDatabase(async ({ connections }) => {
+      const made = moduleOf({ [`${stamp}_create_probe`]: source(`    schema.raw(sql.raw('create sequence probe_seq'));`, `    schema.raw(sql.raw('drop sequence probe_seq'));`) });
+      await migrator(connections, made).migrate();
+      const next = moduleOf(second(`    schema.raw(sql.raw("select nextval('probe_seq')"));\n${create('items', long(64))}`), 'later');
+      await expect(migrator(connections, made, next).migrate()).rejects.toThrow(/^\[marmeon:D5\] /);
+      expect((await sql<{ last_value: number; is_called: boolean }>`select last_value, is_called from probe_seq`.execute(connections.get<any>())).rows).toEqual([{ last_value: 1, is_called: false }]);
+    });
+  });
+
+  it.runIf(driver === 'pgsql')('refuses a cut name on a second Postgres connection through that connection, and creates nothing there', async () => {
+    const [app, reporting] = [await freshDatabase('pgsql'), await freshDatabase('pgsql')];
+    const connections = new Connections({ connections: { default: app.options, reporting: reporting.options }, root: '/', logger: silent });
+    try {
+      const onReporting = moduleOf({ [`${stamp}_create_cut_reporting`]: source(create('items', long(64))).replace('export default {', "export default {\n  connection: 'reporting',") });
+      await expect(migrator(connections, onReporting).migrate()).rejects.toThrow(/^\[marmeon:D5\] Migration 2026_02_01_000000_create_cut_reporting \(module "cut"\) leaves the column items\.c{64}: Postgres would cut /);
+      expect(await tablesOf(connections)).toEqual([]);
+      expect((await connections.get<any>('reporting').introspection.getTables()).map((table) => table.name)).toEqual([]);
+    } finally {
+      await connections.destroy();
+      await app.drop();
+      await reporting.drop();
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('keeps a table of 20 emoji on a SQLite connection and runs the next Postgres migration', async () => {
+    const [pg, lite] = [await freshDatabase('pgsql', { encoding: 'LATIN1' }), await freshDatabase('sqlite')];
+    const connections = new Connections({ connections: { default: pg.options, lite: lite.options }, root: '/', logger: silent });
+    try {
+      const emoji = long(20, '\u{1F600}');
+      const onLite = moduleOf({ [`${stamp}_create_emoji`]: source(create(emoji, 'a')).replace('export default {', "export default {\n  connection: 'lite',") });
+      await migrator(connections, onLite).migrate();
+      const next = moduleOf(second(), 'later');
+      expect((await migrator(connections, onLite, next).migrate()).map((ran) => ran.name)).toEqual(['2026_02_03_000000_create_other']);
+    } finally {
+      await connections.destroy();
+      await pg.drop();
+    }
+  });
+
+  it.runIf(driver === 'pgsql')('ends a rollback in D3, not D5, when the file of a migration that stays was edited to a long name', async () => {
+    await withDatabase(async ({ connections }) => {
+      const a = moduleOf({ [`${stamp}_create_items`]: source(create('items', 'short'), `    schema.drop('items');`) });
+      const b = moduleOf(second(), 'later');
+      await migrator(connections, a, b).migrate();
+      const file = join(a.migrations as string, `${stamp}_create_items.ts`);
+      writeFileSync(file, source(create('items', long(64)), `    schema.drop('items');`));
+      const error = await migrator(connections, a, b).rollback({ steps: 1 }).then(() => undefined, (caught: unknown) => caught);
+      expect((error as Error).message).toMatch(/^\[marmeon:D3\] Migration 2026_02_03_000000_create_other \(module "later"\) left the database without the column items\.c{64}/);
+      expect(await recorded(connections)).toEqual([`${stamp}_create_items`, '2026_02_03_000000_create_other']);
+    });
+  });
+
+  it.runIf(driver === 'pgsql')('ends a table name with a dot in D3, as the check after the migration finds it missing', async () => {
+    await withDatabase(async ({ connections }) => {
+      const dotted = `public.${long(60, 't')}`;
+      await expect(migrator(connections, moduleOf({ [`${stamp}_create_dotted`]: source(create(dotted, 'a')) })).migrate()).rejects.toThrow(/^\[marmeon:D3\] Migration 2026_02_01_000000_create_dotted \(module "cut"\) left the database without the table public\.t{60}/);
+    });
+  });
+
+  refused(
+    'names the first cut name of the walk, although the other one sorts first',
+    'first',
+    { [`${stamp}_create_two_cut`]: source(`    schema.create('items', (table: any) => { table.string('${long(64, 'z')}'); table.string('${long(64, 'a')}'); });`) },
+    /^\[marmeon:D5\] Migration 2026_02_01_000000_create_two_cut \(module "cut"\) leaves the column items\.z{64}: Postgres would cut /,
+  );
+
+  refused(
+    'refuses a cut name with a double and a single quote in it as a bound value',
+    'quote',
+    { [`${stamp}_create_quoted`]: source(create('items', `q"'${long(62)}`)) },
+    /^\[marmeon:D5\] Migration 2026_02_01_000000_create_quoted \(module "cut"\) leaves the column items\.q"'c{62}: Postgres would cut /,
+  );
 });
