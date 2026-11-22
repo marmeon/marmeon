@@ -730,6 +730,12 @@ describe('wellFormed() — a string with a lone surrogate, refused only where th
     expect(await errors(form, { x: 'a\uD83Db' })).toEqual({ x: ['Use plain text.'] });
   });
 
+  it('url() takes a half in its path, and url().wellFormed() refuses it', async () => {
+    const link = 'https://example.com/\uD83D';
+    expect(await check(r.object({ x: r.url() }), { x: link })).toEqual({ value: { x: link } });
+    expect((await check(r.object({ x: r.url().wellFormed() }), { x: link })).issues).toHaveLength(1);
+  });
+
   it('normalize() after wellFormed() is refused when the schema is defined: wellFormed() is a check like the rest', () => {
     const checked = r.string().wellFormed();
     expect(() => checked.normalize((value) => value)).toThrow(/normalize\(\) goes before the checks/);

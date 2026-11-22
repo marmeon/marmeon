@@ -131,6 +131,9 @@ Nothing is repaired, and whole pairs (emoji, flags, rare scripts), `\uFFFD` and 
 const bio = r.string().trim().wellFormed().max(500);
 ```
 
+`url()` takes a half in the path, the query or the fragment, so a URL that is stored wants `r.url().wellFormed()`.
+`email()`, `uuid()`, `date()`, `isoTimestamp()` and `timeZone()` refuse one by their own pattern.
+
 A half has no UTF-8 form, so what becomes of it depends on where it lands. A text column stores `\uFFFD` in its place without an error: another text than the one your checks saw.
 A `jsonb` column refuses it. JSON that you keep as text keeps the half. A route's path parameter and an unencrypted cookie built from one throw a `URIError`.
 An encrypted cookie and a query value take `\uFFFD` without an error. So a slug wants `wellFormed()`.

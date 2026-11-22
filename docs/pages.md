@@ -226,11 +226,11 @@ stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`.
 
 ```tsx
 <Head title={note.title}>
-  <meta name="description" content={Array.from(note.body).slice(0, 150).join('')} />
+  <meta name="description" content={Array.from(note.body.slice(0, 300)).slice(0, 150).join('')} />
 </Head>
 ```
 
-`Array.from(note.body).slice(0, 150).join('')` cuts by code points: `slice()` alone can split an emoji on the boundary, and the description then holds a broken character (`\uFFFD`). See [lone surrogates](validation.md#lone-surrogates).
+`Array.from(…)` cuts by code points, and the `slice(0, 300)` in front keeps that cheap on a long text: `slice()` alone can split an emoji on the boundary, and the description then holds a broken character (`\uFFFD`). See [lone surrogates](validation.md#lone-surrogates).
 
 The server renders the head into the first document, and the browser keeps it current on every visit. A `<script>`, `<style>` or
 `<link>` inside `<Head>` that the server wrote is kept when the page hydrates, so a script does not run a second time; one the
