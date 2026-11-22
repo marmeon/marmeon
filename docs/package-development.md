@@ -1199,8 +1199,9 @@ You may see the duplicate in these places:
 - **Health check:** `Two health checks are named "database": …`.
 - **Container:** `[marmeon:K1] No binding for [Router] (needed by Mailer). Bind it in a service provider.`, with a framework class in place of `Router`.
 - **Container:** `[marmeon:K3] [Application] needs 1 constructor argument(s) but has no injection list …`.
+- **`marmeon check` and `marmeon dev` (at each start):** the warning `ui resolves another copy of @marmeon/storage (the same version, other peers)`. See [the packages check](check.md#the-packages-check).
 
-These messages have other causes too: the check below tells them apart.
+The first three messages have other causes too: the check below tells them apart and confirms a duplicate.
 
 A package that lists the framework as a `peerDependency` and as a `devDependency` can boot with two copies. Its imports resolve to
 the copy of its own `node_modules`, not to the app's. List the framework packages as `dependencies`, as the section above says. Your package then resolves the app's copy whenever the peers agree, which the rule above covers.
