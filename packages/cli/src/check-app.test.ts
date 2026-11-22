@@ -468,6 +468,24 @@ ${body}
     expect(reportOf(stdout, 'modules')).toMatchObject({ status: 'warning', problems: [{ severity: 'warning', file: 'modules/system/jobs/Send.ts' }] });
   });
 
+  it('does not warn about a job class a provider lists, and still warns about one it does not', () => {
+    const probe = `
+import { defineModule } from '@marmeon/core';
+import { ListedJob } from './modules/system/jobs/Listed.ts';
+export class ProbeProvider { static jobs = [ListedJob]; }
+export const probeModule = defineModule({ name: 'probe' });
+`;
+    const files = {
+      'modules/system/jobs/Listed.ts': "export class ListedJob {\n  static readonly job = 'system.listed';\n  handle() {}\n}\n",
+      'modules/system/jobs/Unlisted.ts': "export class UnlistedJob {\n  static readonly job = 'system.unlisted';\n}\n",
+    };
+    const { code, stdout } = check(app({ files, probe }), ['--only=modules', '--json']);
+    expect(code).toBe(0);
+    const problems = reportOf(stdout, 'modules').problems;
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ severity: 'warning', file: 'modules/system/jobs/Unlisted.ts' });
+  });
+
   it('stops the start on a check name taken twice, naming both sources', () => {
     const probe = `${PROBE}
 export class OtherFoo { static check = 'foo'; static phase = 'run' as const; handle() { return []; } }

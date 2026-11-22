@@ -4,7 +4,8 @@ import type { CheckProblem } from './report.ts';
 import { unlistedClasses } from '../unlisted.ts';
 
 /**
- * Job and notification classes under `modules/` that no module lists — dispatching or sending one fails. A warning: the files
+ * Job classes under `modules/` that no module lists and no provider your app lists (its `providers` or a module's), and notification
+ * classes that no module lists — dispatching or sending one fails. A warning: the files
  * are parsed, never imported. See docs/check.md#the-checks.
  */
 export class ModulesCheck implements AppCheck {
@@ -18,7 +19,7 @@ export class ModulesCheck implements AppCheck {
   }
 
   handle(): readonly CheckProblem[] {
-    return unlistedClasses(this.#app.root, this.#app.modules).map(({ file, className, key, value }) => ({
+    return unlistedClasses(this.#app.root, this.#app).map(({ file, className, key, value }) => ({
       severity: 'warning',
       message:
         key === 'job'

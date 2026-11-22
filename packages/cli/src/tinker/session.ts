@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { EventDispatcher, EventRegistry, Translator, type Application, type Container, type Key } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
+import { appListedProviders } from '../app-providers.ts';
 
 /** A helper of the session — what `.ls` lists. */
 export interface Helper {
@@ -45,6 +46,13 @@ export class TinkerSession {
   readonly sandbox: boolean;
   /** Classes and tokens the app knows, by name: bound in the container, listed by a module (jobs, listeners, …), repositories. */
   readonly #names = new Map<string, Key>();
+  /**
+   * The jobs the providers list in `static jobs`, by class name — the last resort, read only where a name is made or shown
+   * (`make('Name')`, the suggestions, `names()` and the context). Never a helper's, a repository's or the sandbox's name,
+   * and never in the way of another name: a name in {@link #names} wins, also one that arrives later. A repository takes its
+   * name back once the repositories are loaded; an input that writes the name out loads them.
+   */
+  readonly #fallback = new Map<string, Key>();
   /** Repositories by their name in `repos` — once loaded. */
   #repositories: Map<string, RepositoryClass> | undefined;
   #loading: Promise<Map<string, RepositoryClass>> | undefined;
@@ -129,14 +137,14 @@ export class TinkerSession {
   /** `make(Key)` or `make('Name')` — in the session scope. */
   make(key: Key | string): unknown {
     if (typeof key !== 'string') return this.scope.make(key as Key<unknown>);
-    const found = this.#names.get(key);
-    if (!found) throw new Error(`No class or token is known by the name "${key}".${didYouMean(key, [...this.#names.keys()])}`);
+    const found = this.#names.get(key) ?? this.#fallback.get(key);
+    if (!found) throw new Error(`No class or token is known by the name "${key}".${didYouMean(key, this.names())}`);
     return this.scope.make(found as Key<unknown>);
   }
 
   /** Every class and token name the session knows (repositories once loaded) — for `make(` and the context. */
   names(): string[] {
-    return [...this.#names.keys()].sort();
+    return [...new Set([...this.#names.keys(), ...this.#fallback.keys()])].sort();
   }
 
   routeNames(): string[] {
@@ -194,6 +202,11 @@ export class TinkerSession {
       });
     }
     for (const [name, key] of this.#names) this.#defineName(name, key);
+    // Resolved at use, so a repository loaded later takes the bare name too.
+    for (const name of this.#fallback.keys()) {
+      if (this.#names.has(name) || name in context) continue;
+      this.#define(name, { get: () => this.#names.get(name) ?? this.#fallback.get(name) });
+    }
   }
 
   /** Takes everything {@link attach} put on the context away again — what was there before comes back. */
@@ -202,7 +215,7 @@ export class TinkerSession {
     if (!context) return;
     for (const [name, previous] of this.#previous) {
       if (previous) Object.defineProperty(context, name, previous);
-      else delete context[name];
+      else Reflect.deleteProperty(context, name);
     }
     this.#previous.clear();
     this.#context = undefined;
@@ -218,6 +231,9 @@ export class TinkerSession {
    */
   async evaluate<R>(code: string, run: () => Promise<R>): Promise<R> {
     if (/\brepos\b|Repository\b/.test(code)) await this.loadRepositories();
+    // A provider's job name written out might be a repository's: while that is unknown, the input refuses with the load's error
+    // and never runs a package's class in the repository's place.
+    else if (code.match(/[\w$]+/g)?.some((word) => this.#fallback.has(word) && !this.#names.has(word))) await this.loadRepositories();
     const inside = this.#inside;
     if (!inside) return run();
     const connections = this.#connections()!;
@@ -311,7 +327,7 @@ export class TinkerSession {
     return key ? (this.scope.make(key as Key<SandboxConnections>) as SandboxConnections) : undefined;
   }
 
-  /** The names: what the container binds, what the modules list (jobs, notifications, seeders, listeners and their events, …). */
+  /** The names: what the container binds and what the modules list (jobs, notifications, seeders, listeners and their events, …), then the jobs of the providers as the last resort. */
   #collectNames(): void {
     for (const key of this.app.container.keys()) this.#addName(key.name, key);
     const fromList = (value: unknown) => {
@@ -326,11 +342,21 @@ export class TinkerSession {
     for (const module of this.app.modules) {
       for (const value of Object.values(module)) if (Array.isArray(value)) value.forEach(fromList);
     }
+    // The jobs of every provider, the ones the app lists first: read through the prototype chain, the first of a name wins.
+    const listedByApp = appListedProviders(this.app);
+    for (const provider of [...listedByApp, ...this.app.providers.filter((candidate) => !listedByApp.includes(candidate))]) {
+      const jobs = (provider as unknown as { jobs?: unknown }).jobs;
+      if (!Array.isArray(jobs)) continue;
+      for (const job of jobs) {
+        const name = typeof job === 'function' ? (job as { name?: unknown }).name : undefined;
+        if (typeof name === 'string' && NAME.test(name) && !this.#fallback.has(name)) this.#fallback.set(name, job as Key);
+      }
+    }
     if (this.app.container.has(EventRegistry)) this.app.container.make(EventRegistry).all().forEach(fromList);
   }
 
-  #addName(name: string, key: Key): void {
-    if (/^[A-Z][\w$]*$/.test(name) && !this.#names.has(name)) this.#names.set(name, key);
+  #addName(name: unknown, key: Key): void {
+    if (typeof name === 'string' && NAME.test(name) && !this.#names.has(name)) this.#names.set(name, key);
   }
 
   #defineName(name: string, key: Key): void {
@@ -394,6 +420,9 @@ function isRepositoryClass(value: unknown): value is RepositoryClass {
   const prototype = (value as { prototype?: Record<string, unknown> }).prototype;
   return typeof prototype?.query === 'function' && typeof prototype.find === 'function';
 }
+
+/** A class or token name the session offers: a capital first, then word characters. */
+const NAME = /^[A-Z][\w$]*$/;
 
 function didYouMean(name: string, names: readonly string[]): string {
   const lower = name.toLowerCase();

@@ -81,7 +81,7 @@ export class ServeCommand {
     // Parses the modules' files: development only, so `marmeon start` never loads the parser. A failure is a warning, never fatal.
     if (development) {
       try {
-        warnUnlisted(output, root, this.#app.modules);
+        warnUnlisted(output, root, this.#app);
       } catch (error) {
         output.warn(`Could not check for unlisted jobs and notifications: ${this.#shown(error)}`);
       }

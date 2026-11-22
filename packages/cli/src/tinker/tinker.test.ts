@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync
 import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createApplication, defineModule, token, type Application } from '@marmeon/core';
+import { createApplication, defineModule, listen, token, type Application, type ServiceProviderClass } from '@marmeon/core';
 import { defineRoutes, Router } from '@marmeon/router';
 import { TinkerCommand } from '../commands/tinker.ts';
 import { completer, interactive } from './repl.ts';
@@ -146,6 +146,158 @@ describe('a tinker session (in-process)', () => {
       expect(await command.handle({ options: { execute: '1 + 1' }, output, root } as never)).toBe(0);
       expect(readFileSync(file, 'utf8')).toBe('before\n');
     });
+  });
+});
+
+describe('the jobs a provider lists in a tinker session', () => {
+  /** A job class of this name, as a package brings it. */
+  const job = (name: string) => {
+    const Job = class {
+      static job = `pkg.${name.toLowerCase()}`;
+      handle() {}
+    };
+    Object.defineProperty(Job, 'name', { value: name });
+    return Job;
+  };
+  const providerOf = (jobs: unknown) => class { static jobs = jobs; boot() {} } as unknown as ServiceProviderClass;
+  const repository = (name: string, table: string) => `export class ${name} { static table = '${table}'; query() {} find() {} }\n`;
+
+  async function session(options: { providers?: ServiceProviderClass[]; modules?: ReturnType<typeof defineModule>[]; files?: Record<string, string>; bind?: (container: never) => void; sandbox?: boolean } = {}) {
+    const root = tempDir('marmeon-tinker-providers-');
+    for (const [file, source] of Object.entries(options.files ?? {})) {
+      mkdirSync(join(root, file, '..'), { recursive: true });
+      writeFileSync(join(root, file), source);
+    }
+    const app = await createApplication({ root, discover: false, providers: options.providers ?? [], modules: options.modules ?? [] }, { env: {}, override: (container) => options.bind?.(container as never) });
+    return { app, tinker: new TinkerSession(app, { sandbox: options.sandbox }) };
+  }
+
+  it('knows the class by name and nothing else a provider carries', async () => {
+    const Listed = job('ListedJob');
+    const Provider = class { static jobs = [Listed]; static notifications = [class Late { static notification = 'x.late'; }]; boot() {} } as unknown as ServiceProviderClass;
+    const { tinker } = await session({ providers: [Provider] });
+    expect(tinker.names()).toContain('ListedJob');
+    expect(tinker.names()).not.toContain('Late');
+    expect(tinker.make('ListedJob')).toBeInstanceOf(Listed);
+    expect(() => tinker.make('Lat')).toThrow('No class or token is known by the name "Lat".');
+    expect(() => tinker.make('ListedJo')).toThrow('Did you mean "ListedJob"?');
+  });
+
+  it('never makes a helper available, nor lets the sandbox open, with a job named like their packages\' classes', async () => {
+    const providers = [providerOf(['Connections', 'Database', 'Queue', 'Mailer'].map(job))];
+    const { tinker } = await session({ providers, sandbox: true });
+    const available = Object.fromEntries(tinker.helpers().map((helper) => [helper.name, helper.available]));
+    expect(available).toMatchObject({ db: false, repos: false, jobs: false, mail: false });
+    expect(() => tinker.helpers().find((helper) => helper.name === 'db')!.value()).toThrow('db needs @marmeon/database');
+    await expect(tinker.open()).rejects.toThrow('--sandbox needs @marmeon/database');
+    expect(tinker.names()).toEqual(expect.arrayContaining(['Connections', 'Database', 'Queue', 'Mailer']));
+  });
+
+  it('gives way to a container binding, a module class and a listener of the same name', async () => {
+    const Mailer = token<{ send(): string }>('Mailer');
+    const Event = class Signal {};
+    class Twin {}
+    const Heard = job('Heard');
+    class Listener {
+      handle() {}
+    }
+    Object.defineProperty(Listener, 'name', { value: 'Heard' });
+    const modules = [defineModule({ name: 'shop', jobs: [Twin as never], listeners: [listen(Event, Listener as never)] })];
+    const { tinker } = await session({ providers: [providerOf([job('Mailer'), job('Twin'), Heard])], modules, bind: (container: { instance(key: unknown, value: unknown): void }) => container.instance(Mailer, { send: () => 'bound' }) });
+    expect((tinker.make('Mailer') as { send(): string }).send()).toBe('bound');
+    expect(tinker.make('Twin')).toBeInstanceOf(Twin);
+    expect(tinker.make('Heard')).toBeInstanceOf(Listener);
+  });
+
+  it('gives way to a repository, for make() and the bare name, also one not named …Repository on the first input', async () => {
+    const files = { 'modules/shop/OrderRepository.ts': repository('OrderRepository', 'orders'), 'modules/shop/ArchiveRepository.ts': repository('ArchiveStore', 'archive') };
+    const { tinker } = await session({ providers: [providerOf([job('OrderRepository'), job('ArchiveStore')])], files });
+    const context: Record<string, unknown> = {};
+    tinker.attach(context);
+    expect(Object.getOwnPropertyDescriptor(context, 'ArchiveStore')?.get).toBeTypeOf('function');
+    await tinker.evaluate('ArchiveStore', async () => undefined);
+    const Archive = context.ArchiveStore as { table?: string };
+    expect(Archive.table).toBe('archive');
+    await tinker.loadRepositories();
+    expect((context.OrderRepository as { table?: string }).table).toBe('orders');
+    expect((tinker.make('OrderRepository') as { constructor: { table: string } }).constructor.table).toBe('orders');
+    expect(tinker.names().filter((name) => name === 'ArchiveStore')).toHaveLength(1);
+  });
+
+  it('takes a class of the app\'s own provider before a discovered one, and the first of a name', async () => {
+    const Own = job('Twin');
+    const Discovered = job('Twin');
+    const OwnProvider = providerOf([Own]);
+    const { app } = await session({ providers: [OwnProvider] });
+    Object.defineProperty(app, 'providers', { value: [providerOf([Discovered]), OwnProvider] });
+    const tinker = new TinkerSession(app);
+    expect(tinker.make('Twin')).toBeInstanceOf(Own);
+    expect(tinker.names().filter((name) => name === 'Twin')).toHaveLength(1);
+  });
+
+  it('lets an assignment win on the context, and detach takes the name away', async () => {
+    const { tinker } = await session({ providers: [providerOf([job('Twin')])] });
+    const context: Record<string, unknown> = {};
+    tinker.attach(context);
+    expect(context.Twin).toBeTypeOf('function');
+    context.Twin = 'mine';
+    expect(context.Twin).toBe('mine');
+    tinker.detach();
+    expect('Twin' in context).toBe(false);
+  });
+
+  it('refuses an input that writes a job name out while the repositories do not load, and leaves other inputs alone', async () => {
+    // One file that throws registers no repository at all, so the job could stand in for a healthy repository of its name.
+    const files = {
+      'modules/shop/BrokenRepository.ts': "throw new Error('boom');\n",
+      'modules/shop/LedgerRepository.ts': repository('Ledger', 'ledger'),
+    };
+    const { tinker } = await session({ providers: [providerOf([job('Ledger'), job('Mail')])], files });
+    await expect(tinker.evaluate("make('Ledger')", async () => 'the job ran')).rejects.toThrow('boom');
+    await expect(tinker.evaluate('Mail', async () => 'the job ran')).rejects.toThrow('boom');
+    expect(await tinker.evaluate("make('Mailer')", async () => 'other')).toBe('other');
+    await expect(tinker.evaluate('repos', async () => 'never')).rejects.toThrow('boom');
+  });
+
+  it('preloads only for a whole name no other name has, and lets a repository win on the first input', async () => {
+    const files = { 'modules/shop/LedgerRepository.ts': repository('Ledger', 'ledger') };
+    const { tinker } = await session({ providers: [providerOf([job('Ledger')])], files });
+    const context: Record<string, unknown> = {};
+    tinker.attach(context);
+    await tinker.evaluate('LedgerEntry', async () => undefined);
+    expect((context.Ledger as { table?: string }).table).toBeUndefined();
+    await tinker.evaluate('Ledger', async () => undefined);
+    expect((context.Ledger as { table?: string }).table).toBe('ledger');
+  });
+
+  it('detaches without throwing when an input made the name its own, non-configurable', async () => {
+    const { tinker } = await session({ providers: [providerOf([job('Mail')])] });
+    const context: Record<string, unknown> = {};
+    tinker.attach(context);
+    Object.defineProperty(context, 'Mail', { value: () => 'script', configurable: false });
+    expect(() => tinker.detach()).not.toThrow();
+  });
+
+  it('knows no name for an entry that is no class, and leaves a global of a job\'s name alone', async () => {
+    const { tinker } = await session({ providers: [providerOf([{ name: 'Plain' }, job('URL')])] });
+    expect(tinker.names()).not.toContain('Plain');
+    const context: Record<string, unknown> = { URL };
+    tinker.attach(context);
+    expect(context.URL).toBe(URL);
+  });
+
+  it('does not break on a class whose name is a symbol or a number, nor on a bad value', async () => {
+    const Odd = job('Odd');
+    Object.defineProperty(Odd, 'name', { value: Symbol('odd') });
+    const Numbered = job('Numbered');
+    Object.defineProperty(Numbered, 'name', { value: 7 });
+    const Fine = job('Fine');
+    const providers = [providerOf([Odd, Numbered, null, 'Text', Fine]), providerOf('Text'), providerOf(undefined), providerOf({ length: 1, 0: job('Object') })];
+    const modules = [defineModule({ name: 'odd', jobs: [Odd as never, Numbered as never] })];
+    const { tinker } = await session({ providers, modules });
+    expect(tinker.names()).toEqual(expect.arrayContaining(['Fine']));
+    expect(tinker.names()).not.toEqual(expect.arrayContaining(['Text', 'Object', 'Numbered']));
+    expect(tinker.names().every((name) => typeof name === 'string')).toBe(true);
   });
 });
 

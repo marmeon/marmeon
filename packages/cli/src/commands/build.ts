@@ -12,7 +12,7 @@ import { terminalText } from '../output.ts';
 import { typecheckApp } from '../typecheck.ts';
 
 /**
- * `marmeon build`: the app's injection lists, its compiled mail views (`.marmeon/mail-views.json`, needs `oxc-transform` when there are any), the route types, the schema projection of the migrations (`.marmeon/schema.json`) and a warning for job and notification classes no module lists (each in a process of its own, with the app in its build phase — no
+ * `marmeon build`: the app's injection lists, its compiled mail views (`.marmeon/mail-views.json`, needs `oxc-transform` when there are any), the route types, the schema projection of the migrations (`.marmeon/schema.json`) and a warning for job classes no module or app provider lists and notification classes no module lists (each in a process of its own, with the app in its build phase — no
  * `.env`, no key, so no secret can end up in `dist/`; the build stops when the app cannot be registered, e.g. a command name used twice or a broken module), the type check (`--no-typecheck` skips it), the client and SSR bundles
  * with the app's own Vite, the precompressed assets and the production discovery manifest. See
  * docs/deployment.md#building-and-starting.
@@ -48,7 +48,7 @@ export class BuildCommand {
       output.error('Not built: marmeon schema:project failed — see its error above (the migrations describe a schema that cannot be computed).');
       return 1;
     }
-    // Only a warning: classes no module lists. A process of its own, like route:types, so the app is not booted here.
+    // Only a warning: job classes no module or app provider lists, notification classes no module lists. A process of its own, like route:types, so the app is not booted here.
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('modules:check')) !== 0) {
       output.warn('marmeon modules:check failed — the build goes on without the check for unlisted jobs and notifications.');
     }
