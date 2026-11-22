@@ -115,12 +115,11 @@ function restore(smoke: WorkspaceTarget, before: Snapshot, pnpmFlags: readonly s
     if (!before.files.has(path) && !before.dirs.has(path)) rmSync(join(app, path), { recursive: true, force: true });
   }
   for (const dir of [...before.dirs].sort()) mkdirSync(join(app, dir), { recursive: true });
+  // Every file is written back, not first compared: a check and a later write could see two different files. `differences` compares below.
   for (const [path, content] of before.files) {
     const file = join(app, path);
-    if (!existsSync(file) || !readFileSync(file).equals(content)) {
-      mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, content);
-    }
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, content);
   }
   smoke.run('pnpm', ['install', ...pnpmFlags, '--reporter', 'append-only']);
   // pnpm takes the link out but leaves the scope's directory: empty, and none the app had.
