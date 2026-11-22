@@ -13,7 +13,7 @@
  *
  * A function, no command of its own.
  */
-import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { freePort, SmokeError } from './pack-smoke.ts';
@@ -25,6 +25,8 @@ export interface WorkspaceApp {
   run(command: string, args: string[], env?: NodeJS.ProcessEnv): string;
   /** `marmeon start` until `path` answers 200, then ends it. */
   serve(path: string): Promise<void>;
+  /** A long-running child in the app: `stop()` ends it, and so does an interrupted run. */
+  background(command: string, args: string[], env?: NodeJS.ProcessEnv): { child: ChildProcess; stop(): void };
 }
 
 /** The files of a package whose TypeScript sources the app's tests import: `Name`, `NAME` and `name` are filled in. */
@@ -706,10 +708,10 @@ async function checkNamespacePackage(smoke: WorkspaceApp): Promise<void> {
 
     // development: the dev server transforms the client entry and, when asked, the package's module
     const port = await freePort();
-    const vite = spawn(join(app, 'node_modules/.bin/vite'), ['--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: app, env: { ...smoke.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const { child: vite, stop } = smoke.background(join(app, 'node_modules/.bin/vite'), ['--host', '127.0.0.1', '--port', String(port), '--strictPort'], env);
     let output = '';
-    vite.stdout.on('data', (chunk) => (output += chunk));
-    vite.stderr.on('data', (chunk) => (output += chunk));
+    vite.stdout!.on('data', (chunk) => (output += chunk));
+    vite.stderr!.on('data', (chunk) => (output += chunk));
     try {
       const deadline = Date.now() + 30_000;
       for (;;) {
@@ -725,7 +727,7 @@ async function checkNamespacePackage(smoke: WorkspaceApp): Promise<void> {
       const served = await fetch(`http://127.0.0.1:${port}/packages/ui/src/components.ts`);
       if (!(await served.text()).includes('smoke-ui-component')) throw new SmokeError(`the dev server did not serve the module of the namespace package (${served.status}):\n${output}`);
     } finally {
-      vite.kill();
+      stop();
     }
     if (!recorded(record).has('client')) throw new SmokeError('the plugins of the app did not see the namespace package in the dev server.');
 

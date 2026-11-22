@@ -548,6 +548,17 @@ export class Smoke {
     }
   }
 
+  /** A long-running child in the app, in a group of its own: `stop()` ends it, and so does `stopAll()` when the run is interrupted. */
+  background(command: string, args: string[], env: NodeJS.ProcessEnv = {}): { child: ChildProcess; stop(): void } {
+    const child = spawn(command, args, { cwd: this.app, env: { ...this.env, ...env }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    this.#children.add(child);
+    const stop = () => {
+      this.#stop(child, 'SIGKILL');
+      this.#children.delete(child);
+    };
+    return { child, stop };
+  }
+
   #stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
     try {
       process.kill(-child.pid!, signal);

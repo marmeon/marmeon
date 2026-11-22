@@ -428,6 +428,8 @@ What it does not cover:
 
 - A package that boots an app while it loads and waits for it: the boot waits for the package, and neither ends.
 - A mock factory that boots an app: that inner boot runs the real module.
+- `@marmeon/core` run by Vitest itself (`server.deps.inline`, or linked from a checkout): discovery's own import is then the runner's,
+  so a mock reaches every boot, also one under a production stub.
 - `isolate: false` and the pools `vmThreads` and `vmForks` are not tested.
 - With `sequence.setupFiles: 'parallel'`, import it in the test file that boots the app.
 

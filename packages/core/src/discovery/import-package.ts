@@ -22,14 +22,14 @@ type Importer = (url: string) => Promise<Record<string, any>>;
 /**
  * The test's importer, when this import is for it: a function is registered (looked at first, so nothing is read where none is), the
  * environment is development or test, and the file's real path has no `node_modules` segment. Any other case, a path that cannot be
- * read included, is Node's import.
+ * read included, is not routed: the caller's own `import()` runs, which is Node's where the package that calls it is external.
  */
 export function testImporter(url: string): Importer | undefined {
   const importer = (globalThis as Record<symbol, unknown>)[TEST_IMPORT];
   if (typeof importer !== 'function' || environment.isProtected()) return undefined;
   try {
-    // An installed package stays with Node: a test's `vi.mock` of one must not change what boots. The real path decides — a workspace
-    // package is linked into `node_modules`, and a link into an installed package leads back there.
+    // An installed package is not routed: a test's `vi.mock` of one must not reach discovery's own import of it. The real path decides — a
+    // workspace package is linked into `node_modules`, and a link into an installed package leads back there.
     const segments = realpathSync.native(fileURLToPath(url)).split(sep === '\\' ? /[\\/]/ : sep);
     return segments.some((segment) => segment.toLowerCase() === 'node_modules') ? undefined : (importer as Importer);
   } catch {
