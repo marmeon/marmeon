@@ -159,9 +159,12 @@ export function valueEngine(test: (value: unknown) => RuleMessage | undefined | 
   );
 }
 
-/** A string — never one with a NUL character (Postgres refuses it: a 500 instead of a 422). */
+/** Text that is stored as it was checked: no NUL character (Postgres refuses it) and no lone surrogate (it has no UTF-8 form and would be stored as U+FFFD, another text than the one checked). */
+const isText = (value: string): boolean => !value.includes('\0') && value.isWellFormed();
+
+/** A string — never one with a NUL character or a lone surrogate; nothing is repaired. */
 export function stringEngine(): Engine {
-  return typed('string', (value) => typeof value === 'string' && !value.includes('\0'));
+  return typed('string', (value) => typeof value === 'string' && isText(value));
 }
 
 /** How many items of a list are checked at once when their rules are asynchronous (a database rule asks one query per item). */
@@ -464,8 +467,8 @@ export function normalize(convert: (value: string) => string): Engine {
   }) as unknown as Engine;
 }
 
-/** What `normalize()` made of a string is still no string with a NUL character: the result goes to the same checks and to the database. */
-export const withoutNul = (): Engine => v.check((value: string) => !value.includes('\0'), typeMessage('string')) as unknown as Engine;
+/** What `normalize()` made of a string is still no string with a NUL character or a lone surrogate: the result goes to the same checks and to the database. */
+export const stillText = (): Engine => v.check(isText, typeMessage('string')) as unknown as Engine;
 
 export const trim = (): Engine => v.trim() as unknown as Engine;
 export const toLowerCase = (): Engine => v.toLowerCase() as unknown as Engine;

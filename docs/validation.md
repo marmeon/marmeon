@@ -79,7 +79,7 @@ import { rules as r } from '@marmeon/validation';
 
 | Rule | Takes | Gives |
 | --- | --- | --- |
-| `r.string()` | A string, never one with a NUL character. | `string` |
+| `r.string()` | A string, never one with a NUL character or a lone surrogate. | `string` |
 | `r.number()`, `r.integer()` | A number, or a string that spells one in decimal: `'42'`, `'-1.5'`. | `number` |
 | `r.boolean()` | `true` and `false`, `1` and `0`, `'on'` and `'off'`, `'yes'` and `'no'`, `'true'` and `'false'`. | `boolean` |
 | `r.accepted()` | A ticked checkbox: `true`, `'on'`, `'yes'`, `'1'`. Missing is "must be accepted". | `true` |
@@ -117,8 +117,23 @@ without changing it for the others.
 `r.url({ protocols: ['https', 'mailto'] })` names others. A `regex()` pattern loses its `g` and `y` flags, which would make it
 remember where it stopped between two values.
 
-A string with a NUL character (`\0`) is no string for `r.string()`, and so for every rule made from it: the field says "must be a string", since Postgres refuses the character and a
-save would end in a 500. In a [query](#queries) there is no message: the field falls back to its default, like any value the schema rejects.
+A string with a NUL character (`\0`) is no string for `r.string()`, and so for every rule made from it. The field says "must be a string".
+Postgres refuses the character, so a save would end in a 500.
+
+A string with a lone surrogate is no string either. A lone surrogate is half of a UTF-16 pair, such as `'\uD83D'` without the rest of its emoji.
+It has no UTF-8 form, so what becomes of it depends on where it lands. A text column stores `\uFFFD` in its place without an error: another text than the one your checks saw.
+A `jsonb` column refuses it. Nothing is repaired: the rule refuses the text. Whole pairs (emoji, flags, rare scripts) and `\uFFFD` itself are strings.
+
+A request can bring a half in a JSON body, as the escape `"\ud83d"`. Client code that cuts text with `slice()` sends one when the cut lands inside an emoji.
+A URL and an HTML form body cannot: their bytes are decoded first, and `\uFFFD` takes the half's place.
+
+A string rule in the schema of a job, a queued event or a notification refuses a half too. A `slice()` on the server whose result goes to `dispatch()`, `send()` or `toDatabase()`
+can therefore make that call or that delivery fail for valid input. [Cut by code points](#cleaning-a-string-before-its-checks).
+
+In a [query](#queries) a refused value has no message: the field falls back to its default, like any value the schema rejects.
+
+Only the string rules look. `r.in()`, `r.value()`, a default, the output of `transform()` and the keys of an object are not checked.
+Text that you cut or build after validation is not checked either. Keep it well formed yourself: a text column does not tell you.
 
 The catalogue covers what apps use. `custom()` covers the rest.
 
@@ -450,8 +465,12 @@ an `async` function or one that returns no string) is a `TypeError`, a mistake i
 `normalize()` is refused after a check: `r.string().required().normalize(clean)` and `r.email().normalize(clean)` (`r.email()` and `r.url()` already hold a check) throw a `TypeError`
 when the schema is defined. Only `trim()`, `lowercase()` and another `normalize()` may come before it, so the checks that decide what a value may be (`unique()`, `exists()`,
 `regex()`, an allowlist in `custom()`) always judge the cleaned text, the text that is stored. A normalization such as `'NFKC'` turns lookalikes (a full-width `ＡＤＡ`) into other
-characters; a check that ran before it would have judged the lookalike and let the other text through. Write `r.string().normalize(clean).email()`. A NUL character is refused
-after `normalize()` just as `r.string()` refuses it in front.
+characters; a check that ran before it would have judged the lookalike and let the other text through. Write `r.string().normalize(clean).email()`.
+`normalize()` refuses a result with a NUL character or a lone surrogate, after each step of a chain.
+A `toWellFormed()` inside `normalize()` repairs nothing: an input with a half is refused before it runs, and a half that one step makes is refused before the next.
+
+Cut by code points, not by UTF-16 units. `normalize((text) => text.slice(0, 80))` splits an emoji on the boundary and is refused.
+`Array.from(text).slice(0, 80).join('')` counts code points and keeps the pair whole.
 
 `transform()` is still the way to change the type, or to wait for something (`async`), such as splitting a string into a list. It ends the string's own checks: the rule it returns is a
 plain rule of the new output, so `required()`, `max()` and `trim()` are gone after it, and the checks that follow are `custom()` checks of your own.

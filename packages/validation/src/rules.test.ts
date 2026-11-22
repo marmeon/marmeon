@@ -640,3 +640,89 @@ describe('contentsOf — the rules inside a rule', () => {
     expect(contentsOf({ '~standard': {} })).toBeUndefined();
   });
 });
+
+describe('a string with a lone surrogate is no string, like one with a NUL character', () => {
+  const halves = {
+    'a high half': 'a\uD83Db',
+    'a low half': 'a\uDE00b',
+    'a reversed pair': 'a\uDE00\uD83Db',
+    'a half at the end': 'ab\uD83D',
+  };
+
+  describe.each(Object.entries(halves))('%s', (_name, text) => {
+    const mustBeString = (field: string): Record<string, string[]> => ({ [field]: [`The ${field} field must be a string.`] });
+
+    it('r.string() and the rules built on it give the issue a NUL character gives', async () => {
+      for (const rule of [r.string(), r.string().trim(), r.string().max(9), r.email(), r.url(), r.uuid(), r.date()]) {
+        const form = r.object({ x: rule });
+        expect(await errors(form, { x: 'a\0b' }), 'the NUL character').toEqual(mustBeString('x'));
+        expect(await errors(form, { x: text })).toEqual(mustBeString('x'));
+      }
+    });
+
+    it('is refused in a list, an object, a union and a confirmation, each with the issue of a NUL character', async () => {
+      const list = r.object({ x: r.array(r.string()) });
+      expect(await errors(list, { x: ['a\0b'] })).toEqual({ 'x.0': ['The x.0 field must be a string.'] });
+      expect(await errors(list, { x: ['ok', text] })).toEqual({ 'x.1': ['The x.1 field must be a string.'] });
+      const nested = r.object({ a: r.object({ x: r.string() }) });
+      expect(await errors(nested, { a: { x: 'a\0b' } })).toEqual({ 'a.x': ['The a.x field must be a string.'] });
+      expect(await errors(nested, { a: { x: text } })).toEqual({ 'a.x': ['The a.x field must be a string.'] });
+      const either = r.object({ x: r.union([r.string(), r.number()]) });
+      expect(await errors(either, { x: 'a\0b' })).toEqual({ x: ['The x field is invalid.'] });
+      expect(await errors(either, { x: text })).toEqual({ x: ['The x field is invalid.'] });
+      const confirmed = r.object({ x: r.string(), x_confirmation: r.string() }).confirmed('x');
+      const both = { x: ['The x field must be a string.'], x_confirmation: ['The x confirmation field must be a string.'] };
+      expect(await errors(confirmed, { x: 'a\0b', x_confirmation: 'a\0b' })).toEqual(both);
+      expect(await errors(confirmed, { x: text, x_confirmation: text })).toEqual(both);
+    });
+
+    it('is refused after normalize() the same way, whether it came in or normalize() made it', async () => {
+      const keep = (value: string): string => value;
+      expect(await errors(r.object({ x: r.string().normalize(keep) }), { x: 'a\0b' })).toEqual(mustBeString('x'));
+      expect(await errors(r.object({ x: r.string().normalize(keep) }), { x: text })).toEqual(mustBeString('x'));
+      const made = r.object({ x: r.string().normalize(() => text).max(9) });
+      expect(await errors(made, { x: 'ab' })).toEqual(mustBeString('x'));
+    });
+  });
+
+  it('a cut inside normalize() that splits a pair is refused, the cut at a code point is not', async () => {
+    const cut = r.object({ x: r.string().normalize((value) => value.slice(0, 1)) });
+    expect(await errors(cut, { x: '\u{1F600}' })).toEqual({ x: ['The x field must be a string.'] });
+    const safe = r.object({ x: r.string().normalize((value) => Array.from(value).slice(0, 1).join('')) });
+    expect(await check(safe, { x: '\u{1F600}b' })).toEqual({ value: { x: '\u{1F600}' } });
+  });
+
+  it('normalize() with toWellFormed() does not repair an input with a half — the input is refused', async () => {
+    const form = r.object({ x: r.string().normalize((value) => value.toWellFormed()) });
+    expect(await errors(form, { x: 'a\uD83Db' })).toEqual({ x: ['The x field must be a string.'] });
+  });
+
+  it('two normalize() steps, a cut and then toWellFormed(), refuse the half the cut made', async () => {
+    const form = r.object({ x: r.string().normalize((value) => value.slice(0, 1)).normalize((value) => value.toWellFormed()) });
+    expect(await errors(form, { x: '\u{1F600}' })).toEqual({ x: ['The x field must be a string.'] });
+  });
+
+  it('a query whose normalize() makes a half falls back to its default, and drops the field', async () => {
+    const query = r.query({ q: r.string().normalize((value) => value.slice(0, 1)).default('none') });
+    const parsed = await parseQuery(query, new URLSearchParams({ q: '\u{1F600}' }));
+    expect(parsed.value).toEqual({ q: 'none' });
+    expect([...parsed.dropped]).toEqual(['q']);
+  });
+
+  it('pairs, joined emoji, flags, rare scripts, U+FFFD and noncharacters are strings', async () => {
+    const text = ['\u{1F600}', '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}', '\u{1F1E9}\u{1F1EA}', '\u{20000}\u{1D11E}', '\uFFFD', '\uFFFE\uFFFF', '\u{10FFFF}'].join(' ');
+    const form = r.object({ x: r.string().normalize((value) => value).max(40) });
+    expect(await check(form, { x: text })).toEqual({ value: { x: text } });
+    expect(await check(r.object({ x: r.string() }), { x: text })).toEqual({ value: { x: text } });
+  });
+
+  it('r.in(), r.value(), a default, a transform() result and object keys stay outside the rule: a half in them is no refusal', async () => {
+    const half = 'a\uD83Db';
+    expect(await check(r.object({ x: r.in([half]) }), { x: half })).toEqual({ value: { x: half } });
+    expect(await check(r.object({ x: r.value<string>(() => undefined) }), { x: half })).toEqual({ value: { x: half } });
+    expect(await check(r.object({ x: r.string().default(half) }), {})).toEqual({ value: { x: half } });
+    expect(await check(r.object({ x: r.string().transform((value) => `${value}\uD83D`) }), { x: 'ok' })).toEqual({ value: { x: 'ok\uD83D' } });
+    expect(await check(r.object({ '\uD83D': r.string() }), { '\uD83D': 'ok' })).toEqual({ value: { '\uD83D': 'ok' } });
+    expect(await check(r.object({ x: r.string() }), { x: 'ok', '\uD83D': 1 })).toEqual({ value: { x: 'ok' } });
+  });
+});

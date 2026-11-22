@@ -87,7 +87,7 @@ function choice<const T extends readonly (string | number)[]>(values: T, key: 'i
  * only. See `docs/validation.md#available-rules`.
  */
 export const rules = {
-  /** A string (`''` too, also with `.optional()`/`.nullable()`/`.default()` — `.required()` asks for some text). */
+  /** A string (`''` too, also with `.optional()`/`.nullable()`/`.default()` — `.required()` asks for some text), never one with a NUL character or a lone surrogate. See `docs/validation.md#available-rules`. */
   string: stringRule,
 
   /** A number — or a string that spells one (`'42'`, what a form or a URL sends): becomes a number. */

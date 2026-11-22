@@ -389,3 +389,14 @@ describe('an empty string in a request — by type', () => {
     expect((await send('/block', { ...cleared, title: '  ' })).errors).toEqual({ title: ['The title field is required.'] });
   });
 });
+
+describe('a lone surrogate in a JSON body', () => {
+  it('is a 422 with the field named — and the value is nowhere in the error', async () => {
+    const { send } = app();
+    const answer = await send('/block', { title: 'Pri\uD83Dcing', caption: null, link: null });
+    expect(answer.status).toBe(422);
+    expect(answer.errors).toEqual({ title: ['The title field must be a string.'] });
+    expect(JSON.stringify(answer.errors)).toBe('{"title":["The title field must be a string."]}');
+    expect((await send('/block', { title: 'Pri\u{1F600}cing', caption: null, link: null })).status, 'a valid pair').toBe(200);
+  });
+});
