@@ -109,6 +109,8 @@ Postgres needs the `pg` driver in your app:
 pnpm add pg@^8
 ```
 
+If a package of your workspace uses Marmeon too, give it the same `pg` version as the app, or pnpm installs the framework twice: [One copy of a framework package](package-development.md#one-copy-of-a-framework-package).
+
 Install it as a dependency, not a dev dependency. Without it, the first query fails and names the command. With
 `DB_URL=postgres://app:secret@db:5432/app`, the message reads:
 
