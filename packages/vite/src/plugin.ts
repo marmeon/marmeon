@@ -9,6 +9,7 @@ import { packageLang, packageLangExtension } from './package-lang.ts';
 import { PACKAGE_ENTRY_MARK, clientInputs, entriesFile, entryPackages, packagePages, serverInputs, uiPackages, uiPackageSettings } from './package-pages.ts';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
+import { testPackages } from './test-packages.ts';
 import { serverImports } from './server-imports.ts';
 
 /**
@@ -93,8 +94,8 @@ export interface MarmeonOptions {
    */
   fonts?: readonly MarmeonFont[];
   /**
-   * For `vitest.config.ts`: conditions, injection, virtual modules and the server-import check only — no entries, no HTML, no CSP
-   * nonce, no pre-bundling, no build settings.
+   * For `vitest.config.ts`: conditions, injection, virtual modules (and `virtual:marmeon/test-packages`) and the server-import check only — no entries,
+   * no HTML, no CSP nonce, no pre-bundling, no build settings. Default `false`. See docs/vite.md#tests.
    */
   test?: boolean;
   /**
@@ -285,6 +286,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], packageDirectories: () => uiPackageSettings(packages).directories, ...(options.test ? { test: true } : {}) }),
     serverImports({ pages: [PAGES_GLOB], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
     images(options.images),
+    // `enforce: 'pre'` orders it, so no other plugin changes its position.
+    ...(options.test ? [testPackages()] : []),
   ];
 }
 

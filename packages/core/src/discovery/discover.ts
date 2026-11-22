@@ -14,6 +14,7 @@ import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
+import { importModule } from './import-package.ts';
 import { checkExportKeys, isNamespace, resolveSurface, resolveSurfaceEntry, resolveSurfaceTexts, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
@@ -553,22 +554,6 @@ export interface DiscoveredPackages {
   readonly warning?: string;
 }
 
-/**
- * The discovered packages' modules, by URL, once per process. Node keeps a module by its URL anyway; under a module runner (Vitest)
- * every `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test (under
- * load that made `createTestApp` take seconds). A failed import is not kept (a pruned install is discovered again, below).
- */
-const packageModules = new Map<string, Promise<Record<string, any>>>();
-function importPackage(url: string): Promise<Record<string, any>> {
-  let module = packageModules.get(url);
-  if (!module) {
-    module = import(url) as Promise<Record<string, any>>;
-    packageModules.set(url, module);
-    module.catch(() => packageModules.delete(url));
-  }
-  return module;
-}
-
 /** Manifest files a warning was given for — once per process, not once per app (tests boot many). */
 const warned = new Set<string>();
 
@@ -595,8 +580,18 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   // Use what was just generated — re-reading the file could see another process's write.
   if (regenerated) manifest = discover();
 
-  const load = (current: Manifest) =>
-    Promise.all(current.modules.map((file) => importPackage(pathToFileURL(resolvePath(options.root, file)).href)));
+  // Which modules the test's importer loaded: only for those, a missing export is refused below.
+  let routed: boolean[] = [];
+  const load = (current: Manifest) => {
+    routed = [];
+    return Promise.all(
+      current.modules.map((file, index) => {
+        const imported = importModule(pathToFileURL(resolvePath(options.root, file)).href);
+        routed[index] = imported.routed;
+        return imported.module;
+      }),
+    );
+  };
   let modules: Record<string, any>[];
   try {
     modules = await load(manifest!);
@@ -609,7 +604,31 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     regenerated = true;
     modules = await load(manifest);
   }
-  const resolve = ([module, name]: ExportRef) => modules[module]![name];
+  // Where the test's importer loaded a module (docs/vite.md#packages-of-your-workspace), a mock may leave out what discovery needs.
+  const file = (module: number) => relative(options.root, resolvePath(options.root, manifest!.modules[module]!));
+  const missing = ([module, name]: ExportRef) =>
+    new DiscoveryError(`${file(module)} has no export "${name}", which the app's packages need to boot. If a test mocks it, the mock must export it.`);
+  const resolve = (ref: ExportRef) => {
+    const value = modules[ref[0]]![ref[1]];
+    if (value === undefined && routed[ref[0]]) throw missing(ref);
+    return value;
+  };
+
+  // Before anything is written: a routed module that cannot boot refuses the whole boot, and a refused one leaves no list behind.
+  if (routed.some(Boolean)) {
+    for (const ref of manifest!.providers) {
+      if (!routed[ref[0]]) continue;
+      const provider = resolve(ref);
+      if (typeof provider !== 'function') throw new DiscoveryError(`${file(ref[0])} exports "${ref[1]}", which is no function, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.`);
+    }
+    for (const { class: ref } of manifest!.injections) {
+      if (!routed[ref[0]]) continue;
+      const target = resolve(ref);
+      if (target === null || (typeof target !== 'object' && typeof target !== 'function')) {
+        throw new DiscoveryError(`${file(ref[0])} exports "${ref[1]}", which is no object or function, so it cannot take an injection list. If a test mocks it, the mock must export the class.`);
+      }
+    }
+  }
 
   for (const entry of manifest!.injections) {
     const target = resolve(entry.class);

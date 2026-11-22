@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Result, ServiceProviderClass } from '@marmeon/core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { assignMigrations, migrationDeclarations, readProviderMigrations, unattributedDeclarations } from './package-migrations.ts';
+import { assignMigrations, exportedClasses, migrationDeclarations, readProviderMigrations, unattributedDeclarations } from './package-migrations.ts';
 import type { MigrationDeclaration, PackageMigrationsError } from './package-migrations.ts';
 
 const PACKAGES = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
@@ -569,6 +569,40 @@ describe('readProviderMigrations', () => {
     const read = await readFor(pkg, [Provider as unknown as ServiceProviderClass]);
     expect(reads).toEqual({ migrations: 1, from: 1, href: 1 });
     expect(read.ok && read.value?.from).toBe('stubs/migrations');
+  });
+});
+
+describe('the classes of a package entry, with and without the test importer', () => {
+  const IMPORTER = Symbol.for('marmeon.test.import');
+  afterEach(() => {
+    delete (globalThis as Record<symbol, unknown>)[IMPORTER];
+  });
+  const pkgOf = () => {
+    const pkg = makePackage({ [FIRST]: STUB, 'index.js': 'export class Plain {}\n' });
+    return { ...pkg, dir: realpathSync(pkg.dir), name: '@acme/things' };
+  };
+
+  it('recognises the provider the importer routed, though the package file itself exports another class', async () => {
+    const pkg = pkgOf();
+    const Provider = providerOf({ from: pathToFileURL(join(pkg.dir, 'stubs/migrations')), module: 'things' });
+    (globalThis as Record<symbol, unknown>)[IMPORTER] = async () => ({ Provider });
+    const read = await readProviderMigrations(pkg, declare(Provider));
+    expect(read.ok && read.value?.module).toBe('things');
+  });
+
+  it('does not recognise it with a plain import: the package file exports another class', async () => {
+    const pkg = pkgOf();
+    const Provider = providerOf({ from: pathToFileURL(join(pkg.dir, 'stubs/migrations')), module: 'things' });
+    expect(await readProviderMigrations(pkg, declare(Provider))).toEqual({ ok: true, value: undefined });
+  });
+
+  it('imports with its own import() without an importer: fresh classes after vi.resetModules()', async () => {
+    const pkg = pkgOf();
+    const first = (await exportedClasses(pkg, pkg.dir)) as { classes: Set<unknown> };
+    vi.resetModules();
+    const second = (await exportedClasses(pkg, pkg.dir)) as { classes: Set<unknown> };
+    expect([...first.classes]).toHaveLength(1);
+    expect([...second.classes][0]).not.toBe([...first.classes][0]);
   });
 });
 

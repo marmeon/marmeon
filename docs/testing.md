@@ -114,7 +114,8 @@ instead and answers 404.) Test a route of your own in one of two ways:
   it: the guard's host check defends against DNS rebinding, and the guard ignores the `env` option.
 - Stub `NODE_ENV` for the process with `vi.stubEnv()`, and undo it after every test. A guard that asks on every request, such as
   [`devOnly()`](routing.md#development-only-routes), sees the stub at once. A route that is registered only in some environments
-  decides when the app boots: stub before `createTestApp()` for it.
+  decides when the app boots: stub before `createTestApp()` for it. With `virtual:marmeon/test-packages`, a boot under that stub runs your
+  workspace packages unmocked.
 
 ```ts title="modules/playground/playground.test.ts"
 import { createTestApp } from '@marmeon/testing';
@@ -191,6 +192,8 @@ Besides what the options add, every test app has:
 
 `app.application` is the booted application, `app.container` its container, and `app.make(Service)` resolves a service from it.
 `app.make(NoteRepository)` hands you the same repository the controllers use.
+
+A class from a package of your own workspace is the one the app booted only once your setup file imports `virtual:marmeon/test-packages` ([packages of your workspace](vite.md#packages-of-your-workspace)).
 
 ### Your own kernel
 

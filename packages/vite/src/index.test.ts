@@ -233,6 +233,12 @@ describe('marmeon()', () => {
     // Lazy: one chunk per language file, the browser loads only its locale's.
     expect((lang.load as (id: string) => unknown)('\0virtual:marmeon/lang')).toBe('export default import.meta.glob(["/modules/*/lang/*.ts","/lang/*.ts"]);\n');
   });
+
+  it('adds the plugin of virtual:marmeon/test-packages only with test: true', () => {
+    expect(marmeon().map((plugin) => plugin.name)).not.toContain('marmeon:test-packages');
+    // the last one: `enforce: 'pre'` orders it, so no other plugin changes its position
+    expect(marmeon({ test: true }).map((plugin) => plugin.name).at(-1)).toBe('marmeon:test-packages');
+  });
 });
 
 describe('virtualGlob()', () => {
