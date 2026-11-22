@@ -18,7 +18,7 @@ const schema: StandardSchemaV1<CheckPayload> = {
   },
 };
 
-/** A job the package brings on its provider (`static jobs`): the app lists it nowhere, and a worker still runs it. */
+/** A job the package brings on its provider (`static [providerJobs]`): the app lists it nowhere, and a worker still runs it. */
 export class CheckStatusBoardJob {
   static readonly job = 'status-board.check';
   static readonly schema = schema;

@@ -153,7 +153,7 @@ pnpm marmeon make:job SendInvoiceReminderJob --module=billing
 ```
 
 The job lands in `modules/billing/jobs/SendInvoiceReminderJob.ts` with the name `billing.send-invoice-reminder`. A worker runs
-only the jobs its app knows: a module's `jobs`, or a provider's `static jobs` (see [package development](package-development.md#jobs)). `make:job` adds the class to its module (`--no-register` prints the lines instead). The module ends up like this:
+only the jobs its app knows: a module's `jobs`, or a provider's `static [providerJobs]` (see [package development](package-development.md#jobs)). `make:job` adds the class to its module (`--no-register` prints the lines instead). The module ends up like this:
 
 ```ts title="modules/billing/index.ts"
 import { defineModule } from '@marmeon/core';

@@ -621,6 +621,8 @@ export declare function ok(): Ok<void>;
 export declare function ok<T>(value: T): Ok<T>;
 // outsideTransaction
 export declare function outsideTransaction<R>(fn: () => R): R;
+// providerJobs
+export declare const providerJobs: unique symbol;
 // raw
 export declare function raw(markup: string): Html;
 // redactText

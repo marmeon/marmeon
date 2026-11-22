@@ -6,7 +6,7 @@ import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
 import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './locks.ts';
-import { backoffOf, nameOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
+import { backoffOf, nameOf, providerSourceOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
 import { cipherContext, delaySeconds, nextInChain, RECORD_VERSION, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
 
 /**
@@ -387,7 +387,7 @@ export async function prepareRecord(
     const other = deps.registry.get(job.job);
     throw new QueueError(
       other
-        ? `${job.name} is named "${job.job}", but that name belongs to ${deps.registry.providerSourceOf(other) === undefined ? other.name : nameOf(other)} in this app's jobs.`
+        ? `${job.name} is named "${job.job}", but that name belongs to ${providerSourceOf(deps.registry, other) === undefined ? other.name : nameOf(other)} in this app's jobs.`
         : `${job.name} (${job.job}) is not registered — a worker could not run it. Add it to its module: defineModule({ jobs: [${job.name}] }).`,
     );
   }

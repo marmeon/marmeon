@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { createApplication, Logger, type ServiceProviderClass } from '@marmeon/core';
+import { createApplication, Logger, providerJobs, type ServiceProviderClass } from '@marmeon/core';
 import * as v from 'valibot';
 import { expect, it, vi } from 'vitest';
 import { silent } from './__fixtures__/targets.ts';
@@ -25,7 +25,7 @@ it("names the encrypted job and its provider when the encryption package is not 
     handle(): void {}
   }
   const Provider = class {
-    static jobs = [SecretJob];
+    static [providerJobs] = [SecretJob];
   };
   Object.defineProperty(Provider, 'name', { value: 'SecretProvider' });
   const memory: QueueDriverFactory = ({ clock }) => ({ driver: new MemoryQueueDriver({ clock }), queue: 'default', retryAfterSeconds: 90 });
@@ -53,7 +53,7 @@ it('hands nothing, for the default words, when the first encrypted job is a modu
     handle(): void {}
   }
   const Provider = class {
-    static jobs = [ModuleSecret, ProviderSecret];
+    static [providerJobs] = [ModuleSecret, ProviderSecret];
   };
   Object.defineProperty(Provider, 'name', { value: 'SecretProvider' });
   const error = await createApplication(

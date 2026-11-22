@@ -4,7 +4,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-// The status board package brings a job on its provider (`static jobs`): no module of the app lists it, and a worker runs it.
+// The status board package brings a job on its provider (`static [providerJobs]`): no module of the app lists it, and a worker runs it.
 let app: TestApp;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });

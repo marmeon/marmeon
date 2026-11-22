@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Clock, createApplication, Logger, type Application, type LogContext } from '@marmeon/core';
+import { Clock, createApplication, Logger, providerJobs, type Application, type LogContext } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
 import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -311,10 +311,10 @@ describe('mail previews', () => {
   });
 });
 
-describe('a provider that lists SendQueuedMail in static jobs', () => {
+describe('a provider that lists SendQueuedMail in static [providerJobs]', () => {
   it('stops the start: names under marmeon. belong to the framework, whoever lists the class', async () => {
     class Thief {
-      static jobs = [SendQueuedMail];
+      static [providerJobs] = [SendQueuedMail];
       register(): void {}
     }
     await expect(

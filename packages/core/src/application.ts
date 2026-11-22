@@ -17,7 +17,7 @@ import { HealthChecks, type HealthCheckClass } from './health.ts';
 import { takeInjectionWarning } from './injection/artifacts.ts';
 import { ConsoleLogger, LogContextSources, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
-import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
+import { providerJobs, type ServiceProvider, type ServiceProviderClass } from './provider.ts';
 
 /**
  * What an app boots for. `run` — serving, working a queue, a command: every configuration validated, every provider
@@ -145,7 +145,7 @@ export class Application {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
       if (!hooks && !declaresStatics(Provider)) {
-        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), ${PROVIDER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
+        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), ${STARTUP_STATICS.map((key) => `static ${startupName(key)}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -251,13 +251,19 @@ export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
  */
 const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'mailDrivers', 'fetchDrivers', 'oauthProviders', 'chatDrivers', 'checks', 'migrations', 'publishes'] as const;
 
-/** Every static of a provider class (docs/package-development.md#provider-statics): the table of the page and the K9 message list exactly these. @internal */
-export const PROVIDER_STATICS = ['config', 'health', 'errorReporters', 'solutions', 'commands', 'jobs', ...DRIVER_STATICS] as const;
+/**
+ * Every static of a provider class (docs/package-development.md#provider-statics), the symbol key of `static [providerJobs]` last:
+ * the table of the page and the K9 message list exactly these. @internal
+ */
+export const STARTUP_STATICS = ['config', 'health', 'errorReporters', 'solutions', 'commands', ...DRIVER_STATICS, providerJobs] as const;
 
-/** Whether `Provider` lists anything in a static of the {@link PROVIDER_STATICS}: a non-empty list, or a record with an entry. */
+/** How the K9 message and the page of the package protocol write a key of {@link STARTUP_STATICS}. @internal */
+export const startupName = (key: (typeof STARTUP_STATICS)[number]): string => (typeof key === 'symbol' ? '[providerJobs]' : key);
+
+/** Whether `Provider` lists anything in a static of the {@link STARTUP_STATICS}: a non-empty list, or a record with an entry. */
 function declaresStatics(Provider: ServiceProviderClass): boolean {
-  return PROVIDER_STATICS.some((key) => {
-    const value = (Provider as unknown as Record<string, unknown>)[key];
+  return STARTUP_STATICS.some((key) => {
+    const value = (Provider as unknown as Record<string | symbol, unknown>)[key];
     return typeof value === 'object' && value !== null && Object.keys(value).length > 0;
   });
 }

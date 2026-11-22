@@ -19,11 +19,18 @@ const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
 export const FRAMEWORK_PREFIX = 'marmeon.';
 
 /**
- * Which job class has which name — from the modules' `jobs: [...]` and the providers' `static jobs`. The worker finds a
+ * @internal Registers the `static [providerJobs]` of a provider (`provider MediaServiceProvider`), never as framework jobs.
+ * Listing a registered class here changes nothing (a module and a provider, a provider twice).
+ */
+export let addFromProvider: (registry: JobRegistry, jobs: readonly JobClass[], source: string) => JobRegistry;
+
+/** @internal The source of `job` when it came from a provider's static, for the messages that name a source only then; `undefined` for any other registry. */
+export let providerSourceOf: (registry: JobRegistry, job: JobClass) => string | undefined;
+
+/**
+ * Which job class has which name — from the modules' `jobs: [...]` and the providers' `static [providerJobs]`. The worker finds a
  * job's class here, so a job that is not registered cannot run: dispatching it is an error, and a name used twice fails the start.
- *
- * Apps may match the wording of the messages about a module's job or an `add()`ed one, so that wording stays. What only a
- * provider's job gets: safe names, and its source where those messages name none.
+ * See `docs/package-development.md#jobs`.
  */
 export class JobRegistry {
   readonly #jobs = new Map<string, { readonly job: JobClass; readonly source: string; readonly provider: boolean }>();
@@ -31,14 +38,6 @@ export class JobRegistry {
   /** @internal Registers job classes; `source` names where they come from in errors (`module auth`). */
   add(jobs: readonly JobClass[], source: string, options: { framework?: boolean } = {}): this {
     return this.#register(jobs, source, options.framework === true, false);
-  }
-
-  /**
-   * @internal Registers the `static jobs` of a provider (`provider MediaServiceProvider`), never as framework jobs.
-   * Listing a registered class here changes nothing (a module and a provider, a provider twice).
-   */
-  addFromProvider(jobs: readonly JobClass[], source: string): this {
-    return this.#register(jobs, source, false, true);
   }
 
   #register(jobs: readonly JobClass[], source: string, framework: boolean, provider: boolean): this {
@@ -73,14 +72,19 @@ export class JobRegistry {
     return this.#jobs.get(job.job)?.job === job;
   }
 
-  /** @internal The source of `job` when it came from a provider's `static jobs`, for the messages that name a source only then. */
-  providerSourceOf(job: JobClass): string | undefined {
-    const entry = this.#jobs.get(job.job);
-    return entry?.job === job && entry.provider ? entry.source : undefined;
-  }
-
   all(): JobClass[] {
     return [...this.#jobs.values()].map((entry) => entry.job);
+  }
+
+  // The two functions below read what only the class may: they are no members of it.
+  static {
+    addFromProvider = (registry, jobs, source) => registry.#register(jobs, source, false, true);
+    providerSourceOf = (registry, job) => {
+      // An object that is no JobRegistry (an app's own stand-in) has no origins: its messages say what they say for a module's job.
+      if (typeof registry !== 'object' || registry === null || !(#jobs in registry)) return undefined;
+      const entry = registry.#jobs.get(job.job);
+      return entry?.job === job && entry.provider ? entry.source : undefined;
+    };
   }
 }
 
@@ -97,7 +101,7 @@ export function kindOf(value: unknown): string {
 
 /** The job's name, after checking the class has what a job needs. */
 export function checkJobClass(job: JobClass, source: string, provider = false): string {
-  // Safe names and the source for a provider's job only: see the class.
+  // Safe names and the source go to a provider's job only: any other job's messages have their own wording.
   if (provider && typeof job !== 'function') throw new QueueSetupError(withCode('Q4', `${source} lists a value of type ${kindOf(job)} as a job, but it is not a class.`));
   const label = provider ? nameOf(job) : typeof job === 'function' && job.name ? job.name : String(job);
   if (typeof job !== 'function') throw new QueueSetupError(withCode('Q4', `${source} lists ${label} as a job, but it is not a class.`));

@@ -1,5 +1,5 @@
 import { authenticate } from '@marmeon/auth';
-import type { Container, ServiceProvider } from '@marmeon/core';
+import { providerJobs, type Container, type ServiceProvider } from '@marmeon/core';
 import { contentSecurityPolicy, defineRoutes, describeAccess, NONCE, Router } from '@marmeon/http';
 import { CheckStatusBoardJob } from './CheckStatusBoardJob.ts';
 import { ShowStatusController } from './ShowStatusController.ts';
@@ -10,7 +10,7 @@ import { StatusBoardConfig } from './StatusBoardConfig.ts';
 export class StatusBoardServiceProvider implements ServiceProvider {
   static config = [StatusBoardConfig];
   /** Run by a worker of any app that installs the package, with no entry in the app. */
-  static jobs = [CheckStatusBoardJob];
+  static [providerJobs] = [CheckStatusBoardJob];
 
   register(container: Container): void {
     const { path } = container.make(StatusBoardConfig);

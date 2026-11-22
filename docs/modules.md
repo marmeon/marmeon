@@ -106,7 +106,7 @@ its own:
 | `migrations` | The folder of its [migrations](migrations.md): `new URL('./migrations/', import.meta.url)`. | `@marmeon/database` |
 | `seeders` | Its [seeders](seeding.md). | `@marmeon/database` |
 | `exposes` | The tables other modules may read and join. See [repositories](queries.md#module-boundaries). | `@marmeon/database` |
-| `jobs` | Its [queued jobs](queues.md). A worker runs only registered jobs: a module's `jobs` or a provider's `static jobs`. | `@marmeon/queue` |
+| `jobs` | Its [queued jobs](queues.md). A worker runs only registered jobs: a module's `jobs` or a provider's `static [providerJobs]`. | `@marmeon/queue` |
 | `notifications`, `recipients` | Its [notifications](notifications.md) and who may receive them. | `@marmeon/notifications` |
 | `liveAuthorizers` | Who may follow its [live channels](realtime.md#who-may-follow-a-channel). | `@marmeon/live` |
 | `schedule` | Its [scheduled work](scheduling.md). | `@marmeon/scheduler` |
@@ -177,7 +177,7 @@ module runner) the container reports K16 instead. Break the cycle by letting one
 ## Listing the modules
 
 `marmeon modules:list` shows what the app defines: the packages it found, the providers of the app, and for each module its
-providers, commands, jobs, notifications, seeders and migrations folder. The jobs are the module's own: the `static jobs` of a provider are not listed. Below the modules come the events with the listeners of each
+providers, commands, jobs, notifications, seeders and migrations folder. The jobs are the module's own: the `static [providerJobs]` of a provider are not listed. Below the modules come the events with the listeners of each
 one. A part a module does not have is left out. The document of `--json` also names the environment variables the configuration reads.
 
 ```sh

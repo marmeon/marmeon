@@ -8,7 +8,7 @@ import { NullFailedJobStore } from './drivers/memory.ts';
 import { RedisQueueDriver } from './drivers/redis.ts';
 import type { JobEvent } from './events.ts';
 import type { QueueConnectionOptions } from './queue.ts';
-import { JobRegistry, QueueSetupError, timeoutOf } from './registry.ts';
+import { JobRegistry, providerSourceOf, QueueSetupError, timeoutOf } from './registry.ts';
 import { JobRunner, type PayloadCipher } from './runner.ts';
 import { Worker } from './worker.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -251,7 +251,7 @@ function checkConnection(name: string, connection: unknown): QueueConnection {
 export function checkTimeouts(registry: JobRegistry, connection: string, retryAfterSeconds: number, stopTimeout: number): void {
   const offenders = registry.all().filter((job) => timeoutOf(job) + stopTimeout >= retryAfterSeconds);
   if (offenders.length === 0) return;
-  const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s${registry.providerSourceOf(job) === undefined ? '' : `, ${registry.providerSourceOf(job)}`})`).join(', ');
+  const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s${providerSourceOf(registry, job) === undefined ? '' : `, ${providerSourceOf(registry, job)}`})`).join(', ');
   throw new QueueSetupError(
     withCode(
       'Q4',
