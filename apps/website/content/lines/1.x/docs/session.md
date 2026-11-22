@@ -78,9 +78,40 @@ them out of [remembered input](forms.md#remembering-input)), the `_token` and ev
 and every field whose name your app added with `redact.keys` (or a package with `addKeys()`), matched exactly at any depth,
 ignoring case. So a password never reaches the session store through flashed input. A field named `__proto__` is left out at any
 depth, whatever way the input is flashed, and `old(key)` reads own keys only: `old('constructor')` is `undefined` unless the form sent one.
-A failed form keeps at most 64 KiB of input (as JSON) in the session, and the same for its errors: it refills forms, it does not
-keep documents. Input over the cap is not flashed at all, and a single string that alone cannot fit is left out, so a form shows its
+A failed form keeps at most 64 KiB of input (as JSON) in the session, and the same for its errors, in each of the two places it
+keeps them (the plain flash data and the record below, so up to four times that in all): it refills forms, it does not keep documents. Input over the cap is not flashed at all, and a single string that alone cannot fit is left out, so a form shows its
 default, never a cut-off value. Errors over the cap shrink to the first message of every field, then to the first fields in order.
+
+A form that is sent back keeps what it was sent back with in one record: its errors, its input and, for a form whose controller
+answers `conflict(current)`, a conflict `{ message, current }`. The record is built from what the request flashed for `errors` and
+the input, whichever way it did (`withErrors()`, `with('errors', …)`, `session.flashData('errors', …)`, `session.flashInput()`);
+a single text for a field counts as a list of one. The session keeps the records in a key of their own, `_sent_back`, apart from the flash
+messages. No page shows a record as a message, and a process of the release before, which knows only the messages, leaves that
+key alone. A record never takes a toast's slot: the newest record of each document and submit, ten at most in one session, so one tab's record does not erase another's, and
+beyond ten the oldest is dropped. A record that no page takes within five minutes is dropped, wherever it waits, so a follow-up
+that never comes does not keep errors and input in the session. It is bound to the document of the request that flashed it, and,
+when the client sent a submit id (`x-marmeon-submit`, which `useForm` and `<Form>` send with every submit), to that submit: only the
+page request that carries the same id takes it, so a poll, a partial reload, a prefetch or another tab does not. If that request is
+answered with the [new-version 409](navigation.md#a-new-version-of-the-app), the browser loads the document anew without the id, and
+the binding is released: the full load takes it. A form without JavaScript sends no id, and the next page the document is shown
+takes it. A later submit of the same document that is not the one a record waits for ends it. A prefetch of the document is told
+that something waits, as for messages, whether the record is bound to a submit or not.
+`ShareErrorsFromSession` takes the record once for the page the user is shown and shares its errors as the `errors` prop and its
+conflict as the `_conflict` prop (`null` on every other page, so a partial reload overwrites an old conflict instead of keeping it);
+`old()` reads the input of the same record. Errors or input that the page's own request flashed (`flashData('errors', …)`,
+`flashInput()`) win over the record. A part of the record that has the wrong shape is dropped, and errors that are no record of
+texts are left out of it. A page's own prop called `_conflict` is dropped too. Over 64 KiB as JSON, a conflict's `current` is left
+out and `{ message }` stays (a message over the cap is cut), so return the version and the fields that differ, not the whole
+document. The five minutes are counted on the server's clock, so the servers of one app need synchronised clocks. Two things you may meet:
+a follow-up that comes later than five minutes shows no errors, and during a rolling deploy from 1.1.0 a process of that release
+that answers the follow-up shows the plain copy, as 1.1.0 always did. See
+[forms](forms.md#conflicts).
+
+The errors and the input are also kept as plain flash data, which any next request ages: a prefetch, a poll or another tab takes it
+before the form's own page does. When a record mirrors that copy, the session marks it, and neither `errors` nor `old()` ever show
+a marked copy, whatever request asks and however long the record waits: only the record shows them, on the page of its submit.
+Flash data that no record mirrors, such as the errors your controller flashed with `flashData('errors', …)` and answers with a
+plain response, shows as before. Read errors and input through the `errors` prop and `old()`, not through `session.get('errors')`.
 
 ### Signing in and out
 
@@ -113,7 +144,7 @@ token it hands out must still be valid when it comes back.
 | `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. Over HTTPS the browser sees it with the [`__Host-` prefix](#the-__host--prefix). |
 | `SESSION_FILES` | `storage/framework/sessions` | Where the `file` driver keeps sessions, relative to the app. |
 | `SESSION_SECURE_COOKIE` | follows `APP_URL` | A boolean (`true`, `false`, `1`, `0`, any case) decides `Secure` yourself; anything else stops the start. Unset or empty, every cookie gets it when `APP_URL` starts with `https://`. |
-| `SESSION_SAME_SITE` | `lax` | The `SameSite` attribute of the session cookie: `lax`, `strict` or `none`. |
+| `SESSION_SAME_SITE` | `lax` | The `SameSite` attribute of the session cookie: `lax`, `strict` or `none`. With `strict`, [social login](oauth.md#samesite) cannot work. |
 | `SESSION_ENCRYPT` | `false` | `true` encrypts the session data in its store with `APP_KEY`. A boolean (`true`, `false`, `1`, `0`); anything else stops the start. |
 | `SESSION_LOTTERY` | `2/100` | The chance that a request also deletes expired sessions, after its response. `0/1` turns it off. |
 
@@ -234,7 +265,7 @@ that reads the session, decides and writes it back needs `block()`.
 ## What a session stores
 
 A session is one JSON object. Next to your keys it holds the framework's own, whose names start with `_` (`_token`, `_flash`,
-and `_auth_*` for a sign-in), and `_v`: the number of the format the object was written in, currently `1`. It is taken off when
+`_flash_messages`, `_sent_back` and `_auth_*` for a sign-in), and `_v`: the number of the format the object was written in, currently `1`. It is taken off when
 the session is read, so `session.all()` does not list it. A `put('_v', …)` is replaced by the real mark when the session is written,
 and the next request does not see it.
 

@@ -61,6 +61,10 @@ The tables below list every part.
 | `providers` | The names of service provider classes that the package's entry exports, each a JavaScript identifier. |
 | `browser` | Globs of the package's files that run only in the browser, relative to the package, such as `["src/client/**"]`. |
 | `experimental` | `true`, or a list of the package's `exports` subpaths: marks the package, or those entries, as [experimental](releases.md#experimental). |
+| `namespace` | The prefix of the package's pages and texts, such as `"status"`: lowercase letters, digits and single hyphens, starting with a letter, at most 32 characters, and not `app` or `marmeon`. Required with `entry`, `views` or `lang`; alone it marks a package whose code is user interface. See [Pages of a package](#pages-of-a-package). |
+| `entry` | `{ "client": "./area/client", "ssr": "./area/ssr" }`: two subpaths of the package's `exports` that start its own document. Only with `views`. |
+| `views` | The subpath of the package's pages, such as `"./views"`. Its `exports` holds the pattern `"./views/*"`. Only with `entry`. |
+| `lang` | The subpath of the package's texts, such as `"./lang"`, with the pattern `"./lang/*"` in `exports`. |
 | `serverModules` | Only in the app's own package.json: globs of server code beyond the conventions. Ignored in a dependency. See [Server folders of your own](vite.md#server-folders-of-your-own). |
 
 The field is an object with these keys and no others. The app finds it when it walks its dependencies, the dev dependencies
@@ -68,11 +72,14 @@ included, and the dependencies of those, and a field that does not hold to this 
 is someone else's file and a key that is silently skipped hides a mistake:
 
 - A key that is not listed, such as `provider` for `providers`, ends discovery with `K7`: `@acme/marmeon-request-log has an unknown key
-  "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules) — a misspelt key would leave its providers out.`
+  "provider" in its "marmeon" field (known: providers, browser, experimental, serverModules, namespace, entry, views, lang) — a misspelt key would leave its providers out.`
   The message names the package and the key, and the key only if it is a plain identifier; it never repeats a value of the field.
   The same holds for a `migrations` key, since migrations are a static of the provider (below).
 - A field that is not an object (an array, a string, `null`), a `providers` that is not a list of class names, or a `browser` that
   is not a list of strings also ends discovery with `K7`.
+
+- A `namespace` that is not valid, `entry`, `views` or `lang` without a `namespace`, an `entry` without exactly `client` and `ssr`, `entry`
+  without `views` or the reverse, or two packages with one namespace also end discovery with `K7`, naming both packages in the last case.
 
 A package's providers register after the providers of the packages it depends on, so list the framework packages you build on as
 dependencies. A name in `providers` that the entry does not export stops the app with
@@ -102,6 +109,9 @@ reads them, and are known once that package is installed.
 | `diskDrivers` | `Record<string, DiskDriverFactory>` | `@marmeon/storage` | [Drivers](drivers.md#bringing-a-driver) |
 | `cacheDrivers` | `Record<string, CacheDriverFactory>` | `@marmeon/cache` | [Drivers](drivers.md#bringing-a-driver) |
 | `mailDrivers` | `Record<string, MailDriverFactory>` | `@marmeon/mail` | [Drivers](drivers.md#bringing-a-driver) |
+| `fetchDrivers` | `Record<string, FetchDriverFactory>` | `@marmeon/fetch` | [Fetch transports](drivers.md#fetch-transports) |
+| `oauthProviders` | `Record<string, OAuthProviderFactory>` | `@marmeon/oauth` | [Social login](oauth.md#your-own-provider) |
+| `chatDrivers` | `Record<string, ChatDriverFactory>` | `@marmeon/chat-notifications` | [Chat drivers](drivers.md#chat-drivers) |
 
 ### Statics of other classes
 
@@ -115,7 +125,7 @@ reads them, and are known once that package is installed.
 | a repository | `table`, `connection`, `routeKey`, `routeKeyPattern` | The table, the default connection, and the column and pattern a route parameter is bound by ([repositories](queries.md#defining-a-repository)). |
 | an event that queued listeners listen to | `event`, `schema` | Its stable name and the schema of what is queued ([queued listeners](events.md#queued-listeners)). |
 
-The statics of jobs, notifications and queued listeners (`job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware`, `notification`, `database`, `queue`, `listener`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them.
+The statics of jobs, notifications and queued listeners (`job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware`, `notification`, `database`, `queue`, `listener`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them. That holds for the listeners of a [guard's](authentication.md#events-of-a-guard) or a [guard slot's events](authentication.md#events-of-a-guard-slot) too: the app lists them in a module.
 
 ## The service provider
 
@@ -353,6 +363,9 @@ The type is `ProviderMigrations` from `@marmeon/database`. A package that has `@
 `satisfies ProviderMigrations` with an `import type`, or no annotation, so the type is checked while the package's `.d.ts` does
 not mention the database.
 
+Write `import type { X } from '…'`, not `import { type X } from '…'`: with `verbatimModuleSyntax` the second form still loads the
+module, and an app without the optional peer cannot load the package.
+
 Each file in the directory is named like a migration of an app, `<timestamp>_<name>.ts`, such as
 `2026_01_01_000000_create_request_log_table.ts`. The migrations are read in the order of their file names. The timestamp only orders
 the files within the package: `publish` gives a copy a new one in the app. The name without the timestamp (`create_request_log_table`)
@@ -482,6 +495,302 @@ Two hooks let a package take part in every request. Add them in `boot()`:
 A hook runs for every route of every app that installs the package, so keep it narrow: claim requests by a header of your own, and
 leave everything else alone.
 
+## Pages of a package
+
+A package can bring pages, an entry of its own and texts. It declares them in the `"marmeon"` field of its `package.json`, and
+the app reads the declaration without running a line of the package: from `package.json` and the directories it names.
+
+### Declaring the interface in `package.json`
+
+```json
+{
+  "name": "@acme/status-board",
+  "exports": {
+    ".": "./dist/index.js",
+    "./area/client": "./dist/area/client.js",
+    "./area/ssr": "./dist/area/ssr.js",
+    "./views/*": "./dist/views/*.js",
+    "./lang/*": "./dist/lang/*.js"
+  },
+  "marmeon": {
+    "providers": ["StatusBoardServiceProvider"],
+    "namespace": "status",
+    "entry": { "client": "./area/client", "ssr": "./area/ssr" },
+    "views": "./views",
+    "lang": "./lang"
+  }
+}
+```
+
+Every path is a subpath of `exports`, not a path in the package, so the conditions apply as they do for any import: in a monorepo
+`@marmeon/source` can lead to `src/views/*.tsx` while the published package leads to `dist/views/*.js`.
+
+- `entry.client` and `entry.ssr` are exact subpaths: `"./area/client"` needs the key `"./area/client"` in `exports`. The client entry is
+  resolved with the browser's conditions and the server entry with the server's, so `"./area/ssr"` may have a `node` target alone.
+- `views` and `lang` name a folder: `"./views"` needs the pattern `"./views/*"`, whose target ends in `/*` and an extension
+  (`./dist/views/*.js`). The files below that directory are the package's views, and its texts for `lang`. The `lang` pattern must resolve under the
+  server's conditions, because the server loads the texts: a `"./lang/*"` with only a `browser` target stops the start with `K7`.
+- A view's name is its path below the pattern without the extension: `dist/views/entries/Edit.js` is `entries/Edit`. Each segment holds
+  letters, digits, `_` and `-`, joined by `/`. A language file's name is its language tag, `en` or `de-AT`, and `lang` has no folders.
+- Only that directory of the package is listed, never `node_modules`. Files whose names start with a dot, files with `.test.`, `.spec.`
+  or `.type-test.` in the name and `.d.ts` files are not views or texts. A package may have at most 1000 views and 100 language files, and its views may nest at most 16 folders deep.
+- `namespace` is required with any of the others. `entry` and `views` come together: a package's pages are always rendered by its own
+  entry. `lang` can stand alone, and so can `namespace`.
+- A package with a `namespace` is compiled by the app's Vite like the app's own source, in development, in the build and in server
+  rendering, so the app's Vite plugins see its modules (see [Packages with pages or components](vite.md#packages-with-pages-or-components)).
+- Two installed packages cannot share a namespace, and neither can two installed copies of one package.
+- A directory below `views` that is a link is not followed, so a link cannot lead the listing out of the package or into a loop.
+
+Everything the field names must lie in the package, also by its real path. A target with `..`, an absolute path, a `node_modules`
+folder, or a file that is a link leading out of the package stops the app with `K7`; a link to a file inside the package is followed.
+The message names the package and the key and never repeats a value of the file.
+
+A malformed field, a missing `exports` key and a shared namespace stop the app at start, whatever the conditions. The other refusals
+depend on the conditions in force and come when the build or the server reads the surface.
+
+The app refuses only what it can see to be wrong: a missing `exports` key, a target outside the package or in its root, a name that is no view name,
+a folder below `views` or `lang` that cannot be read, views nested deeper than the limit, a shared namespace. A folder that does not exist yet (the package is not built) lists nothing, and an entry whose file does not exist
+yet is not an error here: the build and the server say so when they need the file.
+
+## A package with an area of its own
+
+A package that brings an area, an admin section or a status board, ties the pieces above together: routes behind its own access check, pages
+in a document of its own, texts the app may reword and a policy for that document. The status board of the web app is such a package, and the
+code below is shortened from it (`fixtures/status-board`).
+
+The package serves server code from its main entry, where its provider is, and the components an app renders on its own pages from
+`./components`. The main entry exports the provider, which imports `@marmeon/auth` and the router, so a browser import of `.` would pull
+server code into the client bundle:
+
+```json title="package.json"
+{
+  "name": "@acme/status-board",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./components": "./dist/components.js",
+    "./area/client": "./dist/area/client.js",
+    "./area/ssr": "./dist/area/ssr.js",
+    "./views/*": "./dist/views/*.js",
+    "./lang/*": "./dist/lang/*.js"
+  },
+  "marmeon": {
+    "providers": ["StatusBoardServiceProvider"],
+    "namespace": "status",
+    "entry": { "client": "./area/client", "ssr": "./area/ssr" },
+    "views": "./views",
+    "lang": "./lang",
+    "browser": ["src/area/**", "src/views/**", "src/components.ts", "src/*.tsx"]
+  },
+  "peerDependencies": {
+    "@marmeon/auth": "^0.1.0",
+    "@marmeon/core": "^0.1.0",
+    "@marmeon/http": "^0.1.0",
+    "@marmeon/i18n": "^0.1.0",
+    "@marmeon/react": "^0.1.0",
+    "react": "^19.3.0"
+  }
+}
+```
+
+### The routes, the access check and the policy
+
+The provider loads the routes below a path from its configuration, so the app can move the area. Its routes carry the area's policy, ask
+for a signed-in user and then for the app's decision:
+
+```ts title="src/StatusBoardServiceProvider.ts"
+import { authenticate } from '@marmeon/auth';
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { contentSecurityPolicy, defineRoutes, describeAccess, NONCE, Router } from '@marmeon/http';
+import { ShowStatusController } from './ShowStatusController.ts';
+import { StatusAccess } from './StatusAccess.ts';
+import { StatusBoardConfig } from './StatusBoardConfig.ts';
+
+export class StatusBoardServiceProvider implements ServiceProvider {
+  static config = [StatusBoardConfig];
+
+  register(container: Container): void {
+    const { path } = container.make(StatusBoardConfig);
+    const policy = contentSecurityPolicy({ styleSrc: ["'self'", NONCE], imgSrc: ["'self'"], connectSrc: ["'self'"], frameAncestors: ["'none'"] });
+    container.make(Router).load(
+      { group: 'web', prefix: path },
+      defineRoutes((Route) => {
+        Route.middleware(policy)
+          .middleware(authenticate())
+          .authorize(describeAccess(async (ctx) => (container.has(StatusAccess) ? await container.make(StatusAccess).allows(ctx.user) : false), 'status access'))
+          .get('/', ShowStatusController)
+          .name('status.index');
+      }),
+    );
+  }
+}
+```
+
+```ts title="src/StatusAccess.ts"
+import type { AuthUser } from '@marmeon/auth';
+import { token } from '@marmeon/core';
+
+/** Who may open the area. The app binds it; the package never decides for it. */
+export interface StatusAccess {
+  allows(user: AuthUser): boolean | Promise<boolean>;
+}
+export const StatusAccess = token<StatusAccess>('StatusAccess');
+```
+
+- **The gate fails closed.** Every route needs a decision (see [authorization](authorization.md#every-route-decides)). This one asks the
+  app through a token the package defines. An app that binds nothing opens nothing: every user gets a 403, and a guest is sent to the sign-in
+  by `authenticate()` before the check runs. The controller renders the page only after the check, so a refused request never builds
+  the area's document.
+- **The policy is the route group's.** A response that sets none gets the [strict default](csp.md#policies-of-a-package-area) with its
+  nonce; a policy of the group, as here, replaces both that default and the app's global one for the area's pages.
+- **The routes load in `register()`**, so `marmeon route:types` lists `status.index` and a page of the app can link to it.
+
+### The entry, a page and its texts
+
+The client entry starts the app in the browser with the area's own pages and texts, and the server entry renders them:
+
+```tsx title="src/area/client.tsx"
+import { createMarmeonApp, resolveModulePages } from '@marmeon/react';
+import '@marmeon/react/styles.css';
+import { createMessageLoader } from '@marmeon/i18n/messages';
+import lang from 'virtual:marmeon/lang/status';
+import pages from 'virtual:marmeon/pages/status';
+import { routes } from 'virtual:marmeon/routes';
+
+void createMarmeonApp({ resolve: resolveModulePages(pages), routes, messages: createMessageLoader(lang) });
+```
+
+```tsx title="src/area/ssr.tsx"
+import { createMessageLoader } from '@marmeon/i18n/messages';
+import { resolveModulePages } from '@marmeon/react';
+import { createSsrRenderer } from '@marmeon/react/server';
+import lang from 'virtual:marmeon/lang/status';
+import pages from 'virtual:marmeon/pages/status';
+import { routes } from 'virtual:marmeon/routes';
+
+export const render = createSsrRenderer(resolveModulePages(pages), { routes, messages: createMessageLoader(lang) });
+```
+
+The page is `status::Index`, the file `views/Index.tsx`. It links back to the app by route name, and the area's route names and the app's share one
+manifest:
+
+```tsx title="src/views/Index.tsx"
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useTranslation } from '@marmeon/react';
+import type { ShowStatusController } from '../ShowStatusController.ts';
+import { StatusBoard } from '../StatusBoard.tsx';
+
+export default function Index({ services }: PageProps<ShowStatusController>) {
+  const t = useTranslation('status');
+  return (
+    <main>
+      <Head title={t('title')} />
+      <h1>{t('title')}</h1>
+      <StatusBoard services={services} />
+      <Link route="dashboard.show">{t('back')}</Link>
+    </main>
+  );
+}
+```
+
+```ts title="src/ShowStatusController.ts"
+import { Controller } from '@marmeon/http';
+
+export class ShowStatusController extends Controller {
+  handle() {
+    return this.view('status::Index', { services: [{ name: 'Web', state: 'up' }] });
+  }
+}
+```
+
+The texts are `src/lang/en.ts` with `title`, `intro` and `back` (declared in `Translations` as [a module's are](localization.md#texts-of-a-package)),
+and `de.ts` next to it.
+
+### What the app does
+
+The app decides who may open the area, by binding the token in a provider of one of its modules, and rewords a text of the package in
+`lang/status/de.ts`:
+
+```ts title="modules/dashboard/StatusAccessServiceProvider.ts"
+import { StatusAccess } from '@acme/status-board';
+import type { VerifiableUser } from '@marmeon/auth';
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { DashboardConfig } from './config.ts';
+
+export class StatusAccessServiceProvider implements ServiceProvider {
+  register(container: Container): void {
+    container.singleton(StatusAccess, (resolver) => {
+      const { admins } = resolver.make(DashboardConfig);
+      return { allows: (user) => (user as VerifiableUser).email_verified_at != null && admins.includes(user.email.toLowerCase()) };
+    });
+  }
+}
+```
+
+```ts title="lang/status/de.ts"
+import type en from '@acme/status-board/lang/en';
+import type { MessageOverrides } from '@marmeon/i18n/messages';
+
+export default {
+  title: 'Systemzustand',
+} satisfies MessageOverrides<typeof en>;
+```
+
+An allowlist of addresses needs confirmed addresses: anybody can sign up with a listed one, so the check above also asks for
+`email_verified_at`, the notion `verified()` uses. An account that has not confirmed its address gets a 403 whatever its address.
+
+A page of the app links to the area by `<Link route="status.index">`. That visit loads the area's document fully: the answer is a `409` that
+names the address, and the browser loads it (see [a visit into another entry](navigation.md#a-visit-into-another-entry)). The link back
+does the same the other way.
+
+### What the area keeps out of the app's pages
+
+`marmeon build` writes one client build with an entry for the app and one for the area (see [packages with an entry](vite.md#packages-with-an-entry)).
+The document of a public page loads nothing that only the area's entry reaches: not its code, not its stylesheets and not its texts, in any
+language. Texts of an area that an administrator reads stay out of the public bundle. A text a public page needs belongs to the app, and reaches
+the page as a prop.
+
+The web app proves it. `apps/web-app/modules/dashboard/status-area.test.ts` signs in as an administrator, as another member and as a
+guest, reads the area's document, its policy and its texts, and crosses the boundary in both directions;
+`status-area-build.test.ts` builds a copy of the app and checks the built files.
+
+## A package with users of its own
+
+A package whose users are not the app's, such as a back office for editors, brings a guard of its own with its own table, sign-ins, second factors, passkeys and limits. The walkthrough has a page of its own: [Packages with users of their own](package-users.md#introduction).
+
+## Components on the app's pages
+
+A package can bring components that an app renders on its own pages. The package declares a `namespace` in its `"marmeon"` field
+(nothing else is needed: no `entry`, no `views`), and the app imports the component like any other:
+
+```tsx title="modules/dashboard/views/Show.tsx"
+import { StatusBoard } from '@acme/status-board/components';
+
+const services = [
+  { name: 'Mail', state: 'up' },
+  { name: 'Search', state: 'degraded' },
+] as const;
+
+export default function Show() {
+  return <StatusBoard services={services} />;
+}
+```
+
+The component renders on the server with the page and hydrates in the browser. The app's Vite compiles the package like the app's own
+source, so the pieces work as they do for a component of the app:
+
+- A `<Link route="…">` or `useRoute()` in the package's compiled code puts that route name into the browser's route manifest, as if
+  the page had written it (see [Packages with pages or components](vite.md#packages-with-pages-or-components) for the compiled form the build reads).
+- A stylesheet the component imports (`import './status-board.css'`) ships in the package's `dist` and lands in the chunk of the page
+  that imports the component when a lazily loaded page does, not in the stylesheet every page loads. A component imported by a layout or the client
+  entry puts its stylesheet into the first one. It must be finished CSS: the app's Tailwind does not see directives in it.
+- The package lists `@marmeon/react`, `react` and `react-dom` (when it uses it) as peer dependencies, never as dependencies, so the app and the
+  package share one copy and a `<Link>` of the package finds the router of the app.
+
+The package's stylesheet and the app's share one document. Wrap the package's rules in `@layer <namespace>` (`@layer status { … }`),
+so the app's own layers decide when both style an element, and give its classes a prefix (`.status-board-…`) so they do not meet the
+app's. Marmeon enforces neither.
+
 ## Extending the app's types
 
 A package that adds a key to a module's definition declares it by declaration merging, as the queue adds `jobs`:
@@ -597,3 +906,7 @@ app's version does not satisfy installs a second copy, whose `Router` and contai
 
 The framework's packages are coupled the same way: an optional peer dependency on another framework package, such as
 `@marmeon/redis` for a Redis cache, with a start that fails and names the package when the configuration needs it.
+A static value import of such a peer anywhere reachable from an entry stops the package from loading in an app that lacks it. The
+package loads the peer with `await import(…)` where it needs it and imports only types from it with `import type`. The peer counts
+as absent only when it does not resolve itself (`import.meta.resolve`); a missing dependency of an installed peer, or any other load
+error, stops the start.

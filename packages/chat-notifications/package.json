@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/chat-notifications",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Chat notifications for Marmeon apps: Slack, Discord and Teams through incoming webhooks, with retries and a fake for tests.",
   "homepage": "https://marmeon.com/docs/chat-notifications",
   "keywords": [

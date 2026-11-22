@@ -320,7 +320,7 @@ languages:
 | --- | --- |
 | `auth/TwoFactorChallenge` | The code step of the sign-in. The recovery code is a second form on the same page, so it also works without JavaScript. |
 | `auth/TwoFactor` | In the settings: the status, the QR code and the key, the form that confirms with a code and the password, new recovery codes, turning it off. |
-| `auth/RecoveryCodes` | A layer over the settings page, the answer of confirming and of making new codes. The codes are in no page after that. |
+| `auth/RecoveryCodes` | A layer over the settings page, the answer of confirming and of making new codes. The codes are in no page after that. Done is a link to the settings page, so the layer can be left without JavaScript; with JavaScript it closes the layer. |
 | `auth/TwoFactorVerify` | Asks a signed-in session for a code again, for `twoFactor()`. A wrong code ends nothing. |
 
 The QR code is drawn on white, also in the dark mode, because some apps do not scan it otherwise.
@@ -372,6 +372,74 @@ await app.withCookie(session, cookie).post('/settings/two-factor/confirm', { for
 `twoFactorCode(secret, at?)` takes the key `begin()` returned. A code works once, so a second sign-in in the same test needs a code of
 the next step: `twoFactorCode(secret, new Date(Date.now() + 30_000))`.
 
+## For a guard of a package
+
+A [guard of a package](authentication.md#guards-of-a-package) gets an authenticator app, recovery codes, the challenge after the
+password and the two middleware by passing the `TwoFactor` class as `twoFactor`. Nothing else turns it on: a guard without the option has no
+factors, and nobody of it is asked for one.
+
+```ts title="office/src/guard.ts"
+import { defineGuard, type GuardTwoFactor } from '@marmeon/auth';
+import { TwoFactor } from '@marmeon/auth/two-factor';
+import { OfficeUsers } from './OfficeUsers.ts';
+import type { OfficeUser } from './OfficeUser.ts';
+
+export const OfficeGuard = defineGuard('office', {
+  users: OfficeUsers,
+  tablePrefix: 'office_',
+  twoFactor: TwoFactor,
+  settings: { twoFactorIssuer: 'Back Office' },
+});
+
+export type OfficeTwoFactor = GuardTwoFactor<OfficeUser>;
+export const OfficeTwoFactor = OfficeGuard.TwoFactor;
+```
+
+A controller of the package takes `twoFactor: OfficeTwoFactor` and calls the methods of [`TwoFactor`](#the-sign-in) on it, with the
+guard's user in the result of `challenge()`. The guard's `Auth` answers `two-factor-required` for a user who has a factor, and
+`OfficeTwoFactor.challenge()` finishes that sign-in.
+
+The package ships the migration of two tables with the guard's prefix, in the shape of the app's tables
+[above](#setting-up): `office_two_factor_authentications` and `office_two_factor_recovery_codes`. `user_id` is the type of the guard's user id. The
+readiness check waits for both with every column, as it does for the guard's other tables.
+
+Everything is apart from the app's factors, and from the factors of another guard:
+
+| What | For the guard |
+|---|---|
+| Tables | `<prefix>two_factor_authentications` and `<prefix>two_factor_recovery_codes`. |
+| Proof of a factor in the session | A key of the guard's own: a challenge of the guard opens no route of the app, and the app's opens none of the guard's. |
+| Waiting sign-in | The guard's own: the app's `TwoFactor.challenge()` finds nothing to finish. |
+| Attempt counters | One counter per window (minute, hour, day, recovery codes) for each guard: wrong codes of the guard's user 1 do not use the attempts of the app's user 1. |
+| Encrypted secret and recovery code hashes | Bound to the guard as well as to the account: a row copied between the guard's table and the app's table, or another guard's, does not decrypt and matches no code. The app's own secrets and codes are read as before. |
+| Events | The guard's own classes (`OfficeGuard.events.TwoFactorEnabled`, `OfficeGuard.events.RecoveryCodeUsed`, …), never the app's: a listener of the app would mail the app's user with the same id. See [events of a guard](authentication.md#events-of-a-guard). |
+
+The middleware `OfficeGuard.twoFactor({ setup, verify, maxAge? })` and `OfficeGuard.confirmedSecondFactor({ verify })` act like
+[`twoFactor()` and `confirmedSecondFactor()`](#requiring-it), with the guard's proof. They need the guard's own `authenticate()` before them, which
+sends a browser request without a user to the guard's login page, never the app's, and answers a JSON request without one with 401.
+They take no `loginRoute`, because the redirect is `authenticate()`'s.
+If a middleware between `authenticate()` and these middleware signs the user out, the request is not redirected. A JSON request gets 401, and a browser gets the [error page](errors.md#your-own-error-page) for 401.
+On a route of another guard, or one without the guard's `authenticate()`, they fail with error [A9](errors.md#server-error-codes), as the app's middleware does on
+a route of the guard.
+
+```ts title="office/src/routes.ts"
+import { defineRoutes } from '@marmeon/http';
+import { Dashboard } from './controllers/Dashboard.ts';
+import { OfficeGuard } from './guard.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(OfficeGuard.authenticate({ loginRoute: 'office.login' }))
+    .middleware(OfficeGuard.twoFactor({ setup: 'office.two-factor.setup', verify: 'office.two-factor.verify' }))
+    .get('/office', Dashboard);
+});
+```
+
+An authenticator app lists an account under the name it is given. The issuer is `APP_NAME` unless the guard sets `twoFactorIssuer`; a back office and
+the app that carries it show up as two entries of the same name and the same address unless they have different issuers, so set one.
+The setting takes 1 to 64 characters; another value stops the start with error [A8](errors.md#server-error-codes).
+
+A guard defined with `passkeys` as well takes a [passkey as a second factor](passkeys.md#for-a-guard-of-a-package) next to the authenticator. `auth:reset-two-factor --guard=<name>` resets the guard's factors (see [operator reset](#operator-reset)).
+
 ## Operator reset
 
 A user who lost both the phone and the recovery codes has to be let in by an operator, who must be sure it is the owner.
@@ -381,10 +449,15 @@ A user who lost both the phone and the recovery codes has to be let in by an ope
 marmeon auth:reset-two-factor ada@example.com --force
 ```
 
-The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForSignIn()`.
+The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForSignIn()`
+of the app.
+For a [guard of a package](#for-a-guard-of-a-package), name it with `--guard=<name>`. The guard's own provider finds the account, and the authenticator, the
+passkeys and the recovery codes of the guard are removed together. The app's stay as they were, even when the same address has an account there.
+A name no guard has is refused with exit code 1 and the list of guards. For a guard the command dispatches the guard's own `TwoFactorDisabled` (`OfficeGuard.events.TwoFactorDisabled`), never the app's, since a listener of the app would act on the app's user of the same id.
+See [operator commands for a guard](authentication.md#operator-commands-for-a-guard-of-a-package).
 Without `--force` the command exits with 1 and changes nothing. It removes whatever the bound [`TwoFactorState`](authentication.md#your-own-stores) holds
 (the authenticator, every passkey, every recovery code) through `removeAll(userId)`, which dispatches nothing; the command dispatches `TwoFactorDisabled` with
-`via: 'operator'` itself, so that listeners (the mail to the owner, an audit log) hear of it.
+`via: 'operator'` itself for the app's users, so that listeners (the mail to the owner, an audit log) hear of it.
 
 It ends the sessions of the account first, with [`AccountSessions.end()`](authentication.md#ending-every-session-of-a-user): an account without a
 factor lets a signed-in session enrol one, so a session on the lost device, or an attacker's, would own the account. When the sessions

@@ -45,7 +45,7 @@ is [Upgrading to 1.0.0 from 0.4.0](../UPGRADING.md#upgrading-to-100-from-040).
 
 A release candidate, `x.y.z-rc.N`, is a preview of the release `x.y.z`. It comes under the npm dist-tag `next` and never moves `latest`,
 so an app only gets one when it asks: `pnpm add -E @marmeon/core@next`, and the same for every other framework package, all in the same version.
-To start an app from a candidate, run `pnpm create marmeon@next my-app`; on the day a candidate appears, [pnpm installs an older version](installation.md#the-first-day-after-a-release) unless you let the framework through. A package added later takes the version of the app (`pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
+To start an app from a candidate, run `pnpm create marmeon@next my-app`; on the day a candidate appears, [pnpm installs an older version](installation.md#the-first-day-after-a-release) unless you let the framework through. A package added later takes the version of the app (`marmeon add redis`, or `pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
 [`marmeon check`](check.md#the-packages-check) finds a package that is not.
 
 From the first candidate to its release, only bug fixes, documentation and internals change; the public API is the one the release
@@ -129,7 +129,9 @@ The promise of a version covers the public API. These are part of it:
 - A class you extend (`Repository`, `Controller` …) may gain members in a minor release. A member of your subclass
   with the same name may then need another name; the [upgrade guide](../UPGRADING.md) lists each such member with a `Low` line.
 - The names and defaults of environment variables.
-- The commands of `marmeon`, their flags and exit codes.
+- The commands of `marmeon`, their flags and exit codes. A minor version may add a command. A command of your own with the same
+  name then stops `marmeon build` and the start with K8 and needs another name; the [upgrade guide](../UPGRADING.md) lists each new
+  command with a `Low` line. A name in your module's group, such as `notes:prune` (the default of `make:command`), does not meet one.
 - The flags and exit codes of `create-marmeon` ([listed here](installation.md#options)). The files it writes are not: they follow the
   starter kit of its version, `marmeon-stubs.json` records where they came from, and the release notes name changes.
 - The JSON body of an error: the keys `message` and `errors` (a field's dotted path, a list index as a number, to a list of
@@ -208,7 +210,7 @@ A reader never guesses and never falls back to a default.
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
 | [Link tokens](urls.md#a-link-that-is-used-once) (`linkToken()`) | the hash: SHA-256, in hex, of `marmeon.link-token.v1`, a NUL character and the token | a token is found by the hash of the release that made it | a hash of another scheme is not found, like an unknown token (see [moving from a hash of your own](urls.md#moving-from-a-hash-of-your-own)) |
 | [Generated types](queries.md#table-types) (`bootstrap/routes.ts`: 1, `bootstrap/database.d.ts`: 3) | `// @marmeon-format <n>` on the third line | `--check` fails with "update `@marmeon/*`"; no command overwrites it | `--check` says another version wrote it; regenerate |
-| [Copied files](starter-kit.md#what-the-auth-module-holds) (`marmeon-stubs.json`) | `format` in the file | `make:auth` stops and writes nothing | `make:auth` stops and writes nothing: there is no older version |
+| [Copied files](starter-kit.md#what-the-auth-module-holds) (`marmeon-stubs.json`) | `format` in the file | `make:auth` and `publish` stop and write nothing; the check reports it as soon as a direct dependency declares migrations | `make:auth` and `publish` stop and write nothing: there is no older version |
 | [Schema projection](migrations.md#what-the-migrations-describe) (`.marmeon/schema.json`) | `format` in the file, and the version of `@marmeon/database` | computed again and written over: the file is a cache | computed again and written over |
 | [Injection lists and island marks](container.md#where-the-lists-come-from) (`.marmeon/injections.json`: 2) | `format` in the file | every module is analysed at start, as without a build, and the start says the artifacts are missing; the file stays as it is | the same: a version 1 file is not read |
 | [The block of `AGENTS.md`](agents.md#the-marks) | `<!-- marmeon:begin v1 -->` and `<!-- marmeon:end -->`, each on a line of its own | `agents:sync` refuses and writes nothing | the text between the marks is replaced; without marks the block is appended |
@@ -244,7 +246,7 @@ Some formats have no version of their own and are kept stable another way:
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the pagination cursor, the CSV export, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
+listeners, mails, notifications and chat messages, the session payload, the pagination cursor, the CSV export, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 
@@ -318,12 +320,42 @@ pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon
 
 The variable changes nothing else, and only this command sees it. npm has no such delay.
 
+[`marmeon upgrade`](#how-to-upgrade) passes exact versions (`pnpm add --save-exact --save-prod @marmeon/core@1.2.0 …`), so it installs as a version you
+wrote yourself does, pnpm's note about `minimumReleaseAgeExclude` included. It never sets `minimumReleaseAge`, an exclusion or any flag that changes the
+release-age delay, and it leaves standard input to pnpm, so a question about an explicit `minimumReleaseAge` reaches you at a terminal. Without a
+terminal that install fails, and `upgrade` puts `package.json`, the lockfile and `pnpm-workspace.yaml` back. When the install leaves another
+version than the one asked for, or the packages are not in one version, `upgrade` puts the files back and stops with what it found, before
+it prints the guide or generates anything.
+
 ## How to upgrade
 
-1. Read the section of the new version in the [upgrade guide](../UPGRADING.md). Its entries are sorted by impact, and each says
-   how likely it touches your app.
-2. Move every framework package to the new version at once ([the first day after a release](#the-first-day-after-a-release) has a
-   catch), install, and run `pnpm marmeon build` and your tests. Type errors
-   point to most of what changed.
+1. Run `pnpm marmeon upgrade` (`npx marmeon upgrade` with npm). It moves every `marmeon` and `@marmeon/*` package your app lists to the
+   `latest` version at once, prints the entries of the [upgrade guide](../UPGRADING.md) between your version and the new one, and runs
+   `route:types` and, when the app has `@marmeon/database`, `db:types` with the new version. Then read those entries: they are sorted
+   by impact, and each says how likely it touches your app.
+   - `--to=<version>` moves to that exact version, `--to=<tag>` (such as `next`) to the version a dist-tag names. `--dry-run` prints
+     what it would run and changes nothing. `--json` prints [one document](console.md#machine-readable-output) and never asks a question.
+     Its keys are `format`, `dryRun`, `packageManager`, `from`, `to`, `breaking`, `packages`, `commands`, `guide` (the sections of the guide
+     with their entries), `generated` (the generators that ran, each with its exit code, 0) and `warnings`. `guide` and `generated` are `null`
+     with `--dry-run` and when nothing needs to move; `guide` is also `null` when the guide could not be read, and `warnings` says why.
+   - At a terminal, `upgrade` shows what it will move and asks once before it installs, unless you pass `--json`. A move to another major
+     version (or, below 1.0, another minor) may break your app: without a terminal, and with `--json`, it stops unless you name the exact
+     version with `--to=<exact version>`.
+   - It saves exact versions, installs through your package manager with the arguments it checked, and never lifts
+     [`minimumReleaseAge`](#the-first-day-after-a-release). It does not downgrade. Until the installed packages pass its check (they
+     must all be in the version it asked for), a stop (a failed install, a failed check, Ctrl-C) puts `package.json`, the lockfile and `pnpm-workspace.yaml` back as they were, and it tells you to run
+     `pnpm install` (or `npm install`) to make `node_modules` match. After that check the files keep the new version, whatever happens to
+     `route:types` or `db:types`: `upgrade` then names the generator to run again and exits with 1.
+     A Ctrl-C at the terminal reaches pnpm and `upgrade` together. A SIGTERM sent to `upgrade` alone while pnpm asks you a question stops pnpm only,
+     and a lifecycle script it started may outlive it.
+   - It stops before it changes anything when the framework packages are not in one installed version (`--to=<exact version>` repairs
+     that; a tag does not), when `marmeon` is not listed, when `package.json` pins a framework package above the target, when a framework package is listed only as a peer, with a `workspace:`, `file:`,
+     `link:`, `catalog:` or `npm:` spec or a git URL, or under an override or a patch, when the app is part of a workspace, has no
+     lockfile or two lockfiles of different package managers, or uses yarn, bun or another package manager than pnpm or npm.
+2. Run `marmeon doctor`, your tests, and `pnpm marmeon build`. Type errors point to most of what changed.
 3. Deploy as usual. An entry says so when a change needs a migration or signs users out. The [deployment](deployment.md) page
    covers the rest.
+
+Where `upgrade` stops, do it by hand: read the section of the new version in the [upgrade guide](../UPGRADING.md), move every
+framework package to the new version at once ([the first day after a release](#the-first-day-after-a-release) has a catch), install,
+and run `marmeon route:types` and `marmeon db:types`.

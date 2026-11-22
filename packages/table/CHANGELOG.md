@@ -1,6 +1,6 @@
 # @marmeon/table
 
-## 1.2.1
+## 1.2.2
 
 ### Features
 
@@ -95,7 +95,7 @@
 - Open the landing's narrow menu as a full-screen sheet with groups to step into by @maxeckel in https://github.com/marmeon/marmeon/pull/852
 - Say why the dimensions of an upload rule do not measure AVIF by @maxeckel in https://github.com/marmeon/marmeon/pull/849
 
-**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.1.0...v1.2.1
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.1.0...v1.2.2
 
 ## 1.1.0
 

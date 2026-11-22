@@ -162,6 +162,7 @@ dirty, and the guard still asks.
 
 A validation error on the server sends the browser back with the errors and the input, which the
 [validation](validation.md#from-schema-to-handler) page explains. The first message of each field lands in `form.errors`.
+The errors and the input wait for the page of that submit (for five minutes at most), so a prefetch or another tab in between neither takes nor shows them.
 
 A request that fails, because the server cannot be reached or answers with a server error, leaves the page and everything typed
 in place. The app shows the failure over the page, which the [error handling](errors.md#errors-in-the-browser) page describes, and
@@ -293,6 +294,56 @@ schema run, but never the controller. Fields that look like a secret are never s
 your own async rules never answer while typing, so a form cannot be used to find out which addresses have an account. The
 [validation](validation.md#live-validation) page covers the server's side and the rate limit. The checking code loads with a
 form's first change, so an app that never validates live never downloads it.
+
+## Conflicts
+
+Two people open the same note, and both save. The second save would overwrite the first without knowing. Give the record a
+version, send the version the form was opened with, and refuse the save when the record has moved on. The version is a column that
+every save changes, such as `updated_at`. Send it as a field of the form:
+
+```tsx
+const form = useForm('notes.update', { title: note.title, version: note.version }, { params: { note: note.id } });
+```
+
+The controller compares it and answers `conflict(current)` when the record changed ([responses](responses.md#conflict)). Compare
+and save in one step, for example inside a transaction that locks the row, or two saves with the same version can both pass:
+
+```ts
+const saved = await this.#notes.updateIfCurrent(ctx.params.note.id, ctx.body, ctx.body.version);
+if (!saved.ok) return conflict({ version: saved.error.version, title: saved.error.title });
+return this.redirect().route('notes.show', { note: ctx.params.note.id });
+```
+
+A form sent as a visit goes back to its page, like a failed validation, and `form.conflict` is set to `{ message, current }`:
+
+```tsx
+{form.conflict && (
+  <p role="alert">
+    {form.conflict.message} {form.conflict.current && `Now: ${form.conflict.current.title}`}
+  </p>
+)}
+```
+
+The conflict is not a success. `wasSuccessful` and `recentlySuccessful` stay `false`, the form keeps what was typed and stays
+dirty (the guard still asks), `onSuccess` does not run and `onConflict` does:
+
+```tsx
+void form.submit({ onConflict: (conflict) => setTheirs(conflict.current) });
+```
+
+`conflict` clears on the next submit and on `reset()`. The server shares it as the page prop `_conflict`, `null` when there is
+none. The name is the framework's: a page's own prop called `_conflict` is dropped, so an app's `conflict` prop is no clash. `current` is typed from the controller, as what JSON makes of the value it
+passes to `conflict(…)`, and is `undefined` when the controller sent none. It is also `undefined` when the value was too big to
+keep: the session keeps at most 64 KiB of it, and then only `message` arrives. So return the version and the fields that differ,
+not the whole document. The page's own props carry the rest.
+
+The page reloads when a save is refused, so a version read from its props is the newer one. Keep the version the form was opened
+with, as `useForm` does with its initial data, and do not follow the props while the form is open. `<Form>` gives `conflict` and
+`onConflict` the same way: `{(form) => form.conflict && <p>{form.conflict.message}</p>}`. A form without JavaScript gets its
+input back with `old()`, and the page reads the conflict from its `_conflict` prop.
+
+An autosave is not a form visit: use an [action](actions.md#a-stale-save) with a `key`, which ends `conflict` instead of going
+back, and compare `current` with the draft.
 
 ## Unsaved changes
 

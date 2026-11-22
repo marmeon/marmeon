@@ -8,11 +8,13 @@ ids, a cell that a spreadsheet runs as a formula. A data table handles them once
 server; the URL holds its state and is parsed strictly; its actions and exports are endpoints that check everything again. The
 browser half is headless: `useTable()` gives a component what the props allow and renders nothing itself.
 
-Install the package first, in the version of the app's other framework packages:
+Install the package first with [`marmeon add`](packages.md#introduction), in the version of the app's other framework packages:
 
 ```sh
-pnpm add -E @marmeon/table@<version of your app>
+pnpm marmeon add table
 ```
+
+Where [`marmeon add`](packages.md#packages-you-add) refuses (yarn, bun, a workspace and the other cases listed there), run `pnpm add -E @marmeon/table@<version of your app>` and `marmeon discover`.
 
 This page builds the members table of the web app: every member with a confirmed address and the number of their links, an e-mail
 column only administrators see, a row action, a bulk action and a CSV export.
@@ -632,7 +634,9 @@ A category of another event is a 422, and nothing is written. An action can also
 
 An action request, the kind `useTable()` sends, and an API client get JSON: `{ done, skipped, missing }`, and `data` with what the
 handler returned. The answer is never cached. A form posted without JavaScript, or a page visit, goes back to the page with a 303.
-A handler that returns a redirect, a JSON result or a `Response` answers for itself.
+A handler that returns a redirect, a JSON result or a `Response` answers for itself. A handler cannot return `conflict(…)`: the table
+answers its counts, so a stale save would read as a success. The definition is a type error, and the request fails when the type is bypassed.
+Throw, or answer with data that says what happened.
 
 In the browser `data` has the type of what the action's handler returns, as JSON: a `Date` in it is a `string`, a promise is awaited.
 `outcome.data.data` of `table.run('removeLinks', row)` is `{ removed: number } | undefined`, with no cast. A handler that returns nothing

@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "1.1.0",
+  "version": "1.2.2",
   "sections": [
     {
       "title": "Prologue",
@@ -318,6 +318,12 @@
           "file": "docs/events.md"
         },
         {
+          "slug": "http-client",
+          "label": "HTTP Client",
+          "title": "HTTP Client",
+          "file": "docs/http-client.md"
+        },
+        {
           "slug": "storage",
           "label": "File Storage",
           "title": "File Storage",
@@ -340,6 +346,12 @@
           "label": "Notifications",
           "title": "Notifications",
           "file": "docs/notifications.md"
+        },
+        {
+          "slug": "chat-notifications",
+          "label": "Chat Notifications",
+          "title": "Chat Notifications",
+          "file": "docs/chat-notifications.md"
         },
         {
           "slug": "queues",
@@ -388,6 +400,12 @@
           "label": "Package Development",
           "title": "Package Development",
           "file": "docs/package-development.md"
+        },
+        {
+          "slug": "package-users",
+          "label": "Packages with Users",
+          "title": "Packages with Users of Their Own",
+          "file": "docs/package-users.md"
         }
       ]
     },
@@ -417,6 +435,12 @@
           "label": "Passkeys",
           "title": "Passkeys",
           "file": "docs/passkeys.md"
+        },
+        {
+          "slug": "oauth",
+          "label": "Social Login",
+          "title": "Social login",
+          "file": "docs/oauth.md"
         },
         {
           "slug": "authorization",

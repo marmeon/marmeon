@@ -11,10 +11,14 @@ default, as soon as the app has the package:
 | `app.mail` | The `Mailer`. Records mails instead of sending them. | `mail: 'real'` |
 | `app.queue` | The `Queue`. Records jobs, and `work()` runs them. | `queue: 'real'` |
 | `app.notifications` | `Notifications`. Records notifications, and `deliver()` delivers them. | `notifications: 'real'` |
+| `app.chat` | The `ChatNotifier`. Records chat messages instead of posting them. | `chat: 'real'` |
+| `app.http` | The `HttpClient`. Answers outgoing requests from replies you register, and refuses private addresses as the real client does. | `http: 'real'` |
 | `app.storage` | `Storage`. Every disk lives in memory. | `storage: 'real'` |
 | `app.events` | Nothing. Records every event; listeners still run unless you hold them back. | `events: 'real'`, the default |
 | `app.broadcast` | Nothing. Records every live hint, which still reaches the streams. Needs `@marmeon/live`. | always in place |
 | `app.schedule` | Nothing. Runs the schedule on the test's clock. Needs `@marmeon/scheduler`. | always in place |
+
+`fakeOAuth(app)` for [social login](#social-login) is a function, not an `app.*` getter.
 
 A getter whose package the app lacks, or whose fake the test turned off, says so:
 
@@ -22,8 +26,8 @@ A getter whose package the app lacks, or whose fake the test turned off, says so
 app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: 'real' })).
 ```
 
-A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, storage and schedule fakes (`MailFake`,
-`QueueFake`, `NotificationFake`, `StorageFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
+A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, chat, storage, HTTP client and schedule fakes (`MailFake`,
+`QueueFake`, `NotificationFake`, `ChatFake`, `StorageFake`, `HttpClientFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
 variable with them: `import type { QueueFake } from '@marmeon/queue/testing'`. The same holds for `BroadcastTester` and `LiveStreamReader` (`@marmeon/live/testing`) and for `DevtoolsTester` (`import type { DevtoolsTester } from '@marmeon/devtools/testing'`). A `*Tester` drives or reads the real
 service: `ScheduleTester`, `BroadcastTester` and `DevtoolsTester`. `createTestApp()` makes every fake: a test does not construct
 `MailFake` itself, its constructor is not part of the API.
@@ -81,6 +85,45 @@ fails with `The fake mailer failed this send.`; `times` fails that many sends in
 the retries and the failed jobs, is tested with `mail: 'real'` and `queue: 'real'` and a `MailTransport` of the test's own that
 throws, bound with `override: (c) => c.instance(MailTransport, transport)`. The tests of the web app's
 `modules/auth/queued-mails.test.ts` show the pattern.
+
+## Outgoing requests
+
+The fake of `@marmeon/fetch` opens no connection. You tell it what a server answers, and it records what the app sent:
+
+```ts title="modules/hooks/ping.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+
+it('pings the address of the hook, and refuses the metadata address with no reply called', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const editor = await app.factory(UserFactory).create();
+  app.http.respond(/.*/, () => new Response('ok'));
+  await app.actingAs(editor).post('/hooks/ping', { json: { url: 'https://hooks.example.com/in' } }).assertOk();
+  const [request] = app.http.requests;
+  expect(await request!.clone().json()).toEqual({ ping: true });
+
+  await app.actingAs(editor).post('/hooks/ping', { json: { url: 'http://169.254.169.254/latest/meta-data' }, headers: { accept: 'application/json' } }).assertUnprocessable();
+  app.http.assertSentCount(1);
+});
+```
+
+A request nobody answered throws `FetchError('network')` that names the request (`no fake response for GET https://… — add
+app.http.respond(…)`), so a test never reaches the network. The fake judges the address before it looks for a reply, with the rules and
+the `FETCH_ALLOWED_ADDRESSES` of the real client: an IP address, `localhost` and a host mapped with `dns()` are refused when they are not
+public, and a host nobody mapped counts as public. A redirect is followed as in production, and each hop is judged and answered on its own.
+
+| Method | Effect |
+| --- | --- |
+| `respond(match, reply)` | Answers the requests `match` matches: an address as text (written as `fetch` writes it), a pattern for it or a function of the `Request`. `reply` is a `Response`, read once and copied for every request (its body must end, and your own `Response` stays unread), or a function that returns a new one or a promise of one: a body that streams belongs in the function, `(request) => new Response(stream, …)`. The latest reply that matches wins. |
+| `dns(host, addresses)` | Makes `host` stand for `addresses`, as the resolver would; an empty list means the host does not resolve (`network`). |
+| `failNext(reason, times)` | Fails the next requests that pass the address policy with a `FetchError` of `reason` (default `network`, `times` default 1). |
+| `requests` | The requests that passed the address policy, in order, each with its body: `await request.clone().text()`. A refused request is not among them. |
+| `assertSent(match)`, `assertSentCount(n)`, `assertNothingSent()` | Pass when a request matches, exactly `n` were sent, or none was. |
+
+A text that is no address in `respond()` or `assertSent()`, a `dns()` key that is not a bare host name or IP address (a port, user, path, query or fragment is refused), and a `failNext()` with another reason or
+a `times` that is not a whole number of 1 or more throw a `TypeError`. The [HTTP client](http-client.md#testing) page shows the client.
 
 ## Queue
 
@@ -166,9 +209,57 @@ it('notifies the person a note is shared with, once', async () => {
 
 A recipient is `{ type, id }`. `sent(Notification, recipient, match)` returns the records. The fake records `send()` and
 `sendNow()` alike. `deliver()` delivers each recorded notification once, oldest first, as a worker would: the database channel
-writes its row and the mail channel queues its mail on the mail fake. It resolves with each notification's id and outcome. Inside
+writes its row and the mail channel queues its mail on the mail fake, and the [chat channel](#chat) records its message on `app.chat`. It resolves with each notification's id and outcome. Inside
 a transaction a notification is recorded with the commit. With `notifications: 'real'`, `send()` queues a job, and
 `app.queue.work()` delivers it. The [notifications](notifications.md) page covers notifications.
+
+## Chat
+
+The chat fake of `@marmeon/chat-notifications` checks a message as the real notifier does: a destination `CHAT_WEBHOOKS` does not
+list, an address the driver refuses and a bad message fail the test. It then records the message and posts nothing. A test uses a
+made-up address in the driver's shape, because nothing is posted. `queue()` needs the queue services of the app, like the real one, and a test app that has them
+records the message without queueing a job. A notification that goes through the `chat` channel reaches the fake when `deliver()` delivers it:
+
+```ts title="modules/orders/payment-alert.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+import { PaymentFailedNotification } from './notifications/PaymentFailedNotification.ts';
+
+it('tells the ops channel about a declined payment', async () => {
+  const app = await createTestApp(application, {
+    database: 'refresh',
+    env: { CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: 'ops=https://hooks.slack.com/services/test-ops' },
+  });
+  const buyer = await app.factory(UserFactory).create();
+  await app.notifications.send({ type: 'user', id: buyer.id }, PaymentFailedNotification, { order: 'o-1' });
+  await app.notifications.deliver();
+
+  app.chat.assertQueued({ to: 'ops', title: 'Payment failed' }).assertQueuedCount(1);
+});
+```
+
+| Assertion | Passes when |
+| --- | --- |
+| `assertQueued(match)`, `assertQueuedCount(n)`, `assertNothingQueued()` | A message was queued that matches, exactly `n` were, or none was. |
+| `assertSent(match)`, `assertSentCount(n)`, `assertNothingSent()` | The same for the messages `send()` posted. |
+
+A match is an object with a `to`, a `title` or a `text`, or a function of the recorded message; without one, any message
+matches. A destination is compared as it is sent, so `{ url, driver: undefined }` equals `{ url }`.
+
+`queued` and `sent` return the records, each with `to`, `content`, `options` and `inTransaction`, which says whether the call was made
+inside a transaction.
+
+A message queued inside a transaction is recorded when the transaction commits, and never after a rollback.
+
+`failNext(error, times)` makes the next `send()` calls throw, a `ChatDeliveryError` of the reason `unavailable` by default. It does not
+touch `queue()`, because the failure of a queued message belongs to its job.
+
+A failed assertion names a destination by its name or host, never by its address.
+
+With `chat: 'real'` the configured driver posts and `app.chat` throws. `app.http` answers the request the driver makes, and
+`app.queue.work()` runs a queued message. The [chat notifications](chat-notifications.md#testing) page covers the package.
 
 ## Storage
 
@@ -317,3 +408,39 @@ it('prunes expired tokens at night and keeps valid ones', async () => {
 
 A time is a `Date`, epoch milliseconds or an ISO string such as `'2026-10-04T03:10:00+02:00'`. Each result names its `task` and
 its `outcome`: `ran`, `skipped` or `failed`. The [task scheduling](scheduling.md) page covers the schedule.
+
+## Social login
+
+`fakeOAuth(app)` of `@marmeon/oauth/testing` makes every social login provider of the app answer from `app.http`, so a test signs in through the
+real `redirect()` and `callback()`: the state, the PKCE check, the nonce, the ID token checks and the confirmation all run. It is not one of the
+`app.*` fakes, since the package does not know what your routes look like; call it in the test, before the request that reads `OAuth`. The routes
+in the example are the ones of your app, as [social login](oauth.md#the-flow-and-its-security) shows them. The start and the callback must be one browser, since the flow
+lives in its session, so both requests go through `app.keepingCookies()`.
+
+```ts title="modules/auth/social.test.ts"
+import { fakeOAuth } from '@marmeon/oauth/testing';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('signs a person in with GitHub', async () => {
+  const app = await createTestApp(application, { database: 'refresh', env: { APP_URL: 'https://app.example.com' } });
+  const oauth = fakeOAuth(app).user('github', { id: '42', email: 'ada@example.com', emailVerified: true });
+  const browser = app.keepingCookies();
+  const start = await browser.post('/auth/github/start').assertStatus(303);
+  await browser.get(oauth.callbackUrl(start)).assertRedirect('/dashboard');
+});
+```
+
+| Member | What it does |
+| --- | --- |
+| `fakeOAuth(app, { only })` | Makes every registered provider (or the names in `only`) active with test credentials, built through the checks of the start. An `oidc()` provider is replaced by an OpenID Connect fake that keeps its own mapping, any other by a plain OAuth 2.0 one. Throws a `TypeError` when `app.http` is not the app's client (`http: 'real'`). |
+| `user(name, profile)` | The next callback of `name` vouches for `profile`, and starts a new preparation. Only `id` (a non-empty string) is required; `claims` adds ID token claims for an `oidc()` provider. Call it first. |
+| `reauthenticated(name)` | The next callback carries a fresh `auth_time`. Throws for a provider that cannot confirm anybody. |
+| `staleAuthentication(name, secondsAgo)` | The next callback carries an `auth_time` that long ago, to test a confirmation that is too old. Throws as `reauthenticated()` does. |
+| `deny(name)` | The next callback is `error=access_denied`. |
+| `callbackUrl(redirect, { state })` | The path and query the provider sends the browser back to, from the `Location` of the redirect (a response, such as the one of `app.post()`, a `URL` or the address as text). `state` replaces the state, to test a forged callback. Throws when no profile is queued and the provider was not denied. |
+| `authorizations` | The authorization requests `callbackUrl()` was given, as `URLSearchParams`. |
+
+The providers fall into three groups. GitHub, Discord and your own plain OAuth 2.0 providers never confirm. Google and GitLab are OpenID Connect fakes that do not
+confirm either. Microsoft and your own `oidc()` providers confirm after `reauthenticated()`. An ID token has no `auth_time` unless the test asks for it. See [testing social login](oauth.md#testing).
