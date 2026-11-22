@@ -26,9 +26,6 @@
     },
     {
       "path": "../redis"
-    },
-    {
-      "path": "../validation"
     }
   ]
 }

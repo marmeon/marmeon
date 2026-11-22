@@ -230,7 +230,7 @@ stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`.
 </Head>
 ```
 
-`Array.from(note.body).slice(0, 150).join('')` cuts by code points: `slice()` alone can split an emoji on the boundary, and the page then shows a broken character (`\uFFFD`).
+`Array.from(note.body).slice(0, 150).join('')` cuts by code points: `slice()` alone can split an emoji on the boundary, and the description then holds a broken character (`\uFFFD`). See [lone surrogates](validation.md#lone-surrogates).
 
 The server renders the head into the first document, and the browser keeps it current on every visit. A `<script>`, `<style>` or
 `<link>` inside `<Head>` that the server wrote is kept when the page hydrates, so a script does not run a second time; one the

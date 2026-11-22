@@ -1110,9 +1110,6 @@ importers:
       '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis
-      '@marmeon/validation':
-        specifier: workspace:*
-        version: link:../validation
       marmeon:
         specifier: workspace:*
         version: link:../cli

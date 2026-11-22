@@ -339,8 +339,7 @@ function sizeGate(rule: 'min' | 'max' | 'between', min: number | undefined, max:
 /**
  * A string — the type of form fields. `''` is a string: `.optional()`, `.nullable()` and `.default()` keep it, `.required()`
  * (or `.min(1)`) asks for some text. The formats `email()`, `url()`, `uuid()`, `date()` and `isoTimestamp()` never take `''`: there it
- * is a form's empty field and counts as missing. Lengths count characters (code points). Never one with a NUL character or a lone surrogate.
- * See `docs/validation.md#available-rules`.
+ * is a form's empty field and counts as missing. Lengths count characters (code points).
  */
 export class StringRule extends Rule<string, string> {
   /** Takes the whitespace off both ends first — before the checks after it. */
@@ -353,7 +352,7 @@ export class StringRule extends Rule<string, string> {
    * and the database rules see the cleaned text. `r.string().normalize(clean).trim().required().max(120)`. Unlike `transform()`, the rule
    * stays a string rule. It is refused after a check (a `TypeError`; `r.email()` and `r.url()` carry one): only `trim()`, `lowercase()`
    * and another `normalize()` may come before it, so no check, `unique()` and `exists()` included, ever judges text that is
-   * not the text stored. A result with a NUL character or a lone surrogate (a `slice()` through an emoji) is refused like one that came in. A function that returns no string is a
+   * not the text stored. A result with a NUL character is refused like one that came in. A function that returns no string is a
    * `TypeError` of the app. A name of a normalization form (`'NFC'`) is no function: `normalize((value) => value.normalize('NFC'))`.
    * An `async` function belongs in `transform()`. See `docs/validation.md#cleaning-a-string-before-its-checks`.
    */
@@ -365,7 +364,7 @@ export class StringRule extends Rule<string, string> {
     if (this['~rule'].steps.some((item) => item.cleans !== true)) {
       throw new TypeError('normalize() goes before the checks, since they must see the cleaned text: r.string().normalize(fn).email(), not r.email().normalize(fn). Only trim(), lowercase() and another normalize() may come before it.');
     }
-    return this.with(cleaning(step(() => engine.normalize(clean)))).with(cleaning(step(engine.stillText)));
+    return this.with(cleaning(step(() => engine.normalize(clean)))).with(cleaning(step(engine.withoutNul)));
   }
 
   /** Lower case — for what is compared case-insensitively, like an e-mail address. */
@@ -405,6 +404,15 @@ export class StringRule extends Rule<string, string> {
   url({ protocols = ['http', 'https'] }: { readonly protocols?: readonly string[] } = {}): this {
     const allowed = new Set(protocols.map((protocol) => `${protocol.replace(/:$/, '').toLowerCase()}:`));
     return this.with(step(() => engine.check((value: string) => isUrl(value, allowed), engine.message('url'))), FORMAT);
+  }
+
+  /**
+   * Refuses a lone surrogate (half of a UTF-16 pair) and repairs nothing. Put it after normalize(), whose result it then
+   * judges: a normalize() after it is a TypeError.
+   * `message`: a translation key or a text — default "The … field must be a string." See `docs/validation.md#lone-surrogates`.
+   */
+  wellFormed(message?: RuleMessage): this {
+    return this.with(step(() => engine.check((value: string) => value.isWellFormed(), message === undefined ? engine.message('string') : engine.ownMessage(message))));
   }
 
   /** A UUID (any version). */

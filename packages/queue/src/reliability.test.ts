@@ -4,7 +4,6 @@ import { Clock, createApplication, EventRegistry, listen, Logger, type Applicati
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, InfrastructureTransactionError } from '@marmeon/database';
 import { RedisServiceProvider } from '@marmeon/redis';
-import { rules as r } from '@marmeon/validation';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { connectionOptions, databaseConnections, databaseKinds, freshTarget, openDriver, PGSQL_URL, processKinds, REDIS_URL, silent, targetEnv, type SharedTarget } from './__fixtures__/targets.ts';
@@ -23,7 +22,6 @@ import {
   type JobContext,
   type JobPayload,
 } from './index.ts';
-import { JobPayloadError } from './runner.ts';
 
 // Unique jobs, chains, job.once, withoutOverlapping and job events — on every driver that
 // keeps jobs (database on SQLite and Postgres, redis), with the cache the app would use there.
@@ -155,28 +153,6 @@ class DoomedJob {
   }
 }
 
-const textRule = r.object({ text: r.string() });
-/** Lets a payload past the schema at dispatch, so the worker's own check has something to refuse. */
-const queueing = { lenient: false };
-
-/** Records the text it is given. */
-class TextJob {
-  static readonly job = 'test.text';
-  static readonly schema: typeof textRule = {
-    '~standard': { ...textRule['~standard'], validate: (value: unknown) => (queueing.lenient ? { value: value as { text: string } } : textRule['~standard'].validate(value)) },
-  } as never;
-
-  readonly #seen: Seen;
-
-  constructor(seen: Seen) {
-    this.#seen = seen;
-  }
-
-  handle(payload: JobPayload<typeof TextJob>, job: JobContext): void {
-    this.#seen.entries.push({ n: payload.text.length, attempt: job.attempt, note: payload.text });
-  }
-}
-
 type TestApp = Application & { seen: Seen; queue: Queue; target: SharedTarget; clock: TestClock; work(queues?: string[] | 'every queue'): Promise<void> };
 
 /** The cache a target's app would use for the queue's locks: memory beside SQLite (a shared file cannot lock inside a transaction). */
@@ -193,7 +169,7 @@ async function withApp(kind: SharedTarget['kind'], test: (app: TestApp) => Promi
     root: '/tmp',
     discover: false,
     providers: [DatabaseServiceProvider, RedisServiceProvider, CacheServiceProvider, QueueServiceProvider],
-    modules: [{ name: 'test', jobs: [NoteJob, MailJob, OnceJob, GuardedJob, DoomedJob, TextJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
+    modules: [{ name: 'test', jobs: [NoteJob, MailJob, OnceJob, GuardedJob, DoomedJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
   }, {
     env: { ...targetEnv(target), ...cacheFor(target), ...env },
     override: (container) => {
@@ -228,35 +204,6 @@ describe.each(processKinds)('a job that fails for good on %s', (kind) => {
       await app.work();
       expect(app.seen.entries).toEqual([{ n: 7, attempt: 2, note: 'failed: refused' }]);
       expect(await app.container.make(QueueConnections).failed().all()).toHaveLength(1);
-    });
-  });
-});
-
-describe.each(processKinds)('a payload with a lone surrogate on %s', (kind) => {
-  it('is refused when it is dispatched, and a queued one is held, never run — the valid job next to it runs', async () => {
-    await withApp(kind, async (app) => {
-      await expect(app.queue.dispatch(TextJob, { text: 'a\uD83Db' })).rejects.toThrow(JobPayloadError);
-      expect(await app.queue.size()).toBe(0);
-
-      queueing.lenient = true;
-      try {
-        await app.queue.dispatch(TextJob, { text: 'a\uD83Db' });
-      } finally {
-        queueing.lenient = false;
-      }
-      await app.queue.dispatch(TextJob, { text: 'ok \u{1F600}' });
-      await app.work();
-      expect(app.seen.entries).toEqual([{ n: 5, attempt: 1, note: 'ok \u{1F600}' }]);
-      const failed = app.container.make(QueueConnections).failed();
-      expect(await failed.all()).toEqual([]);
-      expect(await app.queue.size()).toBe(1);
-
-      app.clock.travel({ hours: 7 });
-      await app.work();
-      const jobs = await failed.all();
-      expect(jobs).toHaveLength(1);
-      expect(JSON.parse(jobs[0]!.payload)).toMatchObject({ job: 'test.text', data: { text: 'a\uD83Db' } });
-      expect(app.seen.entries).toEqual([{ n: 5, attempt: 1, note: 'ok \u{1F600}' }]);
     });
   });
 });
