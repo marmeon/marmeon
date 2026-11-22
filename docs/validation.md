@@ -129,6 +129,7 @@ A URL and an HTML form body cannot: their bytes are decoded first, and `\uFFFD` 
 
 A string rule in the schema of a job, a queued event or a notification refuses a half too. A `slice()` on the server whose result goes to `dispatch()`, `send()` or `toDatabase()`
 can therefore make that call or that delivery fail for valid input. [Cut by code points](#cleaning-a-string-before-its-checks).
+What was stored earlier is checked when it is read. A queued job with a half is held and then fails, and `notificationData()` returns `undefined` for such a row.
 
 In a [query](#queries) a refused value has no message: the field falls back to its default, like any value the schema rejects.
 
