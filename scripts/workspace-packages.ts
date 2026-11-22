@@ -2,12 +2,14 @@
  * The packages of an app's own workspace under test (`pnpm pack:smoke`), in a packed app with `vitest@^5.1.1`: packages inside its root, one
  * exporting TypeScript sources, one behind the `@marmeon/source` condition, one only its built files, and a guard with a package that imports it.
  * A test imports their classes through Vitest's module runner, discovery through Node's `import()` — unless the app's setup file imports
- * `virtual:marmeon/test-packages` (docs/vite.md#packages-of-your-workspace). Three runs of the tests, each a Vitest process of at most two workers:
+ * `virtual:marmeon/test-packages` (docs/vite.md#packages-of-your-workspace). The runs, each a Vitest process of at most two workers:
  *
  * 1. without the import: the classes are two copies, nothing else differs from a version without the import, and the same suite holds with
  *    `external: [/node_modules/]` and with the native runner;
  * 2. with the import: one instance, one evaluation, the mocks reach the boot;
- * 3. run 2 again with `external: [/node_modules/]` and with `@marmeon/vite` linked from outside the app's workspace root.
+ * 3. run 2 again with the installed dependencies external (`/node_modules/`) and with `@marmeon/vite` linked from outside the app's workspace
+ *    root, and a run of its own with a workspace package external by its real path;
+ * 4. within run 2, the documented limit of injected classes (one variant per test file) is pinned, so that a change of it is seen.
  *
  * A function, no command of its own.
  */
@@ -199,6 +201,99 @@ const ODD: Record<string, string> = {
   'odd/pkg#odd/package.json': `${JSON.stringify({ name: '@smoke/odd', version: '1.0.0', type: 'module', exports: { '.': { types: './src/index.ts', default: './src/index.ts' } }, marmeon: { providers: ['OddServiceProvider'] } })}\n`,
   'odd/pkg#odd/src/index.ts': 'export class OddServiceProvider {\n  register(): void {}\n}\n',
   'odd/pkg.ts': "(globalThis as { smokeSibling?: boolean }).smokeSibling = true;\nexport class OddServiceProvider {\n  register(): void {}\n}\n",
+};
+
+const DEP_DECLARATIONS = `import type { Container } from '@marmeon/core';
+
+export declare class Dep {
+  readonly name: string;
+}
+export declare class DepUser {
+  readonly dep: Dep;
+  constructor(dep: Dep);
+}
+export declare class DepServiceProvider {
+  register(container: Container): void;
+}
+`;
+
+const DEP_CLASSES = `export class Dep {
+  name = 'real';
+}
+
+export class DepUser {
+  dep;
+
+  constructor(dep) {
+    this.dep = dep;
+  }
+}
+
+export class DepServiceProvider {
+  register(container) {
+    container.singleton(DepUser);
+  }
+}
+`;
+
+/**
+ * A class of the workspace that other classes inject (`Dep`, in a module of its own that a test can mock) and one that does: `DepUser` of the
+ * workspace is evaluated again after `vi.resetModules()`, `InstService` of an installed package (below) never is.
+ */
+const DEP: Record<string, string> = {
+  'package.json': `${JSON.stringify({ name: '@smoke/dep', version: '0.0.0', type: 'module', exports: { '.': { '@marmeon/source': './src/index.ts', types: './dist/index.d.ts', default: './dist/index.js' }, './base': { '@marmeon/source': './src/base.ts', types: './dist/index.d.ts', default: './dist/index.js' } }, marmeon: { providers: ['DepServiceProvider'] } }, null, 2)}\n`,
+  'src/base.ts': "export class Dep {\n  name: string = 'real';\n}\n",
+  'src/index.ts': `import type { Container } from '@marmeon/core';
+import { Dep } from './base.ts';
+
+export { Dep };
+
+export class DepUser {
+  dep: Dep;
+
+  constructor(dep: Dep) {
+    this.dep = dep;
+  }
+}
+
+export class DepServiceProvider {
+  register(container: Container): void {
+    container.singleton(DepUser);
+  }
+}
+`,
+  'dist/index.js': DEP_CLASSES,
+  'dist/index.d.ts': DEP_DECLARATIONS,
+};
+
+/** A package installed below `node_modules` (not linked), built files with declarations, whose class injects `Dep` of the workspace. */
+const INST: Record<string, string> = {
+  'package.json': `${JSON.stringify({ name: '@smoke/inst', version: '1.0.0', type: 'module', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } }, dependencies: { '@smoke/dep': '0.0.0' }, marmeon: { providers: ['InstServiceProvider'] } }, null, 2)}\n`,
+  'dist/index.js': `export class InstService {
+  dep;
+
+  constructor(dep) {
+    this.dep = dep;
+  }
+}
+
+export class InstServiceProvider {
+  register(container) {
+    container.singleton(InstService);
+  }
+}
+`,
+  'dist/index.d.ts': `import type { Container } from '@marmeon/core';
+import { Dep } from '@smoke/dep';
+
+export declare class InstService {
+  readonly dep: Dep;
+  constructor(dep: Dep);
+}
+export declare class InstServiceProvider {
+  register(container: Container): void;
+}
+`,
 };
 
 const UI_JSON = {
@@ -394,7 +489,7 @@ it('lets the mock of the guard a package imports reach the package discovery boo
 `;
 
 const REENTRANT_TEST = `${HEADER}
-// A mock factory that boots an app imports the module it is the factory of; without importOriginal the factory has nothing to answer with.
+// A mock factory that boots an app imports the module it is the factory of: that inner boot runs the real module. The factory here that returns nothing fails the boot after it.
 vi.mock('@smoke/audit', async () => {
   await createTestApp((await import('../../bootstrap/app.ts')).default);
   return {};
@@ -445,7 +540,7 @@ it('is one instance: the provider and the token the test imports are the booted 
 
 it('does not take the mock of a module inside it into the boot', async () => {
   const app = await createTestApp(defineApplication({ root: process.cwd() }));
-  expect(app.make(KIT)).not.toBe('mocked');
+  expect(app.make(KIT)).toBe('kit');
 });
 `;
 
@@ -475,6 +570,61 @@ it('fails with K7, naming the file and the export, for a provider the mock gives
 });
 `;
 
+// The limit: a class that is not evaluated again with what it injects keeps what the first boot of the test file gave it. `InstService` is the installed
+// package's (Node's copy, once per process); `DepUser` is the workspace's (evaluated again after a reset), so the second boot's other variant is visible.
+const LIMIT_TEST = `${HEADER}import { InstService } from '@smoke/inst';
+
+// \`DepUser\` is imported again for each boot: after a reset the next import is the class that boot registered.
+const names = async () => {
+  const app = await createTestApp(application);
+  const { DepUser } = await import('@smoke/dep');
+  return { inst: app.make(InstService).dep.name, user: app.make(DepUser).dep.name, evaluated: DepUser };
+};
+
+it('limit: after vi.resetModules() and a new mock the installed class keeps the first boot\\'s dependency, the workspace class gets the new one', async () => {
+  const first = await names();
+  expect([first.inst, first.user]).toEqual(['real', 'real']);
+  vi.resetModules();
+  vi.doMock('@smoke/dep/base', () => ({ Dep: class Dep { name = 'mocked'; } }));
+  // the second variant exists: a module evaluated now holds the mock
+  expect(new ((await import('@smoke/dep/base')).Dep)().name).toBe('mocked');
+  // and the second boot evaluated it: the workspace class has the mock, the installed one has what it had
+  const second = await names();
+  expect(second.evaluated).not.toBe(first.evaluated);
+  expect([second.inst, second.user]).toEqual(['real', 'mocked']);
+});
+`;
+
+// The other variant first, in a file of its own: the mock of the first boot stays, also under a production stub.
+const LIMIT_MOCK_FIRST_TEST = `${HEADER}import { InstService } from '@smoke/inst';
+
+vi.mock('@smoke/dep/base', () => ({ Dep: class Dep { name = 'mocked'; } }));
+
+it('limit: mocked first, then unmocked under a production stub, the installed class is still given the mock', async () => {
+  const first = await createTestApp(application);
+  expect(first.make(InstService).dep.name).toBe('mocked');
+  const before = await import('@smoke/dep');
+  expect(first.make(before.DepUser).dep.name).toBe('mocked');
+  vi.doUnmock('@smoke/dep/base');
+  vi.resetModules();
+  // the unmocked variant exists
+  expect(new ((await import('@smoke/dep/base')).Dep)().name).toBe('real');
+  expect((await import('@smoke/dep')).DepUser).not.toBe(before.DepUser);
+  vi.stubEnv('NODE_ENV', 'production');
+  try {
+    const second = await createTestApp(application);
+    expect(second.make(InstService).dep.name).toBe('mocked');
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+it('limit: a boot after the unmocked one in the same file does not give the installed class the other variant either', async () => {
+  const app = await createTestApp(application);
+  expect(app.make(InstService).dep.name).toBe('mocked');
+});
+`;
+
 const HASH_TEST = `import { mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
@@ -492,7 +642,7 @@ afterAll(() => rmSync(join(odd, 'app/node_modules'), { recursive: true, force: t
 
 it('boots the package of the directory with a "#", and never the sibling its name is cut down to', async () => {
   const boot = createTestApp(defineApplication({ root: join(odd, 'app') }));
-  if (shared) await expect(boot).rejects.toThrow(\`Vite resolved \${join(odd, 'pkg#odd/src/index.ts')} to \${join(odd, 'pkg#odd/src/index.ts')}, which is not that file (a "?" or "#" in a name cuts it). Rename the file.\`);
+  if (shared) await expect(boot).rejects.toThrow(\`\${join(odd, 'pkg#odd/src/index.ts')} has a "?" or "#" in its name, which the module runner cuts off, so it cannot load that file. Rename the file.\`);
   else expect((await boot).application.providers.map((provider) => provider.name)).toContain('OddServiceProvider');
   expect((globalThis as { smokeSibling?: boolean }).smokeSibling).toBeUndefined();
 });
@@ -637,7 +787,7 @@ export async function checkWorkspacePackages(smoke: WorkspaceApp, installFlags: 
     return output;
   };
   const every = ['dom', ...PLAIN_TESTS];
-  const shared = [...every, 'deep-mock', 'entry-mock', 'guard-mock', 'reentrant', 'reentrant-original', 'undefined-export'];
+  const shared = [...every, 'deep-mock', 'entry-mock', 'guard-mock', 'reentrant', 'reentrant-original', 'undefined-export', 'limit', 'limit-mock-first'];
   /** The setup file of the shared runs type checks, and a named import of the virtual module is exactly one error, TS2305 (it has no exports). */
   const typeCheck = () => {
     write(app, {
@@ -657,9 +807,14 @@ export async function checkWorkspacePackages(smoke: WorkspaceApp, installFlags: 
     if (codes.join() !== 'TS2305') throw new SmokeError(`a named import of virtual:marmeon/test-packages should be exactly one TS2305, tsc said:\n${named}`);
   };
   try {
-    write(app, Object.fromEntries([['kit', KIT], ['sourced', SOURCED], ['built', BUILT], ['guard', GUARD], ['audit', AUDIT], ['ui', UI]].flatMap(([name, files]) => Object.entries(files as Record<string, string>).map(([p, t]) => [`packages/${name as string}/${p}`, t]))));
-    install('add', ...['kit', 'sourced', 'built', 'guard', 'audit', 'ui'].map((name) => `link:./packages/${name}`));
+    write(app, Object.fromEntries([['kit', KIT], ['sourced', SOURCED], ['built', BUILT], ['guard', GUARD], ['audit', AUDIT], ['dep', DEP], ['ui', UI]].flatMap(([name, files]) => Object.entries(files as Record<string, string>).map(([p, t]) => [`packages/${name as string}/${p}`, t]))));
+    install('add', ...['kit', 'sourced', 'built', 'guard', 'audit', 'dep', 'ui'].map((name) => `link:./packages/${name}`));
     install('add', '-D', 'happy-dom@^21.0.4', 'vitest@^5.1.1');
+    // The installed package: its files below node_modules, listed in package.json (restored below), no link and no install.
+    write(app, Object.fromEntries(Object.entries(INST).map(([path, text]) => [`node_modules/@smoke/inst/${path}`, text])));
+    const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    manifest.dependencies['@smoke/inst'] = '1.0.0';
+    writeFileSync(join(app, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     write(app, {
       ...ODD,
       'vitest.workspace.config.ts': VITEST_CONFIG,
@@ -672,6 +827,8 @@ export async function checkWorkspacePackages(smoke: WorkspaceApp, installFlags: 
       'modules/smoke/guard-mock.test.ts': GUARD_MOCK_TEST,
       'modules/smoke/reentrant.test.ts': REENTRANT_TEST,
       'modules/smoke/reentrant-original.test.ts': REENTRANT_ORIGINAL_TEST,
+      'modules/smoke/limit.test.ts': LIMIT_TEST,
+      'modules/smoke/limit-mock-first.test.ts': LIMIT_MOCK_FIRST_TEST,
       'modules/smoke/external-package.test.ts': EXTERNAL_PACKAGE_TEST,
       'modules/smoke/undefined-export.test.ts': UNDEFINED_TEST,
     });
@@ -711,7 +868,7 @@ export async function checkWorkspacePackages(smoke: WorkspaceApp, installFlags: 
     throw new SmokeError(`the app's tests with the packages of its workspace: ${(error as Error).message}`);
   } finally {
     for (const [file, text] of saved) writeFileSync(join(app, file), text);
-    for (const path of ['packages', 'modules/smoke', 'odd', 'vitest.workspace.config.ts']) rmSync(join(app, path), { recursive: true, force: true });
+    for (const path of ['packages', 'modules/smoke', 'odd', 'node_modules/@smoke/inst', 'vitest.workspace.config.ts']) rmSync(join(app, path), { recursive: true, force: true });
   }
   install('install', '--frozen-lockfile');
 }

@@ -51,7 +51,7 @@ export function testPackages(): Plugin {
       // Only a server environment resolves a file URL of the test: the client environment answers over HTTP and must resolve no file.
       if (this.environment.config.consumer !== 'server') return undefined;
       // The file the importer was asked for is the file that runs: what Vite resolves it to must be that very file, a module of the package,
-      // and not the sibling a `#` or `?` of its name cuts it down to, an alias, or something the runner would hand to Node.
+      // and not the sibling a `#` or `?` of its name cuts it down to, an alias, or a file a plugin resolved as external.
       let file: string;
       try {
         file = fileURLToPath(Buffer.from(source.slice(PACKAGE_PREFIX.length), 'base64url').toString('utf8'));
@@ -61,7 +61,13 @@ export function testPackages(): Plugin {
       const resolved = await this.resolve(file, undefined, { skipSelf: true });
       if (!resolved) return this.error(`Vite could not resolve ${file}, a module of your workspace packages.`);
       if (resolved.external) return this.error(`A plugin resolved ${file} as external, so it would be a second copy loaded through Node.`);
-      if (/[?#]/.test(resolved.id)) return this.error(`Vite resolved ${file} to ${resolved.id}, which is not that file (a "?" or "#" in a name cuts it). Rename the file.`);
+      if (/[?#]/.test(resolved.id)) {
+        return this.error(
+          resolved.id === file
+            ? `${file} has a "?" or "#" in its name, which the module runner cuts off, so it cannot load that file. Rename the file.`
+            : `Vite resolved ${file} to ${resolved.id}, which is not that file (a "?" or "#" in a name cuts it). Rename the file.`,
+        );
+      }
       let same = false;
       try {
         same = realpathSync.native(file) === realpathSync.native(resolved.id);

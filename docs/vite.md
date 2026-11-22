@@ -387,21 +387,33 @@ A project without the import, and everything outside tests, loads these packages
 What changes with the import:
 
 - The provider class your test imports is the one the app boots, and so are its tokens and singletons.
-- A `vi.mock` of a module of the package reaches the boot, so a mock of an entry must export what discovery needs: the providers, the classes
-  with constructor dependencies and what they inject. A mock that leaves one out fails the boot with Vitest's error, which names the export.
-  An export that is `undefined`, or a provider that is no function, fails it with [K7](errors.md#server-error-codes).
-- To change a mock between two boots, use `vi.resetModules()` with `vi.doMock()`: a class keeps the dependencies it was evaluated with.
+- A `vi.mock` of a module of the package reaches the boot, except where [one variant per test file](#packages-of-your-workspace) says otherwise.
+- A mock of an entry must export what discovery needs: the providers, the classes with constructor dependencies and what they inject.
+  A mock that leaves one out fails the boot with Vitest's error, which names the export. An export that is `undefined`, a provider that is
+  no function, and a class to inject that is `null` or a primitive fail it with [K7](errors.md#server-error-codes).
+- To change a mock between two boots, use `vi.resetModules()` with `vi.doMock()`, and then import the app's definition and the classes again
+  with `await import()`: what the file imported before the reset keeps the first variant. [One variant per test file](#packages-of-your-workspace) names the classes
+  that this does not change.
 - Remove `server.deps.external` entries of these packages if their mocks and resets shall reach the boot.
 
-Where the import does not apply, the app loads through Node:
+**One variant per test file.** Some classes are not evaluated again with what they inject: a class of an installed package that injects
+a class of your workspace, a class of a package in `server.deps.external`, and, without a reset, a class of a built package that has no
+embedded injection lists. With the import, the first boot that discovers such a class decides what is injected into it, for the whole test
+file and for apps that already run. That boot can be one in a setup file, and a boot that failed counts too. A mock that comes later does not
+reach the class, and a mock of the first boot stays, also in a boot that stubs production and in an app with `discover: false`.
+Put each variant in a test file of its own, with `isolate` on (the default), and boot in that file rather than in a setup file.
+
+Where the import does not apply, discovery loads the package through Node:
 
 - DOM environments (`happy-dom`, `jsdom`) and browser mode: the import registers nothing and removes a registered importer.
-- Installed packages, below `node_modules`: their mocks do not reach the boot, and their imports of a workspace package are Node's.
+- Installed packages, below `node_modules`: a mock of one does not reach discovery's own import of it, and their imports of a workspace package
+  are Node's.
 - A package in `server.deps.external`: it is one instance, through Node. A mock of its entry reaches the boot. A mock of a module inside it
   and `vi.resetModules()` do not, and its imports of a workspace package are Node's.
 - Files that are loaded by URL: migrations, language files and `tinker`.
-- A boot while the process's `NODE_ENV` is neither `development` nor `test`, for example after `vi.stubEnv()`: it runs the real packages,
-  whatever is mocked. The `env` option of `createTestApp()` reaches the configuration only. For a protection that is asked per request,
+- A boot while the process's `NODE_ENV` is neither `development` nor `test`, for example after `vi.stubEnv()`: discovery loads the real
+  providers. What your app imports itself stays mocked, and so can an injected class. The `env` option of `createTestApp()` reaches the
+  app's configuration and not the process. For a protection that is asked per request,
   boot first and stub afterwards ([which environment a test runs in](testing.md#which-environment-a-test-runs-in)).
 
 The import refuses:
@@ -415,7 +427,7 @@ The import refuses:
 What it does not cover:
 
 - A package that boots an app while it loads and waits for it: the boot waits for the package, and neither ends.
-- A mock factory that boots an app: with `importOriginal()` that inner boot runs the real module.
+- A mock factory that boots an app: that inner boot runs the real module.
 - `isolate: false` and the pools `vmThreads` and `vmForks` are not tested.
 - With `sequence.setupFiles: 'parallel'`, import it in the test file that boots the app.
 

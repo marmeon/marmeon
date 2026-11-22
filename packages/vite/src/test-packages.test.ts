@@ -189,13 +189,22 @@ describe('the file an importer asks for', () => {
     writeFileSync(join(target.dir, 'x.ts'), 'throw new Error("the sibling ran");\n');
     const sibling = await real(join(target.dir, 'x.ts'));
     await expect(hooks.resolveId.call(context('server', { id: sibling, external: false }), target.id)).rejects.toThrow(`Vite resolved ${target.path} to ${sibling}, which is another file (an alias or a link?). The checked file would not be the one that runs.`);
-    await expect(hooks.resolveId.call(context('server', { id: `${sibling}#y.ts`, external: false }), target.id)).rejects.toThrow(/"\?" or "#"/);
+    await expect(hooks.resolveId.call(context('server', { id: `${sibling}#y.ts`, external: false }), target.id)).rejects.toThrow(
+      `Vite resolved ${target.path} to ${sibling}#y.ts, which is not that file (a "?" or "#" in a name cuts it). Rename the file.`,
+    );
+    // resolved to itself: the runner cuts the name, and the message names the file once
+    await expect(hooks.resolveId.call(context('server', { id: target.path, external: false }), target.id)).rejects.toThrow(
+      `${target.path} has a "?" or "#" in its name, which the module runner cuts off, so it cannot load that file. Rename the file.`,
+    );
   });
 
   it('refuses a "?" in the id', async () => {
     const { hooks, context } = plugin();
     const target = file('a.ts');
-    await expect(hooks.resolveId.call(context('server', { id: `${await real(target.path)}?raw`, external: false }), target.id)).rejects.toThrow(/"\?" or "#"/);
+    const resolved = `${await real(target.path)}?raw`;
+    await expect(hooks.resolveId.call(context('server', { id: resolved, external: false }), target.id)).rejects.toThrow(
+      `Vite resolved ${target.path} to ${resolved}, which is not that file (a "?" or "#" in a name cuts it). Rename the file.`,
+    );
   });
 
   it('refuses an alias to a sibling: another file than the checked one, which never runs', async () => {

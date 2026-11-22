@@ -114,8 +114,8 @@ instead and answers 404.) Test a route of your own in one of two ways:
   it: the guard's host check defends against DNS rebinding, and the guard ignores the `env` option.
 - Stub `NODE_ENV` for the process with `vi.stubEnv()`, and undo it after every test. A guard that asks on every request, such as
   [`devOnly()`](routing.md#development-only-routes), sees the stub at once. A route that is registered only in some environments
-  decides when the app boots: stub before `createTestApp()` for it. With `virtual:marmeon/test-packages`, a boot under that stub runs your
-  workspace packages unmocked.
+  decides when the app boots: stub before `createTestApp()` for it. With `virtual:marmeon/test-packages`, discovery loads the real providers of
+  your workspace packages in a boot under that stub: what your app imports itself stays mocked, and so can an injected class.
 
 ```ts title="modules/playground/playground.test.ts"
 import { createTestApp } from '@marmeon/testing';
@@ -139,7 +139,9 @@ it('is gone in production', async () => {
 ```
 
 Keep both tests: the first proves the route exists, so the second cannot pass because the route was never there, and the second
-proves the gate, which a route that is open in production fails.
+proves the gate, which a route that is open in production fails. With `virtual:marmeon/test-packages`, an injected class can also keep
+what the first boot of the file gave it ([one variant per test file](vite.md#packages-of-your-workspace)): give each of the two tests a
+file of its own.
 
 With `NODE_ENV=development` the app turns on what only development has, such as the mail previews and the `Server-Timing`
 header. With `NODE_ENV=production` it applies every protection, as it does on a server. The devtools stay off in every test that

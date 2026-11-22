@@ -873,7 +873,7 @@ describe('a module the test importer routed', () => {
     expect(asked).not.toHaveBeenCalled();
   });
 
-  it('boots as before without the importer when a class has a static getter `inject` that throws', async () => {
+  it('boots without the importer when a class has a static getter `inject` that throws', async () => {
     const root = workspaceApp();
     writeFileSync(join(root, 'workspace/solo/dist/index.js'), `${BUILT}Object.defineProperty(Solo, 'inject', { get() { throw new Error('read'); }, configurable: true });\n`);
     expect((await load(root)).providers).toHaveLength(1);

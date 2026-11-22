@@ -13,6 +13,7 @@ import { environment } from '../environment.ts';
  *
  * Security invariant: the function is called only where `environment.isProtected()` is false — and that is asked here, on every call, not
  * where the function was registered. A global left in a process of production, of an unset, empty or unknown `NODE_ENV` is inert, whatever put it there.
+ * What an unprotected boot already wrote onto a class (its injection list) stays for a later boot (docs/vite.md#packages-of-your-workspace).
  */
 const TEST_IMPORT = Symbol.for('marmeon.test.import');
 
@@ -21,7 +22,7 @@ type Importer = (url: string) => Promise<Record<string, any>>;
 /**
  * The test's importer, when this import is for it: a function is registered (looked at first, so nothing is read where none is), the
  * environment is development or test, and the file's real path has no `node_modules` segment. Any other case, a path that cannot be
- * read included, is Node's import as before.
+ * read included, is Node's import.
  */
 export function testImporter(url: string): Importer | undefined {
   const importer = (globalThis as Record<symbol, unknown>)[TEST_IMPORT];

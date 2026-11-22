@@ -614,7 +614,8 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     return value;
   };
 
-  // Before anything is written: a routed module that cannot boot refuses the whole boot, and a refused one leaves no list behind.
+  // Before anything is written: a routed provider or target that cannot be used refuses the boot. An undefined injected value refuses while
+  // the lists are written.
   if (routed.some(Boolean)) {
     for (const ref of manifest!.providers) {
       if (!routed[ref[0]]) continue;
