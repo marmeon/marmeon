@@ -1,6 +1,6 @@
 import { cpSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { createApplication } from '@marmeon/core';
+import { createApplication, providerJobs } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { ModulesCheckCommand } from './commands/modules-check.ts';
 import { marmeon, repo } from './__fixtures__/cli.js';
@@ -54,7 +54,7 @@ describe('ModulesCheckCommand with an app in the build phase', () => {
     handle() {}
   }
   class JobsProvider {
-    static jobs = [ListedJob];
+    static [providerJobs] = [ListedJob];
   }
 
   async function run(providers: (typeof JobsProvider)[]): Promise<string[]> {

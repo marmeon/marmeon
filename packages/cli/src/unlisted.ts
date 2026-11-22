@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import type { Application } from '@marmeon/core';
+import { providerJobs, type Application } from '@marmeon/core';
 import { staticNames } from '@marmeon/core/internal';
 import { appListedProviders } from './app-providers.ts';
 import type { CommandInput } from './command.ts';
@@ -21,7 +21,7 @@ export type UnlistedApp = Pick<Application, 'modules' | 'providers' | 'definitio
 
 /**
  * Classes under `<root>/modules` with a literal `static job` or `static notification` that no module lists. A job also counts
- * as listed when a provider the app lists itself (its `providers` or a module's) lists it in its `static jobs`. A provider
+ * as listed when a provider the app lists itself (its `providers` or a module's) lists it in its `static [providerJobs]`. A provider
  * that only discovery adds does not count. The files are parsed, never imported: nothing in them runs, and nothing is
  * written.
  */
@@ -37,7 +37,7 @@ export function unlistedClasses(root: string, app: UnlistedApp): UnlistedClass[]
     }
   }
   for (const provider of appListedProviders(app)) {
-    const jobs = (provider as unknown as { jobs?: unknown }).jobs;
+    const jobs: unknown = (provider as { [providerJobs]?: unknown })[providerJobs];
     if (!Array.isArray(jobs)) continue;
     for (const entry of jobs) if (typeof entry === 'function' && typeof (entry as { job?: unknown }).job === 'string') listed.job.add((entry as unknown as { job: string }).job);
   }

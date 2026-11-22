@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { glob } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { EventDispatcher, EventRegistry, Translator, type Application, type Container, type Key } from '@marmeon/core';
+import { EventDispatcher, EventRegistry, providerJobs, Translator, type Application, type Container, type Key } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { appListedProviders } from '../app-providers.ts';
@@ -47,7 +47,7 @@ export class TinkerSession {
   /** Classes and tokens the app knows, by name: bound in the container, listed by a module (jobs, listeners, …), repositories. */
   readonly #names = new Map<string, Key>();
   /**
-   * The jobs the providers list in `static jobs`, by class name — the last resort, read only where a name is made or shown
+   * The jobs the providers list in `static [providerJobs]`, by class name — the last resort, read only where a name is made or shown
    * (`make('Name')`, the suggestions, `names()` and the context). Never a helper's, a repository's or the sandbox's name,
    * and never in the way of another name: a name in {@link #names} wins, also one that arrives later. A repository takes its
    * name back once the repositories are loaded; an input that writes the name out loads them.
@@ -345,7 +345,7 @@ export class TinkerSession {
     // The jobs of every provider, the ones the app lists first: read through the prototype chain, the first of a name wins.
     const listedByApp = appListedProviders(this.app);
     for (const provider of [...listedByApp, ...this.app.providers.filter((candidate) => !listedByApp.includes(candidate))]) {
-      const jobs = (provider as unknown as { jobs?: unknown }).jobs;
+      const jobs: unknown = (provider as { [providerJobs]?: unknown })[providerJobs];
       if (!Array.isArray(jobs)) continue;
       for (const job of jobs) {
         const name = typeof job === 'function' ? (job as { name?: unknown }).name : undefined;

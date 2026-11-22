@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync
 import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createApplication, defineModule, listen, token, type Application, type ServiceProviderClass } from '@marmeon/core';
+import { createApplication, defineModule, listen, providerJobs, token, type Application, type ServiceProviderClass } from '@marmeon/core';
 import { defineRoutes, Router } from '@marmeon/router';
 import { TinkerCommand } from '../commands/tinker.ts';
 import { completer, interactive } from './repl.ts';
@@ -159,7 +159,7 @@ describe('the jobs a provider lists in a tinker session', () => {
     Object.defineProperty(Job, 'name', { value: name });
     return Job;
   };
-  const providerOf = (jobs: unknown) => class { static jobs = jobs; boot() {} } as unknown as ServiceProviderClass;
+  const providerOf = (jobs: unknown) => class { static [providerJobs] = jobs; boot() {} } as unknown as ServiceProviderClass;
   const repository = (name: string, table: string) => `export class ${name} { static table = '${table}'; query() {} find() {} }\n`;
 
   async function session(options: { providers?: ServiceProviderClass[]; modules?: ReturnType<typeof defineModule>[]; files?: Record<string, string>; bind?: (container: never) => void; sandbox?: boolean } = {}) {
@@ -174,7 +174,7 @@ describe('the jobs a provider lists in a tinker session', () => {
 
   it('knows the class by name and nothing else a provider carries', async () => {
     const Listed = job('ListedJob');
-    const Provider = class { static jobs = [Listed]; static notifications = [class Late { static notification = 'x.late'; }]; boot() {} } as unknown as ServiceProviderClass;
+    const Provider = class { static [providerJobs] = [Listed]; static notifications = [class Late { static notification = 'x.late'; }]; boot() {} } as unknown as ServiceProviderClass;
     const { tinker } = await session({ providers: [Provider] });
     expect(tinker.names()).toContain('ListedJob');
     expect(tinker.names()).not.toContain('Late');
@@ -284,6 +284,26 @@ describe('the jobs a provider lists in a tinker session', () => {
     const context: Record<string, unknown> = { URL };
     tinker.attach(context);
     expect(context.URL).toBe(URL);
+  });
+
+  it('never reads a string `jobs` or `providerJobs`, not even a getter that throws', async () => {
+    const otherSymbol: unique symbol = Symbol.for('providerJobs');
+    const Plain = class {
+      static jobs = [job('ByJobs')];
+      static providerJobs = [job('ByKey')];
+      static ['marmeon.provider.jobs'] = [job('ByDescription')];
+      static [otherSymbol] = [job('ByOtherSymbol')];
+      boot() {}
+    } as unknown as ServiceProviderClass;
+    const Getters = class {
+      static get jobs(): never { throw new Error('read'); }
+      static get providerJobs(): never { throw new Error('read'); }
+      static get ['marmeon.provider.jobs'](): never { throw new Error('read'); }
+      boot() {}
+    } as unknown as ServiceProviderClass;
+    const { tinker } = await session({ providers: [Plain, Getters] });
+    expect(tinker.names()).not.toEqual(expect.arrayContaining(['ByJobs']));
+    for (const name of ['ByKey', 'ByDescription', 'ByOtherSymbol']) expect(tinker.names()).not.toContain(name);
   });
 
   it('does not break on a class whose name is a symbol or a number, nor on a bad value', async () => {

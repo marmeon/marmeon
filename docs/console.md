@@ -140,7 +140,7 @@ A command of your own, or of a package, prints its document with `output.json({ 
   known to the type checker without running `route:types` yourself.
 - **A warning** names every class under `modules/` with a literal `static job` or `static notification` that no module lists.
   A job also counts as listed when a provider of your app lists it (its `providers` or a module's), matched by the job's name.
-  A provider that only discovery adds does not count: a class under `modules/` with that package's job name still gets the warning, so give it a job name of its own. A package's provider that you list yourself does count. A class of a workspace package below `modules/` that only that package's provider lists gets the warning until a module lists it too.
+  A provider that only discovery adds does not count: a class under `modules/` with that package's job name still gets the warning, so give it a job name of its own. A package's provider that you list yourself does count. A job class of a workspace package below `modules/` gets the warning while only a discovered provider lists it: list it in a module, too.
   The files are only read, never run, and the registration stays explicit. `marmeon build` prints the same warning.
 
 The worker and the scheduler stop and start with the server, so a code change reaches them too. One that ends on its own is

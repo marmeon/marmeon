@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Application, Logger } from '@marmeon/core';
+import { providerJobs, type Application, type Logger } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import type { CommandInput } from '../command.ts';
@@ -41,7 +41,7 @@ async function serve(nodeEnv: string, root = '/nowhere', warn: (text: string) =>
   server.startServer.mockImplementation(async () => ({ close: server.close }));
   server.startLastError.mockImplementation(async () => server.lastError);
   migrations.watch.mockImplementation(async () => ({ close: migrations.close }));
-  const app = { container: { has: () => false }, modules: [], providers: [class Provider { static jobs = []; }], definition: { root }, shutdownTimeoutMs: 10_000 } as unknown as Application;
+  const app = { container: { has: () => false }, modules: [], providers: [class Provider { static [providerJobs] = []; }], definition: { root }, shutdownTimeoutMs: 10_000 } as unknown as Application;
   lastApp = app;
   const logger = { info: () => {} } as unknown as Logger;
   const devProcesses = { all: () => [] } as unknown as DevProcesses;

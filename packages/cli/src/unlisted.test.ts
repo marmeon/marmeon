@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ModuleDefinition, ServiceProviderClass } from '@marmeon/core';
+import { providerJobs, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { unlistedClasses, type UnlistedApp } from './unlisted.ts';
@@ -16,8 +16,8 @@ function appWith(files: Record<string, string>): string {
 
 const job = (name: string, value: string) => `export class ${name} {\n  static readonly job = '${value}';\n}\n`;
 const notification = (name: string, value: string) => `export class ${name} {\n  static readonly notification = '${value}';\n}\n`;
-/** A provider class with `static jobs`; `jobs` may be any value. */
-const provider = (jobs: unknown) => class Provider { static jobs = jobs; } as unknown as ServiceProviderClass;
+/** A provider class with `static [providerJobs]`; the value may be anything. */
+const provider = (jobs: unknown) => class Provider { static [providerJobs] = jobs; } as unknown as ServiceProviderClass;
 /** What the check reads of an app: `listed` are the providers its definition lists, `discovered` come from packages. */
 const appOf = (modules: ModuleDefinition[], { listed = [], discovered = [] }: { listed?: ServiceProviderClass[]; discovered?: ServiceProviderClass[] } = {}) =>
   ({ modules, providers: [...discovered, ...listed], definition: { root: '/', providers: listed } }) as unknown as UnlistedApp;
@@ -128,9 +128,28 @@ describe('unlistedClasses', () => {
       expect(unlistedClasses(send(), appOf([], { listed: [Child] }))).toEqual([]);
     });
 
+    it('never reads a string `jobs` or `providerJobs`, not even a getter that throws', () => {
+      const throwing = () => {
+        throw new Error('read');
+      };
+      const otherSymbol: unique symbol = Symbol.for('providerJobs');
+      const Plain = class {
+        static jobs = [jobClass('billing.send')];
+        static providerJobs = [jobClass('billing.send')];
+        static ['marmeon.provider.jobs'] = [jobClass('billing.send')];
+        static [otherSymbol] = [jobClass('billing.send')];
+      } as unknown as ServiceProviderClass;
+      const Getters = class {
+        static get jobs(): never { return throwing(); }
+        static get providerJobs(): never { return throwing(); }
+        static get ['marmeon.provider.jobs'](): never { return throwing(); }
+      } as unknown as ServiceProviderClass;
+      for (const listed of [[Plain], [Getters]]) expect(unlistedClasses(send(), appOf([], { listed }))).toHaveLength(1);
+    });
+
     it('never counts a provider for a notification', () => {
       const root = appWith({ 'modules/billing/notifications/Late.ts': notification('LateNotification', 'billing.late') });
-      const Notifying = class { static jobs = [jobClass('billing.other')]; static notifications = [{ notification: 'billing.late' }]; } as unknown as ServiceProviderClass;
+      const Notifying = class { static [providerJobs] = [jobClass('billing.other')]; static notifications = [{ notification: 'billing.late' }]; } as unknown as ServiceProviderClass;
       const asJob = provider([class { static notification = 'billing.late'; static job = 'billing.late'; }]);
       for (const listed of [[Notifying], [asJob]]) {
         expect(unlistedClasses(root, appOf([], { listed })).map((entry) => [entry.className, entry.key])).toEqual([['LateNotification', 'notification']]);

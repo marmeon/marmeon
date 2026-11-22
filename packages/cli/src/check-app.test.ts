@@ -470,9 +470,9 @@ ${body}
 
   it('does not warn about a job class a provider lists, and still warns about one it does not', () => {
     const probe = `
-import { defineModule } from '@marmeon/core';
+import { defineModule, providerJobs } from '@marmeon/core';
 import { ListedJob } from './modules/system/jobs/Listed.ts';
-export class ProbeProvider { static jobs = [ListedJob]; }
+export class ProbeProvider { static [providerJobs] = [ListedJob]; }
 export const probeModule = defineModule({ name: 'probe' });
 `;
     const files = {
