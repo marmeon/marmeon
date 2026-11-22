@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -1005,7 +1005,7 @@ describe('checkWorkflow — the release run', () => {
       const takes = 'stages with the env';
       expect(problemsOf(mutated('          SUMS: ${{', '          NODE_OPTIONS: --require /tmp/x.js\n          SUMS: ${{', 'stage'))).toContain(takes);
       expect(problemsOf(mutated('          NPM_CONFIG_USERCONFIG', '          NPM_CONFIG_REGISTRY: https://example.com\n          NPM_CONFIG_USERCONFIG', 'stage'))).toContain(takes);
-      expect(problemsOf(mutated('    timeout-minutes: 15\n', '    timeout-minutes: 15\n    env:\n      NODE_OPTIONS: --require /tmp/x.js\n', 'stage'))).toContain('has an env: besides');
+      expect(problemsOf(mutated('    timeout-minutes: 25\n', '    timeout-minutes: 25\n    env:\n      NODE_OPTIONS: --require /tmp/x.js\n', 'stage'))).toContain('has an env: besides');
       expect(problemsOf(mutated('          package-manager-cache: false # the action\'s default restores a pnpm store by itself\n', '          package-manager-cache: false\n        env:\n          HTTPS_PROXY: http://example.com\n', 'stage'))).toContain('has an env: besides');
       expect(problemsOf(mutated('\njobs:\n', '\nenv:\n  NODE_OPTIONS: --require /tmp/x.js\n\njobs:\n'))).toContain('an env: for the whole workflow');
     });
@@ -1016,6 +1016,26 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(' --tag="$DIST_TAG"', ' --tag=latest', 'stage'))).toContain(wanted);
       expect(problemsOf(mutated('"$TARBALLS/$name"', '"$TARBALLS"/*.tgz', 'stage'))).toContain(wanted);
       expect(problemsOf(mutated('          test "${name%-"$VERSION".tgz}" != "$name"\n', '', 'stage'))).toContain(wanted);
+    });
+
+    it('pins the job limit of the staging job to the arithmetic of its time gate', () => {
+      for (const minutes of [5, 360]) expect(problemsOf(mutated('    timeout-minutes: 25\n', `    timeout-minutes: ${minutes}\n`, 'stage')), String(minutes)).toContain('"timeout-minutes: 25"');
+      expect(problemsOf(mutated('    timeout-minutes: 25\n', '', 'stage'))).toContain('"timeout-minutes: 25"');
+      // A step's own limit of 25 does not stand in for the job's.
+      expect(problemsOf(mutated('    timeout-minutes: 25\n', '    timeout-minutes: 5\n', 'stage').replace('        env:\n          TARBALLS:', '        timeout-minutes: 25\n        env:\n          TARBALLS:'))).toContain('"timeout-minutes: 25"');
+    });
+
+    it('wants --json, the fetch timeout, the time limit before every attempt, three attempts at most and no other npm call in the staging loop', () => {
+      expect(problemsOf(mutated(' --cafile=null --fetch-timeout=60000 --json', ' --cafile=null --json', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' --fetch-timeout=60000 --json', ' --fetch-timeout=600000 --json', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' --cafile=null --fetch-timeout=60000 --json', ' --cafile=null --fetch-timeout=60000', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('              test "$SECONDS" -lt 780 || { echo "::error::$package ran out of time; this attempt may have staged packages: Re-run failed jobs"; exit 1; }\n', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('-lt 780', '-lt 1500', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('test "$attempt" -lt 3 ||', 'test "$attempt" -lt 30 ||', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('|504)$ ||', '|504|403)$ ||', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('[[ "$status" == 409 ]]', '[[ "$status" =~ ^4 ]]', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('              attempt=$((attempt + 1))\n', '              attempt=$((attempt + 1))\n              npm stage list\n', 'stage'))).toContain('it holds the OIDC token');
+      expect(problemsOf(mutated('              attempt=$((attempt + 1))\n', '              attempt=$((attempt + 1))\n              npm whoami\n', 'stage'))).toContain(wanted);
     });
 
     it('takes the hash, the version and the dist-tag from the build job’s outputs', () => {
@@ -1083,7 +1103,40 @@ describe('checkWorkflow — the release run', () => {
       sumsSuffix?: string;
       /** The value `$SECONDS` has when the script starts: a slow job. */
       seconds?: number;
+      /**
+       * What `npm stage publish` answers, call by call (the last answer repeats): `ok`, `badid`, `noid` and `wrongkey` (a success without a usable stage id), an npm error code (`E` and the HTTP status, `ETIMEDOUT`, …),
+       * `garbage` (no JSON on stdout) or `nocode` (a JSON error without a code).
+       */
+      npm?: string[];
+      /** The value `$SECONDS` has once the first `npm stage publish` has started: an upload that took the rest of the job's time. */
+      lateAfterFirstStage?: number;
+      /** `GITHUB_RUN_ATTEMPT` as the runner sets it (default `1`); `null`: not set at all. */
+      runAttempt?: string | ((directory: string) => string) | null;
     }
+
+    /**
+     * `npm stage publish --json` as npm 11.19 prints it: JSON on stdout (an error under `error`, a success keyed by the package
+     * name, with the stage id and the file list), the human lines on stderr, an error exits 1.
+     */
+    const npmStandIn = [
+      '#!/bin/bash',
+      'echo "npm $*" >> "$LOG"',
+      'count=$(grep -c ^npm "$LOG")',
+      'answer=$(sed -n "${count}p" <<< "$NPM_ANSWERS"); [[ -n "$answer" ]] || answer=$(tail -n 1 <<< "$NPM_ANSWERS")',
+      'echo "npm notice Staging to https://registry.npmjs.org/ with tag latest and public access" >&2',
+      'package=$(tar -xzOf "$3" package/package.json | jq -r .name)',
+      'case "$answer" in',
+      '  ok|"") jq -n --arg package "$package" \'{($package): {id: "x", stageId: "0b9f2c3e-5d1a-4e7b-8c6d-1a2b3c4d5e6f", integrity: "sha512-abc", files: [{path: "package.json"}]}}\' ;;',
+      '  badid) jq -n --arg package "$package" \'{($package): {id: "x", stageId: "stage-id-123"}}\' ;;',
+      '  wrongkey) jq -n \'{other: {stageId: "0b9f2c3e-5d1a-4e7b-8c6d-1a2b3c4d5e6f"}}\' ;;',
+      '  upper) jq -n --arg package "$package" \'{($package): {id: "x", stageId: "0B9F2C3E-5D1A-4E7B-8C6D-1A2B3C4D5E6F"}}\' ;;',
+      '  noid) jq -n --arg package "$package" \'{($package): {id: "x"}}\' ;;',
+      '  garbage) echo "<html>bad gateway</html>"; exit 1 ;;',
+      '  nocode) printf \'{"error":{"summary":"","detail":""}}\\n\'; exit 1 ;;',
+      '  *) printf \'{\\n  "error": {\\n    "code": "%s",\\n    "summary": "%s POST https://registry.npmjs.org/-/stage/package/marmeon",\\n    "detail": ""\\n  }\\n}\\n\' "$answer" "$answer"; echo "npm error code $answer" >&2; exit 1 ;;',
+      'esac',
+      '',
+    ].join('\n');
 
     /** Runs the step's script on tarballs of the packages; a package `[name, version]` has a tarball named after that version. */
     function stage(packages: Array<string | [string, string]>, options: Options = {}) {
@@ -1114,13 +1167,19 @@ describe('checkWorkflow — the release run', () => {
         // bsdtar has no -i: the stand-in drops it, so a macOS run exercises the step with the same listing and extraction.
         writeFileSync(join(bin, 'tar'), `#!/bin/bash\nargs=("$@")\ncase "$1" in -tizf) args[0]=-tzf ;; -tvizf) args[0]=-tvzf ;; -xizOf) args[0]=-xzOf ;; esac\nexec ${systemTar} "\${args[@]}"\n`, { mode: 0o755 });
       }
-      writeFileSync(join(bin, 'npm'), '#!/bin/bash\necho "npm $*" >> "$LOG"\n', { mode: 0o755 });
-      const result = spawnSync('bash', ['-e', '-c', script], {
+      writeFileSync(join(bin, 'npm'), npmStandIn, { mode: 0o755 });
+      writeFileSync(join(bin, 'sleep'), '#!/bin/bash\necho "sleep $*" >> "$LOG"\n', { mode: 0o755 });
+      // A DEBUG trap in front of the script moves `$SECONDS` when the first npm call starts: the stand-ins do not take time.
+      const late = options.lateAfterFirstStage === undefined ? '' : `trap '[[ "$BASH_COMMAND" == *"npm stage publish"* && -z "$LATE_DONE" ]] && { LATE_DONE=1; SECONDS=${options.lateAfterFirstStage}; }; true' DEBUG\n`;
+      const result = spawnSync('bash', ['-e', '-c', `${late}${script}`], {
         cwd: directory,
+        timeout: 30_000, // a loop that never ends fails the test instead of hanging
         encoding: 'utf8',
         env: {
           PATH: `${bin}:${process.env.PATH}`,
           LOG: log,
+          ...(options.runAttempt === null ? {} : { GITHUB_RUN_ATTEMPT: typeof options.runAttempt === 'function' ? options.runAttempt(directory) : (options.runAttempt ?? '1') }),
+          NPM_ANSWERS: (options.npm ?? []).join('\n'),
           FAIL: (options.fail ?? []).join(' '),
           NO_ID_TOKEN: options.noIdToken ? 'yes' : '',
           ...(options.seconds === undefined ? {} : { SECONDS: String(options.seconds) }),
@@ -1136,10 +1195,15 @@ describe('checkWorkflow — the release run', () => {
         },
       });
       const calls = readFileSync(log, 'utf8').split('\n').filter((line) => line !== '');
-      return { result, calls, names, tarballs };
+      return { result, calls, names, tarballs, directory };
     }
+    /** An npm error code of an HTTP status: the repository rules take a letter and three digits for a decision number. */
+    const E = (status: number) => `E${status}`;
     const exchanges = (calls: string[]) => calls.filter((call) => call.startsWith('curl ') && call.includes('/oidc/token/exchange/'));
     const staged = (calls: string[]) => calls.filter((call) => call.startsWith('npm '));
+    const slept = (calls: string[]) => calls.filter((call) => call.startsWith('sleep '));
+    const warningsOf = (stdout: string) => stdout.split('\n').filter((line) => line.startsWith('::warning::'));
+    const noticesOf = (stdout: string) => stdout.split('\n').filter((line) => line.startsWith('::notice::'));
     const errorsOf = (stdout: string) => stdout.split('\n').filter((line) => line.startsWith('::error::'));
     const TRUST = 'has no working trusted publisher';
     const ASK = 'could not ask the registry';
@@ -1160,7 +1224,7 @@ describe('checkWorkflow — the release run', () => {
     it.skipIf(!hasTools)('stages every tarball once, in order, when every exchange answers 2xx, each with its own ID token request', () => {
       const { result, calls, names, tarballs } = stage(['marmeon', '@marmeon/alpha']);
       expect(result.status, result.stderr).toBe(0);
-      expect(staged(calls)).toEqual(names.map((name) => `npm stage publish ${tarballs}/${name} --provenance --access public --tag=latest --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null`));
+      expect(staged(calls)).toEqual(names.map((name) => `npm stage publish ${tarballs}/${name} --provenance --access public --tag=latest --registry=https://registry.npmjs.org/ --@marmeon:registry=https://registry.npmjs.org/ --scope=@marmeon --strict-ssl=true --proxy=null --https-proxy=null --cafile=null --fetch-timeout=60000 --json`));
       expect(calls.filter((call) => call.includes('audience=npm:registry.npmjs.org'))).toHaveLength(2);
       expect(exchanges(calls)).toEqual([
         expect.stringContaining('https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/marmeon'),
@@ -1348,6 +1412,185 @@ describe('checkWorkflow — the release run', () => {
         expect(staged(calls), String(seconds)).toEqual([]);
       }
       const inTime = stage(['marmeon', '@marmeon/alpha'], { seconds: 200 });
+      expect(inTime.result.status, inTime.result.stderr).toBe(0);
+      expect(staged(inTime.calls)).toHaveLength(2);
+    });
+
+    it.skipIf(!hasTools)('skips a tarball the registry answers 409 for, stages the rest and counts the skip', () => {
+      const { result, calls, names } = stage(['marmeon', '@marmeon/alpha', '@marmeon/beta'], { npm: ['ok', E(409), 'ok'], runAttempt: '2' });
+      expect(result.status, result.stderr).toBe(0);
+      expect(staged(calls)).toHaveLength(3);
+      expect(staged(calls)[2]).toContain(names[2]);
+      expect(warningsOf(result.stdout)).toEqual(['::warning::@marmeon/alpha@1.0.0 was staged before (the registry answered 409); skipped, pnpm release:verify shows whether it is this run\'s tarball']);
+      expect(noticesOf(result.stdout)).toEqual([expect.stringContaining('1 package(s) were staged before this attempt and skipped: pnpm release:verify must pass before you approve')]);
+      expect(errorsOf(result.stdout)).toEqual([]);
+      expect(slept(calls)).toEqual([]);
+    });
+
+    it.skipIf(!hasTools)('stops on a 409 at the first try of a first attempt: the version was there before this run, and no tarball after it is tried', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: [E(409)], runAttempt: '1' });
+      expect(result.status).not.toBe(0);
+      expect(staged(calls)).toHaveLength(1);
+      expect(slept(calls)).toEqual([]);
+      expect(errorsOf(result.stdout)).toEqual([expect.stringContaining('marmeon@1.0.0 is on the registry already: it was staged or rejected before this run')]);
+      expect(errorsOf(result.stdout)[0]).toContain('do not re-run: a re-run skips it and tags v1.0.0');
+      expect(warningsOf(result.stdout)).toEqual([]);
+      expect(noticesOf(result.stdout)).toEqual([]);
+    });
+
+    it.skipIf(!hasTools)('skips a 409 at the first try of a re-run, where an earlier attempt may have staged the tarball', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: [E(409), 'ok'], runAttempt: '2' });
+      expect(result.status, result.stderr).toBe(0);
+      expect(staged(calls)).toHaveLength(2);
+      expect(warningsOf(result.stdout)).toHaveLength(1);
+    });
+
+    it.skipIf(!hasTools)('skips a 409 after an error that leaves the POST uncertain, in a first attempt: the lost answer was this run’s upload', () => {
+      for (const first of ['ETIMEDOUT', 'ECONNRESET', 'EPIPE', 'ERR_SOCKET_TIMEOUT', 'FETCH_ERROR', 'ECONNECTIONTIMEOUT', 'EIDLETIMEOUT', 'ERESPONSETIMEOUT', 'ETRANSFERTIMEOUT', E(500), E(502), E(503), E(504)]) {
+        const { result, calls } = stage(['marmeon'], { npm: [first, E(409)], runAttempt: '1' });
+        expect(result.status, first).toBe(0);
+        expect(staged(calls), first).toHaveLength(2);
+        expect(warningsOf(result.stdout), first).toHaveLength(1);
+      }
+    });
+
+    it.skipIf(!hasTools)('does not carry the uncertainty of one tarball over to the next', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: ['ETIMEDOUT', 'ok', E(409)], runAttempt: '1' });
+      expect(result.status).not.toBe(0);
+      expect(staged(calls)).toHaveLength(3);
+      expect(errorsOf(result.stdout)).toEqual([expect.stringContaining('@marmeon/alpha@1.0.0 is on the registry already')]);
+      expect(warningsOf(result.stdout)).toEqual([]);
+    });
+
+    it.skipIf(!hasTools)('stops on a 409 after an error that never reached the POST, in a first attempt, and says a re-run would skip it', () => {
+      for (const first of ['ENEEDAUTH', E(429), 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: [first, E(409)], runAttempt: '1' });
+        expect(result.status, first).not.toBe(0);
+        expect(staged(calls), first).toHaveLength(2);
+        expect(errorsOf(result.stdout), first).toEqual([expect.stringContaining('do not re-run: a re-run skips it and tags v1.0.0')]);
+        expect(warningsOf(result.stdout), first).toEqual([]);
+      }
+      const retried = stage(['marmeon'], { npm: ['ENEEDAUTH', E(409)], runAttempt: '2' });
+      expect(retried.result.status, retried.result.stderr).toBe(0);
+    });
+
+    it.skipIf(!hasTools)('counts a missing or garbled GITHUB_RUN_ATTEMPT as the first attempt', () => {
+      // The payload runs a command if the value ever reaches bash's arithmetic: the guard keeps it out.
+      const payload = (directory: string) => `a[$(touch ${directory}/injected)]`;
+      for (const runAttempt of [null, '', 'abc', '2x', '-3', '0', '1234567', '9999999', payload]) {
+        const { result, calls, directory } = stage(['marmeon', '@marmeon/alpha'], { npm: [E(409)], runAttempt });
+        const label = typeof runAttempt === 'function' ? 'payload' : String(runAttempt);
+        expect(existsSync(join(directory, 'injected')), label).toBe(false);
+        expect(result.status, label).not.toBe(0);
+        expect(staged(calls), label).toHaveLength(1);
+        expect(errorsOf(result.stdout), label).toEqual([expect.stringContaining('is on the registry already')]);
+      }
+    });
+
+    it.skipIf(!hasTools)('prints no notice when nothing was skipped, and one marker line per package with the stage id, nothing of npm’s JSON', () => {
+      const { result } = stage(['marmeon', '@marmeon/alpha']);
+      expect(result.status).toBe(0);
+      expect(noticesOf(result.stdout)).toEqual([]);
+      expect(warningsOf(result.stdout)).toEqual([]);
+      expect(result.stdout.split('\n').filter((line) => line.startsWith('+ '))).toEqual(['+ marmeon@1.0.0 (staged with id 0b9f2c3e-5d1a-4e7b-8c6d-1a2b3c4d5e6f)', '+ @marmeon/alpha@1.0.0 (staged with id 0b9f2c3e-5d1a-4e7b-8c6d-1a2b3c4d5e6f)']);
+      for (const part of ['"files"', '"integrity"', 'package.json', 'sha512-abc']) expect(result.stdout, part).not.toContain(part);
+    });
+
+    it.skipIf(!hasTools)('tries a transient error again after a wait and stages the rest', () => {
+      const { result, calls, names } = stage(['marmeon', '@marmeon/alpha'], { npm: [E(503), 'ok', 'ok'] });
+      expect(result.status, result.stderr).toBe(0);
+      expect(staged(calls).map((call) => call.split(' ')[3]!.split('/').pop())).toEqual([names[0], names[0], names[1]]);
+      expect(slept(calls)).toEqual(['sleep 15']);
+      expect(errorsOf(result.stdout)).toEqual([]);
+    });
+
+    it.skipIf(!hasTools)('retries every code that passes, and waits 15 then 45 seconds', () => {
+      for (const code of [E(429), E(500), E(502), E(503), E(504), 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE', 'ERR_SOCKET_TIMEOUT', 'FETCH_ERROR', 'ENEEDAUTH', 'ECONNECTIONTIMEOUT', 'EIDLETIMEOUT', 'ERESPONSETIMEOUT', 'ETRANSFERTIMEOUT']) {
+        const { result, calls } = stage(['marmeon'], { npm: [code, code, 'ok'] });
+        expect(result.status, code).toBe(0);
+        expect(staged(calls), code).toHaveLength(3);
+        expect(slept(calls), code).toEqual(['sleep 15', 'sleep 45']);
+      }
+    });
+
+    it.skipIf(!hasTools)('takes the code npm reports for an expired fetch timeout as transient: a retry, and a 409 after it is a skip', () => {
+      const again = stage(['marmeon', '@marmeon/alpha'], { npm: ['FETCH_ERROR', 'ok', 'ok'] });
+      expect(again.result.status, again.result.stderr).toBe(0);
+      expect(staged(again.calls)).toHaveLength(3);
+      expect(slept(again.calls)).toEqual(['sleep 15']);
+      const landed = stage(['marmeon'], { npm: ['FETCH_ERROR', E(409)] });
+      expect(landed.result.status, landed.result.stderr).toBe(0);
+      expect(staged(landed.calls)).toHaveLength(2);
+      expect(warningsOf(landed.result.stdout)).toEqual([expect.stringContaining('marmeon@1.0.0 was staged before')]);
+    });
+
+    it.skipIf(!hasTools)('tries ENEEDAUTH again: npm ends a timed-out token exchange with it, before the POST', () => {
+      const { result, calls } = stage(['marmeon'], { npm: ['ENEEDAUTH', 'ok'] });
+      expect(result.status, result.stderr).toBe(0);
+      expect(staged(calls)).toHaveLength(2);
+      expect(slept(calls)).toEqual(['sleep 15']);
+    });
+
+    it.skipIf(!hasTools)('accepts an upper-case stage id', () => {
+      const { result } = stage(['marmeon'], { npm: ['upper'] });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('+ marmeon@1.0.0 (staged with id 0B9F2C3E-5D1A-4E7B-8C6D-1A2B3C4D5E6F)');
+    });
+
+    it.skipIf(!hasTools)('takes a 409 after a lost answer as the earlier upload that landed', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: ['ETIMEDOUT', E(409), 'ok'] });
+      expect(result.status, result.stderr).toBe(0);
+      expect(staged(calls)).toHaveLength(3);
+      expect(warningsOf(result.stdout)).toEqual([expect.stringContaining('marmeon@1.0.0 was staged before')]);
+      expect(noticesOf(result.stdout)).toEqual([expect.stringContaining('1 package(s)')]);
+    });
+
+    it.skipIf(!hasTools)('stops after 3 attempts of a transient error, names package and code, and tries no further tarball', () => {
+      const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: [E(503)] });
+      expect(result.status).not.toBe(0);
+      expect(staged(calls)).toHaveLength(3);
+      expect(slept(calls)).toEqual(['sleep 15', 'sleep 45']);
+      expect(errorsOf(result.stdout)).toEqual([`::error::marmeon is not confirmed as staged after 3 attempts: the registry answered ${E(503)}; this attempt may have staged packages: Re-run failed jobs`]);
+      expect(staged(calls).some((call) => call.includes('alpha'))).toBe(false);
+    });
+
+    it.skipIf(!hasTools)('stops at once on any other code, without a retry', () => {
+      for (const code of [E(403), E(401), E(404), E(400), 'EUNKNOWN']) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: [code] });
+        expect(result.status, code).not.toBe(0);
+        expect(staged(calls), code).toHaveLength(1);
+        expect(slept(calls), code).toEqual([]);
+        expect(errorsOf(result.stdout), code).toEqual([`::error::marmeon is not confirmed as staged: the registry answered ${code}; this attempt may have staged packages`]);
+      }
+    });
+
+    it.skipIf(!hasTools)('stops at once on output it cannot read, also a success without a stage id of the registry (a UUID), never as a success', () => {
+      for (const answer of ['garbage', 'nocode', 'badid', 'noid', 'wrongkey']) {
+        const { result, calls } = stage(['marmeon', '@marmeon/alpha'], { npm: [answer] });
+        expect(result.status, answer).not.toBe(0);
+        expect(staged(calls), answer).toHaveLength(1);
+        expect(slept(calls), answer).toEqual([]);
+        expect(errorsOf(result.stdout), answer).toEqual(['::error::marmeon is not confirmed as staged: the registry answered unreadable; this attempt may have staged packages']);
+      }
+    });
+
+    it.skipIf(!hasTools)('lets no code of a registry text reach the error line', () => {
+      const { result } = stage(['marmeon'], { npm: [`${E(403)}::error::forged`] });
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).not.toContain('forged');
+      expect(errorsOf(result.stdout)).toEqual(['::error::marmeon is not confirmed as staged: the registry answered unreadable; this attempt may have staged packages']);
+    });
+
+    it.skipIf(!hasTools)('makes no attempt past the time limit: no retry, no next tarball', () => {
+      const retry = stage(['marmeon'], { npm: [E(503)], lateAfterFirstStage: 780 });
+      expect(retry.result.status).not.toBe(0);
+      expect(staged(retry.calls)).toHaveLength(1);
+      expect(errorsOf(retry.result.stdout)).toEqual(['::error::marmeon ran out of time; this attempt may have staged packages: Re-run failed jobs']);
+      const next = stage(['marmeon', '@marmeon/alpha'], { npm: ['ok'], lateAfterFirstStage: 900 });
+      expect(next.result.status).not.toBe(0);
+      expect(staged(next.calls)).toHaveLength(1);
+      expect(errorsOf(next.result.stdout)).toEqual(['::error::@marmeon/alpha ran out of time; this attempt may have staged packages: Re-run failed jobs']);
+      const inTime = stage(['marmeon'], { npm: [E(503), 'ok'], lateAfterFirstStage: 700 });
       expect(inTime.result.status, inTime.result.stderr).toBe(0);
       expect(staged(inTime.calls)).toHaveLength(2);
     });
