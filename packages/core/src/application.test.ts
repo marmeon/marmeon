@@ -169,7 +169,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations or static publishes.',
+      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static jobs, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations or static publishes.',
     );
     // A list named migrationUpgrades brings nothing.
     const Revisions = class Revisions {
@@ -419,7 +419,7 @@ describe('createApplication(definition, options)', () => {
     };
 
     it('is accepted when the static lists something', () => {
-      expect(() => register(['config', 'health', 'errorReporters', 'solutions', 'commands', 'checks'].includes(key) ? [class {}] : { entry: class {} })).not.toThrow();
+      expect(() => register(['config', 'health', 'errorReporters', 'solutions', 'commands', 'jobs', 'checks'].includes(key) ? [class {}] : { entry: class {} })).not.toThrow();
     });
 
     it('is refused when the static is empty', () => {

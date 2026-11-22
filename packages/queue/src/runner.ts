@@ -169,7 +169,7 @@ export class JobRunner {
     const { record } = parsed;
     const job = this.#registry.get(record.job);
     if (!job) {
-      return { kind: 'foreign', reason: `No job named "${record.job}" is registered in this app (a deploy in progress, or a module's jobs: [...] is missing it).`, envelope: envelopeOf(record), record };
+      return { kind: 'foreign', reason: `No job named "${record.job}" is registered in this app (a deploy in progress, or a module's jobs: [...] or a provider's static jobs is missing it).`, envelope: envelopeOf(record), record };
     }
 
     let data: unknown = record.data;

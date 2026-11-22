@@ -252,7 +252,7 @@ export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'mailDrivers', 'fetchDrivers', 'oauthProviders', 'chatDrivers', 'checks', 'migrations', 'publishes'] as const;
 
 /** Every static of a provider class (docs/package-development.md#provider-statics): the table of the page and the K9 message list exactly these. @internal */
-export const PROVIDER_STATICS = ['config', 'health', 'errorReporters', 'solutions', 'commands', ...DRIVER_STATICS] as const;
+export const PROVIDER_STATICS = ['config', 'health', 'errorReporters', 'solutions', 'commands', 'jobs', ...DRIVER_STATICS] as const;
 
 /** Whether `Provider` lists anything in a static of the {@link PROVIDER_STATICS}: a non-empty list, or a record with an entry. */
 function declaresStatics(Provider: ServiceProviderClass): boolean {

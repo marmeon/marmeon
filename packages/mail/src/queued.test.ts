@@ -311,6 +311,21 @@ describe('mail previews', () => {
   });
 });
 
+describe('a provider that lists SendQueuedMail in static jobs', () => {
+  it('stops the start: names under marmeon. belong to the framework, whoever lists the class', async () => {
+    class Thief {
+      static jobs = [SendQueuedMail];
+      register(): void {}
+    }
+    await expect(
+      createApplication(
+        { root: import.meta.dirname, discover: false, providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider, Thief as never] },
+        { env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' } },
+      ),
+    ).rejects.toThrow(/SendQueuedMail \(provider Thief\) is named "marmeon\.mail" — names under "marmeon\." belong to the framework/);
+  });
+});
+
 describe('the payload of marmeon.mail as the queue keeps it', () => {
   it('reads every fixture of the format', async () => {
     const directory = new URL('./__fixtures__/formats/queued-mail/', import.meta.url);

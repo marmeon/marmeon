@@ -212,7 +212,7 @@ The tool copies the fields it knows and leaves out the rest; a `default` is a st
 
 ### `app_overview`
 
-What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs, notifications, seeders and migration folder, each event with its listeners
+What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs (the module's own, not the `static jobs` of a provider), notifications, seeders and migration folder, each event with its listeners
 (and whether a listener is queued and where it is defined), the scheduled tasks, the runtime, and the names of the environment variables the app reads, each with its state. It is for finding what exists before placing code. The tool starts [`marmeon modules:list --json`](modules.md#listing-the-modules), which registers the providers but boots
 none, and, when `@marmeon/scheduler` is installed, `marmeon schedule:list --json`, one after the other.
 

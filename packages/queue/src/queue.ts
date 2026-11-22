@@ -388,7 +388,7 @@ export async function prepareRecord(
     throw new QueueError(
       other
         ? `${job.name} is named "${job.job}", but that name belongs to ${other.name} in this app's jobs.`
-        : `${job.name} (${job.job}) is not registered — a worker could not run it. Add it to its module: defineModule({ jobs: [${job.name}] }).`,
+        : `${job.name} (${job.job}) is not registered — a worker could not run it. Add it to its module: defineModule({ jobs: [${job.name}] }) (a package lists it on its provider: static jobs = [${job.name}]).`,
     );
   }
   // What a worker will see: the JSON of the payload — checked now, so a Date or a class instance fails here, not there.

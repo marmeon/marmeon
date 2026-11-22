@@ -1,13 +1,16 @@
 import { authenticate } from '@marmeon/auth';
 import type { Container, ServiceProvider } from '@marmeon/core';
 import { contentSecurityPolicy, defineRoutes, describeAccess, NONCE, Router } from '@marmeon/http';
+import { CheckStatusBoardJob } from './CheckStatusBoardJob.ts';
 import { ShowStatusController } from './ShowStatusController.ts';
 import { StatusAccess } from './StatusAccess.ts';
 import { StatusBoardConfig } from './StatusBoardConfig.ts';
 
-/** Registers the area: its routes below `STATUS_BOARD_PATH`, behind a sign-in and the app's {@link StatusAccess}. */
+/** Registers the area and its job: its routes below `STATUS_BOARD_PATH`, behind a sign-in and the app's {@link StatusAccess}. */
 export class StatusBoardServiceProvider implements ServiceProvider {
   static config = [StatusBoardConfig];
+  /** Run by a worker of any app that installs the package, with no entry in the app. */
+  static jobs = [CheckStatusBoardJob];
 
   register(container: Container): void {
     const { path } = container.make(StatusBoardConfig);

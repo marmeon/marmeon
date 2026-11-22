@@ -101,6 +101,7 @@ reads them, and are known once that package is installed.
 | `health` | `readonly HealthCheckClass[]` | `/up/ready` | [Health checks](health.md#writing-a-health-check) |
 | `errorReporters` | `readonly ErrorReporterClass[]` | the application, for every server error | [Reporting](errors.md#reporting) |
 | `commands` | `readonly CommandClass[]` | `marmeon` | [Commands](#commands) |
+| `jobs` | `readonly JobClass[]` | `@marmeon/queue` | [Jobs](#jobs) |
 | `checks` | `readonly AppCheckClass[]` | `marmeon check` | [Checks](#checks) |
 | `migrations` | `{ from: URL, module: string }` | `marmeon publish` | [Declaring the migrations a package ships](#declaring-the-migrations-a-package-ships) |
 | `publishes` | `{ lang: URL }` | `marmeon publish` | [Declaring the files a package publishes](#declaring-the-files-a-package-publishes) |
@@ -123,14 +124,15 @@ reads them, and are known once that package is installed.
 | a command | `command`, `description`, `usage`, `options`, `hidden`, `experimental` | The name one types and what `marmeon list` shows ([writing commands](console.md#writing-commands)). A `hidden` command is a step of another command and no API, unlike the package's other commands. |
 | a controller | `request` | The request schema that validates the route's input and types its context ([controllers](controllers.md)). |
 | a repository | `table`, `connection`, `routeKey`, `routeKeyPattern` | The table, the default connection, and the column and pattern a route parameter is bound by ([repositories](queries.md#defining-a-repository)). |
+| a job | `job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware` | Its stable name, the schema of its payload and its retry, timeout, encryption and middleware settings ([the job class](queues.md#the-job-class)). A provider lists the class in `static jobs`. |
 | an event that queued listeners listen to | `event`, `schema` | Its stable name and the schema of what is queued ([queued listeners](events.md#queued-listeners)). |
 
-The statics of jobs, notifications and queued listeners (`job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware`, `notification`, `database`, `queue`, `listener`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them. That holds for the listeners of a [guard's](authentication.md#events-of-a-guard) or a [guard slot's events](authentication.md#events-of-a-guard-slot) too: the app lists them in a module.
+The statics of notifications and queued listeners (`notification`, `database`, `queue`, `listener`, and their own `schema`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them. That holds for the listeners of a [guard's](authentication.md#events-of-a-guard) or a [guard slot's events](authentication.md#events-of-a-guard-slot) too: the app lists them in a module.
 
 ## The service provider
 
-A package has no module definition, so its provider carries what a module would list: its configuration, its health checks and its
-solutions. The [service providers](providers.md) page explains `register()`, `boot()` and `shutdown()`; here is what matters for a
+A package has no module definition, so its provider carries what a module would list: its configuration, its health checks, its
+solutions and its jobs. The [service providers](providers.md) page explains `register()`, `boot()` and `shutdown()`; here is what matters for a
 package:
 
 ```ts title="src/RequestLogServiceProvider.ts"
@@ -306,6 +308,58 @@ A check that throws, or takes longer than a minute (`static timeout` sets it: se
 A bad or duplicate check name stops every command, not only `marmeon check`, as a command name used twice does. The name must be unique, in kebab-case, and none of `types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`, `packages`, `boot` or `readiness`; the app does
 not start otherwise, and the message names both checks. A check that asks whether the package's service is reachable is not a
 check but a [health check](health.md#writing-a-health-check): `marmeon check` runs those as `readiness`.
+
+## Jobs
+
+A package brings jobs as `static jobs` on its provider, a module as `jobs` in its definition. The app needs no entry for the jobs. A worker runs them wherever the provider is registered, discovered or by hand, and the app has `@marmeon/queue` with its provider.
+
+```ts title="src/ProcessMediaJob.ts"
+import type { JobPayload } from '@marmeon/queue';
+import * as v from 'valibot';
+import { MediaStore } from './MediaStore.ts';
+
+export class ProcessMediaJob {
+  static job = 'media.process';
+  static schema = v.object({ mediaId: v.number() });
+
+  readonly #store: MediaStore;
+
+  constructor(store: MediaStore) {
+    this.#store = store;
+  }
+
+  async handle(payload: JobPayload<typeof ProcessMediaJob>): Promise<void> {
+    await this.#store.process(payload.mediaId);
+  }
+}
+```
+
+```ts title="src/MediaServiceProvider.ts"
+import type { ServiceProvider } from '@marmeon/core';
+import { ProcessMediaJob } from './ProcessMediaJob.ts';
+
+export class MediaServiceProvider implements ServiceProvider {
+  static jobs = [ProcessMediaJob];
+}
+```
+
+The job class is the one [queues](queues.md#the-job-class) describes. The app checks a provider's jobs when it starts, as it checks a module's: each class needs a name, a schema and `handle()`, no name may belong to two classes, and an encrypted job needs the `EncryptionServiceProvider` of `@marmeon/encryption`. A `static jobs` that is no list stops the start with `Q4`, so a static of your own needs another name. On a provider with nothing else, an empty list and most values that are no list (a string, `null`, a `Set`) are refused with `K9` first. Listing a class twice, in a module and a provider or in two providers, is no error.
+
+- **Name:** Start the job's name with the package's name and a dot (`media.process`), not a colon, because the locks of a job join a name and a key with a colon. The name is the stored format of every record. A name that another package or the app uses stops the app at the start. Names under `marmeon.` belong to the framework and are refused. The whole app shares the keys of `job.once` and of `withoutOverlapping(…, { shared: true })`, so start them with the package's name too.
+- **Peer dependency:** List `@marmeon/queue` as a peer dependency, with the range of the release that added `static jobs`: an older queue ignores the static, and the dispatch throws. Where the queue is optional, import it with `import type { … }`, not `import { type … }`, so the file has no import at run time. An app without the queue package then starts as usual, and the static is not read. An older core only refuses a provider that has nothing else (`K9`).
+- **Timeout:** A worker checks every job's `static timeout` when it starts, as it does for a module's job. With the default `retryAfterSeconds` of 90 and `--stop-timeout` of 10, a timeout of 80 seconds or more refuses the worker, and the message names your provider. Keep the timeout well below that, or tell your users to raise `retryAfterSeconds`.
+- **Constructor injection:** Export the job class from the package's entry in this form, or build the package with `marmeon package:build`:
+
+  ```ts title="src/index.ts"
+  export { ProcessMediaJob } from './ProcessMediaJob.ts';
+  export { MediaServiceProvider } from './MediaServiceProvider.ts';
+  ```
+
+  Without `marmeon package:build`, an import followed by `export { ProcessMediaJob }` gets no injection list. The missing list shows when the job first runs (`K3`).
+- **Subclasses:** A provider meant to be extended annotates `static jobs: readonly JobClass[] = [ProcessMediaJob]`, with `import type { JobClass } from '@marmeon/queue'`. The annotation lets a subclass add a class with another payload. A subclass that adds jobs spreads the parent's: `static override jobs = [...super.jobs, ResizeMediaJob]`. A subclass of a job needs a `static job` of its own when both are listed.
+- **Consent:** Installing a package is consent to run its jobs. Discovery also takes the dependencies of installed packages and the app's `devDependencies` where they are installed. With `discover: false` the app registers none of the installed packages, so you list the providers you want by hand ([without discovery](modules.md#without-discovery)). A waiting or failed record with the job's name runs in the class that has that name now, encrypted records included. The schema check and `static encrypted` still apply.
+
+`marmeon modules:list` and the MCP server list a module's jobs only, not the `static jobs` of a provider.
 
 ## Tables
 

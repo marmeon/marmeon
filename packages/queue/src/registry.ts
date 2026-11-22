@@ -19,29 +19,32 @@ const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
 export const FRAMEWORK_PREFIX = 'marmeon.';
 
 /**
- * Which job class has which name — from the modules' `jobs: [...]`. The worker finds a job's class here, so a job
- * that is not registered cannot run: dispatching it is an error, and a name used twice fails the start.
+ * Which job class has which name — from the modules' `jobs: [...]` and the providers' `static jobs`. The worker finds a
+ * job's class here, so a job that is not registered cannot run: dispatching it is an error, and a name used twice fails the start.
  */
 export class JobRegistry {
   readonly #jobs = new Map<string, { readonly job: JobClass; readonly source: string }>();
 
-  /** @internal Registers job classes; `source` names where they come from in errors (`module auth`). */
+  /**
+   * @internal Registers job classes; `source` names where they come from in errors (`module auth`, `provider MediaServiceProvider`).
+   * The first source of a class stays: listing it again (a module and a provider, a provider twice) changes nothing.
+   */
   add(jobs: readonly JobClass[], source: string, options: { framework?: boolean } = {}): this {
     for (const job of jobs) {
       const name = checkJobClass(job, source);
       if (name.startsWith(FRAMEWORK_PREFIX) && !options.framework) {
-        throw new QueueSetupError(withCode('Q4', `${job.name} (${source}) is named "${name}" — names under "${FRAMEWORK_PREFIX}" belong to the framework. Choose another static job.`));
+        throw new QueueSetupError(withCode('Q4', `${nameOf(job)} (${source}) is named "${name}" — names under "${FRAMEWORK_PREFIX}" belong to the framework. Choose another static job.`));
       }
       const existing = this.#jobs.get(name);
       if (existing && existing.job !== job) {
         throw new QueueSetupError(
           withCode(
             'Q4',
-            `Two jobs are named "${name}": ${existing.job.name} (${existing.source}) and ${job.name} (${source}). A job's name is how the queue finds its class — give each its own static job.`,
+            `Two jobs are named "${name}": ${nameOf(existing.job)} (${existing.source}) and ${nameOf(job)} (${source}). A job's name is how the queue finds its class — give each its own static job. Two classes with one name also come from an app that loads two copies of one package.`,
           ),
         );
       }
-      this.#jobs.set(name, { job, source });
+      if (!existing) this.#jobs.set(name, { job, source });
     }
     return this;
   }
@@ -55,15 +58,32 @@ export class JobRegistry {
     return this.#jobs.get(job.job)?.job === job;
   }
 
+  /** @internal Where `job` was registered from (`module auth`), or `undefined` when it is not registered. */
+  sourceOf(job: JobClass): string | undefined {
+    const entry = this.#jobs.get(job.job);
+    return entry?.job === job ? entry.source : undefined;
+  }
+
   all(): JobClass[] {
     return [...this.#jobs.values()].map((entry) => entry.job);
   }
 }
 
+/** @internal A class's or provider's name for a message: a non-empty string `name`, else `fallback` — never a symbol, a method or its source. */
+export function nameOf(value: object, fallback = '(unnamed class)'): string {
+  const { name } = value as { readonly name?: unknown };
+  return typeof name === 'string' && name !== '' ? name : fallback;
+}
+
+/** What a value is, for a message: never the value itself, which may be a secret or a class's source. */
+export function kindOf(value: unknown): string {
+  return value === null ? 'null' : typeof value;
+}
+
 /** The job's name, after checking the class has what a job needs. */
 export function checkJobClass(job: JobClass, source: string): string {
-  const label = typeof job === 'function' && job.name ? job.name : String(job);
-  if (typeof job !== 'function') throw new QueueSetupError(withCode('Q4', `${source} lists ${label} as a job, but it is not a class.`));
+  if (typeof job !== 'function') throw new QueueSetupError(withCode('Q4', `${source} lists a value of type ${kindOf(job)} as a job, but it is not a class.`));
+  const label = nameOf(job);
   if (typeof job.job !== 'string' || !NAME.test(job.job)) {
     throw new QueueSetupError(
       withCode(
@@ -79,14 +99,14 @@ export function checkJobClass(job: JobClass, source: string): string {
   if (typeof job.prototype?.handle !== 'function') throw new QueueSetupError(withCode('Q4', `${label} (${job.job}, ${source}) needs a handle(payload, job) method.`));
   const { tries, timeout, backoff } = job;
   const timeoutValue = timeout === undefined ? undefined : spanSeconds(timeout);
-  if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(withCode('Q4', `${label}: static tries must be a whole number ≥ 1, not ${String(tries)}.`));
-  if (timeout !== undefined && !(timeoutValue !== undefined && timeoutValue > 0)) throw new QueueSetupError(withCode('Q4', `${label}: static timeout must be seconds > 0 or a duration like { minutes: 2 }, not ${JSON.stringify(timeout)}.`));
+  if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(withCode('Q4', `${label} (${job.job}, ${source}): static tries must be a whole number ≥ 1, not ${String(tries)}.`));
+  if (timeout !== undefined && !(timeoutValue !== undefined && timeoutValue > 0)) throw new QueueSetupError(withCode('Q4', `${label} (${job.job}, ${source}): static timeout must be seconds > 0 or a duration like { minutes: 2 }, not ${JSON.stringify(timeout)}.`));
   if (backoff !== undefined && backoffSeconds(backoff) === undefined) {
-    throw new QueueSetupError(withCode('Q4', `${label}: static backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }, or a list like [10, { minutes: 1 }, 300].`));
+    throw new QueueSetupError(withCode('Q4', `${label} (${job.job}, ${source}): static backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }, or a list like [10, { minutes: 1 }, 300].`));
   }
   const { middleware } = job;
   if (middleware !== undefined && (!Array.isArray(middleware) || middleware.some((layer) => typeof (layer as { handle?: unknown } | null)?.handle !== 'function'))) {
-    throw new QueueSetupError(withCode('Q4', `${label}: static middleware must be a list of job middleware — objects with handle(context, next), like withoutOverlapping(…).`));
+    throw new QueueSetupError(withCode('Q4', `${label} (${job.job}, ${source}): static middleware must be a list of job middleware — objects with handle(context, next), like withoutOverlapping(…).`));
   }
   return job.job;
 }
