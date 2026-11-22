@@ -323,7 +323,7 @@ describe('dispatching', () => {
       handle() {}
     }
     await expect(queue.dispatch(Unregistered, {})).rejects.toThrow(
-      'Unregistered (test.unregistered) is not registered — a worker could not run it. Add it to its module: defineModule({ jobs: [Unregistered] }) (a package lists it on its provider: static jobs = [Unregistered]).',
+      'Unregistered (test.unregistered) is not registered — a worker could not run it. Add it to its module: defineModule({ jobs: [Unregistered] }).',
     );
     class Impostor {
       static readonly job = 'test.welcome';
@@ -1048,7 +1048,7 @@ describe('the worker', () => {
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(QueueSetupError);
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow('[marmeon:Q4] The queue connection "database"');
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(
-      'The queue connection "database" gives a claimed job 70s (retryAfterSeconds) before another worker may take it, but test.welcome (timeout 60s, module test) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfterSeconds (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job\'s static timeout.',
+      'The queue connection "database" gives a claimed job 70s (retryAfterSeconds) before another worker may take it, but test.welcome (timeout 60s) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfterSeconds (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job\'s static timeout.',
     );
     expect(() => checkTimeouts(registry, 'database', 71, 10)).not.toThrow();
   });

@@ -6,7 +6,7 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { silent } from './__fixtures__/targets.ts';
-import { QueueConnections } from './connections.ts';
+import { checkTimeouts, QueueConnections } from './connections.ts';
 import type { QueueDriverFactory } from './driver.ts';
 import { MemoryQueueDriver } from './drivers/memory.ts';
 import { QueueFake } from './fake.ts';
@@ -170,7 +170,8 @@ export class AcmeJobsServiceProvider {
     await expect(boot([providerOf('Thief', { jobs: [SendQueuedMail] })])).rejects.toThrow(/SendQueuedMail \(provider Thief\) is named "marmeon\.mail" — names under "marmeon\." belong to the framework/);
     const registry = new JobRegistry().add([SendQueuedMail], '@marmeon/mail', { framework: true });
     expect(() => registry.add([SendQueuedMail], 'provider Thief')).toThrow(/belong to the framework/);
-    expect(registry.sourceOf(SendQueuedMail)).toBe('@marmeon/mail');
+    expect(registry.has(SendQueuedMail)).toBe(true);
+    expect(registry.providerSourceOf(SendQueuedMail)).toBeUndefined();
   });
 
   it('refuse a marmeon. job of a provider that has static framework = true itself', async () => {
@@ -237,13 +238,6 @@ export class AcmeJobsServiceProvider {
     delete holey[1];
     expect(1 in holey).toBe(false);
     await expect(boot([providerOf('Careless', { jobs: holey })])).rejects.toThrow(/lists a value of type undefined at static jobs\[1\]/);
-  });
-
-  it('refuse a class entry of a module that is no class, without printing a string value either', async () => {
-    const marker = ['module', 'marker', '5678'].join('-');
-    const error = await boot([], { modules: [{ name: 'billing', jobs: [marker as never] }] }).catch((caught: unknown) => caught);
-    expect((error as Error).message).toContain('module billing lists a value of type string as a job, but it is not a class.');
-    expect((error as Error).message).not.toContain(marker);
   });
 
   it('boots a valid encrypted job whose static name is a symbol, and prints no source for a static name() method', async () => {
@@ -325,7 +319,7 @@ export class AcmeJobsServiceProvider {
     class Child extends (Provider as unknown as new () => object) {}
     await using app = await boot([Provider, Provider, Child as unknown as ServiceProviderClass], { modules: [{ name: 'billing', jobs: [Job] }] });
     expect(app.container.make(JobRegistry).all()).toEqual([Job]);
-    expect(app.container.make(JobRegistry).sourceOf(Job)).toBe('module billing');
+    expect(app.container.make(JobRegistry).providerSourceOf(Job)).toBeUndefined();
   });
 
   it('let classes with one .name and different job names live side by side', async () => {
@@ -340,21 +334,126 @@ export class AcmeJobsServiceProvider {
   });
 });
 
-describe('jobs that the dispatch names', () => {
-  it('name the static of a provider when a job is not registered', async () => {
-    await using app = await boot([]);
-    await expect(app.container.make(Queue).dispatch(jobClass('pkg.lost', {}, 'LostJob') as never, {} as never)).rejects.toThrow(
-      /LostJob \(pkg\.lost\) is not registered — a worker could not run it\. Add it to its module: defineModule\(\{ jobs: \[LostJob\] \}\) \(a package lists it on its provider: static jobs = \[LostJob\]\)\./,
+describe('the released messages of jobs that no provider static brings', () => {
+  const retry = (list: string, connection = 'database', retryAfter = 130, stop = 10) =>
+    `[marmeon:Q4] The queue connection "${connection}" gives a claimed job ${retryAfter}s (retryAfterSeconds) before another worker may take it, but ${list} may hold it ` +
+    `for its timeout plus the worker's --stop-timeout of ${stop}s — a second worker would run it while the first still does. ` +
+    `Raise retryAfterSeconds (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job's static timeout.`;
+  const messageOf = (run: () => unknown): string => {
+    try {
+      run();
+    } catch (error) {
+      return (error as Error).message;
+    }
+    return '';
+  };
+
+  it('names a module job in the timeout list by its name and timeout only, and a provider job with its provider', () => {
+    const fromModule = jobClass('m.slow', { timeout: 120 });
+    const fromProvider = jobClass('p.slow', { timeout: 125 });
+    expect(messageOf(() => checkTimeouts(new JobRegistry().add([fromModule], 'module m'), 'database', 130, 10))).toBe(retry('m.slow (timeout 120s)'));
+    expect(messageOf(() => checkTimeouts(new JobRegistry().add([fromModule], 'module m').addFromProvider([fromProvider], 'provider P'), 'database', 130, 10))).toBe(
+      retry('m.slow (timeout 120s), p.slow (timeout 125s, provider P)'),
+    );
+    // A provider replaces nothing: a job a module lists and a provider lists again is the module's.
+    expect(messageOf(() => checkTimeouts(new JobRegistry().add([fromModule], 'module m').addFromProvider([fromModule], 'provider P'), 'database', 130, 10))).toBe(retry('m.slow (timeout 120s)'));
+  });
+
+  it('refuses an encrypted job of a module without an Encrypter in the released words, also when a provider lists that class again', async () => {
+    const message = '[marmeon:Q4] An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY — every queued listener (static queue) is one.';
+    const Secret = jobClass('pkg.module-secret', { encrypted: true }, 'ModuleSecret');
+    const error = await boot([], { modules: [{ name: 'billing', jobs: [Secret] }] }).catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe(message);
+    // A class a module lists and a provider lists again is the module's.
+    const again = await boot([providerOf('Again', { jobs: [Secret] })], { modules: [{ name: 'billing', jobs: [Secret] }] }).catch((caught: unknown) => caught);
+    expect((again as Error).message).toBe(message);
+  });
+
+  it('prints the framework prefix and duplicate refusals of module jobs, and of add(), in the released words', () => {
+    const First = jobClass('pkg.same', {}, 'First');
+    const Second = jobClass('pkg.same', {}, 'Second');
+    const Nameless = jobClass('pkg.nameless', {}, '');
+    const Framework = jobClass('marmeon.x', {}, 'Framework');
+    expect(messageOf(() => new JobRegistry().add([First], 'module a').add([Second], 'module b'))).toBe(
+      `[marmeon:Q4] Two jobs are named "pkg.same": First (module a) and Second (module b). A job's name is how the queue finds its class — give each its own static job.`,
+    );
+    expect(messageOf(() => new JobRegistry().add([Nameless], 'module a').add([Nameless, jobClass('pkg.nameless', {}, '')], 'package x'))).toBe(
+      `[marmeon:Q4] Two jobs are named "pkg.nameless":  (package x) and  (package x). A job's name is how the queue finds its class — give each its own static job.`,
+    );
+    expect(messageOf(() => new JobRegistry().add([Framework], 'module a'))).toBe(
+      '[marmeon:Q4] Framework (module a) is named "marmeon.x" — names under "marmeon." belong to the framework. Choose another static job.',
+    );
+    // With a provider's job among the two, the extra sentence and the safe names appear.
+    expect(messageOf(() => new JobRegistry().add([First], 'module a').addFromProvider([Second], 'provider P'))).toBe(
+      `[marmeon:Q4] Two jobs are named "pkg.same": First (module a) and Second (provider P). A job's name is how the queue finds its class — give each its own static job. Two classes with one name also come from an app that loads two copies of one package.`,
     );
   });
 
-  it("name the static of a provider when a worker finds no class for a record", async () => {
+  it('prints the label and the refusals of checkJobClass in the released words, for module jobs and add()', () => {
+    const Anonymous = (() => class { static job = 'Bad'; handle(): void {} })();
+    Object.defineProperty(Anonymous, 'name', { value: '' });
+    expect(messageOf(() => new JobRegistry().add([Anonymous as never], 'module x'))).toBe(
+      `[marmeon:Q4] ${String(Anonymous)} (module x) needs a stable name: static job = 'module.what-it-does' (lower case; letters, digits and . - _ : between parts) — never the class name, which changes with refactoring. "Bad" is not one.`,
+    );
+    expect(messageOf(() => new JobRegistry().add([3 as never], 'module x'))).toBe('[marmeon:Q4] module x lists 3 as a job, but it is not a class.');
+    expect(messageOf(() => new JobRegistry().add([null as never], 'module x'))).toBe('[marmeon:Q4] module x lists null as a job, but it is not a class.');
+    const wrong = (statics: Record<string, unknown>) => messageOf(() => new JobRegistry().add([jobClass('pkg.wrong', statics, 'WrongJob')], 'module x'));
+    expect(wrong({ tries: 0 })).toBe('[marmeon:Q4] WrongJob: static tries must be a whole number ≥ 1, not 0.');
+    expect(wrong({ timeout: -1 })).toBe('[marmeon:Q4] WrongJob: static timeout must be seconds > 0 or a duration like { minutes: 2 }, not -1.');
+    expect(wrong({ backoff: 'soon' })).toBe('[marmeon:Q4] WrongJob: static backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }, or a list like [10, { minutes: 1 }, 300].');
+    expect(wrong({ middleware: [{}] })).toBe('[marmeon:Q4] WrongJob: static middleware must be a list of job middleware — objects with handle(context, next), like withoutOverlapping(…).');
+  });
+
+  it('names the last module of a class two modules list, and keeps a provider in mind only where one came first', () => {
+    const Shared = jobClass('test.shared', {}, 'Shared');
+    const Other = jobClass('test.shared', {}, 'Other');
+    const modules = new JobRegistry().add([Shared], 'module a').add([Shared], 'module b');
+    expect(() => modules.add([Other], 'module c')).toThrow(
+      'Two jobs are named "test.shared": Shared (module b) and Other (module c). A job\'s name is how the queue finds its class — give each its own static job.',
+    );
+    expect(() => modules.add([Other], 'module c')).not.toThrow(/two copies/);
+    const provided = new JobRegistry().addFromProvider([Shared], 'provider P').add([Shared], 'package');
+    expect(provided.providerSourceOf(Shared)).toBe('provider P');
+    const moduleFirst = new JobRegistry().add([Shared], 'module a').addFromProvider([Shared], 'provider P');
+    expect(() => moduleFirst.add([Other], 'module c')).toThrow('Shared (module a) and Other (module c)');
+    expect(moduleFirst.providerSourceOf(Shared)).toBeUndefined();
+  });
+
+  it("gives a provider's job a safe name in each refusal that names it", async () => {
+    const unprintable = (name: string) => jobClass(name, { name: Symbol('unprintable') });
+    expect(messageOf(() => new JobRegistry().addFromProvider([unprintable('marmeon.x')], 'provider P'))).toMatch(
+      /^\[marmeon:Q4\] \(unnamed class\) \(provider P\) is named "marmeon\.x"/,
+    );
+    expect(messageOf(() => new JobRegistry().addFromProvider([unprintable('pkg.two')], 'provider P').add([jobClass('pkg.two', {}, 'B')], 'module m'))).toMatch(
+      /\(unnamed class\) \(provider P\) and B \(module m\).*two copies of one package\.$/,
+    );
+    expect(messageOf(() => new JobRegistry().addFromProvider(['secret-entry' as never], 'provider P'))).toBe(
+      '[marmeon:Q4] provider P lists a value of type string as a job, but it is not a class.',
+    );
+    const registered = unprintable('pkg.copy');
+    await using app = await boot([providerOf('CopyProvider', { jobs: [registered] })]);
+    await expect((app.container.make(Queue) as any).dispatch(jobClass('pkg.copy', {}, 'Copy'), {})).rejects.toThrow(
+      'Copy is named "pkg.copy", but that name belongs to (unnamed class) in this app\'s jobs.',
+    );
+  });
+
+  it('keeps the dispatch and worker messages in the released words', async () => {
     await using app = await boot([]);
+    await expect(app.container.make(Queue).dispatch(jobClass('pkg.lost', {}, 'LostJob') as never, {} as never)).rejects.toThrow(
+      new RegExp(`^${'LostJob \\(pkg\\.lost\\) is not registered — a worker could not run it\\. Add it to its module: defineModule\\(\\{ jobs: \\[LostJob\\] \\}\\)\\.'}$`),
+    );
     const record = JSON.stringify({ v: 1, uuid: crypto.randomUUID(), job: 'pkg.unknown', data: {}, tries: 1, backoff: [], dispatchedAt: 0 });
     const prepared = await app.container.make(QueueConnections).runner().prepare(record);
-    expect(prepared).toMatchObject({
-      kind: 'foreign',
-      reason: `No job named "pkg.unknown" is registered in this app (a deploy in progress, or a module's jobs: [...] or a provider's static jobs is missing it).`,
-    });
+    expect(prepared).toMatchObject({ kind: 'foreign', reason: 'No job named "pkg.unknown" is registered in this app (a deploy in progress, or a module\'s jobs: [...] is missing it).' });
+  });
+
+  it('never reads the name of a provider that has no static jobs', async () => {
+    const Quiet = class {
+      register(): void {}
+      static get name(): string {
+        throw new Error('the name was read');
+      }
+    };
+    await expect(boot([Quiet as unknown as ServiceProviderClass])).resolves.toBeDefined();
   });
 });

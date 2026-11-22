@@ -177,7 +177,7 @@ describe('a queue driver of a provider', () => {
 
   it('is checked for retryAfterSeconds like a built-in one: a job that may outlast it keeps the worker from starting', async () => {
     await using app = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX } })], { QUEUE_DRIVER: 'memory-x' }, [{ name: 'test', jobs: [SlowJob] }]);
-    expect(() => app.container.make(QueueConnections).worker('memory-x', 10)).toThrow(/test\.slow \(timeout 120s, module test\)/);
+    expect(() => app.container.make(QueueConnections).worker('memory-x', 10)).toThrow(/test\.slow \(timeout 120s\)/);
   });
 });
 

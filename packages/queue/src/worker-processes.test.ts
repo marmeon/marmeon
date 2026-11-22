@@ -260,7 +260,7 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     await withFixture(kind, async (fixture) => {
       const worker = fixture.worker(['--stop-timeout=1'], fixture.retryAfterSeconds(2));
       expect(await worker.exited()).toBe(1);
-      expect(worker.lines.join('\n')).toMatch(/gives a claimed job 2s \(retryAfterSeconds\).*fixture\.record \(timeout 1s, module fixture\)/);
+      expect(worker.lines.join('\n')).toMatch(/gives a claimed job 2s \(retryAfterSeconds\).*fixture\.record \(timeout 1s\)/);
     });
   });
 

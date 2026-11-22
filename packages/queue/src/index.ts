@@ -118,8 +118,11 @@ export class QueueServiceProvider implements ServiceProvider {
       const registry = new JobRegistry();
       const app = c.make(Application);
       for (const module of app.modules) registry.add(module.jobs ?? [], `module ${module.name}`);
-      // A provider's static is added like a module's list — never with options, so `marmeon.*` names stay the framework's.
-      for (const Provider of app.providers) registry.add(providerJobs(Provider), `provider ${nameOf(Provider, '(unnamed)')}`);
+      // A provider's static is added without options, so `marmeon.*` names stay the framework's. A provider's name is read only where it declares the static.
+      for (const Provider of app.providers) {
+        const jobs = providerJobs(Provider);
+        if (jobs.length > 0) registry.addFromProvider(jobs, `provider ${nameOf(Provider, '(unnamed)')}`);
+      }
       // The framework's own jobs (`marmeon.*`): queued listeners here — when the app has one —, queued mails from
       // @marmeon/mail. (A worker checks every registered job's timeout against retryAfterSeconds.)
       if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@marmeon/queue', { framework: true });
@@ -202,7 +205,9 @@ export class QueueServiceProvider implements ServiceProvider {
     // Framework jobs need the Encrypter only when they are used (a queued listener here; a queued mail says so itself).
     const encrypted = registry.all().find((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX));
     if (encrypted || queuedListeners.any) {
-      const offender = encrypted && `${nameOf(encrypted)} (${encrypted.job}, ${registry.sourceOf(encrypted)})`;
+      // Only a provider's job is named: apps may match the wording for any other (see JobRegistry).
+      const source = encrypted && registry.providerSourceOf(encrypted);
+      const offender = encrypted && source !== undefined ? `${nameOf(encrypted)} (${encrypted.job}, ${source})` : undefined;
       const { Encrypter } = await importEncryption(offender && `${offender}, an encrypted job (static encrypted),`);
       if (!app.container.has(Encrypter)) {
         const which = offender ? ` ${offender} is one.` : ' every queued listener (static queue) is one.';

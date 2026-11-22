@@ -251,7 +251,7 @@ function checkConnection(name: string, connection: unknown): QueueConnection {
 export function checkTimeouts(registry: JobRegistry, connection: string, retryAfterSeconds: number, stopTimeout: number): void {
   const offenders = registry.all().filter((job) => timeoutOf(job) + stopTimeout >= retryAfterSeconds);
   if (offenders.length === 0) return;
-  const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s, ${registry.sourceOf(job) ?? 'unknown source'})`).join(', ');
+  const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s${registry.providerSourceOf(job) === undefined ? '' : `, ${registry.providerSourceOf(job)}`})`).join(', ');
   throw new QueueSetupError(
     withCode(
       'Q4',

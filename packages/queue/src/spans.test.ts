@@ -142,13 +142,13 @@ describe('the spans of jobs and workers', () => {
 
   it('checks the timeout of a job given as a duration against the claim', () => {
     const registry = new JobRegistry().add([LongJob], 'module test');
-    expect(() => checkTimeouts(registry, 'database', 130, 10)).toThrow('test.long (timeout 120s, module test)');
+    expect(() => checkTimeouts(registry, 'database', 130, 10)).toThrow('test.long (timeout 120s)');
     expect(() => checkTimeouts(registry, 'database', 131, 10)).not.toThrow();
   });
 
   it('takes the stop timeout of a worker for a connection as a duration', async () => {
     await using application = await app();
-    expect(() => application.container.make(QueueConnections).worker('database', { seconds: 10 })).toThrow(/test\.long \(timeout 120s, module test\)/);
+    expect(() => application.container.make(QueueConnections).worker('database', { seconds: 10 })).toThrow('test.long (timeout 120s)');
   });
 
   it('refuses a span of the worker that is not a span, before it claims a job', async () => {
