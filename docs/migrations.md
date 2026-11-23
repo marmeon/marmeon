@@ -266,6 +266,7 @@ skips that. `migrate:rollback` and `migrate:reset` do not write them: after a ro
 back in line. With `NODE_ENV=development`, `migrate` and `migrate:fresh` stop before any step (before `migrate:fresh` drops a table) when `bootstrap/database.d.ts` comes from a newer Marmeon, because they would have to write over it; `--no-types` skips this check. The [repositories and queries](queries.md#table-types) page explains the file.
 
 Run migrations with these commands. `Migrator` is the class behind them: its `status()`, `changed()`, `missing()`, `projection()` and `files()` read and are public, but the methods that run migrations are internal and may change.
+To test a migration a generator wrote, run the commands in a test app: see [testing a generated migration](database-testing.md#testing-a-generated-migration).
 
 `migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` take `--wait=<seconds>` (default 60): how long to wait for another migration to end, see [one migration at a time](#one-migration-at-a-time).
 
