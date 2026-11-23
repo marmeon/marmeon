@@ -272,6 +272,19 @@ lists a file's imports for a generator that follows one.
 
 The reasons name the file by its path. Pass an app-relative name as the third argument, `editDefinitionFile(file, edit, 'bootstrap/app.ts')`, so that a message does not show an absolute path.
 
+A generator that writes a migration names the file with `nextMigrationStamp(root)` of `@marmeon/core`: the later of now and one second after the newest migration of every module, so the file runs after the tables it builds on whichever module holds them. It reads file names under `modules/*/migrations`, imports nothing and writes nothing. A generator that writes several migrations calls it again after each write. A migrations folder an app registers elsewhere is seen only by the booted migrator, not by the helper.
+
+It throws an error that names the file and says to rename it when the newest stamp lies in the future and is no date or leaves no room behind it. A stamp in the past is never a reason.
+
+```ts
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { nextMigrationStamp } from '@marmeon/core';
+
+const stamp = nextMigrationStamp(root);
+writeFileSync(join(root, 'modules', 'billing', 'migrations', `${stamp}_create_invoices_table.ts`), contents);
+```
+
 ## Checks
 
 A package adds checks to [`marmeon check`](check.md) as `static checks` on its provider, a module as `checks` in its definition.

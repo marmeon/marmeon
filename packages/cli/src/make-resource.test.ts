@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
 import { CommandArgumentsError, type CommandInput } from './command.ts';
@@ -295,5 +295,32 @@ describe('make:resource', () => {
     expect(code).toBe(0);
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toBe(before);
     expect(lines.join('\n')).toContain("import bookmarks from '#modules/bookmarks';");
+  });
+});
+
+describe('make:resource stamps behind the migrations of every module', () => {
+  const ahead = (root: string, name: string) => {
+    mkdirSync(join(root, 'modules/auth/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/auth/migrations', name), '');
+  };
+  beforeEach(() => vi.useFakeTimers({ now: new Date('2026-11-23T10:00:00Z'), toFake: ['Date'] }));
+  afterEach(() => vi.useRealTimers());
+
+  it('gives the migration the second after one of another module that is ahead', () => {
+    const root = app();
+    ahead(root, '2099_06_01_120000_create_users_table.ts');
+    expect(run(root, ['Bookmark']).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/bookmarks/migrations'))).toEqual(['2099_06_01_120001_create_bookmarks_table.ts']);
+  });
+
+  it('warns about a newer stamp that is no date, writes the resource and exits 0', () => {
+    const root = app();
+    ahead(root, '2099_13_45_990000_create_users_table.ts');
+    const { code, lines } = run(root, ['Bookmark']);
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('! '))).toEqual([
+      '! modules/auth/migrations/2099_13_45_990000_create_users_table.ts has a timestamp that is no date, so a new migration cannot be put behind it — rename it with a valid one.',
+    ]);
+    expect(readdirSync(join(root, 'modules/bookmarks/migrations'))).toEqual(['2026_11_23_100000_create_bookmarks_table.ts']);
   });
 });

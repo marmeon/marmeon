@@ -616,6 +616,8 @@ export declare function importedBindings(source: string, filename: string): Read
 export declare function inTransaction(): boolean;
 // listen
 export declare function listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): ListenerBinding;
+// nextMigrationStamp
+export declare function nextMigrationStamp(root: string): string;
 // ok
 export declare function ok(): Ok<void>;
 export declare function ok<T>(value: T): Ok<T>;

@@ -23,9 +23,9 @@ pnpm exec marmeon make:migration add_archived_at_to_notes_table --module=notes
 
 - The name is snake_case. `create_…_table` writes a table with an id and timestamps; a name ending in `_to_…_table`,
   `_from_…_table` or `_in_…_table` starts an `alter()` of that table; any other name gives an empty migration.
-- `--module` must name a module that exists. The file is named after the time it was made, always after the module's latest.
-- Migrations run in the order of their file names across all modules. A foreign key to another module's table needs that table to
-  be created earlier in time: generate the referenced module's migration first.
+- `--module` must name a module that exists. The file is named after the time it was made, always after the newest migration of every module.
+- Migrations run in the order of their file names across all modules. A new file sorts behind all the others, so a foreign key to
+  another module's table finds it created; check the order with `migrate:status` when a branch merged late brings older files.
 
 ## Structure
 

@@ -191,6 +191,21 @@ describe('marmeon (in the web app)', () => {
     expect(newer.stderr).toContain('[marmeon:D1]');
   });
 
+  it('migrates what make:migration wrote behind a migration of another module that is ahead', () => {
+    const app = webAppCopy();
+    const ahead = join(app, 'modules/user-profile/migrations/2099_06_01_120000_create_invoices_table.ts');
+    writeFileSync(ahead, "import { defineMigration } from '@marmeon/database';\n\nexport default defineMigration({\n  up: (schema) => schema.create('invoices', (table) => table.id()),\n  down: (schema) => schema.drop('invoices'),\n});\n");
+    const made = marmeon(app, ['make:migration', 'add_note_to_invoices_table', '--module=auth']);
+    expect(made.code, made.stderr).toBe(0);
+    const file = join(app, 'modules/auth/migrations/2099_06_01_120001_add_note_to_invoices_table.ts');
+    expect(readFileSync(file, 'utf8')).toContain("schema.alter('invoices'");
+    writeFileSync(file, readFileSync(file, 'utf8').replace("// table.string('nickname').nullable();", "table.string('note').nullable();").replace("// table.dropColumn('nickname');", "table.dropColumn('note');"));
+    const migrate = marmeon(app, ['migrate'], { DB_DATABASE: ':memory:' });
+    expect(migrate.stderr).toBe('');
+    expect(migrate.code, migrate.stdout + migrate.stderr).toBe(0);
+    expect(migrate.stdout).toContain('2099_06_01_120001_add_note_to_invoices_table');
+  });
+
   it('asks for --force wherever the app is protected — APP_ENV=local on production too — and writes table types in development only', () => {
     const memory = { DB_DATABASE: ':memory:' };
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
