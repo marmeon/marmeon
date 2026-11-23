@@ -68,6 +68,11 @@ Before you change `server` in `vite.config.ts`, know what the app relies on:
   Content-Security-Policy with `styleSrc: ["'self'", NONCE]` therefore holds in development too. The
   [styling](styling.md#a-strict-policy-for-styles) page explains the policy.
 
+Vite resolves the packages your app uses under the condition `@marmeon/source`, in development and in tests. A package of your
+workspace that offers it is served from its `src/`. Node does not follow Vite here: it needs `NODE_OPTIONS=--conditions=@marmeon/source`
+too, as [a package in your app's workspace](package-development.md#a-package-in-your-apps-workspace) shows. An installed `marmeon build` and
+`marmeon start` never add the condition.
+
 ## Building
 
 `marmeon build` runs the type check and both Vite builds, among other steps that the
@@ -343,6 +348,9 @@ export default defineConfig({
 
 In this mode the plugin sets up module resolution, the container's injection, the virtual modules and the server-import check,
 and nothing for the browser: no entries, no HTML, no nonce and no build settings.
+
+Resolution includes the condition `@marmeon/source`, so a test loads the sources of a package in your workspace with no variable. A
+process a test starts does not.
 
 ## When the plugin is missing
 

@@ -129,6 +129,8 @@ The promise of a version covers the public API. These are part of it:
 - A class you extend (`Repository`, `Controller` …) may gain members in a minor release. A member of your subclass
   with the same name may then need another name; the [upgrade guide](../UPGRADING.md) lists each such member with a `Low` line.
 - The names and defaults of environment variables.
+- The export condition `@marmeon/source`: its name and its meaning, as [a package in your app's workspace](package-development.md#a-package-in-your-apps-workspace)
+  uses it. `@marmeon/vite` applies it to what it resolves in development and in tests. An installed `marmeon build` and `marmeon start` never add it.
 - The commands of `marmeon`, their flags and exit codes. A minor version may add a command. A command of your own with the same
   name then stops `marmeon build` and the start with K8 and needs another name; the [upgrade guide](../UPGRADING.md) lists each new
   command with a `Low` line. A name in your module's group, such as `notes:prune` (the default of `make:command`), does not meet one.
