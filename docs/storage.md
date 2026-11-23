@@ -112,7 +112,7 @@ how to keep it.
 | `get(key)` | The file's bytes. |
 | `text(key)` | The file as UTF-8 text. |
 | `stream(key)` | The file as a stream, for large files. |
-| `open(key, { range }?)` | A stream with the file's size, time and content type. With `range`, only those bytes: `{ start }`, `{ start, end }` (both included) or `{ last }` (the last bytes). A disk that cannot, such as S3, returns the whole file. See [opening a range](#opening-a-range). |
+| `open(key, { range }?)` | A stream with the file's size, time and content type. With `range`, only those bytes: `{ start }`, `{ start, end }` (both included) or `{ last }` (the last bytes). The S3 disk asks the store for just those bytes. See [opening a range](#opening-a-range). |
 | `exists(key)` | Whether there is a file. |
 | `delete(key)` | Removes the file, and says whether there was one. |
 | `move(from, to)`, `copy(from, to)` | On the same disk, replacing the target. |
@@ -143,12 +143,20 @@ const file = await disk.open('exports/report.csv', { range: { start: 100, end: 1
   A `last` on an empty file gives that file, with no `range`.
 - Anything that is not `{ start, end? }` or `{ last }` throws a `RangeError`, and so do a number that is not whole or is below 0,
   an `end` before its `start`, and a `last` together with a `start` or an `end`. The check runs before the file is looked at, on every disk.
-- `acceptsRanges: true` says the disk honours the option. The local and memory disks do. The S3 disk checks the range and returns
-  the whole file and no `range`: check `range` before you treat the body as a slice.
+- `acceptsRanges: true` says the disk honours the option. The local, memory and S3 disks do. A custom driver that does not
+  returns the whole file and no `range`: check `range` before you treat the body as a slice.
 - `size`, `lastModified` and the bytes come from one look at the file. A file that `put()` replaces afterwards keeps its old bytes
   for a body you hold, and a second `open()` sees the new file, so two reads can come from two versions. Store a changed file under
   a new key instead of replacing it under the same one. A file that grows after the open is read no further than the range's last
   byte. A local file that gets shorter while you read a range of it makes the body fail with a `StorageError`.
+- On S3 a range is one `GetObject` with a `Range` header, and only its bytes leave the store. When the store refuses the range, a
+  `HeadObject` tells the file's size. That happens when the range starts behind the end, or when `last` asks for bytes of an empty
+  file. A second `GetObject` then reads the whole file if the range was not behind its end after all. `{ last: 0 }` sends the
+  `HeadObject` alone. A store that ignores `Range` sends the whole file: you get it with no `range`, or an empty body with
+  `'unsatisfiable'` when the range starts behind its end. A reply with a `Content-Range` this disk cannot read, or with other bytes
+  than you asked for, throws a `StorageError`. A store that names no length and sends more or fewer bytes than the range makes the
+  body fail with a `StorageError` while you read it. `serveFile()` on S3 still streams every byte through your app. `temporaryUrl()` does
+  not, and S3 answers ranges there itself.
 
 `get()`, `stream()` and `copy()` always take the whole file.
 
@@ -228,8 +236,11 @@ pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3
 When the default disk or the uploads disk is on S3, the start checks that the SDK is installed and fails with this command if it
 is not. A disk the app only names somewhere says so when it is first used, and so does a disk without a bucket, such as an unset
 `S3_BUCKET`. Without `credentials` the SDK finds them itself: from the environment or the machine's role. With an `endpoint`, the
-bucket goes into the path, which most S3-compatible stores expect. When an S3 store sends no `Content-Length`, `open()` and
-`size()` report 0, and `serveFile()` sends the file to its end without a `Content-Length`. A disk that wraps such a disk's body keeps the body it was given, or passes on a size it knows.
+bucket goes into the path, which most S3-compatible stores expect. When an S3 store sends no `Content-Length`, `open()` without a
+range and `size()` report 0, and `serveFile()` sends the file to its end without a `Content-Length`. A range the store answers
+with a `Content-Range` reports the size from that header. A range the store answers without a `Content-Range` gives the whole
+file with no `range`, unless its length shows that the range lies behind the end. The same happens when the store sends no length
+for the size lookup of an unsatisfiable range. A disk that wraps such a disk's body keeps the body it was given, or passes on a size it knows.
 
 A disk's visibility is the disk's, not the object's. A public S3 disk needs a bucket policy that makes its files readable, since
 the disk sets no ACLs. `temporaryUrl()` presigns a download that is an attachment unless the file name is a raster image's, with
@@ -691,4 +702,4 @@ it('writes the notes to the private disk', async () => {
 
 `assertMissing(key)` and a check of the file's bytes complete the assertions, and `app.upload()` sends an upload through the real
 target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md#storage) page covers them. The
-fake's disks honour `range` even where the configured driver does not, so test the whole-file answer with `storage: 'real'`.
+fake's disks honour `range` even where a disk driver of your own does not, so test the whole-file answer of such a driver with `storage: 'real'`.

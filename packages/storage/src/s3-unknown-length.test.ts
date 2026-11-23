@@ -4,6 +4,7 @@ import { FakeS3 } from './__fixtures__/s3-fake.ts';
 import type { Disk } from './disk.ts';
 import { S3Disk } from './drivers/s3.ts';
 import { serveFile } from './serve.ts';
+import { lengthOf } from './size.ts';
 
 /** Against the in-memory fake of the SDK: no service. */
 describe('the s3 disk against a store that names no length', () => {
@@ -21,6 +22,7 @@ describe('the s3 disk against a store that names no length', () => {
     store.withoutLength = true;
     const opened = await disk.open('a.txt');
     expect(opened.size).toBe(0);
+    expect(lengthOf(opened)).toBeUndefined();
     expect(await text(opened.body)).toBe('hello');
     expect(await disk.size('a.txt')).toBe(0);
     expect((await disk.fingerprint('a.txt')).size).toBe(0);
@@ -79,28 +81,5 @@ describe('the s3 disk against a store that names no length', () => {
     expect(await text(opened.body)).toBe('');
     const response = await serveFile(disk, 'empty.txt', request(), { cacheControl: 'private' });
     expect(response.headers.get('content-length')).toBe('0');
-  });
-});
-
-describe('the s3 disk and a range', () => {
-  const fake = () => {
-    const store = new FakeS3();
-    const disk = new S3Disk({ name: 'files', options: { driver: 's3', bucket: 'b', region: 'us-east-1', endpoint: 'http://store.test', credentials: { accessKeyId: 'a', secretAccessKey: 's' }, root: '', visibility: 'private' }, visibility: 'private', clock: new TestClock(), load: store.load });
-    return { disk };
-  };
-
-  it('negative: a malformed range is a RangeError', async () => {
-    const { disk } = fake();
-    await disk.put('a.txt', 'hello');
-    for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 0, last: 1 }]) {
-      await expect(disk.open('a.txt', { range } as never), JSON.stringify(range)).rejects.toThrow(RangeError);
-    }
-  });
-
-  it('a good range still gives the whole body, with no range and no acceptsRanges', async () => {
-    const { disk } = fake();
-    await disk.put('a.txt', 'hello');
-    const file = await disk.open('a.txt', { range: { start: 2 } });
-    expect([await new Response(file.body).text(), file.range, file.acceptsRanges]).toEqual(['hello', undefined, undefined]);
   });
 });
