@@ -406,6 +406,15 @@ export class StringRule extends Rule<string, string> {
     return this.with(step(() => engine.check((value: string) => isUrl(value, allowed), engine.message('url'))), FORMAT);
   }
 
+  /**
+   * Refuses a lone surrogate (half of a UTF-16 pair) and repairs nothing. Put it after normalize(), whose result it then
+   * judges: a normalize() after it is a TypeError.
+   * `message`: a translation key or a text — default "The … field must be a string." See `docs/validation.md#lone-surrogates`.
+   */
+  wellFormed(message?: RuleMessage): this {
+    return this.with(step(() => engine.check((value: string) => value.isWellFormed(), message === undefined ? engine.message('string') : engine.ownMessage(message))));
+  }
+
   /** A UUID (any version). */
   uuid(): this {
     return this.with(step(engine.uuid), FORMAT);

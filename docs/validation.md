@@ -79,7 +79,7 @@ import { rules as r } from '@marmeon/validation';
 
 | Rule | Takes | Gives |
 | --- | --- | --- |
-| `r.string()` | A string, never one with a NUL character. | `string` |
+| `r.string()` | A string, never one with a NUL character; a lone surrogate passes without [`wellFormed()`](#lone-surrogates). | `string` |
 | `r.number()`, `r.integer()` | A number, or a string that spells one in decimal: `'42'`, `'-1.5'`. | `number` |
 | `r.boolean()` | `true` and `false`, `1` and `0`, `'on'` and `'off'`, `'yes'` and `'no'`, `'true'` and `'false'`. | `boolean` |
 | `r.accepted()` | A ticked checkbox: `true`, `'on'`, `'yes'`, `'1'`. Missing is "must be accepted". | `true` |
@@ -99,7 +99,7 @@ In a [form](forms.md#fields-and-errors) a field of `r.boolean()` or `r.accepted(
 Each type then has its checks, which run **in the order you write them**: `trim()` before `required()` makes `' '` missing.
 
 - **Strings:** `normalize(fn)` ([below](#cleaning-a-string-before-its-checks)), `trim()`, `lowercase()`, `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, `email()`,
-  `url({ protocols })`, `uuid()`, `regex(pattern, message?)`, `date()` (a day that exists, `2026-10-07`), `isoTimestamp()`, `timeZone()`. Lengths
+  `url({ protocols })`, `uuid()`, `wellFormed(message?)` ([below](#lone-surrogates)), `regex(pattern, message?)`, `date()` (a day that exists, `2026-10-07`), `isoTimestamp()`, `timeZone()`. Lengths
   count characters as code points, the way Postgres counts them.
 - **Numbers:** `integer()` (a safe integer), `min(n)`, `max(n)`, `between(min, max)`.
 - **Lists:** `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, counting items.
@@ -121,6 +121,28 @@ A string with a NUL character (`\0`) is no string for `r.string()`, and so for e
 save would end in a 500. In a [query](#queries) there is no message: the field falls back to its default, like any value the schema rejects.
 
 The catalogue covers what apps use. `custom()` covers the rest.
+
+### Lone surrogates
+
+A lone surrogate is half of a UTF-16 pair, such as `'\uD83D'` without the rest of its emoji. `r.string()` accepts it, like any other character. `wellFormed()` refuses it: the field says "must be a string", or the `message` you pass.
+Nothing is repaired, and whole pairs (emoji, flags, rare scripts), `\uFFFD` and the noncharacters are strings.
+
+```ts
+const bio = r.string().trim().wellFormed().max(500);
+```
+
+`url()` takes a half in the path, the query or the fragment, so a URL that is stored wants `r.url().wellFormed()`.
+`email()`, `uuid()`, `date()`, `isoTimestamp()` and `timeZone()` refuse one by their own pattern.
+
+A half has no UTF-8 form, so what becomes of it depends on where it lands. A text column stores `\uFFFD` in its place without an error: another text than the one your checks saw.
+A `jsonb` column refuses it. JSON that you keep as text keeps the half. A route's path parameter and an unencrypted cookie built from one throw a `URIError`.
+An encrypted cookie and a query value take `\uFFFD` without an error. So a slug wants `wellFormed()`.
+
+A half comes from a JSON escape (`"\ud83d"` in a request body) or from a `slice()` that cuts through an emoji, in client code or in yours.
+A query string and a form body never carry one: their bytes are decoded first, and `\uFFFD` takes the half's place. The client chooses the encoding, though: a route that takes a form takes JSON too (`useForm()` sends it), so a form's field needs `wellFormed()` as much as an API's.
+
+`wellFormed()` is a check like `required()` or `max()`: a `normalize()` stands before it, and it judges the cleaned text, so a half that a `normalize()` made is refused too.
+Cut by code points, not by UTF-16 units: `Array.from(text).slice(0, 80).join('')` keeps a pair whole, `text.slice(0, 80)` can split it.
 
 ### Missing values
 

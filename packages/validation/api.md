@@ -131,6 +131,7 @@ export declare class StringRule extends Rule<string, string> {
     url({ protocols }?: {
         readonly protocols?: readonly string[];
     }): this;
+    wellFormed(message?: RuleMessage): this;
     uuid(): this;
     regex(pattern: RegExp, message?: RuleMessage): this;
     date(): this;

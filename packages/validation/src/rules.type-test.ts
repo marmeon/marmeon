@@ -1,7 +1,7 @@
 // Type guarantees of the rules — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
 // compiler shows them (directives removed once and read), are quoted in the comments.
 import { defineRequest, type ContextOf, type FormOf, type QueryOf } from '@marmeon/router';
-import { rules as r, type CheckAnswer, type CheckPath, type Rule } from './index.ts';
+import { rules as r, type CheckAnswer, type CheckPath, type Rule, type StringRule } from './index.ts';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const same = <A, B>(proof: Equal<A, B>) => proof;
@@ -76,6 +76,15 @@ r.query({ address: r.object({ city: r.string() }).optional() });
 same<ReturnType<typeof r.string>['~standard']['types'], { readonly input: string; readonly output: string } | undefined>(true);
 const optional = r.string().max(3).optional();
 same<NonNullable<(typeof optional)['~standard']['types']>, { readonly input: string | undefined; readonly output: string | undefined }>(true);
+const wellFormed = r.string().trim().wellFormed().max(3);
+same<NonNullable<(typeof wellFormed)['~standard']['types']>, { readonly input: string; readonly output: string }>(true);
+same<typeof wellFormed, StringRule>(true);
+const wellFormedOptional = r.string().wellFormed('Plain text only.').optional();
+same<NonNullable<(typeof wellFormedOptional)['~standard']['types']>, { readonly input: string | undefined; readonly output: string | undefined }>(true);
+// @ts-expect-error — only the string rule has wellFormed()
+r.integer().wellFormed();
+// @ts-expect-error — the message is a key, a text or a function, not an options object
+r.string().wellFormed({ message: 'x' });
 const nullable = r.integer().nullable();
 same<NonNullable<(typeof nullable)['~standard']['types']>, { readonly input: number | `${number}` | null; readonly output: number | null }>(true);
 const filled = r.boolean().default(false);

@@ -177,7 +177,16 @@ class BlockController {
   }
 }
 
-function app() {
+/** A request whose title says `wellFormed()`, defined when its route is registered. */
+const strictRequest = () => defineRequest({ schema: r.object({ title: r.string().trim().required().max(80).wellFormed() }) });
+class StrictController {
+  static request = undefined as unknown as ReturnType<typeof strictRequest>;
+  handle(ctx: ContextOf<ReturnType<typeof strictRequest>>) {
+    return ctx.body;
+  }
+}
+
+function app(strict = false) {
   const users = new UserRepository();
   const resolved: string[] = [];
   const router = new Router({
@@ -194,11 +203,15 @@ function app() {
       Route.post('/race', RaceController);
       Route.post('/race-unlabelled', UnlabelledRaceController);
       Route.put('/block', BlockController);
+      if (strict) {
+        StrictController.request = strictRequest();
+        Route.put('/strict', StrictController);
+      }
     }),
   );
   const send = async (path: string, body: unknown, headers: Record<string, string> = {}) => {
     const route = router.routes.find((candidate) => candidate.path === path)!;
-    const form = body instanceof URLSearchParams;
+    const form = body instanceof URLSearchParams || typeof body === 'string';
     const request = new Request(`http://app.test${path}`, {
       method: route.methods[0],
       body: form ? body : JSON.stringify(body),
@@ -387,5 +400,25 @@ describe('an empty string in a request — by type', () => {
     const left = await send('/block', { title: 'Pricing', caption: null, link: null });
     expect(left).toEqual({ status: 200, body: { title: 'Pricing', caption: null, cta: 'Read more', link: null, align: 'left', has: { title: 'string', caption: 'null', cta: 'string', link: 'null', align: 'string' } } });
     expect((await send('/block', { ...cleared, title: '  ' })).errors).toEqual({ title: ['The title field is required.'] });
+  });
+});
+
+describe('a lone surrogate in a JSON body', () => {
+  it('is accepted as it is by a rule without wellFormed(), as before', async () => {
+    const { send } = app();
+    expect((await send('/block', { title: 'Pri\uD83Dcing', caption: null, link: null })).status).toBe(200);
+  });
+
+  it('is a 422 naming the field when the rule says wellFormed()', async () => {
+    const { send } = app(true);
+    const answer = await send('/strict', { title: 'Pri\uD83Dcing' });
+    expect(answer.status).toBe(422);
+    expect(answer.errors).toEqual({ title: ['The title field must be a string.'] });
+    expect((await send('/strict', { title: 'Pri\u{1F600}cing' })).status, 'a valid pair').toBe(200);
+  });
+
+  it('in an urlencoded body, as the bytes ED A0 BD, arrives as U+FFFD and passes the strict route', async () => {
+    const { send } = app(true);
+    expect(await send('/strict', 'title=Pri%ED%A0%BDcing')).toEqual({ status: 200, body: { title: 'Pri\uFFFD\uFFFD\uFFFDcing' } });
   });
 });

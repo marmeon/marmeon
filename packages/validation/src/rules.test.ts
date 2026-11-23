@@ -640,3 +640,104 @@ describe('contentsOf — the rules inside a rule', () => {
     expect(contentsOf({ '~standard': {} })).toBeUndefined();
   });
 });
+
+describe('wellFormed() — a string with a lone surrogate, refused only where the rule asks', () => {
+  const halves = {
+    'a high half': 'a\uD83Db',
+    'a low half': 'a\uDE00b',
+    'a reversed pair': 'a\uDE00\uD83Db',
+    'a half at the end': 'ab\uD83D',
+  };
+  const notWellFormed = (field: string): Record<string, string[]> => ({ [field]: [`The ${field} field must be a string.`] });
+
+  describe.each(Object.entries(halves))('%s', (_name, text) => {
+    it('without wellFormed() every string rule gives what a string without the half gives: the text, as it is', async () => {
+      const keep = (value: string): string => value;
+      for (const rule of [r.string(), r.string().trim(), r.string().max(9), r.string().regex(/./su), r.string().normalize(keep), r.string().normalize(keep).required()]) {
+        expect(await check(r.object({ x: rule }), { x: text })).toEqual({ value: { x: text } });
+      }
+      expect(await errors(r.object({ x: r.email() }), { x: text })).toEqual({ x: ['The x field must be a valid email address.'] });
+      expect(await errors(r.object({ x: r.date() }), { x: text })).toEqual({ x: ['The x field must be a valid date.'] });
+      expect(await errors(r.object({ x: r.uuid() }), { x: text })).toEqual({ x: ['The x field must be a valid UUID.'] });
+      expect(await errors(r.object({ x: r.url() }), { x: text })).toEqual({ x: ['The x field must be a valid URL.'] });
+      expect(await check(r.object({ x: r.array(r.string()) }), { x: ['ok', text] })).toEqual({ value: { x: ['ok', text] } });
+      expect(await check(r.object({ x: r.union([r.string(), r.number()]) }), { x: text })).toEqual({ value: { x: text } });
+    });
+
+    it('without wellFormed() a normalize() that cuts or repairs gives what it gives: nothing is refused, nothing is repaired by the rule', async () => {
+      const made = r.object({ x: r.string().normalize(() => text).max(9) });
+      expect(await check(made, { x: 'ab' })).toEqual({ value: { x: text } });
+      const repaired = r.object({ x: r.string().normalize((value) => value.toWellFormed()) });
+      expect(await check(repaired, { x: text })).toEqual({ value: { x: text.toWellFormed() } });
+    });
+
+    it('with wellFormed() it is refused with "must be a string", also in a list, an object, a union and after normalize()', async () => {
+      const keep = (value: string): string => value;
+      for (const rule of [r.string().wellFormed(), r.string().trim().wellFormed(), r.string().wellFormed().max(9), r.string().normalize(keep).wellFormed()]) {
+        expect(await errors(r.object({ x: rule }), { x: text })).toEqual(notWellFormed('x'));
+      }
+      const list = r.object({ x: r.array(r.string().wellFormed()) });
+      expect(await errors(list, { x: ['ok', text] })).toEqual({ 'x.1': ['The x.1 field must be a string.'] });
+      const nested = r.object({ a: r.object({ x: r.string().wellFormed() }) });
+      expect(await errors(nested, { a: { x: text } })).toEqual({ 'a.x': ['The a.x field must be a string.'] });
+      const either = r.object({ x: r.union([r.string().wellFormed(), r.number()]) });
+      expect(await errors(either, { x: text })).toEqual(notWellFormed('x'));
+      expect(await errors(r.object({ x: r.string().wellFormed().optional() }), { x: text })).toEqual(notWellFormed('x'));
+      expect(await errors(r.object({ x: r.string().wellFormed().nullable() }), { x: text })).toEqual(notWellFormed('x'));
+      expect(await errors(r.object({ x: r.string().normalize(() => text).wellFormed() }), { x: 'ab' }), 'a half that normalize() made').toEqual(notWellFormed('x'));
+    });
+  });
+
+  it('without wellFormed() a cut inside normalize() that splits a pair gives the half, as it always did', async () => {
+    const cut = r.object({ x: r.string().normalize((value) => value.slice(0, 1)) });
+    expect(await check(cut, { x: '\u{1F600}' })).toEqual({ value: { x: '\uD83D' } });
+  });
+
+  it('a cut inside normalize() that splits a pair is refused with the method, the cut at a code point is not', async () => {
+    const cut = r.object({ x: r.string().normalize((value) => value.slice(0, 1)).wellFormed() });
+    expect(await errors(cut, { x: '\u{1F600}' })).toEqual(notWellFormed('x'));
+    const safe = r.object({ x: r.string().normalize((value) => Array.from(value).slice(0, 1).join('')).wellFormed() });
+    expect(await check(safe, { x: '\u{1F600}b' })).toEqual({ value: { x: '\u{1F600}' } });
+  });
+
+  it('normalize() with toWellFormed() repairs the text before the check, so wellFormed() sees whole text', async () => {
+    const form = r.object({ x: r.string().normalize((value) => value.toWellFormed()).wellFormed() });
+    expect(await check(form, { x: 'a\uD83Db' })).toEqual({ value: { x: 'a\uFFFDb' } });
+  });
+
+  it('a query whose normalize() makes a half falls back to its default, and drops the field', async () => {
+    const cutting = r.query({ q: r.string().normalize((value) => value.slice(0, 1)).wellFormed().default('none') });
+    const cut = await parseQuery(cutting, new URLSearchParams({ q: '\u{1F600}' }));
+    expect(cut.value).toEqual({ q: 'none' });
+    expect([...cut.dropped]).toEqual(['q']);
+  });
+
+  it('pairs, joined emoji, flags, rare scripts, U+FFFD and noncharacters pass the method', async () => {
+    const text = ['\u{1F600}', '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}', '\u{1F1E9}\u{1F1EA}', '\u{20000}\u{1D11E}', '\uFFFD', '\uFFFE\uFFFF', '\u{10FFFF}'].join(' ');
+    const form = r.object({ x: r.string().normalize((value) => value).wellFormed().max(40) });
+    expect(await check(form, { x: text })).toEqual({ value: { x: text } });
+    expect(await check(r.object({ x: r.string().wellFormed() }), { x: text })).toEqual({ value: { x: text } });
+  });
+
+  it('a message may be a function — what translatable() of the router makes', async () => {
+    const form = r.object({ x: r.string().wellFormed(translatable('text.plain', { max: 4 }, 'Plain text, {max} at most.')) });
+    const issue = (await check(form, { x: 'a\uD83Db' })).issues?.[0];
+    expect(issue?.message).toEqual(translatable('text.plain', { max: 4 }, 'Plain text, {max} at most.')(issue as never));
+  });
+
+  it('a message of its own replaces the default', async () => {
+    const form = r.object({ x: r.string().wellFormed('Use plain text.') });
+    expect(await errors(form, { x: 'a\uD83Db' })).toEqual({ x: ['Use plain text.'] });
+  });
+
+  it('url() takes a half in its path, and url().wellFormed() refuses it', async () => {
+    const link = 'https://example.com/\uD83D';
+    expect(await check(r.object({ x: r.url() }), { x: link })).toEqual({ value: { x: link } });
+    expect((await check(r.object({ x: r.url().wellFormed() }), { x: link })).issues).toHaveLength(1);
+  });
+
+  it('normalize() after wellFormed() is refused when the schema is defined: wellFormed() is a check like the rest', () => {
+    const checked = r.string().wellFormed();
+    expect(() => checked.normalize((value) => value)).toThrow(/normalize\(\) goes before the checks/);
+  });
+});
