@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm and `--agents`, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), a package in the app's workspace (docs/package-development.md, run from its source and from its dist/), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), a package in the app's workspace (docs/package-development.md, run from its source and from its dist/), the packages of the app's own workspace under test (scripts/workspace-packages.ts), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -22,6 +22,7 @@ import { packAll, type PackedPackage } from './packages.ts';
 import { checkLanding } from './landing.ts';
 import { checkRecipes } from './recipes.ts';
 import { checkWorkspacePackage } from './workspace-package-smoke.ts';
+import { checkWorkspacePackages } from './workspace-packages.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
@@ -547,6 +548,17 @@ export class Smoke {
     }
   }
 
+  /** A long-running child in the app, in a group of its own: `stop()` ends it, and so does `stopAll()` when the run is interrupted. */
+  background(command: string, args: string[], env: NodeJS.ProcessEnv = {}): { child: ChildProcess; stop(): void } {
+    const child = spawn(command, args, { cwd: this.app, env: { ...this.env, ...env }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    this.#children.add(child);
+    const stop = () => {
+      this.#stop(child, 'SIGKILL');
+      this.#children.delete(child);
+    };
+    return { child, stop };
+  }
+
   #stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
     try {
       process.kill(-child.pid!, signal);
@@ -889,6 +901,8 @@ async function main(): Promise<number> {
     await pnpmApp.step('landing snippets (examples/landing): overlay, every snippet in the app, test, typecheck, lint, every typo of the chain fails with its error', () => checkLanding(pnpmApp, 'pnpm'));
     // A package in the app's workspace (docs/package-development.md): its source with the variable, its dist/ without — the app as found afterwards.
     await pnpmApp.step('a package in the app\'s workspace: dev, migrate and check run its source without dist/, build and start its dist/; each fails without the variable', () => checkWorkspacePackage(pnpmApp, pnpmFlags));
+    // The packages of the app's own workspace (sources, a source condition, built files, a guard) after the landing: the tests of the app run against them with and without the import of `virtual:marmeon/test-packages`.
+    await pnpmApp.step('workspace packages (packages/*): the tests import the class discovery booted — only with the import; the same suite with external node_modules, with the native runner, with @marmeon/vite linked from outside; a package with a namespace in dev, build, start', () => checkWorkspacePackages(pnpmApp, pnpmFlags));
     // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
     // A mail view, built with oxc-transform (a dev dependency here, as in an image's build stage) and started without it.
     await pnpmApp.step('marmeon build with a mail view (oxc-transform as a dev dependency) → .marmeon/mail-views.json', () => {

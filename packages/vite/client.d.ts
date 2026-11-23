@@ -45,6 +45,12 @@ declare module 'virtual:marmeon/routes' {
   export const routes: Readonly<Record<string, { readonly method: string; readonly path: string }>>;
 }
 
+/**
+ * Import it in the setup file of a test project with `marmeon({ test: true })` and Vitest 5.1.1 or newer, so the tests and the app they boot share
+ * one instance of each package of your workspace. See docs/vite.md#packages-of-your-workspace.
+ */
+declare module 'virtual:marmeon/test-packages' {}
+
 declare module 'virtual:marmeon/fonts.css' {
   // A stylesheet: a `<family> Fallback` font for each `fonts` entry of `marmeon()` with `family` and `fallback`. Import it
   // from the client entry. See docs/vite.md#fonts.

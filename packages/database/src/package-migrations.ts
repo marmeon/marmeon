@@ -2,7 +2,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, read
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { err, ok, type Result, type ServiceProviderClass } from '@marmeon/core';
-import { belongsTo, isInside, printable, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
+import { belongsTo, importPackage, isInside, printable, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 
 /** One migration a package ships: `name` is the file name without its timestamp and `.ts`, `file` its POSIX path in the package. */
 export interface PackageMigrationFile {
@@ -233,8 +233,8 @@ export async function exportedClasses(pkg: ProviderPackage, root: string): Promi
   }
   if (!inside) return { reason: 'its entry leads out of the package' };
   try {
-    // The URL the discovery imports, so the classes are the ones the app booted.
-    const exported = (await import(pathToFileURL(entry).href)) as Record<string, unknown>;
+    // The URL discovery imports, so the classes are the booted ones while neither NODE_ENV nor the runner's modules and mocks changed since the boot.
+    const exported = await importPackage(pathToFileURL(entry).href, (file) => import(file));
     return { classes: new Set(Object.values(exported).filter((candidate) => typeof candidate === 'function')) };
   } catch {
     return { reason: 'its entry could not be imported' };

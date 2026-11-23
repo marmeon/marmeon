@@ -17,6 +17,7 @@ export { bindingNameOf } from './definition-edit.ts';
 export { migrationTimestamp, newestMigration, stampsBehind } from './migration-stamps.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
 export { packageServerEntries, packageSurfaces, packageTexts } from './discovery/discover.ts';
+export { importPackage } from './discovery/import-package.ts';
 export { isNamespace, isViewName } from './discovery/surface.ts';
 export type { PackageSurface } from './discovery/surface.ts';
 export { belongsTo, isInside } from './discovery/contain.ts';
