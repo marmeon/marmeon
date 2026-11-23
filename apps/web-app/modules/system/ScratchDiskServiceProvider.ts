@@ -7,6 +7,7 @@ import {
   type DiskDriverFactory,
   type FileContents,
   type OpenedFile,
+  type OpenOptions,
   type PutOptions,
   type DiskDriverTemporaryUrlOptions,
   type Visibility,
@@ -27,6 +28,8 @@ interface Entry {
 
 /** Files in this process's memory, at most `capacity` of them — what a disk driver of your own has to do, in the smallest form. */
 class ScratchDisk implements DiskDriver {
+  /** Opts in: `open()` is given the app's range, already checked. */
+  readonly acceptsRanges = true;
   readonly name: string;
   readonly visibility: Visibility;
   readonly #files = new Map<string, Entry>();
@@ -70,9 +73,19 @@ class ScratchDisk implements DiskDriver {
     return new Response(new Uint8Array(this.#file(key).bytes)).body!;
   }
 
-  async open(key: string): Promise<OpenedFile> {
+  /** The bytes of `options.range` (first and last included), from one look at the entry: the size stays the whole file's. */
+  async open(key: string, options?: OpenOptions): Promise<OpenedFile> {
     const file = this.#file(key);
-    return { body: await this.stream(key), size: file.bytes.byteLength, lastModified: file.lastModified, contentType: file.contentType };
+    const size = file.bytes.byteLength;
+    const range = options?.range;
+    const whole = { size, lastModified: file.lastModified, contentType: file.contentType };
+    if (range === undefined) return { ...whole, body: await this.stream(key) };
+    // The last 0 bytes, or a start at or after the end, cannot be answered; a suffix of an empty file is the (empty) file.
+    const start = range.last === undefined ? range.start : Math.max(0, size - range.last);
+    if (range.last === 0 || (range.last === undefined && start >= size)) return { ...whole, body: new Response(new Uint8Array(0)).body!, range: 'unsatisfiable' };
+    if (size === 0) return { ...whole, body: await this.stream(key) };
+    const end = Math.min(range.last === undefined ? (range.end ?? size - 1) : size - 1, size - 1);
+    return { ...whole, body: new Response(file.bytes.slice(start, end + 1)).body!, range: { start, end } };
   }
 
   async exists(key: string): Promise<boolean> {
