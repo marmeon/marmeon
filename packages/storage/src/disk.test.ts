@@ -56,7 +56,7 @@ describe.each(DISK_KINDS.map((kind) => [kind.name, kind] as const))('the %s disk
     expect(await disk.mimeType('blob')).toBe('image/webp');
   });
 
-  describe.skipIf(kind.skip || kind.name === 's3')('open() with a range', () => {
+  describe.skipIf(kind.skip)('open() with a range', () => {
     const bytes = (file: { body: ReadableStream<Uint8Array> }) => text(file.body);
 
     it('opens the three forms with exactly their bytes, the whole size and acceptsRanges', async () => {

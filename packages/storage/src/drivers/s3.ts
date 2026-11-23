@@ -5,13 +5,13 @@ import type * as S3 from '@aws-sdk/client-s3';
 import type * as Presigner from '@aws-sdk/s3-request-presigner';
 import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
 import type { Clock, Duration } from '@marmeon/core';
-import type { Disk, FileContents, ListOptions, OpenedFile, OpenOptions, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
+import type { ByteRange, Disk, FileContents, ListOptions, OpenedFile, OpenOptions, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import type { S3DiskOptions, StorageOptions } from '../config.ts';
 import { releasable, secondsOf, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError, StorageSetupError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from '../mime.ts';
-import { checkRange } from '../ranges.ts';
+import { checkRange, confirmedRange, resolveRange } from '../ranges.ts';
 import { unknownSize } from '../size.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -112,6 +112,43 @@ export class ObjectChangedError extends StorageError {
 function isPreconditionFailed(error: unknown): boolean {
   const { name, $metadata } = (error ?? {}) as { name?: unknown; $metadata?: { httpStatusCode?: number } };
   return name === 'PreconditionFailed' || $metadata?.httpStatusCode === 412;
+}
+
+function isInvalidRange(error: unknown): boolean {
+  const { name, $metadata } = (error ?? {}) as { name?: unknown; $metadata?: { httpStatusCode?: number } };
+  return name === 'InvalidRange' || $metadata?.httpStatusCode === 416;
+}
+
+/** What `GetObject` answers to a range: the bytes, with `bytes first-last/total` — the one form this driver believes. */
+const CONTENT_RANGE = /^bytes (\d+)-(\d+)\/(\d+)$/;
+
+/**
+ * `source` held to `expected` bytes: a body that sends more, or ends with fewer, fails with a {@link StorageError}. For an answer
+ * that names no `Content-Length`, where nothing else keeps the body to the range.
+ */
+function withLength(source: ReadableStream<Uint8Array>, expected: number, what: string): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let seen = 0;
+  return releasable(
+    new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) {
+          if (seen === expected) controller.close();
+          else controller.error(new StorageError(`The store's body for the range ${what} ended after ${seen} of ${expected} bytes.`));
+          return;
+        }
+        seen += value.byteLength;
+        if (seen > expected) {
+          controller.error(new StorageError(`The store's body for the range ${what} is longer than its ${expected} bytes.`));
+          await reader.cancel().catch(() => {});
+          return;
+        }
+        controller.enqueue(value);
+      },
+      cancel: (reason) => reader.cancel(reason),
+    }),
+  );
 }
 
 function isNotFound(error: unknown): boolean {
@@ -223,7 +260,58 @@ export class S3Disk implements Disk {
   }
 
   async open(key: string, options: OpenOptions = {}): Promise<OpenedFile> {
-    if (options.range !== undefined) checkRange(options.range);
+    if (options.range === undefined) return this.#openWhole(key);
+    const range = checkRange(options.range);
+    // The last 0 bytes are nothing in any file: the file's size and time are all there is to ask for.
+    if (range.last === 0) return this.#unsatisfiable(key, range, await this.#head(key));
+    // The header is built from checked whole numbers only, so a range cannot carry anything else into it.
+    const header = range.last !== undefined ? `bytes=-${range.last}` : range.end !== undefined ? `bytes=${range.start}-${range.end}` : `bytes=${range.start}-`;
+    let object: S3.GetObjectCommandOutput;
+    try {
+      object = await this.#getObject(key, header);
+    } catch (error) {
+      if (!isInvalidRange(error)) throw error;
+      // The store says the range lies outside the file. One HEAD tells its size; a file that grew since is read whole.
+      const head = await this.#head(key);
+      return head.ContentLength !== undefined && resolveRange(range, head.ContentLength) === 'unsatisfiable' ? this.#unsatisfiable(key, range, head) : this.#openWhole(key);
+    }
+    const body = releasable(object.Body!.transformToWebStream() as ReadableStream<Uint8Array>);
+    const lastModified = object.LastModified ?? new Date(0);
+    const contentType = object.ContentType ?? mimeTypeOf(key);
+    const refuse = async (message: string): Promise<never> => {
+      await body.cancel().catch(() => {});
+      throw new StorageError(message);
+    };
+    const length = object.ContentLength;
+    const status = object.$metadata?.httpStatusCode;
+    const parsed = object.ContentRange === undefined ? undefined : CONTENT_RANGE.exec(object.ContentRange);
+    if (parsed === null || (parsed === undefined && status === 206)) {
+      return refuse(`The store answered the range of "${key}" on the disk "${this.name}" with a Content-Range this driver does not read: ${String(object.ContentRange)}.`);
+    }
+    if (parsed !== undefined) {
+      const [first, last, total] = [Number(parsed[1]), Number(parsed[2]), Number(parsed[3])];
+      // A header on an answer that is not a 206 counts as the whole file only when it says exactly that; as a range, only when
+      // the body's length is the range's.
+      const wholeFile = status !== undefined && status !== 206 && length !== undefined && first === 0 && last === length - 1 && total === length;
+      if (!wholeFile) {
+        const expected = Number.isSafeInteger(total) ? resolveRange(range, total) : undefined;
+        if (expected === undefined || expected === 'unsatisfiable' || expected.start !== first || expected.end !== last) {
+          return refuse(`The store answered the range ${JSON.stringify(range)} of "${key}" on the disk "${this.name}" with the bytes ${first}-${last} of ${total}.`);
+        }
+        if (length !== undefined && length !== last - first + 1) {
+          return refuse(`The store sent ${length} bytes for the range ${first}-${last} of "${key}" on the disk "${this.name}".`);
+        }
+        const counted = length === undefined ? withLength(body, last - first + 1, `${first}-${last} of "${key}" on the disk "${this.name}"`) : body;
+        return confirmedRange(range, { body: counted, size: total, lastModified, contentType, range: { start: first, end: last } });
+      }
+    }
+    // The store ignored the range and sent the whole file.
+    if (length === undefined) return { body: unknownSize(body), size: 0, lastModified, contentType, acceptsRanges: true };
+    const file = { body, size: length, lastModified, contentType };
+    return resolveRange(range, file.size) === 'unsatisfiable' ? confirmedRange(range, { ...file, range: 'unsatisfiable' }) : { ...file, acceptsRanges: true };
+  }
+
+  async #openWhole(key: string): Promise<OpenedFile> {
     const object = await this.#getObject(key);
     const stream = releasable(object.Body!.transformToWebStream() as ReadableStream<Uint8Array>);
     return {
@@ -231,7 +319,15 @@ export class S3Disk implements Disk {
       size: object.ContentLength ?? 0,
       lastModified: object.LastModified ?? new Date(0),
       contentType: object.ContentType ?? mimeTypeOf(key),
+      acceptsRanges: true,
     };
+  }
+
+  /** The answer to a range that starts behind the file: its size, time and type, and no bytes. Without a length from the store the file is read whole instead. */
+  async #unsatisfiable(key: string, range: ByteRange, head: S3.HeadObjectCommandOutput): Promise<OpenedFile> {
+    if (head.ContentLength === undefined) return this.#openWhole(key);
+    const body = new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
+    return confirmedRange(range, { body, size: head.ContentLength, lastModified: head.LastModified ?? new Date(0), contentType: head.ContentType ?? mimeTypeOf(key), range: 'unsatisfiable' });
   }
 
   async exists(key: string): Promise<boolean> {
@@ -366,10 +462,10 @@ export class S3Disk implements Disk {
     return error;
   }
 
-  async #getObject(key: string): Promise<S3.GetObjectCommandOutput> {
+  async #getObject(key: string, range?: string): Promise<S3.GetObjectCommandOutput> {
     const { modules, client } = await this.#client();
     try {
-      return await client.send(new modules.client.GetObjectCommand({ Bucket: this.#bucket, Key: this.#key(key) }));
+      return await client.send(new modules.client.GetObjectCommand({ Bucket: this.#bucket, Key: this.#key(key), ...(range === undefined ? {} : { Range: range }) }));
     } catch (error) {
       if (isNotFound(error)) throw new FileNotFoundError(this.name, key);
       throw error;
