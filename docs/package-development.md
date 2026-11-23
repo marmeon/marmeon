@@ -1149,8 +1149,9 @@ Two decided exceptions keep a library as a dependency that rule 1 would not: `no
 subpath loads.
 
 The framework packages you build on are a different case. List them as `dependencies` with a caret range of the version the app
-uses, as the framework's own packages list each other, so the package manager resolves them to the app's one copy. A range the
-app's version does not satisfy installs a second copy, whose `Router` and container tokens the app never sees.
+uses, as the framework's own packages list each other. A range alone does not give you the app's one copy: a version the app does
+not satisfy installs a second copy, and a matching range can still install one, as the next section shows. A second copy has its own
+`Router` and container tokens, which the app never sees.
 
 The framework's packages are coupled the same way: an optional peer dependency on another framework package, such as
 `@marmeon/redis` for a Redis cache, with a start that fails and names the package when the configuration needs it.
@@ -1158,3 +1159,45 @@ A static value import of such a peer anywhere reachable from an entry stops the 
 package loads the peer with `await import(…)` where it needs it and imports only types from it with `import type`. The peer counts
 as absent only when it does not resolve itself (`import.meta.resolve`); a missing dependency of an installed peer, or any other load
 error, stops the start.
+
+### One copy of a framework package
+
+pnpm installs one copy of a package for each set of peers it resolves, and the peers of its dependencies count too. A framework
+package such as `@marmeon/database` has `pg` as a peer. If your app and your package resolve `pg` to different versions, pnpm
+installs `@marmeon/database` twice. The same holds for `mysql2`, `@marmeon/redis`, `oxc-transform` and `typescript`.
+
+A caret range does not prevent this. `^8` in your package and `8.23.1` in the app can resolve to two versions, and an install keeps
+the version the lockfile holds. A package that lists `pg` as a `devDependency` gets the same result: it repairs no duplicate, and
+another patch version there causes one.
+
+To keep one copy:
+
+1. Use one version of each peer across the workspace, in the app and in every package.
+2. Do not turn off `dedupePeerDependents` in your `pnpm-workspace.yaml`.
+3. Run `pnpm dedupe` after `pnpm --filter <app> add …`.
+
+```sh
+pnpm --filter <app> add pg@^8
+pnpm dedupe
+```
+
+You may see the duplicate in these places:
+
+- **Health check:** `Two health checks are named "database": …`.
+- **Container:** `[marmeon:K1] No binding for [Router] (needed by Mailer). Bind it in a service provider.`, with a framework class in place of `Router`.
+- **Container:** `[marmeon:K3] [Application] needs 1 constructor argument(s) but has no injection list …`.
+
+These messages have other causes too: the check below tells them apart.
+
+A package that lists the framework as a `peerDependency` and as a `devDependency` can boot with two copies. Its imports resolve to
+the copy of its own `node_modules`, not to the app's. List the framework packages as `dependencies`, as the section above says. Your package then resolves the app's copy whenever the peers agree, which the rule above covers.
+
+To check, print the real path of the package from the app and from your package, and compare them:
+
+```sh
+cd <app> && node -e "console.log(require('fs').realpathSync(require.resolve('@marmeon/database')))"
+cd <package> && node -e "console.log(require('fs').realpathSync(require.resolve('@marmeon/database')))"
+```
+
+The two paths must be equal. A path such as `.pnpm/@marmeon+database@1.2.2_pg@8.23.1/…` names the peers it was installed with, so a
+different `pg@…` in the second path is the cause. These steps are for pnpm. npm and Yarn are not covered here.
