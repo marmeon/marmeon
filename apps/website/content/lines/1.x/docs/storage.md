@@ -173,6 +173,7 @@ Every file the app serves goes out with:
 A public file is sent with `Cache-Control: public, max-age=0, must-revalidate` and its `Last-Modified`, a temporary link with
 `private, no-store`. A missing file and a refused key are the same 404, so nobody learns which files exist. To send a file from a
 controller of your own, behind its own policy, use `serveFile()`, which the [responses](responses.md#downloads) page shows.
+`serveFile()` announces the disk's size as `Content-Length`, and `startServer()` sends no byte past it. An empty file announces `Content-Length: 0`. A disk of your own reports the file's true size: a size that is too small cuts the file.
 
 The start fails when a private local disk shares a directory with a public one, the same root or one inside the other, also
 through a symlink: its files would be served as public. So does a private disk with a `url`, and on S3 a private and a public
@@ -202,7 +203,8 @@ pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3
 When the default disk or the uploads disk is on S3, the start checks that the SDK is installed and fails with this command if it
 is not. A disk the app only names somewhere says so when it is first used, and so does a disk without a bucket, such as an unset
 `S3_BUCKET`. Without `credentials` the SDK finds them itself: from the environment or the machine's role. With an `endpoint`, the
-bucket goes into the path, which most S3-compatible stores expect.
+bucket goes into the path, which most S3-compatible stores expect. When an S3 store sends no `Content-Length`, `open()` and
+`size()` report 0, and `serveFile()` sends the file to its end without a `Content-Length`. A disk that wraps such a disk's body keeps the body it was given, or passes on a size it knows.
 
 A disk's visibility is the disk's, not the object's. A public S3 disk needs a bucket policy that makes its files readable, since
 the disk sets no ACLs. `temporaryUrl()` presigns a download that is an attachment unless the file name is a raster image's, with

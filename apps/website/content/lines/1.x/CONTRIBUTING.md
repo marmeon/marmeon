@@ -594,8 +594,9 @@ and the dist-tag (a release candidate: `main` only, above npm's `latest`). Then 
 (`pnpm pack`) and writes `SHA512SUMS`; the tarballs and `SHA512SUMS` leave the job as an artifact (kept for a day), the hash of
 `SHA512SUMS` as its output. The second job (`stage`, `id-token: write`, the only job in the `npm-release` environment) checks out nothing, installs nothing and runs no script
 of the repository or of a dependency, so the code that runs in the first job never meets the OIDC token. It downloads the artifact, checks `SHA512SUMS` against the output and every tarball
-against `SHA512SUMS`, and only then stages the tarballs `SHA512SUMS` names with `npm stage publish` (trusted publishing, OIDC,
-no token in the repository; provenance) and prints `SHA512SUMS`. The hashes show that the staged files are the ones the first job
+against `SHA512SUMS`. Then it asks npm, for every package whose tarball `SHA512SUMS` names, whether the package trusts this workflow. It makes the token exchange that
+`npm stage publish` makes, with a fresh ID token per package. It first refuses a tarball whose `publishConfig` holds anything but `access: "public"` and `provenance: true`: npm copies every `publishConfig` key into its options, a registry or a proxy among them. As defence in depth it refuses the tarball shapes it knows to be read differently by `tar` and by npm: entries that are not plain files below `package/`, and more than one `package/package.json`. `npm stage publish` gets the registry (`--scope=@marmeon` also covers the unscoped packages), the proxies, `strict-ssl` and `cafile` as flags, which win over `publishConfig`, so a manifest cannot move where npm sends the token or the tarball. A `ca` from a manifest can only make TLS fail. If one package does not answer with success, the job stops before it stages anything. Only then it stages the tarballs with `npm stage publish` (trusted publishing, OIDC,
+no token in the repository; provenance) and prints `SHA512SUMS`. The step tries a transient registry error again, skips a version the registry already holds (409) with a warning in a re-run (on the first attempt, a 409 on a tarball's first try stops the job; so does one after an error that left the upload unprocessed, such as a 429, `ENEEDAUTH` or a refused connection), and `pnpm release:verify` must pass before the approval. The hashes show that the staged files are the ones the first job
 packed, not that the first job packed what the release commit builds — step 3 closes that gap. The third job (`release`,
 `contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
 release, none per package) and drafts the GitHub Release with the version's changelog section as its notes (a prerelease for a release candidate).
@@ -680,12 +681,45 @@ and the rules of `main` — so that no branch from an unreviewed commit satisfie
   `pnpm release:prepare` again (any merge moves the release base), merge that release pull request and start the workflow again.
 - **A hash check of the `stage` job is red** (before its first `npm stage publish`; the log says which line failed): nothing was
   staged, but the artifact is not what the `build` job hashed — do not re-run, look into the run, and start a new one.
-- **The "stage the tarballs" step is red after a hash check passed:** treat it as possibly partly staged. Never re-run it:
-  reject whatever was staged on npmjs.com, then run `pnpm release:prepare --replace` (a candidate: `--rc --replace`). It takes the
-  untagged version the packages carry as rejected, removes its CHANGELOG sections and prepares the one after it (the next patch,
-  or what the labels ask for if higher; a candidate: the next number) with the notes since the last tag. Merge that release pull
-  request and start the workflow. A rejected breaking release moves its UPGRADING.md heading to the new version; the script says
-  which `UPGRADING_ANCHORS` key in `scripts/check-release.ts` to rename. Later plain runs stay on the replacing version (within its line: a release that labels pushed too high still comes down when the label is fixed).
+- ***"SHA512SUMS has a line that is not a hash and a tarball name"*** or ***"the build job's hash of SHA512SUMS is not a SHA-512
+  hash"***: nothing was staged. The file matched the `build` job's hash, or the hash itself came out wrong, so the `build` job
+  wrote it that way: do not re-run, look into the `build` job (`scripts/release-pack.ts` and the dependencies it ran), and start
+  a new release after the fix.
+- **The trust check of the `stage` job is red:** the "stage the tarballs" step is the same step, so read its log first. The step's
+  messages speak for this attempt only. Nothing was staged only when this attempt's log ends with the trust check's `::error::`
+  lines, and neither it nor an earlier attempt of the run (the attempt selector of the run page) shows output of `npm stage
+  publish`: no `+ … (staged with id …)` line, no `npm notice Staging to …` line, no `npm error` line. Anything else falls under the bullet on a partly
+  staged run below.
+  - *"has no working trusted publisher"* (npm answered 401, 403 or 404): run the `npm trust github` line the log prints for each
+    package it names. Revoke the package's old configuration first, as in the trust setup above (`npm trust list`, `npm trust revoke`);
+    `scripts/npm-trust.sh` is no help here, it stops at the first package that already has one. Then use **"Re-run failed jobs"**.
+  - *"could not ask the registry"* (any other answer, or none) or *"the trust check took … seconds"*: use **"Re-run failed jobs"**.
+  - *"is not a tarball of version"*, *"a package name that is not one of ours"*, *"a publishConfig the stage job does not accept"* or *"is not a tarball the stage job accepts"*: the `build` job packed a tarball the stage job does not accept.
+    Do not re-run; look into the run and the package list, merge the fix through a pull request and start a new release.
+
+  A re-run keeps the `build` job's tarballs and outputs, so the version stays. The artifact is kept for a day: after that, start the
+  workflow again, which costs nothing as long as nothing was staged.
+- **The "stage the tarballs" step is red once `npm stage publish` has run** (its log shows a `+ … (staged with id …)` line, an
+  `npm notice Staging to …` line or `npm error` lines after the trust check): treat it as possibly partly staged. Read the log's
+  last `::error::`:
+  - *"is not confirmed as staged after 3 attempts"* (the registry answered 429, 500, 502, 503, 504, `ENEEDAUTH` or a connection error or timeout
+    each time), *"ran out of time"*, or the job was cancelled by its time limit (the log ends without an `::error::`): use
+    **"Re-run failed jobs"**, and **do not reject anything before it**. A rejected version answers 409 too, so the re-run would skip
+    it and `pnpm release:verify` would then fail. The re-run stages every tarball again; on a re-run a 409 is skipped (on the first attempt, one on a tarball's first try stops the job, and a 409 after a timeout, a reset connection, `FETCH_ERROR` or a 5xx answer of the same tarball is skipped), so one that an earlier attempt staged prints a
+    `::warning::` ("was staged before", the registry answered 409) and is skipped, and a closing `::notice::` counts them. The job then
+    ends green, so the `release` job tags `v<version>` and drafts the release before you verify: run `pnpm release:verify <commit>`
+    as always. If it reports a rebuilt package that is not staged or a hash that differs, do not approve: reject everything staged,
+    delete the draft and release the next version as under "Staged, not yet approved". `--replace` refuses a tagged version, and plain
+    `pnpm release:prepare` says "Nothing to release" until a pull request labelled `fix`, `feature`, `breaking` or `docs` has merged
+    after the release commit (`internal` ones are not in the notes): merge the fix, or another such pull request, first. Its label
+    decides the next version (a `feature` gives the next minor); a candidate uses `--rc`. The tag `v<version>` and that version's changelog section
+    stay; the tag is protected.
+  - *"is on the registry already"* (a 409 in a first attempt that cannot be this run's own upload), a 401, 403 or 404, an unknown or unreadable code: never re-run it. A version the registry already holds cannot be this run's upload and this run tags nothing, but a re-run would skip the 409 and tag. Reject whatever was staged on npmjs.com, then
+    run `pnpm release:prepare --replace` (a candidate: `--rc --replace`). It takes the
+    untagged version the packages carry as rejected, removes its CHANGELOG sections and prepares the one after it (the next patch,
+    or what the labels ask for if higher; a candidate: the next number) with the notes since the last tag. Merge that release pull
+    request and start the workflow. A rejected breaking release moves its UPGRADING.md heading to the new version; the script says
+    which `UPGRADING_ANCHORS` key in `scripts/check-release.ts` to rename. Later plain runs stay on the replacing version (within its line: a release that labels pushed too high still comes down when the label is fixed).
 - **The tag step or the draft step failed after staging:** use **"Re-run failed jobs"** on the run. It repeats only the `release`
   job with the `build` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
   draft is created. **Never "Re-run all jobs"**, and never start a new run after one that staged: a staged version is invisible

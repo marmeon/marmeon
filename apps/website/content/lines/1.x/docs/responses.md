@@ -337,11 +337,13 @@ A table's action cannot return it; see [tables](tables.md#the-answer).
 
 | Result | Response |
 | --- | --- |
-| A `Response` | Goes out as it is. |
+| A `Response` made by your code | Goes out as it is. |
 | A string | Text: `text/plain; charset=utf-8`, the body as written. |
 | An `Html`, from the `html` template | HTML: `text/html; charset=utf-8`. |
 | An object or an array | JSON. |
 | `null` or `undefined` | An empty 204. |
+
+A `Response` that your code made goes out as it is, also a subclass of `Response` and a clone of one. A `Response` from `fetch()` or its clone, `Response.error()`, and one whose body is read or locked are refused with a `TypeError`, and the request answers `500`. `fetch()` has already decoded a compressed body, so build a `Response` of your own from its body and the headers you choose to pass on, and leave out `Content-Encoding` and `Content-Length`. The refusal applies to what a route, a table action and the error handler return. A middleware that returns such a `Response` sends it as it is, every header included, so a middleware builds a `Response` of its own from the body and the headers it chooses, without `Content-Encoding` and `Content-Length`.
 
 > [!WARNING]
 > A string is never markup: the browser shows `<script>` in it as text. To send HTML, return the `html` template below or a
