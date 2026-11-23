@@ -2,10 +2,10 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshConnections, withMysql } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, silent, withMysql } from './__fixtures__/databases.ts';
 import { DatabaseConnectionError } from './driver.ts';
 import { migratorConnection } from './migrator-connection.ts';
-import { afterCommit, afterRollback, inTransaction, outsideTransaction, Repository, TransactionError, TransactionFinishedError, type Connections } from './index.ts';
+import { afterCommit, afterRollback, Connections, inTransaction, outsideTransaction, Repository, TransactionError, TransactionFinishedError } from './index.ts';
 
 // The ambient transaction context: `connections.transaction(callback)` and everything awaited inside it.
 
@@ -1211,10 +1211,21 @@ withMysql('connections.transaction() on mysql', () => {
       expect(await names()).toEqual([]);
     });
 
-    it('that begins a transaction of its own while none is open leaves no lock for the next transaction: the reset of the way back ended it', async () => {
-      await sql`call opens()`.execute(db);
-      // `nowait` fails at once on a row that another transaction still holds.
-      expect(await connections.transaction((trx: Kysely<any>) => sql`select id from lockers where id = 2 for update nowait`.execute(trx).then((result) => result.rows))).toEqual([{ id: 2 }]);
+    it('that begins a transaction of its own while none is open leaves no lock for the next transaction: the reset of the way back rolled it back', async () => {
+      // The caller of a statement does not wait for the way back of its connection, and until the reset has run, the transaction holds its
+      // lock for every other connection of the pool. With one connection the order is certain: its next lease waits for the way back of the one before.
+      const options = connections.options();
+      if (options.driver !== 'mysql') throw new Error(`The suite runs on MySQL, not on ${options.driver}.`);
+      const one = new Connections({ connections: { default: { ...options, poolMax: 1 } }, root: '/', logger: silent });
+      try {
+        await sql`call opens()`.execute(one.get());
+        await sql`do 0`.execute(one.get());
+        // Checked from another connection before `one` closes, for a closed connection ends its transaction too. `nowait` fails at once on a
+        // row that another transaction still holds, and the row's old value tells a rollback from a commit.
+        expect(await connections.transaction((trx: Kysely<any>) => sql`select id, v from lockers where id = 2 for update nowait`.execute(trx).then((result) => result.rows))).toEqual([{ id: 2, v: 0 }]);
+      } finally {
+        await one.destroy();
+      }
     });
   });
 });
