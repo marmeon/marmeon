@@ -402,6 +402,7 @@ interface ModuleDefinition {
 }
 // @marmeon/core.ServiceProviderClass
 interface ServiceProviderClass {
+    readonly [providerJobs]?: readonly JobClass[];
     readonly queueDrivers?: Readonly<Record<string, QueueDriverFactory>>;
     readonly failedJobDrivers?: Readonly<Record<string, FailedJobStoreFactory>>;
 }

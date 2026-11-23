@@ -14,6 +14,7 @@
     { "path": "../../packages/core" },
     { "path": "../../packages/http" },
     { "path": "../../packages/i18n" },
+    { "path": "../../packages/queue" },
     { "path": "../../packages/react" },
     { "path": "../../packages/vite" }
   ]

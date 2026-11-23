@@ -61,4 +61,5 @@ export type { NodeEnvironment, NodeEnvironmentName } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
 export type { ModuleDefinition } from './module.ts';
+export { providerJobs } from './provider.ts';
 export type { ServiceProvider, ServiceProviderClass } from './provider.ts';

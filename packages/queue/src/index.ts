@@ -1,4 +1,4 @@
-import { Application, Clock, EventRegistry, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, EventRegistry, ListenerQueue, Logger, providerJobs, Redactor, type Container, type ServiceProvider, type ServiceProviderClass } from '@marmeon/core';
 import type { ProviderMigrations } from '@marmeon/database';
 import { isQueuedListener } from '@marmeon/core/internal';
 import type { CommandClass } from 'marmeon';
@@ -13,7 +13,7 @@ import type { FailedJobStoreFactory, QueueDriverFactory } from './driver.ts';
 import type { JobClass } from './job.ts';
 import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
 import { Queue, QueueManager } from './queue.ts';
-import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
+import { addFromProvider, FRAMEWORK_PREFIX, JobRegistry, kindOf, nameOf, providerSourceOf, QueueSetupError } from './registry.ts';
 import { withCode } from '@marmeon/core/internal';
 
 export { QueueConfig, queueTablesConnection } from './config.ts';
@@ -69,6 +69,11 @@ declare module '@marmeon/core' {
 
   interface ServiceProviderClass {
     /**
+     * The jobs this provider brings: none by default, and a worker runs them like a module's. A value that is no list of job classes,
+     * a name another class has, or one under `marmeon.` stops the start. See `docs/package-development.md#jobs`.
+     */
+    readonly [providerJobs]?: readonly JobClass[];
+    /**
      * Queue drivers this provider brings, by name — `QUEUE_DRIVER=<name>` selects one. A built-in name (`sync`, `database`,
      * `redis`) or a name another provider brings stops the start. See `docs/drivers.md#queue-drivers-and-failed-job-stores`.
      */
@@ -78,8 +83,26 @@ declare module '@marmeon/core' {
   }
 }
 
+/** The jobs of a provider's `static [providerJobs]`: none when it has no such static, a Q4 when it is not a list of classes. */
+function jobsOfProvider(Provider: ServiceProviderClass): readonly JobClass[] {
+  const jobs = Provider[providerJobs];
+  if (jobs === undefined) return [];
+  const provider = nameOf(Provider, '(unnamed)');
+  const hint = 'Write static [providerJobs] = [ProcessMediaJob].';
+  if (!Array.isArray(jobs)) throw new QueueSetupError(withCode('Q4', `${provider} has a static [providerJobs] that is not a list of job classes. ${hint}`));
+  // A counter over the iterator, so a hole in the list is an entry (undefined) too.
+  let index = 0;
+  for (const entry of jobs as readonly unknown[]) {
+    if (typeof entry !== 'function') {
+      throw new QueueSetupError(withCode('Q4', `${provider} lists a value of type ${kindOf(entry)} at static [providerJobs][${index}], which is not a job class. ${hint}`));
+    }
+    index++;
+  }
+  return jobs;
+}
+
 /**
- * Registers the `Queue` (`QUEUE_DRIVER`), the modules' jobs and the `queue:*` commands; `marmeon dev` starts a worker
+ * Registers the `Queue` (`QUEUE_DRIVER`), the jobs of the modules and of the providers (`static [providerJobs]`) and the `queue:*` commands; `marmeon dev` starts a worker
  * alongside the server. Found by `marmeon discover`.
  */
 export class QueueServiceProvider implements ServiceProvider {
@@ -93,7 +116,13 @@ export class QueueServiceProvider implements ServiceProvider {
   register(container: Container): void {
     container.singleton(JobRegistry, (c) => {
       const registry = new JobRegistry();
-      for (const module of c.make(Application).modules) registry.add(module.jobs ?? [], `module ${module.name}`);
+      const app = c.make(Application);
+      for (const module of app.modules) registry.add(module.jobs ?? [], `module ${module.name}`);
+      // A provider's static is added without options, so `marmeon.*` names stay the framework's. A provider's name is read only where it declares the static.
+      for (const Provider of app.providers ?? []) {
+        const jobs = jobsOfProvider(Provider);
+        if (jobs.length > 0) addFromProvider(registry, jobs, `provider ${nameOf(Provider, '(unnamed)')}`);
+      }
       // The framework's own jobs (`marmeon.*`): queued listeners here — when the app has one —, queued mails from
       // @marmeon/mail. (A worker checks every registered job's timeout against retryAfterSeconds.)
       if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@marmeon/queue', { framework: true });
@@ -174,10 +203,15 @@ export class QueueServiceProvider implements ServiceProvider {
     // Every event with a queued listener can be queued, names are unique, `static queue` is sane — or the start fails.
     const queuedListeners = app.container.make(QueuedListeners);
     // Framework jobs need the Encrypter only when they are used (a queued listener here; a queued mail says so itself).
-    if (registry.all().some((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX)) || queuedListeners.any) {
-      const { Encrypter } = await importEncryption();
+    const encrypted = registry.all().find((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX));
+    if (encrypted || queuedListeners.any) {
+      // Only a provider's job is named here: any other gets the message without a name.
+      const source = encrypted && providerSourceOf(registry, encrypted);
+      const offender = encrypted && source !== undefined ? `${nameOf(encrypted)} (${encrypted.job}, ${source})` : undefined;
+      const { Encrypter } = await importEncryption(offender && `${offender}, an encrypted job (static encrypted),`);
       if (!app.container.has(Encrypter)) {
-        throw new QueueSetupError(withCode('Q4', 'An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY — every queued listener (static queue) is one.'));
+        const which = offender ? ` ${offender} is one.` : ' every queued listener (static queue) is one.';
+        throw new QueueSetupError(withCode('Q4', `An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY —${which}`));
       }
     }
 

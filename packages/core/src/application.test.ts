@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Application, configDefinitions, createApplication, PROVIDER_STATICS, type ApplicationDefinition } from './application.ts';
+import { Application, configDefinitions, createApplication, STARTUP_STATICS, type ApplicationDefinition } from './application.ts';
+import { providerJobs } from './provider.ts';
 import { Container } from './container.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
@@ -169,7 +170,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations or static publishes.',
+      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations, static publishes or static [providerJobs].',
     );
     // A list named migrationUpgrades brings nothing.
     const Revisions = class Revisions {
@@ -411,7 +412,7 @@ describe('createApplication(definition, options)', () => {
     expect(app.definition).not.toHaveProperty('override');
   });
 
-  describe.each(PROVIDER_STATICS)('a provider with only static %s', (key) => {
+  describe.each(STARTUP_STATICS)('a provider with only static %s', (key) => {
     const register = (value: unknown) => {
       const Provider = class Only {};
       Object.defineProperty(Provider, key, { value });
@@ -419,12 +420,16 @@ describe('createApplication(definition, options)', () => {
     };
 
     it('is accepted when the static lists something', () => {
-      expect(() => register(['config', 'health', 'errorReporters', 'solutions', 'commands', 'checks'].includes(key) ? [class {}] : { entry: class {} })).not.toThrow();
+      expect(() => register([...['config', 'health', 'errorReporters', 'solutions', 'commands', 'checks'], providerJobs].includes(key) ? [class {}] : { entry: class {} })).not.toThrow();
     });
 
     it('is refused when the static is empty', () => {
       expect(() => register([])).toThrow('[marmeon:K9]');
       expect(() => register({})).toThrow('[marmeon:K9]');
+    });
+
+    it('is refused when the static is a string, null or a Set', () => {
+      for (const value of ['nightly', null, new Set([class {}])]) expect(() => register(value)).toThrow('[marmeon:K9]');
     });
   });
 });

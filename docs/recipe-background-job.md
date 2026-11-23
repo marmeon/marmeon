@@ -102,8 +102,8 @@ export class AccountExportServiceProvider implements ServiceProvider {
 }
 ```
 
-The module lists the job and the provider. A worker runs only the jobs its app knows, and a dispatch of a job that no module
-lists throws. `make:job` adds the class for you; `make:module` wrote the file without a `jobs` or a `providers` key, so you add
+The module lists the job and the provider. A worker runs only the jobs its app knows, and a dispatch of a job that no module or provider
+registers throws. `make:job` adds the class for you; `make:module` wrote the file without a `jobs` or a `providers` key, so you add
 the provider yourself.
 
 ```ts title="modules/account-export/index.ts"

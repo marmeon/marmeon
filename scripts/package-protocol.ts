@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROVIDER_STATICS } from '../packages/core/src/application.ts';
+import { STARTUP_STATICS, startupName } from '../packages/core/src/application.ts';
 import { oxc, PACKAGE_CODE, type SourceFile } from './source-files.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -31,7 +31,8 @@ function members(file: SourceFile, name = 'ServiceProviderClass', home = CORE_PR
       for (const member of declaration.body.body as Node[]) {
         if (member.type !== 'TSPropertySignature' && member.type !== 'TSMethodSignature') continue;
         const key = member.key as Node;
-        found.push(String(key.type === 'Identifier' ? key.name : key.value));
+        // A computed key `[providerJobs]` is its own name, apart from a plain `providerJobs`.
+        found.push(member.computed === true && key.type === 'Identifier' ? `[${key.name}]` : String(key.type === 'Identifier' ? key.name : key.value));
       }
     }
   };
@@ -61,7 +62,7 @@ export function documentedStatics(markdown: string): string[] {
   const names: string[] = [];
   for (const line of markdown.slice(start).split('\n').slice(1)) {
     if (/^#{1,3} /.test(line)) break;
-    const cell = /^\| `([A-Za-z_$][\w$]*)` \|/.exec(line);
+    const cell = /^\| `(\[[A-Za-z_$][\w$]*\]|[A-Za-z_$][\w$]*)` \|/.exec(line);
     if (cell) names.push(cell[1]!);
   }
   return names.sort();
@@ -123,4 +124,4 @@ export function documentedClassStatics(markdown: string): Set<string> {
 }
 
 /** The statics the core's provider check (K9) counts, sorted. */
-export const startupStatics = (): string[] => [...PROVIDER_STATICS].sort();
+export const startupStatics = (): string[] => STARTUP_STATICS.map(startupName).sort();

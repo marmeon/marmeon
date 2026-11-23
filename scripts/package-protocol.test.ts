@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { documentedClassStatics, documentedStatics, packageSources, pageText, protocolProblems, providerStatics, repositoryStatics, startupStatics } from './package-protocol.ts';
 
 const core = `export interface ServiceProviderClass {\n  new (...args: any[]): object;\n  readonly config?: unknown;\n  readonly health?: unknown;\n}`;
-const extension = (name: string) =>
-  `declare module '@marmeon/core' {\n  interface ModuleDefinition {\n    readonly routes?: unknown;\n  }\n  interface ServiceProviderClass {\n    readonly ${name}?: unknown;\n  }\n}`;
+const extension = (member: string) =>
+  `declare module '@marmeon/core' {\n  interface ModuleDefinition {\n    readonly routes?: unknown;\n  }\n  interface ServiceProviderClass {\n    readonly ${member}?: unknown;\n  }\n}`;
 const table = (...names: string[]) =>
   `### Provider statics\n\n| Static | Type |\n| --- | --- |\n${names.map((name) => `| \`${name}\` | x |`).join('\n')}\n\n### Statics of other classes\n\n| \`inject\` | y |`;
 
@@ -29,6 +29,20 @@ describe('the package protocol page', () => {
       { path: 'packages/queue/src/index.test.ts', text: extension('ignored') },
     ];
     expect(providerStatics(files)).toEqual(['config', 'health', 'queueDrivers']);
+  });
+
+  it('reads a computed member [providerJobs] as its own static, apart from a plain providerJobs, and a row with brackets', () => {
+    const files = (member: string) => [
+      { path: 'packages/core/src/provider.ts', text: core },
+      { path: 'packages/queue/src/index.ts', text: extension(member) },
+    ];
+    expect(providerStatics(files('[providerJobs]'))).toEqual(['[providerJobs]', 'config', 'health']);
+    expect(providerStatics(files('providerJobs'))).toEqual(['config', 'health', 'providerJobs']);
+    expect(documentedStatics(table('[providerJobs]', 'config'))).toEqual(['[providerJobs]', 'config']);
+    expect(protocolProblems(files('[providerJobs]'), table('config', 'health'))).toEqual([expect.stringContaining('lacks `[providerJobs]`')]);
+    expect(protocolProblems(files('[providerJobs]'), table('config', 'health', '[providerJobs]'))).toEqual([]);
+    expect(protocolProblems(files('providerJobs'), table('config', 'health', '[providerJobs]'))).toEqual([expect.stringContaining('lacks `providerJobs`'), expect.stringContaining('lists `[providerJobs]`')]);
+    expect(protocolProblems(files('config'), table('config', 'health', '[providerJobs]'))).toEqual([expect.stringContaining('lists `[providerJobs]`')]);
   });
 
   it('reads the rows of the table and stops at the next heading', () => {

@@ -8,7 +8,7 @@ import { NullFailedJobStore } from './drivers/memory.ts';
 import { RedisQueueDriver } from './drivers/redis.ts';
 import type { JobEvent } from './events.ts';
 import type { QueueConnectionOptions } from './queue.ts';
-import { JobRegistry, QueueSetupError, timeoutOf } from './registry.ts';
+import { JobRegistry, providerSourceOf, QueueSetupError, timeoutOf } from './registry.ts';
 import { JobRunner, type PayloadCipher } from './runner.ts';
 import { Worker } from './worker.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -32,8 +32,8 @@ export const BUILT_IN_FAILED_DRIVERS = ['database', 'null'] as const;
 
 export const importDatabase = (what = 'QUEUE_DRIVER=database') =>
   importOptional(() => import('@marmeon/database'), '@marmeon/database', what, 'marmeon add database (or pnpm add -E @marmeon/database@<version of your app>)');
-export const importEncryption = () =>
-  importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', 'An encrypted job (static encrypted)', 'marmeon add encryption (or pnpm add -E @marmeon/encryption@<version of your app>)');
+export const importEncryption = (what = 'An encrypted job (static encrypted)') =>
+  importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', what, 'marmeon add encryption (or pnpm add -E @marmeon/encryption@<version of your app>)');
 export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_DRIVER=redis', 'marmeon add redis (or pnpm add -E @marmeon/redis@<version of your app>)');
 export const importCache = () =>
   importOptional(() => import('@marmeon/cache'), '@marmeon/cache', 'Unique jobs, withoutOverlapping and job.once', 'marmeon add cache (or pnpm add -E @marmeon/cache@<version of your app>)');
@@ -251,7 +251,7 @@ function checkConnection(name: string, connection: unknown): QueueConnection {
 export function checkTimeouts(registry: JobRegistry, connection: string, retryAfterSeconds: number, stopTimeout: number): void {
   const offenders = registry.all().filter((job) => timeoutOf(job) + stopTimeout >= retryAfterSeconds);
   if (offenders.length === 0) return;
-  const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s)`).join(', ');
+  const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s${providerSourceOf(registry, job) === undefined ? '' : `, ${providerSourceOf(registry, job)}`})`).join(', ');
   throw new QueueSetupError(
     withCode(
       'Q4',

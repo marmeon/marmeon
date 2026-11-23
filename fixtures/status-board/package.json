@@ -69,6 +69,7 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/i18n": "workspace:*",
+    "@marmeon/queue": "workspace:*",
     "@marmeon/react": "workspace:*",
     "@marmeon/vite": "workspace:*",
     "@types/react": "^19.3.0",
@@ -79,6 +80,7 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/i18n": "workspace:*",
+    "@marmeon/queue": "workspace:*",
     "@marmeon/react": "workspace:*",
     "react": "^19.3.0"
   },

@@ -153,7 +153,7 @@ pnpm marmeon make:job SendInvoiceReminderJob --module=billing
 ```
 
 The job lands in `modules/billing/jobs/SendInvoiceReminderJob.ts` with the name `billing.send-invoice-reminder`. A worker runs
-only the jobs its app knows, so `make:job` adds the class to its module (`--no-register` prints the lines instead). The module ends up like this:
+only the jobs its app knows: a module's `jobs`, or a provider's `static [providerJobs]` (see [package development](package-development.md#jobs)). `make:job` adds the class to its module (`--no-register` prints the lines instead). The module ends up like this:
 
 ```ts title="modules/billing/index.ts"
 import { defineModule } from '@marmeon/core';
@@ -165,7 +165,7 @@ export default defineModule({
 });
 ```
 
-A dispatch of a job no module lists throws and says where to add it; `marmeon dev` and `marmeon build` warn about a job class
+A dispatch of a job that neither a module nor a provider lists throws and says where to add it; `marmeon dev` and `marmeon build` warn about a job class
 no module lists (see the [development server](console.md#the-development-server)). Two jobs with one name, or a name under `marmeon.`, which
 belongs to the framework, stop the app at the start.
 

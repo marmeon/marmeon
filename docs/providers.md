@@ -59,10 +59,10 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without `static config`, `static health`, `static errorReporters`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static mailDrivers`, `static fetchDrivers`, `static oauthProviders`, `static chatDrivers`, `static checks`, `static migrations` or `static publishes` from the list below, stops the start:
+them, and without `static config`, `static health`, `static errorReporters`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static mailDrivers`, `static fetchDrivers`, `static oauthProviders`, `static chatDrivers`, `static checks`, `static migrations`, `static publishes` or `static [providerJobs]` from the list below, stops the start:
 
 ```text
-[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations or static publishes.
+[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations, static publishes or static [providerJobs].
 ```
 
 ## The order
@@ -118,7 +118,7 @@ An app in the build phase never booted, so no provider's `shutdown()` runs there
 
 ## What a provider brings besides code
 
-A provider class can carry these statics. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers, and `marmeon publish` reads `static migrations`:
+A provider class can carry these statics. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers, `@marmeon/queue` reads `static [providerJobs]` when the app boots, and `marmeon publish` reads `static migrations`:
 
 | Static | What it is |
 | --- | --- |
@@ -127,10 +127,11 @@ A provider class can carry these statics. The app reads the first three before a
 | `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md#solutions). |
 | `static errorReporters = [SentryReporter]` | Classes that receive the app's server errors, masked, to send them to a service. Built when the app boots. See [reporting](errors.md#reporting). |
 | `static commands = [PruneNotesCommand]` | Console commands for `marmeon`. Collected while the app registers, so `marmeon build` sees them. See [package development](package-development.md#commands). |
+| `static [providerJobs] = [ProcessMediaJob]` | The [jobs](queues.md#the-job-class) a worker runs, like a module's `jobs`. Read when the app boots, and only with `@marmeon/queue` installed. See [jobs in package development](package-development.md#jobs). |
 | `static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'notes' }` | The directory of the migrations the package ships, for `marmeon publish`. See [declaring the migrations a package ships](package-development.md#declaring-the-migrations-a-package-ships). |
 
-A package uses these lists, because it has no module definition of its own. In an app, a module lists its configuration and its
-health checks in its definition instead.
+A package uses these lists, because it has no module definition of its own. In an app, a module lists its configuration, its
+health checks and its jobs in its definition instead.
 
 ## Providers of packages
 

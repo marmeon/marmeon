@@ -607,6 +607,9 @@ importers:
       '@marmeon/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@marmeon/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@marmeon/react':
         specifier: workspace:*
         version: link:../../packages/react

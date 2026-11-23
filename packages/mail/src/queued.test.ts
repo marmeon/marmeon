@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Clock, createApplication, Logger, type Application, type LogContext } from '@marmeon/core';
+import { Clock, createApplication, Logger, providerJobs, type Application, type LogContext } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
 import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -308,6 +308,21 @@ describe('mail previews', () => {
     const application = await previewApp(environment);
     expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_marmeon/mail');
     expect(application.container.has(MailPreviews)).toBe(false);
+  });
+});
+
+describe('a provider that lists SendQueuedMail in static [providerJobs]', () => {
+  it('stops the start: names under marmeon. belong to the framework, whoever lists the class', async () => {
+    class Thief {
+      static [providerJobs] = [SendQueuedMail];
+      register(): void {}
+    }
+    await expect(
+      createApplication(
+        { root: import.meta.dirname, discover: false, providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider, Thief as never] },
+        { env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' } },
+      ),
+    ).rejects.toThrow(/SendQueuedMail \(provider Thief\) is named "marmeon\.mail" — names under "marmeon\." belong to the framework/);
   });
 });
 
